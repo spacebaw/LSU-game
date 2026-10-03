@@ -1,0 +1,24 @@
+{
+  "modules": [
+    "contract.js",
+    "data.js",
+    "terrain.js",
+    "hydro.js",
+    "weather.js",
+    "wildlife.js",
+    "buildings.js",
+    "economy.js",
+    "agents.js",
+    "sports.js",
+    "sprites.js",
+    "sprites_buildings.js",
+    "sprites_entities.js",
+    "render.js",
+    "render_fx.js",
+    "ui.js",
+    "ui_panels.js",
+    "audio.js",
+    "progress.js",
+    "session.js"
+  ]
+}

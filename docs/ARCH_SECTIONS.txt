@@ -1,0 +1,13 @@
+11:## 1. Module list, files and manifest order
+60:## 2. The global state: `BSU.state`
+424:## 3. `contract.js` public surface (frozen)
+648:## 4. `data.js`
+727:## 5. Simulation modules: exact APIs and the tick order
+1026:## 6. Rendering: `sprites*.js`, `render.js`, `render_fx.js`
+1100:## 7. UI: `ui.js` and `ui_panels.js`
+1236:## 8. Save / load schema v1
+1275:## 9. Boot, main loop and headless mode (`session.js`)
+1347:## 10. Cross-cutting rules
+1388:## 11. Feature tiers
+1427:## 12. Worked walkthroughs through the interfaces
+1476:## 13. Decisions (where the GDD was silent or self-contradictory)
