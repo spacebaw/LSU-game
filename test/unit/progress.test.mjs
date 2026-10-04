@@ -25,6 +25,9 @@ ok(!/Math\.random\(/.test(src), 'no Math.random');
 ok(!/[^=!]=\s*Infinity\b|:\s*Infinity\b/.test(src), 'Infinity is only tested for, never assigned/stored');
 
 const { win } = loadGame();
+// This test asserts the ui-ABSENT contract (INTEGRATION_NOTES '## progress.js': calls queue on state.progress.uiQueue when
+// BSU.ui is missing). ui.js now exists in the bundle, so remove it before boot; ui's own drain is covered by test/unit/ui.test.mjs.
+delete win.BSU.ui;
 const BSU = win.BSU;
 ok(BSU && BSU.progress && typeof BSU.progress.tick === 'function', 'BSU.progress loaded');
 const H = BSU.headless, PR = BSU.progress;
