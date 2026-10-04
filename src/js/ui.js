@@ -167,7 +167,7 @@
     return s;
   }
   function topbarButton(id, glyph, label, title, onClick) {
-    const b = btn(id, null, 'tb', onClick); b.title = title;
+    const b = btn(id, null, 'tb', onClick); b.title = title; if (!label) b.classList.add('glyph-only');
     const g = el('span', 'glyph', glyph), l = el('span', 'label', label); b.appendChild(g); b.appendChild(l); E[id] = b; E[id + '-glyph'] = g; return b;
   }
   function buildTopbar() {
@@ -346,7 +346,20 @@
     subscribe();
     registerBuiltins();
     try { const w = fin(window.innerWidth, 1280); cls(E.palette, 'compact', w < L.compactWidth); } catch (e) { /* stub */ }
+    fitTopbar();
   };
+  /** the topbar must never push its buttons off-screen: when its content overflows (1280-wide laptops with the
+   *  capacity + weather chips showing) drop the panel-button labels (glyphs keep their tooltips); undo only when the
+   *  window grows (hysteresis — hiding the labels shrinks scrollWidth, so a plain overflow test would flap) */
+  let compactAtW = 0, fitAt = 0;
+  function fitTopbar() {
+    try {
+      const tb = E.topbar; if (!tb || typeof tb.scrollWidth !== 'number' || typeof tb.clientWidth !== 'number' || !tb.clientWidth) return;
+      const w = fin(window.innerWidth, 1280);
+      if (tb.classList.contains('compact')) { if (w > compactAtW + 40) { cls(tb, 'compact', false); compactAtW = 0; } return; }
+      if (tb.scrollWidth > tb.clientWidth + 1) { cls(tb, 'compact', true); compactAtW = w; }
+    } catch (e) { /* stub */ }
+  }
 
   // ---------------------------------------------------------------------------
   // DOM listeners → the machine (pointer / wheel / keys / gestures)
@@ -378,7 +391,7 @@
         window.addEventListener('keyup', function (e) { try { keyup(e.key); } catch (err) { uerr('keyup', err); } });
         window.addEventListener('blur', function () { try { for (const k in held) held[k] = false; if (live.down || live.state === 'DRAGGING') M.pointer('cancel', lastPx, lastPy, 0, M0); } catch (err) { uerr('blur', err); } });
         window.addEventListener('pointerup', function (e) { try { if (live.down && e.target !== world) M.pointer('up', lastPx, lastPy, fin(e.button, 0), modsOf(e)); } catch (err) { uerr('pointerup:window', err); } });
-        window.addEventListener('resize', function () { try { const w = fin(window.innerWidth, 1280); cls(E.palette, 'compact', w < L.compactWidth); } catch (err) { /* stub */ } });
+        window.addEventListener('resize', function () { try { const w = fin(window.innerWidth, 1280); cls(E.palette, 'compact', w < L.compactWidth); } catch (err) { /* stub */ } fitTopbar(); });
       }
     } catch (e) { /* stub window */ }
   }
@@ -416,8 +429,13 @@
     on('save:written', function (p) { const s = stateOf(); if (s && p && p.slot && String(p.slot).indexOf('auto') !== 0 && String(p.slot)[0] !== '_') M.notify(s, { kind: 'info', text: 'Saved', ttl: 3000 }); });
     on('save:loaded', function () { if (titleOn) M.showTitle(false); });
     on('speed:changed', function () { speedKey = ''; });
-    on('setpiece:start', function () { const s = stateOf(); if (s && s.ui.tool && !toolLocked) M.selectTool(s, null); });
-    on('setpiece:end', function () { skipShown = false; });
+    on('setpiece:start', function () {
+      const s = stateOf(); if (s && s.ui.tool && !toolLocked) M.selectTool(s, null);
+      // an open modal card goes back to the queue front (no onClose: it is re-offered when the set piece ends)
+      if (card && !card.spec.duringSetPiece) { cardQueue.unshift(card.spec); card = null; if (dom()) { clear(E.cards); show(E.cards, false); } }
+      hideTooltip();
+    });
+    on('setpiece:end', function () { skipShown = false; if (!card && cardQueue.length) { const s = stateOf(); if (s) openCard(s, cardQueue.shift()); } });
     on('error', function () { errCount++; });
     on('game:kickoff', function (p) { const s = stateOf(); if (s) M.notify(s, { kind: 'sports', text: 'Kickoff vs ' + (p.opp && p.opp.name ? p.opp.name : p.opp || 'the visitors') + (p.night ? ' under the lights' : ''), ttl: 8000 }); });
     on('festival:start', function (p) { const s = stateOf(); if (s && p && p.id === 'mardiGras') M.notify(s, { kind: 'event', text: 'Laissez les bons temps rouler — Mardi Gras!' }); });
@@ -545,7 +563,7 @@
       const s = stateOf(); if (!s || !s.ui) return;
       px = fin(px, 0); py = fin(py, 0); lastPx = px; lastPy = py; mods = mods || M0;
       if (titleOn) return;
-      if (type === 'down') { if (call('progress', 'tutorialStage', s) === 1) call('progress', 'skipSwoop', s); if (s.setPiece) call('render', 'captureCameraTouch', s); show(E.popover, false); }
+      if (type === 'down') { if (call('progress', 'tutorialStage', s) === 1) { call('progress', 'skipSwoop', s); return; } if (s.setPiece) call('render', 'captureCameraTouch', s); show(E.popover, false); }   // the swoop-skipping click must not also open the tile inspector behind the charter card
       if (type === 'move' || type === 'down') { const i = tileIndexAt(px, py); M.hoverTile = i; if (BSU.render) BSU.render.hoverTile = i; }
       mcStep(live, { type: type, px: px, py: py, button: fin(button, 0) | 0, mods: mods });
     } catch (e) { uerr('pointer:' + type, e); }
@@ -759,7 +777,7 @@
       const i = tileIndexAt(px, py); if (i < 0) return false;
       const b = call('buildings', 'at', s, i % W, (i / W) | 0);
       const r = b ? call('buildings', 'remove', s, b.id, 'demolish') : call('buildings', 'remove', s, { tile: i }, 'demolish');
-      if (r && r.ok) { call('audio', 'play', 'tick'); undoAtMs = clock; if (dom()) ghostLabel(px, py, 'Removed' + (r.refund ? ' · refund ' + money(r.refund) : ''), 'Ctrl+Z to undo', 'green'); }
+      if (r && r.ok) { call('audio', 'play', 'tick'); undoAtMs = clock; if (dom()) ghostLabel(px, py, 'Removed' + (r.refund ? ' · refund ' + money(r.refund) : ''), '', 'green'); }   // undo covers the last placement only (GDD §11.2 / D16) — do not promise it here
       else { call('audio', 'play', 'invalid'); if (dom()) { ghostLabel(px, py, r && r.reason ? r.reason : 'Nothing here', '', 'red'); shakeLabel(); } }
       return false;   // the bulldozer stays selected
     }
@@ -1110,7 +1128,7 @@
   function openToast(s, spec) {
     const ticks = Math.max(1, fin(spec.ticks, L.toastTicks)); const t0 = tickOf(s);
     toast = { id: spec.id, text: spec.text || '', ticks: ticks, startTick: t0, untilTick: Number.isFinite(spec.untilTick) && spec.untilTick > t0 ? spec.untilTick : t0 + ticks, onAnswer: typeof spec.onAnswer === 'function' ? spec.onAnswer : null, resolved: false };
-    if (dom()) { setText(E['dt-text'], toast.text); setText(E['btn-dt-yes'], spec.yes || 'Yes'); E['btn-dt-yes'].appendChild(el('span', 'key', 'Y')); setText(E['btn-dt-no'], spec.no || 'No'); E['btn-dt-no'].appendChild(el('span', 'key', 'N')); E['dt-fill'].style.width = '100%'; show(E['decision-toast'], true); }
+    if (dom()) { setText(E['dt-text'], toast.text); setText(E['btn-dt-yes'], spec.yes || 'Yes'); E['btn-dt-yes'].appendChild(el('span', 'key', 'Y')); setText(E['btn-dt-no'], spec.no || 'No'); E['btn-dt-no'].appendChild(el('span', 'key', 'N')); E['dt-fill'].style.width = '100%'; show(E.popover, false); show(E['decision-toast'], true); }
     emit('decision:open', { id: toast.id });
   }
   /** idempotent: resolves the open toast with 'yes'|'no'|'default' — emits decision:closed once */
@@ -1144,6 +1162,8 @@
       } else spec = idOrSpec;
       if (!spec || typeof spec !== 'object') return;
       if (spec.side === 'voice') { showVoice(s, spec); return; }
+      // a modal card must not cover a set piece (the Board's proposal over the Mardi Gras parade): hold it until setpiece:end
+      if (s && s.setPiece && !spec.duringSetPiece) { if (!cardQueue.some(function (q) { return q.id === spec.id; }) || spec.allowDuplicate) cardQueue.push(spec); return; }
       if (card) { if (card.spec.id !== spec.id || spec.allowDuplicate) cardQueue.push(spec); return; }
       openCard(s, spec);
     } catch (e) { uerr('card', e); }
@@ -1285,6 +1305,9 @@
       setText(E['pop-next'], r.next || ''); show(E['pop-next'], !!r.next);
       const anchor = E['stat-' + stat]; let left = 200; try { const rc = anchor && anchor.getBoundingClientRect ? anchor.getBoundingClientRect() : null; if (rc) left = fin(rc.left, 200); } catch (e) { left = 200; }
       E.popover.style.left = Math.round(clamp(left, 8, fin(window.innerWidth, 1280) - 320)) + 'px';
+      // never cover an open decision toast (its buttons must stay clickable): drop below it
+      let top = ''; try { const dt = E['decision-toast']; if (dt && !dt.classList.contains('hidden') && dt.getBoundingClientRect) { const rc = dt.getBoundingClientRect(); if (rc.height > 0) top = Math.round(rc.bottom + 6) + 'px'; } } catch (e) { top = ''; }
+      E.popover.style.top = top;
       show(E.popover, true);
     } catch (e) { uerr('breakdown', e); }
   };
@@ -1386,6 +1409,7 @@
   function flashDelta(delta) { if (!dom()) return; const d = E['stat-cash-delta']; setText(d, (delta > 0 ? '+' : '−') + money(Math.abs(delta))); d.dataset.sign = delta > 0 ? 'pos' : 'neg'; cls(d, 'on', true); odo.deltaUntil = clock + L.deltaMs; }
   function updateTopbar(s, dtMs) {
     const e = s.economy || {}; const k = Math.min(1, dtMs / L.odoMs);
+    if (clock - fitAt > 500) { fitAt = clock; fitTopbar(); }
     // cash odometer
     const cash = fin(e.cash, 0); if (!Number.isFinite(odo.cash)) odo.cash = cash; else odo.cash += (cash - odo.cash) * k; if (Math.abs(cash - odo.cash) < 1) odo.cash = cash;
     setText(E['stat-cash-value'], money(Math.round(odo.cash))); cls(E['stat-cash'], 'neg', cash < 0);
@@ -1502,7 +1526,7 @@
   // ---------------------------------------------------------------------------
   function updateSetPiece(s) {
     const sp = s.setPiece; const hidePalette = !!sp || titleOn || !paletteKey.split('|')[0];
-    if (hidePalette !== paletteHidden) { paletteHidden = hidePalette; show(E.palette, !hidePalette); cls(E.hud, 'no-palette', hidePalette); }
+    if (hidePalette !== paletteHidden) { paletteHidden = hidePalette; show(E.palette, !hidePalette); cls(E.hud, 'no-palette', hidePalette); if (hidePalette) hideTooltip(); }   // a palette-item tooltip must not outlive the palette
     cls(E.hud, 'setpiece', !!sp);
     const skip = !!(sp && sp.skippable && fin(sp.tick, 0) >= L.skipAfterTick);
     if (skip !== skipShown) { skipShown = skip; show(E['btn-skip'], skip); }
@@ -1573,7 +1597,7 @@
       for (let k = notifs.length - 1; k >= 0; k--) { notifs[k].closed = true; } notifs.length = 0;
       odo.cash = NaN; odo.students = NaN; odo.lastStudents = NaN; odo.holdUntil = -1; odo.deltaUntil = 0;
       tk = { x: 0, line: null, seen: Math.max(0, ((state && state.ticker) || []).length - 1), w: 0, lastLen: -1, logOpen: false, cycle: 0 };
-      bubble = { since: clock, until: 0, key: '' }; objKey = ''; alertKey = ''; alertAt = -1e9; msAt = -1e9; speedKey = ''; paletteKey = ''; pipKey = ''; paletteDirty = true; capacityShown = false; skipShown = false; paletteHidden = false; hudFade = false;
+      bubble = { since: clock, until: 0, key: '' }; objKey = ''; alertKey = ''; alertAt = -1e9; msAt = -1e9; speedKey = ''; paletteKey = ''; pipKey = ''; paletteDirty = true; capacityShown = false; skipShown = false; paletteHidden = null; hudFade = false;   // null: the first updateSetPiece re-syncs #palette and #hud.no-palette (a stale no-palette from the title / tutorial left a 0-height palette after newGame/load)
       M.debug.open = false; M.hoverTile = -1; lastGhost = null;
       for (const k in held) held[k] = false;
       if (dom()) {
@@ -1627,8 +1651,8 @@
       m.step({ type: 'up', px: 280, py: 132, button: 0, mods: M0 }); A(m.state === 'PLACING' && runs.length === 1 && runs[0].length === r1.length && tool && tool.id === 'path', 'DRAGGING + up → placeRun, PLACING, tool kept');
       // 3. straight line with Shift from (10,10) to (14,12) → all on ty 10
       const ln = lineRun(10 * W + 10, 12 * W + 14); A(ln.length === 5 && ln.every(function (i) { return ((i / W) | 0) === 10; }), 'Shift line keeps ty 10 (larger delta axis x)');
-      // 4. Esc layer order via the live keydown in dry mode: tool → inspect → panel → card
-      s.ui.tool = { id: 'dorm', rot: 0, shift: false }; mcSet(live, 'PLACING'); insp = { kind: 'tile', i: 5 }; s.ui.panel = 'settings'; card = { spec: { id: 'x', title: 't', body: 'b', actions: [] }, born: 0, bornTick: 0 };
+      // 4. Esc layer order via the live keydown in dry mode: tool → inspect → panel → card (the live game's queued cards are restored at the end)
+      cardQueue.length = 0; s.ui.tool = { id: 'dorm', rot: 0, shift: false }; mcSet(live, 'PLACING'); insp = { kind: 'tile', i: 5 }; s.ui.panel = 'settings'; card = { spec: { id: 'x', title: 't', body: 'b', actions: [] }, born: 0, bornTick: 0 };
       A(M.keydown('Escape', M0) === true && s.ui.tool === null && insp !== null && s.ui.panel === 'settings', 'Esc #1 cancels the tool');
       A(M.keydown('Escape', M0) === true && insp === null && s.ui.panel === 'settings' && card, 'Esc #2 closes inspect');
       A(M.keydown('Escape', M0) === true && s.ui.panel === null && card, 'Esc #3 closes the panel');

@@ -813,7 +813,8 @@
   const EXTRA_DECALS = {
     sinking: { w: 12, h: 12, anchor: 'roof', frames: 1 }, noAccess: { w: 12, h: 12, anchor: 'roof', frames: 1 },
     power: { w: 12, h: 12, anchor: 'roof', frames: 1 }, water: { w: 12, h: 12, anchor: 'roof', frames: 1 },
-    sandbags: { w: 16, h: 6, anchor: 'ground', frames: 1 }
+    sandbags: { w: 16, h: 6, anchor: 'ground', frames: 1 },
+    debris: { w: 32, h: 14, anchor: 'ground', frames: 4 }   // storm debris on DEBRIS-flagged tiles (render chunk bake, frame = tile hash & 3)
   };
   M.EXTRA_DECALS = EXTRA_DECALS;
   const gray3 = (P, x, y, w, h, c) => { P.rect(x, y, w, h, c); P.hline(x, y, w, light(c)); P.vline(x, y, h, light(c)); P.hline(x, y + h - 1, w, dark(c)); P.vline(x + w - 1, y, h, dark(c)); };   // a bevelled box
@@ -862,6 +863,13 @@
     noAccess(P, w, h) { P.ellipse(6, 6, 6, 6, shade(PAL.danger, 0.7)); P.ellipse(6, 6, 5, 5, PAL.danger); P.line(2, 9, 9, 2, X.white); P.line(3, 9, 10, 2, X.white); },
     power(P, w, h) { P.ellipse(6, 6, 6, 6, shade(PAL.danger, 0.7)); P.ellipse(6, 6, 5, 5, PAL.danger); P.line(7, 1, 4, 6, X.white); P.hline(4, 6, 4, X.white); P.line(7, 6, 4, 11, X.white); },
     water(P, w, h) { P.ellipse(6, 6, 6, 6, shade(PAL.danger, 0.7)); P.ellipse(6, 6, 5, 5, PAL.danger); P.ellipse(6, 7, 2.5, 2.5, X.white); P.rect(5, 2, 2, 4, X.white); P.px(4, 4, X.white); P.px(7, 4, X.white); },
+    debris(P, w, h, f, seed) { const sd = seed + f * 977; const o = hash(sd, 1) % 6;   // a broken brown cluster: boards, a snapped branch, splinters, a torn tarp scrap
+      P.rect(3 + o, h - 5, 12, 2, X.plywood); P.hline(3 + o, h - 5, 12, light(X.plywood)); P.hline(3 + o, h - 4, 12, dark(X.plywood)); P.px(5 + o, h - 5, X.nail);
+      P.line(14 - (o >> 1), h - 3, 26 - (o >> 1), h - 8, X.debris); P.line(15 - (o >> 1), h - 3, 27 - (o >> 1), h - 8, shade(X.debris, 0.7));
+      P.rect(20 + (o & 3), h - 10, 3, 8, PAL.bark); P.vline(20 + (o & 3), h - 10, 8, light(PAL.bark)); P.px(19 + (o & 3), h - 7, PAL.bark); P.px(23 + (o & 3), h - 9, PAL.bark);
+      if (f & 1) { P.rect(1, h - 8, 6, 4, X.tarp); P.hline(1, h - 8, 6, shade(X.tarp, 1.25)); P.px(6, h - 6, X.tarpCrease); }
+      for (let i = 0; i < 7; i++) { const x = 1 + (hash(sd, 10 + i) % (w - 2)), y = h - 2 - (hash(sd, 20 + i) % 6); P.px(x, y, (i & 1) ? X.debris : shade(X.plywood, 0.8)); }
+      P.hline(2, h - 1, w - 4, shade(X.debris, 0.6)); },
     sandbags(P, w, h, f, seed) { for (let i = 0; i < 4; i++) { const x = i * 4, y = (i & 1) ? 0 : 1; P.rect(x, y + 1, 4, 4, X.sandbag); P.hline(x, y + 1, 4, light(X.sandbag)); P.hline(x, y + 4, 4, dark(X.sandbag)); P.px(x, y + 1, PAL.bark); P.px(x + 3, y + 4, PAL.bark); P.px(x + 1 + (hash(seed, i) & 1), y + 3, shade(X.sandbag, 0.85)); } P.hline(0, 5, w, shade(PAL.bark, 0.8)); }
   };
   M.decalPainters = DECALS;

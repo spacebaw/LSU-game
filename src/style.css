@@ -48,7 +48,7 @@ background:var(--panel-bg);border:1px solid var(--line);color:var(--text);border
 #hud{position:absolute;inset:0;pointer-events:none;z-index:2}
 #hud>*{pointer-events:auto}
 #hud.no-palette{--palette-h:0px}
-#hud.setpiece #objective-card,#hud.setpiece #milestones-card,#hud.setpiece #voice-card,#hud.setpiece #overlay-buttons{opacity:0;pointer-events:none}
+#hud.setpiece #objective-card,#hud.setpiece #milestones-card,#hud.setpiece #voice-card,#hud.setpiece #overlay-buttons,#hud.setpiece #notifications{opacity:0;pointer-events:none}
 #topbar{position:absolute;left:0;right:0;top:0;height:var(--topbar-h);display:flex;align-items:center;gap:8px;padding:0 10px;background:linear-gradient(180deg,rgba(43,18,70,.96),rgba(26,18,48,.92));border-bottom:1px solid var(--line);box-shadow:0 2px 12px rgba(0,0,0,.4)}
 #brand{font:700 15px/1 var(--font-title);color:var(--gold);letter-spacing:.06em;white-space:nowrap;margin-right:4px;text-shadow:0 1px 0 #000}
 .stats{display:flex;align-items:stretch;gap:2px;height:100%}
@@ -77,6 +77,8 @@ background:var(--panel-bg);border:1px solid var(--line);color:var(--text);border
 #btn-storm.live .dot{display:block;animation:pulse 1.2s infinite}
 @keyframes pulse{0%,100%{transform:scale(1);opacity:1} 50%{transform:scale(1.35);opacity:.7} }
 #chip-endowed{font-size:10px}
+@media (max-width:1365px){#topbar{gap:6px} #brand{font-size:14px;margin-right:0} .stat{padding:0 7px;min-width:56px} .tb{padding:5px 7px} .tb .glyph{display:none} .tb.glyph-only .glyph{display:inline} .speed-btn{min-width:27px;padding:5px 6px}}
+#topbar.compact .tb .label{display:none} #topbar.compact .tb .glyph{display:inline} #topbar.compact .tb{padding:5px 7px}
 #alert-strip{position:absolute;top:calc(var(--topbar-h) + 8px);left:50%;transform:translateX(-50%);max-width:640px;display:flex;align-items:center;gap:10px;padding:6px 12px;font-weight:600;font-size:12px;border-left:4px solid var(--gold)}
 #alert-strip[data-kind="danger"]{border-left-color:var(--danger)} #alert-strip[data-kind="water"]{border-left-color:var(--water)} #alert-strip[data-kind="wildlife"]{border-left-color:var(--good)}
 #alert-icon{font-size:16px}
@@ -122,7 +124,7 @@ background:var(--panel-bg);border:1px solid var(--line);color:var(--text);border
 .notif.paw .notif-text::before{content:"🐾 "}
 .notif-close{opacity:.7} .notif-close:hover{opacity:1}
 @keyframes slide-in{from{opacity:0;transform:translateX(24px)} to{opacity:1;transform:none} }
-#decision-toast{position:absolute;top:calc(var(--topbar-h) + 52px);left:50%;transform:translateX(-50%);width:440px;padding:12px 14px 10px;z-index:6;border-top:3px solid var(--gold);animation:rise .2s ease-out}
+#decision-toast{position:absolute;top:calc(var(--topbar-h) + 52px);left:50%;transform:translateX(-50%);width:440px;padding:12px 14px 10px;z-index:9;border-top:3px solid var(--gold);animation:rise .2s ease-out}
 #dt-text{font:600 13px/1.35 var(--font-ui);margin-bottom:8px}
 #dt-countdown{height:4px} #dt-countdown .fill{transition:width .1s linear;background:linear-gradient(90deg,var(--gold),var(--gold-hi))}
 #inspect{position:absolute;right:12px;top:calc(var(--topbar-h) + 10px);bottom:calc(var(--palette-h) + var(--ticker-h) + 12px);width:var(--inspect-w);padding:12px;display:flex;flex-direction:column;gap:8px;overflow:hidden;transform:translateX(0);transition:transform .2s,opacity .2s}
@@ -184,7 +186,7 @@ input.rename{width:100%;font:700 14px/1.2 var(--font-title);color:var(--text);ba
 #palette.compact .item{width:56px} #palette.compact .item .name,#palette.compact .item .cost{display:none}
 #palette.compact .tab .tab-name{font-size:10px}
 @media (max-width:1180px){.tb .label{display:none} .stat{min-width:56px;padding:0 7px} #chip-weather{display:none} }
-#cards{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(14,18,48,.45);z-index:5}
+#cards{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(14,18,48,.45);z-index:8}
 .card{width:460px;max-width:calc(100vw - 40px);max-height:calc(100vh - 80px);overflow:auto;padding:18px 20px 16px;border-top:3px solid var(--gold);animation:rise .25s ease-out}
 .card-title{font:700 22px/1.15 var(--font-title);color:var(--gold-hi)}
 .card-body{margin-top:10px;font-size:13px;line-height:1.45}

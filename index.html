@@ -55,7 +55,7 @@ background:var(--panel-bg);border:1px solid var(--line);color:var(--text);border
 #hud{position:absolute;inset:0;pointer-events:none;z-index:2}
 #hud>*{pointer-events:auto}
 #hud.no-palette{--palette-h:0px}
-#hud.setpiece #objective-card,#hud.setpiece #milestones-card,#hud.setpiece #voice-card,#hud.setpiece #overlay-buttons{opacity:0;pointer-events:none}
+#hud.setpiece #objective-card,#hud.setpiece #milestones-card,#hud.setpiece #voice-card,#hud.setpiece #overlay-buttons,#hud.setpiece #notifications{opacity:0;pointer-events:none}
 #topbar{position:absolute;left:0;right:0;top:0;height:var(--topbar-h);display:flex;align-items:center;gap:8px;padding:0 10px;background:linear-gradient(180deg,rgba(43,18,70,.96),rgba(26,18,48,.92));border-bottom:1px solid var(--line);box-shadow:0 2px 12px rgba(0,0,0,.4)}
 #brand{font:700 15px/1 var(--font-title);color:var(--gold);letter-spacing:.06em;white-space:nowrap;margin-right:4px;text-shadow:0 1px 0 #000}
 .stats{display:flex;align-items:stretch;gap:2px;height:100%}
@@ -84,6 +84,8 @@ background:var(--panel-bg);border:1px solid var(--line);color:var(--text);border
 #btn-storm.live .dot{display:block;animation:pulse 1.2s infinite}
 @keyframes pulse{0%,100%{transform:scale(1);opacity:1} 50%{transform:scale(1.35);opacity:.7} }
 #chip-endowed{font-size:10px}
+@media (max-width:1365px){#topbar{gap:6px} #brand{font-size:14px;margin-right:0} .stat{padding:0 7px;min-width:56px} .tb{padding:5px 7px} .tb .glyph{display:none} .tb.glyph-only .glyph{display:inline} .speed-btn{min-width:27px;padding:5px 6px}}
+#topbar.compact .tb .label{display:none} #topbar.compact .tb .glyph{display:inline} #topbar.compact .tb{padding:5px 7px}
 #alert-strip{position:absolute;top:calc(var(--topbar-h) + 8px);left:50%;transform:translateX(-50%);max-width:640px;display:flex;align-items:center;gap:10px;padding:6px 12px;font-weight:600;font-size:12px;border-left:4px solid var(--gold)}
 #alert-strip[data-kind="danger"]{border-left-color:var(--danger)} #alert-strip[data-kind="water"]{border-left-color:var(--water)} #alert-strip[data-kind="wildlife"]{border-left-color:var(--good)}
 #alert-icon{font-size:16px}
@@ -129,7 +131,7 @@ background:var(--panel-bg);border:1px solid var(--line);color:var(--text);border
 .notif.paw .notif-text::before{content:"🐾 "}
 .notif-close{opacity:.7} .notif-close:hover{opacity:1}
 @keyframes slide-in{from{opacity:0;transform:translateX(24px)} to{opacity:1;transform:none} }
-#decision-toast{position:absolute;top:calc(var(--topbar-h) + 52px);left:50%;transform:translateX(-50%);width:440px;padding:12px 14px 10px;z-index:6;border-top:3px solid var(--gold);animation:rise .2s ease-out}
+#decision-toast{position:absolute;top:calc(var(--topbar-h) + 52px);left:50%;transform:translateX(-50%);width:440px;padding:12px 14px 10px;z-index:9;border-top:3px solid var(--gold);animation:rise .2s ease-out}
 #dt-text{font:600 13px/1.35 var(--font-ui);margin-bottom:8px}
 #dt-countdown{height:4px} #dt-countdown .fill{transition:width .1s linear;background:linear-gradient(90deg,var(--gold),var(--gold-hi))}
 #inspect{position:absolute;right:12px;top:calc(var(--topbar-h) + 10px);bottom:calc(var(--palette-h) + var(--ticker-h) + 12px);width:var(--inspect-w);padding:12px;display:flex;flex-direction:column;gap:8px;overflow:hidden;transform:translateX(0);transition:transform .2s,opacity .2s}
@@ -191,7 +193,7 @@ input.rename{width:100%;font:700 14px/1.2 var(--font-title);color:var(--text);ba
 #palette.compact .item{width:56px} #palette.compact .item .name,#palette.compact .item .cost{display:none}
 #palette.compact .tab .tab-name{font-size:10px}
 @media (max-width:1180px){.tb .label{display:none} .stat{min-width:56px;padding:0 7px} #chip-weather{display:none} }
-#cards{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(14,18,48,.45);z-index:5}
+#cards{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(14,18,48,.45);z-index:8}
 .card{width:460px;max-width:calc(100vw - 40px);max-height:calc(100vh - 80px);overflow:auto;padding:18px 20px 16px;border-top:3px solid var(--gold);animation:rise .25s ease-out}
 .card-title{font:700 22px/1.15 var(--font-title);color:var(--gold-hi)}
 .card-body{margin-top:10px;font-size:13px;line-height:1.45}
@@ -9879,7 +9881,8 @@ input[type="range"]{width:180px;accent-color:var(--gold)}
     try {
       const c = cache(state), u = c.undo;
       if (!u) return { ok: false, reason: 'Nothing to undo' };
-      if (fin(state.tick, 0) - u.tick > P.ui.undoTicks) { c.undo = null; return { ok: false, reason: 'Too late to undo' }; }
+      const win = P.ui.undoTicks * Math.max(1, fin(state.ui && state.ui.speed, 1));   // D16: 5 s wall-clock in the browser → the tick window scales with the sim speed (50 ticks headless / at 1×)
+      if (fin(state.tick, 0) - u.tick > win) { c.undo = null; return { ok: false, reason: 'Too late to undo' }; }
       const tl = state.tiles;
       for (let k = u.entries.length - 1; k >= 0; k--) {
         const e = u.entries[k];
@@ -17261,7 +17264,8 @@ input[type="range"]{width:180px;accent-color:var(--gold)}
   const EXTRA_DECALS = {
     sinking: { w: 12, h: 12, anchor: 'roof', frames: 1 }, noAccess: { w: 12, h: 12, anchor: 'roof', frames: 1 },
     power: { w: 12, h: 12, anchor: 'roof', frames: 1 }, water: { w: 12, h: 12, anchor: 'roof', frames: 1 },
-    sandbags: { w: 16, h: 6, anchor: 'ground', frames: 1 }
+    sandbags: { w: 16, h: 6, anchor: 'ground', frames: 1 },
+    debris: { w: 32, h: 14, anchor: 'ground', frames: 4 }   // storm debris on DEBRIS-flagged tiles (render chunk bake, frame = tile hash & 3)
   };
   M.EXTRA_DECALS = EXTRA_DECALS;
   const gray3 = (P, x, y, w, h, c) => { P.rect(x, y, w, h, c); P.hline(x, y, w, light(c)); P.vline(x, y, h, light(c)); P.hline(x, y + h - 1, w, dark(c)); P.vline(x + w - 1, y, h, dark(c)); };   // a bevelled box
@@ -17310,6 +17314,13 @@ input[type="range"]{width:180px;accent-color:var(--gold)}
     noAccess(P, w, h) { P.ellipse(6, 6, 6, 6, shade(PAL.danger, 0.7)); P.ellipse(6, 6, 5, 5, PAL.danger); P.line(2, 9, 9, 2, X.white); P.line(3, 9, 10, 2, X.white); },
     power(P, w, h) { P.ellipse(6, 6, 6, 6, shade(PAL.danger, 0.7)); P.ellipse(6, 6, 5, 5, PAL.danger); P.line(7, 1, 4, 6, X.white); P.hline(4, 6, 4, X.white); P.line(7, 6, 4, 11, X.white); },
     water(P, w, h) { P.ellipse(6, 6, 6, 6, shade(PAL.danger, 0.7)); P.ellipse(6, 6, 5, 5, PAL.danger); P.ellipse(6, 7, 2.5, 2.5, X.white); P.rect(5, 2, 2, 4, X.white); P.px(4, 4, X.white); P.px(7, 4, X.white); },
+    debris(P, w, h, f, seed) { const sd = seed + f * 977; const o = hash(sd, 1) % 6;   // a broken brown cluster: boards, a snapped branch, splinters, a torn tarp scrap
+      P.rect(3 + o, h - 5, 12, 2, X.plywood); P.hline(3 + o, h - 5, 12, light(X.plywood)); P.hline(3 + o, h - 4, 12, dark(X.plywood)); P.px(5 + o, h - 5, X.nail);
+      P.line(14 - (o >> 1), h - 3, 26 - (o >> 1), h - 8, X.debris); P.line(15 - (o >> 1), h - 3, 27 - (o >> 1), h - 8, shade(X.debris, 0.7));
+      P.rect(20 + (o & 3), h - 10, 3, 8, PAL.bark); P.vline(20 + (o & 3), h - 10, 8, light(PAL.bark)); P.px(19 + (o & 3), h - 7, PAL.bark); P.px(23 + (o & 3), h - 9, PAL.bark);
+      if (f & 1) { P.rect(1, h - 8, 6, 4, X.tarp); P.hline(1, h - 8, 6, shade(X.tarp, 1.25)); P.px(6, h - 6, X.tarpCrease); }
+      for (let i = 0; i < 7; i++) { const x = 1 + (hash(sd, 10 + i) % (w - 2)), y = h - 2 - (hash(sd, 20 + i) % 6); P.px(x, y, (i & 1) ? X.debris : shade(X.plywood, 0.8)); }
+      P.hline(2, h - 1, w - 4, shade(X.debris, 0.6)); },
     sandbags(P, w, h, f, seed) { for (let i = 0; i < 4; i++) { const x = i * 4, y = (i & 1) ? 0 : 1; P.rect(x, y + 1, 4, 4, X.sandbag); P.hline(x, y + 1, 4, light(X.sandbag)); P.hline(x, y + 4, 4, dark(X.sandbag)); P.px(x, y + 1, PAL.bark); P.px(x + 3, y + 4, PAL.bark); P.px(x + 1 + (hash(seed, i) & 1), y + 3, shade(X.sandbag, 0.85)); } P.hline(0, 5, w, shade(PAL.bark, 0.8)); }
   };
   M.decalPainters = DECALS;
@@ -21871,7 +21882,7 @@ input[type="range"]{width:180px;accent-color:var(--gold)}
     return s;
   }
   function topbarButton(id, glyph, label, title, onClick) {
-    const b = btn(id, null, 'tb', onClick); b.title = title;
+    const b = btn(id, null, 'tb', onClick); b.title = title; if (!label) b.classList.add('glyph-only');
     const g = el('span', 'glyph', glyph), l = el('span', 'label', label); b.appendChild(g); b.appendChild(l); E[id] = b; E[id + '-glyph'] = g; return b;
   }
   function buildTopbar() {
@@ -22050,7 +22061,20 @@ input[type="range"]{width:180px;accent-color:var(--gold)}
     subscribe();
     registerBuiltins();
     try { const w = fin(window.innerWidth, 1280); cls(E.palette, 'compact', w < L.compactWidth); } catch (e) { /* stub */ }
+    fitTopbar();
   };
+  /** the topbar must never push its buttons off-screen: when its content overflows (1280-wide laptops with the
+   *  capacity + weather chips showing) drop the panel-button labels (glyphs keep their tooltips); undo only when the
+   *  window grows (hysteresis — hiding the labels shrinks scrollWidth, so a plain overflow test would flap) */
+  let compactAtW = 0, fitAt = 0;
+  function fitTopbar() {
+    try {
+      const tb = E.topbar; if (!tb || typeof tb.scrollWidth !== 'number' || typeof tb.clientWidth !== 'number' || !tb.clientWidth) return;
+      const w = fin(window.innerWidth, 1280);
+      if (tb.classList.contains('compact')) { if (w > compactAtW + 40) { cls(tb, 'compact', false); compactAtW = 0; } return; }
+      if (tb.scrollWidth > tb.clientWidth + 1) { cls(tb, 'compact', true); compactAtW = w; }
+    } catch (e) { /* stub */ }
+  }
 
   // ---------------------------------------------------------------------------
   // DOM listeners → the machine (pointer / wheel / keys / gestures)
@@ -22082,7 +22106,7 @@ input[type="range"]{width:180px;accent-color:var(--gold)}
         window.addEventListener('keyup', function (e) { try { keyup(e.key); } catch (err) { uerr('keyup', err); } });
         window.addEventListener('blur', function () { try { for (const k in held) held[k] = false; if (live.down || live.state === 'DRAGGING') M.pointer('cancel', lastPx, lastPy, 0, M0); } catch (err) { uerr('blur', err); } });
         window.addEventListener('pointerup', function (e) { try { if (live.down && e.target !== world) M.pointer('up', lastPx, lastPy, fin(e.button, 0), modsOf(e)); } catch (err) { uerr('pointerup:window', err); } });
-        window.addEventListener('resize', function () { try { const w = fin(window.innerWidth, 1280); cls(E.palette, 'compact', w < L.compactWidth); } catch (err) { /* stub */ } });
+        window.addEventListener('resize', function () { try { const w = fin(window.innerWidth, 1280); cls(E.palette, 'compact', w < L.compactWidth); } catch (err) { /* stub */ } fitTopbar(); });
       }
     } catch (e) { /* stub window */ }
   }
@@ -22120,8 +22144,13 @@ input[type="range"]{width:180px;accent-color:var(--gold)}
     on('save:written', function (p) { const s = stateOf(); if (s && p && p.slot && String(p.slot).indexOf('auto') !== 0 && String(p.slot)[0] !== '_') M.notify(s, { kind: 'info', text: 'Saved', ttl: 3000 }); });
     on('save:loaded', function () { if (titleOn) M.showTitle(false); });
     on('speed:changed', function () { speedKey = ''; });
-    on('setpiece:start', function () { const s = stateOf(); if (s && s.ui.tool && !toolLocked) M.selectTool(s, null); });
-    on('setpiece:end', function () { skipShown = false; });
+    on('setpiece:start', function () {
+      const s = stateOf(); if (s && s.ui.tool && !toolLocked) M.selectTool(s, null);
+      // an open modal card goes back to the queue front (no onClose: it is re-offered when the set piece ends)
+      if (card && !card.spec.duringSetPiece) { cardQueue.unshift(card.spec); card = null; if (dom()) { clear(E.cards); show(E.cards, false); } }
+      hideTooltip();
+    });
+    on('setpiece:end', function () { skipShown = false; if (!card && cardQueue.length) { const s = stateOf(); if (s) openCard(s, cardQueue.shift()); } });
     on('error', function () { errCount++; });
     on('game:kickoff', function (p) { const s = stateOf(); if (s) M.notify(s, { kind: 'sports', text: 'Kickoff vs ' + (p.opp && p.opp.name ? p.opp.name : p.opp || 'the visitors') + (p.night ? ' under the lights' : ''), ttl: 8000 }); });
     on('festival:start', function (p) { const s = stateOf(); if (s && p && p.id === 'mardiGras') M.notify(s, { kind: 'event', text: 'Laissez les bons temps rouler — Mardi Gras!' }); });
@@ -22249,7 +22278,7 @@ input[type="range"]{width:180px;accent-color:var(--gold)}
       const s = stateOf(); if (!s || !s.ui) return;
       px = fin(px, 0); py = fin(py, 0); lastPx = px; lastPy = py; mods = mods || M0;
       if (titleOn) return;
-      if (type === 'down') { if (call('progress', 'tutorialStage', s) === 1) call('progress', 'skipSwoop', s); if (s.setPiece) call('render', 'captureCameraTouch', s); show(E.popover, false); }
+      if (type === 'down') { if (call('progress', 'tutorialStage', s) === 1) { call('progress', 'skipSwoop', s); return; } if (s.setPiece) call('render', 'captureCameraTouch', s); show(E.popover, false); }   // the swoop-skipping click must not also open the tile inspector behind the charter card
       if (type === 'move' || type === 'down') { const i = tileIndexAt(px, py); M.hoverTile = i; if (BSU.render) BSU.render.hoverTile = i; }
       mcStep(live, { type: type, px: px, py: py, button: fin(button, 0) | 0, mods: mods });
     } catch (e) { uerr('pointer:' + type, e); }
@@ -22463,7 +22492,7 @@ input[type="range"]{width:180px;accent-color:var(--gold)}
       const i = tileIndexAt(px, py); if (i < 0) return false;
       const b = call('buildings', 'at', s, i % W, (i / W) | 0);
       const r = b ? call('buildings', 'remove', s, b.id, 'demolish') : call('buildings', 'remove', s, { tile: i }, 'demolish');
-      if (r && r.ok) { call('audio', 'play', 'tick'); undoAtMs = clock; if (dom()) ghostLabel(px, py, 'Removed' + (r.refund ? ' · refund ' + money(r.refund) : ''), 'Ctrl+Z to undo', 'green'); }
+      if (r && r.ok) { call('audio', 'play', 'tick'); undoAtMs = clock; if (dom()) ghostLabel(px, py, 'Removed' + (r.refund ? ' · refund ' + money(r.refund) : ''), '', 'green'); }   // undo covers the last placement only (GDD §11.2 / D16) — do not promise it here
       else { call('audio', 'play', 'invalid'); if (dom()) { ghostLabel(px, py, r && r.reason ? r.reason : 'Nothing here', '', 'red'); shakeLabel(); } }
       return false;   // the bulldozer stays selected
     }
@@ -22814,7 +22843,7 @@ input[type="range"]{width:180px;accent-color:var(--gold)}
   function openToast(s, spec) {
     const ticks = Math.max(1, fin(spec.ticks, L.toastTicks)); const t0 = tickOf(s);
     toast = { id: spec.id, text: spec.text || '', ticks: ticks, startTick: t0, untilTick: Number.isFinite(spec.untilTick) && spec.untilTick > t0 ? spec.untilTick : t0 + ticks, onAnswer: typeof spec.onAnswer === 'function' ? spec.onAnswer : null, resolved: false };
-    if (dom()) { setText(E['dt-text'], toast.text); setText(E['btn-dt-yes'], spec.yes || 'Yes'); E['btn-dt-yes'].appendChild(el('span', 'key', 'Y')); setText(E['btn-dt-no'], spec.no || 'No'); E['btn-dt-no'].appendChild(el('span', 'key', 'N')); E['dt-fill'].style.width = '100%'; show(E['decision-toast'], true); }
+    if (dom()) { setText(E['dt-text'], toast.text); setText(E['btn-dt-yes'], spec.yes || 'Yes'); E['btn-dt-yes'].appendChild(el('span', 'key', 'Y')); setText(E['btn-dt-no'], spec.no || 'No'); E['btn-dt-no'].appendChild(el('span', 'key', 'N')); E['dt-fill'].style.width = '100%'; show(E.popover, false); show(E['decision-toast'], true); }
     emit('decision:open', { id: toast.id });
   }
   /** idempotent: resolves the open toast with 'yes'|'no'|'default' — emits decision:closed once */
@@ -22848,6 +22877,8 @@ input[type="range"]{width:180px;accent-color:var(--gold)}
       } else spec = idOrSpec;
       if (!spec || typeof spec !== 'object') return;
       if (spec.side === 'voice') { showVoice(s, spec); return; }
+      // a modal card must not cover a set piece (the Board's proposal over the Mardi Gras parade): hold it until setpiece:end
+      if (s && s.setPiece && !spec.duringSetPiece) { if (!cardQueue.some(function (q) { return q.id === spec.id; }) || spec.allowDuplicate) cardQueue.push(spec); return; }
       if (card) { if (card.spec.id !== spec.id || spec.allowDuplicate) cardQueue.push(spec); return; }
       openCard(s, spec);
     } catch (e) { uerr('card', e); }
@@ -22989,6 +23020,9 @@ input[type="range"]{width:180px;accent-color:var(--gold)}
       setText(E['pop-next'], r.next || ''); show(E['pop-next'], !!r.next);
       const anchor = E['stat-' + stat]; let left = 200; try { const rc = anchor && anchor.getBoundingClientRect ? anchor.getBoundingClientRect() : null; if (rc) left = fin(rc.left, 200); } catch (e) { left = 200; }
       E.popover.style.left = Math.round(clamp(left, 8, fin(window.innerWidth, 1280) - 320)) + 'px';
+      // never cover an open decision toast (its buttons must stay clickable): drop below it
+      let top = ''; try { const dt = E['decision-toast']; if (dt && !dt.classList.contains('hidden') && dt.getBoundingClientRect) { const rc = dt.getBoundingClientRect(); if (rc.height > 0) top = Math.round(rc.bottom + 6) + 'px'; } } catch (e) { top = ''; }
+      E.popover.style.top = top;
       show(E.popover, true);
     } catch (e) { uerr('breakdown', e); }
   };
@@ -23090,6 +23124,7 @@ input[type="range"]{width:180px;accent-color:var(--gold)}
   function flashDelta(delta) { if (!dom()) return; const d = E['stat-cash-delta']; setText(d, (delta > 0 ? '+' : '−') + money(Math.abs(delta))); d.dataset.sign = delta > 0 ? 'pos' : 'neg'; cls(d, 'on', true); odo.deltaUntil = clock + L.deltaMs; }
   function updateTopbar(s, dtMs) {
     const e = s.economy || {}; const k = Math.min(1, dtMs / L.odoMs);
+    if (clock - fitAt > 500) { fitAt = clock; fitTopbar(); }
     // cash odometer
     const cash = fin(e.cash, 0); if (!Number.isFinite(odo.cash)) odo.cash = cash; else odo.cash += (cash - odo.cash) * k; if (Math.abs(cash - odo.cash) < 1) odo.cash = cash;
     setText(E['stat-cash-value'], money(Math.round(odo.cash))); cls(E['stat-cash'], 'neg', cash < 0);
@@ -23206,7 +23241,7 @@ input[type="range"]{width:180px;accent-color:var(--gold)}
   // ---------------------------------------------------------------------------
   function updateSetPiece(s) {
     const sp = s.setPiece; const hidePalette = !!sp || titleOn || !paletteKey.split('|')[0];
-    if (hidePalette !== paletteHidden) { paletteHidden = hidePalette; show(E.palette, !hidePalette); cls(E.hud, 'no-palette', hidePalette); }
+    if (hidePalette !== paletteHidden) { paletteHidden = hidePalette; show(E.palette, !hidePalette); cls(E.hud, 'no-palette', hidePalette); if (hidePalette) hideTooltip(); }   // a palette-item tooltip must not outlive the palette
     cls(E.hud, 'setpiece', !!sp);
     const skip = !!(sp && sp.skippable && fin(sp.tick, 0) >= L.skipAfterTick);
     if (skip !== skipShown) { skipShown = skip; show(E['btn-skip'], skip); }
@@ -23277,7 +23312,7 @@ input[type="range"]{width:180px;accent-color:var(--gold)}
       for (let k = notifs.length - 1; k >= 0; k--) { notifs[k].closed = true; } notifs.length = 0;
       odo.cash = NaN; odo.students = NaN; odo.lastStudents = NaN; odo.holdUntil = -1; odo.deltaUntil = 0;
       tk = { x: 0, line: null, seen: Math.max(0, ((state && state.ticker) || []).length - 1), w: 0, lastLen: -1, logOpen: false, cycle: 0 };
-      bubble = { since: clock, until: 0, key: '' }; objKey = ''; alertKey = ''; alertAt = -1e9; msAt = -1e9; speedKey = ''; paletteKey = ''; pipKey = ''; paletteDirty = true; capacityShown = false; skipShown = false; paletteHidden = false; hudFade = false;
+      bubble = { since: clock, until: 0, key: '' }; objKey = ''; alertKey = ''; alertAt = -1e9; msAt = -1e9; speedKey = ''; paletteKey = ''; pipKey = ''; paletteDirty = true; capacityShown = false; skipShown = false; paletteHidden = null; hudFade = false;   // null: the first updateSetPiece re-syncs #palette and #hud.no-palette (a stale no-palette from the title / tutorial left a 0-height palette after newGame/load)
       M.debug.open = false; M.hoverTile = -1; lastGhost = null;
       for (const k in held) held[k] = false;
       if (dom()) {
@@ -23331,8 +23366,8 @@ input[type="range"]{width:180px;accent-color:var(--gold)}
       m.step({ type: 'up', px: 280, py: 132, button: 0, mods: M0 }); A(m.state === 'PLACING' && runs.length === 1 && runs[0].length === r1.length && tool && tool.id === 'path', 'DRAGGING + up → placeRun, PLACING, tool kept');
       // 3. straight line with Shift from (10,10) to (14,12) → all on ty 10
       const ln = lineRun(10 * W + 10, 12 * W + 14); A(ln.length === 5 && ln.every(function (i) { return ((i / W) | 0) === 10; }), 'Shift line keeps ty 10 (larger delta axis x)');
-      // 4. Esc layer order via the live keydown in dry mode: tool → inspect → panel → card
-      s.ui.tool = { id: 'dorm', rot: 0, shift: false }; mcSet(live, 'PLACING'); insp = { kind: 'tile', i: 5 }; s.ui.panel = 'settings'; card = { spec: { id: 'x', title: 't', body: 'b', actions: [] }, born: 0, bornTick: 0 };
+      // 4. Esc layer order via the live keydown in dry mode: tool → inspect → panel → card (the live game's queued cards are restored at the end)
+      cardQueue.length = 0; s.ui.tool = { id: 'dorm', rot: 0, shift: false }; mcSet(live, 'PLACING'); insp = { kind: 'tile', i: 5 }; s.ui.panel = 'settings'; card = { spec: { id: 'x', title: 't', body: 'b', actions: [] }, born: 0, bornTick: 0 };
       A(M.keydown('Escape', M0) === true && s.ui.tool === null && insp !== null && s.ui.panel === 'settings', 'Esc #1 cancels the tool');
       A(M.keydown('Escape', M0) === true && insp === null && s.ui.panel === 'settings' && card, 'Esc #2 closes inspect');
       A(M.keydown('Escape', M0) === true && s.ui.panel === null && card, 'Esc #3 closes the panel');

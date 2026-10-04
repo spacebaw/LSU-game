@@ -918,7 +918,8 @@
     try {
       const c = cache(state), u = c.undo;
       if (!u) return { ok: false, reason: 'Nothing to undo' };
-      if (fin(state.tick, 0) - u.tick > P.ui.undoTicks) { c.undo = null; return { ok: false, reason: 'Too late to undo' }; }
+      const win = P.ui.undoTicks * Math.max(1, fin(state.ui && state.ui.speed, 1));   // D16: 5 s wall-clock in the browser → the tick window scales with the sim speed (50 ticks headless / at 1×)
+      if (fin(state.tick, 0) - u.tick > win) { c.undo = null; return { ok: false, reason: 'Too late to undo' }; }
       const tl = state.tiles;
       for (let k = u.entries.length - 1; k >= 0; k--) {
         const e = u.entries[k];

@@ -91,7 +91,7 @@ if (D && D.decals) {
   ok(Object.keys(D.decals).every(n => S.frames('decal:' + n) === Math.max(1, D.decals[n].frames)), 'decal frame counts come from data');
   const cr = D.decals.crane.frames; ok(g('decal:crane', 0, cr + 1, 1) === g('decal:crane', 0, 1, 1), 'decal frames wrap');
 } else console.log('skip: data.js absent — decal table checks');
-for (const n of ['sinking', 'noAccess', 'power', 'water', 'sandbags']) ok(g('decal:' + n, 0, 0, 1) && g('decal:' + n, 0, 0, 1).sw === S.EXTRA_DECALS[n].w, 'extra decal ' + n);
+for (const n of ['sinking', 'noAccess', 'power', 'water', 'sandbags', 'debris']) ok(g('decal:' + n, 0, 0, 1) && g('decal:' + n, 0, 0, 1).sw === S.EXTRA_DECALS[n].w, 'extra decal ' + n);
 for (const k of ['lamp', 'window', 'mast', 'beacon', 'blink', 'arc', 'glow', 'pot', 'fire', 'firefly', 'eye']) { const e = g('light:' + k, 0, 0, 1); if (!(e && e.sw === S.LIGHTS[k].w && e.sh === S.LIGHTS[k].h && e.ox === -(S.LIGHTS[k].w >> 1))) ok(false, 'light ' + k); }
 ok(true, 'every light kind resolves at its size, anchored at the centre');
 eq(g('light:mast', 0, 0, 1).sh, 96, 'mast cone is 48×96');
