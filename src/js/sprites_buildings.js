@@ -61,7 +61,8 @@
   const LIFT_PX = 10;           // pilings lift (GDD §4.8 row 30)
   const STILT_PITCH = 12;       // one bark stilt every 12 px
   const PAD = 2;                // canvas padding
-  const INSET = 8;              // the box sits 8 px inside the footprint diamond (4 vertically)
+  /** apron per side along an axis of n tiles, in horizontal px (32 = one tile): 1×1 rows ~0.19 tile, 2-tile axes 0.31, longer 0.375 (design-pass setbacks) */
+  function insetPx(n) { return n <= 1 ? 6 : n === 2 ? 10 : 12; }
   const WIN_W = 2, WIN_H = 3;   // window cell
   const LIT_SHARE = 70;         // % of cells lit at night
   const ROOF_H = { flat: 4, gable: 8, hip: 6, dome: 12, barrel: 8, bowl: 10, none: 0 };   // × min(fw, fh) except flat/bowl/none
@@ -73,7 +74,10 @@
     gravelPad: '#8A8A8E', transformer: '#5A5A60', legs: '#5A5A60', clarifier: '#B8B8BC', clarifierWater: '#4A6A4A',
     instituteRoof: '#3F5E3A', dormBrick: '#A0522D', dormBrickDark: '#8B4513', khaki: '#C2B280', limestone: '#D9C9A3',
     fieldOffice: '#4A8A4A', spoonbill: '#F4A6C0', lawn: '#7FBF3C', tin: '#8A8A8E', gate: '#6A6A70', skin: '#8D5524',
-    glasses: '#C0C0C0', hair: '#1B1B1B', apron: '#B9AE86', apronEdge: '#8F865F', rubble: '#6B625A', slab: '#9A9A9E'
+    glasses: '#C0C0C0', hair: '#1B1B1B', apron: '#B9AE86', apronEdge: '#8F865F', rubble: '#6B625A', slab: '#9A9A9E',
+    // design pass: apron materials
+    brick: '#A8604A', brickDark: '#8C4A38', brickLight: '#C27A5C', hedge: '#3F6B2E', hedgeHi: '#5E9140', lampPost: '#2A2A32', lampHead: '#D8D8E0',
+    paveLight: '#D8D2C2', paveDark: '#B9B2A1', lawnStripe: '#74AD36', terrace: '#E3D7BE', walk: '#D5CBAE', walkEdge: '#A89D7E', siteDirt: '#8B6B4A', fenceSteel: '#9A9AA0'
   });
   M.extraBuildings = XB;
 
@@ -127,12 +131,32 @@
   // ---------------------------------------------------------------------------
   // Diamond / polygon helpers (all fillRect runs)
   // ---------------------------------------------------------------------------
-  /** bottom row (0-based within a w×h 2:1 diamond, w % 4 === 0) covered at column offset d = x − cx */
-  function bottomRow(w, h, d) { return (h >> 1) + (d >= 0 ? Math.floor((w / 2 - d - 1) / 2) : Math.floor((w / 2 + d) / 2)); }
-  /** the base-edge pixel y at column x of the diamond centred (cx, cy) */
-  function baseY(cx, cy, w, h, x) { return cy - (h >> 1) + bottomRow(w, h, x - cx); }
-  /** the top-edge pixel y at column x (the diamond is symmetric about its centre row) */
-  function topY(cx, cy, w, h, x) { return cy - (h >> 1) + (h - bottomRow(w, h, x - cx)); }
+  /** rows above the 4-px bottom row at column offset d from the bottom corner (2 px per row on each side) */
+  function rise(d) { return d >= 0 ? d >> 1 : (-d - 1) >> 1; }
+  /** bottom-row index (0-based within a w×h quad) at column offset d from the CENTRE; k = skew (the bottom corner sits k px right of centre) */
+  function bottomRow(w, h, d, k) { return h - 1 - rise(d - (k | 0)); }
+  /**
+   * The base-edge pixel y at column x of the quad centred (cx, cy): a 2:1 diamond when k = 0, else the iso
+   * parallelogram of a fw×fh footprint — left (SW) face w/2 + k px wide, right (SE) face w/2 − k (design pass).
+   */
+  function baseY(cx, cy, w, h, x, k) { return cy - (h >> 1) + bottomRow(w, h, x - cx, k); }
+  /** the top-edge pixel y at column x (the quad is 180° symmetric about its centre) */
+  function topY(cx, cy, w, h, x, k) { return 2 * cy - 1 - baseY(cx, cy, w, h, 2 * cx - 1 - x, k); }
+  /** fill the quad centred (cx, cy) with skew k, column by column; optional 1-px edge colour */
+  function fillQuad(P, cx, cy, w, h, k, fill, stroke) {
+    for (let x = cx - (w >> 1); x < cx + (w >> 1); x++) {
+      const yt = topY(cx, cy, w, h, x, k), yb = baseY(cx, cy, w, h, x, k);
+      if (yb >= yt) P.rect(x, yt, 1, yb - yt + 1, fill);
+      if (stroke) { P.px(x, yt, stroke); P.px(x, yb, stroke); }
+    }
+  }
+  /** the four corners of the box's base quad lifted 'up' px: W (left), S (bottom), E (right), N (top) */
+  function quadCorners(g, up) {
+    const cx = g.bcx, cy = g.bcy - (up || 0), w = g.bw, h = g.bh, k = g.bk | 0;
+    return { W: [cx - (w >> 1), cy - (k >> 1)], S: [cx + k, cy + (h >> 1)], E: [cx + (w >> 1) - 1, cy + (k >> 1)], N: [cx - k, cy - (h >> 1) + 1] };
+  }
+  const midPt = (a, b) => [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+  const lerpPt = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
   /**
    * Fill a convex polygon by vertical column runs (integer x; y rounded). pts = [[x,y],…].
    * Never uses paths; ≤ 2,048 columns.
@@ -167,24 +191,19 @@
    * colorFn(x, ybase, left) → colour for that column (null = skip). Returns nothing; callers read
    * baseY() for the columns they need.
    */
-  function walls(P, cx, cy, w, h, hgt, colorFn) {
+  function walls(P, cx, cy, w, h, hgt, colorFn, k) {
     if (hgt <= 0) return;
+    const split = cx + (k | 0);
     for (let x = cx - (w >> 1); x < cx + (w >> 1); x++) {
-      const yb = baseY(cx, cy, w, h, x);
-      const c = colorFn(x, yb, x < cx);
+      const yb = baseY(cx, cy, w, h, x, k);
+      const c = colorFn(x, yb, x < split);
       if (c) P.rect(x, yb - hgt + 1, 1, hgt, c);
     }
   }
-  /** the rim of the UPPER half of a diamond (its NW/NE edges) */
-  function topRim(P, cx, cy, w, h, color) {
-    const top = cy - (h >> 1);
-    for (let r = 1; r <= (h >> 1); r++) { const half = M.diamondHalf(w, h, r); if (half > 0) { P.px(cx - half, top + r, color); P.px(cx + half - 1, top + r, color); } }
-  }
+  /** the rim of the UPPER half of a quad (its NW/NE edges) */
+  function topRim(P, cx, cy, w, h, color, k) { for (let x = cx - (w >> 1); x < cx + (w >> 1); x++) P.px(x, topY(cx, cy, w, h, x, k), color); }
   /** the rim of the LOWER half (its SW/SE edges) */
-  function bottomRim(P, cx, cy, w, h, color) {
-    const top = cy - (h >> 1);
-    for (let r = (h >> 1); r < h; r++) { const half = M.diamondHalf(w, h, r); if (half > 0) { P.px(cx - half, top + r, color); P.px(cx + half - 1, top + r, color); } }
-  }
+  function bottomRim(P, cx, cy, w, h, color, k) { for (let x = cx - (w >> 1); x < cx + (w >> 1); x++) P.px(x, baseY(cx, cy, w, h, x, k), color); }
 
   // ---------------------------------------------------------------------------
   // Special-row table: which painter handles a row, and its canvas allowance above the roof
@@ -208,7 +227,10 @@
    * Pure geometry of a building sprite (no ctx). rot swaps the footprint. Extra fields beyond the
    * brief's {w, h, ox, oy, floors, wallH, roofH, lift, fw, fh}: roof (type), extraTop, tier,
    * ax/ay (anchor in canvas px), gcx/gcy/gw/gh (ground diamond centre and size), bcx/bcy/bw/bh (the
-   * inset box base diamond; bcy already includes the lift), inset, bowlRect (stadium tiers ≥ 1).
+   * inset box base quad; bcy already includes the lift), inset, bowlRect (stadium tiers ≥ 1).
+   * Design pass: the box is the footprint parallelogram inset ipx/ipy px per side along each axis
+   * (insetPx), so bl/br are the SW/SE face widths, bk the skew of the bottom corner (bx, by) from the
+   * centre column; bgcy is the box quad's centre row at ground level (before the pilings lift).
    */
   M.buildingBox = function (row, variant, zoom, rot) {
     variant = Number.isFinite(variant) ? Math.max(0, variant | 0) : 0;
@@ -232,8 +254,11 @@
     const ox = -fw * 32 - PAD, oy = -((fw + fh - 1) * 16 + wallH + roofH + lift + extraTop) - PAD;
     const ax = -ox, ay = -oy;
     const gcx = ax + (fh - fw) * 16, gcy = ay - (fw + fh - 2) * 8;
-    const inset = INSET;
-    const bw = gw - 2 * inset, bh = bw >> 1;
+    const ipx = insetPx(fw), ipy = insetPx(fh);
+    const bl = fw * 32 - 2 * ipx, br = fh * 32 - 2 * ipy;            // SW / SE face widths (px); multiples of 4
+    const bw = bl + br, bh = bw >> 1, bk = (bl - br) >> 1;            // bounding size and the bottom-corner skew (even)
+    const bx = ax + (ipy - ipx), byv = ay + 16 - ((ipx + ipy) >> 1); // the inset quad's bottom corner (its bottom row is byv − 1)
+    const inset = Math.min(ipx, ipy);
     let bowlRect = null;
     if (sp === 'stadium' && tier >= 1) {
       // the seating oval relative to the anchor: centred on the ground diamond, 70 % of it
@@ -241,39 +266,179 @@
       bowlRect = { x: gcx - ax - rx, y: gcy - ay - ry - 6, w: 2 * rx, h: 2 * ry };
     }
     return { w: w, h: h, ox: ox, oy: oy, floors: floors, wallH: wallH, roofH: roofH, lift: lift, fw: fw, fh: fh, roof: roof, extraTop: extraTop, tier: tier,
-      ax: ax, ay: ay, gcx: gcx, gcy: gcy, gw: gw, gh: gh, bcx: gcx, bcy: gcy - lift, bw: bw, bh: bh, inset: inset, bowlRect: bowlRect, zoom: (zoom === 2 ? 2 : 1), special: sp };
+      ax: ax, ay: ay, gcx: gcx, gcy: gcy, gw: gw, gh: gh, bcx: bx - bk, bcy: byv - (bh >> 1) - lift, bgcy: byv - (bh >> 1), bw: bw, bh: bh, bk: bk, bl: bl, br: br, bx: bx, by: byv - lift,
+      ipx: ipx, ipy: ipy, inset: inset, bowlRect: bowlRect, zoom: (zoom === 2 ? 2 : 1), special: sp };
   };
 
   // ---------------------------------------------------------------------------
-  // Ground: the paved apron (or the dark water/mud under a pilings building) + the stilts
+  // Ground (design pass): the designed apron on the TRUE footprint quad. Styles by catalog tab —
+  // academic brick paving · housing lawn + hedge · utilities gravel + chain fence · dining terrace +
+  // umbrellas · life/grounds light paving · sports/swamp lawn. The structure sits inset (buildingBox
+  // ipx/ipy); the margin carries a foundation shadow, side hedges, the entrance walk and two lamp
+  // posts (lit under NIGHT) on the SE face — or the SW face under FRONT_L. Pilings rows stand in
+  // water on stilts with a plank walk. Rows with their own ground (stadium, fields, quad, pond,
+  // parking, rookery) get a plain lawn quad with a curb only.
   // ---------------------------------------------------------------------------
-  function drawApron(P, g, seed, color) {
-    const c = color || XB.apron;
-    P.diamond(g.gcx, g.gcy, g.gw, g.gh, c, shade(c, 0.72));
-    // speckle inside the diamond only
-    const top = g.gcy - (g.gh >> 1);
-    for (let r = 2; r < g.gh - 1; r += 1) {
-      const half = M.diamondHalf(g.gw, g.gh, r) - 1; if (half <= 1) continue;
-      for (let k = 0; k < 3; k++) { const x = g.gcx - half + (hash(seed, r * 31 + k) % (2 * half)); const n = hash(seed, x + r * 977) % 100; if (n < 30) P.px(x, top + r, n < 12 ? shade(c, 1.08) : shade(c, 0.92)); }
+  const APRON = Object.freeze({
+    academic: { base: XB.brick, alt: XB.brickDark, hi: XB.brickLight, pattern: 'brick', hedge: true },
+    housing: { base: XB.lawn, alt: XB.lawnStripe, hi: XB.lawnStripe, pattern: 'lawn', hedge: true },
+    utilities: { base: XB.gravelPad, alt: '#7C7C80', hi: '#9C9CA0', pattern: 'gravel', fence: true },
+    dining: { base: XB.terrace, alt: XB.paveDark, hi: XB.paveLight, pattern: 'terrace', umbrellas: true },
+    life: { base: XB.paveLight, alt: XB.paveDark, hi: '#E4DED0', pattern: 'pave', hedge: true },
+    grounds: { base: XB.lawn, alt: XB.lawnStripe, hi: XB.lawnStripe, pattern: 'lawn' },
+    sports: { base: XB.lawn, alt: XB.lawnStripe, hi: XB.lawnStripe, pattern: 'lawn' },
+    swamp: { base: XB.lawn, alt: XB.lawnStripe, hi: XB.lawnStripe, pattern: 'lawn', hedge: true },
+    site: { base: XB.siteDirt, alt: '#6E5236', hi: '#A08560', pattern: 'gravel' }
+  });
+  const OWN_GROUND = { stadium: 1, practice_field: 1, quad: 1, pond: 1, parking: 1, rookery: 1 };
+  M.APRON = APRON;
+  function apronOf(row) { return APRON[(row && row.tab) || ''] || APRON.life; }
+  /** the footprint quad's corners in canvas px (ground level): T back, R right, B bottom (= anchor tile's bottom), L left */
+  function quadOf(g) {
+    return { T: [g.ax + (g.fh - g.fw) * 32, g.ay + 16 - (g.fw + g.fh) * 16], R: [g.ax + g.fh * 32, g.ay + 16 - g.fh * 16], B: [g.ax, g.ay + 16], L: [g.ax - g.fw * 32, g.ay + 16 - g.fw * 16] };
+  }
+  /** the [xl, xr) span of the footprint quad on pixel row y (null outside) */
+  function quadSpan(q, y) {
+    if (y < q.T[1] || y >= q.B[1]) return null;
+    const xl = y < q.L[1] ? q.T[0] - 2 * (y - q.T[1]) : q.L[0] + 2 * (y - q.L[1]);
+    const xr = y < q.R[1] ? q.T[0] + 2 * (y - q.T[1]) : q.R[0] - 2 * (y - q.R[1]);
+    return xr > xl ? [xl, xr] : null;
+  }
+  /** fill the footprint quad with the apron material: base, pattern, curb on the SW/SE edges, highlight on the NW/NE edges */
+  function drawApronQuad(P, g, A, seed) {
+    const q = quadOf(g), base = A.base, curb = shade(base, 0.62), hi = shade(base, 1.1), hi2 = shade(base, 1.12);
+    const yT = q.T[1], yB = q.B[1], pat = OWN_GROUND[g.special] ? 'plain' : A.pattern;   // rows that paint their own ground only need the base
+    for (let y = yT; y < yB; y++) {
+      const sp = quadSpan(q, y); if (!sp) continue;
+      const xl = sp[0], xr = sp[1], w = xr - xl, ry = y - yT;
+      P.rect(xl, y, w, 1, base);
+      if (pat === 'brick') {
+        if ((ry % 3) === 2) P.rect(xl, y, w, 1, A.alt);
+        else if ((ry % 6) === 0) { const off = (((ry / 6) | 0) & 1) ? 4 : 0; for (let x = xl + (((off - xl) % 8) + 8) % 8; x < xr; x += 8) P.px(x, y, A.alt); P.dither(xl, y, w, 1, null, A.hi, seed + y, 0.1); }
+      } else if (pat === 'gravel') {
+        if ((ry & 1) === 0) P.dither(xl, y, w, 1, null, A.alt, seed + y, 0.18); else if ((ry % 4) === 1) P.dither(xl, y, w, 1, null, A.hi, seed + y * 3, 0.08);
+      } else if (pat === 'lawn') {
+        if ((ry % 4) === 0) P.dither(xl, y, w, 1, null, hi2, seed + y * 7, 0.08);
+      } else if (pat !== 'plain') {   // pave / terrace: big pavers in screen space
+        const ps = pat === 'terrace' ? 8 : 6, ph = ps >> 1;
+        if ((ry % ph) === 0) P.rect(xl, y, w, 1, A.alt);
+        else { const off = (((ry / ph) | 0) & 1) ? (ps >> 1) : 0; for (let x = xl + (((off - xl) % ps) + ps) % ps; x < xr; x += ps) P.px(x, y, A.alt); }
+      }
+    }
+    // lawn: mowing stripes as half-tile bands along the Y axis (band quads, not pixels)
+    if (pat === 'lawn') for (let s = 1; s < g.fw * 2; s += 2) fpPoly(P, g, [[s / 2, 0], [(s + 1) / 2, 0], [(s + 1) / 2, g.fh], [s / 2, g.fh]], A.alt);
+    // curbs on the SW/SE edges (2 px: the iso edge runs 2:1) and a highlight along the back edges
+    for (let y = yT; y < yB; y++) {
+      const sp = quadSpan(q, y); if (!sp) continue;
+      const xl = sp[0], xr = sp[1];
+      if (y >= q.L[1]) P.rect(xl, y, 2, 1, curb); else P.px(xl, y, hi);
+      if (y >= q.R[1]) P.rect(xr - 2, y, 2, 1, curb); else P.px(xr - 1, y, hi);
     }
   }
+  /** the dark foundation line where the box meets the ground (2 rows in front of the SW/SE faces) */
+  function drawFoundation(P, g, base) {
+    const k = g.bk | 0, c1 = shade(base, 0.7);
+    for (let x = g.bcx - (g.bw >> 1); x < g.bcx + (g.bw >> 1); x++) P.rect(x, baseY(g.bcx, g.bgcy, g.bw, g.bh, x, k) + 1, 1, 2, c1);
+  }
+  function drawGrounds(P, g, row, variant, seed) {
+    const site = !!(variant & SPR.SCAFFOLD);
+    const A = site ? APRON.site : apronOf(row);
+    drawApronQuad(P, g, A, seed);
+    if (!site && !OWN_GROUND[g.special] && (g.wallH > 0 || g.special)) drawFoundation(P, g, A.base);
+    g.apron = A;
+  }
+  /** pilings: the footprint quad is water/marsh (the stilts and a plank walk come after the box) */
   function drawPilingsGround(P, g, seed) {
     const water = mix(PAL.waterNight, PAL.mud, 0.5);
-    P.diamond(g.gcx, g.gcy, g.gw, g.gh, water, shade(water, 0.7));
-    const top = g.gcy - (g.gh >> 1);
-    for (let i = 0; i < g.gw / 4; i++) { const x = g.gcx - (g.gw >> 1) + (hash(seed, 400 + i) % g.gw), y = top + 2 + (hash(seed, 500 + i) % (g.gh - 4)); if (M.diamondHalf(g.gw, g.gh, y - top) > Math.abs(x - g.gcx) + 1) P.hline(x, y, 2, shade(PAL.shallows, 0.55)); }
+    const q = quadOf(g);
+    for (let y = q.T[1]; y < q.B[1]; y++) {
+      const sp = quadSpan(q, y); if (!sp) continue;
+      P.rect(sp[0], y, sp[1] - sp[0], 1, water);
+      if (((y + seed) % 5) === 0) { const x = sp[0] + (hash(seed, y) % Math.max(1, sp[1] - sp[0] - 3)); P.hline(x, y, 3, shade(PAL.shallows, 0.55)); }
+      if (y >= q.L[1]) { P.px(sp[0], y, shade(water, 0.7)); } if (y >= q.R[1]) { P.px(sp[1] - 1, y, shade(water, 0.7)); }
+    }
+    g.apron = { base: water, pattern: 'water' };
   }
   /** a grid of bark 3×10 stilts every 12 px under the (lifted) box base */
   function drawStilts(P, g) {
-    const bx0 = g.bcx - (g.bw >> 1) + 2, bx1 = g.bcx + (g.bw >> 1) - 3;
+    const k = g.bk | 0, bx0 = g.bcx - (g.bw >> 1) + 2, bx1 = g.bcx + (g.bw >> 1) - 3;
     for (let x = bx0; x <= bx1; x += STILT_PITCH) {
-      const yb = baseY(g.bcx, g.bcy, g.bw, g.bh, x);   // the lifted base edge at this column
+      const yb = baseY(g.bcx, g.bcy, g.bw, g.bh, x, k);   // the lifted base edge at this column
       // the post stands from the lifted base down to the ground under it (lift px) plus 2 px into the water
       P.rect(x, yb, 3, g.lift + 2, PAL.bark); P.vline(x, yb, g.lift + 2, light(PAL.bark)); P.vline(x + 2, yb, g.lift + 2, dark(PAL.bark));
       P.hline(x - 1, yb + g.lift + 2, 5, shade(PAL.waterNight, 0.8));
     }
     // a row of posts along the back edges too (visible between the front posts)
-    for (let x = bx0 + 6; x <= bx1; x += STILT_PITCH * 2) { const yt = topY(g.bcx, g.bcy, g.bw, g.bh, x) + (g.bh >> 2); P.rect(x, yt, 2, g.lift, shade(PAL.bark, 0.7)); }
+    for (let x = bx0 + 6; x <= bx1; x += STILT_PITCH * 2) { const yt = topY(g.bcx, g.bcy, g.bw, g.bh, x, k) + (g.bh >> 2); P.rect(x, yt, 2, g.lift, shade(PAL.bark, 0.7)); }
+  }
+  /** a clipped low hedge along an iso edge from (x0, y0) running 'len' px in direction dir (+1 = down-right, −1 = down-left); gap [gx0, gx1) skipped */
+  function hedgeRun(P, x0, y0, len, dir, gx0, gx1, seed) {
+    const top = XB.hedgeHi, body = XB.hedge, foot = shade(XB.hedge, 0.55);
+    for (let i = 0; i < len; i++) {
+      const x = x0 + dir * i, y = y0 + (i >> 1);
+      if (x >= gx0 && x < gx1) continue;
+      P.rect(x, y - 3, 1, 4, body);
+      if (i & 1) P.px(x, y - 3, top); else P.px(x, y, foot);
+      if ((hash(seed, x * 5) % 7) === 0) P.px(x, y - 4, top);
+    }
+  }
+  /** a lamp post standing at ground point (x, y): 9-px post, head lit at night with a halo and a pool of light on the apron */
+  function lampPost(P, x, y, night, base) {
+    if (night) { const pool = mix(base || XB.apron, PAL.windowGlow, 0.45); P.ellipse(x, y, 6, 2, pool); P.ellipse(x, y, 3, 1, mix(pool, PAL.windowGlow, 0.4)); }
+    P.vline(x, y - 10, 10, XB.lampPost); P.px(x, y, shade(XB.lampPost, 0.6));
+    P.rect(x - 1, y - 12, 3, 2, night ? PAL.goldHi : XB.lampHead); P.px(x, y - 13, XB.lampPost);
+    if (night) { P.px(x - 2, y - 12, PAL.windowGlow); P.px(x + 2, y - 12, PAL.windowGlow); P.px(x, y - 14, PAL.windowGlow); P.px(x - 1, y - 10, mix(PAL.windowGlow, XB.lampPost, 0.5)); P.px(x + 1, y - 10, mix(PAL.windowGlow, XB.lampPost, 0.5)); }
+  }
+  /** a café umbrella (gold/purple canopy on a pole) with a chair pixel */
+  function umbrella(P, x, y, seed) {
+    const c = (hash(seed, x) & 1) ? PAL.gold : PAL.purple2;
+    P.vline(x, y - 7, 7, XB.lampPost); P.rect(x - 4, y - 8, 9, 1, c); P.rect(x - 3, y - 9, 7, 1, shade(c, 1.15)); P.rect(x - 1, y - 10, 3, 1, shade(c, 1.15));
+    P.px(x - 3, y - 1, XB.paveDark); P.px(x + 3, y - 1, XB.paveDark);
+  }
+  /**
+   * The margin furniture, drawn AFTER the structure (it stands in front of the SW/SE faces): the entrance walk
+   * from the door to the footprint edge with two lamp posts, side hedges / chain fence / umbrellas by style.
+   */
+  function drawMargins(P, g, row, variant, frame) {
+    void frame;
+    const A = g.apron || apronOf(row);
+    if (OWN_GROUND[g.special] || (variant & SPR.SCAFFOLD)) return;
+    const night = !!(variant & SPR.NIGHT), pil = !!(variant & SPR.PILINGS);
+    const k = g.bk | 0, q = quadOf(g);
+    const frontLeft = !!g.frontLeft;
+    const hasDoor = g.wallH > 0 && !!row.pathAdjacency && Number.isFinite(g.doorX);
+    // the walk: from the door's base straight out to the footprint edge (perpendicular to the face)
+    let gx0 = Infinity, gx1 = -Infinity;
+    if (hasDoor) {
+      const dir = frontLeft ? -1 : 1, len = (frontLeft ? g.ipy : g.ipx) + 2;
+      const wx = g.doorX, wy = g.doorY + 1 + g.lift;
+      const c = pil ? PAL.boardwalk : XB.walk, e = pil ? shade(PAL.boardwalk, 0.7) : XB.walkEdge;
+      for (let s = 0; s <= len; s++) { const x = wx + dir * s, y = wy + (s >> 1); P.rect(x - 3, y, 7, 1, c); P.px(x - 3, y, e); P.px(x + 3, y, e); if (pil && (s & 3) === 1) P.rect(x - 2, y, 5, 1, shade(PAL.boardwalk, 0.85)); }
+      gx0 = Math.min(wx - 6, wx + dir * len - 6); gx1 = Math.max(wx + 7, wx + dir * len + 7);
+      // two lamps flanking the walk's outer end, 2 px inside the footprint edge
+      const ex = wx + dir * (len - 2), ey = wy + ((len - 2) >> 1);
+      lampPost(P, ex - 7 * dir, ey + 4, night, A.base); lampPost(P, ex + 7 * dir, ey - 3, night, A.base);
+    }
+    if (pil) return;
+    // side treatments along the SW edge (L → B, dir +1) and the SE edge (B → R, dir −1), 5 px inside the curb
+    const margin = Math.min(g.ipx, g.ipy);
+    if (A.hedge && margin >= 10 && g.wallH > 0) {
+      const inset = 5;
+      const l0x = q.L[0] + 2 * inset + 4, l0y = q.L[1] - inset + 2, lLen = Math.max(0, g.fw * 32 - 4 * inset - 8);
+      hedgeRun(P, l0x, l0y, lLen, 1, frontLeft ? gx0 : Infinity, frontLeft ? gx1 : -Infinity, g.seed);
+      const r0x = q.R[0] - 2 * inset - 5, r0y = q.R[1] - inset + 2, rLen = Math.max(0, g.fh * 32 - 4 * inset - 8);
+      hedgeRun(P, r0x, r0y, rLen, -1, frontLeft ? Infinity : gx0, frontLeft ? -Infinity : gx1, g.seed + 9);
+    }
+    if (A.fence) {
+      // chain fence along the SW and SE edges: 2-px steel posts every 12 px, a 1-px chain at mid height, a gap at the walk
+      const post = (x, y) => { P.rect(x, y - 6, 2, 6, XB.fenceSteel); P.px(x, y - 6, shade(XB.fenceSteel, 1.25)); P.hline(x - 1, y, 4, shade(XB.fenceSteel, 0.5)); };
+      const run = (x0, y0, len, dir) => { for (let i = 0; i <= len; i += 1) { const x = x0 + dir * i, y = y0 + (i >> 1); if (x >= gx0 - 2 && x < gx1 + 2) continue; if ((i % 12) === 0) post(x, y); else if ((i & 1) === 0) P.px(x, y - 3, shade(XB.fenceSteel, 0.8)); } };
+      run(q.L[0] + 6, q.L[1] + 1, g.fw * 32 - 10, 1); run(q.R[0] - 7, q.R[1] + 1, g.fh * 32 - 10, -1);
+    }
+    if (A.umbrellas && margin >= 10) {
+      const n = Math.max(1, Math.min(3, g.fw + g.fh - 2));
+      for (let i = 0; i < n; i++) { const t = (i + 0.5) / n; const p = (i & 1) === 0 ? lerpPt(q.L, q.B, 0.15 + 0.7 * t) : lerpPt(q.B, q.R, 0.15 + 0.7 * t); const x = Math.round(p[0] + ((i & 1) ? -8 : 8)), y = Math.round(p[1] - 5); if (x >= gx0 - 4 && x < gx1 + 4) continue; umbrella(P, x, y, g.seed + i); }
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -292,21 +457,25 @@
     const hgt = opts.hgt !== undefined ? opts.hgt : g.wallH;
     const C = opts.colors || faceColors(paint);
     const seed = opts.seed | 0;
+    // the main box carries the footprint skew; a sub-box (custom cx/w) is a plain diamond unless opts.k says otherwise
+    const k = opts.k !== undefined ? (opts.k | 0) : ((opts.cx === undefined && opts.w === undefined) ? (g.bk | 0) : 0);
+    const split = cx + k;
     if (hgt > 0) {
       walls(P, cx, cy, w, h, hgt, (x, yb, left) => {
         const base = left ? C.left : C.right;
         const n = hash(seed, x * 7 + yb) % 100;
         return n < 5 ? shade(base, 1.05) : n > 96 ? shade(base, 0.95) : base;
-      });
+      }, k);
       // 1-px outline: the bottom edges, the two outer verticals and the front corner
-      for (let x = cx - (w >> 1); x < cx + (w >> 1); x++) P.px(x, baseY(cx, cy, w, h, x), x < cx ? C.out : C.outR);
-      P.vline(cx - (w >> 1), cy - hgt + 1, hgt, C.out); P.vline(cx + (w >> 1) - 1, cy - hgt + 1, hgt, C.outR);
-      P.vline(cx, cy + (h >> 1) - hgt, hgt, C.out);
+      for (let x = cx - (w >> 1); x < cx + (w >> 1); x++) P.px(x, baseY(cx, cy, w, h, x, k), x < split ? C.out : C.outR);
+      const xl = cx - (w >> 1), xr = cx + (w >> 1) - 1;
+      P.vline(xl, baseY(cx, cy, w, h, xl, k) - hgt + 1, hgt, C.out); P.vline(xr, baseY(cx, cy, w, h, xr, k) - hgt + 1, hgt, C.outR);
+      P.vline(split, cy + (h >> 1) - hgt, hgt, C.out);
       // 1-px highlight along the top edge of each face (gold cornice on purple walls)
       const goldL = isPurple(C.leftRaw), goldR = isPurple(C.rightRaw);
-      for (let x = cx - (w >> 1); x < cx + (w >> 1); x++) { const y = baseY(cx, cy, w, h, x) - hgt + 1; const left = x < cx; P.px(x, y, left ? (goldL ? PAL.gold : C.leftHi) : (goldR ? PAL.gold : C.rightHi)); }
+      for (let x = cx - (w >> 1); x < cx + (w >> 1); x++) { const y = baseY(cx, cy, w, h, x, k) - hgt + 1; const left = x < split; P.px(x, y, left ? (goldL ? PAL.gold : C.leftHi) : (goldR ? PAL.gold : C.rightHi)); }
     }
-    if (!opts.noTop) { const tc = opts.topColor || shade(C.rightRaw, 1.0); P.diamond(cx, cy - hgt, w, h, tc); topRim(P, cx, cy - hgt, w, h, shade(tc, 0.7)); }
+    if (!opts.noTop) { const tc = opts.topColor || shade(C.rightRaw, 1.0); fillQuad(P, cx, cy - hgt, w, h, k, tc); topRim(P, cx, cy - hgt, w, h, shade(tc, 0.7), k); }
     return C;
   }
   /**
@@ -322,25 +491,27 @@
     const cells = [];
     g.windowCells = cells;
     if (!cols || !rows || g.wallH <= 0) return cells;
-    const cx = g.bcx, cy = g.bcy, w = g.bw, h = g.bh;
+    const cx = g.bcx, cy = g.bcy, w = g.bw, h = g.bh, k = g.bk | 0, split = cx + k;
     const pitch = g.wallH / rows;
     const C = faceColors(paint);
     const night = !!opts.night, frame = opts.frame | 0, n = (row.n | 0) * 131 + frame;
     const arched = !!opts.arched, big = opts.big || 0;
+    const doorFace = g.frontLeft ? 0 : 1;
     let idx = 0;
     for (const face of [0, 1]) {
-      const faceW = (w >> 1) - 4;                         // usable width of the face minus a margin
-      const x0 = face === 0 ? cx - (w >> 1) + 2 : cx + 2;
+      const fx0 = face === 0 ? cx - (w >> 1) : split, fx1 = face === 0 ? split : cx + (w >> 1);   // this face's columns
+      const faceW = (fx1 - fx0) - 4;                      // usable width of the face minus a margin
+      const x0 = fx0 + 2;
       const cw = Math.max(1, faceW / cols);
       const dayC = shade(face === 0 ? C.leftRaw : C.rightRaw, 0.6);
       for (let r = 0; r < rows; r++) {
-        for (let k = 0; k < cols; k++) {
-          const x = Math.round(x0 + cw * (k + 0.5)) - 1 - (big >> 1);
-          if (x < cx - (w >> 1) + 1 || x + WIN_W + big > cx + (w >> 1) - 1 || (face === 0 && x + WIN_W + big > cx - 1) || (face === 1 && x < cx + 1)) continue;
-          const yb = baseY(cx, cy, w, h, x);
+        for (let kk = 0; kk < cols; kk++) {
+          const x = Math.round(x0 + cw * (kk + 0.5)) - 1 - (big >> 1);
+          if (x < fx0 + 1 || x + WIN_W + big > fx1 - 1) continue;
+          const yb = baseY(cx, cy, w, h, x, k);
           const y = Math.round(yb - r * pitch - Math.max(4, pitch * 0.45)) - WIN_H;
-          // the door takes the base-row centre of the right face
-          if (face === 1 && r === 0 && !opts.noDoor && Math.abs(x - (cx + (w >> 2))) < 4) continue;
+          // the door takes the base-row centre of the entrance face
+          if (face === doorFace && r === 0 && !opts.noDoor && Math.abs(x - (fx0 + fx1) / 2) < 4) continue;
           const lit = night && (hash(n, idx) % 100) < LIT_SHARE;
           const c = night ? (lit ? PAL.windowGlow : WINDOW_DARK) : dayC;
           P.rect(x, y, WIN_W + big, WIN_H + (big >> 1), c);
@@ -354,12 +525,14 @@
     }
     return cells;
   }
-  /** the 4×6 purple door at the base of the right face's centre (+ a gold knob) */
+  /** the 4×6 purple door at the base of the entrance face's centre (+ a gold knob); records g.doorX/doorY for the walk */
   function drawDoor(P, g, color, wide) {
     if (g.wallH <= 0) return;
-    const cx = g.bcx, w = g.bw;
-    const dx = cx + (w >> 2) - 2, dw = wide ? 6 : 4;
-    const yb = baseY(cx, g.bcy, w, g.bh, dx + 1);
+    const cx = g.bcx, w = g.bw, k = g.bk | 0;
+    const fc = g.frontLeft ? cx + k - (g.bl >> 1) : cx + k + (g.br >> 1);   // the entrance face's centre column
+    const dw = wide ? 6 : 4, dx = fc - (dw >> 1);
+    const yb = baseY(cx, g.bcy, w, g.bh, dx + 1, k);
+    g.doorX = fc; g.doorY = yb;
     P.rect(dx, yb - 5, dw, 6, color || PAL.purple);
     P.hline(dx, yb - 6, dw, shade(color || PAL.purple, 1.3));
     P.px(dx + dw - 2, yb - 3, PAL.gold);
@@ -372,48 +545,44 @@
   const ROOF = {
     none(P, g, color) { void P; void g; void color; },
     flat(P, g, color) {
-      const cx = g.bcx, cy = g.bcy - g.wallH, w = g.bw, h = g.bh, R = g.roofH;
+      const cx = g.bcx, cy = g.bcy - g.wallH, w = g.bw, h = g.bh, R = g.roofH, k = g.bk | 0;
       const c = color || PAL.terracotta;
-      // a 4-px parapet: the faces continue up in a darker tone, then the top diamond
-      walls(P, cx, cy - R, w, h, R, (x, yb, left) => left ? shade(c, 0.62) : shade(c, 0.74));
-      P.diamond(cx, cy - R, w, h, shade(c, 0.9));
-      topRim(P, cx, cy - R, w, h, shade(c, 0.6)); bottomRim(P, cx, cy - R, w, h, shade(c, 1.12));
+      // a 4-px parapet: the faces continue up in a darker tone, then the top quad
+      walls(P, cx, cy - R, w, h, R, (x, yb, left) => left ? shade(c, 0.62) : shade(c, 0.74), k);
+      fillQuad(P, cx, cy - R, w, h, k, shade(c, 0.9));
+      topRim(P, cx, cy - R, w, h, shade(c, 0.6), k); bottomRim(P, cx, cy - R, w, h, shade(c, 1.12), k);
       // inner parapet lip
-      P.diamond(cx, cy - R + 1, w - 8, h - 4, shade(c, 0.82));
-      P.diamond(cx, cy - R + 1, w - 10, h - 5, shade(c, 0.95));
-      P.vline(cx - (w >> 1), cy - R + 1, R, shade(c, 0.5)); P.vline(cx + (w >> 1) - 1, cy - R + 1, R, shade(c, 0.5));
+      fillQuad(P, cx, cy - R + 1, w - 8, h - 4, k, shade(c, 0.82));
+      fillQuad(P, cx, cy - R + 2, w - 12, h - 6, k, shade(c, 0.95));
+      const xl = cx - (w >> 1), xr = cx + (w >> 1) - 1;
+      P.vline(xl, baseY(cx, cy, w, h, xl, k) - R + 1, R, shade(c, 0.5)); P.vline(xr, baseY(cx, cy, w, h, xr, k) - R + 1, R, shade(c, 0.5));
     },
     hip(P, g, color) {
-      const cx = g.bcx, cy = g.bcy - g.wallH, w = g.bw, h = g.bh, R = Math.max(1, g.roofH);
-      const c = color || PAL.terracotta;
+      // four planes from the eave quad to a ridge along the longer footprint axis (true parallelogram, design pass)
+      const R = Math.max(1, g.roofH), c = color || PAL.terracotta, k = g.bk | 0;
+      const q = quadCorners(g, g.wallH), W = q.W, S = q.S, E = q.E, N = q.N;
+      const along = g.fw >= g.fh;
+      const m0 = along ? midPt(W, N) : midPt(N, E), m1 = along ? midPt(S, E) : midPt(W, S);
+      const a = lerpPt(m0, m1, 0.3), b = lerpPt(m0, m1, 0.7); a[1] -= R; b[1] -= R;
       const nw = shade(c, 0.95), ne = shade(c, 0.85), sw = shade(c, 0.8), se = shade(c, 0.7);
-      for (let k = 0; k <= R; k++) {
-        const wk = Math.round((w - (w / 3) * (k / R)) / 4) * 4, hk = wk >> 1;
-        const top = cy - k - (hk >> 1);
-        for (let r = 1; r < hk; r++) {
-          const half = M.diamondHalf(wk, hk, r); if (half <= 0) continue;
-          const north = r < (hk >> 1);
-          P.rect(cx - half, top + r, half, 1, north ? nw : sw);
-          P.rect(cx, top + r, half, 1, north ? ne : se);
-          if (k === R) { P.rect(cx - half, top + r, 2 * half, 1, shade(c, 1.0)); }
-        }
-      }
-      // eave outline and the lit ridge diamond rim
-      bottomRim(P, cx, cy, w, h, shade(c, 0.5));
-      const wr = Math.round((w * 2 / 3) / 4) * 4;
-      topRim(P, cx, cy - R, wr, wr >> 1, shade(c, 1.2));
-      bottomRim(P, cx, cy - R, wr, wr >> 1, shade(c, 0.6));
-      // tile texture: 1-px lighter rows every 3 px on the front planes
-      for (let k = 1; k < R; k += 3) { const wk = Math.round((w - (w / 3) * (k / R)) / 4) * 4; const hk = wk >> 1; const top = cy - k - (hk >> 1); for (let r = (hk >> 1); r < hk; r += 1) { const half = M.diamondHalf(wk, hk, r); if (half > 1 && (r & 1)) { P.px(cx - half + 1, top + r, shade(sw, 1.1)); P.px(cx + half - 2, top + r, shade(se, 1.1)); } } }
+      if (along) { fillPoly(P, [W, N, a], nw); fillPoly(P, [N, E, b, a], ne); fillPoly(P, [W, S, b, a], sw); fillPoly(P, [S, E, b], se); }
+      else { fillPoly(P, [N, E, a], ne); fillPoly(P, [W, N, a, b], nw); fillPoly(P, [S, E, a, b], se); fillPoly(P, [W, S, b], sw); }
+      // tile courses on the two visible planes (lines parallel to the eaves), the hips and the lit ridge
+      const front = along ? [[W, a], [S, b]] : [[W, b], [S, a]], end = along ? [[S, b], [E, b]] : [[E, a], [S, a]];
+      for (const t of [0.3, 0.6]) { const p0 = lerpPt(front[0][0], front[0][1], t), p1 = lerpPt(front[1][0], front[1][1], t); P.line(p0[0], p0[1], p1[0], p1[1], shade(sw, 1.08)); const e0 = lerpPt(end[0][0], end[0][1], t), e1 = lerpPt(end[1][0], end[1][1], t); P.line(e0[0], e0[1], e1[0], e1[1], shade(se, 1.08)); }
+      const hipC = shade(c, 0.55);
+      if (along) { P.line(W[0], W[1], a[0], a[1], hipC); P.line(N[0], N[1], a[0], a[1], hipC); P.line(S[0], S[1], b[0], b[1], hipC); P.line(E[0], E[1], b[0], b[1], hipC); }
+      else { P.line(N[0], N[1], a[0], a[1], hipC); P.line(E[0], E[1], a[0], a[1], hipC); P.line(W[0], W[1], b[0], b[1], hipC); P.line(S[0], S[1], b[0], b[1], hipC); }
+      P.line(a[0], a[1], b[0], b[1], shade(c, 1.25)); P.line(a[0], a[1] + 1, b[0], b[1] + 1, shade(c, 1.05));
+      bottomRim(P, g.bcx, g.bcy - g.wallH, g.bw, g.bh, shade(c, 0.5), k);
     },
     gable(P, g, color) {
-      const cx = g.bcx, cy = g.bcy - g.wallH, w = g.bw, h = g.bh, R = Math.max(1, g.roofH);
+      const cx = g.bcx, cy = g.bcy - g.wallH, w = g.bw, h = g.bh, R = Math.max(1, g.roofH), k = g.bk | 0;
       const c = color || PAL.terracotta;
-      const W = [cx - (w >> 1), cy], S = [cx, cy + (h >> 1)], E = [cx + (w >> 1) - 1, cy], N = [cx, cy - (h >> 1) + 1];
+      const q = quadCorners(g, g.wallH), W = q.W, S = q.S, E = q.E, N = q.N;
       const along = g.fw >= g.fh;   // ridge along the longer axis (tx axis = the W→S direction)
-      let a, b;                     // ridge endpoints (raised)
-      if (along) a = [cx - (w >> 2), cy - (h >> 2) - R], b = [cx + (w >> 2), cy + (h >> 2) - R];
-      else a = [cx + (w >> 2), cy - (h >> 2) - R], b = [cx - (w >> 2), cy + (h >> 2) - R];
+      const a = along ? midPt(W, N) : midPt(N, E), b = along ? midPt(S, E) : midPt(W, S);   // ridge endpoints (raised)
+      a[1] -= R; b[1] -= R;
       const C = faceColors(g.paint || {});
       if (along) {
         fillPoly(P, [N, E, b, a], shade(c, 0.9));          // NE plane (lit)
@@ -428,17 +597,18 @@
       }
       P.line(a[0], a[1], b[0], b[1], shade(c, 1.25));      // the ridge
       P.line(a[0], a[1] + 1, b[0], b[1] + 1, shade(c, 1.05));
-      bottomRim(P, cx, cy, w, h, shade(c, 0.5));
+      bottomRim(P, cx, cy, w, h, shade(c, 0.5), k);
     },
     barrel(P, g, color) {
-      const cx = g.bcx, cy = g.bcy - g.wallH, w = g.bw, h = g.bh, R = Math.max(2, g.roofH);
+      const cx = g.bcx, cy = g.bcy - g.wallH, w = g.bw, h = g.bh, R = Math.max(2, g.roofH), k = g.bk | 0;
       const c = color || PAL.terracotta;
       const along = g.fw >= g.fh;
       const tones = [0.62, 0.8, 1.0, 0.92, 0.72];
       const bands = 5;
       // parametrize u across the roof (from one eave to the other); height = R·sqrt(1−u²)
-      const ptA = (u, hgt) => along ? [cx - (w >> 2) + u * (w >> 2), cy - (h >> 2) + u * (h >> 2) - hgt] : [cx + (w >> 2) + u * (w >> 2), cy - (h >> 2) - u * (h >> 2) - hgt];
-      const ptB = (u, hgt) => along ? [cx + (w >> 2) + u * (w >> 2), cy + (h >> 2) + u * (h >> 2) - hgt] : [cx - (w >> 2) + u * (w >> 2), cy + (h >> 2) - u * (h >> 2) - hgt];
+      const q = quadCorners(g, g.wallH);
+      const ptA = (u, hgt) => { const p = along ? lerpPt(q.W, q.N, (u + 1) / 2) : lerpPt(q.N, q.E, (u + 1) / 2); return [p[0], p[1] - hgt]; };
+      const ptB = (u, hgt) => { const p = along ? lerpPt(q.S, q.E, (u + 1) / 2) : lerpPt(q.W, q.S, (u + 1) / 2); return [p[0], p[1] - hgt]; };
       // ptA runs along the NW edge (along) / NE edge (across); ptB along the SE / SW edge; u ∈ [−1, 1]
       for (let i = 0; i < bands; i++) {
         const u0 = -1 + 2 * i / bands, u1 = -1 + 2 * (i + 1) / bands;
@@ -451,7 +621,7 @@
       for (let k = 0; k <= 8; k++) { const u = -1 + 2 * k / 8; end.push(ptB(u, R * Math.sqrt(Math.max(0, 1 - u * u)))); }
       fillPoly(P, end, shade(along ? C.rightRaw : C.leftRaw, 0.85));
       strokeEdges(P, end, shade(c, 0.55));
-      bottomRim(P, cx, cy, w, h, shade(c, 0.5));
+      bottomRim(P, cx, cy, w, h, shade(c, 0.5), k);
     },
     dome(P, g, color) {
       // a hip base with a gold half-dome on the centre (2-tone highlight)
@@ -484,10 +654,11 @@
   }
   /** roof centre, front apron point (t along the SE apron), right face centre — in canvas px */
   function roofCentre(g) { return { x: g.bcx, y: g.bcy - g.wallH - (g.roof === 'hip' || g.roof === 'dome' ? g.roofH : g.roofH >> 1) - (g.bh >> 2) }; }
-  function frontPoint(g, t) { return { x: g.ax + Math.round(t * g.fh * 32), y: g.ay + 16 - Math.round(t * g.fh * 16) - 1 - g.lift }; }
-  function leftPoint(g, t) { return { x: g.ax - Math.round(t * g.fw * 32), y: g.ay + 16 - Math.round(t * g.fw * 16) - 1 - g.lift }; }
-  function sideCentre(g) { const x = g.bcx + (g.bw >> 2); return { x: x, y: baseY(g.bcx, g.bcy, g.bw, g.bh, x) - (g.wallH >> 1) }; }
-  function leftCentre(g) { const x = g.bcx - (g.bw >> 2); return { x: x, y: baseY(g.bcx, g.bcy, g.bw, g.bh, x) - (g.wallH >> 1) }; }
+  // ground points along the SE footprint edge (B → R) / the SW edge (B → L), pulled onto the apron by 45 % of the margin
+  function frontPoint(g, t) { const m = (g.ipx || 0) * 0.45; return { x: Math.round(g.ax + t * g.fh * 32 - m), y: Math.round(g.ay + 16 - t * g.fh * 16 - 1 - g.lift - m / 2) }; }
+  function leftPoint(g, t) { const m = (g.ipy || 0) * 0.45; return { x: Math.round(g.ax - t * g.fw * 32 + m), y: Math.round(g.ay + 16 - t * g.fw * 16 - 1 - g.lift - m / 2) }; }
+  function sideCentre(g) { const k = g.bk | 0, x = g.bcx + k + (g.br >> 1); return { x: x, y: baseY(g.bcx, g.bcy, g.bw, g.bh, x, k) - (g.wallH >> 1) }; }
+  function leftCentre(g) { const k = g.bk | 0, x = g.bcx + k - (g.bl >> 1); return { x: x, y: baseY(g.bcx, g.bcy, g.bw, g.bh, x, k) - (g.wallH >> 1) }; }
   /**
    * Place a decal by name. `anchor`: 'roof'|'ground'|'side'|'left' (default: the data anchor) or
    * {x, y}. Ground decals stand on the SE apron in front of the right face.
@@ -527,49 +698,49 @@
   // the house-style ground-floor decals drawn INTO the faces (arcade along the base, columns, clock, awning…)
   function drawArcade(P, g, faces) {
     if (g.wallH < 12) return;
-    const cx = g.bcx, cy = g.bcy, w = g.bw, h = g.bh;
+    const cx = g.bcx, cy = g.bcy, w = g.bw, h = g.bh, k = g.bk | 0, split = cx + k;
     const tall = faces && faces.tall ? 20 : 12;
     for (const face of [0, 1]) {
-      const x0 = face === 0 ? cx - (w >> 1) + 3 : cx + 3, x1 = face === 0 ? cx - 3 : cx + (w >> 1) - 3;
+      const x0 = face === 0 ? cx - (w >> 1) + 3 : split + 3, x1 = face === 0 ? split - 3 : cx + (w >> 1) - 3;
       const span = x1 - x0; const n = Math.max(1, Math.round(span / 14));
       const aw = span / n;
-      for (let k = 0; k < n; k++) {
-        const ax = Math.round(x0 + aw * k + 3), bx = Math.round(x0 + aw * (k + 1) - 3);
+      for (let kk = 0; kk < n; kk++) {
+        const ax = Math.round(x0 + aw * kk + 3), bx = Math.round(x0 + aw * (kk + 1) - 3);
         if (bx - ax < 3) continue;
-        for (let x = ax; x < bx; x++) { const yb = baseY(cx, cy, w, h, x); const edge = (x === ax || x === bx - 1); const hh = edge ? tall - 3 : tall; P.rect(x, yb - hh, 1, hh, shade(faces.wall[face], 0.45)); if (!edge) P.px(x, yb - tall - 1, shade(PAL.creamStone, 0.9)); }
+        for (let x = ax; x < bx; x++) { const yb = baseY(cx, cy, w, h, x, k); const edge = (x === ax || x === bx - 1); const hh = edge ? tall - 3 : tall; P.rect(x, yb - hh, 1, hh, shade(faces.wall[face], 0.45)); if (!edge) P.px(x, yb - tall - 1, shade(PAL.creamStone, 0.9)); }
         // pier between openings
-        const px0 = Math.round(x0 + aw * k) + 1; for (let x = px0; x < px0 + 2; x++) { const yb = baseY(cx, cy, w, h, x); P.rect(x, yb - tall - 2, 1, tall + 2, PAL.creamStone); }
+        const px0 = Math.round(x0 + aw * kk) + 1; for (let x = px0; x < px0 + 2; x++) { const yb = baseY(cx, cy, w, h, x, k); P.rect(x, yb - tall - 2, 1, tall + 2, PAL.creamStone); }
       }
-      for (let x = x0; x < x1; x++) { const yb = baseY(cx, cy, w, h, x); P.px(x, yb - tall - 3, PAL.creamStone); P.px(x, yb - tall - 2, shade(PAL.creamStone, 0.8)); }
+      for (let x = x0; x < x1; x++) { const yb = baseY(cx, cy, w, h, x, k); P.px(x, yb - tall - 3, PAL.creamStone); P.px(x, yb - tall - 2, shade(PAL.creamStone, 0.8)); }
     }
   }
   function drawColumns(P, g, n) {
     if (g.wallH < 12) return;
-    const cx = g.bcx, cy = g.bcy, w = g.bw, h = g.bh, ch = Math.min(g.wallH - 2, 22);
+    const cx = g.bcx, cy = g.bcy, w = g.bw, h = g.bh, ch = Math.min(g.wallH - 2, 22), k = g.bk | 0;
     n = n || 4;
-    const x0 = cx + 4, x1 = cx + (w >> 1) - 4;
-    for (let k = 0; k < n; k++) {
-      const x = Math.round(x0 + (x1 - x0) * (k + 0.5) / n) - 1;
-      const yb = baseY(cx, cy, w, h, x);
+    const x0 = cx + k + 4, x1 = cx + (w >> 1) - 4;
+    for (let kk = 0; kk < n; kk++) {
+      const x = Math.round(x0 + (x1 - x0) * (kk + 0.5) / n) - 1;
+      const yb = baseY(cx, cy, w, h, x, k);
       P.rect(x, yb - ch, 2, ch, X.white); P.vline(x + 1, yb - ch, ch, shade(X.white, 0.8));
       P.hline(x - 1, yb - ch - 1, 4, X.white); P.hline(x - 1, yb - 1, 4, shade(X.white, 0.85));
     }
     // the entablature line above the columns
-    for (let x = x0 - 2; x < x1 + 2; x++) { const yb = baseY(cx, cy, w, h, x); P.px(x, yb - ch - 2, PAL.creamStone); P.px(x, yb - ch - 3, shade(PAL.creamStone, 0.85)); }
+    for (let x = x0 - 2; x < x1 + 2; x++) { const yb = baseY(cx, cy, w, h, x, k); P.px(x, yb - ch - 2, PAL.creamStone); P.px(x, yb - ch - 3, shade(PAL.creamStone, 0.85)); }
   }
   function drawClock(P, g, faceLeft) {
     const c = faceLeft ? leftCentre(g) : sideCentre(g);
     decalAt(P, 'clock', c.x - 5, c.y - (g.wallH >> 3) - 8, 0, g.seed);
   }
   function drawAwning(P, g) {
-    const cx = g.bcx, w = g.bw, dx = cx + (w >> 2) - 8; const yb = baseY(cx, g.bcy, w, g.bh, dx + 9);
+    const c = sideCentre(g), dx = c.x - 8; const yb = baseY(g.bcx, g.bcy, g.bw, g.bh, c.x, g.bk | 0);
     decalAt(P, 'awning', dx, yb - 12, 0, g.seed);
   }
   function drawFlag(P, g, x, y, frame) { decalAt(P, 'flag', x, y, frame, g.seed); }
   function drawStringLights(P, g, frame) {
     // a string of 5 gold lights along the top of the right face
-    const cx = g.bcx, cy = g.bcy, w = g.bw, h = g.bh;
-    for (let k = 0; k < 5; k++) { const x = cx + 4 + Math.round((k + 0.5) * ((w >> 1) - 8) / 5); const y = baseY(cx, cy, w, h, x) - g.wallH + 3 + (k & 1); P.px(x, y, X.black); P.px(x, y + 1, (frame & 1) && (k & 1) ? PAL.goldHi : PAL.gold); }
+    const cx = g.bcx, cy = g.bcy, w = g.bw, h = g.bh, k = g.bk | 0;
+    for (let kk = 0; kk < 5; kk++) { const x = cx + k + 4 + Math.round((kk + 0.5) * (g.br - 8) / 5); const y = baseY(cx, cy, w, h, x, k) - g.wallH + 3 + (kk & 1); P.px(x, y, X.black); P.px(x, y + 1, (frame & 1) && (kk & 1) ? PAL.goldHi : PAL.gold); }
   }
   function drawBannerSide(P, g, x, y) { decalAt(P, 'banner', x, y, 0, g.seed); }
   function drawSignSide(P, g) { const c = sideCentre(g); decalAt(P, 'sign', c.x - 7, c.y - 4, 0, g.seed); }
@@ -641,15 +812,15 @@
   // ---------------------------------------------------------------------------
   /** RUIN: a rubble mound sized to the footprint, 3 standing stubs, a tarp corner (no box/roof/windows) */
   function drawRuinShape(P, g, seed) {
-    const rubble = XB.rubble;
+    const rubble = XB.rubble, k = g.bk | 0;
     for (let x = g.bcx - (g.bw >> 1); x < g.bcx + (g.bw >> 1); x++) {
-      const yb = baseY(g.bcx, g.bcy, g.bw, g.bh, x);
+      const yb = baseY(g.bcx, g.bcy, g.bw, g.bh, x, k);
       const hgt = 3 + (hash(seed, x) % 6);
       P.rect(x, yb - hgt, 1, hgt, (hash(seed, x * 3) % 100 < 40) ? shade(rubble, 1.1) : rubble);
     }
     for (let i = 0; i < 3; i++) {
       const x = g.bcx - (g.bw >> 2) + i * (g.bw >> 2);
-      const yb = baseY(g.bcx, g.bcy, g.bw, g.bh, x);
+      const yb = baseY(g.bcx, g.bcy, g.bw, g.bh, x, k);
       const hh = 6 + (hash(seed, 900 + i) % 6);
       P.rect(x, yb - hh - 4, 2, hh, shade(rubble, 0.8)); P.px(x, yb - hh - 4, shade(rubble, 1.2));
     }
@@ -680,8 +851,8 @@
     if (g.special === 'stadium') { stadiumSite(P, g, stage); return; }   // a graded field behind construction fencing, not a slab
     const slab = XB.slab;
     if (stage === 0) {
-      P.diamond(g.bcx, g.bcy, g.bw, g.bh, slab, shade(slab, 0.7));
-      P.diamond(g.bcx, g.bcy - 2, g.bw - 4, g.bh - 2, shade(slab, 1.1));
+      fillQuad(P, g.bcx, g.bcy, g.bw, g.bh, g.bk | 0, slab, shade(slab, 0.7));
+      fillQuad(P, g.bcx, g.bcy - 2, g.bw - 8, g.bh - 4, g.bk | 0, shade(slab, 1.1));
       return;
     }
     const hgt = stage === 1 ? Math.max(4, Math.round(g.wallH / 2) || 6) : (g.wallH || 24);
@@ -828,19 +999,22 @@
       drawKnownDecals(ctx, P, g, row, variant, frame);
     },
     practice_field(ctx, P, g, row, variant, frame) {
-      const cx = g.bcx, cy = g.bcy;
-      const top = g.gcy - (g.gh >> 1);
-      for (let r = 0; r < g.gh; r++) {
-        const half = M.diamondHalf(g.gw, g.gh, r); if (half <= 0) continue;
-        for (let x = g.gcx - half; x < g.gcx + half; x += 8) { const s = Math.floor(x / 8) & 1; P.rect(x, top + r, Math.min(8, g.gcx + half - x), 1, s ? shade(PAL.dryGrass, 0.9) : PAL.dryGrass); }
-      }
-      const n = frontPoint(g, 0), w2 = leftPoint(g, 0);
-      decalAt(P, 'goalposts', n.x - 4, n.y - 20, 0, g.seed);
-      decalAt(P, 'goalposts', w2.x - 4, w2.y - 20, 0, g.seed + 1);
-      P.rect(cx - 6, cy - 6, 4, 3, PAL.purple); P.rect(cx + 2, cy - 4, 4, 3, PAL.purple);
+      void ctx; void row; void variant; void frame;
+      const fw = g.fw, fh = g.fh;
+      // turf in half-tile stripes across the true footprint quad, a white boundary, goalposts at both ends
+      for (let s = 0; s < fw * 2; s++) fpPoly(P, g, [[s / 2, 0], [(s + 1) / 2, 0], [(s + 1) / 2, fh], [s / 2, fh]], (s & 1) ? shade(PAL.dryGrass, 0.9) : PAL.dryGrass);
+      const m = 0.3;
+      fpLine(P, g, [m, m], [fw - m, m], X.white); fpLine(P, g, [m, fh - m], [fw - m, fh - m], X.white); fpLine(P, g, [m, m], [m, fh - m], X.white); fpLine(P, g, [fw - m, m], [fw - m, fh - m], X.white);
+      fpLine(P, g, [fw / 2, m], [fw / 2, fh - m], shade(X.white, 0.9));
+      const n = fpPt(g, fw - 0.6, fh / 2, 0), w2 = fpPt(g, 0.6, fh / 2, 0);
+      decalAt(P, 'goalposts', w2[0] - 4, w2[1] - 20, 0, g.seed + 1);
+      decalAt(P, 'goalposts', n[0] - 4, n[1] - 20, 0, g.seed);
+      const b1 = fpPt(g, fw * 0.4, fh * 0.55, 0), b2 = fpPt(g, fw * 0.6, fh * 0.45, 0);
+      P.rect(b1[0] - 2, b1[1] - 3, 4, 3, PAL.purple); P.rect(b2[0] - 2, b2[1] - 3, 4, 3, PAL.purple);
       if (g.tier >= 1) {
-        decalAt(P, 'bleachers', cx - 24, cy - 20, 0, g.seed);
-        P.text('BAYOU FIELD', cx - 28, cy - 30, PAL.gold);
+        const bp = fpPt(g, fw / 2, 0.45, 0);
+        decalAt(P, 'bleachers', bp[0] - 24, bp[1] - 14, 0, g.seed);
+        P.text('BAYOU FIELD', bp[0] - 28, bp[1] - 24, PAL.gold);
       }
     },
     stadium(ctx, P, g, row, variant, frame) {
@@ -900,32 +1074,44 @@
       else stadiumScoreboard(P, sb[0] - 14, sb[1] - 24, night, frame);
     },
     quad(ctx, P, g, row, variant, frame) {
-      const cx = g.gcx, cy = g.gcy;
-      P.diamond(cx, cy, g.gw, g.gh, XB.lawn, shade(XB.lawn, 0.8));
-      for (const t of [-1, 1]) { const a = frontPoint(g, 0.5 + t * 0.3), b = leftPoint(g, 0.5 - t * 0.3); P.line(a.x, a.y, b.x, b.y, PAL.gravel); P.line(a.x, a.y + 1, b.x, b.y + 1, shade(PAL.gravel, 0.85)); }
-      P.rect(cx - 14, cy + 2, 4, 3, PAL.purple); P.rect(cx + 8, cy - 4, 4, 3, PAL.gold);
-      blitSprite(ctx, g.zoom, M.get('oak', 2, 0, g.zoom), cx, cy - 6);
+      void row; void variant; void frame;
+      const fw = g.fw, fh = g.fh;
+      fpPoly(P, g, [[0, 0], [fw, 0], [fw, fh], [0, fh]], XB.lawn);
+      fpLine(P, g, [0, fh], [fw, fh], shade(XB.lawn, 0.7)); fpLine(P, g, [fw, fh], [fw, 0], shade(XB.lawn, 0.7));
+      // two gravel paths crossing the lawn, benches, the live oak in the middle
+      fpLine(P, g, [fw * 0.5, 0.1], [fw * 0.5, fh - 0.1], PAL.gravel); fpLine(P, g, [0.1, fh * 0.5], [fw - 0.1, fh * 0.5], PAL.gravel);
+      const c = fpPt(g, fw / 2, fh / 2, 0), b1 = fpPt(g, fw * 0.3, fh * 0.75, 0), b2 = fpPt(g, fw * 0.75, fh * 0.3, 0);
+      P.rect(b1[0] - 2, b1[1] - 3, 4, 3, PAL.purple); P.rect(b2[0] - 2, b2[1] - 3, 4, 3, PAL.gold);
+      blitSprite(ctx, g.zoom, M.get('oak', 2, 0, g.zoom), c[0], c[1] - 6);
     },
     parking(ctx, P, g, row, variant, frame) {
-      const cx = g.gcx, cy = g.gcy;
-      P.diamond(cx, cy, g.gw, g.gh, XB.apron === X.black ? X.black : '#3A3A40', shade('#3A3A40', 0.8));
-      const top = cy - (g.gh >> 1);
-      for (let r = 2; r < g.gh - 1; r += 4) { const half = M.diamondHalf(g.gw, g.gh, r) - 2; if (half > 1) P.hline(cx - half, top + r, 2 * half, shade('#3A3A40', 1.3)); }
+      void ctx; void row; void variant;
+      const fw = g.fw, fh = g.fh, asphalt = '#3A3A40';
+      fpPoly(P, g, [[0, 0], [fw, 0], [fw, fh], [0, fh]], asphalt);
+      fpLine(P, g, [0, fh], [fw, fh], shade(asphalt, 0.7)); fpLine(P, g, [fw, fh], [fw, 0], shade(asphalt, 0.7));
+      // bay stripes every half tile along X, a lane down the middle
+      for (let s = 1; s < fw * 2; s++) fpLine(P, g, [s / 2, 0.15], [s / 2, fh * 0.42], shade(asphalt, 1.5));
+      for (let s = 1; s < fw * 2; s++) fpLine(P, g, [s / 2, fh * 0.58], [s / 2, fh - 0.15], shade(asphalt, 1.5));
       const flooded = frame === 1;
-      for (let i = 0; i < 10; i++) {
-        const t = (i + 0.5) / 10;
-        const fp = frontPoint(g, t * 0.8 + 0.1);
-        decalAt(P, 'cars', fp.x - 4, fp.y - 5 - (flooded ? 1 : 0), hash(g.seed, i) % 3, g.seed + i);
+      const n = fw * 2;
+      for (let i = 0; i < n; i++) {
+        const p = fpPt(g, (i + 0.5) / 2, (i & 1) ? fh * 0.28 : fh * 0.75, 0);
+        if ((hash(g.seed, i) % 5) === 0) continue;   // an empty bay here and there
+        decalAt(P, 'cars', p[0] - 4, p[1] - 5 - (flooded ? 1 : 0), hash(g.seed, i) % 3, g.seed + i);
       }
     },
     pond(ctx, P, g, row, variant, frame) {
-      const cx = g.gcx, cy = g.gcy;
-      P.diamond(cx, cy, g.gw - 4, g.gh - 2, PAL.shallows, shade(PAL.waterNight, 0.9));
-      P.diamond(cx, cy, g.gw - 14, g.gh - 8, PAL.waterNight);
-      for (let i = 0; i < 6; i++) { const x = cx - (g.gw >> 2) + (hash(g.seed, i) % (g.gw >> 1)); P.hline(x, cy + (hash(g.seed, 20 + i) % 6) - 3, 2, shade(PAL.shallows, 1.3)); }
-      decalAt(P, 'reeds', cx - (g.gw >> 2) - 6, cy - 2, frame % 2, g.seed);
-      decalAt(P, 'reeds', cx + (g.gw >> 2) - 6, cy - 6, (frame + 1) % 2, g.seed + 3);
-      P.rect(cx - 3, cy + (g.gh >> 2) - 2, 6, 3, PAL.bark); P.vline(cx - 3, cy + (g.gh >> 2) - 2, 3, light(PAL.bark));
+      void ctx; void row; void variant;
+      const fw = g.fw, fh = g.fh, m = 0.12, m2 = 0.4;
+      fpPoly(P, g, [[m, m], [fw - m, m], [fw - m, fh - m], [m, fh - m]], PAL.shallows);
+      fpPoly(P, g, [[m2, m2], [fw - m2, m2], [fw - m2, fh - m2], [m2, fh - m2]], PAL.waterNight);
+      fpLine(P, g, [m, fh - m], [fw - m, fh - m], shade(PAL.waterNight, 0.9)); fpLine(P, g, [fw - m, fh - m], [fw - m, m], shade(PAL.waterNight, 0.9));
+      const c = fpPt(g, fw / 2, fh / 2, 0);
+      for (let i = 0; i < 6; i++) { const x = c[0] - (g.gw >> 2) + (hash(g.seed, i) % (g.gw >> 1)); P.hline(x, c[1] + (hash(g.seed, 20 + i) % 6) - 3, 2, shade(PAL.shallows, 1.3)); }
+      const r1 = fpPt(g, 0.5, fh - 0.4, 0), r2 = fpPt(g, fw - 0.4, 0.5, 0), pier = fpPt(g, fw * 0.5, fh - 0.2, 0);
+      decalAt(P, 'reeds', r1[0] - 6, r1[1] - 8, frame % 2, g.seed);
+      decalAt(P, 'reeds', r2[0] - 6, r2[1] - 8, (frame + 1) % 2, g.seed + 3);
+      P.rect(pier[0] - 3, pier[1] - 4, 6, 3, PAL.bark); P.vline(pier[0] - 3, pier[1] - 4, 3, light(PAL.bark));
     },
     bat_house(ctx, P, g, row, variant, frame) {
       const cx = g.bcx, cy = g.bcy, yb = baseY(cx, cy, g.bw, g.bh, cx);
@@ -979,10 +1165,11 @@
     g.paint = row.paint || {};
     g.seed = hash(strHash(row.id || 'b'), (seed ^ variant) >>> 0);
     g.tone = (variant & SPR.DAMAGED) ? 0.8 : 1;
+    g.frontLeft = !!(variant & SPR.FRONT_L);
     begin(ctx, g.w, g.h, zoom);
     const P = tonePen(pen(ctx, g.zoom), g.tone);
-    if (variant & SPR.RUIN) { drawRuinShape(P, g, g.seed); return { w: g.w, h: g.h, ox: g.ox, oy: g.oy }; }
-    if (variant & SPR.PILINGS) drawPilingsGround(P, g, g.seed); else drawApron(P, g, g.seed);
+    if (variant & SPR.RUIN) { drawGrounds(P, g, row, SPR.SCAFFOLD, g.seed); drawRuinShape(P, g, g.seed); return { w: g.w, h: g.h, ox: g.ox, oy: g.oy }; }
+    if (variant & SPR.PILINGS) drawPilingsGround(P, g, g.seed); else drawGrounds(P, g, row, variant, g.seed);
     if (variant & SPR.SCAFFOLD) {
       drawScaffoldStage(P, g, row, frame);
     } else {
@@ -990,6 +1177,7 @@
       if (fn) fn(ctx, P, g, row, variant, frame); else drawStandardBox(ctx, P, g, row, variant, frame);
     }
     if ((variant & SPR.PILINGS) && !(variant & SPR.SCAFFOLD)) drawStilts(P, g);
+    try { drawMargins(P, g, row, variant, frame); } catch (e) { BSU.error('sprites', 'margins:' + row.id, e); }
     if (variant & SPR.DAMAGED) applyDamaged(P, g);
     if (variant & SPR.BOARDED) applyBoarded(P, g);
     return { w: g.w, h: g.h, ox: g.ox, oy: g.oy };
@@ -1026,7 +1214,7 @@
     const g = M.buildingBox({ w: fw, h: fh, paint: { floors: 1, roof: 'flat' } }, 0, spec.zoom);
     begin(ctx, g.w, g.h, spec.zoom);
     const P = pen(ctx, g.zoom);
-    drawApron(P, g, spec.seed, XB.rubble);
+    drawApronQuad(P, g, { base: XB.rubble, alt: shade(XB.rubble, 0.85), hi: shade(XB.rubble, 1.1), pattern: 'gravel' }, spec.seed);
     drawRuinShape(P, g, spec.seed);
     return { w: g.w, h: g.h, ox: g.ox, oy: g.oy };
   }
@@ -1052,10 +1240,18 @@
     else src = M.get(id, 0, 0, 1);
     if (src && src.canvas) {
       const S = dims.S;
-      if (scale === null) scale = Math.min(1, 60 / Math.max(src.sw, src.sh));
-      const dw = Math.max(1, Math.round(src.sw * scale)), dh = Math.max(1, Math.round(src.sh * scale));
+      // crop a footprint building to its structure (the apron margin would shrink the thumbnail)
+      let sx = src.sx, sy = src.sy, sw = src.sw, sh = src.sh;
+      const row = BSU.data && BSU.data.catalog ? BSU.data.catalog[id] : null;
+      if (row && row.kind === 'footprint' && !OWN_GROUND[specialOf(row)] && id !== 'stadium') {
+        const g = M.buildingBox(row, 0, 1, 0);
+        const x0 = Math.max(0, g.bcx - (g.bw >> 1) - 6), x1 = Math.min(src.sw, g.bcx + (g.bw >> 1) + 6), y1 = Math.min(src.sh, g.by + 8);
+        if (x1 - x0 >= 16 && y1 >= 16) { sx += x0; sw = x1 - x0; sh = y1; }
+      }
+      if (scale === null) scale = Math.min(1, 60 / Math.max(sw, sh));
+      const dw = Math.max(1, Math.round(sw * scale)), dh = Math.max(1, Math.round(sh * scale));
       const dx = Math.round((dims.w * S - dw) / 2), dy = Math.round((dims.h * S - dh) / 2);
-      try { ctx.imageSmoothingEnabled = false; ctx.drawImage(src.canvas, src.sx, src.sy, src.sw, src.sh, dx, dy, dw, dh); } catch (e) { /* headless stub */ }
+      try { ctx.imageSmoothingEnabled = false; ctx.drawImage(src.canvas, sx, sy, sw, sh, dx, dy, dw, dh); } catch (e) { /* headless stub */ }
     }
     return { w: dims.w, h: dims.h, ox: -(dims.w >> 1), oy: -(dims.h >> 1) };
   }

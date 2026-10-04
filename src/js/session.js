@@ -627,7 +627,7 @@
       last = now;
       const s = BSU.state;
       if (s && s.ui) {
-        const tps = s.setPiece ? 10 : (titleWorld ? 10 : fin(s.ui.speed, 0) * 10);
+        const tps = s.setPiece ? 10 : (titleWorld ? 10 : fin(s.ui.speed, 0) * fin(PT.baseTps, 5));
         if (tps > 0 && now >= hitStopUntil()) { acc += dtMs * tps / 1000; if (!titleWorld) s.playSeconds += dtMs / 1000; }
         let n = 0;
         while (acc >= 1 && n < PT.maxTicksPerFrame) { M.tick1(); acc -= 1; n++; }

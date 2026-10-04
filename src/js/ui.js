@@ -130,6 +130,7 @@
   const panels = {};                       // name → {build, refresh, events, el, built, lastRefresh}
   let root = null, inited = false, dry = false, clock = 0, titleOn = false, focusedInput = null;
   let toolLocked = false, undoAtMs = -1e9, lastGhost = null, lastRingMs = -1e9, shakeUntil = 0, ghostCache = null;
+  let heldShift = false;   // design pass: Shift held → the footprint ghost places flush (no setback snap)
   let hoverKey = '', hoverSince = 0, hoverPx = 0, hoverPy = 0, tipShown = '', lastPx = 0, lastPy = 0;
   const notifs = [];                       // {spec, el, born, bornTick, closed}
   let toast = null; const toastQueue = [];
@@ -189,7 +190,7 @@
     const date = el('div'); date.id = 'stat-date'; const dateText = el('span', 'date-text', ''); const glyph = el('span', null, '☀'); glyph.id = 'sky-glyph'; date.appendChild(dateText); date.appendChild(glyph); E['stat-date'] = date; E['stat-date-text'] = dateText; E['sky-glyph'] = glyph; tb.appendChild(date);
     const wx = el('div', 'chip', ''); wx.id = 'chip-weather'; E['chip-weather'] = wx; tb.appendChild(wx);
     const sp = el('div'); sp.id = 'speed'; E.speed = sp; E.speedBtns = {};
-    [[0, '⏸', 'Pause (Space)'], [1, '1×', 'Normal speed (1)'], [2, '2×', 'Double speed (2)'], [4, '4×', 'Fast (3)']].forEach(function (d) {
+    [[0, '⏸', 'Pause (Space)'], [1, '1×', 'Normal speed (1)'], [2, '2×', 'Double speed (2)'], [4, '4×', 'Fast (3)'], [8, '8×', 'Fastest (4)']].forEach(function (d) {
       const b = btn(null, d[1], 'speed-btn', function () { M.setSpeed(stateOf(), d[0]); }); b.dataset.speed = String(d[0]); b.title = d[2]; b.setAttribute('aria-pressed', 'false'); sp.appendChild(b); E.speedBtns[d[0]] = b;
     });
     tb.appendChild(sp);
@@ -591,6 +592,7 @@
     try {
       const s = stateOf(); if (!s || !s.ui) return;
       px = fin(px, 0); py = fin(py, 0); lastPx = px; lastPy = py; mods = mods || M0;
+      heldShift = !!mods.shift;
       if (titleOn) return;
       if (type === 'down') { if (call('progress', 'tutorialStage', s) === 1) { call('progress', 'skipSwoop', s); return; } if (s.setPiece) call('render', 'captureCameraTouch', s); show(E.popover, false); }   // the swoop-skipping click must not also open the tile inspector behind the charter card
       if (type === 'move' || type === 'down') { const i = tileIndexAt(px, py); M.hoverTile = i; if (BSU.render) BSU.render.hoverTile = i; }
@@ -628,11 +630,12 @@
     }
     return null;
   }
-  function keyup(key) { const d = panDirOf(key); if (d) held[d] = false; }
+  function keyup(key) { const d = panDirOf(key); if (d) held[d] = false; if (key === 'Shift') { heldShift = false; if (live.state === 'PLACING') updateGhostQuiet(); } }
   /** keydown(key, mods) → true when handled (also headless.key) */
   M.keydown = function (key, mods) {
     try {
       mods = mods || M0; const s = stateOf(); if (!s || !s.ui) return false;
+      if (key === 'Shift') { if (!heldShift) { heldShift = true; if (live.state === 'PLACING') updateGhostQuiet(); } return false; }   // design pass: flush placement while held
       const isBackquote = mods.code === 'Backquote' || key === '`';
       // (1) decision toast
       if (toast) {
@@ -683,6 +686,7 @@
       case 'speed1': M.setSpeed(s, 1); return true;
       case 'speed2': M.setSpeed(s, 2); return true;
       case 'speed4': M.setSpeed(s, 4); return true;
+      case 'speed8': M.setSpeed(s, 8); return true;
       case 'budget': M.openPanel(s.ui.panel === 'budget' ? null : 'budget'); return true;
       case 'season': M.openPanel(s.ui.panel === 'season' ? null : 'season'); return true;
       case 'storm': { if (!call('weather', 'cone', s)) return true; M.openPanel(s.ui.panel === 'storm' ? null : 'storm'); return true; }
@@ -770,8 +774,17 @@
     const t = call('render', 'screenToTile', px, py); if (!t) return null;
     let tx = Math.floor(fin(t.tx, 0)), ty = Math.floor(fin(t.ty, 0)); let cove = false;
     if (tool.id === 'founders_hall' && s.plot && s.plot.founders) { const c = s.plot.cove || []; const i = BSU.inBounds(tx, ty) ? ty * W + tx : -1; cove = i >= 0 && c.indexOf(i) >= 0; tx = s.plot.founders.tx; ty = s.plot.founders.ty; }
-    return { tx: clamp(tx, 0, W - 1), ty: clamp(ty, 0, HGT - 1), cove: cove };
+    const g = { tx: clamp(tx, 0, W - 1), ty: clamp(ty, 0, HGT - 1), cove: cove, setback: false };
+    // design pass — soft spacing: a footprint that would touch another building snaps one tile out to leave a gap (Shift = flush)
+    const row = rowOf(tool.id);
+    if (row && row.kind === 'footprint' && tool.id !== 'founders_hall' && !heldShift && !cove) {
+      const sb = call('buildings', 'setbackSpot', s, tool.id, g.tx, g.ty, { rot: tool.rot });
+      if (sb && sb.snapped) { g.tx = sb.tx; g.ty = sb.ty; g.setback = true; }
+    }
+    return g;
   }
+  /** re-run the ghost at the last pointer position (Shift released / pressed) */
+  function updateGhostQuiet() { try { const s = stateOf(); if (s && s.ui && s.ui.tool && s.ui.tool.id !== 'bulldoze') updateGhost(s, lastPx, lastPy); } catch (e) { uerr('ghost', e); } }
   function updateGhost(s, px, py) {
     if (!s || !s.ui || !s.ui.tool) return;
     const tool = s.ui.tool;
@@ -787,6 +800,10 @@
     lastGhost = { r: r, tx: g.tx, ty: g.ty };
     drawGhost(s, tool, row, r, g, px, py, dragging);
   }
+  /** canPlace's ridgeFull is a string or terrain's {text|reason} object: the label wants text, never '[object Object]' */
+  /** canPlace's sink line is {rate, year, retrofit}: the wet-feet warning in words (GDD §4.8 subsidence) */
+  function sinkText(sk) { if (!sk) return ''; if (typeof sk === 'string') return sk; if (typeof sk !== 'object') return ''; if (sk.text) return sk.text; return Number.isFinite(sk.rate) ? 'Wet ground: sinks ' + sk.rate + ' ft/yr' + (Number.isFinite(sk.year) ? ' · needs Pilings by Y' + sk.year : '') + (Number.isFinite(sk.retrofit) ? ' (' + money(sk.retrofit) + ' later)' : '') : ''; }
+  function ridgeText(rf) { if (!rf) return ''; if (typeof rf === 'string') return rf; if (typeof rf !== 'object') return ''; if (rf.text || rf.reason) return rf.text || rf.reason; return Number.isFinite(rf.tx) ? 'Ridge full · best open site (' + rf.tx + ', ' + rf.ty + ') at ' + rf.elev + ' ft floods at ' + (rf.floodsAt || 'rain') : ''; }
   function drawGhost(s, tool, row, r, g, px, py, dragging) {
     const color = g.cove ? 'red' : (r.color || (r.ok ? 'green' : 'red'));
     let tiles = r.tiles && r.tiles.length ? r.tiles : [g.ty * W + g.tx];
@@ -799,18 +816,20 @@
     let l1, l2 = '';
     if (dragging) { const n = live.run.length; const per = fin(r.cost, row.cost) || row.cost; l1 = n + (n === 1 ? ' tile' : ' tiles') + ' · ' + money(per * n); if (r.ring && r.ring.text) l2 = r.ring.text; else if (r.ring && typeof r.ring.closed === 'boolean') l2 = r.ring.closed ? 'closes the ring' : (r.ring.shortText || ('still ' + fin(r.ring.short, 0) + ' tiles short')); }
     else if (g.cove) { l1 = 'Not here'; l2 = 'The cove floods every rain. Build on the ridge.'; }
-    else if (!r.ok) { l1 = r.reason || 'Cannot build here'; l2 = r.ridgeFull || r.sink || ''; }
+    else if (!r.ok) { l1 = r.reason || 'Cannot build here'; l2 = ridgeText(r.ridgeFull) || sinkText(r.sink) || ''; }
     else {
       l1 = money(r.cost); if (row.kind === 'drag') l1 += ' / tile';
       if (r.needsGrading) l1 += ' · Grade the site +' + money(r.gradingCost || 0); else if (r.needsPilings) l1 += ' · Pilings +' + money(r.pilingsCost || 0);
-      if (r.ridgeFull) l2 = r.ridgeFull; else if (r.sink) l2 = r.sink; else if (r.ring && r.ring.text) l2 = r.ring.text; else if (!r.affordable) l2 = 'Not enough cash';
+      if (ridgeText(r.ridgeFull)) l2 = ridgeText(r.ridgeFull); else if (sinkText(r.sink)) l2 = sinkText(r.sink); else if (r.ring && r.ring.text) l2 = r.ring.text; else if (!r.affordable) l2 = 'Not enough cash';
       else { const uw = utilityWarning(s, row, r); if (uw) l2 = uw; }
+      if (g.setback) l2 = (l2 ? l2 + ' · ' : '') + 'Setback · hold Shift to place flush';
       if (tool.rot) l1 += ' · rotated (R)';
     }
     ghostLabel(px, py, l1, l2, color);
   }
   function clickPlace(s, px, py, mods) {
     if (!s || !s.ui.tool) return false;
+    heldShift = !!(mods && mods.shift);
     const tool = s.ui.tool;
     if (tool.id === 'bulldoze') {
       const i = tileIndexAt(px, py); if (i < 0) return false;
@@ -1705,7 +1724,7 @@
     host._particles = chk('seg-particles', 'Particles (high)', function () { return M.settings().particles !== 'low'; }, function (v) { M.settings().particles = v ? 'high' : 'low'; });
     host._shake = chk('chk-shake', 'Screen shake', function () { return M.settings().shake !== false; }, function (v) { M.settings().shake = v; });
     host._cb = chk('chk-colorblind', 'Colorblind overlays', function () { return !!M.settings().colorblind; }, function (v) { M.settings().colorblind = v; });
-    const sp = el('div', 'seg'); [0, 1, 2, 4].forEach(function (v) { const b = btn(null, v === 0 ? 'Pause' : v + '×', 'seg-btn', function () { M.setSpeed(stateOf(), v); refreshSettingsPanel(stateOf(), host); }); b.dataset.speed = String(v); sp.appendChild(b); }); rowEl('Speed', sp); host._speed = sp;
+    const sp = el('div', 'seg'); [0, 1, 2, 4, 8].forEach(function (v) { const b = btn(null, v === 0 ? 'Pause' : v + '×', 'seg-btn', function () { M.setSpeed(stateOf(), v); refreshSettingsPanel(stateOf(), host); }); b.dataset.speed = String(v); sp.appendChild(b); }); rowEl('Speed', sp); host._speed = sp;
     rowEl('Tour', btn('btn-coach-replay', 'Replay the 60-second tour', 'small', function () { M.startCoach(stateOf()); }));
     const leg = el('div', 'legend-table'); for (const o of ((BSU.data && BSU.data.overlays) || [])) { const r = el('div', 'legend-row'); r.appendChild(el('span', 'key', o.key)); r.appendChild(el('span', 'k', o.name)); r.appendChild(el('span', 'v', o.legend.join(' · '))); leg.appendChild(r); } rowEl('Overlays', leg);
     const keys = el('div', 'keys-table'); keys.id = 'keys'; const KEYNAMES = { ' ': 'Space' }; for (const k of ((BSU.data && BSU.data.keys) || [])) { if (/^pan|^pick[2-9]|^toast/.test(k.action)) continue; const r = el('div', 'legend-row'); r.appendChild(el('span', 'key', (k.ctrl ? 'Ctrl+' : '') + (k.shift ? 'Shift+' : '') + (KEYNAMES[k.key] || (k.key.length === 1 ? k.key.toUpperCase() : k.key)))); r.appendChild(el('span', 'k', k.action === 'pick1' ? 'pick item 1–9' : k.action.replace(/([A-Z])/g, ' $1').toLowerCase())); keys.appendChild(r); } rowEl('Keys', keys);
@@ -2095,7 +2114,7 @@
       if (inited) {
         const ids = ['hud', 'topbar', 'brand', 'stat-cash', 'stat-students', 'chip-capacity', 'stat-prestige', 'stat-happiness', 'stat-ecology', 'stat-date', 'sky-glyph', 'chip-weather', 'speed', 'btn-budget', 'btn-season', 'btn-storm', 'btn-almanac', 'btn-menu', 'btn-mute', 'chip-endowed', 'alert-strip', 'alert-icon', 'alert-text', 'alert-action', 'alert-gator', 'minimap-wrap', 'minimap', 'minimap-viewport', 'overlay-buttons', 'legend', 'objective-card', 'obj-portrait', 'obj-title', 'obj-text', 'obj-progress', 'obj-count', 'btn-showme', 'btn-obj-dismiss', 'obj-background', 'speech-bubble', 'voice-card', 'milestones-card', 'notifications', 'decision-toast', 'dt-text', 'dt-countdown', 'btn-dt-yes', 'btn-dt-no', 'inspect', 'insp-title', 'insp-sub', 'btn-insp-close', 'insp-sprite', 'insp-body', 'insp-actions', 'ghost-label', 'tooltip', 'popover', 'pop-title', 'pop-next', 'ticker', 'ticker-track', 'btn-ticker-log', 'ticker-log', 'palette', 'palette-tabs', 'palette-items', 'btn-bulldoze', 'btn-palette-info', 'cards', 'perf-chip', 'perfmode-chip', 'hint', 'panels', 'title', 'title-name', 'title-tag', 'btn-charter', 'btn-continue', 'title-seed', 'btn-title-settings', 'btn-title-mute', 'title-campus'];
         for (const id of ids) A(isEl(E[id]) && E[id].id === id, 'skeleton id through M.el: ' + id);
-        A(E.msRows.length === 3 && E.popLines.length === L.popLines && Object.keys(E.speedBtns).length === 4 && Object.keys(E.ovBtns).length === 6, 'ms-rows, pop-lines, speed and overlay buttons exist');
+        A(E.msRows.length === 3 && E.popLines.length === L.popLines && Object.keys(E.speedBtns).length === 5 && Object.keys(E.ovBtns).length === 6, 'ms-rows, pop-lines, speed and overlay buttons exist');
       } else notes.push('skeleton check skipped (init not run)');
       // 10. cards
       let threw = false; card = null; cardQueue.length = 0;

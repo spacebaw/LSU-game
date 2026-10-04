@@ -191,6 +191,30 @@ ok(B.ringClosed(s2, 8) === true, 'sandbagged square (9.5 ft) holds H 8');
 const lr = B.leveeRuns(s2);
 ok(lr.length === 1 && lr[0].tiles.length === 36 && lr[0].name === 'The Great Wall of Boudreaux', 'levee run auto-named');
 
+// --- design pass: setbackSpot (soft spacing) ---------------------------------------
+{
+  const sd = BSU.newState(23); Object.assign(sd, JSON.parse(JSON.stringify({ plot: s.plot })));
+  B.reset(sd, true);
+  for (const k of ['type', 'elev', 'flags', 'surface', 'owner', 'crest', 'depth']) if (s.tiles[k] && sd.tiles[k]) sd.tiles[k].set(s.tiles[k]);
+  sd.economy.cash = 1e9;
+  let spot = null;
+  for (let ty = 2; ty < 40 && !spot; ty++) for (let tx = 30; tx < 62; tx++) { const r = B.canPlace(sd, 'lecture_hall', tx, ty, { rot: 0 }); if (r && r.ok) { spot = { tx, ty }; break; } }
+  if (spot) {
+    const free = B.setbackSpot(sd, 'lecture_hall', spot.tx, spot.ty, { rot: 0 });
+    ok(free && free.tx === spot.tx && free.ty === spot.ty && free.snapped === false && free.touching === false, 'setbackSpot leaves a free spot alone');
+    const pr = B.place(sd, 'lecture_hall', spot.tx, spot.ty, { rot: 0 }); ok(pr.ok, 'lecture hall placed for the setback scenario');
+    // a lecture hall flush against the first one's east side
+    const sb = B.setbackSpot(sd, 'lecture_hall', spot.tx + 3, spot.ty, { rot: 0 });
+    ok(sb && sb.touching === true, 'a flush footprint is reported as touching');
+    if (sb.snapped) {
+      let touch = false; for (const e of BSU.edgeTiles(sb.tx, sb.ty, 3, 2)) if (sd.tiles.owner[e] >= 0) touch = true;
+      ok(!touch && Math.abs(sb.tx - spot.tx - 3) <= 1 && Math.abs(sb.ty - spot.ty) <= 1 && B.canPlace(sd, 'lecture_hall', sb.tx, sb.ty, { rot: 0 }).ok, `snapped within one tile to a legal gap spot (${sb.tx}, ${sb.ty})`);
+    } else ok(sb.tx === spot.tx + 3 && sb.ty === spot.ty, 'no legal gap spot within one tile → the flush position is kept (never refuses)');
+  } else ok(true, 'setbackSpot scenario skipped: no lecture hall spot on the synthetic plot');
+  const junk = B.setbackSpot(sd, 'path', 5, 5, {}); ok(junk.snapped === false && junk.tx === 5, 'drag rows are never snapped');
+  ok(B.setbackSpot(null, 'dorm', 1, 1).tx === 1 && B.setbackSpot(sd, 'nope', 1, 1).snapped === false, 'setbackSpot tolerates garbage');
+}
+
 // --- scenario: no exceptions on garbage input -------------------------------------
 let threwAny = false;
 try {

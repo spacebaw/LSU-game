@@ -29,7 +29,8 @@
     chunkMB: 0.85, chunkIdleFrames: 600, firstBakeMs: 150, spriteGcEvery: 300, cliffMin: 6, cliffMax: 96,
     reedPct: 25, waterCap: 300, waterCapSurge: 700, sparkleEvery: 8, agentAnimDiv: 6, gatorAnimDiv: 8,
     titleDriftX: 0.25, titleDriftY: 0.12, squashScale: 1.15, sinkTiltDeg: 2, bubbleLift: 4,
-    mossMin: 6, mossMax: 10, mossSway: 3, overlayAlpha: 0.45, ghostAlpha: 0.45, ghostSpriteAlpha: 0.6
+    mossMin: 6, mossMax: 10, mossSway: 3, overlayAlpha: 0.45, ghostAlpha: 0.45, ghostSpriteAlpha: 0.6,
+    shadowAlpha: 0.22, shadowColor: '#0A0718'          // design pass: ground shadows under buildings and trees
   };
   const hash = (BSU.rng && BSU.rng.hash) ? BSU.rng.hash : function (a, b) { let h = (a * 374761393 + b * 668265263) | 0; h = Math.imul(h ^ (h >>> 13), 1274126177); return (h ^ (h >>> 16)) >>> 0; };
   const fin = (v, d) => (Number.isFinite(v) ? v : d);
@@ -158,6 +159,7 @@
     v |= (clamp(fin(b.tier, 0) | 0, 0, 3) << SPR.TIER_SHIFT);
     const bu = (b.data && Number.isFinite(b.data.boardedUntil)) ? b.data.boardedUntil : fin(b.boardedUntil, -1);
     if (bu >= 0 && bu >= fin(ci.day, 0)) v |= SPR.BOARDED;
+    if (ci.frontLeft === true && SPR.FRONT_L) v |= SPR.FRONT_L;   // the door, walk and lamps face the SW edge (a path lies only there)
     return v;
   };
   /** the animation frame that goes with variantOf (scaffold stage, night window pattern, sway/topple, barrier, parking) */
@@ -667,6 +669,80 @@
     info.autumn = info.month === 11;
     info.bloom = info.month === 3 || (info.month === 4 && info.dom <= 10);
     info.perfMode = !!(state.ui && state.ui.perfMode);
+    // design pass: ground shadows follow the sky clock — long and low at dawn/dusk, short at midday, faint moonlight at night;
+    // they fall down-left (the sprites are lit from the SE), sliding further out when the sun is low
+    const t = clamp(fin(sky ? sky.t : (state.sky ? state.sky.t : 0.5), 0.5), 0, 1);
+    let sx = -0.9, sy = 0.42, len = 0.6, al = C.shadowAlpha;
+    if (info.phase === SKY.DAWN) { sx = -1; sy = 0.3; len = 1.1 - 0.3 * t; al = 0.14 + 0.08 * t; }
+    else if (info.phase === SKY.DAY) { const c = Math.abs(Math.cos(Math.PI * t)); sx = -(0.55 + 0.45 * c); sy = 0.45 - 0.1 * c; len = 0.4 + 0.5 * c; al = C.shadowAlpha; }
+    else if (info.phase === SKY.GOLDEN) { sx = -1; sy = 0.35; len = 0.9 + 0.3 * t; al = 0.24; }
+    else if (info.phase === SKY.DUSK) { sx = -1; sy = 0.3; len = 1.2; al = 0.16 * (1 - t) + 0.06 * t; }
+    else { sx = -0.6; sy = 0.45; len = 0.5; al = 0.07; }
+    info.shX = sx * len; info.shY = sy * len; info.shAlpha = al;
+  }
+  /** entrance side for the sprite: SE (default) unless a path/road/boardwalk touches only the SW edge */
+  function frontLeftOf(t, b) {
+    const w = b.w | 0, h = b.h | 0, tx = b.tx | 0, ty = b.ty | 0, surf = t.surface;
+    const ex = tx + w; if (ex < W) for (let y = ty; y < ty + h; y++) { const s = surf[y * W + ex]; if (s >= 1 && s <= 3) return false; }
+    const ey = ty + h; if (ey < HGT) for (let x = tx; x < tx + w; x++) { const s = surf[ey * W + x]; if (s >= 1 && s <= 3) return true; }
+    return false;
+  }
+  // -- design pass: soft ground shadows (one alpha-blended path for buildings, one for trees), drawn under the sorted entities --
+  const shadowGeo = new Map();   // type|rot|pilings → the inset base quad (1× px relative to the anchor tile centre) and the structure height
+  function shadowBox(b, v) {
+    const key = b.type + (b.rot ? 'r' : '') + ((v & SPR.PILINGS) ? 'p' : '');
+    let s = shadowGeo.get(key);
+    if (s === undefined) {
+      s = null;
+      try {
+        const sp = S(), row = BSU.data && BSU.data.catalog ? BSU.data.catalog[b.type] : null;
+        if (row && row.kind === 'footprint' && typeof sp.buildingBox === 'function') {
+          const g = sp.buildingBox(row, v & SPR.PILINGS, 1, b.rot ? 1 : 0);
+          const tall = g && (g.wallH + g.roofH * 0.6 + (g.special === 'stadium' ? 22 : g.special === 'water_tower' ? 30 : 0));
+          if (g && Number.isFinite(g.bl) && g.bl > 0 && g.br > 0 && tall >= 6) s = { dx: g.ipy - g.ipx, dy: 16 - ((g.ipx + g.ipy) >> 1) - g.lift, bl: g.bl, br: g.br, h: tall + g.lift };
+        }
+      } catch (e) { s = null; }
+      shadowGeo.set(key, s);
+    }
+    return s;
+  }
+  function hull(pts) {   // Andrew's monotone chain (8 points at most)
+    pts.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+    const cross = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+    const lo = []; for (let i = 0; i < pts.length; i++) { const p = pts[i]; while (lo.length >= 2 && cross(lo[lo.length - 2], lo[lo.length - 1], p) <= 0) lo.pop(); lo.push(p); }
+    const up = []; for (let i = pts.length - 1; i >= 0; i--) { const p = pts[i]; while (up.length >= 2 && cross(up[up.length - 2], up[up.length - 1], p) <= 0) up.pop(); up.push(p); }
+    up.pop(); lo.pop(); return lo.concat(up);
+  }
+  function shadowPass(g) {
+    if (!(info.shAlpha > 0.1)) return;   // night: a 7 % moon shadow is invisible under the lights pass, so it costs nothing
+    const z = zoomNow, ox = fin(info.shX, -0.6), oy = fin(info.shY, 0.3);
+    g.fillStyle = C.shadowColor; g.globalAlpha = info.shAlpha; g.beginPath();
+    let any = false;
+    for (let k = 0; k < count; k++) {
+      const e = pool[k]; if (e.kind !== 'building' || !e.b || !e.ref) continue;
+      const b = e.b, v = e.variant | 0; if (v & SPR.RUIN) continue;
+      const s = shadowBox(b, v); if (!s) continue;
+      let H = s.h; if (v & SPR.SCAFFOLD) H *= clamp(fin(b.built, 0), 0.15, 1); if (H < 6) continue;
+      const Sx = e.sx + s.dx * z, Sy = e.sy + s.dy * z, bl = s.bl * z, br = s.br * z;
+      const dx = ox * H * z, dy = oy * H * z;
+      const pts = hull([[Sx - bl, Sy - bl / 2], [Sx, Sy], [Sx + br, Sy - br / 2], [Sx - bl + br, Sy - (bl + br) / 2],
+        [Sx - bl + dx, Sy - bl / 2 + dy], [Sx + dx, Sy + dy], [Sx + br + dx, Sy - br / 2 + dy], [Sx - bl + br + dx, Sy - (bl + br) / 2 + dy]]);
+      if (pts.length < 3) continue;
+      g.moveTo(pts[0][0], pts[0][1]); for (let i = 1; i < pts.length; i++) g.lineTo(pts[i][0], pts[i][1]); g.closePath(); any = true;
+    }
+    if (any) { g.fill(); drawCalls++; }
+    if (!info.perfMode && z >= 1) {   // trees (1×/2× only: at 0.5× the whole map is in view): an ellipse under the canopy, slid toward the shadow side by the tree's height
+      g.globalAlpha = info.shAlpha * 0.8; g.beginPath(); any = false;
+      for (let k = 0; k < count; k++) {
+        const e = pool[k]; if (e.kind !== 'tree' || !e.ref) continue;
+        const ref = e.ref, zs = zsOf(ref), sw = ref.sw * zs, sh = ref.sh * zs; if (sw < 8) continue;
+        const rx = sw * 0.3, ry = Math.max(1.5, rx * 0.42), H = sh * 0.5;
+        const cx = e.sx + ox * H * 0.6, cy = e.sy + oy * H * 0.25 + z;
+        g.moveTo(cx + rx, cy); g.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2); any = true;
+      }
+      if (any) { g.fill(); drawCalls++; }
+    }
+    g.globalAlpha = 1;
   }
   function entityPass(state, g) {
     count = 0; agentsDrawn = 0; particlesDrawn = 0;
@@ -681,12 +757,12 @@
         if (ax < 0 || ay < 0 || ax >= W || ay >= HGT) continue;
         if (!inView(ax, ay, 6)) continue;
         let eff = 1; try { if (bl && typeof bl.effective === 'function') eff = fin(bl.effective(state, b.id), 1); } catch (err) { eff = 1; }
-        const ci = { phase: info.phase, day: info.day, effective: eff, wind: info.wind, barrierClosed: info.barrierClosed, toppleIds: info.toppleIds };
+        const row = cat[b.type];
+        const ci = { phase: info.phase, day: info.day, effective: eff, wind: info.wind, barrierClosed: info.barrierClosed, toppleIds: info.toppleIds, frontLeft: !!(row && row.pathAdjacency) && frontLeftOf(t, b) };
         const v = M.variantOf(b, ci), fr = M.frameOf(b, v, ci);
         const e = push('building', ax, ay, fin(elev[ay * W + ax], 0), 0, drawBuilding);
         e.b = b; e.id = b.rot ? b.type + ':r' : b.type; e.variant = v; e.frame = fr;
         e.ref = getRef(e.id, v, fr);
-        const row = cat[b.type];
         let icons = 0;
         if (fin(b.built, 1) >= 1 && !b.ruin && row) { if (row.needsPower && b.powered === false) icons |= 1; if (row.needsWater && b.watered === false) icons |= 2; if (b.noAccess === true) icons |= 4; }
         e.c = icons;
@@ -816,7 +892,8 @@
     } catch (err) { rerr('entities:dressing', err); }
     // in-world particles (D50): the only hook through which render_fx's pool reaches the sorted pass
     try { if (M.particles && typeof M.particles.forEachWorld === 'function') M.particles.forEachWorld(particleCb); } catch (err) { rerr('entities:particles', err); }
-    // sort + draw
+    // design pass: ground shadows under everything, then sort + draw
+    try { shadowPass(g); } catch (err) { rerr('entities:shadows', err); g.globalAlpha = 1; }
     sortList();
     g.globalAlpha = 1; g.globalCompositeOperation = 'source-over';
     for (let k = 0; k < count; k++) { const e = list[k]; try { e.draw(e, g, view, alphaNow); } catch (err) { rerr('entities:draw:' + e.kind, err); } }
@@ -883,8 +960,14 @@
         g.moveTo(p0.x, p0.y - h / 2); g.lineTo(p1.x + w / 2, p1.y); g.lineTo(p2.x, p2.y + h / 2); g.lineTo(p3.x - w / 2, p3.y); g.closePath(); g.stroke(); drawCalls++;
       }
       if (gs.sprite && gs.sprite.id && Number.isFinite(gs.sprite.tx)) {
-        const ref = getRef(gs.sprite.id, fin(gs.sprite.variant, 0), 0);
-        if (ref) { const p = M.tileToScreen(gs.sprite.tx | 0, gs.sprite.ty | 0); g.globalAlpha = C.ghostSpriteAlpha; blit(g, ref, p.x, p.y, zsOf(ref)); }
+        const grow = (BSU.data && BSU.data.catalog) ? BSU.data.catalog[gs.sprite.id] : null;
+        const grot = !!gs.sprite.rot && !!(grow && grow.rotatable);
+        const ref = getRef(grot ? gs.sprite.id + ':r' : gs.sprite.id, fin(gs.sprite.variant, 0), 0);
+        if (ref) {
+          // building sprites are anchored on their SE tile (anchorOf); the ghost spec carries the NW tile
+          let aw = 1, ah = 1; if (grow && grow.kind === 'footprint') { aw = Math.max(1, grow.w | 0); ah = Math.max(1, grow.h | 0); if (grot) { const tmp = aw; aw = ah; ah = tmp; } }
+          const p = M.tileToScreen((gs.sprite.tx | 0) + aw - 1, (gs.sprite.ty | 0) + ah - 1); g.globalAlpha = C.ghostSpriteAlpha; blit(g, ref, p.x, p.y, zsOf(ref));
+        }
       }
     }
     // Show-me flashes

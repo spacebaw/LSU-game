@@ -19,4 +19,4 @@
    random debug port, so many can run in parallel. Look at the PNG you produced (Read the image file).
 
 Rules for every module: no exception may escape a tick or a frame; guard optional browser features;
-`node build.mjs --check && node test/smoke.mjs && node test/modules.mjs` must pass before you claim done.
+`node build.mjs --check && node test/smoke.mjs && node test/modules.mjs && node test/contract.test.mjs && for t in test/unit/*.test.mjs; do node $t | tail -1; done` must pass before you claim done (contract.test.mjs lives outside test/unit; do not skip it).

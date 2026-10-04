@@ -876,7 +876,7 @@
   ];
   const keys = [
     { key: ' ', action: 'pause' },
-    { key: '1', action: 'speed1' }, { key: '2', action: 'speed2' }, { key: '3', action: 'speed4' },
+    { key: '1', action: 'speed1' }, { key: '2', action: 'speed2' }, { key: '3', action: 'speed4' }, { key: '4', action: 'speed8' },
     { key: 'b', action: 'budget' }, { key: 'n', action: 'season' }, { key: 't', action: 'storm' }, { key: 'l', action: 'milestones' },
     { key: 'f', action: 'overlayFlood' }, { key: 'w', action: 'overlayWater' }, { key: 'k', action: 'overlayMosquito' },
     { key: 'p', action: 'overlayPower' }, { key: 'c', action: 'overlayCoverage' }, { key: 'e', action: 'overlayEcology' },

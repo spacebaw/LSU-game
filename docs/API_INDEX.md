@@ -67,7 +67,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - values: 0:number, 1:number, 2:number, 3:number, 4:number
 
 ## BSU.SPR
-- values: NIGHT:number, DAMAGED:number, PILINGS:number, SCAFFOLD:number, RUIN:number, TIER_SHIFT:number, TIER_MASK:number, BOARDED:number
+- values: NIGHT:number, DAMAGED:number, PILINGS:number, SCAFFOLD:number, RUIN:number, TIER_SHIFT:number, TIER_MASK:number, BOARDED:number, FRONT_L:number
 
 ## BSU.STORM
 - values: NONE:number, WAVE:number, NAMED:number, WATCH:number, BANDS:number, LANDFALL:number, RECOVERY:number, PASSED:number
@@ -168,6 +168,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - buildings.count(state, type)
 - buildings.has(state, type, minTier)
 - buildings.footprint(state, id)
+- buildings.setbackSpot(state, id, tx, ty, opts)
 - buildings.dumpsterTile(state, id)
 - buildings.unlocked(state, id)
 - buildings.constructionMult(state)
@@ -229,7 +230,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - contract.selfTest()
 
 ## BSU.data
-- values: catalog:object, catalogList:array[43], tabs:array[10], decals:object, names:object, students:object, coaches:array[10], coachQuotes:array[12], gatorNames:array[14], leGrand:string, stormNames:array[26], opponents:object, schedule:array[8], calendar:object, ticker:array[62], tickerKinds:object, tickerKindList:array[7], objectives:object, milestones:array[26], voiceCards:array[12], boardCards:array[8], failureCards:object, tutorial:array[7], thibodeaux:array[12], stormQuotes:array[8], overlays:array[6], keys:array[45], toastKeys:object, panKeys:object, rainKinds:object
+- values: catalog:object, catalogList:array[43], tabs:array[10], decals:object, names:object, students:object, coaches:array[10], coachQuotes:array[12], gatorNames:array[14], leGrand:string, stormNames:array[26], opponents:object, schedule:array[8], calendar:object, ticker:array[62], tickerKinds:object, tickerKindList:array[7], objectives:object, milestones:array[26], voiceCards:array[12], boardCards:array[8], failureCards:object, tutorial:array[7], thibodeaux:array[12], stormQuotes:array[8], overlays:array[6], keys:array[46], toastKeys:object, panKeys:object, rainKinds:object, guide:object, needs:object, requirements:object, coach:array[6]
 - data.selfTest()
 
 - BSU.dateToDay(str, year)
@@ -440,7 +441,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - render.setZoom(z, anchorPx)
 - render.zoomStep(dir, anchorPx)
 - render.follow(agentId)
-- render.followVehicle(pred)   // pred(vehicle, state) → camera tracks the first matching state.vehicles entry; null / a user pan / no match releases
+- render.followVehicle(pred)
 - render.shake(ms, px)
 - render.hitStop(ms)
 - render.flashTiles(tiles, ms)
@@ -544,7 +545,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - sports.selfTest()
 
 ## BSU.sprites
-- values: palette:object, CANVAS_LIMIT_MB:number, ZOOM2:boolean, GC_FRAMES:number, TILE_W:number, TILE_H:number, PX_PER_FT:number, extra:object, FONT:object, _tests:array[2], FRAMES:object, DIRS:array[4], EXTRA_DECALS:object, decalPainters:object, LIGHTS:object, extraBuildings:object, roofs:object, entityConst:object, entityColors:object, _buf:object, SHEET_LIMIT_MB:number, animFrames:object, entityFrames:object, _gcWrapped:boolean, _initWrappedEntities:boolean, entitySizes:object
+- values: palette:object, CANVAS_LIMIT_MB:number, ZOOM2:boolean, GC_FRAMES:number, TILE_W:number, TILE_H:number, PX_PER_FT:number, extra:object, FONT:object, _tests:array[2], FRAMES:object, DIRS:array[4], EXTRA_DECALS:object, decalPainters:object, LIGHTS:object, extraBuildings:object, APRON:object, roofs:object, entityConst:object, entityColors:object, _buf:object, SHEET_LIMIT_MB:number, animFrames:object, entityFrames:object, _gcWrapped:boolean, _initWrappedEntities:boolean, entitySizes:object
 - sprites.hex(h)
 - sprites.rgb(r, g, b)
 - sprites.shade(h, k)
@@ -657,7 +658,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - BSU.ty(i)
 
 ## BSU.ui
-- values: el:object, debug:object, state:string, hoverTile:number, cards:object, _tests:array[1], _deps:object, fmt:object, panels:object
+- values: el:object, debug:object, state:string, hoverTile:number, cards:object, _tests:array[1], _deps:object, fmt:object, _ux:object, panels:object
 - ui.registerPanel(name, def)
 - ui.registerCard(id, builder)
 - ui.init(state)
@@ -672,6 +673,11 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - ui.closeInspect()
 - ui.introduceTab(state, tab)
 - ui.refreshPalette(state)
+- ui.openBuildMenu(state, opts)
+- ui.closeBuildMenu()
+- ui.buildMenuOpen()
+- ui.startCoach(state)
+- ui.coachStep()
 - ui.notify(state, spec)
 - ui.hint(state, id, text, opts)
 - ui.decision(state, spec)
@@ -768,7 +774,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 
 - BSU.worldToScreen(tx, ty, elev, cam, vw, vh)
 
-## BSU.params groups (17): time[28], terrain[59], hydro[46], storm[116], wildlife[4], subsidence[17], heat[21], weather[18], econ[62], sports[77], agents[29], build[33], render[55], ui[16], audio[6], palette[34], progress[16]
+## BSU.params groups (17): time[29], terrain[59], hydro[46], storm[116], wildlife[4], subsidence[17], heat[21], weather[18], econ[62], sports[77], agents[29], build[33], render[55], ui[16], audio[6], palette[34], progress[16]
 
 ## BSU.newState(seed) tree
 - v:number

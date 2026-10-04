@@ -285,7 +285,7 @@ const row = {
   cost: 700000, upkeep: 9000, wr: 3, needsPower: true, needsWater: true, pathAdjacency: true, roadWithin: 0, placeRule: BSU.PLACE.LAND,
   allowMarsh: true, alwaysPilings: false, buildDays: 2, unlock: {}, pip: '', effects, tiers: [],
   paint: { wall: ['#F5ECD7', '#E8D9B5'], roof: 'hip', roofColor: '#B5533C', floors: 4, windows: { cols: 6, rows: 4 }, decals: ['arcade'], accent: '#461D7C', lift: 0, special: '' },
-  namePool: 'halls', why: 'why', desc: 'desc', demolishable: true, shelterOwn: true
+  namePool: 'halls', why: 'why', blurb: 'A sample building.', desc: 'desc', demolishable: true, shelterOwn: true
 };
 const vr = BSU.validateCatalogRow(row);
 ok(vr.ok, 'a well-formed catalog row validates' + (vr.ok ? '' : ': ' + vr.errors.join('; ')));

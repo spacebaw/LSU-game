@@ -234,6 +234,47 @@
     return false;
   };
   M.footprint = function (state, id) { const b = M.get(state, id); return b ? footprintOf(b) : []; };
+  /**
+   * Design pass — soft spacing. When a footprint at (tx, ty) would share an edge with another footprint
+   * building, the nearest legal spot within one tile that leaves a 1-tile gap (pushed away from the
+   * neighbour first). Never refuses anything: {tx, ty, snapped, touching}. ui's ghost uses it unless
+   * Shift is held (flush placement); canPlace itself is unchanged.
+   */
+  M.setbackSpot = function (state, id, tx, ty, opts) {
+    const out = { tx: tx | 0, ty: ty | 0, snapped: false, touching: false };
+    try {
+      const row = rowOf(id); if (!state || !state.tiles || !row || row.kind !== 'footprint') return out;
+      opts = opts || {};
+      const d = dims(row, opts.rot), owner = state.tiles.owner;
+      const self = Number.isFinite(opts.target) ? opts.target : -1;
+      const contact = function (x, y) {   // the push direction away from touching footprint buildings, or null when free
+        if (!BSU.footprintTiles(x, y, d.w, d.h)) return null;
+        let px = 0, py = 0, n = 0;
+        for (let k = 0; k < d.w; k++) {
+          const a = BSU.inBounds(x + k, y - 1) ? owner[(y - 1) * W + x + k] : -1; if (a >= 0 && a !== self) { py += 1; n++; }
+          const b = BSU.inBounds(x + k, y + d.h) ? owner[(y + d.h) * W + x + k] : -1; if (b >= 0 && b !== self) { py -= 1; n++; }
+        }
+        for (let k = 0; k < d.h; k++) {
+          const a = BSU.inBounds(x - 1, y + k) ? owner[(y + k) * W + x - 1] : -1; if (a >= 0 && a !== self) { px += 1; n++; }
+          const b = BSU.inBounds(x + d.w, y + k) ? owner[(y + k) * W + x + d.w] : -1; if (b >= 0 && b !== self) { px -= 1; n++; }
+        }
+        return n ? { px: px, py: py } : null;
+      };
+      const c0 = contact(out.tx, out.ty); if (!c0) return out;
+      out.touching = true;
+      const sx = Math.sign(c0.px), sy = Math.sign(c0.py);
+      const cands = [];
+      if (sx) cands.push([sx, 0]); if (sy) cands.push([0, sy]); if (sx && sy) cands.push([sx, sy]);
+      for (const c of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]]) if (!cands.some(function (q) { return q[0] === c[0] && q[1] === c[1]; })) cands.push(c);
+      for (const c of cands) {
+        const x = out.tx + c[0], y = out.ty + c[1];
+        if (!BSU.footprintTiles(x, y, d.w, d.h) || contact(x, y) !== null) continue;
+        const r = M.canPlace(state, id, x, y, opts);
+        if (r && r.ok) { out.tx = x; out.ty = y; out.snapped = true; return out; }
+      }
+      return out;
+    } catch (e) { if (BSU.SELFTEST) throw e; BSU.error('buildings', 'setbackSpot', e); return out; }
+  };
   M.dumpsterTile = function (state, id) { const b = M.get(state, id); return b && b.data ? fin(b.data.dumpsterTile, -1) : -1; };
   /** {ok, reason}: progress owns the phrasing (D52) */
   M.unlocked = function (state, id) {

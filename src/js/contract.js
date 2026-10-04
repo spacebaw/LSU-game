@@ -46,7 +46,7 @@
     LAND: 0, PATH: 1, ROAD: 2, BOARDWALK: 3, LEVEE: 4, CANAL: 5, FENCE: 6, PRESERVE: 7, NEAR_WATER: 8, TOUCH_MARSH_BAYOU: 9,
     TOUCH_CANAL_WATER: 10, CYPRESS: 11, MARSH_OR_PRESERVE: 12, BARRIER: 13, RESTORE: 14, UPGRADE: 15
   });   // catalog placeRule
-  BSU.SPR = freeze({ NIGHT: 1, DAMAGED: 2, PILINGS: 4, SCAFFOLD: 8, RUIN: 16, TIER_SHIFT: 5, TIER_MASK: 3 << 5, BOARDED: 128 });   // building sprite variant bits (D17)
+  BSU.SPR = freeze({ NIGHT: 1, DAMAGED: 2, PILINGS: 4, SCAFFOLD: 8, RUIN: 16, TIER_SHIFT: 5, TIER_MASK: 3 << 5, BOARDED: 128, FRONT_L: 256 });   // building sprite variant bits (D17); FRONT_L = entrance (door, walk, lamps) on the SW face (design pass)
 
   // The 43 catalog ids in GDD §0.3 row order (BSU.B_ORDER[n-1] is row n).
   BSU.B_ORDER = freeze([
@@ -99,6 +99,7 @@
   BSU.params = {
     time: {                                  // GDD §0.1 timing table
       tps: 10,                               // sim ticks per real second at 1× (§0.1)
+      baseTps: 5,                           // sim ticks per real second at 1× (GDD §0.1 said 10; halved after playtest: 1 day = 20 s, year = 40 min). Set pieces stay at 10.
       ticksPerDay: 100,                      // §0.1
       daysPerMonth: 10,                      // §0.1
       monthsPerYear: 12,                     // §0.1
@@ -118,7 +119,7 @@
       windPulseShare: [1 / 3, 1 / 3, 1 / 6, 1 / 6],   // §6.2 wind pulses
       firstWarningDropTicks: 100,            // first gator/mosquito warning drops to 1× for 10 s (§9.4)
       maxTicksPerFrame: 8,                   // main-loop accumulator cap (ARCH D7)
-      speeds: [0, 1, 2, 4],                  // §9.4
+      speeds: [0, 1, 2, 4, 8],                  // §9.4
       skipAfterTick: 150,                    // Skip button appears at tick 150 of a landfall (§6.2)
       gameSkipAfterTick: 200,                // Skip-to-final after Q1 (§8)
       charterSwoopMs: 4000,                  // §10.1 camera swoop
