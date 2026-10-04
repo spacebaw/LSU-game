@@ -101,7 +101,8 @@
       awaitFounding: false, parade: null, paradeWanted: NONE, gradWanted: NONE, gradStartTick: NONE, lastGraduates: 0,
       lastSky: NONE, trig: {}, warning: null, unlockSet: null, unlockDay: NONE, nearest: null, nearestDay: NONE,
       relocCount: {}, relocMonth: NONE, burrowAlt: false, shelterOk: true, lastReport: null, lastStormCat: 0, lastStormName: '',
-      stockedSeen: 0, offeredThisTick: false, zydecoDay: NONE, heatDay: NONE, desireDay: NONE, obj11Text: '', firstGatorTile: NONE, worstMosqTile: NONE,
+      stockedSeen: 0, offeredThisTick: false, zydecoDay: NONE, heatDay: NONE, desireDay: NONE, desirePending: null, desireRuns: 0, obj11Text: '', firstGatorTile: NONE, worstMosqTile: NONE,
+      foundingIds: null, foundingAdded: 0,
       lastGatorEnterDay: NONE, receiverTick: NONE
     };
   }
@@ -983,7 +984,7 @@
       case '1': ui(state, 'lockTool', false); M.achieve(state, 'chartered'); if (!p.hints.hudShown) { p.hints.hudShown = true; ui(state, 'hint', 'hudShown'); } enterStage(state, 3); break;
       case '2': {
         call('weather', 'setRunning', state, true);
-        if (has('agents', 'spawnArrival')) { const c2 = ctx(state); c2.awaitFounding = true; c2.foundingDeadline = fin(state.tick, 0) + 600; call('agents', 'spawnArrival', state, 120, 'founding'); }
+        if (has('agents', 'spawnArrival')) { const c2 = ctx(state); c2.awaitFounding = true; c2.foundingDeadline = fin(state.tick, 0) + 600; call('agents', 'spawnArrival', state, FOUNDING, 'founding'); foundingLaunched(state, c2); }
         else foundingArrived(state);
         enterStage(state, 4);
         break;
@@ -994,11 +995,44 @@
       default: break;
     }
   }
+  const FOUNDING = 120;   // the founding cohort (GDD §2.4)
+  /** the pirogues are away: remember who is aboard (the Students stat counts up as they step ashore), pan to the Landing and follow the lead pirogue */
+  function foundingLaunched(state, c) {
+    c.foundingIds = (state.agents || []).filter(function (a) { return a && a.aboard && a.arrival; }).map(function (a) { return a.id; });
+    c.foundingAdded = 0;
+    const L = fin(state.plot && state.plot.landing, NONE);
+    if (L >= 0) call('render', 'panToTile', L % W, (L / W) | 0, true);
+    call('render', 'followVehicle', function (v) { return !!(v && v.kind === 'pirogue' && v.arrival && v.state === 'GO'); });
+  }
+  /** ≤ 4 students per tick toward the share of the cohort already ashore (the rest lands with agent:arrive) */
+  function foundingCountUp(state, c) {
+    const A = state.agents || []; let ashore = 0;
+    for (let k = 0; k < c.foundingIds.length; k++) { const a = A[c.foundingIds[k]]; if (a && !a.aboard) ashore++; }
+    const target = Math.round(FOUNDING * ashore / c.foundingIds.length);
+    const step = Math.min(4, target - c.foundingAdded);
+    if (step > 0) { c.foundingAdded += step; call('economy', 'addStudents', state, step, 'founding'); }
+  }
+  const DESIRE_DAYS = 3;
+  /** post the merged desire-line hint/notify for everything pending (one Build-it action over all the tiles) */
+  function flushDesire(state, c, day) {
+    const p = pr(state), tiles = c.desirePending || [];
+    if (!tiles.length) return;
+    const runs = Math.max(1, c.desireRuns | 0);
+    c.desireDay = day; c.desirePending = null; c.desireRuns = 0;
+    const cost = tiles.length * fin(catalog().path && catalog().path.cost, 2000);
+    const what = runs > 1 ? 'Students want paths in ' + runs + ' places' : 'Students want a path here';
+    const verb = runs > 1 ? 'Build them' : 'Build it';
+    if (!p.hints.desireLine) { p.hints.desireLine = true; ui(state, 'hint', 'desireLine', what + '. ' + verb + ' for ' + money(cost) + '?', { action: 'buildPath', tiles: tiles }); }
+    else notify(state, { kind: 'info', text: what + ' (' + money(cost) + ').', showMe: { tx: tiles[0] % W, ty: (tiles[0] / W) | 0, tiles: tiles }, action: { label: verb, fn: 'buildPath', tiles: tiles } });
+    M.ticker(state, 51, null, null, tiles[0]);
+  }
   function foundingArrived(state) {
     const c = ctx(state), p = pr(state);
     c.awaitFounding = false;
+    call('render', 'followVehicle', null);
     if (M.earned(state, 'welcome')) return;
-    call('economy', 'addStudents', state, 120, 'founding');
+    const rest = FOUNDING - fin(c.foundingAdded, 0); c.foundingIds = null; c.foundingAdded = 0;
+    if (rest > 0) call('economy', 'addStudents', state, rest, 'founding');
     M.achieve(state, 'welcome');
     M.ticker(state, 'First 120 students arrive at Bayou State. One asks where the parking is.', null, 'event', fin(state.plot && state.plot.landing, NONE));
     if (!p.hints.mute) { p.hints.mute = true; ui(state, 'hint', 'mute', '🔊 on · M to mute'); }
@@ -1462,13 +1496,13 @@
       case EV.ENROLL_ROUND: case EV.ENROLL_LOCK: break;
       case EV.AGENT_ARRIVE: if (e && e.kind === 'founding') foundingArrived(state); break;
       case EV.AGENT_DESIRE_LINE: {
+        // throttled: one line per DESIRE_DAYS calendar days; runs that fire inside the window merge into the next line
         const tiles = (e && Array.isArray(e.tiles)) ? e.tiles : [];
-        if (!tiles.length || c.desireDay === day) break;
-        c.desireDay = day;
-        const cost = tiles.length * fin(catalog().path && catalog().path.cost, 2000);
-        if (!p.hints.desireLine) { p.hints.desireLine = true; ui(state, 'hint', 'desireLine', 'Students want a path here. Build it for ' + money(cost) + '?', { action: 'buildPath', tiles: tiles }); }
-        else notify(state, { kind: 'info', text: 'Students want a path here (' + money(cost) + ').', showMe: { tx: tiles[0] % W, ty: (tiles[0] / W) | 0, tiles: tiles }, action: { label: 'Build it', fn: 'buildPath', tiles: tiles } });
-        M.ticker(state, 51, null, null, tiles[0]);
+        if (!tiles.length) break;
+        if (!c.desirePending) c.desirePending = [];
+        for (let k = 0; k < tiles.length; k++) if (c.desirePending.indexOf(tiles[k]) < 0) c.desirePending.push(tiles[k]);
+        c.desireRuns = (c.desireRuns | 0) + 1;
+        if (c.desireDay === NONE || day - c.desireDay >= DESIRE_DAYS) flushDesire(state, c, day);
         break;
       }
       case EV.GATOR_CAMPUS: {
@@ -1626,10 +1660,12 @@
     tutorialTick(state, c);
     if (p.tutorialStage >= 4 && p.tutorialStage < 6 && !M.earned(state, 'welcome') && !c.awaitFounding) { c.awaitFounding = true; c.foundingDeadline = fin(state.tick, 0) + 600; }   // loaded mid-arrival: the pirogues are gone (agents are not saved)
     if (c.awaitFounding && (!has('agents', 'spawnArrival') || fin(state.tick, 0) >= fin(c.foundingDeadline, 1e12))) foundingArrived(state);
+    else if (c.awaitFounding && c.foundingIds && c.foundingIds.length) foundingCountUp(state, c);
     // Daily work
     if (flags.newDay) {
       c.dirty = true;
       expireTimers(state);
+      if (c.desirePending && c.desirePending.length && day - c.desireDay >= DESIRE_DAYS) flushDesire(state, c, day);
       const pt = parts(day);
       if (pt.date === 'Aug 1') p.skeeterStreak = 0;
       if (pt.month === fin(MG.skeeterMonth, 8)) { const idx = fin(call('wildlife', 'mosqIndex', state), fin(state.wildlife && state.wildlife.mosqIndex, 0)); if (idx < fin(MG.skeeterBeater, 0.1)) p.skeeterStreak = fin(p.skeeterStreak, 0) + 1; else p.skeeterStreak = -100; if (pt.dom === 10 && p.skeeterStreak >= 10) M.achieve(state, 'skeeterBeater'); }

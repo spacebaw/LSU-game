@@ -327,6 +327,9 @@
     host.appendChild(el('div', 'panel-title', 'Season'));
     host._schedule = el('div'); host._schedule.id = 'sea-schedule'; host.appendChild(host._schedule);
     host._next = el('div', 'row'); host._next.id = 'sea-next'; host.appendChild(host._next);
+    // the venue row sits above the fold (the rating table below it is long): the Upgrade button is the panel's one build action
+    host._upgrade = btn('btn-upgrade', 'Upgrade', 'small', function () { doUpgrade(host); });
+    const venue = el('div', 'row'); venue.id = 'sea-venue'; host._venue = el('span', 'k', 'Venue'); venue.appendChild(host._venue); const vv = el('span', 'v'); vv.appendChild(host._upgrade); venue.appendChild(vv); host.appendChild(venue);
     host.appendChild(el('div', 'card-kicker', 'Team rating'));
     host._rating = el('div'); host._rating.id = 'sea-rating'; host.appendChild(host._rating);
 
@@ -348,8 +351,6 @@
     host._autosim = btn('chk-autosim', 'Off', 'toggle', function () { const s = stateFor(host); call('sports', 'setAutoSim', s, !(s.sports && s.sports.autoSim)); refreshSeason(s, host); }); rowEl('Auto-sim home games', host._autosim);
     const segP = el('div', 'seg'); segP.id = 'seg-permits'; ['Paid', 'Free'].forEach(function (lab, k) { const v = k === 0 ? 'paid' : 'free'; const b = btn(null, lab, 'seg-btn', function () { call('sports', 'setPermits', stateFor(host), v); refreshSeason(stateFor(host), host); }); b.dataset.v = v; segP.appendChild(b); }); host._permits = segP; rowEl('Tailgate permits', segP);
     const segH = el('div', 'seg'); segH.id = 'seg-homecoming'; [0, 50000, 150000].forEach(function (v) { const b = btn(null, v === 0 ? '$0' : money(v), 'seg-btn', function () { const r = call('sports', 'setHomecomingBudget', stateFor(host), v); if (r && r.ok === false) notify(stateFor(host), r.reason); refreshSeason(stateFor(host), host); }); b.dataset.v = String(v); segH.appendChild(b); }); host._homecoming = segH; rowEl('Homecoming budget', segH);
-
-    host._upgrade = btn('btn-upgrade', 'Upgrade', 'small', function () { doUpgrade(host); }); host.appendChild(host._upgrade);
 
     const bug = el('div', 'row'); bug.id = 'score-bug'; show(bug, false); host.appendChild(bug); host._bug = bug;
   }
@@ -441,14 +442,56 @@
     const hb = fin(s.sports && s.sports.homecomingBudget, 0); for (const b of host._homecoming.children) cls(b, 'active', Number(b.dataset.v) === hb);
 
     const up2 = upgradeLabel(s); setText(host._upgrade, up2.label); host._upgrade.disabled = !!up2.disabled;
+    setText(host._venue, 'Venue · ' + venueName(s));
 
     if (s.sports && s.sports.game) {
       show(host._bug, true); const g = s.sports.game;
       const opp = (BSU.data && BSU.data.opponents && BSU.data.opponents[g.opp]) || { name: g.opp };
-      setText(host._bug, 'BSU ' + fin(g.scores && g.scores[0], 0) + ' – ' + fin(g.scores && g.scores[1], 0) + ' ' + opp.name + ' · Q' + fin(g.quarter, 0));
+      const pts = gamePoints(g);
+      setText(host._bug, 'BSU ' + pts[0] + ' – ' + pts[1] + ' ' + opp.name + ' · ' + gameClock(s, g));
     } else show(host._bug, false);
   }
-  UI.scoreBug = function (state) { const host = UI.el && UI.el['panel-season']; if (host) refreshSeason(state, host); };
+  /** the current venue's tier name (Stadium over Practice Field) */
+  function venueName(s) {
+    const st = call('buildings', 'list', s, 'stadium') || [], pf = call('buildings', 'list', s, 'practice_field') || [];
+    const pick = function (list, id) { const b = list[0]; if (!b) return ''; const row = rowOf(id) || {}; const t = (row.tiers || []).find(function (q) { return q.tier === fin(b.tier, 0); }); return t ? t.name : (row.name || id); };
+    return pick(st, 'stadium') || pick(pf, 'practice_field') || 'none yet';
+  }
+  /** [BSU points, opponent points] for a game struct (sports keeps homePts/awayPts by venue side) */
+  function gamePoints(g) { const h = fin(g.homePts, 0), a = fin(g.awayPts, 0); return g.home ? [h, a] : [a, h]; }
+  /** the score bug's clock: Kickoff → Qn · m:ss (15:00 per quarter over params.sports.quarterTicks) → Halftime → Final */
+  function gameClock(s, g) {
+    if (g.finalized) return 'Final';
+    if (!g.kickedOff || fin(g.quarter, 0) < 1) return 'Kickoff';
+    if (fin(g.halftimeOpenedTick, -1) >= 0 && !g.halftimeAnswered) return 'Halftime';
+    const sp = s.setPiece, t = (sp && sp.kind === 'game') ? fin(sp.tick, 0) : 0;
+    const k0 = fin(PSP.kickoffTick, 200), qt = Math.max(1, fin(PSP.quarterTicks, 100));
+    const frac = t > k0 ? ((t - k0) % qt) / qt : 0;
+    const secs = Math.max(0, Math.round(900 * (1 - frac)));
+    return 'Q' + clamp(int(g.quarter, 1), 1, 4) + ' · ' + Math.floor(secs / 60) + ':' + (secs % 60 < 10 ? '0' : '') + (secs % 60);
+  }
+  // The HUD score bug (#score-bug-hud, under the topbar's left end): built lazily on the first home game,
+  // refreshed by ui.update every frame while state.sports.game is set, hidden otherwise.
+  let hudBug = null;
+  function ensureHudBug() {
+    if (hudBug) return hudBug;
+    const hud = UI.el && UI.el.hud; if (!hud) return null;
+    hudBug = el('div', 'hidden'); hudBug.id = 'score-bug-hud';
+    const home = el('span', 'sb-team', 'BSU'), sc = el('span', 'sb-score', ''), away = el('span', 'sb-team', ''), clk = el('span', 'sb-clock', '');
+    hudBug.appendChild(home); hudBug.appendChild(sc); hudBug.appendChild(away); hudBug.appendChild(clk);
+    hudBug._p = { home: home, sc: sc, away: away, clk: clk };
+    hud.appendChild(hudBug); UI.el['score-bug-hud'] = hudBug;
+    return hudBug;
+  }
+  UI.scoreBug = function (state) {
+    const g = state && state.sports && state.sports.game;
+    const b = ensureHudBug(); if (!b) return;
+    if (!g || !g.home) { if (!b.classList.contains('hidden')) { show(b, false); cls(UI.el.hud, 'scorebug', false); } return; }
+    if (b.classList.contains('hidden')) { show(b, true); cls(UI.el.hud, 'scorebug', true); }
+    const opp = (BSU.data && BSU.data.opponents && BSU.data.opponents[g.opp]) || { name: g.opp };
+    const pts = gamePoints(g);
+    setText(b._p.sc, pts[0] + ' – ' + pts[1]); setText(b._p.away, String(opp.name || g.opp || '').toUpperCase()); setText(b._p.clk, gameClock(state, g));
+  };
   UI.registerPanel('season', { build: buildSeason, refresh: refreshSeason, events: ['game:scheduled', 'game:kickoff', 'game:score', 'game:halftime', 'game:final', 'season:end', 'coach:changed', 'building:complete', 'building:upgraded'] });
   // ui.js does not call scoreBug itself (left to this module, D-note below): keep the bug live
   // every frame while a game is on by piggy-backing on the same events the panel listens to.

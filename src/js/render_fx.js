@@ -139,7 +139,7 @@
   let frameNo = 0, lastFrameNo = -1;
   const overtop = new Map();   // tile → frames left of trickle
   const lightRefs = {};        // kind → SpriteRef (refreshed per frame)
-  const LIGHT_KINDS = ['lamp', 'window', 'mast', 'beacon', 'blink', 'arc', 'glow', 'pot', 'fire', 'firefly', 'eye'];
+  const LIGHT_KINDS = ['lamp', 'window', 'mast', 'beacon', 'blink', 'arc', 'glow', 'pot', 'fire', 'firefly', 'eye', 'canal'];
   const LMAX = PR.lightsMax || 250;
   const lightsList = []; for (let k = 0; k < LMAX + 8; k++) lightsList.push({ kind: 'lamp', x: 0, y: 0, r: 1, a: 1, rot: 0, d: 0 });
   let lightsN = 0;
@@ -477,6 +477,19 @@
       const lamps = te && typeof te.streetlamps === 'function' ? te.streetlamps(state) : null;
       if (lamps && lamps.length) for (let k = 0; k < lamps.length && lightsN < LMAX; k++) { const i = lamps[k] | 0; const tx = i & 63, ty = i >> 6; if (tx < view.x0 - 1 || tx > view.x1 + 1 || ty < view.y0 - 1 || ty > view.y1 + 1) continue; const p = R.tilePx(i); if (inScreen(p.x, p.y)) pushLight('lamp', p.x, p.y - 14 * z, 1, 0.95, 0); }
     } catch (e) { /* no terrain */ }
+    // dug canals: a cool water highlight on every visible CANAL tile so the cut (and the canal objective, which
+    // can be offered after Dusk) reads at night — ≤ 64 per frame, nearest-first like everything else
+    try {
+      const fl = state.tiles && state.tiles.flags;
+      if (fl && FLAG.CANAL) {
+        let n = 0;
+        for (let ty = Math.max(0, view.y0 | 0); ty <= Math.min(HGT - 1, view.y1 | 0) && n < 64; ty++) for (let tx = Math.max(0, view.x0 | 0); tx <= Math.min(W - 1, view.x1 | 0) && n < 64; tx++) {
+          const i = ty * W + tx; if (!(fl[i] & FLAG.CANAL)) continue;
+          const p = R.tilePx(i); if (!inScreen(p.x, p.y)) continue;
+          pushLight('canal', p.x, p.y, 1, 0.6 + 0.12 * Math.sin(frameNo * 0.06 + tx * 1.7 + ty * 0.9), 0); n++;
+        }
+      }
+    } catch (e) { /* no terrain */ }
     if (Array.isArray(list)) {
       for (let k = 0; k < list.length && lightsN < LMAX; k++) {
         const e = list[k]; if (!e) continue;
@@ -528,6 +541,7 @@
         if (L.kind === 'mast') { lg.save(); lg.translate(L.x, L.y); lg.rotate(L.rot); lg.globalAlpha = L.a; lg.drawImage(ref.canvas, ref.sx, ref.sy, ref.sw, ref.sh, -w / 2, 0, w, h); lg.restore(); continue; }
         if (L.kind === 'lamp') { drawRef(lg, ref, L.x, L.y + 10 * z, w * 3.2, h * 1.6, L.a * 0.55); drawRef(lg, ref, L.x, L.y, w, h, L.a); continue; }   // pool on the ground + the core
         if (L.kind === 'window') { drawRef(lg, ref, L.x, L.y + 16 * z, w * 2.2, h * 1.2, L.a * 0.35); drawRef(lg, ref, L.x, L.y, w, h, L.a); continue; }
+        if (L.kind === 'canal') { drawRef(lg, ref, L.x, L.y, w * 2.3, h * 1.15, L.a); continue; }   // stretched 2:1 over the tile diamond
         drawRef(lg, ref, L.x, L.y, w, h, L.a);
       }
       // fireflies: blink via sin on life; drawn from the pool (they are also 1-px world particles)

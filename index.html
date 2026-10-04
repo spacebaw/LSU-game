@@ -10,7 +10,7 @@
 --purple:#461D7C;--purple-2:#5E2CA5;--purple-hi:#7F5BC5;--purple-shadow:#2B1246;--panel:#1A1230;
 --gold:#FDD023;--gold-2:#F5B700;--gold-hi:#FFE680;--gold-shadow:#B58500;--glow:#FFF1A8;
 --text:#F4EEE2;--text-dim:#B9AFC9;--danger:#E0443E;--good:#3FBF7F;--water:#4FA3D6;--teal:#2F8F8A;--moss:#6A8F3C;
---panel-alpha:.92;--radius:6px;--topbar-h:44px;--ticker-h:24px;--palette-h:112px;--inspect-w:300px;
+--panel-alpha:.92;--radius:6px;--topbar-h:44px;--ticker-h:24px;--palette-h:112px;--inspect-w:300px;--bot:calc(var(--palette-h) + var(--ticker-h) + 12px);
 --font-ui:system-ui,-apple-system,"Segoe UI",sans-serif;--font-title:Georgia,"Times New Roman",serif;
 --panel-bg:rgba(26,18,48,var(--panel-alpha));--g-purple:linear-gradient(180deg,var(--purple-2),var(--purple));--g-gold:linear-gradient(180deg,var(--gold-hi),var(--gold));--line:rgba(253,208,35,.35);--shadow:0 6px 24px rgba(0,0,0,.45);
 }
@@ -65,8 +65,8 @@ background:var(--panel-bg);border:1px solid var(--line);color:var(--text);border
 .stat .odometer{font:700 14px/1.1 var(--font-ui);color:var(--text);font-variant-numeric:tabular-nums;margin-top:2px}
 #stat-cash .odometer{color:var(--gold-hi)}
 #stat-cash.neg .odometer{color:#FF8A84}
-.stat .delta{position:absolute;right:8px;top:3px;font:700 10px/1 var(--font-ui);opacity:0;transform:translateY(4px);transition:opacity .6s,transform .6s;pointer-events:none}
-.stat .delta.on{opacity:1;transform:translateY(0);transition:opacity .1s,transform .1s}
+.stat .delta{position:absolute;left:50%;top:calc(100% + 3px);padding:2px 7px;border-radius:999px;background:rgba(26,18,48,.94);border:1px solid var(--line);white-space:nowrap;z-index:1;font:700 10px/1 var(--font-ui);opacity:0;transform:translate(-50%,-6px);transition:opacity .6s,transform .6s;pointer-events:none}
+.stat .delta.on{opacity:1;transform:translate(-50%,0);transition:opacity .1s,transform .1s}
 .stat .delta[data-sign="pos"]{color:var(--good)} .stat .delta[data-sign="neg"]{color:var(--danger)}
 #chip-capacity{display:block;font:600 9px/1 var(--font-ui);letter-spacing:.06em;text-transform:uppercase;color:var(--gold-hi);background:none;border:0;padding:0;border-radius:0}
 .stats.pre .stat{opacity:0}
@@ -86,6 +86,9 @@ background:var(--panel-bg);border:1px solid var(--line);color:var(--text);border
 #chip-endowed{font-size:10px}
 @media (max-width:1365px){#topbar{gap:6px} #brand{font-size:14px;margin-right:0} .stat{padding:0 7px;min-width:56px} .tb{padding:5px 7px} .tb .glyph{display:none} .tb.glyph-only .glyph{display:inline} .speed-btn{min-width:27px;padding:5px 6px}}
 #topbar.compact .tb .label{display:none} #topbar.compact .tb .glyph{display:inline} #topbar.compact .tb{padding:5px 7px}
+#score-bug-hud{position:absolute;left:12px;top:calc(var(--topbar-h) + 8px);display:flex;align-items:center;gap:8px;padding:5px 10px 5px 8px;border-radius:var(--radius);background:var(--panel-bg);border:1px solid var(--line);border-left:4px solid var(--gold);font:600 12px/1 var(--font-ui);pointer-events:none;font-variant-numeric:tabular-nums}
+.sb-score{font:800 16px/1 var(--font-ui);color:var(--gold)} .sb-clock{color:var(--text-dim);padding-left:6px;border-left:1px solid var(--line)}
+#hud.scorebug [id^=perf]{top:calc(var(--topbar-h) + 44px)}
 #alert-strip{position:absolute;top:calc(var(--topbar-h) + 8px);left:50%;transform:translateX(-50%);max-width:640px;display:flex;align-items:center;gap:10px;padding:6px 12px;font-weight:600;font-size:12px;border-left:4px solid var(--gold)}
 #alert-strip[data-kind="danger"]{border-left-color:var(--danger)} #alert-strip[data-kind="water"]{border-left-color:var(--water)} #alert-strip[data-kind="wildlife"]{border-left-color:var(--good)}
 #alert-icon{font-size:16px}
@@ -99,7 +102,7 @@ background:var(--panel-bg);border:1px solid var(--line);color:var(--text);border
 .ov-btn{width:24px;height:24px;padding:0;font-size:11px;border-radius:4px}
 #legend{width:100%;justify-content:center;font-size:10px;margin-top:2px;white-space:normal;text-align:center}
 #objective-card,#voice-card,#milestones-card{position:absolute;left:12px;width:340px;padding:10px 12px}
-#objective-card{bottom:calc(var(--palette-h) + var(--ticker-h) + 12px)}
+#objective-card{bottom:var(--bot)}
 #objective-card[data-kind="background"]{border-left:4px solid var(--teal)}
 #objective-card[data-kind="interrupt"]{border-left:4px solid var(--gold)}
 .obj-head{display:flex;gap:10px;align-items:flex-start}
@@ -113,16 +116,16 @@ background:var(--panel-bg);border:1px solid var(--line);color:var(--text);border
 #obj-background{margin-top:8px;padding-top:6px;border-top:1px solid rgba(255,255,255,.08);border-bottom:0;font-size:11px;color:var(--text-dim);display:block}
 #speech-bubble{position:absolute;left:8px;bottom:calc(100% + 8px);max-width:320px;padding:8px 10px;font:italic 12px/1.3 var(--font-ui);color:var(--purple-shadow);background:var(--gold-hi);border-radius:10px;box-shadow:var(--shadow);animation:rise .25s ease-out}
 #speech-bubble::after{content:"";position:absolute;left:22px;bottom:-7px;border:7px solid transparent;border-top-color:var(--gold-hi);border-bottom:0}
-#voice-card{bottom:calc(var(--palette-h) + var(--ticker-h) + 12px);left:364px;width:320px;border-left:4px solid var(--purple-hi)}
+#voice-card{bottom:var(--bot);left:364px;width:320px;border-left:4px solid var(--purple-hi)}
 .voice-student{font:700 12px/1.2 var(--font-ui);color:var(--gold-hi);margin-bottom:4px}
 #voice-text{font-size:12px} #voice-payoff{font-size:11px;color:var(--text-dim);margin-top:4px}
-#milestones-card{bottom:calc(var(--palette-h) + var(--ticker-h) + 12px);width:300px}
+#milestones-card{bottom:var(--bot);width:300px}
 .ms-row{display:grid;grid-template-columns:1fr 90px 54px;align-items:center;gap:8px;padding:4px 0;font-size:11px}
 .ms-name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ms-count{text-align:right;color:var(--text-dim);font-variant-numeric:tabular-nums}
 .card-actions{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
 @keyframes rise{from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:none} }
-#notifications{position:absolute;right:12px;bottom:calc(var(--palette-h) + var(--ticker-h) + 12px);width:340px;display:flex;flex-direction:column;gap:6px;align-items:stretch;transition:transform .2s}
+#notifications{position:absolute;right:12px;bottom:var(--bot);width:340px;display:flex;flex-direction:column;gap:6px;align-items:stretch;transition:transform .2s}
 #hud.inspect-open #notifications{transform:translateX(calc(-1 * var(--inspect-w) - 12px))}
 .notif{display:flex;align-items:center;gap:8px;padding:8px 10px;font-size:12px;border-left:4px solid #9A93AD;animation:slide-in .2s ease-out}
 .notif[data-kind="water"]{border-left-color:var(--water)} .notif[data-kind="wildlife"]{border-left-color:var(--good)}
@@ -134,7 +137,7 @@ background:var(--panel-bg);border:1px solid var(--line);color:var(--text);border
 #decision-toast{position:absolute;top:calc(var(--topbar-h) + 52px);left:50%;transform:translateX(-50%);width:440px;padding:12px 14px 10px;z-index:9;border-top:3px solid var(--gold);animation:rise .2s ease-out}
 #dt-text{font:600 13px/1.35 var(--font-ui);margin-bottom:8px}
 #dt-countdown{height:4px} #dt-countdown .fill{transition:width .1s linear;background:linear-gradient(90deg,var(--gold),var(--gold-hi))}
-#inspect{position:absolute;right:12px;top:calc(var(--topbar-h) + 10px);bottom:calc(var(--palette-h) + var(--ticker-h) + 12px);width:var(--inspect-w);padding:12px;display:flex;flex-direction:column;gap:8px;overflow:hidden;transform:translateX(0);transition:transform .2s,opacity .2s}
+#inspect{position:absolute;right:12px;top:calc(var(--topbar-h) + 10px);bottom:var(--bot);width:var(--inspect-w);padding:12px;display:flex;flex-direction:column;gap:8px;overflow:hidden;transform:translateX(0);transition:transform .2s,opacity .2s}
 #inspect.hidden{display:flex !important;transform:translateX(calc(var(--inspect-w) + 24px));opacity:0;pointer-events:none}
 .insp-head{display:flex;gap:10px;align-items:flex-start}
 #insp-sprite{width:64px;height:64px;flex:0 0 64px;border-radius:6px;background:var(--purple-shadow);border:1px solid var(--line);image-rendering:pixelated}
@@ -162,7 +165,7 @@ input.rename{width:100%;font:700 14px/1.2 var(--font-title);color:var(--text);ba
 #hint{position:absolute;left:50%;bottom:calc(var(--palette-h) + var(--ticker-h) + 14px);transform:translateX(-50%);padding:7px 12px;font-size:12px;display:flex;gap:8px;align-items:center;border-color:var(--gold);animation:rise .25s ease-out;z-index:4}
 #perf-chip,#perfmode-chip{position:absolute;left:12px;top:calc(var(--topbar-h) + 10px);font-family:ui-monospace,Menlo,monospace;font-size:10px}
 #perfmode-chip{left:auto;right:190px;color:var(--gold-hi)}
-#btn-skip{position:absolute;right:12px;bottom:calc(var(--palette-h) + var(--ticker-h) + 12px);z-index:4}
+#btn-skip{position:absolute;right:12px;bottom:var(--bot);z-index:4}
 #ticker{position:absolute;left:0;right:0;bottom:var(--palette-h);height:var(--ticker-h);background:rgba(14,18,48,.92);border-top:1px solid rgba(253,208,35,.25);overflow:hidden;display:flex;align-items:center}
 #ticker-track{position:absolute;left:0;top:0;height:var(--ticker-h);line-height:var(--ticker-h);white-space:nowrap;font-size:12px;color:var(--text);padding-left:10px;cursor:pointer;will-change:transform}
 #ticker-track:not(:empty)::before{content:"▸ ";color:var(--gold)}
@@ -232,8 +235,7 @@ input[type="range"]{width:180px;accent-color:var(--gold)}
 .title-foot{font:11px/1 var(--font-ui);letter-spacing:.1em;text-transform:uppercase;color:var(--text-dim);margin-top:6px}
 #app.title-on #panels .panel{z-index:11}
 
-/* ui_panels.js additions (ARCHITECTURE §7.7): Budget columns, the Storm wind pick-list, the
-   Almanac achievement grid — everything else reuses .row/.bar/.seg/.btn/.card-kicker above. */
+/* ui_panels.js (ARCH §7.7): Budget columns, Storm pick-list, Almanac grid; the rest reuses .row/.bar/.seg/.btn */
 .bud-grid{display:flex;gap:14px;margin-bottom:10px}
 .bud-col{flex:1 1 0;min-width:0}
 .bud-apps{font-size:11px;color:var(--text-dim);margin:4px 0 8px}
@@ -17346,7 +17348,8 @@ input[type="range"]{width:180px;accent-color:var(--gold)}
     lamp: { w: 24, h: 24, color: X.lampGlow, a: 0.95 }, window: { w: 8, h: 8, color: PAL.windowGlow, a: 0.9 },
     beacon: { w: 32, h: 32, color: PAL.gold, a: 0.8 }, blink: { w: 8, h: 8, color: PAL.danger, a: 1 }, arc: { w: 12, h: 12, color: PAL.waterBlue, a: 1 },
     glow: { w: 16, h: 16, color: PAL.gold, a: 0.85 }, pot: { w: 12, h: 12, color: X.ember, a: 0.9 }, fire: { w: 24, h: 24, color: X.ember, a: 0.95 },
-    firefly: { w: 4, h: 4, color: X.firefly, a: 1 }, eye: { w: 3, h: 3, color: PAL.danger, a: 1 }, mast: { w: 48, h: 96, color: X.white, a: 0.9, cone: true }
+    firefly: { w: 4, h: 4, color: X.firefly, a: 1 }, eye: { w: 3, h: 3, color: PAL.danger, a: 1 }, mast: { w: 48, h: 96, color: X.white, a: 0.9, cone: true },
+    canal: { w: 32, h: 32, color: X.glass, a: 0.85 }   // render_fx stretches it 2:1 over a dug canal tile at night
   };
   M.LIGHTS = LIGHTS;
   M.registerPainter('light', function (ctx, spec) {
@@ -18337,6 +18340,7 @@ input[type="range"]{width:180px;accent-color:var(--gold)}
   /** SCAFFOLD: 3 build-rise frames — foundation slab / half height / full height + lattice; no roof/windows */
   function drawScaffoldStage(P, g, row, frame) {
     const stage = ((frame % 3) + 3) % 3;
+    if (g.special === 'stadium') { stadiumSite(P, g, stage); return; }   // a graded field behind construction fencing, not a slab
     const slab = XB.slab;
     if (stage === 0) {
       P.diamond(g.bcx, g.bcy, g.bw, g.bh, slab, shade(slab, 0.7));
@@ -18347,6 +18351,98 @@ input[type="range"]{width:180px;accent-color:var(--gold)}
     const C = { left: shade(slab, 0.75), right: shade(slab, 0.9), leftHi: shade(slab, 1.1), rightHi: shade(slab, 1.15), leftRaw: slab, rightRaw: slab, out: shade(slab, 0.5), outR: shade(slab, 0.5) };
     drawBox(P, g, {}, { hgt: hgt, noTop: true, colors: C });
     if (stage === 2) { M.placeDecal(P, g, 'scaffold', 'side', 0); M.placeDecal(P, g, 'scaffold', 'left', 0); }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Stadium helpers: the footprint quad in iso (X along the long axis, Y across, in tiles; `up` px
+  // above the ground), filled stands, the field, the construction site. Shared by SPECIAL.stadium
+  // and the stadium's SCAFFOLD stages.
+  // ---------------------------------------------------------------------------
+  const STAD = Object.freeze({ turf: '#3F8F3B', turfDark: '#378238', dirt: '#8B6B4A', dirtDark: '#6E5236', sand: '#C2B280', riser: '#3A1F58' });
+  /** canvas px of footprint point (X, Y) lifted `up` px; (0, 0) is the ground quad's top corner, (fw, fh) its bottom */
+  function fpPt(g, X, Y, up) { return [Math.round(g.ax + (g.fh - g.fw + X - Y) * 32), Math.round(g.ay + 16 + (X + Y - g.fw - g.fh) * 16 - (up || 0) - g.lift)]; }
+  function fpPoly(P, g, pts, color) { fillPoly(P, pts.map(function (p) { return fpPt(g, p[0], p[1], p[2]); }), color); }
+  function fpLine(P, g, a, b, color) { const p = fpPt(g, a[0], a[1], a[2]), q = fpPt(g, b[0], b[1], b[2]); P.line(p[0], p[1], q[0], q[1], color); }
+  /**
+   * A tiered stand over the footprint rect r = {x0, x1, y0, y1}; `inner` names the field-side edge
+   * ('y1' | 'y0' | 'x1' | 'x0'); lifts hIn at the field edge, hOut at the back. When the field edge faces
+   * the camera (inner is a max edge) the treads and their risers show; otherwise the back wall and the
+   * rim do. Treads alternate purple/purple2 with gold trim; the +X / +Y end faces are always drawn.
+   */
+  function stadiumStand(P, g, r, inner, hIn, hOut, steps) {
+    const alongX = inner[0] === 'y', faces = inner[1] === '1';
+    const span = alongX ? r.y1 - r.y0 : r.x1 - r.x0, d = span / steps, dh = (hOut - hIn) / steps;
+    const innerC = faces ? (alongX ? r.y1 : r.x1) : (alongX ? r.y0 : r.x0), outerC = faces ? (alongX ? r.y0 : r.x0) : (alongX ? r.y1 : r.x1);
+    const dir = faces ? -1 : 1;
+    const quad = function (a, b, la, lb) { return alongX ? [[r.x0, a, la], [r.x1, a, la], [r.x1, b, lb], [r.x0, b, lb]] : [[a, r.y0, la], [a, r.y1, la], [b, r.y1, lb], [b, r.y0, lb]]; };
+    const liftAt = function (c) { return hIn + (hOut - hIn) * Math.abs(c - innerC) / span; };
+    // end faces toward the camera (+X face for stands along X, +Y face for stands along Y)
+    if (alongX) fpPoly(P, g, [[r.x1, r.y0, liftAt(r.y0)], [r.x1, r.y1, liftAt(r.y1)], [r.x1, r.y1, 0], [r.x1, r.y0, 0]], shade(PAL.purple, 0.72));
+    else fpPoly(P, g, [[r.x0, r.y1, liftAt(r.x0)], [r.x1, r.y1, liftAt(r.x1)], [r.x1, r.y1, 0], [r.x0, r.y1, 0]], shade(PAL.purple, 0.62));
+    if (!faces) {
+      // seen from behind: treads inner → outer (the higher, nearer ones overdraw), then the back wall + rim
+      for (let j = 0; j < steps; j++) { const a = innerC + dir * j * d, b = innerC + dir * (j + 1) * d, l = hIn + j * dh; fpPoly(P, g, quad(a, b, l, l), (j & 1) ? PAL.purple2 : PAL.purple); }
+      fpPoly(P, g, quad(outerC, outerC, 0, hOut), alongX ? shade(PAL.purple, 0.5) : shade(PAL.purple, 0.58));
+      // concourse slits on the wall
+      const n = Math.max(2, Math.round(span * 0 + (alongX ? (r.x1 - r.x0) : (r.y1 - r.y0)) * 2));
+      for (let k = 1; k < n; k++) { const t = k / n; const p = alongX ? fpPt(g, r.x0 + (r.x1 - r.x0) * t, outerC, hOut * 0.45) : fpPt(g, outerC, r.y0 + (r.y1 - r.y0) * t, hOut * 0.45); P.rect(p[0], p[1], 1, 3, shade(PAL.purple, 0.3)); }
+      if (alongX) fpLine(P, g, [r.x0, outerC, hOut], [r.x1, outerC, hOut], PAL.gold); else fpLine(P, g, [outerC, r.y0, hOut], [outerC, r.y1, hOut], PAL.gold);
+    } else {
+      // facing the camera: outer (high) → inner (low), each tread with its riser toward the field
+      for (let j = steps - 1; j >= 0; j--) {
+        const a = innerC + dir * j * d, b = innerC + dir * (j + 1) * d, l = hIn + j * dh;
+        fpPoly(P, g, quad(a, b, l, l), (j & 1) ? PAL.purple2 : PAL.purple);
+        fpPoly(P, g, quad(a, a, l, Math.max(0, l - dh)), STAD.riser);
+        if (j === steps - 1) { if (alongX) fpLine(P, g, [r.x0, b, l], [r.x1, b, l], PAL.gold); else fpLine(P, g, [b, r.y0, l], [b, r.y1, l], PAL.gold); }
+      }
+      if (alongX) fpLine(P, g, [r.x0, innerC, hIn], [r.x1, innerC, hIn], PAL.goldShadow); else fpLine(P, g, [innerC, r.y0, hIn], [innerC, r.y1, hIn], PAL.goldShadow);
+    }
+  }
+  /** the playing field: turf stripes, gold end zones, white yard lines, the BSU midfield mark (bare = turf only) */
+  function stadiumField(P, g, f, bare) {
+    const n = 8, ez = (f.x1 - f.x0) * 0.1;
+    for (let k = 0; k < n; k++) { const a = f.x0 + (f.x1 - f.x0) * k / n, b = f.x0 + (f.x1 - f.x0) * (k + 1) / n; fpPoly(P, g, [[a, f.y0, 0], [b, f.y0, 0], [b, f.y1, 0], [a, f.y1, 0]], (k & 1) ? STAD.turfDark : STAD.turf); }
+    if (bare) return;
+    fpPoly(P, g, [[f.x0, f.y0, 0], [f.x0 + ez, f.y0, 0], [f.x0 + ez, f.y1, 0], [f.x0, f.y1, 0]], PAL.gold);
+    fpPoly(P, g, [[f.x1 - ez, f.y0, 0], [f.x1, f.y0, 0], [f.x1, f.y1, 0], [f.x1 - ez, f.y1, 0]], PAL.gold);
+    for (let k = 0; k <= 10; k++) { const x = f.x0 + ez + (f.x1 - f.x0 - 2 * ez) * k / 10; fpLine(P, g, [x, f.y0, 0], [x, f.y1, 0], X.white); }
+    fpLine(P, g, [f.x0, f.y0, 0], [f.x1, f.y0, 0], X.white); fpLine(P, g, [f.x0, f.y1, 0], [f.x1, f.y1, 0], X.white);
+    const m = fpPt(g, (f.x0 + f.x1) / 2, (f.y0 + f.y1) / 2, 0); P.ellipse(m[0], m[1], 8, 4, PAL.purple); P.text('BSU', m[0] - 5, m[1] - 2, PAL.gold);
+  }
+  /** tier II scoreboard: 28×12, BSU · score · a gold clock bar */
+  function stadiumScoreboard(P, x, y, night, frame) {
+    P.rect(x, y, 28, 12, X.black); P.hline(x, y, 28, PAL.gold); P.hline(x, y + 11, 28, PAL.goldShadow); P.vline(x, y, 12, PAL.gold); P.vline(x + 27, y, 12, PAL.goldShadow);
+    P.text('BSU', x + 2, y + 2, PAL.gold); P.text('0-0', x + 15, y + 2, night ? X.white : X.offWhite);
+    P.hline(x + 2, y + 8, 24, shade(PAL.goldShadow, 0.7)); P.hline(x + 2, y + 8, 6 + ((frame | 0) % 4) * 4, night ? PAL.goldHi : PAL.gold);
+  }
+  /** the construction site (SCAFFOLD frames 0–2 and tier 0): graded dirt, fencing, then footings and turf, then the steel frames */
+  function stadiumSite(P, g, stage) {
+    const fw = g.fw, fh = g.fh, seed = g.seed | 0;
+    const inset = 0.12;
+    fpPoly(P, g, [[inset, inset, 0], [fw - inset, inset, 0], [fw - inset, fh - inset, 0], [inset, fh - inset, 0]], STAD.dirt);
+    for (let k = 1; k < fh * 2; k++) fpLine(P, g, [inset + 0.2, k / 2, 0], [fw - inset - 0.2, k / 2, 0], STAD.dirtDark);   // dozer tracks
+    for (let k = 0; k < 6; k++) { const p = fpPt(g, 0.5 + (hash(seed, 11 + k) % 100) / 100 * (fw - 1), 0.5 + (hash(seed, 31 + k) % 100) / 100 * (fh - 1), 0); P.ellipse(p[0], p[1] - 1, 4, 2, STAD.sand); P.ellipse(p[0], p[1] - 2, 2, 1, shade(STAD.sand, 1.15)); }
+    const field = { x0: 1.0, x1: fw - 1.0, y0: 1.0, y1: fh - 1.0 };
+    if (stage >= 1) {
+      stadiumField(P, g, field, stage < 2);
+      // footings for the stands along both long sides
+      for (let k = 0; k < 8; k++) { const X = 1.1 + (fw - 2.2) * k / 7; for (const Y of [0.5, fh - 0.5]) { const p = fpPt(g, X, Y, 0); P.rect(p[0] - 1, p[1] - 3, 3, 3, X.concrete); P.hline(p[0] - 1, p[1] - 1, 3, shade(X.concrete, 0.7)); } }
+    }
+    if (stage >= 2) {
+      // steel bleacher frames (the stand profiles) and two unlit masts
+      for (const Y of [0.5, fh - 0.5]) { fpLine(P, g, [1.0, Y, 12], [fw - 1.0, Y, 12], X.steel); fpLine(P, g, [1.0, Y, 6], [fw - 1.0, Y, 6], X.steelDark); for (let k = 0; k < 8; k++) { const X = 1.0 + (fw - 2) * k / 7; fpLine(P, g, [X, Y, 0], [X, Y, 12], X.steelDark); } }
+      for (const X of [1.0, fw - 1.0]) { const p = fpPt(g, X, 0.1, 0); decalAt(P, 'masts', p[0] - 3, p[1] - 40, 0, seed + (X | 0)); }
+    }
+    // construction fencing on the footprint boundary: posts every half tile, two rails, the orange gate
+    const fence = function (a, b, front) {
+      const n = Math.round(Math.hypot(b[0] - a[0], b[1] - a[1]) * 2);
+      for (let k = 0; k <= n; k++) { const t = k / n; const p = fpPt(g, a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, 0); P.rect(p[0], p[1] - 7, 1, 7, X.steelDark); P.px(p[0], p[1] - 7, X.chain); }
+      fpLine(P, g, [a[0], a[1], 6], [b[0], b[1], 6], X.chain); fpLine(P, g, [a[0], a[1], 3], [b[0], b[1], 3], shade(X.chain, 0.75));
+      if (front) { const m = fpPt(g, (a[0] + b[0]) / 2, (a[1] + b[1]) / 2, 0); P.rect(m[0] - 3, m[1] - 6, 6, 4, X.tigerOrange); P.hline(m[0] - 3, m[1] - 5, 6, X.white); }
+    };
+    const e = 0.05;
+    fence([e, e], [fw - e, e], false); fence([e, e], [e, fh - e], false);
+    fence([fw - e, e], [fw - e, fh - e], false); fence([e, fh - e], [fw - e, fh - e], true);
   }
 
   // ---------------------------------------------------------------------------
@@ -18411,37 +18507,60 @@ input[type="range"]{width:180px;accent-color:var(--gold)}
       }
     },
     stadium(ctx, P, g, row, variant, frame) {
-      const cx = g.bcx, cy = g.bcy, w = g.bw, h = g.bh;
-      if (g.tier <= 0) {
-        // unbuilt: a plausible box only — walls + a flat cap, none of the bowl/masts/letters dressing
-        drawBox(P, g, row.paint, { seed: g.seed });
-        drawDoor(P, g, PAL.gold);
-        ROOF.flat(P, g, (row.paint && row.paint.wall && row.paint.wall[1]) || PAL.purple);
+      // Drawn on the true iso footprint quad (fpPt) back to front: tier I = two long-side bleachers
+      // and four corner masts; II = the full bowl, six masts, a scoreboard and CAULDRON on the near
+      // wall; III = an upper deck, the jumbotron and the gold crown. Tier 0 is the graded site.
+      void ctx; void row;
+      const night = !!(variant & SPR.NIGHT);
+      const fw = g.fw, fh = g.fh;
+      if (g.tier <= 0) { stadiumSite(P, g, 2); return; }
+      const field = { x0: 1.0, x1: fw - 1.0, y0: 1.0, y1: fh - 1.0 };
+      const lit = night ? 1 : 0;
+      const mast = function (X, Y, up) { const p = fpPt(g, X, Y, up); decalAt(P, 'masts', p[0] - 3, p[1] - 40, lit, g.seed + ((X * 7 + Y * 3) | 0)); if (night) { P.px(p[0] - 1, p[1] - 41, PAL.goldHi); P.px(p[0] + 4, p[1] - 41, PAL.goldHi); } };
+      if (g.tier === 1) {
+        const hIn = 3, hOut = 14, steps = 4;
+        stadiumField(P, g, field, false);
+        // far bleachers (field edge faces the camera: treads + risers), then the near ones (back wall + rim)
+        stadiumStand(P, g, { x0: 1.0, x1: fw - 1.0, y0: 0.1, y1: 1.0 }, 'y1', hIn, hOut, steps);
+        mast(1.0, 0.1, hOut); mast(fw - 1.0, 0.1, hOut);
+        stadiumStand(P, g, { x0: 1.0, x1: fw - 1.0, y0: fh - 1.0, y1: fh - 0.1 }, 'y0', hIn, hOut, steps);
+        mast(1.0, fh - 0.1, hOut); mast(fw - 1.0, fh - 0.1, hOut);
+        // ticket booth at the near-left corner
+        const tb = fpPt(g, 0.5, fh - 0.5, 0); P.rect(tb[0] - 4, tb[1] - 9, 8, 7, PAL.purple); P.rect(tb[0] - 5, tb[1] - 11, 10, 2, PAL.gold); P.rect(tb[0] - 1, tb[1] - 6, 2, 4, PAL.goldHi);
         return;
       }
-      const standColor = (row.paint && row.paint.wall && row.paint.wall[0]) || X.concrete;
-      walls(P, cx, cy, w, h, g.wallH, (x, yb, left) => left ? shade(standColor, 0.8) : shade(standColor, 0.92));
-      for (let x = cx - (w >> 1); x < cx + (w >> 1); x++) P.px(x, baseY(cx, cy, w, h, x), shade(standColor, 0.5));
-      const br = g.bowlRect;
-      if (g.tier === 1) {
-        for (let r = 0; r < g.wallH; r += 6) P.hline(cx - (w >> 1), cy - g.wallH + r, w, shade(standColor, 0.6 + 0.05 * (r % 2)));
-        decalAt(P, 'masts', cx - (w >> 1) - 4, cy - g.wallH - 40, 0, g.seed);
-        decalAt(P, 'masts', cx + (w >> 1) - 2, cy - g.wallH - 40, 1, g.seed + 1);
-        P.diamond(cx, cy - g.wallH, w >> 1, h >> 1, PAL.gold);
-      } else {
-        const rx = br ? br.w / 2 : w * 0.36, ry0 = br ? br.h / 2 : h * 0.36;
-        const bcy2 = cy - g.wallH - 6;
-        const ring = g.tier === 3 ? [PAL.purple, PAL.purple2, PAL.purpleHi] : [PAL.purple];
-        for (let i = 0; i < ring.length; i++) {
-          P.ellipse(cx, bcy2 - i * 8, Math.max(2, rx - i * 4), Math.max(1, ry0), ring[i]);
-          P.ellipse(cx, bcy2 - i * 8, Math.max(1, rx - i * 4 - 2), Math.max(1, ry0 - 2), shade(ring[i], 0.85));
+      const upper = g.tier === 3;
+      const hIn = 3, hOut = upper ? 18 : 22, steps = 5;
+      const hTop = upper ? 36 : hOut;
+      stadiumField(P, g, field, false);
+      // the bowl, back to front: far side, left end, right end, near side (each stand covers its corners)
+      stadiumStand(P, g, { x0: 0.1, x1: fw - 0.1, y0: 0.1, y1: 1.0 }, 'y1', hIn, hOut, steps);
+      stadiumStand(P, g, { x0: 0.1, x1: 1.0, y0: 1.0, y1: fh - 1.0 }, 'x1', hIn, hOut, steps);
+      stadiumStand(P, g, { x0: fw - 1.0, x1: fw - 0.1, y0: 1.0, y1: fh - 1.0 }, 'x0', hIn, hOut, steps);
+      stadiumStand(P, g, { x0: 0.1, x1: fw - 0.1, y0: fh - 1.0, y1: fh - 0.1 }, 'y0', hIn, hOut, steps);
+      if (upper) {
+        // upper deck: the outer 45 % of every stand, lifted over the lower bowl's rim
+        const uIn = hOut + 2, uOut = hTop, us = 3;
+        stadiumStand(P, g, { x0: 0.1, x1: fw - 0.1, y0: 0.1, y1: 0.5 }, 'y1', uIn, uOut, us);
+        stadiumStand(P, g, { x0: 0.1, x1: 0.5, y0: 0.5, y1: fh - 0.5 }, 'x1', uIn, uOut, us);
+        stadiumStand(P, g, { x0: fw - 0.5, x1: fw - 0.1, y0: 0.5, y1: fh - 0.5 }, 'x0', uIn, uOut, us);
+        stadiumStand(P, g, { x0: 0.1, x1: fw - 0.1, y0: fh - 0.5, y1: fh - 0.1 }, 'y0', uIn, uOut, us);
+        // the gold crown: lights along the outer rim (brighter at night, chasing with the frame)
+        const rim = [[0.1, 0.1], [fw - 0.1, 0.1], [fw - 0.1, fh - 0.1], [0.1, fh - 0.1], [0.1, 0.1]];
+        for (let e = 0; e < 4; e++) {
+          const a = rim[e], b = rim[e + 1], n = 14;
+          for (let k = 0; k <= n; k++) { const p = fpPt(g, a[0] + (b[0] - a[0]) * k / n, a[1] + (b[1] - a[1]) * k / n, hTop + 1); const on = !night || ((k + frame) % 3) !== 0; P.px(p[0], p[1], on ? PAL.goldHi : PAL.gold); if (night && on) P.px(p[0], p[1] - 1, X.white); }
         }
-        P.hline(cx - rx, bcy2 - ring.length * 8, 2 * rx, PAL.gold);
-        for (let i = 0; i < 6; i++) decalAt(P, 'masts', cx - rx + i * (2 * rx / 6), bcy2 - 40, i % 2, g.seed + i);
-        decalAt(P, 'letters', cx - 16, bcy2 + ry0 - 4, 0, g.seed);
-        if (g.tier === 3) decalAt(P, 'jumbotron', cx - 12, bcy2 - ry0 - 20, frame % 4, g.seed);
       }
-      // masts/letters/jumbotron are already placed above by tier; nothing else is in stadium's decal list
+      // six masts on the rims (the far three stand behind the bowl's top edge)
+      for (const X of [0.3, fw / 2, fw - 0.3]) mast(X, 0.1, hTop);
+      for (const X of [0.3, fw / 2, fw - 0.3]) mast(X, fh - 0.1, hTop);
+      // CAULDRON on the near wall, the scoreboard (II) / jumbotron (III) over the far end
+      const lc = fpPt(g, fw / 2, fh - 0.1, hTop / 2); decalAt(P, 'letters', lc[0] - 16, lc[1] - 4, 0, g.seed);
+      const sb = fpPt(g, 0.5, fh / 2, hTop);
+      P.rect(sb[0] - 1, sb[1] - 12, 2, 12, X.steel); P.vline(sb[0], sb[1] - 12, 12, X.steelDark);
+      if (upper) decalAt(P, 'jumbotron', sb[0] - 12, sb[1] - 28, frame % 4, g.seed);
+      else stadiumScoreboard(P, sb[0] - 14, sb[1] - 24, night, frame);
     },
     quad(ctx, P, g, row, variant, frame) {
       const cx = g.gcx, cy = g.gcy;
@@ -18592,6 +18711,7 @@ input[type="range"]{width:180px;accent-color:var(--gold)}
     else if (id === 'preserve') src = M.get('preservePost', 5, 0, 1);
     else if (id === 'live_oak') src = M.get('oak', 2, 0, 1);
     else if (id === 'pilings') { src = M.get('dorm', SPR.PILINGS, 0, 1); scale = 0.5; }
+    else if (id === 'stadium') src = M.get('stadium', 1 << SPR.TIER_SHIFT, 0, 1);   // tier 0 is the construction site; the palette shows tier I
     else src = M.get(id, 0, 0, 1);
     if (src && src.canvas) {
       const S = dims.S;
@@ -19677,6 +19797,7 @@ input[type="range"]{width:180px;accent-color:var(--gold)}
   // Private state (closure; rebuilt in reset). D46: nothing on M mirrors sim state.
   // ---------------------------------------------------------------------------
   let root = null, camera = null;
+  let followVehicle = null;   // predicate(vehicle, state) → the camera tracks the first matching state.vehicles entry (progress: the lead pirogue)
   let app = null, canvas = null, ctx = null, inited = false;
   let vw = 1280, vh = 720, dpr = 1, lastRectW = -1, lastRectH = -1;
   const comp = { tint: null, lights: null, fog: null };
@@ -20039,7 +20160,7 @@ input[type="range"]{width:180px;accent-color:var(--gold)}
     if (!camera) return;
     byUser = byUser !== false;
     panByCam(camera, dx, dy);
-    if (byUser) { camera.follow = -1; if (root && root.setPiece) M.captureCameraTouch(root); if (M.titleDrift) M.titleDrift = false; }
+    if (byUser) { camera.follow = -1; followVehicle = null; if (root && root.setPiece) M.captureCameraTouch(root); if (M.titleDrift) M.titleDrift = false; }
     markMoved(byUser);
   };
   /** pan to world px (zoom-1), eased or snapped */
@@ -20059,6 +20180,8 @@ input[type="range"]{width:180px;accent-color:var(--gold)}
   M.zoomStep = function (dir, anchorPx) { if (!camera) return; const k = ZOOMS.indexOf(camera.zoom); const nk = clamp((k < 0 ? 1 : k) + (dir < 0 ? -1 : 1), 0, ZOOMS.length - 1); M.setZoom(ZOOMS[nk], anchorPx); };
   /** follow an agent id each frame (−1 releases; a user pan releases too) */
   M.follow = function (agentId) { if (camera) camera.follow = Number.isFinite(agentId) ? agentId | 0 : -1; };
+  /** follow the first state.vehicles entry matching pred(v, state) each frame (null releases; a user pan releases too; releases itself when nothing matches) */
+  M.followVehicle = function (pred) { followVehicle = typeof pred === 'function' ? pred : null; };
   /** screen shake for ms (ignored when settings.shake is off) */
   M.shake = function (ms, px) { if (!Number.isFinite(ms)) { rerr('shake', new Error('non-finite ms')); return; } if (root && root.ui && root.ui.settings && root.ui.settings.shake === false) return; shakeUntil = nowMs() + Math.max(0, ms); shakePx = fin(px, PR.shakePx || 6); };
   /** pause ticks for ms (presentation juice; never in headless) */
@@ -20677,6 +20800,12 @@ input[type="range"]{width:180px;accent-color:var(--gold)}
     const cam = camera;
     clampCam(cam);
     // follow
+    if (followVehicle && Array.isArray(state.vehicles)) {
+      let v = null;
+      try { for (let k = 0; k < state.vehicles.length; k++) { const q = state.vehicles[k]; if (q && followVehicle(q, state)) { v = q; break; } } } catch (e) { followVehicle = null; rerr('followVehicle', e); }
+      if (v) { const vx = fin(v.tx, 0), vy = fin(v.ty, 0); M.panTo((vx - vy) * 32, (vx + vy - 1) * 16 - elevAt(clamp(Math.floor(vx), 0, W - 1), clamp(Math.floor(vy), 0, HGT - 1)) * PXFT, true); }
+      else followVehicle = null;
+    }
     if (cam.follow >= 0 && Array.isArray(state.agents)) {
       const a = state.agents[cam.follow];
       if (a && a.state !== 'GONE') { const wx = (fin(a.tx, 0) - fin(a.ty, 0)) * 32, wy = (fin(a.tx, 0) + fin(a.ty, 0) - 1) * 16 - elevAt(clamp(Math.floor(a.tx), 0, W - 1), clamp(Math.floor(a.ty), 0, HGT - 1)) * PXFT; M.panTo(wx, wy, true); }
@@ -20751,7 +20880,7 @@ input[type="range"]{width:180px;accent-color:var(--gold)}
     root = state;
     const ui = state.ui || (state.ui = {});
     if (!ui.camera || typeof ui.camera !== 'object') ui.camera = { x: 0, y: 1024, zoom: 1, tx: 0, ty: 0, follow: -1 };
-    camera = ui.camera;
+    camera = ui.camera; followVehicle = null;
     camera.hasTarget = false; if (!Number.isFinite(camera.follow)) camera.follow = -1;
     clampCam(camera);
     zoomNow = camera.zoom;
@@ -21025,7 +21154,7 @@ input[type="range"]{width:180px;accent-color:var(--gold)}
   let frameNo = 0, lastFrameNo = -1;
   const overtop = new Map();   // tile → frames left of trickle
   const lightRefs = {};        // kind → SpriteRef (refreshed per frame)
-  const LIGHT_KINDS = ['lamp', 'window', 'mast', 'beacon', 'blink', 'arc', 'glow', 'pot', 'fire', 'firefly', 'eye'];
+  const LIGHT_KINDS = ['lamp', 'window', 'mast', 'beacon', 'blink', 'arc', 'glow', 'pot', 'fire', 'firefly', 'eye', 'canal'];
   const LMAX = PR.lightsMax || 250;
   const lightsList = []; for (let k = 0; k < LMAX + 8; k++) lightsList.push({ kind: 'lamp', x: 0, y: 0, r: 1, a: 1, rot: 0, d: 0 });
   let lightsN = 0;
@@ -21363,6 +21492,19 @@ input[type="range"]{width:180px;accent-color:var(--gold)}
       const lamps = te && typeof te.streetlamps === 'function' ? te.streetlamps(state) : null;
       if (lamps && lamps.length) for (let k = 0; k < lamps.length && lightsN < LMAX; k++) { const i = lamps[k] | 0; const tx = i & 63, ty = i >> 6; if (tx < view.x0 - 1 || tx > view.x1 + 1 || ty < view.y0 - 1 || ty > view.y1 + 1) continue; const p = R.tilePx(i); if (inScreen(p.x, p.y)) pushLight('lamp', p.x, p.y - 14 * z, 1, 0.95, 0); }
     } catch (e) { /* no terrain */ }
+    // dug canals: a cool water highlight on every visible CANAL tile so the cut (and the canal objective, which
+    // can be offered after Dusk) reads at night — ≤ 64 per frame, nearest-first like everything else
+    try {
+      const fl = state.tiles && state.tiles.flags;
+      if (fl && FLAG.CANAL) {
+        let n = 0;
+        for (let ty = Math.max(0, view.y0 | 0); ty <= Math.min(HGT - 1, view.y1 | 0) && n < 64; ty++) for (let tx = Math.max(0, view.x0 | 0); tx <= Math.min(W - 1, view.x1 | 0) && n < 64; tx++) {
+          const i = ty * W + tx; if (!(fl[i] & FLAG.CANAL)) continue;
+          const p = R.tilePx(i); if (!inScreen(p.x, p.y)) continue;
+          pushLight('canal', p.x, p.y, 1, 0.6 + 0.12 * Math.sin(frameNo * 0.06 + tx * 1.7 + ty * 0.9), 0); n++;
+        }
+      }
+    } catch (e) { /* no terrain */ }
     if (Array.isArray(list)) {
       for (let k = 0; k < list.length && lightsN < LMAX; k++) {
         const e = list[k]; if (!e) continue;
@@ -21414,6 +21556,7 @@ input[type="range"]{width:180px;accent-color:var(--gold)}
         if (L.kind === 'mast') { lg.save(); lg.translate(L.x, L.y); lg.rotate(L.rot); lg.globalAlpha = L.a; lg.drawImage(ref.canvas, ref.sx, ref.sy, ref.sw, ref.sh, -w / 2, 0, w, h); lg.restore(); continue; }
         if (L.kind === 'lamp') { drawRef(lg, ref, L.x, L.y + 10 * z, w * 3.2, h * 1.6, L.a * 0.55); drawRef(lg, ref, L.x, L.y, w, h, L.a); continue; }   // pool on the ground + the core
         if (L.kind === 'window') { drawRef(lg, ref, L.x, L.y + 16 * z, w * 2.2, h * 1.2, L.a * 0.35); drawRef(lg, ref, L.x, L.y, w, h, L.a); continue; }
+        if (L.kind === 'canal') { drawRef(lg, ref, L.x, L.y, w * 2.3, h * 1.15, L.a); continue; }   // stretched 2:1 over the tile diamond
         drawRef(lg, ref, L.x, L.y, w, h, L.a);
       }
       // fireflies: blink via sin on life; drawn from the pool (they are also 1-px world particles)
@@ -23148,7 +23291,9 @@ input[type="range"]{width:180px;accent-color:var(--gold)}
     const d = call('weather', 'date', s) || { str: BSU.formatDate(dayOf(s)), season: s.calendar ? s.calendar.season : '' };
     const season = d.season ? d.season[0].toUpperCase() + d.season.slice(1) : '';
     setText(E['stat-date-text'], (d.str || '') + (season ? ' · ' + season : ''));
-    const ph = clamp(fin(s.sky && s.sky.phase, SKY.DAY), 0, 4); setText(E['sky-glyph'], SKY_GLYPH[ph]); E['sky-glyph'].title = SKY_NAME[ph];
+    const ph = clamp(fin(s.sky && s.sky.phase, SKY.DAY), 0, 4);
+    const stm = call('weather', 'storm', s); const sph = (stm && !stm.nearMiss) ? fin(stm.phase, 0) : 0;   // the storm owns the glyph from the outer bands through landfall
+    setText(E['sky-glyph'], sph === STORM.LANDFALL ? '🌀' : sph === STORM.BANDS ? '⛈' : SKY_GLYPH[ph]); E['sky-glyph'].title = sph === STORM.LANDFALL ? 'Landfall' : sph === STORM.BANDS ? 'Outer bands' : SKY_NAME[ph];
     // weather chip
     const heat = call('weather', 'heat', s) || { index: fin(s.weather && s.weather.heat, 70), advisory: false }; const river = call('weather', 'riverStage', s) || { river: 0, window: false };
     let rainTmrw = false; try { const rd = s.weather && s.weather.rainDays; if (Array.isArray(rd)) { const tm = dayOf(s) + 1; rainTmrw = rd.some(function (r) { return r === tm || (r && r.day === tm); }); } } catch (err) { rainTmrw = false; }
@@ -23286,6 +23431,7 @@ input[type="range"]{width:180px;accent-color:var(--gold)}
     sec('queue', drainQueue, state, dtMs);
     sec('pan', heldPan, state, dtMs);
     sec('topbar', updateTopbar, state, dtMs);
+    sec('scorebug', function (s) { if (typeof M.scoreBug === 'function') M.scoreBug(s); }, state, dtMs);   // ui_panels' live score bug (hidden when no game)
     sec('alert', updateAlert, state, dtMs);
     sec('objective', updateObjective, state, dtMs);
     sec('notifs', updateNotifs, state, dtMs);
@@ -23751,6 +23897,9 @@ input[type="range"]{width:180px;accent-color:var(--gold)}
     host.appendChild(el('div', 'panel-title', 'Season'));
     host._schedule = el('div'); host._schedule.id = 'sea-schedule'; host.appendChild(host._schedule);
     host._next = el('div', 'row'); host._next.id = 'sea-next'; host.appendChild(host._next);
+    // the venue row sits above the fold (the rating table below it is long): the Upgrade button is the panel's one build action
+    host._upgrade = btn('btn-upgrade', 'Upgrade', 'small', function () { doUpgrade(host); });
+    const venue = el('div', 'row'); venue.id = 'sea-venue'; host._venue = el('span', 'k', 'Venue'); venue.appendChild(host._venue); const vv = el('span', 'v'); vv.appendChild(host._upgrade); venue.appendChild(vv); host.appendChild(venue);
     host.appendChild(el('div', 'card-kicker', 'Team rating'));
     host._rating = el('div'); host._rating.id = 'sea-rating'; host.appendChild(host._rating);
 
@@ -23772,8 +23921,6 @@ input[type="range"]{width:180px;accent-color:var(--gold)}
     host._autosim = btn('chk-autosim', 'Off', 'toggle', function () { const s = stateFor(host); call('sports', 'setAutoSim', s, !(s.sports && s.sports.autoSim)); refreshSeason(s, host); }); rowEl('Auto-sim home games', host._autosim);
     const segP = el('div', 'seg'); segP.id = 'seg-permits'; ['Paid', 'Free'].forEach(function (lab, k) { const v = k === 0 ? 'paid' : 'free'; const b = btn(null, lab, 'seg-btn', function () { call('sports', 'setPermits', stateFor(host), v); refreshSeason(stateFor(host), host); }); b.dataset.v = v; segP.appendChild(b); }); host._permits = segP; rowEl('Tailgate permits', segP);
     const segH = el('div', 'seg'); segH.id = 'seg-homecoming'; [0, 50000, 150000].forEach(function (v) { const b = btn(null, v === 0 ? '$0' : money(v), 'seg-btn', function () { const r = call('sports', 'setHomecomingBudget', stateFor(host), v); if (r && r.ok === false) notify(stateFor(host), r.reason); refreshSeason(stateFor(host), host); }); b.dataset.v = String(v); segH.appendChild(b); }); host._homecoming = segH; rowEl('Homecoming budget', segH);
-
-    host._upgrade = btn('btn-upgrade', 'Upgrade', 'small', function () { doUpgrade(host); }); host.appendChild(host._upgrade);
 
     const bug = el('div', 'row'); bug.id = 'score-bug'; show(bug, false); host.appendChild(bug); host._bug = bug;
   }
@@ -23865,14 +24012,56 @@ input[type="range"]{width:180px;accent-color:var(--gold)}
     const hb = fin(s.sports && s.sports.homecomingBudget, 0); for (const b of host._homecoming.children) cls(b, 'active', Number(b.dataset.v) === hb);
 
     const up2 = upgradeLabel(s); setText(host._upgrade, up2.label); host._upgrade.disabled = !!up2.disabled;
+    setText(host._venue, 'Venue · ' + venueName(s));
 
     if (s.sports && s.sports.game) {
       show(host._bug, true); const g = s.sports.game;
       const opp = (BSU.data && BSU.data.opponents && BSU.data.opponents[g.opp]) || { name: g.opp };
-      setText(host._bug, 'BSU ' + fin(g.scores && g.scores[0], 0) + ' – ' + fin(g.scores && g.scores[1], 0) + ' ' + opp.name + ' · Q' + fin(g.quarter, 0));
+      const pts = gamePoints(g);
+      setText(host._bug, 'BSU ' + pts[0] + ' – ' + pts[1] + ' ' + opp.name + ' · ' + gameClock(s, g));
     } else show(host._bug, false);
   }
-  UI.scoreBug = function (state) { const host = UI.el && UI.el['panel-season']; if (host) refreshSeason(state, host); };
+  /** the current venue's tier name (Stadium over Practice Field) */
+  function venueName(s) {
+    const st = call('buildings', 'list', s, 'stadium') || [], pf = call('buildings', 'list', s, 'practice_field') || [];
+    const pick = function (list, id) { const b = list[0]; if (!b) return ''; const row = rowOf(id) || {}; const t = (row.tiers || []).find(function (q) { return q.tier === fin(b.tier, 0); }); return t ? t.name : (row.name || id); };
+    return pick(st, 'stadium') || pick(pf, 'practice_field') || 'none yet';
+  }
+  /** [BSU points, opponent points] for a game struct (sports keeps homePts/awayPts by venue side) */
+  function gamePoints(g) { const h = fin(g.homePts, 0), a = fin(g.awayPts, 0); return g.home ? [h, a] : [a, h]; }
+  /** the score bug's clock: Kickoff → Qn · m:ss (15:00 per quarter over params.sports.quarterTicks) → Halftime → Final */
+  function gameClock(s, g) {
+    if (g.finalized) return 'Final';
+    if (!g.kickedOff || fin(g.quarter, 0) < 1) return 'Kickoff';
+    if (fin(g.halftimeOpenedTick, -1) >= 0 && !g.halftimeAnswered) return 'Halftime';
+    const sp = s.setPiece, t = (sp && sp.kind === 'game') ? fin(sp.tick, 0) : 0;
+    const k0 = fin(PSP.kickoffTick, 200), qt = Math.max(1, fin(PSP.quarterTicks, 100));
+    const frac = t > k0 ? ((t - k0) % qt) / qt : 0;
+    const secs = Math.max(0, Math.round(900 * (1 - frac)));
+    return 'Q' + clamp(int(g.quarter, 1), 1, 4) + ' · ' + Math.floor(secs / 60) + ':' + (secs % 60 < 10 ? '0' : '') + (secs % 60);
+  }
+  // The HUD score bug (#score-bug-hud, under the topbar's left end): built lazily on the first home game,
+  // refreshed by ui.update every frame while state.sports.game is set, hidden otherwise.
+  let hudBug = null;
+  function ensureHudBug() {
+    if (hudBug) return hudBug;
+    const hud = UI.el && UI.el.hud; if (!hud) return null;
+    hudBug = el('div', 'hidden'); hudBug.id = 'score-bug-hud';
+    const home = el('span', 'sb-team', 'BSU'), sc = el('span', 'sb-score', ''), away = el('span', 'sb-team', ''), clk = el('span', 'sb-clock', '');
+    hudBug.appendChild(home); hudBug.appendChild(sc); hudBug.appendChild(away); hudBug.appendChild(clk);
+    hudBug._p = { home: home, sc: sc, away: away, clk: clk };
+    hud.appendChild(hudBug); UI.el['score-bug-hud'] = hudBug;
+    return hudBug;
+  }
+  UI.scoreBug = function (state) {
+    const g = state && state.sports && state.sports.game;
+    const b = ensureHudBug(); if (!b) return;
+    if (!g || !g.home) { if (!b.classList.contains('hidden')) { show(b, false); cls(UI.el.hud, 'scorebug', false); } return; }
+    if (b.classList.contains('hidden')) { show(b, true); cls(UI.el.hud, 'scorebug', true); }
+    const opp = (BSU.data && BSU.data.opponents && BSU.data.opponents[g.opp]) || { name: g.opp };
+    const pts = gamePoints(g);
+    setText(b._p.sc, pts[0] + ' – ' + pts[1]); setText(b._p.away, String(opp.name || g.opp || '').toUpperCase()); setText(b._p.clk, gameClock(state, g));
+  };
   UI.registerPanel('season', { build: buildSeason, refresh: refreshSeason, events: ['game:scheduled', 'game:kickoff', 'game:score', 'game:halftime', 'game:final', 'season:end', 'coach:changed', 'building:complete', 'building:upgraded'] });
   // ui.js does not call scoreBug itself (left to this module, D-note below): keep the bug live
   // every frame while a game is on by piggy-backing on the same events the panel listens to.
@@ -25301,7 +25490,8 @@ input[type="range"]{width:180px;accent-color:var(--gold)}
       awaitFounding: false, parade: null, paradeWanted: NONE, gradWanted: NONE, gradStartTick: NONE, lastGraduates: 0,
       lastSky: NONE, trig: {}, warning: null, unlockSet: null, unlockDay: NONE, nearest: null, nearestDay: NONE,
       relocCount: {}, relocMonth: NONE, burrowAlt: false, shelterOk: true, lastReport: null, lastStormCat: 0, lastStormName: '',
-      stockedSeen: 0, offeredThisTick: false, zydecoDay: NONE, heatDay: NONE, desireDay: NONE, obj11Text: '', firstGatorTile: NONE, worstMosqTile: NONE,
+      stockedSeen: 0, offeredThisTick: false, zydecoDay: NONE, heatDay: NONE, desireDay: NONE, desirePending: null, desireRuns: 0, obj11Text: '', firstGatorTile: NONE, worstMosqTile: NONE,
+      foundingIds: null, foundingAdded: 0,
       lastGatorEnterDay: NONE, receiverTick: NONE
     };
   }
@@ -26183,7 +26373,7 @@ input[type="range"]{width:180px;accent-color:var(--gold)}
       case '1': ui(state, 'lockTool', false); M.achieve(state, 'chartered'); if (!p.hints.hudShown) { p.hints.hudShown = true; ui(state, 'hint', 'hudShown'); } enterStage(state, 3); break;
       case '2': {
         call('weather', 'setRunning', state, true);
-        if (has('agents', 'spawnArrival')) { const c2 = ctx(state); c2.awaitFounding = true; c2.foundingDeadline = fin(state.tick, 0) + 600; call('agents', 'spawnArrival', state, 120, 'founding'); }
+        if (has('agents', 'spawnArrival')) { const c2 = ctx(state); c2.awaitFounding = true; c2.foundingDeadline = fin(state.tick, 0) + 600; call('agents', 'spawnArrival', state, FOUNDING, 'founding'); foundingLaunched(state, c2); }
         else foundingArrived(state);
         enterStage(state, 4);
         break;
@@ -26194,11 +26384,44 @@ input[type="range"]{width:180px;accent-color:var(--gold)}
       default: break;
     }
   }
+  const FOUNDING = 120;   // the founding cohort (GDD §2.4)
+  /** the pirogues are away: remember who is aboard (the Students stat counts up as they step ashore), pan to the Landing and follow the lead pirogue */
+  function foundingLaunched(state, c) {
+    c.foundingIds = (state.agents || []).filter(function (a) { return a && a.aboard && a.arrival; }).map(function (a) { return a.id; });
+    c.foundingAdded = 0;
+    const L = fin(state.plot && state.plot.landing, NONE);
+    if (L >= 0) call('render', 'panToTile', L % W, (L / W) | 0, true);
+    call('render', 'followVehicle', function (v) { return !!(v && v.kind === 'pirogue' && v.arrival && v.state === 'GO'); });
+  }
+  /** ≤ 4 students per tick toward the share of the cohort already ashore (the rest lands with agent:arrive) */
+  function foundingCountUp(state, c) {
+    const A = state.agents || []; let ashore = 0;
+    for (let k = 0; k < c.foundingIds.length; k++) { const a = A[c.foundingIds[k]]; if (a && !a.aboard) ashore++; }
+    const target = Math.round(FOUNDING * ashore / c.foundingIds.length);
+    const step = Math.min(4, target - c.foundingAdded);
+    if (step > 0) { c.foundingAdded += step; call('economy', 'addStudents', state, step, 'founding'); }
+  }
+  const DESIRE_DAYS = 3;
+  /** post the merged desire-line hint/notify for everything pending (one Build-it action over all the tiles) */
+  function flushDesire(state, c, day) {
+    const p = pr(state), tiles = c.desirePending || [];
+    if (!tiles.length) return;
+    const runs = Math.max(1, c.desireRuns | 0);
+    c.desireDay = day; c.desirePending = null; c.desireRuns = 0;
+    const cost = tiles.length * fin(catalog().path && catalog().path.cost, 2000);
+    const what = runs > 1 ? 'Students want paths in ' + runs + ' places' : 'Students want a path here';
+    const verb = runs > 1 ? 'Build them' : 'Build it';
+    if (!p.hints.desireLine) { p.hints.desireLine = true; ui(state, 'hint', 'desireLine', what + '. ' + verb + ' for ' + money(cost) + '?', { action: 'buildPath', tiles: tiles }); }
+    else notify(state, { kind: 'info', text: what + ' (' + money(cost) + ').', showMe: { tx: tiles[0] % W, ty: (tiles[0] / W) | 0, tiles: tiles }, action: { label: verb, fn: 'buildPath', tiles: tiles } });
+    M.ticker(state, 51, null, null, tiles[0]);
+  }
   function foundingArrived(state) {
     const c = ctx(state), p = pr(state);
     c.awaitFounding = false;
+    call('render', 'followVehicle', null);
     if (M.earned(state, 'welcome')) return;
-    call('economy', 'addStudents', state, 120, 'founding');
+    const rest = FOUNDING - fin(c.foundingAdded, 0); c.foundingIds = null; c.foundingAdded = 0;
+    if (rest > 0) call('economy', 'addStudents', state, rest, 'founding');
     M.achieve(state, 'welcome');
     M.ticker(state, 'First 120 students arrive at Bayou State. One asks where the parking is.', null, 'event', fin(state.plot && state.plot.landing, NONE));
     if (!p.hints.mute) { p.hints.mute = true; ui(state, 'hint', 'mute', '🔊 on · M to mute'); }
@@ -26662,13 +26885,13 @@ input[type="range"]{width:180px;accent-color:var(--gold)}
       case EV.ENROLL_ROUND: case EV.ENROLL_LOCK: break;
       case EV.AGENT_ARRIVE: if (e && e.kind === 'founding') foundingArrived(state); break;
       case EV.AGENT_DESIRE_LINE: {
+        // throttled: one line per DESIRE_DAYS calendar days; runs that fire inside the window merge into the next line
         const tiles = (e && Array.isArray(e.tiles)) ? e.tiles : [];
-        if (!tiles.length || c.desireDay === day) break;
-        c.desireDay = day;
-        const cost = tiles.length * fin(catalog().path && catalog().path.cost, 2000);
-        if (!p.hints.desireLine) { p.hints.desireLine = true; ui(state, 'hint', 'desireLine', 'Students want a path here. Build it for ' + money(cost) + '?', { action: 'buildPath', tiles: tiles }); }
-        else notify(state, { kind: 'info', text: 'Students want a path here (' + money(cost) + ').', showMe: { tx: tiles[0] % W, ty: (tiles[0] / W) | 0, tiles: tiles }, action: { label: 'Build it', fn: 'buildPath', tiles: tiles } });
-        M.ticker(state, 51, null, null, tiles[0]);
+        if (!tiles.length) break;
+        if (!c.desirePending) c.desirePending = [];
+        for (let k = 0; k < tiles.length; k++) if (c.desirePending.indexOf(tiles[k]) < 0) c.desirePending.push(tiles[k]);
+        c.desireRuns = (c.desireRuns | 0) + 1;
+        if (c.desireDay === NONE || day - c.desireDay >= DESIRE_DAYS) flushDesire(state, c, day);
         break;
       }
       case EV.GATOR_CAMPUS: {
@@ -26826,10 +27049,12 @@ input[type="range"]{width:180px;accent-color:var(--gold)}
     tutorialTick(state, c);
     if (p.tutorialStage >= 4 && p.tutorialStage < 6 && !M.earned(state, 'welcome') && !c.awaitFounding) { c.awaitFounding = true; c.foundingDeadline = fin(state.tick, 0) + 600; }   // loaded mid-arrival: the pirogues are gone (agents are not saved)
     if (c.awaitFounding && (!has('agents', 'spawnArrival') || fin(state.tick, 0) >= fin(c.foundingDeadline, 1e12))) foundingArrived(state);
+    else if (c.awaitFounding && c.foundingIds && c.foundingIds.length) foundingCountUp(state, c);
     // Daily work
     if (flags.newDay) {
       c.dirty = true;
       expireTimers(state);
+      if (c.desirePending && c.desirePending.length && day - c.desireDay >= DESIRE_DAYS) flushDesire(state, c, day);
       const pt = parts(day);
       if (pt.date === 'Aug 1') p.skeeterStreak = 0;
       if (pt.month === fin(MG.skeeterMonth, 8)) { const idx = fin(call('wildlife', 'mosqIndex', state), fin(state.wildlife && state.wildlife.mosqIndex, 0)); if (idx < fin(MG.skeeterBeater, 0.1)) p.skeeterStreak = fin(p.skeeterStreak, 0) + 1; else p.skeeterStreak = -100; if (pt.dom === 10 && p.skeeterStreak >= 10) M.achieve(state, 'skeeterBeater'); }

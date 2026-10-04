@@ -220,5 +220,27 @@ eq(progressErrors().length, 0, 'no progress BSU.error through the tutorial: ' + 
 // the queue shape ui drains
 for (const q of s.progress.uiQueue) ok(typeof q.kind === 'string' && Number.isFinite(q.tick) && Number.isFinite(q.day) && Array.isArray(q.args), 'uiQueue entry well-formed: ' + q.kind);
 
+// --- desire-line throttle (polish pass 2) -----------------------------------------------------------------
+// One 'Students want a path' line per 3 calendar days; runs that fire inside the window merge into the next line.
+s = BSU.session.newGame({ seed: 5, skipTutorial: true }) || BSU.state;
+s.progress.hints.desireLine = true;   // past the first-time hint → plain notifies
+s.progress.uiQueue.length = 0;
+const desireLines = () => s.progress.uiQueue.filter(q => q.kind === 'notify' && q.args[0] && /want (a path|paths)/.test(q.args[0].text));
+const tilesA = [BSU.idx(10, 10), BSU.idx(11, 10)], tilesB = [BSU.idx(20, 20), BSU.idx(21, 20)], tilesC = [BSU.idx(30, 30)];
+BSU.events.emit('agent:desireLine', { tiles: tilesA }); BSU.events.emit('agent:desireLine', { tiles: tilesB }); BSU.events.emit('agent:desireLine', { tiles: tilesC });
+H.tick(1);
+eq(desireLines().length, 1, 'three desire lines in one tick → one notify');
+ok(/want a path here/.test(desireLines()[0].args[0].text), 'the first line is the plain single-run text');
+eq(desireLines()[0].args[0].action.tiles.length, 2, 'the first line carries only the first run');
+BSU.events.emit('agent:desireLine', { tiles: tilesA }); H.tick(1);
+eq(desireLines().length, 1, 'a line inside the 3-day window is held, not posted');
+s.progress.uiQueue.length = 0;
+H.tick(300);   // three calendar days: the daily step flushes everything held, merged into one line
+const merged = desireLines();
+eq(merged.length, 1, 'exactly one merged line after the window');
+ok(merged.length && /want paths in \d+ places/.test(merged[0].args[0].text), 'merged text names the number of places: ' + (merged[0] && merged[0].args[0].text));
+ok(merged.length && merged[0].args[0].action && merged[0].args[0].action.tiles.length >= 3 && merged[0].args[0].action.label === 'Build them', 'merged action builds every held run');
+eq(progressErrors().length, 0, 'no progress BSU.error through the desire-line throttle');
+
 console.log(`\n${passes} passed, ${failures} failed`);
 process.exit(failures ? 1 : 0);

@@ -895,7 +895,8 @@
     lamp: { w: 24, h: 24, color: X.lampGlow, a: 0.95 }, window: { w: 8, h: 8, color: PAL.windowGlow, a: 0.9 },
     beacon: { w: 32, h: 32, color: PAL.gold, a: 0.8 }, blink: { w: 8, h: 8, color: PAL.danger, a: 1 }, arc: { w: 12, h: 12, color: PAL.waterBlue, a: 1 },
     glow: { w: 16, h: 16, color: PAL.gold, a: 0.85 }, pot: { w: 12, h: 12, color: X.ember, a: 0.9 }, fire: { w: 24, h: 24, color: X.ember, a: 0.95 },
-    firefly: { w: 4, h: 4, color: X.firefly, a: 1 }, eye: { w: 3, h: 3, color: PAL.danger, a: 1 }, mast: { w: 48, h: 96, color: X.white, a: 0.9, cone: true }
+    firefly: { w: 4, h: 4, color: X.firefly, a: 1 }, eye: { w: 3, h: 3, color: PAL.danger, a: 1 }, mast: { w: 48, h: 96, color: X.white, a: 0.9, cone: true },
+    canal: { w: 32, h: 32, color: X.glass, a: 0.85 }   // render_fx stretches it 2:1 over a dug canal tile at night
   };
   M.LIGHTS = LIGHTS;
   M.registerPainter('light', function (ctx, spec) {

@@ -677,6 +677,7 @@
   /** SCAFFOLD: 3 build-rise frames — foundation slab / half height / full height + lattice; no roof/windows */
   function drawScaffoldStage(P, g, row, frame) {
     const stage = ((frame % 3) + 3) % 3;
+    if (g.special === 'stadium') { stadiumSite(P, g, stage); return; }   // a graded field behind construction fencing, not a slab
     const slab = XB.slab;
     if (stage === 0) {
       P.diamond(g.bcx, g.bcy, g.bw, g.bh, slab, shade(slab, 0.7));
@@ -687,6 +688,98 @@
     const C = { left: shade(slab, 0.75), right: shade(slab, 0.9), leftHi: shade(slab, 1.1), rightHi: shade(slab, 1.15), leftRaw: slab, rightRaw: slab, out: shade(slab, 0.5), outR: shade(slab, 0.5) };
     drawBox(P, g, {}, { hgt: hgt, noTop: true, colors: C });
     if (stage === 2) { M.placeDecal(P, g, 'scaffold', 'side', 0); M.placeDecal(P, g, 'scaffold', 'left', 0); }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Stadium helpers: the footprint quad in iso (X along the long axis, Y across, in tiles; `up` px
+  // above the ground), filled stands, the field, the construction site. Shared by SPECIAL.stadium
+  // and the stadium's SCAFFOLD stages.
+  // ---------------------------------------------------------------------------
+  const STAD = Object.freeze({ turf: '#3F8F3B', turfDark: '#378238', dirt: '#8B6B4A', dirtDark: '#6E5236', sand: '#C2B280', riser: '#3A1F58' });
+  /** canvas px of footprint point (X, Y) lifted `up` px; (0, 0) is the ground quad's top corner, (fw, fh) its bottom */
+  function fpPt(g, X, Y, up) { return [Math.round(g.ax + (g.fh - g.fw + X - Y) * 32), Math.round(g.ay + 16 + (X + Y - g.fw - g.fh) * 16 - (up || 0) - g.lift)]; }
+  function fpPoly(P, g, pts, color) { fillPoly(P, pts.map(function (p) { return fpPt(g, p[0], p[1], p[2]); }), color); }
+  function fpLine(P, g, a, b, color) { const p = fpPt(g, a[0], a[1], a[2]), q = fpPt(g, b[0], b[1], b[2]); P.line(p[0], p[1], q[0], q[1], color); }
+  /**
+   * A tiered stand over the footprint rect r = {x0, x1, y0, y1}; `inner` names the field-side edge
+   * ('y1' | 'y0' | 'x1' | 'x0'); lifts hIn at the field edge, hOut at the back. When the field edge faces
+   * the camera (inner is a max edge) the treads and their risers show; otherwise the back wall and the
+   * rim do. Treads alternate purple/purple2 with gold trim; the +X / +Y end faces are always drawn.
+   */
+  function stadiumStand(P, g, r, inner, hIn, hOut, steps) {
+    const alongX = inner[0] === 'y', faces = inner[1] === '1';
+    const span = alongX ? r.y1 - r.y0 : r.x1 - r.x0, d = span / steps, dh = (hOut - hIn) / steps;
+    const innerC = faces ? (alongX ? r.y1 : r.x1) : (alongX ? r.y0 : r.x0), outerC = faces ? (alongX ? r.y0 : r.x0) : (alongX ? r.y1 : r.x1);
+    const dir = faces ? -1 : 1;
+    const quad = function (a, b, la, lb) { return alongX ? [[r.x0, a, la], [r.x1, a, la], [r.x1, b, lb], [r.x0, b, lb]] : [[a, r.y0, la], [a, r.y1, la], [b, r.y1, lb], [b, r.y0, lb]]; };
+    const liftAt = function (c) { return hIn + (hOut - hIn) * Math.abs(c - innerC) / span; };
+    // end faces toward the camera (+X face for stands along X, +Y face for stands along Y)
+    if (alongX) fpPoly(P, g, [[r.x1, r.y0, liftAt(r.y0)], [r.x1, r.y1, liftAt(r.y1)], [r.x1, r.y1, 0], [r.x1, r.y0, 0]], shade(PAL.purple, 0.72));
+    else fpPoly(P, g, [[r.x0, r.y1, liftAt(r.x0)], [r.x1, r.y1, liftAt(r.x1)], [r.x1, r.y1, 0], [r.x0, r.y1, 0]], shade(PAL.purple, 0.62));
+    if (!faces) {
+      // seen from behind: treads inner → outer (the higher, nearer ones overdraw), then the back wall + rim
+      for (let j = 0; j < steps; j++) { const a = innerC + dir * j * d, b = innerC + dir * (j + 1) * d, l = hIn + j * dh; fpPoly(P, g, quad(a, b, l, l), (j & 1) ? PAL.purple2 : PAL.purple); }
+      fpPoly(P, g, quad(outerC, outerC, 0, hOut), alongX ? shade(PAL.purple, 0.5) : shade(PAL.purple, 0.58));
+      // concourse slits on the wall
+      const n = Math.max(2, Math.round(span * 0 + (alongX ? (r.x1 - r.x0) : (r.y1 - r.y0)) * 2));
+      for (let k = 1; k < n; k++) { const t = k / n; const p = alongX ? fpPt(g, r.x0 + (r.x1 - r.x0) * t, outerC, hOut * 0.45) : fpPt(g, outerC, r.y0 + (r.y1 - r.y0) * t, hOut * 0.45); P.rect(p[0], p[1], 1, 3, shade(PAL.purple, 0.3)); }
+      if (alongX) fpLine(P, g, [r.x0, outerC, hOut], [r.x1, outerC, hOut], PAL.gold); else fpLine(P, g, [outerC, r.y0, hOut], [outerC, r.y1, hOut], PAL.gold);
+    } else {
+      // facing the camera: outer (high) → inner (low), each tread with its riser toward the field
+      for (let j = steps - 1; j >= 0; j--) {
+        const a = innerC + dir * j * d, b = innerC + dir * (j + 1) * d, l = hIn + j * dh;
+        fpPoly(P, g, quad(a, b, l, l), (j & 1) ? PAL.purple2 : PAL.purple);
+        fpPoly(P, g, quad(a, a, l, Math.max(0, l - dh)), STAD.riser);
+        if (j === steps - 1) { if (alongX) fpLine(P, g, [r.x0, b, l], [r.x1, b, l], PAL.gold); else fpLine(P, g, [b, r.y0, l], [b, r.y1, l], PAL.gold); }
+      }
+      if (alongX) fpLine(P, g, [r.x0, innerC, hIn], [r.x1, innerC, hIn], PAL.goldShadow); else fpLine(P, g, [innerC, r.y0, hIn], [innerC, r.y1, hIn], PAL.goldShadow);
+    }
+  }
+  /** the playing field: turf stripes, gold end zones, white yard lines, the BSU midfield mark (bare = turf only) */
+  function stadiumField(P, g, f, bare) {
+    const n = 8, ez = (f.x1 - f.x0) * 0.1;
+    for (let k = 0; k < n; k++) { const a = f.x0 + (f.x1 - f.x0) * k / n, b = f.x0 + (f.x1 - f.x0) * (k + 1) / n; fpPoly(P, g, [[a, f.y0, 0], [b, f.y0, 0], [b, f.y1, 0], [a, f.y1, 0]], (k & 1) ? STAD.turfDark : STAD.turf); }
+    if (bare) return;
+    fpPoly(P, g, [[f.x0, f.y0, 0], [f.x0 + ez, f.y0, 0], [f.x0 + ez, f.y1, 0], [f.x0, f.y1, 0]], PAL.gold);
+    fpPoly(P, g, [[f.x1 - ez, f.y0, 0], [f.x1, f.y0, 0], [f.x1, f.y1, 0], [f.x1 - ez, f.y1, 0]], PAL.gold);
+    for (let k = 0; k <= 10; k++) { const x = f.x0 + ez + (f.x1 - f.x0 - 2 * ez) * k / 10; fpLine(P, g, [x, f.y0, 0], [x, f.y1, 0], X.white); }
+    fpLine(P, g, [f.x0, f.y0, 0], [f.x1, f.y0, 0], X.white); fpLine(P, g, [f.x0, f.y1, 0], [f.x1, f.y1, 0], X.white);
+    const m = fpPt(g, (f.x0 + f.x1) / 2, (f.y0 + f.y1) / 2, 0); P.ellipse(m[0], m[1], 8, 4, PAL.purple); P.text('BSU', m[0] - 5, m[1] - 2, PAL.gold);
+  }
+  /** tier II scoreboard: 28×12, BSU · score · a gold clock bar */
+  function stadiumScoreboard(P, x, y, night, frame) {
+    P.rect(x, y, 28, 12, X.black); P.hline(x, y, 28, PAL.gold); P.hline(x, y + 11, 28, PAL.goldShadow); P.vline(x, y, 12, PAL.gold); P.vline(x + 27, y, 12, PAL.goldShadow);
+    P.text('BSU', x + 2, y + 2, PAL.gold); P.text('0-0', x + 15, y + 2, night ? X.white : X.offWhite);
+    P.hline(x + 2, y + 8, 24, shade(PAL.goldShadow, 0.7)); P.hline(x + 2, y + 8, 6 + ((frame | 0) % 4) * 4, night ? PAL.goldHi : PAL.gold);
+  }
+  /** the construction site (SCAFFOLD frames 0–2 and tier 0): graded dirt, fencing, then footings and turf, then the steel frames */
+  function stadiumSite(P, g, stage) {
+    const fw = g.fw, fh = g.fh, seed = g.seed | 0;
+    const inset = 0.12;
+    fpPoly(P, g, [[inset, inset, 0], [fw - inset, inset, 0], [fw - inset, fh - inset, 0], [inset, fh - inset, 0]], STAD.dirt);
+    for (let k = 1; k < fh * 2; k++) fpLine(P, g, [inset + 0.2, k / 2, 0], [fw - inset - 0.2, k / 2, 0], STAD.dirtDark);   // dozer tracks
+    for (let k = 0; k < 6; k++) { const p = fpPt(g, 0.5 + (hash(seed, 11 + k) % 100) / 100 * (fw - 1), 0.5 + (hash(seed, 31 + k) % 100) / 100 * (fh - 1), 0); P.ellipse(p[0], p[1] - 1, 4, 2, STAD.sand); P.ellipse(p[0], p[1] - 2, 2, 1, shade(STAD.sand, 1.15)); }
+    const field = { x0: 1.0, x1: fw - 1.0, y0: 1.0, y1: fh - 1.0 };
+    if (stage >= 1) {
+      stadiumField(P, g, field, stage < 2);
+      // footings for the stands along both long sides
+      for (let k = 0; k < 8; k++) { const X = 1.1 + (fw - 2.2) * k / 7; for (const Y of [0.5, fh - 0.5]) { const p = fpPt(g, X, Y, 0); P.rect(p[0] - 1, p[1] - 3, 3, 3, X.concrete); P.hline(p[0] - 1, p[1] - 1, 3, shade(X.concrete, 0.7)); } }
+    }
+    if (stage >= 2) {
+      // steel bleacher frames (the stand profiles) and two unlit masts
+      for (const Y of [0.5, fh - 0.5]) { fpLine(P, g, [1.0, Y, 12], [fw - 1.0, Y, 12], X.steel); fpLine(P, g, [1.0, Y, 6], [fw - 1.0, Y, 6], X.steelDark); for (let k = 0; k < 8; k++) { const X = 1.0 + (fw - 2) * k / 7; fpLine(P, g, [X, Y, 0], [X, Y, 12], X.steelDark); } }
+      for (const X of [1.0, fw - 1.0]) { const p = fpPt(g, X, 0.1, 0); decalAt(P, 'masts', p[0] - 3, p[1] - 40, 0, seed + (X | 0)); }
+    }
+    // construction fencing on the footprint boundary: posts every half tile, two rails, the orange gate
+    const fence = function (a, b, front) {
+      const n = Math.round(Math.hypot(b[0] - a[0], b[1] - a[1]) * 2);
+      for (let k = 0; k <= n; k++) { const t = k / n; const p = fpPt(g, a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, 0); P.rect(p[0], p[1] - 7, 1, 7, X.steelDark); P.px(p[0], p[1] - 7, X.chain); }
+      fpLine(P, g, [a[0], a[1], 6], [b[0], b[1], 6], X.chain); fpLine(P, g, [a[0], a[1], 3], [b[0], b[1], 3], shade(X.chain, 0.75));
+      if (front) { const m = fpPt(g, (a[0] + b[0]) / 2, (a[1] + b[1]) / 2, 0); P.rect(m[0] - 3, m[1] - 6, 6, 4, X.tigerOrange); P.hline(m[0] - 3, m[1] - 5, 6, X.white); }
+    };
+    const e = 0.05;
+    fence([e, e], [fw - e, e], false); fence([e, e], [e, fh - e], false);
+    fence([fw - e, e], [fw - e, fh - e], false); fence([e, fh - e], [fw - e, fh - e], true);
   }
 
   // ---------------------------------------------------------------------------
@@ -751,37 +844,60 @@
       }
     },
     stadium(ctx, P, g, row, variant, frame) {
-      const cx = g.bcx, cy = g.bcy, w = g.bw, h = g.bh;
-      if (g.tier <= 0) {
-        // unbuilt: a plausible box only — walls + a flat cap, none of the bowl/masts/letters dressing
-        drawBox(P, g, row.paint, { seed: g.seed });
-        drawDoor(P, g, PAL.gold);
-        ROOF.flat(P, g, (row.paint && row.paint.wall && row.paint.wall[1]) || PAL.purple);
+      // Drawn on the true iso footprint quad (fpPt) back to front: tier I = two long-side bleachers
+      // and four corner masts; II = the full bowl, six masts, a scoreboard and CAULDRON on the near
+      // wall; III = an upper deck, the jumbotron and the gold crown. Tier 0 is the graded site.
+      void ctx; void row;
+      const night = !!(variant & SPR.NIGHT);
+      const fw = g.fw, fh = g.fh;
+      if (g.tier <= 0) { stadiumSite(P, g, 2); return; }
+      const field = { x0: 1.0, x1: fw - 1.0, y0: 1.0, y1: fh - 1.0 };
+      const lit = night ? 1 : 0;
+      const mast = function (X, Y, up) { const p = fpPt(g, X, Y, up); decalAt(P, 'masts', p[0] - 3, p[1] - 40, lit, g.seed + ((X * 7 + Y * 3) | 0)); if (night) { P.px(p[0] - 1, p[1] - 41, PAL.goldHi); P.px(p[0] + 4, p[1] - 41, PAL.goldHi); } };
+      if (g.tier === 1) {
+        const hIn = 3, hOut = 14, steps = 4;
+        stadiumField(P, g, field, false);
+        // far bleachers (field edge faces the camera: treads + risers), then the near ones (back wall + rim)
+        stadiumStand(P, g, { x0: 1.0, x1: fw - 1.0, y0: 0.1, y1: 1.0 }, 'y1', hIn, hOut, steps);
+        mast(1.0, 0.1, hOut); mast(fw - 1.0, 0.1, hOut);
+        stadiumStand(P, g, { x0: 1.0, x1: fw - 1.0, y0: fh - 1.0, y1: fh - 0.1 }, 'y0', hIn, hOut, steps);
+        mast(1.0, fh - 0.1, hOut); mast(fw - 1.0, fh - 0.1, hOut);
+        // ticket booth at the near-left corner
+        const tb = fpPt(g, 0.5, fh - 0.5, 0); P.rect(tb[0] - 4, tb[1] - 9, 8, 7, PAL.purple); P.rect(tb[0] - 5, tb[1] - 11, 10, 2, PAL.gold); P.rect(tb[0] - 1, tb[1] - 6, 2, 4, PAL.goldHi);
         return;
       }
-      const standColor = (row.paint && row.paint.wall && row.paint.wall[0]) || X.concrete;
-      walls(P, cx, cy, w, h, g.wallH, (x, yb, left) => left ? shade(standColor, 0.8) : shade(standColor, 0.92));
-      for (let x = cx - (w >> 1); x < cx + (w >> 1); x++) P.px(x, baseY(cx, cy, w, h, x), shade(standColor, 0.5));
-      const br = g.bowlRect;
-      if (g.tier === 1) {
-        for (let r = 0; r < g.wallH; r += 6) P.hline(cx - (w >> 1), cy - g.wallH + r, w, shade(standColor, 0.6 + 0.05 * (r % 2)));
-        decalAt(P, 'masts', cx - (w >> 1) - 4, cy - g.wallH - 40, 0, g.seed);
-        decalAt(P, 'masts', cx + (w >> 1) - 2, cy - g.wallH - 40, 1, g.seed + 1);
-        P.diamond(cx, cy - g.wallH, w >> 1, h >> 1, PAL.gold);
-      } else {
-        const rx = br ? br.w / 2 : w * 0.36, ry0 = br ? br.h / 2 : h * 0.36;
-        const bcy2 = cy - g.wallH - 6;
-        const ring = g.tier === 3 ? [PAL.purple, PAL.purple2, PAL.purpleHi] : [PAL.purple];
-        for (let i = 0; i < ring.length; i++) {
-          P.ellipse(cx, bcy2 - i * 8, Math.max(2, rx - i * 4), Math.max(1, ry0), ring[i]);
-          P.ellipse(cx, bcy2 - i * 8, Math.max(1, rx - i * 4 - 2), Math.max(1, ry0 - 2), shade(ring[i], 0.85));
+      const upper = g.tier === 3;
+      const hIn = 3, hOut = upper ? 18 : 22, steps = 5;
+      const hTop = upper ? 36 : hOut;
+      stadiumField(P, g, field, false);
+      // the bowl, back to front: far side, left end, right end, near side (each stand covers its corners)
+      stadiumStand(P, g, { x0: 0.1, x1: fw - 0.1, y0: 0.1, y1: 1.0 }, 'y1', hIn, hOut, steps);
+      stadiumStand(P, g, { x0: 0.1, x1: 1.0, y0: 1.0, y1: fh - 1.0 }, 'x1', hIn, hOut, steps);
+      stadiumStand(P, g, { x0: fw - 1.0, x1: fw - 0.1, y0: 1.0, y1: fh - 1.0 }, 'x0', hIn, hOut, steps);
+      stadiumStand(P, g, { x0: 0.1, x1: fw - 0.1, y0: fh - 1.0, y1: fh - 0.1 }, 'y0', hIn, hOut, steps);
+      if (upper) {
+        // upper deck: the outer 45 % of every stand, lifted over the lower bowl's rim
+        const uIn = hOut + 2, uOut = hTop, us = 3;
+        stadiumStand(P, g, { x0: 0.1, x1: fw - 0.1, y0: 0.1, y1: 0.5 }, 'y1', uIn, uOut, us);
+        stadiumStand(P, g, { x0: 0.1, x1: 0.5, y0: 0.5, y1: fh - 0.5 }, 'x1', uIn, uOut, us);
+        stadiumStand(P, g, { x0: fw - 0.5, x1: fw - 0.1, y0: 0.5, y1: fh - 0.5 }, 'x0', uIn, uOut, us);
+        stadiumStand(P, g, { x0: 0.1, x1: fw - 0.1, y0: fh - 0.5, y1: fh - 0.1 }, 'y0', uIn, uOut, us);
+        // the gold crown: lights along the outer rim (brighter at night, chasing with the frame)
+        const rim = [[0.1, 0.1], [fw - 0.1, 0.1], [fw - 0.1, fh - 0.1], [0.1, fh - 0.1], [0.1, 0.1]];
+        for (let e = 0; e < 4; e++) {
+          const a = rim[e], b = rim[e + 1], n = 14;
+          for (let k = 0; k <= n; k++) { const p = fpPt(g, a[0] + (b[0] - a[0]) * k / n, a[1] + (b[1] - a[1]) * k / n, hTop + 1); const on = !night || ((k + frame) % 3) !== 0; P.px(p[0], p[1], on ? PAL.goldHi : PAL.gold); if (night && on) P.px(p[0], p[1] - 1, X.white); }
         }
-        P.hline(cx - rx, bcy2 - ring.length * 8, 2 * rx, PAL.gold);
-        for (let i = 0; i < 6; i++) decalAt(P, 'masts', cx - rx + i * (2 * rx / 6), bcy2 - 40, i % 2, g.seed + i);
-        decalAt(P, 'letters', cx - 16, bcy2 + ry0 - 4, 0, g.seed);
-        if (g.tier === 3) decalAt(P, 'jumbotron', cx - 12, bcy2 - ry0 - 20, frame % 4, g.seed);
       }
-      // masts/letters/jumbotron are already placed above by tier; nothing else is in stadium's decal list
+      // six masts on the rims (the far three stand behind the bowl's top edge)
+      for (const X of [0.3, fw / 2, fw - 0.3]) mast(X, 0.1, hTop);
+      for (const X of [0.3, fw / 2, fw - 0.3]) mast(X, fh - 0.1, hTop);
+      // CAULDRON on the near wall, the scoreboard (II) / jumbotron (III) over the far end
+      const lc = fpPt(g, fw / 2, fh - 0.1, hTop / 2); decalAt(P, 'letters', lc[0] - 16, lc[1] - 4, 0, g.seed);
+      const sb = fpPt(g, 0.5, fh / 2, hTop);
+      P.rect(sb[0] - 1, sb[1] - 12, 2, 12, X.steel); P.vline(sb[0], sb[1] - 12, 12, X.steelDark);
+      if (upper) decalAt(P, 'jumbotron', sb[0] - 12, sb[1] - 28, frame % 4, g.seed);
+      else stadiumScoreboard(P, sb[0] - 14, sb[1] - 24, night, frame);
     },
     quad(ctx, P, g, row, variant, frame) {
       const cx = g.gcx, cy = g.gcy;
@@ -932,6 +1048,7 @@
     else if (id === 'preserve') src = M.get('preservePost', 5, 0, 1);
     else if (id === 'live_oak') src = M.get('oak', 2, 0, 1);
     else if (id === 'pilings') { src = M.get('dorm', SPR.PILINGS, 0, 1); scale = 0.5; }
+    else if (id === 'stadium') src = M.get('stadium', 1 << SPR.TIER_SHIFT, 0, 1);   // tier 0 is the construction site; the palette shows tier I
     else src = M.get(id, 0, 0, 1);
     if (src && src.canvas) {
       const S = dims.S;

@@ -1433,7 +1433,9 @@
     const d = call('weather', 'date', s) || { str: BSU.formatDate(dayOf(s)), season: s.calendar ? s.calendar.season : '' };
     const season = d.season ? d.season[0].toUpperCase() + d.season.slice(1) : '';
     setText(E['stat-date-text'], (d.str || '') + (season ? ' · ' + season : ''));
-    const ph = clamp(fin(s.sky && s.sky.phase, SKY.DAY), 0, 4); setText(E['sky-glyph'], SKY_GLYPH[ph]); E['sky-glyph'].title = SKY_NAME[ph];
+    const ph = clamp(fin(s.sky && s.sky.phase, SKY.DAY), 0, 4);
+    const stm = call('weather', 'storm', s); const sph = (stm && !stm.nearMiss) ? fin(stm.phase, 0) : 0;   // the storm owns the glyph from the outer bands through landfall
+    setText(E['sky-glyph'], sph === STORM.LANDFALL ? '🌀' : sph === STORM.BANDS ? '⛈' : SKY_GLYPH[ph]); E['sky-glyph'].title = sph === STORM.LANDFALL ? 'Landfall' : sph === STORM.BANDS ? 'Outer bands' : SKY_NAME[ph];
     // weather chip
     const heat = call('weather', 'heat', s) || { index: fin(s.weather && s.weather.heat, 70), advisory: false }; const river = call('weather', 'riverStage', s) || { river: 0, window: false };
     let rainTmrw = false; try { const rd = s.weather && s.weather.rainDays; if (Array.isArray(rd)) { const tm = dayOf(s) + 1; rainTmrw = rd.some(function (r) { return r === tm || (r && r.day === tm); }); } } catch (err) { rainTmrw = false; }
@@ -1571,6 +1573,7 @@
     sec('queue', drainQueue, state, dtMs);
     sec('pan', heldPan, state, dtMs);
     sec('topbar', updateTopbar, state, dtMs);
+    sec('scorebug', function (s) { if (typeof M.scoreBug === 'function') M.scoreBug(s); }, state, dtMs);   // ui_panels' live score bug (hidden when no game)
     sec('alert', updateAlert, state, dtMs);
     sec('objective', updateObjective, state, dtMs);
     sec('notifs', updateNotifs, state, dtMs);

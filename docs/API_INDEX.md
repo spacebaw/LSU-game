@@ -440,6 +440,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - render.setZoom(z, anchorPx)
 - render.zoomStep(dir, anchorPx)
 - render.follow(agentId)
+- render.followVehicle(pred)   // pred(vehicle, state) → camera tracks the first matching state.vehicles entry; null / a user pan / no match releases
 - render.shake(ms, px)
 - render.hitStop(ms)
 - render.flashTiles(tiles, ms)

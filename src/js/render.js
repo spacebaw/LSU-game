@@ -43,6 +43,7 @@
   // Private state (closure; rebuilt in reset). D46: nothing on M mirrors sim state.
   // ---------------------------------------------------------------------------
   let root = null, camera = null;
+  let followVehicle = null;   // predicate(vehicle, state) → the camera tracks the first matching state.vehicles entry (progress: the lead pirogue)
   let app = null, canvas = null, ctx = null, inited = false;
   let vw = 1280, vh = 720, dpr = 1, lastRectW = -1, lastRectH = -1;
   const comp = { tint: null, lights: null, fog: null };
@@ -405,7 +406,7 @@
     if (!camera) return;
     byUser = byUser !== false;
     panByCam(camera, dx, dy);
-    if (byUser) { camera.follow = -1; if (root && root.setPiece) M.captureCameraTouch(root); if (M.titleDrift) M.titleDrift = false; }
+    if (byUser) { camera.follow = -1; followVehicle = null; if (root && root.setPiece) M.captureCameraTouch(root); if (M.titleDrift) M.titleDrift = false; }
     markMoved(byUser);
   };
   /** pan to world px (zoom-1), eased or snapped */
@@ -425,6 +426,8 @@
   M.zoomStep = function (dir, anchorPx) { if (!camera) return; const k = ZOOMS.indexOf(camera.zoom); const nk = clamp((k < 0 ? 1 : k) + (dir < 0 ? -1 : 1), 0, ZOOMS.length - 1); M.setZoom(ZOOMS[nk], anchorPx); };
   /** follow an agent id each frame (−1 releases; a user pan releases too) */
   M.follow = function (agentId) { if (camera) camera.follow = Number.isFinite(agentId) ? agentId | 0 : -1; };
+  /** follow the first state.vehicles entry matching pred(v, state) each frame (null releases; a user pan releases too; releases itself when nothing matches) */
+  M.followVehicle = function (pred) { followVehicle = typeof pred === 'function' ? pred : null; };
   /** screen shake for ms (ignored when settings.shake is off) */
   M.shake = function (ms, px) { if (!Number.isFinite(ms)) { rerr('shake', new Error('non-finite ms')); return; } if (root && root.ui && root.ui.settings && root.ui.settings.shake === false) return; shakeUntil = nowMs() + Math.max(0, ms); shakePx = fin(px, PR.shakePx || 6); };
   /** pause ticks for ms (presentation juice; never in headless) */
@@ -1043,6 +1046,12 @@
     const cam = camera;
     clampCam(cam);
     // follow
+    if (followVehicle && Array.isArray(state.vehicles)) {
+      let v = null;
+      try { for (let k = 0; k < state.vehicles.length; k++) { const q = state.vehicles[k]; if (q && followVehicle(q, state)) { v = q; break; } } } catch (e) { followVehicle = null; rerr('followVehicle', e); }
+      if (v) { const vx = fin(v.tx, 0), vy = fin(v.ty, 0); M.panTo((vx - vy) * 32, (vx + vy - 1) * 16 - elevAt(clamp(Math.floor(vx), 0, W - 1), clamp(Math.floor(vy), 0, HGT - 1)) * PXFT, true); }
+      else followVehicle = null;
+    }
     if (cam.follow >= 0 && Array.isArray(state.agents)) {
       const a = state.agents[cam.follow];
       if (a && a.state !== 'GONE') { const wx = (fin(a.tx, 0) - fin(a.ty, 0)) * 32, wy = (fin(a.tx, 0) + fin(a.ty, 0) - 1) * 16 - elevAt(clamp(Math.floor(a.tx), 0, W - 1), clamp(Math.floor(a.ty), 0, HGT - 1)) * PXFT; M.panTo(wx, wy, true); }
@@ -1117,7 +1126,7 @@
     root = state;
     const ui = state.ui || (state.ui = {});
     if (!ui.camera || typeof ui.camera !== 'object') ui.camera = { x: 0, y: 1024, zoom: 1, tx: 0, ty: 0, follow: -1 };
-    camera = ui.camera;
+    camera = ui.camera; followVehicle = null;
     camera.hasTarget = false; if (!Number.isFinite(camera.follow)) camera.follow = -1;
     clampCam(camera);
     zoomNow = camera.zoom;
