@@ -91,6 +91,53 @@
     return 'grounds';
   };
 
+  /** One plain line per row: what it does (the build menu's first line; GDD §11.2 "say it in one breath"). */
+  const BLURB = {
+    path: 'A gravel walkway. Every building needs one on its edge.',
+    road: 'A paved road for buses, parades and the Stadium; bridges up to 3 water tiles.',
+    boardwalk: 'A raised walk over marsh and water that leaves the wetland alone.',
+    substation: 'Powers up to 40 buildings within 10 tiles.',
+    water_tower: 'Water for 50 buildings within 12 tiles. Needs power itself.',
+    generator: 'Three days of backup power for everything within 6 tiles.',
+    wastewater: 'Sewage for 6,000 students. Needs a road within 4 and water nearby.',
+    founders_hall: '300 seats, shelter for 300, and the root of every path on campus.',
+    lecture_hall: '400 lecture seats.',
+    library: 'Academic +20, landmark +4, +4 happiness within 10 tiles; shelters 800.',
+    engineering: '500 seats, academic +20, $12k/mo research grants; swamp works cost 15% less.',
+    coastal_institute: '150 seats, academic +20, coastal research, and a 9-day storm cone.',
+    dorm: '300 beds for first-years.',
+    res_tower: '900 beds on one 3×3 footprint; landmark +2.',
+    greek_house: '80 beds, +3 happiness within 6 tiles, and a tailgate scene.',
+    dining_hall: 'Feeds 1,200 students within 10 tiles; +3 happiness nearby.',
+    poboy: 'Feeds 200 on the walk to class; +2 happiness within 5; earns $2k/mo.',
+    practice_field: 'Fields a football team (rating +5). Upgrade to Bayou Field for 6,000 seats and home games.',
+    stadium: '15,000 seats and ticket money. Grows to 45,000 under the lights, then 80,000.',
+    union: '+8 happiness within 12 tiles, feeds 400, hosts the Crawfish Boil; shelters 2,000.',
+    rec_center: '+6 happiness within 10 tiles; a pool that halves the heat penalty nearby.',
+    health_center: 'Mosquito illness −60% and heat illness −50% within 12 tiles.',
+    quad: '+2 happiness within 6 tiles and a free Live Oak. No path needed.',
+    parking: 'Parks 600 students’ cars; +$4k/mo in tickets. Needs a road within 4.',
+    levee: 'A 6-foot earthen wall against rising water. Walkable.',
+    floodwall: 'A 12-foot concrete wall. Nutria-proof; −1 happiness within 3.',
+    canal: 'A ditch that carries rainwater downhill to the bayou.',
+    pump: 'Pumps 15 tile-ft a day out of its canal network. Needs power.',
+    pond: 'Holds 20 tile-ft of runoff; once stocked, mosquitoes −80% within 4.',
+    pilings: 'Lifts one building 3 ft above the flood line (+40% of its cost).',
+    gator_fence: 'A fence gators cannot cross. Students walk right through.',
+    abatement: 'A fogger truck: mosquitoes −70% along paths within 8. Costs ecology.',
+    bat_house: 'Bats and martins: mosquitoes −30% within 4 (stacks to −60%); +0.5 ecology.',
+    wildlife_post: 'An officer who relocates gators within 14, stops nutria and clears debris; +3 ecology.',
+    preserve: 'Protects a tile as wetland: +0.5 ecology each, and it slows the surge.',
+    live_oak: '+1 happiness within 4; shade cuts heat −30%; wind damage −30% within 2.',
+    cypress: 'Roots drink 0.05 ft of water a day and halve sinking next door; +0.5 ecology.',
+    azalea: '+1 happiness within 3; +1 more while it blooms in March.',
+    bell_tower: 'Landmark +10 and +3 happiness campus-wide; bells at midday and dusk.',
+    tiger_habitat: 'Landmark +8, +5 happiness within 15, home win +5%; gators stay 10 tiles away.',
+    surge_barrier: 'A gate that closes the bayou when the stage passes 2 ft. Needs 2 powered Pumps.',
+    marsh_restoration: 'Turns 10–40 tiles back into marsh over 30 days; up to +15 ecology.',
+    rookery: 'Landmark +6, +2 happiness within 8, and spoonbills every dawn.'
+  };
+
   /** One catalog row; fills every §4.1 field from the row-number rules, then applies overrides. */
   function row(o) {
     const n = o.n, id = BSU.B_ORDER[n - 1];
@@ -105,7 +152,7 @@
       allowMarsh: id !== 'road', alwaysPilings: !!o.alwaysPilings,
       buildDays: kind === 'footprint' ? 1 + Math.floor(w * h / 6) : (kind === 'upgrade' ? 1 : 0),
       unlock: o.unlock || {}, pip: o.pip || '', effects: E(o.effects), tiers: o.tiers || [], paint: o.paint,
-      namePool: o.namePool || '', why: o.why, desc: o.desc,
+      namePool: o.namePool || '', why: o.why, desc: o.desc, blurb: BLURB[id] || '',
       demolishable: !NOT_DEMOLISHABLE[id], shelterOwn: id === 'dorm' || id === 'res_tower'
     };
     return r;
@@ -118,7 +165,7 @@
     row({ n: 1, name: 'Gravel Path', kind: 'drag', cost: 2000, upkeep: 0, placeRule: PLACE.PATH,
       effects: { surfaceId: SURF.PATH },
       paint: flat(['#C9B47C', '#B8A36B']),
-      why: 'Gravel: cheap, walkable, and every building wants one on its edge.',
+      why: 'Students walk on paths. A building with no path on its edge is unreachable.',
       desc: 'Walkable at 4 tiles/s; the required adjacency; wading at 0.3 ft, impassable at 0.6 ft.' }),
     row({ n: 2, name: 'Campus Road', kind: 'drag', cost: 10000, upkeep: 100, placeRule: PLACE.ROAD,
       effects: { surfaceId: SURF.ROAD, noise: { value: 1, radius: 1 } },
@@ -133,7 +180,7 @@
     row({ n: 4, name: 'Power Substation', w: 2, h: 2, cost: 250000, upkeep: 4000, wr: 2,
       effects: { power: { radius: 10, capacity: 40 } },
       paint: P({ wall: ['#9A9A9E', '#7E7E82'], roof: 'flat', roofColor: '#8A8A8E', decals: ['pipes', 'beacon'], special: 'substation' }),
-      why: 'Everything runs at half without power. Keep it above the water line.',
+      why: 'Unpowered buildings run at half. Keep it above the water line.',
       desc: 'Power radius 10 for 40 buildings; summer draw ×1.5; blackout at 0.3 ft of water.' }),
     row({ n: 5, name: 'Water Tower', w: 2, h: 2, cost: 220000, upkeep: 2000, wr: 2,
       effects: { water: { radius: 12, capacity: 50 } },
@@ -160,7 +207,7 @@
       effects: { seats: 400 },
       paint: P({ wall: ['#C9A97A', '#B08D5E'], floors: 2, windows: { cols: 5, rows: 2 }, decals: ['awning'], accent: PURPLE }),
       namePool: 'halls',
-      why: 'Seats are capacity. Capacity is students. Students are tuition.',
+      why: 'Seats cap enrollment just like beds do. More seats, more tuition.',
       desc: '400 seats.' }),
     row({ n: 10, name: 'Library', w: 4, h: 3, cost: 1800000, upkeep: 14000, wr: 4,
       unlock: { students: 800 },
@@ -187,7 +234,7 @@
       effects: { beds: 300, quality: 2 },
       paint: P({ wall: ['#B87A5A', '#96604A'], floors: 4, windows: { cols: 6, rows: 4 }, decals: ['couch'], accent: PURPLE }),
       namePool: 'halls',
-      why: 'Beds are the bottleneck. Every semester.',
+      why: 'Nobody enrolls without a bed. Beds are your enrollment ceiling.',
       desc: '300 beds; quality 2; shelters its own residents on ≥ 5-ft ground or Pilings.' }),
     row({ n: 14, name: 'Residence Tower', w: 3, h: 3, cost: 2400000, upkeep: 22000, wr: 4,
       unlock: { students: 1500 },
@@ -207,7 +254,7 @@
       effects: { feeds: 1200, diningRadius: 10, happiness: { value: 3, radius: 10 }, gatorAttract: 2, special: ['boilPot', 'dumpster'] },
       paint: P({ floors: 1, windows: { cols: 6, rows: 1 }, decals: ['vents', 'boilpot', 'dumpster'] }),
       namePool: 'dining',
-      why: 'Feeds twelve hundred. The dumpster feeds the gators.',
+      why: 'Hungry students leave. Dining is the third enrollment ceiling.',
       desc: 'Feeds 1,200; dining radius 10; +3 happiness radius 10; gator attraction +2 (dumpster).' }),
     row({ n: 17, name: "Po'boy Shack", cost: 60000, upkeep: 1000, wr: 1,
       effects: { feeds: 200, diningRadius: 5, happiness: { value: 2, radius: 5 }, revenueMonthly: 2000 },
@@ -277,7 +324,7 @@
     row({ n: 27, name: 'Drainage Canal', kind: 'drag', cost: 25000, upkeep: 500, placeRule: PLACE.CANAL, pip: 'cell',
       effects: { canal: true, ecologyPerTile: -0.3 },
       paint: flat(['#8A8A8E', '#1B3A3A'], ['pipes']),
-      why: 'Water needs somewhere to go. Give it a way to the bayou.',
+      why: 'Rain pools in the low spots. A canal sends it to the bayou.',
       desc: 'Bed cut 2 ft; conductance ×8; drains by gravity to Bayou or Water, else needs a Pump.' }),
     row({ n: 28, name: 'Pump Station', w: 2, h: 2, cost: 500000, upkeep: 8000, wr: 3, placeRule: PLACE.TOUCH_CANAL_WATER, pip: 'season',
       effects: { pumpTileFt: 15, subsidenceMult: 0, subsidenceRadius: 8, noise: { value: 2, radius: 4 } },
@@ -838,7 +885,7 @@
     { key: '1', action: 'pick1', shift: true }, { key: '2', action: 'pick2', shift: true }, { key: '3', action: 'pick3', shift: true },
     { key: '4', action: 'pick4', shift: true }, { key: '5', action: 'pick5', shift: true }, { key: '6', action: 'pick6', shift: true },
     { key: '7', action: 'pick7', shift: true }, { key: '8', action: 'pick8', shift: true }, { key: '9', action: 'pick9', shift: true },
-    { key: 'x', action: 'bulldoze' }, { key: 'r', action: 'rotate' }, { key: 'h', action: 'home' }, { key: '.', action: 'follow' },
+    { key: 'g', action: 'buildMenu' }, { key: 'x', action: 'bulldoze' }, { key: 'r', action: 'rotate' }, { key: 'h', action: 'home' }, { key: '.', action: 'follow' },
     { key: 'Escape', action: 'escape' },
     { key: 's', action: 'save', ctrl: true }, { key: 'z', action: 'undo', ctrl: true }, { key: 'p', action: 'postcard', ctrl: true },
     { key: 'm', action: 'mute' },
@@ -860,6 +907,83 @@
   };
 
   // ---------------------------------------------------------------------------
+  // UX pass: the goals tracker, needs strip, build-menu requirement glyphs and the coach-mark tour (ui.js reads these)
+  // ---------------------------------------------------------------------------
+  /** per objective: one line on WHY it matters + the buildings its "Build it" button offers (first not-yet-built, unlocked one wins) */
+  const guide = {
+    '1': { why: 'Everything starts here: the hall anchors the ridge and roots the path network.', build: ['founders_hall'] },
+    '2': { why: 'Your first students arrive by pirogue. No path to the water, no way to class.', build: ['path'] },
+    '3': { why: 'Beds and meals are the enrollment ceiling, and 120 founders are already on the water.', build: ['dorm', 'dining_hall'] },
+    '4': { why: 'The low spot floods every rain. A canal drains it to the bayou.', build: ['canal'] },
+    '5': { why: 'Buildings without power and water run at half capacity.', build: ['substation', 'water_tower'] },
+    '6': { why: 'Shade cuts the August heat penalty, and oaks are the cheapest happiness in the game.', build: ['live_oak'] },
+    '7': { why: 'Roads carry buses and the Mardi Gras parade, and the Stadium will need one.', build: ['road'] },
+    '8': { why: 'Tuition pays the bills. Beds, seats and dining set the cap on how many pay it.', build: ['dorm', 'lecture_hall', 'dining_hall'] },
+    '9': { why: 'A gator at the dumpster closes the Dining Hall until it leaves.', build: ['gator_fence', 'wildlife_post'] },
+    '10': { why: 'Mosquitoes make students sick, and sick students skip class.', build: ['pond', 'bat_house', 'abatement'] },
+    '11': { why: 'A closed levee ring keeps the surge out; the pump gets the rain back out.', build: ['levee', 'pump'] },
+    '11a': { why: 'Watch the ring hold, or find the gap before the real storm.', build: ['levee'] },
+    '12': { why: 'Six days to harden the campus before landfall.', build: ['generator', 'levee'] },
+    '13': { why: 'The storm is here. Answer the toasts; the prep you did decides the rest.', build: [] },
+    '14': { why: 'Damaged buildings do nothing until they are repaired.', build: [] },
+    '15': { why: 'Football brings applicants, ticket money and buzz.', build: ['practice_field'] },
+    '16': { why: 'Preserved wetland soaks up surge and lifts ecology.', build: ['preserve'] },
+    '17': { why: 'Past 1,500 students the campus needs real sewage or enrollment stalls.', build: ['wastewater'] },
+    '18a': { why: 'Wins fill the stands and the application pool.', build: ['stadium'] },
+    '18b': { why: 'A bowl berth is prestige you cannot buy.', build: [] },
+    '18': { why: 'The Golden Pirogue: a rivalry worth a five-year chase.', build: [] },
+    '19': { why: 'Landmarks lift prestige, and the Bell Tower is the biggest one.', build: ['bell_tower'] },
+    '20': { why: 'Night games under the lights: the Cauldron.', build: ['stadium'] },
+    '21': { why: 'Fortress or living with water: pick the future of the bayou.', build: ['surge_barrier', 'marsh_restoration'] },
+    '22': { why: 'The flagship: 10,000 students and prestige 60.', build: ['res_tower', 'library'] },
+    'p1': { why: 'Accreditation wants a Library.', build: ['library'] },
+    'p2': { why: 'Accreditation wants lecture seats for 5 of every 6 students.', build: ['lecture_hall'] }
+  };
+  /** the needs strip (GDD §5.4 capacity terms + utilities + parking): label, the fix, how the gauge reads */
+  const needs = {
+    beds: { label: 'Beds', build: 'dorm', unit: 'students' },
+    seats: { label: 'Seats', build: 'lecture_hall', unit: 'students' },
+    dining: { label: 'Dining', build: 'dining_hall', unit: 'students' },
+    power: { label: 'Power', build: 'substation', unit: 'buildings' },
+    water: { label: 'Water', build: 'water_tower', unit: 'buildings' },
+    wastewater: { label: 'Sewage', build: 'wastewater', unit: 'students' },
+    parking: { label: 'Parking', build: 'parking', unit: 'lots' }
+  };
+  /** build-menu requirement glyphs and their hover text ({n} = roadWithin) */
+  const requirements = {
+    power: { glyph: '⚡', text: 'Needs power: a Power Substation within 10 tiles' },
+    water: { glyph: '💧', text: 'Needs water: a Water Tower within 12 tiles' },
+    path: { glyph: '🚶', text: 'Must touch a path or road on one edge' },
+    road: { glyph: '🛣', text: 'Needs a Campus Road within {n} tiles' },
+    marsh: { glyph: '🪵', text: 'On marsh it goes up on Pilings (+40% cost)' },
+    place: {}
+  };
+  requirements.place[PLACE.PATH] = { glyph: '↔', text: 'Drag a run across land' };
+  requirements.place[PLACE.ROAD] = { glyph: '↔', text: 'Drag a run; bridges up to 3 water tiles; not on marsh' };
+  requirements.place[PLACE.BOARDWALK] = { glyph: '↔', text: 'Drag a run over marsh, preserve or water' };
+  requirements.place[PLACE.LEVEE] = { glyph: '↔', text: 'Drag a run along the ground; close the ring' };
+  requirements.place[PLACE.CANAL] = { glyph: '↔', text: 'Drag a run downhill to the bayou or open water' };
+  requirements.place[PLACE.FENCE] = { glyph: '↔', text: 'Drag a run along a water edge' };
+  requirements.place[PLACE.PRESERVE] = { glyph: '🖌', text: 'Paint marsh tiles' };
+  requirements.place[PLACE.NEAR_WATER] = { glyph: '🌊', text: 'Within 3 tiles of water' };
+  requirements.place[PLACE.TOUCH_MARSH_BAYOU] = { glyph: '🌊', text: 'Must touch marsh or the bayou' };
+  requirements.place[PLACE.TOUCH_CANAL_WATER] = { glyph: '🌊', text: 'Must touch a canal or water' };
+  requirements.place[PLACE.CYPRESS] = { glyph: '🌊', text: 'Wet ground or marsh only' };
+  requirements.place[PLACE.MARSH_OR_PRESERVE] = { glyph: '🌊', text: 'Marsh or Wetland Preserve only' };
+  requirements.place[PLACE.BARRIER] = { glyph: '↔', text: 'Drag across the mouth of the bayou' };
+  requirements.place[PLACE.RESTORE] = { glyph: '🖌', text: 'Paint drained land back to marsh' };
+  requirements.place[PLACE.UPGRADE] = { glyph: '⤴', text: 'Click a standing building to lift it' };
+  /** the 60-second coach-mark tour (ui.js; first game only, replayable from Settings); target = a BSU.ui.el key, '' = none */
+  const coach = [
+    { id: 'stats', target: 'stats', title: 'Your money and your campus', text: 'Cash pays for buildings and upkeep; students pay tuition. Prestige, Happiness and Ecology grow next year’s applicant pool. Click any number for the breakdown.' },
+    { id: 'goals', target: 'objective-card', title: 'Your current goal', text: 'Ms. Thibodeaux keeps the goal here, with why it matters. “Build it” opens the right building; “Show me” pans the camera there. Click the card to see every milestone.' },
+    { id: 'menu', target: 'build-menu', title: 'The build menu', text: 'Press G, or the gold Build button, any time. Pick a category on the left, then a building. Gold ★ marks what the campus needs right now; greyed cards tell you what unlocks them.' },
+    { id: 'place', target: '', title: 'Placing things', text: 'Click a tile to place a building. Paths, roads, levees and canals are dragged. Esc or right-click cancels. The label beside the cursor says why a spot will not work.' },
+    { id: 'needs', target: 'needs-strip', title: 'What the campus needs', text: 'Beds, seats, dining, power and water: used against capacity. Whichever is full is the brake on enrollment; click the line under the gauges to build the fix.' },
+    { id: 'swamp', target: 'overlay-buttons', title: 'Mind the water', text: 'This is a swamp. F shows flood risk. Levees keep the surge out; canals and pumps move the rain to the bayou. Célestine comes in Year 1.' }
+  ];
+
+  // ---------------------------------------------------------------------------
   // Assemble, deep-freeze, self-test
   // ---------------------------------------------------------------------------
   const data = {
@@ -868,7 +992,8 @@
     opponents: opponents, schedule: schedule, calendar: calendar, ticker: ticker, tickerKinds: tickerKinds,
     tickerKindList: TICKER_KIND_LIST, objectives: objectives, milestones: milestones, voiceCards: voiceCards,
     boardCards: boardCards, failureCards: failureCards, tutorial: tutorial, thibodeaux: thibodeaux,
-    stormQuotes: stormQuotes, overlays: overlays, keys: keys, toastKeys: toastKeys, panKeys: panKeys, rainKinds: rainKinds
+    stormQuotes: stormQuotes, overlays: overlays, keys: keys, toastKeys: toastKeys, panKeys: panKeys, rainKinds: rainKinds,
+    guide: guide, needs: needs, requirements: requirements, coach: coach
   };
 
   /** Recursive Object.freeze; no typed arrays, Maps or functions exist in the tables. */
@@ -902,6 +1027,7 @@
         check(r.kind !== 'footprint' || r.buildDays === 1 + Math.floor(r.w * r.h / 6), r.id + ' buildDays formula');
         check(typeof r.why === 'string' && r.why.length > 0 && typeof r.desc === 'string' && r.desc.length > 0, r.id + ' why/desc');
         check(r.why.split(/\s+/).length <= 14, r.id + ' why ≤ 14 words');
+        check(typeof r.blurb === 'string' && r.blurb.length > 0 && r.blurb.split(/\s+/).length <= 18, r.id + ' blurb present, ≤ 18 words');
         for (const t of r.tiers) check(t.name.length > 0 && t.cost > 0 && t.seats > 0, r.id + ' tier ' + t.tier + ' sane');
         if (r.unlock.milestone) check(BSU.MILESTONES.indexOf(r.unlock.milestone) >= 0, r.id + ' unlock.milestone known');
         if (r.unlock.building) check(!!C[r.unlock.building], r.id + ' unlock.building known');
@@ -965,6 +1091,12 @@
       check(opp.length === 9 && opp.filter(k => D.opponents[k].rival).length === 1 && opp.filter(k => D.opponents[k].crosstown).length === 1, '9 opponents, one rival, one crosstown');
       check(D.tutorial.length === 7 && D.tutorial.every((t, i) => t.stage === i && t.card.split(/\s+/).filter(Boolean).length <= 12), '7 tutorial stages, cards ≤ 12 words');
       check(D.thibodeaux.length >= 8 && D.stormQuotes.length >= 6, 'thibodeaux ≥ 8, stormQuotes ≥ 6');
+      // 7b. UX tables: a guide line for every objective (+ the accreditation pair), needs/requirements/coach shapes
+      for (const id of BSU.OBJECTIVE_IDS.concat(['p1', 'p2'])) { const g = D.guide[id]; check(!!g && g.why.length > 0 && Array.isArray(g.build) && g.build.every(b => !!C[b]), 'guide ' + id); }
+      check(['beds', 'seats', 'dining', 'power', 'water', 'wastewater', 'parking'].every(k => D.needs[k] && !!C[D.needs[k].build] && D.needs[k].label.length > 0), 'needs table');
+      check(['power', 'water', 'path', 'road', 'marsh'].every(k => D.requirements[k].glyph && D.requirements[k].text) && Object.keys(D.requirements.place).length === 15, 'requirements table');
+      check(D.coach.length === 6 && D.coach.every(c => c.id && c.title && c.text.length > 0 && typeof c.target === 'string'), '6 coach steps');
+      check(D.keys.some(k => k.key === 'g' && k.action === 'buildMenu' && !k.ctrl && !k.shift) && !D.keys.some(k => k.key === 'q'), 'G opens the build menu; Q stays unbound');
       check(D.overlays.length === 6 && D.overlays[2].legend.join() === 'Ambient,Annoying,Biblical,State Bird', '6 overlays, K legend');
       check(D.failureCards.bankruptcy.options.length === 3 && D.failureCards.underwater.options.length === 1 && D.failureCards.probation.options.length === 1, 'failure cards');
       // 8. frozen

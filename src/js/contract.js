@@ -1047,7 +1047,7 @@
         camera: { x: (founders.tx - founders.ty) * 32, y: (founders.tx + founders.ty) * 16, zoom: 1, tx: 0, ty: 0, follow: -1 },
         overlay: BSU.OV.NONE, speed: 1, speedBefore: 1, tool: null, panel: null, paletteTab: 'essentials',
         tabsSeen: {}, newPips: {}, tabsIntroduced: {},
-        settings: { volume: P.audio.defaultVolume, muted: false, particles: 'high', shake: true, colorblind: false, autoSimHint: false },
+        settings: { volume: P.audio.defaultVolume, muted: false, particles: 'high', shake: true, colorblind: false, autoSimHint: false, coachSeen: false },
         perfMode: false
       },
       rng: { sim: (seed ^ 0x9E3779B9) >>> 0 }
@@ -1077,7 +1077,7 @@
       needsPower: 'boolean', needsWater: 'boolean', pathAdjacency: 'boolean', roadWithin: 'int', placeRule: 'placeRule',
       allowMarsh: 'boolean', alwaysPilings: 'boolean', buildDays: 'int', unlock: 'object:unlock',
       pip: 'enum:|gator|mosquito|cell|season', effects: 'object:effects', tiers: 'array:object:tier', paint: 'object:paint',
-      namePool: 'string', why: 'string', desc: 'string', demolishable: 'boolean', shelterOwn: 'boolean'
+      namePool: 'string', why: 'string', desc: 'string', blurb: 'string', demolishable: 'boolean', shelterOwn: 'boolean'
     }),
     unlock: freeze({
       students: 'optional:number', prestige: 'optional:number', ecology: 'optional:number', milestone: 'optional:string',

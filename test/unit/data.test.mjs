@@ -18,7 +18,7 @@ const eq = (a, b, msg) => ok(a === b, `${msg} (got ${JSON.stringify(a)}, want ${
 const src = readFileSync(join(root, 'src', 'js', 'data.js'), 'utf8');
 ok(!/<\/script/i.test(src), 'no "</script" in source');
 ok(!/Math\.random/.test(src), 'no Math.random in source');
-ok(src.length <= 80 * 1024, `file size ${(src.length / 1024).toFixed(1)} KB ≤ 80 KB`);
+ok(src.length <= 100 * 1024, `file size ${(src.length / 1024).toFixed(1)} KB ≤ 100 KB`);   // UX pass: blurbs + guide/needs/requirements/coach tables (was 80 KB)
 
 const win = makeWindow();
 win.BSU_FORCE_HEADLESS = true;
@@ -55,6 +55,14 @@ eq(D.catalogList.length, 43, '43 catalog rows');
 eq(Object.keys(D.catalog).length, 43, '43 catalog keys');
 ok(BSU.B_ORDER.every((id, i) => D.catalogList[i].id === id && D.catalogList[i].n === i + 1), 'catalogList matches B_ORDER and n');
 ok(D.catalogList.every(r => BSU.validateCatalogRow(r).ok), 'every row passes BSU.validateCatalogRow');
+ok(D.catalogList.every(r => typeof r.blurb === 'string' && r.blurb.length > 0 && r.blurb.split(/\s+/).length <= 18), 'all 43 rows have a plain blurb (≤ 18 words)');
+ok(D.catalogList.every(r => typeof r.why === 'string' && r.why.length > 0), 'all 43 rows have a why line');
+ok(D.catalog.dorm.blurb === '300 beds for first-years.' && /enrollment ceiling/.test(D.catalog.dorm.why), 'dorm blurb/why read as the brief asks');
+ok(BSU.OBJECTIVE_IDS.concat(['p1', 'p2']).every(id => D.guide[id] && D.guide[id].why.length > 0 && Array.isArray(D.guide[id].build)), 'guide covers every objective');
+ok(D.guide['3'].build.join(',') === 'dorm,dining_hall' && D.guide['5'].build.join(',') === 'substation,water_tower', 'guide build lists for objectives 3 and 5');
+ok(['beds', 'seats', 'dining', 'power', 'water'].every(k => D.needs[k] && D.catalog[D.needs[k].build]), 'needs table maps the five gauges to buildings');
+ok(D.coach.length === 6 && D.coach.map(c => c.id).join(',') === 'stats,goals,menu,place,needs,swamp', '6 coach steps in order');
+ok(D.keys.some(k => k.key === 'g' && k.action === 'buildMenu') && !D.keys.some(k => k.key === 'q'), 'G opens the build menu; Q unbound');
 
 // --- scenario 2: spot check 10 rows against GDD §0.3 ------------------------
 const spot = [

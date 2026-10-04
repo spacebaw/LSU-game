@@ -25,7 +25,8 @@
 //   │  ├─ #alert-strip.hidden  #alert-icon #alert-text #alert-action #alert-gator
 //   │  ├─ #minimap-wrap  canvas#minimap(160×160) #minimap-viewport
 //   │  ├─ #overlay-buttons  .ov-btn[data-ov=1..6] · #legend.chip
-//   │  ├─ #objective-card  canvas#obj-portrait #obj-title #obj-text #obj-progress(.fill) #obj-count #btn-showme #btn-obj-dismiss #obj-background #speech-bubble
+//   │  ├─ #objective-card (the GOALS TRACKER, top-left)  canvas#obj-portrait #obj-kicker #obj-title #obj-text #obj-why #obj-progress(.fill) #obj-count
+//   │  │     #btn-obj-build #btn-showme #btn-obj-dismiss #obj-next #obj-background #needs-strip(.need×5 #needs-text) #speech-bubble
 //   │  ├─ #voice-card.hidden  #voice-text #voice-payoff #btn-voice-accept #btn-voice-decline
 //   │  ├─ #milestones-card.hidden  .ms-row×3
 //   │  ├─ #notifications  .notif[data-kind]
@@ -33,7 +34,9 @@
 //   │  ├─ #inspect.panel.side.hidden  #insp-title #insp-sub #btn-insp-close canvas#insp-sprite #insp-body #insp-actions
 //   │  ├─ #ghost-label.hidden · #tooltip.hidden · #popover.hidden(#pop-title .pop-line×4 #pop-next)
 //   │  ├─ #ticker  #ticker-track · #btn-ticker-log · #ticker-log.hidden
-//   │  ├─ #palette  #palette-tabs(.tab[data-tab] .pip) · #palette-items(.item[data-id]) · #btn-bulldoze · #btn-palette-info
+//   │  ├─ #palette  #btn-build-menu · #palette-tabs(.tab[data-tab] .pip) · #palette-items(.item[data-id]) · #btn-bulldoze · #btn-palette-info
+//   │  ├─ #build-menu.hidden  #bm-cats(.bm-cat[data-tab]) · #bm-cards(.bm-card[data-id] .bm-badge .bm-reqs .bm-lock) · #bm-detail · #bm-foot   (UX pass; key G)
+//   │  ├─ #coach.hidden  .coach-pane×4 · .coach-ring · .coach-box(#coach-step #coach-title #coach-text #btn-coach-back #btn-coach-skip #btn-coach-next)
 //   │  ├─ #cards (modal stack: .card#card-<id> .card-title .card-body .card-actions)
 //   │  └─ #perf-chip.hidden · #perfmode-chip.hidden · #hint.hidden · #btn-skip.hidden
 //   ├─ #panels  (#panel-<name>.panel built through registerPanel; settings + debug built in here)
@@ -141,6 +144,10 @@
   let paletteDirty = true, paletteKey = '', paletteTab = '', pipKey = '', hudFade = false, hudFadeAt = 0, capacityShown = false;
   let objKey = '', msAt = -1e9, panelAt = -1e9, perfAt = -1e9, speedKey = '', skipShown = false, paletteHidden = false, errCount = 0;
   let pendingPlaceSound = 0;
+  // UX pass: build menu, needs strip cache, coach-mark tour
+  const bm = { open: false, hover: null, selected: null, pulseId: null, pulseUntil: 0, focusUntil: 0, keepOpen: false, key: '', detailKey: '', dirty: true };
+  let needsCache = null, needsAt = -1e9, needsKey = '';
+  const coach = { step: -1, armedAt: 0, paused: false, overlayBefore: 0, layoutAt: -1e9 };
 
   // ---------------------------------------------------------------------------
   // Panel / card registries (plain map writes; ui_panels registers at definition time)
@@ -223,20 +230,36 @@
     return wrap;
   }
   function buildObjective() {
+    // the GOALS TRACKER (UX pass): top-left under the topbar; the old ids are kept so progress/tests keep working
     const c = el('div', 'hidden'); c.id = 'objective-card';
     const head = el('div', 'obj-head'); const portrait = el('canvas'); portrait.id = 'obj-portrait'; portrait.width = 48; portrait.height = 48;
-    const col = el('div', 'obj-col'); const title = el('div', null, ''); title.id = 'obj-title'; const text = el('div', null, ''); text.id = 'obj-text';
-    const prog = el('div', 'bar'); prog.id = 'obj-progress'; const fill = el('div', 'fill'); prog.appendChild(fill); const count = el('span', null, ''); count.id = 'obj-count';
+    const col = el('div', 'obj-col'); const kick = el('div', 'obj-kicker', 'Goal'); kick.id = 'obj-kicker'; const title = el('div', null, ''); title.id = 'obj-title'; const text = el('div', null, ''); text.id = 'obj-text'; const why = el('div', 'hidden', ''); why.id = 'obj-why';
+    col.appendChild(kick); col.appendChild(title); col.appendChild(text); col.appendChild(why);
+    const openMs = function () { const s = stateOf(); if (!s || coach.step >= 0) return; M.openPanel(s.ui.panel === 'milestones' ? null : 'milestones'); };
+    col.addEventListener('click', openMs); col.title = 'All milestones'; portrait.addEventListener('click', openMs);
+    const dis = btn('btn-obj-dismiss', '✕', 'icon', function () { const s = stateOf(); const o = s ? call('progress', 'objective', s) : null; if (o) call('progress', 'dismiss', s, o.id); }); dis.title = 'Dismiss this goal';
+    head.appendChild(portrait); head.appendChild(col); head.appendChild(dis);
+    const progRow = el('div', 'obj-prog-row'); const prog = el('div', 'bar'); prog.id = 'obj-progress'; const fill = el('div', 'fill'); prog.appendChild(fill); const count = el('span', null, ''); count.id = 'obj-count'; progRow.appendChild(prog); progRow.appendChild(count);
     const acts = el('div', 'obj-actions');
+    const build = btn('btn-obj-build', 'Build it', 'primary small', function () { objBuildIt(); }); build.title = 'Select the right tool and open the build menu on it';
     const showme = btn('btn-showme', 'Show me', 'small', function () { objShowMe(); });
     const post = btn('btn-postcard-obj', 'Postcard', 'small hidden', function () { postcard(stateOf()); });
-    const dis = btn('btn-obj-dismiss', '✕', 'icon', function () { const s = stateOf(); const o = s ? call('progress', 'objective', s) : null; if (o) call('progress', 'dismiss', s, o.id); });
-    acts.appendChild(showme); acts.appendChild(post); acts.appendChild(count);
-    col.appendChild(title); col.appendChild(text); col.appendChild(prog); col.appendChild(acts);
-    head.appendChild(portrait); head.appendChild(col); head.appendChild(dis);
+    acts.appendChild(build); acts.appendChild(showme); acts.appendChild(post);
+    const next = el('div', 'obj-next hidden', ''); next.id = 'obj-next';
     const bg = el('div', 'row hidden', ''); bg.id = 'obj-background'; const bub = el('div', 'hidden', ''); bub.id = 'speech-bubble';
-    c.appendChild(bub); c.appendChild(head); c.appendChild(bg);
-    E['objective-card'] = c; E['obj-portrait'] = portrait; E['obj-title'] = title; E['obj-text'] = text; E['obj-progress'] = prog; E['obj-fill'] = fill; E['obj-count'] = count; E['btn-showme'] = showme; E['btn-postcard-obj'] = post; E['btn-obj-dismiss'] = dis; E['obj-background'] = bg; E['speech-bubble'] = bub;
+    // needs strip: five gauges + the binding line
+    const strip = el('div', 'hidden'); strip.id = 'needs-strip'; E.needEls = {};
+    const gauges = el('div', 'needs-gauges');
+    for (const k of ['beds', 'seats', 'dining', 'power', 'water']) {
+      const g = el('div', 'need'); g.dataset.key = k; const lab = el('div', 'need-label', (BSU.data && BSU.data.needs && BSU.data.needs[k] ? BSU.data.needs[k].label : k)); const bar = el('div', 'bar'); const f = el('div', 'fill'); bar.appendChild(f); const val = el('div', 'need-val', '—');
+      g.appendChild(lab); g.appendChild(bar); g.appendChild(val); gauges.appendChild(g); E.needEls[k] = { el: g, fill: f, val: val };
+      g.addEventListener('click', function () { const s = stateOf(); const b = (BSU.data.needs[k] || {}).build; if (s && b) M.openBuildMenu(s, { focus: b, pulse: true }); });
+    }
+    const ntext = el('button', 'needs-text'); ntext.id = 'needs-text'; ntext.type = 'button'; ntext.addEventListener('click', function () { const s = stateOf(); const b = ntext.dataset.build; if (s && b) { M.openBuildMenu(s, { focus: b, pulse: true }); } });
+    strip.appendChild(gauges); strip.appendChild(ntext);
+    c.appendChild(bub); c.appendChild(head); c.appendChild(progRow); c.appendChild(acts); c.appendChild(next); c.appendChild(bg); c.appendChild(strip);
+    E['objective-card'] = c; E['obj-portrait'] = portrait; E['obj-kicker'] = kick; E['obj-title'] = title; E['obj-text'] = text; E['obj-why'] = why; E['obj-progress'] = prog; E['obj-prog-row'] = progRow; E['obj-fill'] = fill; E['obj-count'] = count; E['obj-actions'] = acts;
+    E['btn-obj-build'] = build; E['btn-showme'] = showme; E['btn-postcard-obj'] = post; E['btn-obj-dismiss'] = dis; E['obj-next'] = next; E['obj-background'] = bg; E['speech-bubble'] = bub; E['needs-strip'] = strip; E['needs-text'] = ntext;
     const v = el('div', 'hidden'); v.id = 'voice-card'; const vh = el('div', 'card-kicker', 'Student voice'); const vs = el('div', 'voice-student', ''); const vt = el('div', null, ''); vt.id = 'voice-text'; const vp = el('div', null, ''); vp.id = 'voice-payoff';
     const va = el('div', 'card-actions'); const acc = btn('btn-voice-accept', 'Accept', 'primary small', function () { answerVoice(true); }); const dec = btn('btn-voice-decline', 'Decline', 'small', function () { answerVoice(false); }); va.appendChild(acc); va.appendChild(dec);
     v.appendChild(vh); v.appendChild(vs); v.appendChild(vt); v.appendChild(vp); v.appendChild(va);
@@ -284,8 +307,10 @@
     const bull = btn('btn-bulldoze', '🔨', '', function () { const s = stateOf(); const t = s && s.ui.tool; M.selectTool(s, t && t.id === 'bulldoze' ? null : 'bulldoze'); }); bull.title = 'Bulldoze (X)';
     const info = btn('btn-palette-info', '⋯', '', function () { cls(E.palette, 'compact', !E.palette.classList.contains('compact')); }); info.title = 'Compact palette';
     side.appendChild(bull); side.appendChild(info);
-    p.appendChild(tabs); p.appendChild(items); p.appendChild(side);
-    E.palette = p; E['palette-tabs'] = tabs; E['palette-items'] = items; E['btn-bulldoze'] = bull; E['btn-palette-info'] = info; E.tabEls = {}; E.itemEls = {}; return p;
+    const bmBtn = btn('btn-build-menu', '', 'primary', function () { const s = stateOf(); if (!s) return; if (bm.open) M.closeBuildMenu(); else M.openBuildMenu(s, {}); }); bmBtn.title = 'Build menu (G)';
+    bmBtn.appendChild(el('span', 'glyph', '🏗')); bmBtn.appendChild(el('span', 'label', 'Build')); bmBtn.appendChild(el('span', 'key', 'G'));
+    p.appendChild(bmBtn); p.appendChild(tabs); p.appendChild(items); p.appendChild(side);
+    E.palette = p; E['palette-tabs'] = tabs; E['palette-items'] = items; E['btn-bulldoze'] = bull; E['btn-palette-info'] = info; E['btn-build-menu'] = bmBtn; E.tabEls = {}; E.itemEls = {}; return p;
   }
   function buildTitle() {
     const t = el('div', 'hidden'); t.id = 'title';
@@ -338,8 +363,9 @@
     const notes = el('div'); notes.id = 'notifications'; E.notifications = notes; hud.appendChild(notes);
     hud.appendChild(buildToast()); hud.appendChild(buildInspect());
     buildLabels().forEach(function (x) { hud.appendChild(x); });
-    hud.appendChild(buildPopover()); hud.appendChild(buildTicker()); hud.appendChild(buildPalette()); hud.appendChild(buildCards());
+    hud.appendChild(buildPopover()); hud.appendChild(buildTicker()); hud.appendChild(buildPalette()); hud.appendChild(buildBuildMenu()); hud.appendChild(buildCards());
     buildChips().forEach(function (x) { hud.appendChild(x); });
+    hud.appendChild(buildCoach());
     app.appendChild(hud); app.appendChild(buildPanelsHost()); app.appendChild(buildTitle());
     try { call('render', 'attachMinimap', E.minimap); } catch (e) { uerr('init:minimap', e); }
     attachInput(world);
@@ -407,9 +433,9 @@
   // ---------------------------------------------------------------------------
   function subscribe() {
     const on = function (name, fn) { try { BSU.events.on(name, function (p) { try { fn(p || {}); } catch (e) { uerr('on:' + name, e); } }, 'ui'); } catch (e) { uerr('subscribe:' + name, e); } };
-    on('econ:stat', function (p) { if (p.stat === 'cash' && fin(p.delta, 0) !== 0) { flashDelta(p.delta); } });
+    on('econ:stat', function (p) { if (p.stat === 'cash' && fin(p.delta, 0) !== 0) { flashDelta(p.delta); } if (p.stat === 'students') needsAt = -1e9; });   // the needs strip follows enrollment at once
     on('agent:arrive', function () { odo.holdUntil = -1; });
-    on('unlock:changed', function (p) { paletteDirty = true; const s = stateOf(); if (!s) return; for (const id of (p.ids || [])) { const r = rowOf(id); if (r && r.tab && s.ui.tabsIntroduced[r.tab] && r.tab !== s.ui.paletteTab) s.ui.newPips[r.tab] = true; } });
+    on('unlock:changed', function (p) { paletteDirty = true; bm.dirty = true; needsAt = -1e9; const s = stateOf(); if (!s) return; for (const id of (p.ids || [])) { const r = rowOf(id); if (r && r.tab && s.ui.tabsIntroduced[r.tab] && r.tab !== s.ui.paletteTab) s.ui.newPips[r.tab] = true; } });
     on('objective:offered', function () { objKey = ''; bubble.since = clock; });
     on('objective:complete', function (p) { objKey = ''; if (p.id === '1') { hudFade = true; hudFadeAt = clock; } });
     on('objective:dismissed', function () { objKey = ''; }); on('objective:progress', function () { objKey = ''; });
@@ -423,7 +449,9 @@
     on('power:blackout', function () { alertAt = -1e9; }); on('power:restored', function () { alertAt = -1e9; });
     on('building:flooded', function () { alertAt = -1e9; }); on('building:dried', function () { alertAt = -1e9; });
     on('coverage:changed', function () { inspDirty = true; });
-    on('building:placed', function () { paletteDirty = paletteDirty || false; inspDirty = true; });
+    on('building:placed', function () { paletteDirty = paletteDirty || false; inspDirty = true; needsAt = -1e9; bm.dirty = true; });
+    on('building:complete', function () { needsAt = -1e9; bm.dirty = true; });
+    on('coverage:changed', function () { needsAt = -1e9; });
     on('building:removed', function () { if (insp && insp.kind === 'building') { const s = stateOf(); if (s && !call('buildings', 'get', s, insp.id)) M.closeInspect(); } });
     on('ui:ticker', function () { tk.lastLen = -1; if (tk.logOpen) rebuildLog(stateOf()); });
     on('save:written', function (p) { const s = stateOf(); if (s && p && p.slot && String(p.slot).indexOf('auto') !== 0 && String(p.slot)[0] !== '_') M.notify(s, { kind: 'info', text: 'Saved', ttl: 3000 }); });
@@ -431,6 +459,7 @@
     on('speed:changed', function () { speedKey = ''; });
     on('setpiece:start', function () {
       const s = stateOf(); if (s && s.ui.tool && !toolLocked) M.selectTool(s, null);
+      M.closeBuildMenu();
       // an open modal card goes back to the queue front (no onClose: it is re-offered when the set piece ends)
       if (card && !card.spec.duringSetPiece) { cardQueue.unshift(card.spec); card = null; if (dom()) { clear(E.cards); show(E.cards, false); } }
       hideTooltip();
@@ -540,7 +569,7 @@
   // the live machine: callbacks bound to render/buildings/inspect
   const live = makeMachine({
     getTool: function () { const s = stateOf(); return s && s.ui ? s.ui.tool : null; },
-    setTool: function (t) { const s = stateOf(); if (s && s.ui) { s.ui.tool = t; } markToolDom(s); try { emit('ui:tool', { tool: t ? t.id : null }); } catch (e) { uerr('emit:tool', e); } },
+    setTool: function (t) { const s = stateOf(); if (s && s.ui) { s.ui.tool = t; } markToolDom(s); if (t && bm.open && !bm.keepOpen) M.closeBuildMenu(); try { emit('ui:tool', { tool: t ? t.id : null }); } catch (e) { uerr('emit:tool', e); } },
     isDrag: function (id) { const r = rowOf(id); return !!(r && r.kind === 'drag'); },
     rotatable: function (id) { const r = rowOf(id); return !!(r && r.rotatable); },
     locked: function () { return toolLocked; },
@@ -622,9 +651,17 @@
         if (key === 'Escape' && !s.ui.tool && !insp && !s.ui.panel) { if (card.spec.modal === true) return true; M.closeCard(); return true; }   // Esc peels one layer: tool → inspect → panel → card
       }
       if (titleOn) return false;
+      // (3b) the coach-mark tour owns the keyboard while it is up: Enter/→/Space next, ← back, Esc skips
+      if (coach.step >= 0 && !coach.paused) {
+        if (key === 'Enter' || key === 'ArrowRight' || key === ' ') { coachNext(s, 1); return true; }
+        if (key === 'ArrowLeft') { coachNext(s, -1); return true; }
+        if (key === 'Escape') { coachFinish(s, false); return true; }
+        return true;
+      }
       // (4) the map
       if (isBackquote) { toggleDebug(s); return true; }
       if (key === 'Escape') {
+        if (bm.open) { M.closeBuildMenu(); return true; }
         if (mcStep(live, { type: 'key', key: 'Escape', px: lastPx, py: lastPy })) return true;
         if (!E.popover.classList.contains('hidden')) { show(E.popover, false); return true; }
         if (s.ui.panel) { M.openPanel(null); return true; }
@@ -659,6 +696,7 @@
       case 'nextTab': cycleTab(s, 1); return true;
       case 'prevTab': cycleTab(s, -1); return true;
       case 'bulldoze': { const t = s.ui.tool; if (toolLocked) return true; M.selectTool(s, t && t.id === 'bulldoze' ? null : 'bulldoze'); return true; }
+      case 'buildMenu': { if (bm.open) M.closeBuildMenu(); else M.openBuildMenu(s, {}); return true; }
       case 'rotate': return mcStep(live, { type: 'key', key: 'r', px: lastPx, py: lastPy }) || true;
       case 'home': { const f = s.plot && s.plot.founders; if (f) call('render', 'panToTile', f.tx + 1, f.ty + 1); return true; }
       case 'follow': { const cam = s.ui.camera; if (cam && cam.follow >= 0) { call('render', 'follow', -1); } else { const a = call('agents', 'follow', s); if (a && Number.isFinite(a.id)) call('render', 'follow', a.id); } return true; }
@@ -766,6 +804,7 @@
       l1 = money(r.cost); if (row.kind === 'drag') l1 += ' / tile';
       if (r.needsGrading) l1 += ' · Grade the site +' + money(r.gradingCost || 0); else if (r.needsPilings) l1 += ' · Pilings +' + money(r.pilingsCost || 0);
       if (r.ridgeFull) l2 = r.ridgeFull; else if (r.sink) l2 = r.sink; else if (r.ring && r.ring.text) l2 = r.ring.text; else if (!r.affordable) l2 = 'Not enough cash';
+      else { const uw = utilityWarning(s, row, r); if (uw) l2 = uw; }
       if (tool.rot) l1 += ' · rotated (R)';
     }
     ghostLabel(px, py, l1, l2, color);
@@ -784,11 +823,13 @@
     const row = rowOf(tool.id); if (!row) return false;
     const g = ghostTarget(s, tool, px, py); if (!g) return false;
     if (g.cove) { call('audio', 'play', 'invalid'); if (dom()) shakeLabel(); return false; }
+    const pre = (lastGhost && lastGhost.tx === g.tx && lastGhost.ty === g.ty) ? lastGhost.r : null;
     const r = call('buildings', 'place', s, tool.id, g.tx, g.ty, { rot: tool.rot });
     if (r && r.ok) {
       call('audio', 'play', 'place'); undoAtMs = clock;
       if (toolLocked) toolLocked = false;
       if (dom()) ghostLabel(px, py, 'Placed · ' + money(r.cost), 'Ctrl+Z to undo', 'green');
+      placedHint(s, row, pre);
       return true;
     }
     call('audio', 'play', 'invalid');
@@ -1012,7 +1053,7 @@
       if (cur && s.ui.paletteTab !== cur.id) s.ui.paletteTab = cur.id;
       const key = vis.map(function (t) { return t.id; }).join(',') + '|' + (cur ? cur.id : '') + '|' + (cur ? cur.rows.map(function (id) { const u = unlockOf(s, id); return id + (u.ok ? '+' : '-' + u.reason); }).join(',') : '');
       if (key === paletteKey) { refreshPips(s); return; }
-      paletteKey = key;
+      paletteKey = key; bm.dirty = true;
       const tabs = E['palette-tabs']; clear(tabs); E.tabEls = {};
       for (const t of vis) {
         const b = el('button', 'tab' + (cur && cur.id === t.id ? ' active' : '')); b.type = 'button'; b.dataset.tab = t.id;
@@ -1048,6 +1089,346 @@
     if (r.why) parts.push('“' + r.why + '”');
     return parts.join('\n');
   }
+
+  // ---------------------------------------------------------------------------
+  // UX pass: goals tracker helpers, needs strip, build menu, placement hints, coach-mark tour
+  // ---------------------------------------------------------------------------
+  function guideOf(id) { return (BSU.data && BSU.data.guide && BSU.data.guide[id]) || null; }
+  function needsData() { return (BSU.data && BSU.data.needs) || {}; }
+  /** the building the current objective's "Build it" offers: the first unlocked goal building not yet built (drag/paint rows always count as unbuilt) */
+  function objTarget(s, o) {
+    if (!s || !o) return null;
+    const g = guideOf(o.id); if (!g || !g.build || !g.build.length) return null;
+    let first = null;
+    for (const id of g.build) {
+      if (id === 'founders_hall') continue;
+      const r = rowOf(id); if (!r) continue;
+      if (!unlockOf(s, id).ok) continue;
+      if (!first) first = id;
+      if (r.kind !== 'footprint') return id;
+      if (fin(call('buildings', 'count', s, id), 0) === 0) return id;
+    }
+    return first;
+  }
+  function objBuildIt() {
+    const s = stateOf(); if (!s) return;
+    const o = call('progress', 'objective', s); const id = o ? objTarget(s, o) : null;
+    if (!id) { M.openBuildMenu(s, {}); return; }
+    if (!toolLocked && !s.setPiece) { bm.keepOpen = true; try { M.selectTool(s, id); } finally { bm.keepOpen = false; } }
+    M.openBuildMenu(s, { focus: id, pulse: true });
+  }
+  /** the five gauges + the binding constraint, from the same numbers the Students popover uses (economy.capacity) plus live coverage */
+  function needsOf(s) {
+    const e = (s && s.economy) || {}; const students = fin(e.students, 0);
+    const cap = call('economy', 'capacity', s) || e.capacityTerms || {};
+    const cat = catalog(); const list = call('buildings', 'list', s) || [];
+    let needP = 0, powered = 0, needW = 0, watered = 0, subs = 0, towers = 0, lots = 0;
+    for (const b of list) {
+      if (!b) continue; const r = cat[b.type]; if (!r || fin(b.built, 0) < 1) continue;
+      if (r.needsPower) { needP++; if (b.powered) powered++; }
+      if (r.needsWater) { needW++; if (b.watered) watered++; }
+      if (b.type === 'substation') subs++; else if (b.type === 'water_tower') towers++; else if (b.type === 'parking') lots++;
+    }
+    const suppressed = !!e.suppressCoverage;
+    const perSub = fin(cat.substation && cat.substation.effects.power.capacity, 40), perTower = fin(cat.water_tower && cat.water_tower.effects.water.capacity, 50);
+    const terms = [
+      { key: 'beds', used: students, cap: fin(cap.beds, 0) },
+      { key: 'seats', used: students, cap: fin(cap.seats, 0) },
+      { key: 'dining', used: students, cap: fin(cap.dining, 0) },
+      { key: 'power', used: needP, cap: subs * perSub, short: suppressed ? 0 : needP - powered },
+      { key: 'water', used: needW, cap: towers * perTower, short: suppressed ? 0 : needW - watered }
+    ];
+    const ND = needsData(); const nameOf = function (k) { const r = rowOf((ND[k] || {}).build); return r ? r.name : k; }; const labelOf = function (k) { return (ND[k] || {}).label || k; };
+    const mk = function (key, text, level) { return { key: key, text: text, level: level, build: (ND[key] || {}).build || null }; };
+    const ww = { key: 'wastewater', used: students, cap: fin(cap.wastewater, 1500) };
+    let m = terms[0]; for (const t of [terms[1], terms[2], ww]) if (t.cap - t.used < m.cap - m.used) m = t;
+    const need = Math.ceil(students / 600);
+    let binding = null;
+    if (m.cap <= m.used) binding = mk(m.key, labelOf(m.key) + ' full (' + m.used + ' / ' + m.cap + ') → build a ' + nameOf(m.key), 'bad');
+    else if (terms[3].short > 0) binding = mk('power', terms[3].short + (terms[3].short === 1 ? ' building has' : ' buildings have') + ' no power → build a ' + nameOf('power'), 'bad');
+    else if (terms[4].short > 0) binding = mk('water', terms[4].short + (terms[4].short === 1 ? ' building has' : ' buildings have') + ' no water → build a ' + nameOf('water'), 'bad');
+    else if (m.used >= 0.85 * m.cap) binding = mk(m.key, labelOf(m.key) + ' nearly full (' + m.used + ' / ' + m.cap + ') → build a ' + nameOf(m.key), 'warn');
+    else if (students > 600 && lots < need) binding = mk('parking', 'Students want parking (' + lots + ' / ' + need + ' lots) → build a ' + nameOf('parking'), 'warn');
+    else binding = mk(m.key, 'Room for ' + (m.cap - m.used) + ' more students; ' + labelOf(m.key).toLowerCase() + ' fill first → next: ' + nameOf(m.key), 'ok');
+    return { students: students, terms: terms, binding: binding, suppressed: suppressed };
+  }
+  let needsState = null;
+  function needsNow(s) { if (!needsCache || needsState !== s || clock - needsAt >= L.refreshMs) { needsAt = clock; needsState = s; needsCache = needsOf(s); } return needsCache; }
+  /** gold badges for the build menu: the objective's building ('Goal') and the needs strip's fix ('Needed' | 'Next') */
+  function recommend(s) {
+    const out = {};
+    const o = call('progress', 'objective', s); const t = o ? objTarget(s, o) : null; if (t) out[t] = 'Goal';
+    const n = needsNow(s); const b = n && n.binding;
+    if (b && b.build && unlockOf(s, b.build).ok && !out[b.build]) out[b.build] = b.level === 'ok' ? 'Next' : 'Needed';
+    return out;
+  }
+  function refreshNeeds(s) {
+    const n = needsNow(s); if (!n || !E.needEls) return;
+    const key = JSON.stringify(n.terms) + '|' + (n.binding ? n.binding.text + n.binding.level : '');
+    if (key === needsKey) return; needsKey = key;
+    for (const t of n.terms) {
+      const g = E.needEls[t.key]; if (!g) continue;
+      const ratio = t.cap > 0 ? t.used / t.cap : (t.used > 0 ? 1 : 0);
+      const w = Math.round(clamp(ratio, 0, 1) * 100) + '%'; if (g.fill.style.width !== w) g.fill.style.width = w;
+      setText(g.val, t.used + ' / ' + t.cap);
+      const lvl = (t.short > 0 || (t.cap <= t.used && t.used > 0)) ? 'bad' : (ratio >= 0.85 ? 'warn' : 'ok');
+      if (g.el.dataset.level !== lvl) g.el.dataset.level = lvl;
+      g.el.title = (needsData()[t.key] || {}).label + ': ' + t.used + ' ' + ((needsData()[t.key] || {}).unit || '') + ' using ' + t.cap + ' of capacity' + (t.short > 0 ? ' · ' + t.short + ' unserved' : '') + ' · click to build a ' + ((rowOf((needsData()[t.key] || {}).build) || {}).name || '');
+    }
+    const nt = E['needs-text']; if (n.binding) { setText(nt, n.binding.text); nt.dataset.level = n.binding.level; nt.dataset.build = n.binding.build || ''; nt.disabled = !n.binding.build; }
+  }
+  /** utility coverage warning for the ghost's second line (none while the tutorial suppresses coverage) */
+  function utilityWarning(s, row, r) {
+    if (!row || !r || (s.economy && s.economy.suppressCoverage)) return '';
+    if (row.needsPower && r.power === false) return 'No power here yet: a Substation within ' + fin((rowOf('substation') || {}).effects && rowOf('substation').effects.power.radius, 10) + ' tiles';
+    if (row.needsWater && r.water === false) return 'No water here yet: a Water Tower within ' + fin((rowOf('water_tower') || {}).effects && rowOf('water_tower').effects.water.radius, 12) + ' tiles';
+    return '';
+  }
+  /** after a placement that is out of power/water coverage: one notification with a one-click overlay */
+  function placedHint(s, row, pre) {
+    try {
+      if (!row || !pre || (s.economy && s.economy.suppressCoverage)) return;
+      let text = '', ov = OV.NONE;
+      if (row.needsPower && pre.power === false) { text = row.name + ' placed with no power yet. Build a Power Substation within 10 tiles (P shows coverage).'; ov = OV.POWER; }
+      else if (row.needsWater && pre.water === false) { text = row.name + ' placed with no water yet. Build a Water Tower within 12 tiles (W shows coverage).'; ov = OV.WATER; }
+      if (!text) return;
+      M.notify(s, { kind: 'info', text: text, ttl: 9000, action: { label: 'Show coverage', fn: function (st) { M.setOverlay(st, ov); } } });
+    } catch (e) { uerr('placedHint', e); }
+  }
+  // ---- effects → plain lines (the detail card)
+  const SPECIAL_TEXT = { boilPot: 'Crawfish boil pot', dumpster: 'Dumpster (gator bait)', porch: 'Porch parties', tailgate: 'Tailgates near the venue', festivalHost: 'Hosts festivals (revenue ×2)', idleHub: 'Students hang out here', pool: 'Pool', teamHeatFix: 'Fixes the team heat penalty', idleSpot: 'Students idle here', oakDecal: 'Plants a Live Oak', floodsAt03: 'Floods at 0.3 ft of water', tailgateLot: 'Tailgate lot', nutriaImmune: 'Nutria cannot burrow it', egret: 'Egrets visit', stockAfter10: 'Stocked with bream after a month', gatorBlock: 'Gators cannot cross', fogger: 'Fogger truck at dusk', martins: 'Purple martins swirl at dusk', officer: 'Relocates gators within 14', traps: 'Nutria traps', debris: 'Clears storm debris', cajunNavy: 'Cajun Navy rescues', preserve: 'Protected wetland', bells: 'Bells at midday and dusk', beacon: 'Beacon at night', tank: 'Water tank', habitat: 'Home of Roux the tiger', restore: 'Restores marsh', spoonbills: 'Spoonbills at dawn', postcardFrame: 'The postcard frame', discountSwamp: 'Levees, floodwalls, canals and pumps −15%', radar: 'Weather radar', wastewater: 'Sewage treatment' };
+  function pct(mult) { return Math.round((1 - mult) * 100) + '%'; }
+  function within(r) { return r > 0 ? ' within ' + r + ' tiles' : ''; }
+  function effectLines(row) {
+    const out = []; if (!row) return out; const e = row.effects || {};
+    const add = function (t) { if (t) out.push(t); };
+    if (e.beds) add(e.beds + ' beds');
+    if (e.seats) add(e.seats + ' lecture seats');
+    if (e.feeds) add('Feeds ' + e.feeds.toLocaleString('en-US') + ' students' + within(e.diningRadius));
+    if (e.quality) add('Housing quality ' + '★★★★★'.slice(0, clamp(e.quality | 0, 0, 5)));
+    if (e.happiness && e.happiness.value) add((e.happiness.value > 0 ? '+' : '') + e.happiness.value + ' happiness' + (e.happiness.radius > 0 ? within(e.happiness.radius) : ' campus-wide'));
+    if (e.landmark) add('Landmark +' + e.landmark + ' (prestige)');
+    if (e.academic) add('Academic +' + e.academic + ' (prestige)');
+    if (e.shelter) add('Shelters ' + e.shelter.toLocaleString('en-US') + ' in a hurricane');
+    if (e.power && e.power.radius) add(e.power.capacity ? 'Powers ' + e.power.capacity + ' buildings' + within(e.power.radius) : 'Backup power' + within(e.power.radius));
+    if (e.water && e.water.radius) add('Water for ' + e.water.capacity + ' buildings' + within(e.water.radius));
+    if (e.fuelDays) add(e.fuelDays + ' days of fuel');
+    if (e.mosquito && e.mosquito.radius) add('Mosquitoes −' + pct(e.mosquito.mult) + within(e.mosquito.radius) + (e.mosquito.stacksTo ? ' (stacks to −' + pct(e.mosquito.stacksTo) + ')' : ''));
+    if (e.heat && e.heat.radius) add('Heat −' + pct(e.heat.mult) + within(e.heat.radius));
+    if (e.illness && e.illness.radius) add('Mosquito illness −' + pct(e.illness.mosquito) + ', heat illness −' + pct(e.illness.heat) + within(e.illness.radius));
+    if (e.windShield && e.windShield.radius) add('Wind damage −' + pct(e.windShield.mult) + within(e.windShield.radius));
+    if (e.noise && e.noise.value) add('Noise: −' + e.noise.value + ' happiness to dorms' + within(e.noise.radius));
+    if (e.ecology) add((e.ecology > 0 ? '+' : '') + e.ecology + ' ecology');
+    if (e.ecologyPerTile) add((e.ecologyPerTile > 0 ? '+' : '') + e.ecologyPerTile + ' ecology per tile');
+    if (e.ecologyDecayMult) add('Ecology decay −' + pct(e.ecologyDecayMult));
+    if (e.gatorAttract) add('Attracts gators (+' + e.gatorAttract + ')');
+    if (e.gatorAvoidRadius) add('Gators keep ' + e.gatorAvoidRadius + ' tiles away');
+    if (e.research && e.research.base) add('Research grants ' + money(e.research.base) + '/mo (' + e.research.kind + ')');
+    if (e.teamRating) add('Team rating +' + e.teamRating);
+    if (e.attendanceSeats) add(e.attendanceSeats.toLocaleString('en-US') + ' stadium seats');
+    if (e.homeWinBonus) add('Home win chance +' + Math.round(e.homeWinBonus * 100) + '%');
+    if (e.revenueMonthly) add('+' + money(e.revenueMonthly) + '/mo');
+    if (e.tickets) add('+' + money(e.tickets) + '/mo in tickets');
+    if (e.parkingPer) add('Parks ' + e.parkingPer + ' students’ cars');
+    if (e.capacityStudents) add('Sewage for ' + e.capacityStudents.toLocaleString('en-US') + ' students');
+    if (e.crest) add('Holds water up to ' + e.crest + ' ft above the ground');
+    if (e.canal) add('Carries water downhill to the bayou');
+    if (e.gate) add('Closes against storm surge');
+    if (e.pumpTileFt) add('Pumps ' + e.pumpTileFt + ' tile-ft of water a day');
+    if (e.pondCapacity) add('Holds ' + e.pondCapacity + ' tile-ft of runoff');
+    if (e.drainPerDay) add('Drains ' + e.drainPerDay + ' ft of water a day nearby');
+    if (e.subsidenceRadius) add(e.subsidenceMult === 0 ? 'Stops the ground sinking' + within(e.subsidenceRadius) : 'Sinking −' + pct(e.subsidenceMult) + within(e.subsidenceRadius));
+    if (e.coneDays) add('Storm cone ' + e.coneDays + ' days out' + (e.coneNarrow ? ', ' + Math.round(e.coneNarrow * 100) + '% narrower' : ''));
+    if (Array.isArray(e.special)) for (const k of e.special) add(SPECIAL_TEXT[k] || '');
+    if (Array.isArray(row.tiers)) for (const t of row.tiers) add('Tier ' + t.tier + ' · ' + t.name + ': ' + (t.seats ? t.seats.toLocaleString('en-US') + ' seats, ' : '') + money(t.cost) + (t.night ? ', night games' : ''));
+    return out;
+  }
+  /** requirement glyphs for a row → [{glyph, text}] */
+  function requirementsOf(row) {
+    const RQ = (BSU.data && BSU.data.requirements) || {}; const out = []; if (!row) return out;
+    const place = RQ.place && RQ.place[row.placeRule]; if (place && row.placeRule !== BSU.PLACE.LAND) out.push(place);
+    if (row.pathAdjacency && RQ.path) out.push(RQ.path);
+    if (row.roadWithin > 0 && RQ.road) out.push({ glyph: RQ.road.glyph, text: RQ.road.text.replace('{n}', String(row.roadWithin)) });
+    if (row.needsPower && RQ.power) out.push(RQ.power);
+    if (row.needsWater && RQ.water) out.push(RQ.water);
+    if (row.alwaysPilings && RQ.marsh) out.push({ glyph: RQ.marsh.glyph, text: 'Always on Pilings (in the price)' });
+    return out;
+  }
+  // ---- the build menu
+  function buildBuildMenu() {
+    const m = el('div', 'hidden'); m.id = 'build-menu';
+    const head = el('div', 'bm-head'); head.appendChild(el('div', 'panel-title', 'Build')); const sub = el('div', 'bm-sub', 'Pick a category, then a building. ★ marks what the campus needs right now; greyed cards say what unlocks them.'); sub.id = 'bm-sub'; head.appendChild(sub);
+    const close = btn('btn-bm-close', '✕', 'icon', function () { M.closeBuildMenu(); }); head.appendChild(close);
+    const body = el('div', 'bm-body'); const cats = el('div'); cats.id = 'bm-cats'; const cards = el('div'); cards.id = 'bm-cards'; const detail = el('div'); detail.id = 'bm-detail';
+    body.appendChild(cats); body.appendChild(cards); body.appendChild(detail);
+    const foot = el('div', 'bm-foot'); const ft = el('span', null, ''); ft.id = 'bm-foot-text'; foot.appendChild(ft);
+    const bull = btn('btn-bm-bulldoze', '🔨 Demolish', 'small', function () { const s = stateOf(); if (!s) return; M.selectTool(s, 'bulldoze'); M.closeBuildMenu(); }); foot.appendChild(bull);
+    m.appendChild(head); m.appendChild(body); m.appendChild(foot);
+    E['build-menu'] = m; E['bm-cats'] = cats; E['bm-cards'] = cards; E['bm-detail'] = detail; E['bm-foot-text'] = ft; E['btn-bm-close'] = close; E.bmCards = {}; E.bmCats = {}; return m;
+  }
+  function tabFor(s, id) {
+    const vis = visibleTabs(s); const cur = vis.find(function (t) { return t.id === s.ui.paletteTab; });
+    if (cur && cur.rows.indexOf(id) >= 0) return cur.id;
+    const ess = vis.find(function (t) { return t.id === 'essentials'; }); if (ess && ess.rows.indexOf(id) >= 0) return 'essentials';
+    const r = rowOf(id); const own = r && vis.find(function (t) { return t.id === r.tab; }); return own ? own.id : (cur ? cur.id : (vis[0] ? vis[0].id : null));
+  }
+  /** openBuildMenu(state, {tab?, focus?: id, pulse?}) — focus picks the tab holding that card, selects it in the detail and pulses it */
+  M.openBuildMenu = function (state, opts) {
+    try {
+      const s = state || stateOf(); if (!s || !s.ui || titleOn || s.setPiece) return; opts = opts || {};
+      if (!visibleTabs(s).length) return;   // tutorial stages 1–3: no tab yet, the objective hands the tool over
+      bm.open = true;
+      if (opts.focus && rowOf(opts.focus)) { const t = tabFor(s, opts.focus); if (t) setTab(s, t); bm.selected = opts.focus; bm.pulseId = opts.pulse ? opts.focus : null; bm.pulseUntil = clock + 2600; bm.focusUntil = clock + 2600; }
+      else if (opts.tab) setTab(s, opts.tab);
+      bm.hover = null; bm.dirty = true;
+      if (dom()) { show(E['build-menu'], true); cls(E.hud, 'bm-open', true); show(E.popover, false); hideTooltip(); refreshBuildMenu(s); scrollCardIntoView(opts.focus); }
+      emit('ui:buildMenu', { open: true, tab: s.ui.paletteTab, focus: opts.focus || null });
+    } catch (e) { uerr('openBuildMenu', e); }
+  };
+  /** scroll the card grid (never the page: scrollIntoView would shift the fixed #app) */
+  function scrollCardIntoView(id) { const c = id && E.bmCards[id], grid = E['bm-cards']; if (!c || !grid) return; try { const top = fin(c.offsetTop, 0) - fin(grid.offsetTop, 0); if (Number.isFinite(top) && (top < fin(grid.scrollTop, 0) || top + fin(c.offsetHeight, 0) > fin(grid.scrollTop, 0) + fin(grid.clientHeight, 0))) grid.scrollTop = Math.max(0, top - 10); } catch (e) { /* stub */ } }
+  M.closeBuildMenu = function () { try { if (!bm.open) return; bm.open = false; bm.hover = null; bm.pulseId = null; if (dom()) { show(E['build-menu'], false); cls(E.hud, 'bm-open', false); } emit('ui:buildMenu', { open: false }); } catch (e) { uerr('closeBuildMenu', e); } };
+  M.buildMenuOpen = function () { return bm.open; };
+  function badgeText(kind) { return kind === 'Goal' ? '★ Goal' : kind === 'Needed' ? '★ Needed now' : '★ Recommended'; }
+  function refreshBuildMenu(s) {
+    if (!dom() || !bm.open || !s || !s.ui) return;
+    bm.dirty = false;
+    const vis = visibleTabs(s), cur = currentTab(s); if (cur && s.ui.paletteTab !== cur.id) s.ui.paletteTab = cur.id;
+    const reco = recommend(s);
+    const key = vis.map(function (t) { return t.id + (s.ui.newPips[t.id] ? '!' : ''); }).join(',') + '|' + (cur ? cur.id : '') + '|' + (cur ? cur.rows.map(function (id) { const u = unlockOf(s, id); return id + (u.ok ? '+' : '-' + u.reason) + (reco[id] || ''); }).join(',') : '') + '|' + fin(s.economy && s.economy.cash, 0);
+    const foot = needsNow(s); setText(E['bm-foot-text'], foot && foot.binding ? foot.binding.text : '');
+    if (key !== bm.key) {
+      bm.key = key;
+      const cats = E['bm-cats']; clear(cats); E.bmCats = {};
+      for (const t of vis) {
+        const b = el('button', 'bm-cat' + (cur && cur.id === t.id ? ' active' : '')); b.type = 'button'; b.dataset.tab = t.id;
+        b.appendChild(el('span', 'bm-cat-name', t.name)); const n = t.rows.filter(function (id) { return id !== 'founders_hall' && unlockOf(s, id).ok; }).length; b.appendChild(el('span', 'bm-cat-count', n + '/' + t.rows.filter(function (id) { return id !== 'founders_hall'; }).length));
+        if (t.rows.some(function (id) { return reco[id]; })) b.appendChild(el('span', 'bm-cat-star', '★'));
+        if (s.ui.newPips[t.id]) b.appendChild(el('span', 'pip'));
+        b.addEventListener('click', function () { const st = stateOf(); setTab(st, t.id); bm.hover = null; bm.dirty = true; });
+        cats.appendChild(b); E.bmCats[t.id] = b;
+      }
+      const cards = E['bm-cards']; clear(cards); E.bmCards = {};
+      if (cur) for (const id of cur.rows) {
+        if (id === 'founders_hall') continue; const r = rowOf(id); if (!r) continue; const u = unlockOf(s, id);
+        const c = el('div', 'bm-card' + (u.ok ? '' : ' locked') + (reco[id] ? ' reco' : '')); c.dataset.id = id; c.setAttribute('tabindex', '0'); c.setAttribute('role', 'button');
+        const top = el('div', 'bm-top'); const ic = el('canvas', 'icon'); ic.width = 64; ic.height = 64; top.appendChild(ic); call('render', 'drawIcon', ic, id);
+        const tcol = el('div', 'bm-tcol'); tcol.appendChild(el('div', 'bm-name', r.name));
+        const price = el('div', 'bm-price'); price.appendChild(el('span', 'bm-cost', money(r.cost) + (r.kind === 'drag' || r.kind === 'paint' ? '/tile' : (r.kind === 'upgrade' ? ' +40% of the building' : '')))); if (r.upkeep) price.appendChild(el('span', 'bm-upkeep', money(r.upkeep) + '/mo')); tcol.appendChild(price);
+        const reqs = el('div', 'bm-reqs'); for (const q of requirementsOf(r)) { const sp = el('span', 'bm-req', q.glyph); sp.title = q.text; reqs.appendChild(sp); } if (r.w > 1 || r.h > 1) { const fp = el('span', 'bm-req fp', r.w + '×' + r.h); fp.title = 'Footprint ' + r.w + '×' + r.h + ' tiles' + (r.rotatable ? ' (R rotates)' : ''); reqs.appendChild(fp); } tcol.appendChild(reqs);
+        top.appendChild(tcol); c.appendChild(top);
+        c.appendChild(el('div', 'bm-blurb', r.blurb || r.desc || ''));
+        c.appendChild(el('div', 'bm-why', r.why || ''));
+        if (reco[id]) c.appendChild(el('div', 'bm-badge', badgeText(reco[id])));
+        if (!u.ok) { const lk = el('div', 'bm-lock'); lk.appendChild(el('span', 'bm-lock-ic', '🔒')); lk.appendChild(el('span', null, 'Unlocks: ' + (u.reason || 'later'))); c.appendChild(lk); }
+        c.addEventListener('click', function () { const st = stateOf(); if (!st) return; if (!u.ok) { call('audio', 'play', 'invalid'); M.notify(st, { kind: 'info', text: r.name + ' — unlocks: ' + (u.reason || 'later'), ttl: 4000 }); return; } bm.selected = id; M.selectTool(st, id); M.closeBuildMenu(); });
+        c.addEventListener('pointerenter', function () { bm.hover = id; }); c.addEventListener('pointerleave', function () { if (bm.hover === id) bm.hover = null; });
+        c.addEventListener('focus', function () { bm.hover = id; });
+        cards.appendChild(c); E.bmCards[id] = c;
+      }
+      bm.detailKey = '';
+    }
+    refreshDetail(s, reco);
+  }
+  function refreshDetail(s, reco) {
+    const cur = currentTab(s); const rows = cur ? cur.rows.filter(function (id) { return id !== 'founders_hall'; }) : [];
+    const sel = bm.selected && rows.indexOf(bm.selected) >= 0 ? bm.selected : null;
+    let id = (sel && clock < fin(bm.focusUntil, 0)) ? sel : (bm.hover || sel);
+    if (!id) { for (const k of rows) if (reco[k]) { id = k; break; } }
+    if (!id) id = rows[0] || null;
+    const r = rowOf(id); const u = r ? unlockOf(s, id) : { ok: false, reason: '' };
+    const key = (id || '') + '|' + (r ? (u.ok ? '+' : u.reason) : '') + '|' + (reco[id] || '') + '|' + (s.ui.tool ? s.ui.tool.id : '');
+    for (const k in E.bmCards) { cls(E.bmCards[k], 'hover', k === id); cls(E.bmCards[k], 'active', !!(s.ui.tool && s.ui.tool.id === k)); }
+    if (key === bm.detailKey) return; bm.detailKey = key;
+    const d = E['bm-detail']; clear(d); if (!r) { d.appendChild(el('div', 'muted', 'Nothing to build in this category yet.')); return; }
+    const head = el('div', 'bm-dhead'); const ic = el('canvas', 'icon'); ic.width = 64; ic.height = 64; head.appendChild(ic); call('render', 'drawIcon', ic, id);
+    const col = el('div'); col.appendChild(el('div', 'bm-dname', r.name)); col.appendChild(el('div', 'bm-dsub', money(r.cost) + (r.kind === 'drag' || r.kind === 'paint' ? ' per tile' : '') + (r.upkeep ? ' · ' + money(r.upkeep) + '/mo upkeep' : ' · no upkeep') + (r.kind === 'footprint' ? ' · ' + r.w + '×' + r.h + ' tiles' : ''))); head.appendChild(col); d.appendChild(head);
+    if (reco[id]) d.appendChild(el('div', 'bm-badge inline', badgeText(reco[id]) + (reco[id] === 'Goal' ? ' — your current objective' : ' — ' + ((needsNow(s) || {}).binding || {}).text)));
+    d.appendChild(el('div', 'bm-dblurb', r.blurb || ''));
+    d.appendChild(el('div', 'bm-dwhy', '“' + (r.why || '') + '”'));
+    const eff = effectLines(r); if (eff.length) { d.appendChild(el('div', 'card-kicker', 'Effects')); const ul = el('div', 'bm-list'); for (const line of eff) ul.appendChild(el('div', 'bm-li', line)); d.appendChild(ul); }
+    const rq = requirementsOf(r); if (rq.length) { d.appendChild(el('div', 'card-kicker', 'Needs')); const ul = el('div', 'bm-list'); for (const q of rq) ul.appendChild(el('div', 'bm-li', q.glyph + ' ' + q.text)); d.appendChild(ul); }
+    if (r.desc) d.appendChild(el('div', 'bm-ddesc', r.desc));
+    if (!u.ok) d.appendChild(el('div', 'bm-dlock', '🔒 Unlocks: ' + (u.reason || 'later')));
+    else { const go = btn(null, s.ui.tool && s.ui.tool.id === id ? 'Selected — click the map to place' : 'Build this', 'primary', function () { const st = stateOf(); if (!st) return; bm.selected = id; M.selectTool(st, id); M.closeBuildMenu(); }); go.disabled = !!(s.ui.tool && s.ui.tool.id === id); d.appendChild(go); }
+  }
+  function updateBuildMenu(s) {
+    if (!dom()) return;
+    if (!bm.open) return;
+    if (bm.dirty || clock - needsAt >= L.refreshMs) refreshBuildMenu(s); else refreshDetail(s, recommend(s));
+    for (const k in E.bmCards) cls(E.bmCards[k], 'pulse', k === bm.pulseId && clock < bm.pulseUntil);
+    if (bm.pulseId && clock >= bm.pulseUntil) bm.pulseId = null;
+  }
+  // ---- the coach-mark tour (first game; replay from Settings)
+  function buildCoach() {
+    const c = el('div', 'hidden'); c.id = 'coach'; E.coachPanes = [];
+    for (let k = 0; k < 4; k++) { const p = el('div', 'coach-pane'); c.appendChild(p); E.coachPanes.push(p); }
+    const ring = el('div', 'coach-ring hidden'); c.appendChild(ring); E['coach-ring'] = ring;
+    const box = el('div', 'coach-box'); box.id = 'coach-box'; const step = el('div', 'card-kicker', ''); step.id = 'coach-step'; const title = el('div', 'coach-title', ''); title.id = 'coach-title'; const text = el('div', 'coach-text', ''); text.id = 'coach-text';
+    const acts = el('div', 'card-actions'); const back = btn('btn-coach-back', '◂ Back', 'small hidden', function () { coachNext(stateOf(), -1); }); const skip = btn('btn-coach-skip', 'Skip tour', 'small', function () { coachFinish(stateOf(), false); }); const next = btn('btn-coach-next', 'Next ▸', 'primary', function () { coachNext(stateOf(), 1); });
+    acts.appendChild(back); acts.appendChild(skip); acts.appendChild(next);
+    box.appendChild(step); box.appendChild(title); box.appendChild(text); box.appendChild(acts); c.appendChild(box);
+    E.coach = c; E['coach-box'] = box; E['coach-step'] = step; E['coach-title'] = title; E['coach-text'] = text; E['btn-coach-back'] = back; E['btn-coach-skip'] = skip; E['btn-coach-next'] = next; return c;
+  }
+  function coachSteps() { return (BSU.data && BSU.data.coach) || []; }
+  /** first game only, once the Essentials tab exists (tutorial stage 4) and the founders have landed — never in headless mode, never over a card, toast or set piece */
+  function coachEligible(s) {
+    if (M.settings().coachSeen || BSU.headlessMode || !dom() || titleOn) return false;
+    if (card || toast || s.setPiece || !coachSteps().length) return false;
+    const stage = fin(call('progress', 'tutorialStage', s), 6);
+    if (stage < 4) { coach.armedAt = 0; return false; }
+    if (!coach.armedAt) coach.armedAt = clock;
+    return fin(s.economy && s.economy.students, 0) >= 100 || clock - coach.armedAt > 8000;
+  }
+  function updateCoach(s) {
+    if (coach.step < 0) { if (coachEligible(s)) coachStart(s); return; }
+    const pause = !!(card || toast || s.setPiece || titleOn);
+    if (pause !== coach.paused) { coach.paused = pause; show(E.coach, !pause); }
+    if (pause) return;
+    if (clock - coach.layoutAt > 250) layoutCoach(s);
+  }
+  function coachStart(s) { coach.step = 0; coach.paused = false; coach.overlayBefore = fin(s.ui.overlay, OV.NONE); applyCoachStep(s); show(E.coach, true); emit('ui:coach', { step: 0 }); }
+  function applyCoachStep(s) {
+    const steps = coachSteps(); const st = steps[coach.step]; if (!st) { coachFinish(s, true); return; }
+    if (st.id === 'menu') M.openBuildMenu(s, { tab: 'essentials' }); else if (bm.open) M.closeBuildMenu();
+    if (st.id === 'swamp') M.setOverlay(s, OV.FLOOD); else if (fin(s.ui.overlay, 0) === OV.FLOOD && coach.overlayBefore !== OV.FLOOD) M.setOverlay(s, coach.overlayBefore);
+    setText(E['coach-step'], 'Quick tour · ' + (coach.step + 1) + ' of ' + steps.length); setText(E['coach-title'], st.title); setText(E['coach-text'], st.text);
+    setText(E['btn-coach-next'], coach.step === steps.length - 1 ? 'Geaux build ▸' : 'Next ▸'); show(E['btn-coach-back'], coach.step > 0);
+    coach.layoutAt = -1e9; layoutCoach(s);
+  }
+  function coachNext(s, dir) { if (coach.step < 0) return; const n = coachSteps().length; const k = coach.step + dir; if (k >= n) { coachFinish(s, true); return; } coach.step = clamp(k, 0, n - 1); applyCoachStep(s); emit('ui:coach', { step: coach.step }); }
+  function coachFinish(s, completed) {
+    coach.step = -1; coach.paused = false; show(E.coach, false); show(E['coach-ring'], false);
+    M.settings().coachSeen = true; M.saveSettings();
+    if (s && fin(s.ui.overlay, 0) === OV.FLOOD && coach.overlayBefore !== OV.FLOOD) M.setOverlay(s, coach.overlayBefore);
+    // hand-off: land in the build menu on the goal's card (the existing objective chain takes it from here)
+    if (s && !s.setPiece) { const o = call('progress', 'objective', s); const t = o ? objTarget(s, o) : null; M.openBuildMenu(s, t ? { focus: t, pulse: true } : { tab: 'essentials' }); }
+    emit('ui:coach', { step: -1, completed: !!completed });
+  }
+  /** cut the spotlight around the step's target and park the caption where there is room */
+  function layoutCoach(s) {
+    coach.layoutAt = clock; const st = coachSteps()[coach.step]; if (!st || !dom()) return;
+    const vw = fin(window.innerWidth, 1280), vh = fin(window.innerHeight, 800);
+    let r = null; const tgt = st.target ? E[st.target] : null;
+    try { if (tgt && typeof tgt.getBoundingClientRect === 'function' && !tgt.classList.contains('hidden')) { const b = tgt.getBoundingClientRect(); if (b && b.width > 0 && b.height > 0) r = { x: Math.max(0, b.left - 8), y: Math.max(0, b.top - 8), w: b.width + 16, h: b.height + 16 }; } } catch (e) { r = null; }
+    const P4 = E.coachPanes; const put = function (p, x, y, w, h) { p.style.left = Math.round(x) + 'px'; p.style.top = Math.round(y) + 'px'; p.style.width = Math.round(Math.max(0, w)) + 'px'; p.style.height = Math.round(Math.max(0, h)) + 'px'; };
+    if (r) { put(P4[0], 0, 0, vw, r.y); put(P4[1], 0, r.y, r.x, r.h); put(P4[2], r.x + r.w, r.y, vw - r.x - r.w, r.h); put(P4[3], 0, r.y + r.h, vw, vh - r.y - r.h); put(E['coach-ring'], r.x, r.y, r.w, r.h); show(E['coach-ring'], true); }
+    else { put(P4[0], 0, 0, vw, vh); put(P4[1], 0, 0, 0, 0); put(P4[2], 0, 0, 0, 0); put(P4[3], 0, 0, 0, 0); show(E['coach-ring'], false); }
+    const box = E['coach-box']; const bw = fin(box.offsetWidth, 400) || 400, bh = fin(box.offsetHeight, 170) || 170;
+    let bx, by;
+    if (!r) { bx = (vw - bw) / 2; by = (vh - bh) / 2 - 40; }
+    else {
+      if (r.y + r.h + 14 + bh <= vh - 8) by = r.y + r.h + 14; else if (r.y - 14 - bh >= 8) by = r.y - 14 - bh; else by = vh - bh - 16;
+      bx = clamp(r.x + r.w / 2 - bw / 2, 12, vw - bw - 12);
+      if (r.w > vw * 0.6 && r.h > vh * 0.5) { bx = clamp(r.x + r.w - bw - 12, 12, vw - bw - 12); by = vh - bh - 16; }   // a huge target (the build menu): bottom-right over it
+    }
+    box.style.left = Math.round(bx) + 'px'; box.style.top = Math.round(by) + 'px';
+    box.dataset.pos = r ? (by > r.y ? 'below' : 'above') : 'center';
+  }
+  /** Settings → replay: forget the flag and let the next frame start the tour (Settings closes) */
+  M.startCoach = function (state) { try { const s = state || stateOf(); M.settings().coachSeen = false; M.saveSettings(); coach.step = -1; coach.armedAt = clock - 1e5; if (s && s.ui && s.ui.panel) M.openPanel(null); } catch (e) { uerr('startCoach', e); } };
+  M.coachStep = function () { return coach.step; };
+  M._ux = { needsOf: needsOf, recommend: recommend, objTarget: objTarget, effectLines: effectLines, requirementsOf: requirementsOf, utilityWarning: utilityWarning };
 
   // ---------------------------------------------------------------------------
   // Notifications, hints
@@ -1307,6 +1688,7 @@
       E.popover.style.left = Math.round(clamp(left, 8, fin(window.innerWidth, 1280) - 320)) + 'px';
       // never cover an open decision toast (its buttons must stay clickable): drop below it
       let top = ''; try { const dt = E['decision-toast']; if (dt && !dt.classList.contains('hidden') && dt.getBoundingClientRect) { const rc = dt.getBoundingClientRect(); if (rc.height > 0) top = Math.round(rc.bottom + 6) + 'px'; } } catch (e) { top = ''; }
+      if (!top) { try { const oc = E['objective-card']; if (oc && !oc.classList.contains('hidden') && oc.getBoundingClientRect) { const rc = oc.getBoundingClientRect(); const pl = parseFloat(E.popover.style.left) || 0; if (rc.height > 0 && pl < rc.right + 8 && pl + 300 > rc.left) top = Math.round(rc.bottom + 6) + 'px'; } } catch (e) { top = ''; } }   // the goals tracker sits top-left: drop below it
       E.popover.style.top = top;
       show(E.popover, true);
     } catch (e) { uerr('breakdown', e); }
@@ -1324,6 +1706,7 @@
     host._shake = chk('chk-shake', 'Screen shake', function () { return M.settings().shake !== false; }, function (v) { M.settings().shake = v; });
     host._cb = chk('chk-colorblind', 'Colorblind overlays', function () { return !!M.settings().colorblind; }, function (v) { M.settings().colorblind = v; });
     const sp = el('div', 'seg'); [0, 1, 2, 4].forEach(function (v) { const b = btn(null, v === 0 ? 'Pause' : v + '×', 'seg-btn', function () { M.setSpeed(stateOf(), v); refreshSettingsPanel(stateOf(), host); }); b.dataset.speed = String(v); sp.appendChild(b); }); rowEl('Speed', sp); host._speed = sp;
+    rowEl('Tour', btn('btn-coach-replay', 'Replay the 60-second tour', 'small', function () { M.startCoach(stateOf()); }));
     const leg = el('div', 'legend-table'); for (const o of ((BSU.data && BSU.data.overlays) || [])) { const r = el('div', 'legend-row'); r.appendChild(el('span', 'key', o.key)); r.appendChild(el('span', 'k', o.name)); r.appendChild(el('span', 'v', o.legend.join(' · '))); leg.appendChild(r); } rowEl('Overlays', leg);
     const keys = el('div', 'keys-table'); keys.id = 'keys'; const KEYNAMES = { ' ': 'Space' }; for (const k of ((BSU.data && BSU.data.keys) || [])) { if (/^pan|^pick[2-9]|^toast/.test(k.action)) continue; const r = el('div', 'legend-row'); r.appendChild(el('span', 'key', (k.ctrl ? 'Ctrl+' : '') + (k.shift ? 'Shift+' : '') + (KEYNAMES[k.key] || (k.key.length === 1 ? k.key.toUpperCase() : k.key)))); r.appendChild(el('span', 'k', k.action === 'pick1' ? 'pick item 1–9' : k.action.replace(/([A-Z])/g, ' $1').toLowerCase())); keys.appendChild(r); } rowEl('Keys', keys);
     const acts = el('div', 'card-actions');
@@ -1462,34 +1845,53 @@
   // Objective card, speech bubble, milestones card
   // ---------------------------------------------------------------------------
   function objShowMe() { const s = stateOf(); const o = s ? call('progress', 'objective', s) : null; if (!o) return; const r = call('progress', 'showMe', s, o.id); if (r) showMe(s, r); }
+  /** what the tracker shows: the active objective, else (after the chain) the nearest milestone */
+  function trackerView(s, o, stage) {
+    if (o) {
+      const g = guideOf(o.id);
+      const target = objTarget(s, o);
+      let next = '';
+      if (o.background && o.background.id !== o.id) next = 'Next up: ' + (o.background.title || o.background.text || '');
+      else { const ms = call('progress', 'nearestMilestones', s, 1) || []; if (ms[0]) next = 'Next milestone: ' + ms[0].name + (ms[0].goal > 1 ? ' · ' + Math.round(fin(ms[0].progress, 0)) + ' / ' + ms[0].goal : ''); }
+      return { id: o.id, kind: o.kind === BSU.OBJ.BACKGROUND ? 'background' : 'interrupt', kicker: o.kind === BSU.OBJ.BACKGROUND ? 'Goal · in the background' : 'Goal', title: o.title || '', text: o.text || '', why: g ? g.why : '', progress: fin(o.progress, 0), goal: fin(o.goal, 0), deadline: o.deadline, target: target, next: next, showme: true, dismiss: true, postcard: o.id === '7' && /parade|postcard/i.test(o.text || ''), capped: o.id === '8' && /capped/i.test(o.text || '') };
+    }
+    if (stage < 6) return null;
+    const ms = call('progress', 'nearestMilestones', s, 2) || []; const m = ms[0]; if (!m) return null;
+    const def = ((BSU.data && BSU.data.milestones) || []).find(function (x) { return x.id === m.id; }) || {};
+    return { id: 'ms:' + m.id, kind: 'milestone', kicker: 'Next milestone', title: m.name || '', text: def.text || '', why: def.reward ? '' : '', progress: fin(m.progress, 0), goal: fin(m.goal, 0), deadline: -1, target: null, next: ms[1] ? 'Then: ' + ms[1].name : '', showme: false, dismiss: false, postcard: false, capped: false };
+  }
   function updateObjective(s) {
     const o = call('progress', 'objective', s);
     const stage = fin(call('progress', 'tutorialStage', s), 6);
-    const hideAll = !!s.setPiece && s.setPiece.kind === 'landfall';
-    if (!o || hideAll) {
-      if (objKey !== '') { objKey = ''; show(E['objective-card'], false); show(E['speech-bubble'], false); }
-      const done = stage >= 6 && !o && !hideAll;
-      if (done) { show(E['milestones-card'], true); if (clock - msAt >= L.refreshMs) { msAt = clock; const rows = call('progress', 'nearestMilestones', s, 3) || []; E.msRows.forEach(function (r, k) { const m = rows[k]; show(r.row, !!m); if (m) { setText(r.name, m.name); const w = Math.round(clamp(m.goal > 0 ? m.progress / m.goal : 0, 0, 1) * 100) + '%'; if (r.fill.style.width !== w) r.fill.style.width = w; setText(r.count, m.goal > 1 ? Math.round(m.progress) + ' / ' + m.goal : ''); } }); } }
-      else show(E['milestones-card'], false);
-      return;
-    }
-    show(E['milestones-card'], false);
-    const key = o.id + '|' + o.title + '|' + o.text + '|' + fin(o.progress, 0) + '/' + fin(o.goal, 0) + '|' + (o.background ? o.background.id + o.background.text + fin(o.background.progress, 0) : '') + '|' + (o.deadline >= 0 ? o.deadline : '');
+    const view = trackerView(s, o, stage);
+    show(E['milestones-card'], false);   // the tracker carries the nearest milestone now
+    if (!view) { if (objKey !== '') { objKey = ''; show(E['objective-card'], false); show(E['speech-bubble'], false); } return; }
+    const sp = !!s.setPiece;
+    const key = view.id + '|' + view.title + '|' + view.text + '|' + view.progress + '/' + view.goal + '|' + (view.deadline >= 0 ? view.deadline : '') + '|' + (view.target || '') + '|' + view.next + '|' + (sp ? 'sp' : '') + '|' + (s.ui.tool ? s.ui.tool.id : '');
     if (key !== objKey) {
       objKey = key; bubble.since = clock; bubble.key = '';
-      setText(E['obj-title'], o.title || ''); setText(E['obj-text'], o.text || '');
-      const goal = fin(o.goal, 0), prog = fin(o.progress, 0);
-      show(E['obj-progress'], goal > 1); if (goal > 1) { const w = Math.round(clamp(prog / goal, 0, 1) * 100) + '%'; if (E['obj-fill'].style.width !== w) E['obj-fill'].style.width = w; }
-      setText(E['obj-count'], goal > 1 ? Math.round(prog) + ' / ' + goal : (o.deadline >= 0 ? 'by ' + BSU.formatDate(o.deadline) : ''));
-      show(E['btn-postcard-obj'], o.id === '7' && /parade|postcard/i.test(o.text || ''));
-      E['obj-title'].title = o.id === '8' && /capped/i.test(o.text || '') ? 'Pilings lift a building 3 ft above the flood line' : '';
-      show(E['obj-background'], !!o.background); if (o.background) setText(E['obj-background'], '◦ ' + (o.background.title || o.background.text) + (fin(o.background.goal, 0) > 1 ? ' · ' + Math.round(fin(o.background.progress, 0)) + ' / ' + o.background.goal : ''));
-      E['objective-card'].dataset.kind = o.kind === BSU.OBJ.BACKGROUND ? 'background' : 'interrupt';
+      setText(E['obj-kicker'], view.kicker); setText(E['obj-title'], view.title); setText(E['obj-text'], view.text);
+      setText(E['obj-why'], view.why); show(E['obj-why'], !!view.why);
+      show(E['obj-prog-row'], view.goal > 1 || view.deadline >= 0);
+      show(E['obj-progress'], view.goal > 1); if (view.goal > 1) { const w = Math.round(clamp(view.progress / view.goal, 0, 1) * 100) + '%'; if (E['obj-fill'].style.width !== w) E['obj-fill'].style.width = w; }
+      setText(E['obj-count'], view.goal > 1 ? Math.round(view.progress) + ' / ' + view.goal : (view.deadline >= 0 ? 'by ' + BSU.formatDate(view.deadline) : ''));
+      const tRow = view.target ? rowOf(view.target) : null; const selected = !!(s.ui.tool && tRow && s.ui.tool.id === view.target);
+      show(E['btn-obj-build'], !!tRow && !sp); if (tRow) { setText(E['btn-obj-build'], selected ? 'Placing ' + tRow.name + '…' : 'Build it: ' + tRow.name); E['btn-obj-build'].dataset.id = view.target; E['btn-obj-build'].title = (tRow.blurb || '') + ' ' + money(tRow.cost); }
+      show(E['btn-showme'], view.showme && !sp); show(E['btn-obj-dismiss'], view.dismiss && !sp);
+      show(E['btn-postcard-obj'], view.postcard);
+      E['obj-title'].title = view.capped ? 'Pilings lift a building 3 ft above the flood line' : '';
+      setText(E['obj-next'], view.next); show(E['obj-next'], !!view.next);
+      show(E['obj-background'], false);
+      E['objective-card'].dataset.kind = view.kind;
       show(E['objective-card'], true);
       call('render', 'drawPortrait', E['obj-portrait'], 0);
     }
-    // speech bubble: idle 8 s → the last ticker line for 6 s
+    // needs strip once the Essentials tab exists (tutorial stage 4+); hidden while collapsed
+    const needsOn = stage >= 4 && !sp;
+    show(E['needs-strip'], needsOn); if (needsOn) refreshNeeds(s);
+    // speech bubble: idle 8 s → the last ticker line for 6 s (not while collapsed)
     const bubOn = !E['speech-bubble'].classList.contains('hidden');
+    if (sp || coach.step >= 0) { if (bubOn) { show(E['speech-bubble'], false); bubble.since = clock; } return; }
     if (!bubOn && clock - bubble.since >= L.bubbleIdleMs && s.ticker && s.ticker.length) {
       const line = s.ticker[s.ticker.length - 1]; const bk = line.text + '|' + line.tick;
       if (bk !== bubble.key) { bubble.key = bk; bubble.until = clock + L.bubbleMs; setText(E['speech-bubble'], line.text); show(E['speech-bubble'], true); call('render', 'drawPortrait', E['obj-portrait'], 1); }
@@ -1529,7 +1931,8 @@
   function updateSetPiece(s) {
     const sp = s.setPiece; const hidePalette = !!sp || titleOn || !paletteKey.split('|')[0];
     if (hidePalette !== paletteHidden) { paletteHidden = hidePalette; show(E.palette, !hidePalette); cls(E.hud, 'no-palette', hidePalette); if (hidePalette) hideTooltip(); }   // a palette-item tooltip must not outlive the palette
-    cls(E.hud, 'setpiece', !!sp);
+    cls(E.hud, 'setpiece', !!sp); cls(E['objective-card'], 'collapsed', !!sp);
+    if (sp && bm.open) M.closeBuildMenu();
     const skip = !!(sp && sp.skippable && fin(sp.tick, 0) >= L.skipAfterTick);
     if (skip !== skipShown) { skipShown = skip; show(E['btn-skip'], skip); }
     if (sp && s.ui.tool && !toolLocked) M.selectTool(s, null);
@@ -1582,6 +1985,8 @@
     sec('inspect', function (s) { if (insp && (inspDirty || clock - inspAt >= L.refreshMs)) refreshInspect(s); }, state, dtMs);
     sec('ticker', updateTicker, state, dtMs);
     sec('palette', function (s) { if (paletteDirty) M.refreshPalette(s); else refreshPips(s); }, state, dtMs);
+    sec('buildmenu', updateBuildMenu, state, dtMs);
+    sec('coach', updateCoach, state, dtMs);
     sec('hint', updateHint, state, dtMs);
     sec('setpiece', updateSetPiece, state, dtMs);
     sec('panels', updatePanels, state, dtMs);
@@ -1602,9 +2007,10 @@
       tk = { x: 0, line: null, seen: Math.max(0, ((state && state.ticker) || []).length - 1), w: 0, lastLen: -1, logOpen: false, cycle: 0 };
       bubble = { since: clock, until: 0, key: '' }; objKey = ''; alertKey = ''; alertAt = -1e9; msAt = -1e9; speedKey = ''; paletteKey = ''; pipKey = ''; paletteDirty = true; capacityShown = false; skipShown = false; paletteHidden = null; hudFade = false;   // null: the first updateSetPiece re-syncs #palette and #hud.no-palette (a stale no-palette from the title / tutorial left a 0-height palette after newGame/load)
       M.debug.open = false; M.hoverTile = -1; lastGhost = null;
+      bm.open = false; bm.hover = null; bm.selected = null; bm.pulseId = null; bm.key = ''; bm.detailKey = ''; bm.dirty = true; needsCache = null; needsAt = -1e9; needsKey = ''; coach.step = -1; coach.armedAt = 0; coach.paused = false;
       for (const k in held) held[k] = false;
       if (dom()) {
-        show(E.cards, false); clear(E.cards); show(E['decision-toast'], false); show(E.inspect, false); cls(E.hud, 'inspect-open', false); show(E['ghost-label'], false); show(E.tooltip, false); show(E.popover, false); show(E.hint, false); show(E['voice-card'], false); show(E['alert-strip'], false); show(E['ticker-log'], false); show(E['btn-skip'], false); show(E.palette, true);
+        show(E.cards, false); clear(E.cards); show(E['decision-toast'], false); show(E.inspect, false); cls(E.hud, 'inspect-open', false); show(E['ghost-label'], false); show(E.tooltip, false); show(E.popover, false); show(E.hint, false); show(E['voice-card'], false); show(E['alert-strip'], false); show(E['ticker-log'], false); show(E['btn-skip'], false); show(E.palette, true); show(E['build-menu'], false); cls(E.hud, 'bm-open', false); show(E.coach, false); cls(E['objective-card'], 'collapsed', false);
         clear(E.notifications); setText(E['ticker-track'], ''); E['ticker-track'].style.transform = 'translateX(0px)';
         for (const name in panels) { const p = panels[name]; if (p.el) show(p.el, false); }
         if (E.hud) E.hud.dataset.panel = '';
@@ -1631,6 +2037,13 @@
       for (const k of need) A(seen.has(keyId(k, false, false)), 'key missing: ' + k);
       A(seen.has(keyId('s', true, false)) && seen.has(keyId('z', true, false)) && seen.has(keyId('p', true, false)), 'ctrl S/Z/P present');
       A(!seen.has(keyId('q', false, false)), 'q is unbound');
+      A(seen.has(keyId('g', false, false)) && keymap().get(keyId('g', false, false)) === 'buildMenu', 'G opens the build menu');
+      // UX pass helpers (pure over the private state)
+      s.economy.students = 500; const nd = needsOf(s); A(nd.terms.length === 5 && nd.binding && nd.binding.build === 'dorm' && /Beds full/.test(nd.binding.text), 'needs: 500 students, no beds → Beds full → dorm (' + (nd.binding && nd.binding.text) + ')');
+      const rc = recommend(s); A(rc.dorm === 'Needed', 'recommend marks the binding fix (' + JSON.stringify(rc) + ')');
+      A(effectLines(rowOf('dorm')).some(function (l) { return /300 beds/.test(l); }) && effectLines(rowOf('substation')).some(function (l) { return /40 buildings/.test(l); }), 'effectLines read the effects');
+      A(objTarget(s, { id: '3' }) === 'dorm' && objTarget(s, { id: '5' }) === 'substation' && objTarget(s, { id: '13' }) === null, 'objTarget picks the first unbuilt unlocked goal building');
+      s.economy.students = 0;
       for (const k of keys) if (['1', '2', '3'].indexOf(k.key) >= 0 && !k.shift) A(/^speed/.test(k.action), 'digit ' + k.key + ' maps to a speed');
       // 2. machine transitions on synthetic events
       let placed = 0, runs = []; let tool = null, inspOpen = false;
