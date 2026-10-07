@@ -419,7 +419,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - progress.selfTest()
 
 ## BSU.render
-- values: drawList:array[0], alpha:number, frameNo:number, hoverTile:number, squash:object, titleDrift:boolean, _tests:array[1], teesEnabled:boolean, particleColors:array[16], particles:object, hitStopUntil:number, camera:object, ctx:object, canvas:object, view:object, ghostSpec:object, flashes:array[0], composites:object, overlayFadeStart:number, lightsList:array[258]
+- values: drawList:array[0], alpha:number, frameNo:number, hoverTile:number, squash:object, titleDrift:boolean, _tests:array[1], teesEnabled:boolean, particleColors:array[16], particles:object, hitStopUntil:number, camera:object, ctx:object, canvas:object, view:object, ghostSpec:object, flashes:array[0], composites:object, overlayFadeStart:number, curves:object, lightsList:array[258]
 - render.sortKey(ax, ay, elev, rank)
 - render.chunkOrigin(cx, cy)
 - render.variantOf(b, ci)

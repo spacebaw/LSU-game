@@ -171,6 +171,46 @@ ok(called === 1 && R.passes().filter((p) => p.name === 'tint').length === 1, 're
 ok(R.variantOf({ built: 0.5 }) === BSU.SPR.SCAFFOLD && R.variantOf({ pilings: true }, { phase: BSU.SKY.DUSK, effective: 1 }) === (BSU.SPR.PILINGS | BSU.SPR.NIGHT), 'variantOf table');
 s.setPiece = { kind: 'x', cameraTouched: false }; R.panBy(1, 0, true); ok(s.setPiece.cameraTouched === true, 'user pan during a set piece → cameraTouched'); s.setPiece = null;
 
+// --- smoothing pass: continuous surface centrelines ----------------------------------------
+{
+  const CV = R.curves;
+  ok(CV && typeof CV.trace === 'function' && typeof CV.smooth === 'function' && typeof CV.runs === 'function' && typeof CV.build === 'function', 'render.curves exposes trace/smooth/runs/build');
+  // (a) tracing on a 6×6 grid: an L with a side branch (one junction, three dead ends), a kind-2 loop next to it, an isolated kind-3 tile
+  const gw = 6, gh = 6, g = new Uint8Array(gw * gh), at = (x, y) => y * gw + x;
+  for (let y = 1; y <= 4; y++) g[at(1, y)] = 1; for (let x = 2; x <= 4; x++) g[at(4, x) * 0 + at(x, 4)] = 1; g[at(3, 3)] = 1; g[at(3, 2)] = 1;
+  g[at(0, 0)] = 3;                                                   // isolated
+  g[at(5, 0)] = 2; g[at(5, 1)] = 2; g[at(4, 0)] = 2; g[at(4, 1)] = 2; // 2×2 ring of road = a loop, touching the kind-1 L only diagonally
+  const nets = CV.trace(g, gw, gh);
+  const k1 = nets.filter((p) => p.kind === 1), k2 = nets.filter((p) => p.kind === 2), k3 = nets.filter((p) => p.kind === 3);
+  ok(k1.length === 3 && k1.every((p) => !p.closed), `L + branch traces to 3 open polylines (${k1.length})`);
+  const ends = k1.map((p) => [p.tiles[0], p.tiles[p.tiles.length - 1]]);
+  ok(ends.filter((e) => e[0] === at(3, 4) || e[1] === at(3, 4)).length === 3, 'the junction (3,4) ends all three polylines');
+  ok(k1.map((p) => p.tiles.length).sort((a, b) => a - b).join(',') === '2,3,6', 'polyline lengths 6 (dead end → corner → junction), 2 and 3: ' + k1.map((p) => p.tiles.length).join(','));
+  ok(new Set(k1.flatMap((p) => p.tiles)).size === 9, 'the three polylines cover the 9 kind-1 tiles');
+  ok(k2.length === 1 && k2[0].closed === true && k2[0].tiles.length === 4, `the road ring is one closed polyline of 4 tiles (${k2.length}, closed=${k2[0] && k2[0].closed}, ${k2[0] && k2[0].tiles.length})`);
+  ok(k3.length === 1 && k3[0].tiles.length === 1, 'an isolated tile is a 1-tile polyline');
+  // (b) smoothing: endpoints (junction centres) never move, the corner is cut into an arc, closed polylines wrap
+  const sm = CV.smooth([0, 0, 0, 1, 1, 1], false, 3);   // tile centres are 1 apart: an L through three tiles
+  ok(sm[0] === 0 && sm[1] === 0 && sm[sm.length - 2] === 1 && sm[sm.length - 1] === 1, 'smoothing keeps both endpoints exactly');
+  let dmin = Infinity; for (let k = 0; k < sm.length; k += 2) dmin = Math.min(dmin, Math.hypot(sm[k] - 0, sm[k + 1] - 1));
+  ok(dmin > 0.15 && dmin < 0.26 && sm.length > 20, `the corner becomes an arc passing ${dmin.toFixed(3)} tile inside the corner centre (${sm.length / 2} points)`);
+  const sq = CV.smooth([0, 0, 2, 0, 2, 2, 0, 2], true, 2);
+  ok(sq.length === 32 && sq.every((v) => v >= 0 && v <= 2), 'a closed square smooths to 16 points inside its hull');
+  // (c) elevation runs
+  const runs = CV.runs([5, 6, 7, 8, 9], (i) => [0, 0, 6, 6, 12][i - 5]);
+  ok(runs.length === 3 && runs[0].a === 0 && runs[0].b === 1 && runs[0].ep === 0 && runs[1].a === 2 && runs[1].b === 3 && runs[1].ep === 6 && runs[2].a === 4 && runs[2].b === 4 && runs[2].ep === 12, 'elevRuns splits [0,0,6,6,12] into three runs: ' + JSON.stringify(runs));
+  // (d) a built map: a path down a 2-ft terrace step gets one stairs record on the lower tile, oriented hi → lo
+  const st = { tiles: { surface: new Uint8Array(4096), elev: new Float32Array(4096) }, buildings: [] };
+  for (let y = 10; y <= 13; y++) { st.tiles.surface[y * 64 + 10] = 1; st.tiles.elev[y * 64 + 10] = y <= 11 ? 2 : 0; }
+  const cv = CV.build(st);
+  const stepTiles = [...cv.steps.keys()], step = cv.steps.get(12 * 64 + 10);
+  ok(cv.polys.length === 1 && stepTiles.length === 1 && stepTiles[0] === 12 * 64 + 10, `one polyline, one step keyed by the lower tile (${stepTiles.join(',')})`);
+  ok(step && step.length === 1 && step[0].d === 12 && step[0].hiEp === 12 && step[0].loEp === 0 && step[0].ux === 0 && step[0].uy === 1 && step[0].kind === 1, 'the step is 12 px, hi (10,11) → lo (10,12) southward: ' + JSON.stringify(step && step[0]));
+  ok([10, 11, 12, 13].every((y) => cv.buckets.has(y * 64 + 10)) && !cv.buckets.has(14 * 64 + 10) && !cv.buckets.has(12 * 64 + 12), 'segment buckets cover the path tiles and not tiles two away');
+  const flat = CV.build({ tiles: { surface: new Uint8Array(4096), elev: new Float32Array(4096) }, buildings: [] });
+  ok(flat.polys.length === 0 && flat.buckets.size === 0 && flat.steps.size === 0, 'an empty map builds empty curves');
+}
+
 // --- selfTest under the harness flag ---------------------------------------------------
 BSU.SELFTEST = true; let r; try { r = R.selfTest(); } catch (e) { r = { ok: false, notes: e.stack }; } finally { BSU.SELFTEST = false; }
 ok(r && r.ok, 'selfTest ok: ' + (r && r.notes));

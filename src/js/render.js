@@ -255,11 +255,13 @@
     const tx = i & 63, ty = i >> 6, cx = tx >> 3, cy = ty >> 3;
     M.dirtyChunk(cx + cy * 8);
     teeInvalidateNear(i);
-    // neighbours' cliff faces / auto-tile masks live in the adjacent chunk when the tile sits on a chunk edge
-    if ((tx & 7) === 0 && cx > 0) M.dirtyChunk(cx - 1 + cy * 8);
-    if ((ty & 7) === 0 && cy > 0) M.dirtyChunk(cx + (cy - 1) * 8);
-    if ((tx & 7) === 7 && cx < 7) M.dirtyChunk(cx + 1 + cy * 8);
-    if ((ty & 7) === 7 && cy < 7) M.dirtyChunk(cx + (cy + 1) * 8);
+    curvesDirty = true;
+    // neighbours' cliff faces / auto-tile masks live in the adjacent chunk when the tile sits on a chunk edge, and a
+    // smoothed centreline bends up to ~1.5 tiles from a changed tile (smoothing pass), so one tile in also re-bakes it
+    if ((tx & 7) <= 1 && cx > 0) M.dirtyChunk(cx - 1 + cy * 8);
+    if ((ty & 7) <= 1 && cy > 0) M.dirtyChunk(cx + (cy - 1) * 8);
+    if ((tx & 7) >= 6 && cx < 7) M.dirtyChunk(cx + 1 + cy * 8);
+    if ((ty & 7) >= 6 && cy < 7) M.dirtyChunk(cx + (cy + 1) * 8);
   }
   function blit1(g, ref, x, y) { g.drawImage(ref.canvas, ref.sx, ref.sy, ref.sw, ref.sh, x + ref.ox, y + ref.oy, ref.sw, ref.sh); drawCalls++; }
   function sameMask(arr, i, tx, ty, val) {
@@ -305,6 +307,377 @@
     for (let r = 16; r < 32; r++) { const hf = half(TW, TH, r); if (hf <= 0) continue; g.fillRect(east ? cx + hf - 2 : cx - hf, top + r + 1, 2, d); }
     drawCalls += 16;
   }
+  // ---------------------------------------------------------------------------
+  // Smoothing pass — paths, roads and boardwalks as continuous centrelines
+  // ---------------------------------------------------------------------------
+  // Per surface kind the 4-connected tiles form networks: traceNets cuts them into polylines between nodes (dead ends,
+  // junctions, isolated tiles) plus closed loops; smoothPoly rounds them (Chaikin ×3: right angles become arcs, diagonal
+  // staircases gentle waves; endpoints — the junction centres — never move). The bake strokes the pieces near each tile
+  // under the affine iso transform (ground units → chunk px at THAT tile's elevation, so round joins/caps squash right),
+  // clipped to the tile's diamond so a raised neighbour drawn later still occludes it. Elevation steps along a polyline
+  // get stairs (paths, boardwalks) or a ramp (roads) on the lower tile's side of the shared edge. Walkability, A*, costs
+  // and placement are untouched: agents walk tile centres, which a Chaikin corner passes within 0.18 tile of (< w/2).
+  const CURVE_W = [0, 0.42, 0.72, 0.5];           // stroke width in tiles by surface kind (PATH, ROAD, BOARDWALK)
+  const STUB_W = 0.25, STUB_LEN = 0.58;             // tee / entrance-walk connector: 7 px like the sprite strip, to 0.08 past the footprint edge
+  const CLIP_EPS = 0.06, CHAIKIN_ITERS = 3, SEG_PAD = 0.12;
+  const EMPTY_DASH = [], DASH_SPECK = [0.03, 0.13], DASH_ROAD = [0.14, 0.14], DASH_PLANK = [0.03, 0.09];
+  let curves = null, curvesDirty = true, CC = null;
+  function curveColors() {
+    if (CC) return CC;
+    const sp = S(), sh = sp.shade, X = sp.extra || {};
+    const stone = PAL.creamStone || '#F5ECD7';
+    CC = {
+      pathEdge: sh(PAL.gravel, 0.72), path: PAL.gravel, pathHi: sh(PAL.gravel, 1.08), pathDk: sh(PAL.gravel, 0.8), pathLo: sh(PAL.gravel, 0.9), deckLo: sh(PAL.boardwalk, 0.85),
+      curb: sh(PAL.asphalt, 1.3), road: PAL.asphalt, dash: PAL.gold, ramp: sh(PAL.asphalt, 0.85), hatch: sh(PAL.gold, 1.1),
+      rail: sh(PAL.boardwalk, 0.45), deck: PAL.boardwalk, gap: sh(PAL.boardwalk, 0.7), post: PAL.bark, postShadow: sh(PAL.waterNight || '#1E3A4A', 0.8),
+      stoneTread: sh(stone, 0.82), stoneRiser: sh(stone, 0.52), stoneNose: stone,
+      woodTread: PAL.boardwalk, woodRiser: sh(PAL.boardwalk, 0.55), woodNose: sh(PAL.boardwalk, 1.15),
+      concrete: X.concrete || '#B8B8BC', steelDark: X.steelDark || '#6A6A70', steelDk2: sh(X.steelDark || '#6A6A70', 0.7), black: X.black || '#1B1B1B',
+      purple: PAL.purple, purple2: PAL.purple2, purpleShadow: PAL.purpleShadow,
+    };
+    return CC;
+  }
+  const bitCount4 = (m) => (m & 1) + ((m >> 1) & 1) + ((m >> 2) & 1) + ((m >> 3) & 1);
+  /** 4-connected networks of surface kinds 1–3 on a w×h grid → [{kind, tiles: [i…], closed}] (polylines between nodes, then loops) */
+  function traceNets(surf, w, h) {
+    const out = [], n = w * h, deg = new Uint8Array(n), used = new Uint8Array(n), STEP = [-w, 1, w, -1];
+    for (let i = 0; i < n; i++) {
+      const v = surf[i]; if (v < 1 || v > 3) continue;
+      const x = i % w, y = (i / w) | 0; let m = 0;
+      if (y > 0 && surf[i - w] === v) m |= 1;
+      if (x < w - 1 && surf[i + 1] === v) m |= 2;
+      if (y < h - 1 && surf[i + w] === v) m |= 4;
+      if (x > 0 && surf[i - 1] === v) m |= 8;
+      deg[i] = m;
+    }
+    function walk(start, dir) {
+      const tiles = [start]; let i = start, d = dir;
+      for (let guard = 0; guard <= n; guard++) {
+        used[i] |= 1 << d;
+        const j = i + STEP[d], back = (d + 2) & 3;
+        used[j] |= 1 << back;
+        if (j === start) return { tiles: tiles, closed: true };
+        tiles.push(j);
+        const m = deg[j];
+        if (bitCount4(m) !== 2) return { tiles: tiles, closed: false };
+        let nd = -1; for (let k = 0; k < 4; k++) if (k !== back && (m & (1 << k))) { nd = k; break; }
+        if (nd < 0 || (used[j] & (1 << nd))) return { tiles: tiles, closed: false };
+        i = j; d = nd;
+      }
+      return { tiles: tiles, closed: false };
+    }
+    for (let i = 0; i < n; i++) {
+      const v = surf[i]; if (v < 1 || v > 3) continue;
+      const m = deg[i], c = bitCount4(m);
+      if (c === 2) continue;
+      if (c === 0) { out.push({ kind: v, tiles: [i], closed: false }); continue; }
+      for (let d = 0; d < 4; d++) if ((m & (1 << d)) && !(used[i] & (1 << d))) { const r = walk(i, d); out.push({ kind: v, tiles: r.tiles, closed: false }); }
+    }
+    for (let i = 0; i < n; i++) {   // what is left are pure loops (every tile degree 2)
+      const v = surf[i]; if (v < 1 || v > 3) continue;
+      const m = deg[i]; if (bitCount4(m) !== 2) continue;
+      for (let d = 0; d < 4; d++) if ((m & (1 << d)) && !(used[i] & (1 << d))) { const r = walk(i, d); out.push({ kind: v, tiles: r.tiles, closed: r.closed }); break; }
+    }
+    return out;
+  }
+  /** Chaikin corner cutting on a flat [x0,y0,x1,y1,…] polyline; open polylines keep both endpoints, closed ones wrap */
+  function smoothPoly(pts, closed, iters) {
+    let p = pts;
+    for (let it = 0; it < iters; it++) {
+      const n = p.length >> 1;
+      if (n < (closed ? 3 : 3)) return p.slice();
+      const q = [], segs = closed ? n : n - 1;
+      if (!closed) q.push(p[0], p[1]);
+      for (let k = 0; k < segs; k++) {
+        const j = (k + 1) % n, ax = p[2 * k], ay = p[2 * k + 1], bx = p[2 * j], by = p[2 * j + 1];
+        q.push(ax + (bx - ax) * 0.25, ay + (by - ay) * 0.25, ax + (bx - ax) * 0.75, ay + (by - ay) * 0.75);
+      }
+      if (!closed) q.push(p[2 * n - 2], p[2 * n - 1]);
+      p = q;
+    }
+    return p;
+  }
+  /** split a polyline's tile list into runs of equal elevation (px): [{a, b, ep}] index ranges */
+  function elevRuns(tiles, epOf) {
+    const runs = []; if (!tiles.length) return runs;
+    let a = 0, cur = epOf(tiles[0]);
+    for (let k = 1; k <= tiles.length; k++) {
+      const e = k < tiles.length ? epOf(tiles[k]) : NaN;
+      if (e !== cur) { runs.push({ a: a, b: k - 1, ep: cur }); a = k; cur = e; }
+    }
+    return runs;
+  }
+  /** the point of the smoothed polyline nearest (x, y), searched over segments from…to: {j, t} = segment index and parameter */
+  function nearestOnCurve(pts, closed, x, y, from, to) {
+    const n = pts.length >> 1; let bj = 0, bt = 0, bd = Infinity;
+    for (let k = from; k <= to; k++) {
+      const j = closed ? ((k % n) + n) % n : k; if (j < 0 || j >= (closed ? n : n - 1)) continue;
+      const j1 = (j + 1) % n, ax = pts[2 * j], ay = pts[2 * j + 1], dx = pts[2 * j1] - ax, dy = pts[2 * j1 + 1] - ay, L2 = dx * dx + dy * dy;
+      const t = L2 > 1e-12 ? clamp(((x - ax) * dx + (y - ay) * dy) / L2, 0, 1) : 0;
+      const ex = ax + dx * t - x, ey = ay + dy * t - y, d = ex * ex + ey * ey;
+      if (d < bd) { bd = d; bj = j; bt = t; }
+    }
+    return { j: bj, t: bt };
+  }
+  /** points (x, y, nx, ny) at ascending arc lengths from the point at parameter t of segment j, walking ±index; past an open end it extends along the last tangent */
+  function sampleCurve(pts, closed, j, t, sign, dists, out) {
+    const n = pts.length >> 1, j1 = closed ? (j + 1) % n : Math.min(n - 1, j + 1);
+    let x0 = pts[2 * j] + (pts[2 * j1] - pts[2 * j]) * t, y0 = pts[2 * j + 1] + (pts[2 * j1 + 1] - pts[2 * j + 1]) * t;
+    let i = sign > 0 ? j1 : j, acc = 0, q = 0, tx = 0, ty = 0;
+    for (let guard = 0; guard <= n && q < dists.length; guard++) {
+      if (i < 0 || i >= n) break;
+      const x1 = pts[2 * i], y1 = pts[2 * i + 1], dx = x1 - x0, dy = y1 - y0, L = Math.hypot(dx, dy);
+      if (L > 1e-9) {
+        tx = dx / L; ty = dy / L;
+        while (q < dists.length && dists[q] <= acc + L) { const s = dists[q] - acc; out.push(x0 + tx * s, y0 + ty * s, -ty, tx); q++; }
+        acc += L; x0 = x1; y0 = y1;
+      }
+      i += sign; if (closed) i = (i + n) % n;
+    }
+    if (tx === 0 && ty === 0) { tx = 1; }
+    while (q < dists.length) { const s = dists[q] - acc; out.push(x0 + tx * s, y0 + ty * s, -ty, tx); q++; }
+    return out;
+  }
+  /** tee / entrance-walk connectors: a 7-px stub from the neighbour tile's centre into a finished building's visible edge */
+  function addStubs(state, polys) {
+    const B = state.buildings, t = state.tiles; if (!Array.isArray(B) || M.teesEnabled === false) return;
+    const sp = S(), cat = BSU.data && BSU.data.catalog; if (!cat || typeof sp.teeable !== 'function') return;
+    const surf = t.surface;
+    for (let k = 0; k < B.length; k++) {
+      const b = B[k]; if (!b || fin(b.built, 1) < 1 || b.ruin) continue;
+      const row = cat[b.type]; if (!row || !row.pathAdjacency || !sp.teeable(row, b.rot ? 1 : 0)) continue;
+      const w = b.w | 0, h = b.h | 0, tx = b.tx | 0, ty = b.ty | 0, fl = frontLeftOf(t, b);
+      const add = (side, kk, kind) => {
+        const x = side === 0 ? tx + w : tx + w - 1 - kk, y = side === 0 ? ty + h - 1 - kk : ty + h;
+        if (x < 0 || y < 0 || x >= W || y >= HGT) return;
+        polys.push({ kind: kind, stub: true, tiles: [y * W + x], closed: false, pts: [x, y, side === 0 ? x - STUB_LEN : x, side === 0 ? y : y - STUB_LEN] });
+      };
+      const tees = M.teesOf(state, b, fl);
+      if (tees) for (let q = 0; q < tees.length; q++) add((tees[q] >> 4) & 1, tees[q] & 15, tees[q] >> 6);
+      const side = fl ? 1 : 0, n = fl ? w : h;   // the entrance walk's tile(s): the middle of the front face (both tiles of an even face)
+      for (let kk = 0; kk < n; kk++) {
+        if (Math.abs(32 * kk + 16 - n * 16) >= 24) continue;
+        const x = side === 0 ? tx + w : tx + w - 1 - kk, y = side === 0 ? ty + h - 1 - kk : ty + h;
+        if (x < 0 || y < 0 || x >= W || y >= HGT) continue;
+        const s = surf[y * W + x]; if (s >= 1 && s <= 3) add(side, kk, s);
+      }
+    }
+  }
+  /** the whole map's curves: smoothed polylines, per-tile segment ranges (bbox-bucketed) and per-lower-tile elevation steps */
+  function buildCurves(state) {
+    const t = state.tiles, surf = t.surface, elev = t.elev;
+    const polys = traceNets(surf, W, HGT);
+    addStubs(state, polys);
+    const buckets = new Map(), steps = new Map();
+    const epOf = (i) => Math.round(fin(elev[i], 0) * PXFT);
+    for (let p = 0; p < polys.length; p++) {
+      const P = polys[p], w = P.w = P.stub ? STUB_W : CURVE_W[P.kind];
+      if (!P.pts) {
+        const raw = []; for (let k = 0; k < P.tiles.length; k++) raw.push(P.tiles[k] & 63, P.tiles[k] >> 6);
+        P.pts = P.tiles.length === 1 ? [raw[0] - 0.12, raw[1], raw[0] + 0.12, raw[1]] : smoothPoly(raw, P.closed, CHAIKIN_ITERS);
+      }
+      const pts = P.pts, n = pts.length >> 1, segs = P.closed ? n : n - 1, pad = w * 0.5 + SEG_PAD;
+      for (let k = 0; k < segs; k++) {
+        const j = (k + 1) % n, x0 = pts[2 * k], y0 = pts[2 * k + 1], x1 = pts[2 * j], y1 = pts[2 * j + 1];
+        const ax = Math.max(0, Math.floor(Math.min(x0, x1) - pad + 0.5)), bx = Math.min(W - 1, Math.floor(Math.max(x0, x1) + pad + 0.5));
+        const ay = Math.max(0, Math.floor(Math.min(y0, y1) - pad + 0.5)), by = Math.min(HGT - 1, Math.floor(Math.max(y0, y1) + pad + 0.5));
+        for (let y = ay; y <= by; y++) for (let x = ax; x <= bx; x++) {
+          const i = y * W + x; let list = buckets.get(i); if (!list) { list = []; buckets.set(i, list); }
+          const last = list[list.length - 1];
+          if (last && last.p === p && last.b === k - 1) last.b = k; else list.push({ p: p, a: k, b: k });
+        }
+      }
+      if (P.stub || P.tiles.length < 2) continue;
+      const m = P.tiles.length, runs = elevRuns(P.tiles, epOf), nr = runs.length;
+      const span = 1 << CHAIKIN_ITERS;
+      for (let r = 0; r < (P.closed ? nr : nr - 1); r++) {
+        const r2 = (r + 1) % nr; if (runs[r].ep === runs[r2].ep) continue;
+        const ka = runs[r].b, kb = runs[r2].a, a = P.tiles[ka], b = P.tiles[kb], ea = runs[r].ep, eb = runs[r2].ep;
+        const hi = ea > eb ? a : b, lo = ea > eb ? b : a;
+        const xm = ((a & 63) + (b & 63)) * 0.5, ym = ((a >> 6) + (b >> 6)) * 0.5;
+        const at = nearestOnCurve(pts, P.closed, xm, ym, ka * span - span, ka * span + 2 * span);
+        const st = { p: p, j: at.j, t: at.t, sign: hi === a ? 1 : -1, d: Math.abs(ea - eb), hiEp: Math.max(ea, eb), loEp: Math.min(ea, eb), lo: lo, hi: hi, kind: P.kind, w: w, ux: (lo & 63) - (hi & 63), uy: (lo >> 6) - (hi >> 6) };
+        let list = steps.get(lo); if (!list) { list = []; steps.set(lo, list); } list.push(st);
+      }
+      void m;
+    }
+    return { polys: polys, buckets: buckets, steps: steps, state: state };
+  }
+  function ensureCurves(state) {
+    if (curves && !curvesDirty && curves.state === state) return curves;
+    try { curves = buildCurves(state); } catch (e) { rerr('curves', e); curves = null; }
+    curvesDirty = false;
+    return curves;
+  }
+  /** clip to the tile's ground diamond at ep, grown CLIP_EPS toward the S/E neighbours (drawn later: their ground overdraws the
+   *  overlap, so the shared edge never shows an anti-aliased conflation seam) and stretched up/down for rails/posts */
+  function clipTile(g, ch, tx, ty, ep, up, down) {
+    const e = CLIP_EPS, px = (x, y) => (x - y) * 32 - ch.ox, py = (x, y) => (x + y) * 16 - ep - ch.oy;
+    const Tx = px(tx - 0.5, ty - 0.5), Ty = py(tx - 0.5, ty - 0.5), Rx = px(tx + 0.5 + e, ty - 0.5), Ry = py(tx + 0.5 + e, ty - 0.5);
+    const Bx = px(tx + 0.5 + e, ty + 0.5 + e), By = py(tx + 0.5 + e, ty + 0.5 + e), Lx = px(tx - 0.5, ty + 0.5 + e), Ly = py(tx - 0.5, ty + 0.5 + e);
+    g.setTransform(1, 0, 0, 1, 0, 0); g.beginPath();
+    g.moveTo(Tx, Ty - up); g.lineTo(Rx, Ry - up); g.lineTo(Rx, Ry + down); g.lineTo(Bx, By + down); g.lineTo(Lx, Ly + down); g.lineTo(Lx, Ly - up); g.closePath(); g.clip();
+  }
+  /** ground units → chunk px at elevation ep (the brief's affine: round joins and caps squash with the iso view) */
+  function groundTransform(g, ch, ep) { g.setTransform(32, 16, -32, 16, -ch.ox, -ep - ch.oy); }
+  /** build one path from the tile's ranges that match (stub?, kind); returns the number of subpaths */
+  function buildPath(g, cv, list, stub, kind, offset) {
+    let n = 0;
+    for (let r = 0; r < list.length; r++) {
+      const rg = list[r], P = cv.polys[rg.p]; if (!!P.stub !== stub || P.kind !== kind) continue;
+      const pts = P.pts, np = pts.length >> 1;
+      if (n === 0) g.beginPath();
+      for (let k = rg.a; k <= rg.b + 1; k++) {
+        const j = P.closed ? k % np : k; let x = pts[2 * j], y = pts[2 * j + 1];
+        if (offset) { const nrm = normalAt(pts, np, P.closed, j); x += nrm[0] * offset; y += nrm[1] * offset; }
+        if (k === rg.a) g.moveTo(x, y); else g.lineTo(x, y);
+      }
+      n++;
+    }
+    return n;
+  }
+  const NRM = [0, 0];
+  function normalAt(pts, np, closed, j) {
+    const a = closed ? (j - 1 + np) % np : Math.max(0, j - 1), b = closed ? (j + 1) % np : Math.min(np - 1, j + 1);
+    const dx = pts[2 * b] - pts[2 * a], dy = pts[2 * b + 1] - pts[2 * a + 1], L = Math.hypot(dx, dy) || 1;
+    NRM[0] = -dy / L; NRM[1] = dx / L; return NRM;
+  }
+  function strokeLayers(g, C, kind, stub, seed) {
+    g.lineJoin = 'round'; g.lineCap = 'round'; g.setLineDash(EMPTY_DASH); g.lineDashOffset = 0;
+    const w = stub ? STUB_W : CURVE_W[kind];
+    if (kind === SURF.PATH) {
+      g.lineWidth = w + 0.07; g.strokeStyle = C.pathEdge; g.stroke();
+      g.lineWidth = w; g.strokeStyle = C.path; g.stroke(); drawCalls += 2;
+      if (!stub) {
+        g.lineWidth = w * 0.45; g.strokeStyle = C.pathHi; g.stroke();
+        g.lineCap = 'butt'; g.lineWidth = 0.05; g.setLineDash(DASH_SPECK); g.lineDashOffset = (seed % 7) * 0.023; g.strokeStyle = C.pathDk; g.stroke();
+        g.lineDashOffset = (seed % 5) * 0.031 + 0.07; g.strokeStyle = C.pathEdge; g.stroke(); drawCalls += 3;
+      }
+    } else if (kind === SURF.ROAD) {
+      g.lineWidth = w + 0.1; g.strokeStyle = C.curb; g.stroke();
+      g.lineWidth = w; g.strokeStyle = C.road; g.stroke(); drawCalls += 2;
+      if (!stub) { g.lineCap = 'butt'; g.lineWidth = 0.045; g.setLineDash(DASH_ROAD); g.strokeStyle = C.dash; g.stroke(); drawCalls++; }
+    } else {
+      g.lineWidth = w + 0.1; g.strokeStyle = C.rail; g.stroke();
+      g.lineWidth = w; g.strokeStyle = C.deck; g.stroke(); drawCalls += 2;
+      if (!stub) { g.lineCap = 'butt'; g.lineWidth = w - 0.02; g.setLineDash(DASH_PLANK); g.strokeStyle = C.gap; g.stroke(); drawCalls++; }
+    }
+  }
+  /** posts under a boardwalk's viewer-side edge (every other smoothed point ≈ 0.25 tile) */
+  function boardwalkPosts(g, C, ch, cv, list, ep) {
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    for (let r = 0; r < list.length; r++) {
+      const rg = list[r], P = cv.polys[rg.p]; if (P.stub || P.kind !== SURF.BOARDWALK) continue;
+      const pts = P.pts, np = pts.length >> 1, off = P.w * 0.5 + 0.03;
+      for (let k = rg.a; k <= rg.b + 1; k++) {
+        const j = P.closed ? k % np : k; if (j & 1) continue;
+        const nrm = normalAt(pts, np, P.closed, j); let nx = nrm[0], ny = nrm[1]; if (nx + ny < 0) { nx = -nx; ny = -ny; }
+        const x = pts[2 * j] + nx * off, y = pts[2 * j + 1] + ny * off;
+        const sx = Math.round((x - y) * 32 - ch.ox), sy = Math.round((x + y) * 16 - ep - ch.oy);
+        g.fillStyle = C.post; g.fillRect(sx - 1, sy, 2, 3); g.fillStyle = C.postShadow; g.fillRect(sx - 2, sy + 3, 4, 1); drawCalls += 2;
+      }
+    }
+  }
+  /** a road over water: concrete piers under the deck, purple railings 6 px above it with posts */
+  function piers(g, C, wx, wy) {
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    for (let s = 0; s < 2; s++) { const x = s ? wx + 20 : wx - 24, y = wy + 12; g.fillStyle = C.concrete; g.fillRect(x, y, 4, 8); g.fillStyle = C.steelDark; g.fillRect(x + 3, y, 1, 8); g.fillRect(x, y + 7, 4, 1); drawCalls += 3; }
+  }
+  function bridgeRails(g, C, ch, cv, list, ep) {
+    g.setTransform(1, 0, 0, 1, 0, 0); g.fillStyle = C.purpleShadow;
+    for (let r = 0; r < list.length; r++) {
+      const rg = list[r], P = cv.polys[rg.p]; if (P.stub || P.kind !== SURF.ROAD) continue;
+      const pts = P.pts, np = pts.length >> 1, off = P.w * 0.5 - 0.04;
+      for (let k = rg.a; k <= rg.b + 1; k++) {
+        const j = P.closed ? k % np : k; if (j & 1) continue;
+        const nrm = normalAt(pts, np, P.closed, j);
+        for (let s = -1; s <= 1; s += 2) { const x = pts[2 * j] + nrm[0] * off * s, y = pts[2 * j + 1] + nrm[1] * off * s; g.fillRect(Math.round((x - y) * 32 - ch.ox), Math.round((x + y) * 16 - ep - ch.oy) - 5, 1, 5); drawCalls++; }
+      }
+    }
+    groundTransform(g, ch, ep + 6); g.lineJoin = 'round'; g.lineCap = 'butt'; g.setLineDash(EMPTY_DASH); g.lineWidth = 0.07;
+    for (let s = -1; s <= 1; s += 2) { if (!buildPath(g, cv, list, false, SURF.ROAD, s * (CURVE_W[2] * 0.5 - 0.04))) continue; g.strokeStyle = s < 0 ? C.purple : C.purple2; g.stroke(); drawCalls++; }
+  }
+  function culvertPipes(g, C, wx, wy) {
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    for (let s = -1; s <= 1; s += 2) { const x = wx + s * 14 - 2, y = wy + 6; g.fillStyle = C.steelDark; g.fillRect(x, y, 4, 4); g.fillStyle = C.black; g.fillRect(x + 1, y + 1, 2, 2); g.fillStyle = C.steelDk2; g.fillRect(x, y + 4, 4, 1); drawCalls += 3; }
+  }
+  /** the surface pieces that touch tile i, drawn at its elevation (called for every non-fence tile; cheap when none) */
+  function drawCurvesAt(g, ch, cv, i, tx, ty, ep, wx, wy, sf, wet, canal) {
+    const list = cv.buckets.get(i), steps = cv.steps.get(i);
+    if (!list && !steps) return;
+    const C = curveColors();
+    if (list) {
+      const bridge = wet && sf === SURF.ROAD, up = bridge ? 9 : 0, down = sf === SURF.BOARDWALK ? 5 : (bridge ? 14 : 0);
+      g.save();
+      clipTile(g, ch, tx, ty, ep, up, down);
+      if (bridge) piers(g, C, wx, wy);
+      if (sf === SURF.BOARDWALK) boardwalkPosts(g, C, ch, cv, list, ep);
+      groundTransform(g, ch, ep);
+      for (let pass = 0; pass < 2; pass++) for (let kind = 1; kind <= 3; kind++) { if (buildPath(g, cv, list, pass === 0, kind, 0)) strokeLayers(g, C, kind, pass === 0, hash(tx, ty)); }
+      if (bridge) bridgeRails(g, C, ch, cv, list, ep);
+      if (canal) culvertPipes(g, C, wx, wy);
+      g.restore();
+    }
+    if (steps) for (let k = 0; k < steps.length; k++) drawStep(g, C, ch, cv, steps[k]);
+  }
+  /** stairs (paths, boardwalks) or a ramp (roads) from the shared edge at the higher level down into the lower tile, along the curve */
+  function drawStep(g, C, ch, cv, st) {
+    const P = cv.polys[st.p], pts = P.pts, hw = st.w * 0.5, d = st.d;
+    const px = (x, y) => (x - y) * 32 - ch.ox, py = (x, y, e) => (x + y) * 16 - e - ch.oy;
+    g.setTransform(1, 0, 0, 1, 0, 0); g.setLineDash(EMPTY_DASH); g.lineWidth = 1; g.lineJoin = 'miter'; g.lineCap = 'butt';
+    const S = [];
+    const quad = (k0, e0, k1, e1, fill) => {   // the curve strip between samples k0 and k1 (indices into S), corners at levels e0/e1
+      const x0 = S[k0 * 4], y0 = S[k0 * 4 + 1], nx0 = S[k0 * 4 + 2] * hw, ny0 = S[k0 * 4 + 3] * hw, x1 = S[k1 * 4], y1 = S[k1 * 4 + 1], nx1 = S[k1 * 4 + 2] * hw, ny1 = S[k1 * 4 + 3] * hw;
+      g.fillStyle = fill; g.beginPath();
+      g.moveTo(px(x0 - nx0, y0 - ny0), py(x0 - nx0, y0 - ny0, e0)); g.lineTo(px(x0 + nx0, y0 + ny0), py(x0 + nx0, y0 + ny0, e0));
+      g.lineTo(px(x1 + nx1, y1 + ny1), py(x1 + nx1, y1 + ny1, e1)); g.lineTo(px(x1 - nx1, y1 - ny1), py(x1 - nx1, y1 - ny1, e1));
+      g.closePath(); g.fill(); drawCalls++;
+    };
+    const riser = (k, eTop, eBot, fill) => {     // vertical face across the strip at sample k
+      const x = S[k * 4], y = S[k * 4 + 1], nx = S[k * 4 + 2] * hw, ny = S[k * 4 + 3] * hw;
+      g.fillStyle = fill; g.beginPath();
+      g.moveTo(px(x - nx, y - ny), py(x - nx, y - ny, eTop)); g.lineTo(px(x + nx, y + ny), py(x + nx, y + ny, eTop));
+      g.lineTo(px(x + nx, y + ny), py(x + nx, y + ny, eBot)); g.lineTo(px(x - nx, y - ny), py(x - nx, y - ny, eBot));
+      g.closePath(); g.fill(); drawCalls++;
+    };
+    const line = (k, e, color, grow) => {        // 1-px line across the strip at sample k and level e
+      const x = S[k * 4], y = S[k * 4 + 1], nx = S[k * 4 + 2] * (hw + (grow || 0)), ny = S[k * 4 + 3] * (hw + (grow || 0));
+      g.strokeStyle = color; g.beginPath(); g.moveTo(px(x - nx, y - ny), py(x - nx, y - ny, e)); g.lineTo(px(x + nx, y + ny), py(x + nx, y + ny, e)); g.stroke(); drawCalls++;
+    };
+    if (d < 3) {   // under half a foot: a short ramp wedge blends the two levels
+      sampleCurve(pts, P.closed, st.j, st.t, st.sign, [0, 0.1], S);
+      quad(0, st.hiEp, 1, st.loEp, st.kind === SURF.ROAD ? C.ramp : st.kind === SURF.BOARDWALK ? C.deckLo : C.pathLo);
+      return;
+    }
+    if (st.kind === SURF.ROAD) {   // cars take a ramp, not stairs: asphalt slope with its curbs and hatched edge marks
+      const L = Math.min(0.5, 0.12 + d * 0.012);
+      sampleCurve(pts, P.closed, st.j, st.t, st.sign, [0, L * 0.25, L * 0.5, L * 0.75, L], S);
+      quad(0, st.hiEp, 4, st.loEp, C.ramp);
+      g.strokeStyle = C.curb; g.beginPath();
+      for (let s = -1; s <= 1; s += 2) for (let k = 0; k <= 4; k++) { const e = st.hiEp - (st.hiEp - st.loEp) * k / 4, x = S[k * 4] + S[k * 4 + 2] * hw * s, y = S[k * 4 + 1] + S[k * 4 + 3] * hw * s; if (k === 0) g.moveTo(px(x, y), py(x, y, e)); else g.lineTo(px(x, y), py(x, y, e)); }
+      g.stroke(); drawCalls++;
+      for (let k = 1; k <= 3; k++) line(k, st.hiEp - (st.hiEp - st.loEp) * k / 4, C.hatch, -0.06);
+      return;
+    }
+    const wood = st.kind === SURF.BOARDWALK, tread = wood ? C.woodTread : C.stoneTread, rise = wood ? C.woodRiser : C.stoneRiser, nose = wood ? C.woodNose : C.stoneNose;
+    const nT = d < 5 ? 2 : clamp(Math.round(d / 3), 3, 6), run = Math.min(0.15, 0.6 / nT);   // half-foot shoulders: two shallow steps
+    const dists = []; for (let k = 0; k <= nT; k++) dists.push(k * run);
+    sampleCurve(pts, P.closed, st.j, st.t, st.sign, dists, S);
+    const level = (k) => Math.round(st.hiEp - d * k / nT);
+    const toward = (st.ux + st.uy) > 0;   // the lower tile lies toward the viewer: the face is visible, paint top → bottom
+    for (let q = 0; q < nT; q++) {
+      const k = toward ? q + 1 : nT - q;   // riser k sits at sample k-1 between levels k-1 and k; tread k spans samples k-1..k at level k
+      if (toward) { riser(k - 1, level(k - 1), level(k), rise); if (k < nT) { quad(k - 1, level(k), k, level(k), tread); line(k, level(k), nose); } }
+      else { if (k < nT) { quad(k - 1, level(k), k, level(k), tread); line(k, level(k), nose); } riser(k - 1, level(k - 1), level(k), rise); }
+    }
+    // handrail posts at both ends
+    g.fillStyle = C.post;
+    for (let s = -1; s <= 1; s += 2) for (let k = 0; k <= nT; k += nT) {
+      const x = S[k * 4] + S[k * 4 + 2] * (hw + 0.03) * s, y = S[k * 4 + 1] + S[k * 4 + 3] * (hw + 0.03) * s, e = k ? st.loEp : st.hiEp;
+      const sx = Math.round(px(x, y)), sy = Math.round(py(x, y, e)); g.fillRect(sx, sy - 6, 1, 6); g.fillRect(sx - 1, sy - 7, 3, 1); drawCalls += 2;
+    }
+  }
+  M.curves = { trace: traceNets, smooth: smoothPoly, runs: elevRuns, build: buildCurves, current: () => curves, invalidate: () => { curvesDirty = true; } };
   /** bake chunk (cx, cy) at 1× into its canvas (ARCHITECTURE §6.3 step 2) */
   function bakeChunk(ch, state) {
     const sp = S();
@@ -315,6 +688,7 @@
     g.clearRect(0, 0, CW, CHH);
     const t = state.tiles, elev = t.elev, type = t.type, fl = t.flags, surf = t.surface, crest = t.crest, integ = t.integrity, depth = t.depth;
     markCypress(state);
+    const cv = ensureCurves(state);
     const bx = ch.cx * CS, by = ch.cy * CS;
     for (let s = 0; s <= 14; s++) {              // tiles by tx+ty ascending (draw order inside the chunk)
       for (let dx = Math.max(0, s - 7); dx <= Math.min(7, s); dx++) {
@@ -337,11 +711,13 @@
         if (f & FLAG.DESIRE_WORN) { ref = sp.get('worn', 0, 0, 1); if (ref) blit1(g, ref, wx, wy); }
         // (f) canal cut (open gate variant baked; pass 3 overlays the live gate frame)
         if (f & FLAG.CANAL) { let v = flagMask(fl, i, tx, ty, FLAG.CANAL, false); if (surf[i] > 0) v |= 16; ref = sp.get('canal', v, 0, 1); if (ref) blit1(g, ref, wx, wy); }
-        // (e) surfaces: path/road/boardwalk/fence auto-tiled
-        const sf = surf[i];
-        if (sf > 0 && sf <= 4) {
+        // (e) surfaces: fences stay auto-tiled stamps; paths / roads / boardwalks are stroked centrelines (smoothing pass),
+        //     drawn for every non-fence tile the curves touch (a curve may spill into a neighbour at a corner)
+        const sf = surf[i], wet = (f & WATER_FLAGS) !== 0 || ty8 === T.OPEN_WATER || ty8 === T.BAYOU || ty8 === T.POND;
+        if (cv && sf !== SURF.FENCE) drawCurvesAt(g, ch, cv, i, tx, ty, ep, wx, wy, sf, wet, (f & FLAG.CANAL) !== 0 && sf > 0);
+        else if (sf > 0 && sf <= 4) {
           let v = sameMask(surf, i, tx, ty, sf);
-          if ((f & WATER_FLAGS) || ty8 === T.OPEN_WATER || ty8 === T.BAYOU || ty8 === T.POND) v |= 16;
+          if (wet) v |= 16;
           if (sf === SURF.FENCE && (hash(tx, ty) % 6) === 0) v |= 32;
           if (f & FLAG.CANAL) v |= 64;
           ref = sp.get('surf:' + sf, v, 0, 1); if (ref) blit1(g, ref, wx, wy);
@@ -759,6 +1135,15 @@
     }
   }
   function teeClear() { teeCache.clear(); teeBytes = 0; }
+  /** a building finished or went away: its tee / walk stubs (smoothing pass) live in the chunks around the footprint */
+  function dirtyAroundBuilding(p) {
+    curvesDirty = true;
+    let b = p;
+    if (!(Number.isFinite(p.tx) && Number.isFinite(p.w)) && root && Array.isArray(root.buildings)) { b = null; for (let k = 0; k < root.buildings.length; k++) { const q = root.buildings[k]; if (q && q.id === p.id) { b = q; break; } } }
+    if (!b) return;
+    const x0 = Math.max(0, (b.tx | 0) - 1), y0 = Math.max(0, (b.ty | 0) - 1), x1 = Math.min(W - 1, (b.tx | 0) + (b.w | 0)), y1 = Math.min(HGT - 1, (b.ty | 0) + (b.h | 0));
+    for (let cy = y0 >> 3; cy <= y1 >> 3; cy++) for (let cx = x0 >> 3; cx <= x1 >> 3; cx++) M.dirtyChunk(cx + cy * 8);
+  }
   function teeSweep() { if (teeCache.size <= TEE_MAX) return; for (const [id, c] of teeCache) if (!c || c.used < frameNo - TEE_IDLE) teeDrop(id); }
   M.teeStats = function () { let n = 0; for (const c of teeCache.values()) if (c && c.tees) n++; return { cached: teeCache.size, withTees: n, mb: Math.round(teeBytes / 10485.76) / 100, bakesThisFrame: teeBakes }; };
 
@@ -1314,12 +1699,12 @@
     try {
       const ev = BSU.events;
       ev.on('tile:changed', onTileChanged, 'render');
-      ev.on('save:loaded', function () { M.dirtyAll(); firstFrame = true; teeClear(); }, 'render');
+      ev.on('save:loaded', function () { M.dirtyAll(); firstFrame = true; teeClear(); curvesDirty = true; }, 'render');
       ev.on('ui:overlay', function (p) { if (p && Number.isFinite(p.ov)) M.setOverlay(p.ov); else if (p && Number.isFinite(p.overlay)) M.setOverlay(p.overlay); }, 'render');
       ev.on('gate:closed', function (p) { if (p && Number.isFinite(p.i)) gates.set(p.i | 0, { closed: true, t0: frameNo }); }, 'render');
       ev.on('gate:opened', function (p) { if (p && Number.isFinite(p.i)) gates.set(p.i | 0, { closed: false, t0: frameNo }); }, 'render');
-      ev.on('building:complete', function (p) { if (p && Number.isFinite(p.id)) { M.squash[p.id] = nowMs(); teeDrop(p.id); } }, 'render');
-      ev.on('building:removed', function (p) { if (p && Number.isFinite(p.id)) teeDrop(p.id); }, 'render');
+      ev.on('building:complete', function (p) { if (p && Number.isFinite(p.id)) { M.squash[p.id] = nowMs(); teeDrop(p.id); dirtyAroundBuilding(p); } }, 'render');
+      ev.on('building:removed', function (p) { if (p && Number.isFinite(p.id)) { teeDrop(p.id); dirtyAroundBuilding(p); } }, 'render');
     } catch (e) { rerr('init:events', e); }
     try { if (!BSU.headlessMode && typeof window.addEventListener === 'function') window.addEventListener('resize', function () { try { M.resize(); } catch (e) { rerr('resize', e); } }); } catch (e) { /* stub */ }
     try { if (typeof M._fxInit === 'function') M._fxInit(root); } catch (e) { rerr('_fxInit', e); }
@@ -1329,7 +1714,7 @@
     if (!state) return;
     bind(state);
     for (let k = 0; k < NCH; k++) if (chunks[k]) dropChunk(chunks[k]); else { const o = chunkOrigin(k & 7, k >> 3); chunks[k] = { cx: k & 7, cy: k >> 3, ox: o.ox, oy: o.oy, canvas: null, ctx: null, dirty: 1, lastSeen: -1 }; }
-    dirtyBits.fill(1);
+    dirtyBits.fill(1); curvesDirty = true; curves = null;
     flashes.length = 0; ghostSpec = null; gates.clear(); shakeUntil = 0; shakePx = 0; hitStopUntilMs = 0;
     for (const k in M.squash) delete M.squash[k];
     perfRing.fill(0); perfI = 0; perfFilled = false; perfTripped = false;
