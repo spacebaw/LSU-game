@@ -93,6 +93,33 @@ const beforeN = R.chunkDirty(chunkOf(ex, ey - 1)), beforeW = R.chunkDirty(chunkO
 BSU.events.emit('tile:changed', { i: BSU.idx(ex, ey), tx: ex, ty: ey, what: 'elev', chunk: chunkOf(ex, ey) });
 ok(R.chunkDirty(chunkOf(ex, ey)) && (R.chunkDirty(chunkOf(ex, ey - 1)) || beforeN) && (R.chunkDirty(chunkOf(ex - 1, ey)) || beforeW), 'a chunk-edge tile dirties the N and W neighbour chunks too');
 
+// --- tee pass: path connectors into a finished building's visible edges ------------
+{
+  const T = BSU.terrain, SURF = BSU.SURF;
+  const sp = BSU.headless.findSpot('dorm'); const pr = sp ? BSU.headless.place('dorm', sp.x, sp.y) : { ok: false };
+  const d = pr.ok ? s.buildings.find((x) => x && x.id === pr.id) : null;
+  ok(!!d, 'tee test: a dorm placed at ' + JSON.stringify(sp));
+  if (d) {
+    ok(R.teesOf(s, d, false) === null, 'no path touching the dorm → teesOf is null');
+    for (let y = d.ty; y < d.ty + d.h; y++) T.setSurface(s, BSU.idx(d.tx + d.w, y), SURF.PATH);        // a path flush along the SE edge (the default front: its two tiles are the walk's)
+    for (let x = d.tx; x < d.tx + d.w; x++) T.setSurface(s, BSU.idx(x, d.ty + d.h), SURF.PATH);        // and along the SW edge (3 tiles → tees at both ends)
+    T.setSurface(s, BSU.idx(d.tx + d.w + 2, d.ty + d.h + 2), SURF.ROAD);                              // a road two tiles away must not count
+    const tees = R.teesOf(s, d, false);
+    ok(Array.isArray(tees) && tees.length === 2 && tees.every((c) => ((c >> 4) & 1) === 1 && ((c >> 6) & 3) === SURF.PATH) && (tees[0] & 15) === 0 && (tees[1] & 15) === 2, 'SW path of 3 → tees at k = 0 and 2 only, SE front excluded by the walk, far road ignored: ' + JSON.stringify(tees));
+    const teesL = R.teesOf(s, d, true);
+    ok(Array.isArray(teesL) && teesL.length === 4 && teesL.filter((c) => ((c >> 4) & 1) === 0).length === 2, 'with the entrance on the SW face the SE pair becomes tees instead: ' + JSON.stringify(teesL));
+    BSU.headless.tick(400); R.panToTile(d.tx, d.ty, false); for (let k = 0; k < 2; k++) BSU.headless.render();
+    const st = R.teeStats();
+    ok(d.built >= 1 && st.withTees >= 1 && st.mb > 0, 'a finished dorm with tees gets one cached tee sprite (' + JSON.stringify(st) + ')');
+    T.setSurface(s, BSU.idx(d.tx, d.ty + d.h), SURF.NONE);
+    ok(R.teeStats().withTees < st.withTees, 'tile:changed next to the footprint drops its cached tees');
+    BSU.headless.render();
+    const t2 = R.teesOf(s, d, false);
+    ok(R.teeStats().withTees === st.withTees && Array.isArray(t2) && t2.length === 2 && (t2[0] & 15) === 0 && (t2[1] & 15) === 1, 'the next frame recomputes: the remaining SW pair (k = 0, 1) both get tees: ' + JSON.stringify(t2));
+    ok(R.perf().tees >= 1 && R.variantOf(d, {}) === R.variantOf(d, {}), 'perf() reports the tee cache; variantOf is untouched by tees');
+  }
+}
+
 // --- camera math round trips --------------------------------------------------------
 let roundTrips = 0;
 for (let k = 0; k < 30; k++) {

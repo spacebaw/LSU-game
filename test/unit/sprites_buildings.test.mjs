@@ -129,6 +129,12 @@ eq(bowlT0, null, 'stadium tier 0 (unbuilt) has a null bowlRect');
   ok(r.bl === 44 && r.br === 72 && r.bk === -14, 'rotation swaps the face widths and negates the skew');
   ok(S.APRON && S.APRON.academic.pattern === 'brick' && S.APRON.housing.hedge === true && S.APRON.utilities.fence === true && S.APRON.dining.umbrellas === true, 'apron styles per category');
   ok(S.get('dorm', SPR.FRONT_L, 0, 1) && S.get('dorm', SPR.FRONT_L | SPR.NIGHT, 2, 1), 'FRONT_L (entrance on the SW face) renders, day and night');
+  // tee pass: per-building path connectors come through bakeWith (never a cached variant); teeable gates the rows
+  const tees = [S.teeCode(0, 0, 1), S.teeCode(1, 2, 2), S.teeCode(1, 0, 3)];
+  const tb = S.bakeWith('dorm', 0, 0, 1, { tees: tees }), tbn = S.bakeWith('dorm', SPR.NIGHT | SPR.PILINGS, 1, 2, { tees: tees });
+  ok(tb && tb.own && tb.w === S.get('dorm', 0, 0, 1).w && tb.h === S.get('dorm', 0, 0, 1).h && tbn && tbn.zoom === 2, 'bakeWith(tees) renders day and night/pilings at the shared sprite size');
+  ok(S.teeable(cat.dorm, 0) && S.teeable(cat.substation, 0) && !S.teeable(cat.quad, 0) && !S.teeable(cat.parking, 0) && !S.teeable(cat.water_tower, 0) && !S.teeable(cat.live_oak, 0) && !S.teeable(null, 0), 'teeable: footprint rows with a wall and their own apron only');
+  ok(S.teeCode(1, 2, 2) === 146 && S.bakeWith('dorm', 0, 0, 1, { tees: [S.teeCode(0, 15, 1), S.teeCode(1, 9, 1)] }), 'tee codes pack (surf << 6 | side << 4 | k); out-of-range tiles are ignored, not drawn');
 }
 
 // --- any combination of variant bits renders (e.g. NIGHT|PILINGS|BOARDED) -----

@@ -73,7 +73,7 @@
   let keys = new Float64Array(2048), order = new Int32Array(2048);
   const list = [];
   M.drawList = list;
-  M.alpha = 0; M.frameNo = 0; M.hoverTile = -1; M.squash = {}; M.titleDrift = false; M._tests = M._tests || [];
+  M.alpha = 0; M.frameNo = 0; M.hoverTile = -1; M.squash = {}; M.titleDrift = false; M._tests = M._tests || []; M.teesEnabled = true;   // tee pass switch (perf A/B)
   M.particleColors = [GOLD, '#FFFFFF', WATER_SHALLOW, '#C9B47C', PAL.danger || '#E0443E', PAL.azalea || '#E75480', PAL.moss || '#9BAA8A', '#9A8A7A', PAL.purpleHi || '#7F5BC5', '#FFB347', '#7FD4FF', PAL.good || '#3FBF7F', '#444444', PAL.cypressAutumn || '#C7692B', GOLD_HI, PAL.waterBlue || '#4FA3D6'];
   if (!M.particles) M.particles = { emit() {}, count() { return 0; }, clear() {}, forEachWorld() {} };   // replaced by render_fx.js
   Object.defineProperty(M, 'hitStopUntil', { get: function () { return hitStopUntilMs; }, enumerable: true, configurable: true });
@@ -254,6 +254,7 @@
     if (i < 0 || i >= N) { if (Number.isFinite(p.chunk)) M.dirtyChunk(p.chunk); return; }
     const tx = i & 63, ty = i >> 6, cx = tx >> 3, cy = ty >> 3;
     M.dirtyChunk(cx + cy * 8);
+    teeInvalidateNear(i);
     // neighbours' cliff faces / auto-tile masks live in the adjacent chunk when the tile sits on a chunk edge
     if ((tx & 7) === 0 && cx > 0) M.dirtyChunk(cx - 1 + cy * 8);
     if ((ty & 7) === 0 && cy > 0) M.dirtyChunk(cx + (cy - 1) * 8);
@@ -449,9 +450,9 @@
     let hydroActive = 0, mem = 0;
     try { const h = mod('hydro'); if (h && typeof h.activeCount === 'function') hydroActive = fin(h.activeCount(), 0); } catch (e) { hydroActive = 0; }
     try { const sp = S(); mem = typeof sp.totalMemoryMB === 'function' ? sp.totalMemoryMB() : sp.memoryMB(); } catch (e) { mem = 0; }
-    mem += liveChunks() * C.chunkMB + (canvas ? (canvas.width * canvas.height * 12) / 1048576 : 0);
+    mem += liveChunks() * C.chunkMB + (canvas ? (canvas.width * canvas.height * 12) / 1048576 : 0) + teeBytes / 1048576;
     let parts = 0; try { parts = M.particles && typeof M.particles.count === 'function' ? fin(M.particles.count(), 0) : 0; } catch (e) { parts = 0; }
-    return { frameMs: fin(frameMs, 0), drawCalls: drawCalls | 0, particles: parts, agentsDrawn: agentsDrawn | 0, hydroActive: hydroActive, chunks: liveChunks(), memMB: Math.round(mem * 100) / 100, water: waterDrawn | 0, frameNo: frameNo, zoom: zoomNow, perfMode: !!(root && root.ui && root.ui.perfMode) };
+    return { frameMs: fin(frameMs, 0), drawCalls: drawCalls | 0, particles: parts, agentsDrawn: agentsDrawn | 0, hydroActive: hydroActive, chunks: liveChunks(), memMB: Math.round(mem * 100) / 100, tees: teeCache.size, water: waterDrawn | 0, frameNo: frameNo, zoom: zoomNow, perfMode: !!(root && root.ui && root.ui.perfMode) };
   };
   /** render_fx / ui register or replace a named pass: order 5 weather, 6 tint, 7 lights, 8 fog, 9 overlays, 10 hud */
   M.registerPass = function (name, fn, order_, builtin) {
@@ -687,6 +688,80 @@
     const ey = ty + h; if (ey < HGT) for (let x = tx; x < tx + w; x++) { const s = surf[ey * W + x]; if (s >= 1 && s <= 3) return true; }
     return false;
   }
+  // -- tee pass: a path / road / boardwalk running flush along a finished building's visible footprint edges (SE = east
+  //    neighbours, SW = south neighbours; the NW/NE aprons sit behind the structure) gets a connector into the wall. Per
+  //    building we keep the tee list (recomputed when a tile touching the footprint changes, or the building completes /
+  //    is removed) and ONE uncached sprite bake per (variant, frame, zoom, tees) through sprites.bakeWith, so the shared
+  //    atlas never multiplies. Codes: (surface << 6) | (side << 4) | k, k counted from the footprint's bottom corner. --
+  const teeCache = new Map();   // b.id → { tees: int[] | null, sig, fl, key, ref, used }
+  const teeScratch = new Int8Array(16);
+  const TEE_MAX = 64, TEE_IDLE = 300, TEE_BAKES_PER_FRAME = 4;
+  let teeBakes = 0, teeBytes = 0;
+  function teeEdge(surf, side, n, base, step, front, out) {
+    if (n <= 0) return;
+    const s = teeScratch; let any = 0;
+    for (let k = 0; k < n && k < 16; k++) {
+      let v = surf[base + k * step]; v = (v >= 1 && v <= 3) ? v : 0;
+      if (v && front && Math.abs(32 * k + 16 - n * 16) < 24) v = 0;   // the entrance walk already ties this tile in (both tiles of an even face)
+      s[k] = v; any |= v;
+    }
+    if (!any) return;
+    n = Math.min(n, 16);
+    for (let a = 0; a < n;) {
+      if (!s[a]) { a++; continue; }
+      let b = a; while (b + 1 < n && s[b + 1]) b++;
+      const L = b - a + 1;
+      if (L <= 2) for (let k = a; k <= b; k++) out.push((s[k] << 6) | (side << 4) | k);
+      else { out.push((s[a] << 6) | (side << 4) | a); if (L >= 5) { const m = (a + b) >> 1; out.push((s[m] << 6) | (side << 4) | m); } out.push((s[b] << 6) | (side << 4) | b); }   // a long run: the ends (and the middle), not a tee per tile
+      a = b + 1;
+    }
+  }
+  /** the tee codes for building b given the live surfaces (frontLeft = the entrance faces SW); null when nothing touches */
+  M.teesOf = function (state, b, frontLeft) {
+    if (!state || !state.tiles || !b) return null;
+    const surf = state.tiles.surface, w = b.w | 0, h = b.h | 0, tx = b.tx | 0, ty = b.ty | 0, out = [];
+    if (tx + w < W) teeEdge(surf, 0, h, (ty + h - 1) * W + tx + w, -W, !frontLeft, out);     // SE edge: east neighbours, k up the edge
+    if (ty + h < HGT) teeEdge(surf, 1, w, (ty + h) * W + tx + w - 1, -1, !!frontLeft, out);   // SW edge: south neighbours, k along the edge
+    return out.length ? out : null;
+  };
+  function teeRef(state, b, row, id, v, fr) {
+    let c = teeCache.get(b.id);
+    const fl = !!(v & SPR.FRONT_L);
+    if (c === undefined) {
+      const sp = S();
+      if (typeof sp.teeable !== 'function' || typeof sp.bakeWith !== 'function' || !sp.teeable(row, b.rot ? 1 : 0)) c = null;
+      else { const tees = M.teesOf(state, b, fl); c = { tees: tees, sig: tees ? tees.join(',') : '', fl: fl, key: '', ref: null, used: frameNo }; }
+      teeCache.set(b.id, c);
+    }
+    if (!c) return null;
+    c.used = frameNo;
+    if (c.fl !== fl) { c.fl = fl; c.tees = M.teesOf(state, b, fl); c.sig = c.tees ? c.tees.join(',') : ''; c.key = ''; }
+    if (!c.tees) return null;
+    const z = zoomNow >= 2 ? 2 : 1;
+    const key = v + '|' + fr + '|' + z + '|' + c.sig;
+    if (c.key !== key) {
+      if (teeBakes >= TEE_BAKES_PER_FRAME) return c.ref;   // over budget this frame: keep the previous bake (or the plain sprite) one more frame
+      teeBakes++;
+      let ref = null; try { ref = S().bakeWith(id, v, fr, zoomNow, { tees: c.tees }); } catch (e) { rerr('tee:bake', e); ref = null; }
+      if (c.ref) teeBytes -= c.ref.bytes | 0;
+      c.ref = ref; c.key = key; if (ref) teeBytes += ref.bytes | 0;
+    }
+    return c.ref;
+  }
+  function teeDrop(id) { const c = teeCache.get(id); if (c === undefined) return; if (c && c.ref) teeBytes -= c.ref.bytes | 0; teeCache.delete(id); }
+  /** a tile changed: every building whose footprint touches it (4- or 8-adjacent) recomputes its tees */
+  function teeInvalidateNear(i) {
+    if (!root || !root.tiles || !teeCache.size) return;
+    const own = root.tiles.owner, tx = i & 63, ty = i >> 6;
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+      const x = tx + dx, y = ty + dy; if (x < 0 || y < 0 || x >= W || y >= HGT) continue;
+      const o = own[y * W + x]; if (o >= 0 && teeCache.has(o)) teeDrop(o);
+    }
+  }
+  function teeClear() { teeCache.clear(); teeBytes = 0; }
+  function teeSweep() { if (teeCache.size <= TEE_MAX) return; for (const [id, c] of teeCache) if (!c || c.used < frameNo - TEE_IDLE) teeDrop(id); }
+  M.teeStats = function () { let n = 0; for (const c of teeCache.values()) if (c && c.tees) n++; return { cached: teeCache.size, withTees: n, mb: Math.round(teeBytes / 10485.76) / 100, bakesThisFrame: teeBakes }; };
+
   // -- design pass: soft ground shadows (one alpha-blended path for buildings, one for trees), drawn under the sorted entities --
   const shadowGeo = new Map();   // type|rot|pilings → the inset base quad (1× px relative to the anchor tile centre) and the structure height
   function shadowBox(b, v) {
@@ -745,7 +820,7 @@
     g.globalAlpha = 1;
   }
   function entityPass(state, g) {
-    count = 0; agentsDrawn = 0; particlesDrawn = 0;
+    count = 0; agentsDrawn = 0; particlesDrawn = 0; teeBakes = 0;
     const sp = S(), t = state.tiles, elev = t.elev;
     const bl = mod('buildings'), wl = mod('wildlife'), cat = (BSU.data && BSU.data.catalog) || {};
     // buildings
@@ -762,7 +837,9 @@
         const v = M.variantOf(b, ci), fr = M.frameOf(b, v, ci);
         const e = push('building', ax, ay, fin(elev[ay * W + ax], 0), 0, drawBuilding);
         e.b = b; e.id = b.rot ? b.type + ':r' : b.type; e.variant = v; e.frame = fr;
-        e.ref = getRef(e.id, v, fr);
+        let tr = null;
+        if (M.teesEnabled !== false && row && row.pathAdjacency && !(v & (SPR.SCAFFOLD | SPR.RUIN))) { try { tr = teeRef(state, b, row, e.id, v, fr); } catch (err) { rerr('tee:ref', err); tr = null; } }
+        e.ref = tr || getRef(e.id, v, fr);
         let icons = 0;
         if (fin(b.built, 1) >= 1 && !b.ruin && row) { if (row.needsPower && b.powered === false) icons |= 1; if (row.needsWater && b.watered === false) icons |= 2; if (b.noAccess === true) icons |= 4; }
         e.c = icons;
@@ -1186,7 +1263,7 @@
       try { p.fn(state, g, view, alphaNow, dtMs); } catch (e) { rerr('pass:' + p.name, e); }
     }
     firstFrame = false;
-    if ((frameNo % C.spriteGcEvery) === 0) { try { const sp = S(); if (typeof sp.gc === 'function') sp.gc(frameNo); if (typeof sp.gcSheets === 'function') sp.gcSheets(frameNo); } catch (e) { rerr('gc', e); } }
+    if ((frameNo % C.spriteGcEvery) === 0) { try { const sp = S(); if (typeof sp.gc === 'function') sp.gc(frameNo); if (typeof sp.gcSheets === 'function') sp.gcSheets(frameNo); teeSweep(); } catch (e) { rerr('gc', e); } }
     frameMs = nowMs() - t0;
     guardrail(state);
   };
@@ -1237,11 +1314,12 @@
     try {
       const ev = BSU.events;
       ev.on('tile:changed', onTileChanged, 'render');
-      ev.on('save:loaded', function () { M.dirtyAll(); firstFrame = true; }, 'render');
+      ev.on('save:loaded', function () { M.dirtyAll(); firstFrame = true; teeClear(); }, 'render');
       ev.on('ui:overlay', function (p) { if (p && Number.isFinite(p.ov)) M.setOverlay(p.ov); else if (p && Number.isFinite(p.overlay)) M.setOverlay(p.overlay); }, 'render');
       ev.on('gate:closed', function (p) { if (p && Number.isFinite(p.i)) gates.set(p.i | 0, { closed: true, t0: frameNo }); }, 'render');
       ev.on('gate:opened', function (p) { if (p && Number.isFinite(p.i)) gates.set(p.i | 0, { closed: false, t0: frameNo }); }, 'render');
-      ev.on('building:complete', function (p) { if (p && Number.isFinite(p.id)) M.squash[p.id] = nowMs(); }, 'render');
+      ev.on('building:complete', function (p) { if (p && Number.isFinite(p.id)) { M.squash[p.id] = nowMs(); teeDrop(p.id); } }, 'render');
+      ev.on('building:removed', function (p) { if (p && Number.isFinite(p.id)) teeDrop(p.id); }, 'render');
     } catch (e) { rerr('init:events', e); }
     try { if (!BSU.headlessMode && typeof window.addEventListener === 'function') window.addEventListener('resize', function () { try { M.resize(); } catch (e) { rerr('resize', e); } }); } catch (e) { /* stub */ }
     try { if (typeof M._fxInit === 'function') M._fxInit(root); } catch (e) { rerr('_fxInit', e); }
@@ -1255,7 +1333,7 @@
     flashes.length = 0; ghostSpec = null; gates.clear(); shakeUntil = 0; shakePx = 0; hitStopUntilMs = 0;
     for (const k in M.squash) delete M.squash[k];
     perfRing.fill(0); perfI = 0; perfFilled = false; perfTripped = false;
-    birdTiles = null; firstFrame = true; count = 0; list.length = 0;
+    birdTiles = null; firstFrame = true; count = 0; list.length = 0; teeClear();
     if (fresh === true && state.plot && state.plot.founders && Number.isFinite(state.plot.founders.tx)) {
       camera.zoom = 1; M.panToTile(state.plot.founders.tx + 1, state.plot.founders.ty + 1, false);
     }

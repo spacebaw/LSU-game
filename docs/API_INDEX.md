@@ -230,7 +230,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - contract.selfTest()
 
 ## BSU.data
-- values: catalog:object, catalogList:array[43], tabs:array[10], decals:object, names:object, students:object, coaches:array[10], coachQuotes:array[12], gatorNames:array[14], leGrand:string, stormNames:array[26], opponents:object, schedule:array[8], calendar:object, ticker:array[62], tickerKinds:object, tickerKindList:array[7], objectives:object, milestones:array[26], voiceCards:array[12], boardCards:array[8], failureCards:object, tutorial:array[7], thibodeaux:array[12], stormQuotes:array[8], overlays:array[6], keys:array[46], toastKeys:object, panKeys:object, rainKinds:object, guide:object, needs:object, requirements:object, coach:array[6]
+- values: catalog:object, catalogList:array[43], tabs:array[10], decals:object, names:object, students:object, coaches:array[10], coachQuotes:array[12], gatorNames:array[14], leGrand:string, stormNames:array[26], opponents:object, schedule:array[8], calendar:object, ticker:array[62], tickerKinds:object, tickerKindList:array[7], objectives:object, milestones:array[26], voiceCards:array[12], boardCards:array[8], failureCards:object, tutorial:array[7], thibodeaux:array[12], stormQuotes:array[8], overlays:array[6], keys:array[47], toastKeys:object, panKeys:object, rainKinds:object, guide:object, needs:object, requirements:object, coach:array[6]
 - data.selfTest()
 
 - BSU.dateToDay(str, year)
@@ -419,7 +419,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - progress.selfTest()
 
 ## BSU.render
-- values: drawList:array[0], alpha:number, frameNo:number, hoverTile:number, squash:object, titleDrift:boolean, _tests:array[1], particleColors:array[16], particles:object, hitStopUntil:number, camera:object, ctx:object, canvas:object, view:object, ghostSpec:object, flashes:array[0], composites:object, overlayFadeStart:number, lightsList:array[258]
+- values: drawList:array[0], alpha:number, frameNo:number, hoverTile:number, squash:object, titleDrift:boolean, _tests:array[1], teesEnabled:boolean, particleColors:array[16], particles:object, hitStopUntil:number, camera:object, ctx:object, canvas:object, view:object, ghostSpec:object, flashes:array[0], composites:object, overlayFadeStart:number, lightsList:array[258]
 - render.sortKey(ax, ay, elev, rank)
 - render.chunkOrigin(cx, cy)
 - render.variantOf(b, ci)
@@ -453,6 +453,8 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - render.registerPass(name, fn, order_, builtin)
 - render.passes()
 - render.attachMinimap(el)
+- render.teesOf(state, b, frontLeft)
+- render.teeStats()
 - render.minimap(state)
 - render.renderInto(g, w, h, state, camOverride)
 - render.postcard(state, caption)
@@ -572,6 +574,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - sprites.setFrames(id, n, variant)
 - sprites.get(id, variant, frame, zoom)
 - sprites.getCached(id, variant, frame, zoom)
+- sprites.bakeWith(id, variant, frame, zoom, extra)
 - sprites.size(id, variant, zoom)
 - sprites.memoryMB()
 - sprites.count()
@@ -594,8 +597,10 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - sprites.offsetPen(P, dx, dy)
 - sprites._fillPoly(P, pts, color)
 - sprites.buildingBox(row, variant, zoom, rot)
+- sprites.teeable(row, rot)
+- sprites.teeCode(side, k, surf)
 - sprites.placeDecal(ctx, g, name, anchor, frame)
-- sprites.paintBuilding(ctx, row, variant, frame, zoom, seed, rot)
+- sprites.paintBuilding(ctx, row, variant, frame, zoom, seed, rot, tees)
 - sprites.sheetBytes()
 - sprites.sheetMemoryMB()
 - sprites.sheetCount()

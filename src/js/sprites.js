@@ -370,10 +370,11 @@
   M.getCached = M.get;
 
   /** run a painter once for (id, variant, frame, zoom) and build the cache entry */
-  function bake(r, id, variant, frame, z, key, fn) {
+  function bake(r, id, variant, frame, z, key, fn, extra) {
     const canvas = newCanvas(1, 1);
     const ctx = ctx2d(canvas);
     const spec = { id: id, family: r.family, sub: r.sub, variant: variant, frame: frame, zoom: z, row: r.row, rot: r.rot, seed: hash(strHash(id), variant), frames: 0 };
+    if (extra) for (const k in extra) if (spec[k] === undefined) spec[k] = extra[k];   // tee pass: per-building fields (e.g. tees) the painter may read
     let g;
     try { g = fn(ctx, spec); }
     catch (err) { try { BSU.error('sprites', 'paint:' + id, err); } catch (e2) { /* selfTest: rethrown by BSU.error only under SELFTEST... swallowed here */ } return null; }
@@ -393,6 +394,21 @@
     if (cv !== canvas) { try { canvas.width = 1; canvas.height = 1; } catch (err) { /* stub */ } }
     return e;
   }
+
+  /** tee pass: paint (id, variant, frame, zoom) ONCE, outside the cache, with extra spec fields the painter may read
+   *  (render keeps per-building tee sprites itself, so a building's path connectors never multiply the shared variants).
+   *  Returns an entry shaped like get()'s (own canvas, not counted by memoryMB — the owner counts it) or null. */
+  M.bakeWith = function (id, variant, frame, zoom, extra) {
+    try {
+      const r = resolve(id); if (!r) return null;
+      const fn = painters[r.family]; if (!fn) return null;
+      variant = Number.isFinite(variant) ? Math.max(0, variant | 0) : 0;
+      frame = Number.isFinite(frame) ? (frame | 0) : 0;
+      const z = (zoom === 2 && M.ZOOM2) ? 2 : 1;
+      const n = M.frames(id, variant); frame = n > 0 ? ((frame % n) + n) % n : 0;
+      return bake(r, id, variant, frame, z, '', fn, extra && typeof extra === 'object' ? extra : null);
+    } catch (err) { try { BSU.error('sprites', 'bakeWith', err); } catch (e2) { /* never throw */ } return null; }
+  };
 
   /** {w, h} of a sprite at that zoom without drawing it (paints on a miss); {w:0,h:0} when unknown */
   M.size = function (id, variant, zoom) { const e = M.get(id, variant, 0, zoom); return e ? { w: e.sw, h: e.sh } : { w: 0, h: 0 }; };

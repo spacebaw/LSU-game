@@ -371,12 +371,12 @@
     // a row of posts along the back edges too (visible between the front posts)
     for (let x = bx0 + 6; x <= bx1; x += STILT_PITCH * 2) { const yt = topY(g.bcx, g.bcy, g.bw, g.bh, x, k) + (g.bh >> 2); P.rect(x, yt, 2, g.lift, shade(PAL.bark, 0.7)); }
   }
-  /** a clipped low hedge along an iso edge from (x0, y0) running 'len' px in direction dir (+1 = down-right, −1 = down-left); gap [gx0, gx1) skipped */
-  function hedgeRun(P, x0, y0, len, dir, gx0, gx1, seed) {
+  /** a clipped low hedge along an iso edge from (x0, y0) running 'len' px in direction dir (+1 = down-right, −1 = down-left); columns where skip(x) is true are left open */
+  function hedgeRun(P, x0, y0, len, dir, skip, seed) {
     const top = XB.hedgeHi, body = XB.hedge, foot = shade(XB.hedge, 0.55);
     for (let i = 0; i < len; i++) {
       const x = x0 + dir * i, y = y0 + (i >> 1);
-      if (x >= gx0 && x < gx1) continue;
+      if (skip(x)) continue;
       P.rect(x, y - 3, 1, 4, body);
       if (i & 1) P.px(x, y - 3, top); else P.px(x, y, foot);
       if ((hash(seed, x * 5) % 7) === 0) P.px(x, y - 4, top);
@@ -407,39 +407,94 @@
     const k = g.bk | 0, q = quadOf(g);
     const frontLeft = !!g.frontLeft;
     const hasDoor = g.wallH > 0 && !!row.pathAdjacency && Number.isFinite(g.doorX);
+    // furniture gaps: [x0, x1) column ranges per side (0 = SE edge, 1 = SW edge) that hedges / fence / umbrellas skip
+    const skips = [[], []];
+    const skipped = (side, x, pad) => { const L = skips[side]; for (let i = 0; i < L.length; i++) if (x >= L[i][0] - pad && x < L[i][1] + pad) return true; return false; };
     // the walk: from the door's base straight out to the footprint edge (perpendicular to the face)
-    let gx0 = Infinity, gx1 = -Infinity;
     if (hasDoor) {
       const dir = frontLeft ? -1 : 1, len = (frontLeft ? g.ipy : g.ipx) + 2;
       const wx = g.doorX, wy = g.doorY + 1 + g.lift;
       const c = pil ? PAL.boardwalk : XB.walk, e = pil ? shade(PAL.boardwalk, 0.7) : XB.walkEdge;
       for (let s = 0; s <= len; s++) { const x = wx + dir * s, y = wy + (s >> 1); P.rect(x - 3, y, 7, 1, c); P.px(x - 3, y, e); P.px(x + 3, y, e); if (pil && (s & 3) === 1) P.rect(x - 2, y, 5, 1, shade(PAL.boardwalk, 0.85)); }
-      gx0 = Math.min(wx - 6, wx + dir * len - 6); gx1 = Math.max(wx + 7, wx + dir * len + 7);
+      skips[frontLeft ? 1 : 0].push([Math.min(wx - 6, wx + dir * len - 6), Math.max(wx + 7, wx + dir * len + 7)]);
       // two lamps flanking the walk's outer end, 2 px inside the footprint edge
       const ex = wx + dir * (len - 2), ey = wy + ((len - 2) >> 1);
       lampPost(P, ex - 7 * dir, ey + 4, night, A.base); lampPost(P, ex + 7 * dir, ey - 3, night, A.base);
     }
+    // tee pass: connectors from the footprint edge into the wall wherever a path/road/boardwalk runs flush (render decides where)
+    if (g.tees && g.wallH > 0) for (let i = 0; i < g.tees.length; i++) { const r = teeStrip(P, g, row, g.tees[i], night, pil); if (r) skips[r[0]].push([r[1], r[2]]); }
     if (pil) return;
     // side treatments along the SW edge (L → B, dir +1) and the SE edge (B → R, dir −1), 5 px inside the curb
     const margin = Math.min(g.ipx, g.ipy);
     if (A.hedge && margin >= 10 && g.wallH > 0) {
       const inset = 5;
       const l0x = q.L[0] + 2 * inset + 4, l0y = q.L[1] - inset + 2, lLen = Math.max(0, g.fw * 32 - 4 * inset - 8);
-      hedgeRun(P, l0x, l0y, lLen, 1, frontLeft ? gx0 : Infinity, frontLeft ? gx1 : -Infinity, g.seed);
+      hedgeRun(P, l0x, l0y, lLen, 1, (x) => skipped(1, x, 0), g.seed);
       const r0x = q.R[0] - 2 * inset - 5, r0y = q.R[1] - inset + 2, rLen = Math.max(0, g.fh * 32 - 4 * inset - 8);
-      hedgeRun(P, r0x, r0y, rLen, -1, frontLeft ? Infinity : gx0, frontLeft ? -Infinity : gx1, g.seed + 9);
+      hedgeRun(P, r0x, r0y, rLen, -1, (x) => skipped(0, x, 0), g.seed + 9);
     }
     if (A.fence) {
-      // chain fence along the SW and SE edges: 2-px steel posts every 12 px, a 1-px chain at mid height, a gap at the walk
+      // chain fence along the SW and SE edges: 2-px steel posts every 12 px, a 1-px chain at mid height, a gap at the walk and at every tee
       const post = (x, y) => { P.rect(x, y - 6, 2, 6, XB.fenceSteel); P.px(x, y - 6, shade(XB.fenceSteel, 1.25)); P.hline(x - 1, y, 4, shade(XB.fenceSteel, 0.5)); };
-      const run = (x0, y0, len, dir) => { for (let i = 0; i <= len; i += 1) { const x = x0 + dir * i, y = y0 + (i >> 1); if (x >= gx0 - 2 && x < gx1 + 2) continue; if ((i % 12) === 0) post(x, y); else if ((i & 1) === 0) P.px(x, y - 3, shade(XB.fenceSteel, 0.8)); } };
-      run(q.L[0] + 6, q.L[1] + 1, g.fw * 32 - 10, 1); run(q.R[0] - 7, q.R[1] + 1, g.fh * 32 - 10, -1);
+      const run = (x0, y0, len, dir, side) => { for (let i = 0; i <= len; i += 1) { const x = x0 + dir * i, y = y0 + (i >> 1); if (skipped(side, x, 2)) continue; if ((i % 12) === 0) post(x, y); else if ((i & 1) === 0) P.px(x, y - 3, shade(XB.fenceSteel, 0.8)); } };
+      run(q.L[0] + 6, q.L[1] + 1, g.fw * 32 - 10, 1, 1); run(q.R[0] - 7, q.R[1] + 1, g.fh * 32 - 10, -1, 0);
     }
     if (A.umbrellas && margin >= 10) {
       const n = Math.max(1, Math.min(3, g.fw + g.fh - 2));
-      for (let i = 0; i < n; i++) { const t = (i + 0.5) / n; const p = (i & 1) === 0 ? lerpPt(q.L, q.B, 0.15 + 0.7 * t) : lerpPt(q.B, q.R, 0.15 + 0.7 * t); const x = Math.round(p[0] + ((i & 1) ? -8 : 8)), y = Math.round(p[1] - 5); if (x >= gx0 - 4 && x < gx1 + 4) continue; umbrella(P, x, y, g.seed + i); }
+      const NUDGE = [0, 12, -12, 20, -20];   // slide an umbrella along its edge rather than lose it to a tee's gap
+      for (let i = 0; i < n; i++) {
+        const t = (i + 0.5) / n; const sw = (i & 1) === 0, side = sw ? 1 : 0; const p = sw ? lerpPt(q.L, q.B, 0.15 + 0.7 * t) : lerpPt(q.B, q.R, 0.15 + 0.7 * t);
+        const x0 = Math.round(p[0] + (sw ? 8 : -8)), y0 = Math.round(p[1] - 5), lo = (sw ? q.L[0] : q.B[0]) + 12, hi = (sw ? q.B[0] : q.R[0]) - 12;
+        for (let j = 0; j < NUDGE.length; j++) {
+          const x = x0 + NUDGE[j], y = y0 + (sw ? (NUDGE[j] >> 1) : -(NUDGE[j] >> 1));
+          if (x < lo || x > hi || skipped(side, x, 5) || skipped(side, x + 4, 5) || skipped(side, x - 4, 5)) continue;
+          umbrella(P, x, y, g.seed + i); break;
+        }
+      }
     }
   }
+  /**
+   * Tee pass. One connector for a footprint-edge tile whose outward neighbour is a path / road / boardwalk: a 7-px strip in the
+   * neighbour's material from the wall base across the apron to 2 px past the footprint edge, centred on that tile, plus a
+   * doorway (lit at night) where it meets the wall. Code = (surface << 6) | (side << 4) | k with side 0 = SE edge (east
+   * neighbours), 1 = SW edge (south neighbours) and k the tile index counted from the footprint's bottom corner (the anchor
+   * tile). Pilings rows get a plank gangway whatever the surface. Returns [side, x0, x1) — the column range the hedge / fence /
+   * umbrellas must leave clear — or null. Geometry mirrors the entrance walk (drawMargins), so the two never differ in depth.
+   */
+  function teeStrip(P, g, row, code, night, pil) {
+    const side = (code >> 4) & 1, k = code & 15, surf = (code >> 6) & 3;
+    const n = side === 0 ? g.fh : g.fw;
+    if (k >= n || k >= 16) return null;
+    const kk = g.bk | 0, dir = side === 0 ? 1 : -1, ip = side === 0 ? g.ipx : g.ipy, len = ip + 2;
+    const xw = side === 0 ? g.bx + 32 * k + 16 - g.ipy : g.bx - 32 * k - 16 + g.ipx;   // the landing column on the wall
+    const yb = baseY(g.bcx, g.bgcy, g.bw, g.bh, xw, kk);                                 // the ground-level wall base row there
+    const planks = pil || surf === BSU.SURF.BOARDWALK, road = !planks && surf === BSU.SURF.ROAD;
+    const c = planks ? PAL.boardwalk : road ? PAL.asphalt : PAL.gravel;
+    const e = planks ? shade(PAL.boardwalk, 0.7) : road ? shade(PAL.asphalt, 1.3) : shade(PAL.gravel, 0.8);
+    for (let s = 0; s <= len; s++) {
+      const x = xw + dir * s, y = yb + 1 + (s >> 1);
+      P.rect(x - 3, y, 7, 1, c); P.px(x - 3, y, e); P.px(x + 3, y, e);
+      if (planks && (s & 3) === 1) P.rect(x - 2, y, 5, 1, shade(PAL.boardwalk, 0.85));
+      else if (!planks && !road && (s & 3) === 2) P.px(x + ((s >> 2) & 1) - 1, y, shade(PAL.gravel, 1.08));
+      if (road && s >= len - 2) { P.px(x - 4, y, e); P.px(x + 4, y, e); }                 // the curb cut: a dropped kerb where it meets the road
+    }
+    if (planks) { const x = xw + dir * (len - 1), y = yb + 1 + ((len - 1) >> 1); P.rect(x - 5, y - 3, 1, 4, PAL.bark); P.rect(x + 5, y - 3, 1, 4, PAL.bark); }   // gangway posts
+    // the doorway: a dark 3×5 opening with a light lintel at the lifted wall base; a lit transom at night
+    const C = faceColors(g.paint), fc = side === 0 ? C.right : C.left, yd = yb - g.lift;
+    P.rect(xw - 1, yd - 4, 3, 5, shade(fc, 0.45));
+    P.hline(xw - 2, yd - 5, 5, shade(fc, 1.2));
+    if (night) { P.hline(xw - 1, yd - 4, 3, PAL.windowGlow); P.px(xw, yd + 1, mix(PAL.windowGlow, c, 0.5)); P.px(xw + 1, yd + 1, mix(PAL.windowGlow, c, 0.5)); }
+    else P.px(xw + 1, yd - 1, PAL.gold);
+    const x0 = Math.min(xw, xw + dir * len) - 6, x1 = Math.max(xw, xw + dir * len) + 7;
+    return [side, x0, x1];
+  }
+  /** tee pass: can this row take path connectors (render asks once per building)? footprint, path-adjacency rows with a wall and their own apron */
+  M.teeable = function (row, rot) {
+    if (!row || row.kind !== 'footprint' || !row.pathAdjacency) return false;
+    if (OWN_GROUND[specialOf(row)]) return false;
+    try { return M.buildingBox(row, 0, 1, rot).wallH > 0; } catch (e) { return false; }
+  };
+  M.teeCode = function (side, k, surf) { return ((surf & 3) << 6) | ((side & 1) << 4) | (k & 15); };
 
   // ---------------------------------------------------------------------------
   // The box: faces (three tones), outline, top highlight, gold trim, windows (seeded night
@@ -1156,7 +1211,7 @@
   };
 
   /** every catalog id resolves non-trivially through either a SPECIAL entry or drawStandardBox */
-  M.paintBuilding = function (ctx, row, variant, frame, zoom, seed, rot) {
+  M.paintBuilding = function (ctx, row, variant, frame, zoom, seed, rot, tees) {
     variant = Number.isFinite(variant) ? Math.max(0, variant | 0) : 0;
     frame = Number.isFinite(frame) ? (frame | 0) : 0;
     seed = seed | 0;
@@ -1166,6 +1221,7 @@
     g.seed = hash(strHash(row.id || 'b'), (seed ^ variant) >>> 0);
     g.tone = (variant & SPR.DAMAGED) ? 0.8 : 1;
     g.frontLeft = !!(variant & SPR.FRONT_L);
+    g.tees = (Array.isArray(tees) && tees.length) ? tees : null;   // tee pass: per-building path connectors (render.bakeWith), never part of a cached variant
     begin(ctx, g.w, g.h, zoom);
     const P = tonePen(pen(ctx, g.zoom), g.tone);
     if (variant & SPR.RUIN) { drawGrounds(P, g, row, SPR.SCAFFOLD, g.seed); drawRuinShape(P, g, g.seed); return { w: g.w, h: g.h, ox: g.ox, oy: g.oy }; }
@@ -1268,7 +1324,7 @@
     else if (spec.variant & SPR.NIGHT) frames = 4;
     else if (sp === 'water_tower' || sp === 'surge_barrier') { frames = 4; perVariant = false; }
     spec.frames = frames; spec.framesPerVariant = perVariant;
-    return M.paintBuilding(ctx, row, spec.variant, spec.frame, spec.zoom, spec.seed, spec.rot);
+    return M.paintBuilding(ctx, row, spec.variant, spec.frame, spec.zoom, spec.seed, spec.rot, spec.tees);
   });
   M.registerPainter('ruin', paintRuinFamily);
   M.registerPainter('thibodeaux', paintThibodeaux);
