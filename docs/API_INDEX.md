@@ -11,7 +11,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 
 ## BSU.B_ORDER  — enum/table, 44 keys (e.g. 0, 1, 2, 3, 4, 5, 6, 7)
 
-## BSU.EV  — enum/table, 104 keys (e.g. TILE_CHANGED, BUILDING_PLACED, BUILDING_REMOVED, BUILDING_COMPLETE, BUILDING_UPGRADED, BUILDING_FLOODED, BUILDING_DRIED, BUILDING_DAMAGED; + GAME_SPRING 'game:spring' — PLAN_FOOTBALL pass C)
+## BSU.EV  — enum/table, 104 keys (e.g. TILE_CHANGED, BUILDING_PLACED, BUILDING_REMOVED, BUILDING_COMPLETE, BUILDING_UPGRADED, BUILDING_FLOODED, BUILDING_DRIED, BUILDING_DAMAGED)
 
 ## BSU.EV_LIST  — enum/table, 104 keys (e.g. 0, 1, 2, 3, 4, 5, 6, 7)
 
@@ -572,7 +572,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - sports.selfTest()
 
 ## BSU.sprites
-- values: palette:object, CANVAS_LIMIT_MB:number, ZOOM2:boolean, GC_FRAMES:number, TILE_W:number, TILE_H:number, PX_PER_FT:number, extra:object, FONT:object, _tests:array[2], FRAMES:object, DIRS:array[4], EXTRA_DECALS:object, decalPainters:object, LIGHTS:object, extraBuildings:object, APRON:object, roofs:object, entityConst:object, entityColors:object, _buf:object, SHEET_LIMIT_MB:number, animFrames:object, entityFrames:object, _gcWrapped:boolean, fbFrames:object, fbSizes:object, fbPoses:object, fbRoles:array[5], fbCompose:object, _initWrappedEntities:boolean, entitySizes:object
+- values: palette:object, CANVAS_LIMIT_MB:number, ZOOM2:boolean, GC_FRAMES:number, TILE_W:number, TILE_H:number, PX_PER_FT:number, extra:object, RAMPS:object, RAMP_BASES:object, COOL_TINT:string, WARM_TINT:string, TH_GROUND:array[4], FONT:object, _tests:array[2], FRAMES:object, DIRS:array[4], EXTRA_DECALS:object, decalPainters:object, LIGHTS:object, extraBuildings:object, APRON:object, roofs:object, entityConst:object, entityColors:object, _buf:object, SHEET_LIMIT_MB:number, animFrames:object, entityFrames:object, _gcWrapped:boolean, fbFrames:object, fbSizes:object, fbPoses:object, fbRoles:array[5], fbCompose:object, _initWrappedEntities:boolean, entitySizes:object
 - sprites.hex(h)
 - sprites.rgb(r, g, b)
 - sprites.shade(h, k)
@@ -583,6 +583,12 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - sprites.light(c)
 - sprites.dark(c)
 - sprites.outline(c)
+- sprites.ramp(name)
+- sprites.makeRamp(base)
+- sprites.vnoise(seed, x, y, cell)
+- sprites.pnoise(seed, x, y, cx_, cy_, perX, perY)
+- sprites.toneAt(n, x, y, th, amp)
+- sprites.bayer(x, y)
 - sprites.newCanvas(w, h)
 - sprites.ctx2d(canvas)
 - sprites.begin(ctx, w, h, zoom)

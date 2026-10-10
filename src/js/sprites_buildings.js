@@ -506,7 +506,7 @@
   function faceColors(paint) {
     const wall = (paint && paint.wall) || [PAL.creamStone, PAL.tanStucco];
     const l = wall[0] || PAL.creamStone, r = wall[1] || wall[0] || PAL.tanStucco;
-    return { left: shade(l, 0.78), right: shade(r, 0.92), leftHi: shade(l, 1.15), rightHi: shade(r, 1.15), leftRaw: l, rightRaw: r, out: shade(l, 0.55), outR: shade(r, 0.55) };
+    return { left: shade(l, 0.92), right: shade(r, 0.78), leftHi: shade(l, 1.15), rightHi: shade(r, 1.15), leftRaw: l, rightRaw: r, out: shade(l, 0.55), outR: shade(r, 0.55) };
   }
   /** faces + outline + highlight; opts: {hgt (default g.wallH), cx, cy, w, h, colors, noTop} */
   function drawBox(P, g, paint, opts) {
@@ -914,7 +914,7 @@
       return;
     }
     const hgt = stage === 1 ? Math.max(4, Math.round(g.wallH / 2) || 6) : (g.wallH || 24);
-    const C = { left: shade(slab, 0.75), right: shade(slab, 0.9), leftHi: shade(slab, 1.1), rightHi: shade(slab, 1.15), leftRaw: slab, rightRaw: slab, out: shade(slab, 0.5), outR: shade(slab, 0.5) };
+    const C = { left: shade(slab, 0.9), right: shade(slab, 0.75), leftHi: shade(slab, 1.15), rightHi: shade(slab, 1.1), leftRaw: slab, rightRaw: slab, out: shade(slab, 0.5), outR: shade(slab, 0.5) };
     drawBox(P, g, {}, { hgt: hgt, noTop: true, colors: C });
     if (stage === 2) { M.placeDecal(P, g, 'scaffold', 'side', 0); M.placeDecal(P, g, 'scaffold', 'left', 0); }
   }

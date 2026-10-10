@@ -121,11 +121,62 @@
   }
   /** 'rgba(r,g,b,a)' string for the light gradients */
   function rgba(h, a) { const c = hex(h); return 'rgba(' + c[0] + ',' + c[1] + ',' + c[2] + ',' + (Number.isFinite(a) ? a : 1) + ')'; }
-  /** hash(tx, ty) % 3 — the ground tile variant (stable per tile) */
-  function tileVariant(tx, ty) { return hash(tx | 0, ty | 0) % 3; }
+  /** hash(tx, ty) % 8 — the ground tile variant (stable per tile; art pass B1: 8 noise windows per type) */
+  function tileVariant(tx, ty) { return hash(tx | 0, ty | 0) % 8; }
   const light = (c) => shade(c, 1.15), dark = (c) => shade(c, 0.78), outline = (c) => shade(c, 0.55);
   M.hex = hex; M.rgb = rgb; M.shade = shade; M.mix = mix; M.rgba = rgba; M.hash = hash; M.tileVariant = tileVariant;
   M.light = light; M.dark = dark; M.outline = outline;
+
+  // ---------------------------------------------------------------------------
+  // Art pass B1 — material ramps and noise (docs/ART_STYLE.md). Five tones per material, index 0 deep shadow,
+  // 1 shadow, 2 base, 3 light, 4 highlight; shadows lean cool (COOL), highlights warm (WARM). Every terrain painter
+  // picks its colours from M.ramp(name) so later passes (vegetation, buildings) share the same tones.
+  // ---------------------------------------------------------------------------
+  const COOL = '#2B2550', WARM = '#FFE0A0';
+  function makeRamp(base) {
+    return Object.freeze([mix(shade(base, 0.52), COOL, 0.30), mix(shade(base, 0.74), COOL, 0.16), base, mix(shade(base, 1.16), WARM, 0.12), mix(shade(base, 1.34), WARM, 0.28)]);
+  }
+  const RAMP_BASES = Object.freeze({
+    grass: PAL.dryGrass, highGrass: PAL.highGround, wet: PAL.wetGround, dirt: '#7A5A38', clay: '#9A6A44', limestone: '#B9AE93',
+    bark: PAL.bark, marshMud: '#4C4530', waterDeep: PAL.waterNight, waterShallow: PAL.shallows, sand: '#D9C9A1', reed: PAL.reed, mud: PAL.mud
+  });
+  const RAMPS = {}; for (const k in RAMP_BASES) RAMPS[k] = makeRamp(RAMP_BASES[k]);
+  M.RAMPS = RAMPS; M.RAMP_BASES = RAMP_BASES; M.COOL_TINT = COOL; M.WARM_TINT = WARM;
+  /** the 5-tone ramp of a material name (unknown → grass) */
+  M.ramp = function (name) { return RAMPS[name] || RAMPS.grass; };
+  M.makeRamp = makeRamp;
+  /** smooth value noise in [0, 1): lattice `cell` px, bilinear with smoothstep, hash-seeded (deterministic, no state) */
+  function vnoise(seed, x, y, cell) {
+    cell = cell > 0 ? cell : 8;
+    const gx = Math.floor(x / cell), gy = Math.floor(y / cell);
+    let fx = x / cell - gx, fy = y / cell - gy;
+    fx = fx * fx * (3 - 2 * fx); fy = fy * fy * (3 - 2 * fy);
+    const a = (hash(seed + gx * 7919, gy * 104729 + 17) & 1023) / 1024, b = (hash(seed + (gx + 1) * 7919, gy * 104729 + 17) & 1023) / 1024;
+    const c = (hash(seed + gx * 7919, (gy + 1) * 104729 + 17) & 1023) / 1024, d = (hash(seed + (gx + 1) * 7919, (gy + 1) * 104729 + 17) & 1023) / 1024;
+    const top = a + (b - a) * fx, bot = c + (d - c) * fx;
+    return top + (bot - top) * fy;
+  }
+  M.vnoise = vnoise;
+  /** periodic value noise: the lattice wraps every perX × perY px, so tiles that sample one field by their map position meet
+   *  seamlessly (cells cx_ × cy_ px must divide the periods) */
+  function pnoise(seed, x, y, cx_, cy_, perX, perY) {
+    const nx = Math.max(1, Math.round(perX / cx_)), ny = Math.max(1, Math.round(perY / cy_));
+    const gx = Math.floor(x / cx_), gy = Math.floor(y / cy_);
+    let fx = x / cx_ - gx, fy = y / cy_ - gy;
+    fx = fx * fx * (3 - 2 * fx); fy = fy * fy * (3 - 2 * fy);
+    const w = (i, j) => { i = ((i % nx) + nx) % nx; j = ((j % ny) + ny) % ny; return (hash(seed + i * 7919, j * 104729 + 17) & 1023) / 1024; };
+    const a = w(gx, gy), b = w(gx + 1, gy), c = w(gx, gy + 1), d = w(gx + 1, gy + 1);
+    const top = a + (b - a) * fx, bot = c + (d - c) * fx;
+    return top + (bot - top) * fy;
+  }
+  M.pnoise = pnoise;
+  // 4×4 ordered dither: an offset in (−0.5, 0.5) per pixel so tone thresholds blend instead of banding
+  const BAYER4 = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
+  const bayer = (x, y) => (BAYER4[(x & 3) + ((y & 3) << 2)] + 0.5) / 16 - 0.5;
+  /** ramp index 0–4 for noise value n at pixel (x, y): thresholds th[0..3], dither amplitude amp */
+  function toneAt(n, x, y, th, amp) { const v = n + bayer(x, y) * amp; let k = 0; while (k < 4 && v >= th[k]) k++; return k; }
+  const TH_GROUND = [0.14, 0.36, 0.70, 0.90], TH_FLAT = [0.06, 0.28, 0.80, 0.96];
+  M.toneAt = toneAt; M.bayer = bayer; M.TH_GROUND = TH_GROUND;
 
   // ---------------------------------------------------------------------------
   // Canvas / pixel helpers
@@ -484,69 +535,138 @@
   // ---------------------------------------------------------------------------
   // Ground tiles — family `tile`, id tile:<T>, variant 0–2 (hash), 64×32, ox −32 oy −16
   // ---------------------------------------------------------------------------
-  const TILE_BRIGHT = [1.0, 0.96, 1.04];   // ±4% per variant
-  function tileStyle(t, k) {
-    const sh = (c) => shade(c, k);
+  // Art pass B1: 8 noise-driven variants per type (variant & 7), bit 8 = shallow bed (water types, from the chunk bake).
+  // Every variant samples a different window of one noise field and shares the same mean tone; the outer 15 % of the
+  // diamond is pulled toward the base tone so two neighbours meet on the same colour and the tile grid disappears.
+  // No facet rims: height reads from the faces, the terrace bands and the bake's slope tint (render.js groundTone).
+  function tileLook(t) {
     switch (t) {
-      case T.OPEN_WATER: return { base: sh(PAL.waterDay), speck: sh(shade(PAL.waterDay, 1.08)), speckD: 0.06, dark: sh(shade(PAL.waterDay, 0.92)), darkD: 0.04, water: true };
-      case T.BAYOU: return { base: sh(shade(PAL.waterDay, 0.9)), speck: sh(shade(PAL.waterDay, 1.0)), speckD: 0.05, dark: sh(shade(PAL.waterDay, 0.8)), darkD: 0.04, current: true, water: true };
-      case T.MARSH: return { base: sh(mix(PAL.waterNight, PAL.mud, 0.5)), speck: sh(shade(PAL.reed, 0.8)), speckD: 0.35, dark: sh(shade(PAL.waterNight, 0.9)), darkD: 0.08, reeds: true, water: true, clumpy: true };
-      case T.WET: return { base: sh(PAL.wetGround), speck: sh(PAL.mud), speckD: 0.15, dark: sh(shade(PAL.wetGround, 0.85)), darkD: 0.05, light: sh(shade(PAL.wetGround, 1.12)), lightD: 0.05, puddles: true };
-      case T.DRY: return { base: sh(PAL.dryGrass), speck: sh(shade(PAL.dryGrass, 1.18)), speckD: 0.10, dark: sh(shade(PAL.dryGrass, 0.86)), darkD: 0.08, grass: true };
-      case T.HIGH: return { base: sh(PAL.highGround), speck: sh(shade(PAL.highGround, 1.18)), speckD: 0.12, dark: sh(shade(PAL.highGround, 0.86)), darkD: 0.06, grass: true };
-      case T.DRAINED: return { base: sh(mix(PAL.wetGround, PAL.mud, 0.4)), speck: sh(PAL.mud), speckD: 0.10, dark: sh(shade(PAL.mud, 0.8)), darkD: 0.04, cracks: true };
-      case T.POND: return { base: sh(PAL.waterNight), speck: sh(shade(PAL.waterNight, 1.25)), speckD: 0.05, dark: sh(shade(PAL.waterNight, 0.85)), darkD: 0.05, water: true };
-      default: return { base: sh(PAL.mud), speck: sh(shade(PAL.mud, 1.15)), speckD: 0.08, dark: sh(shade(PAL.mud, 0.85)), darkD: 0.05 };
+      case T.OPEN_WATER: return { ramp: RAMPS.waterDeep, th: TH_FLAT, bed: 1 };
+      case T.BAYOU: return { ramp: RAMPS.waterDeep, th: TH_FLAT, bed: 2 };
+      case T.MARSH: return { ramp: RAMPS.marshMud, th: TH_GROUND, marsh: true };
+      case T.WET: return { ramp: RAMPS.wet, th: TH_GROUND, wet: true };
+      case T.DRY: return { ramp: RAMPS.grass, th: TH_GROUND, grass: true };
+      case T.HIGH: return { ramp: RAMPS.highGrass, th: TH_GROUND, grass: true, high: true };
+      case T.DRAINED: return { ramp: RAMPS.dirt, th: TH_GROUND, drained: true };
+      case T.POND: return { ramp: RAMPS.waterDeep, th: TH_FLAT, bed: 3 };
+      default: return { ramp: RAMPS.mud, th: TH_GROUND };
     }
   }
+  const MARSH_GRASS = [RAMPS.marshMud[1], RAMPS.marshMud[2], mix(RAMPS.marshMud[2], PAL.reed, 0.5), PAL.reed, RAMPS.reed[3]];
+  const MARSH_WATER = mix(PAL.waterNight, RAMPS.marshMud[1], 0.4), MARSH_SHEEN = mix(MARSH_WATER, PAL.shallows, 0.45);
+  const DRAINED_RAMP = [RAMPS.dirt[0], RAMPS.dirt[1], mix(RAMPS.dirt[2], RAMPS.sand[2], 0.3), mix(RAMPS.dirt[3], RAMPS.sand[3], 0.4), RAMPS.sand[3]];
+  // beds stay in the teal family: the live water pass covers them at 55–85 % alpha, so a brown bed only greys the water
+  const BED_SAND = [shade(PAL.waterDay, 0.7), shade(PAL.waterDay, 0.88), mix(PAL.waterDay, RAMPS.sand[2], 0.3), mix(PAL.shallows, RAMPS.sand[3], 0.35), mix(PAL.shallows, RAMPS.sand[4], 0.4)];
+  const BED_MUD = [shade(PAL.waterDay, 0.6), shade(PAL.waterDay, 0.8), PAL.waterDay, mix(PAL.waterDay, RAMPS.marshMud[3], 0.2), shade(PAL.waterDay, 1.12)];
   M.registerPainter('tile', function (ctx, spec) {
     const P = pen(ctx, spec.zoom);
     const g = tileCanvas(ctx, spec.zoom, 0, 0);
     const t = Math.max(0, Math.min(7, parseInt(spec.sub, 10) || 0));
-    const v = spec.variant % 3;
-    const st = tileStyle(t, TILE_BRIGHT[v]);
-    const seed = hash(t * 7 + v, 0x51);
+    const v = spec.variant & 7, shallow = (spec.variant & 8) !== 0;
+    const L = tileLook(t);
+    let R = L.ramp;
+    if (L.bed) R = L.bed === 2 ? BED_MUD : (shallow ? BED_SAND : RAMPS.waterDeep);
+    else if (L.drained) R = DRAINED_RAMP;
+    const seed = hash(t * 131 + 7, 0x51);                       // one field per type; variants sample different windows
     const cx = g.cx, cy = g.cy, top = cy - 16;
-    // base diamond
-    P.diamond(cx, cy, TW, TH, st.base);
-    // speckle / dither inside the diamond only
-    for (let r = 1; r < TH; r++) {
-      const half = diamondHalf(TW, TH, r);
+    const ox = (v & 3) * 64 + 3, oy = (v >> 2) * 40 + 5;
+    const pv = (spec.variant >> 4) & 63, X0 = ((pv & 7) - (pv >> 3)) * 32 + 256, Y0 = ((pv & 7) + (pv >> 3)) * 16;   // marsh: map position → one periodic field (8×8 tiles)
+    const wet = L.marsh || L.wet;
+    for (let r = 0; r < TH; r++) {
+      const half = diamondHalf(TW, TH, r); if (half <= 0) continue;
+      const y = top + r;
       for (let x = cx - half; x < cx + half; x++) {
-        const n = hash(seed, x + r * 131) % 1000;
-        let dens = st.speckD * 1000;
-        if (st.clumpy) { const c = hash(seed, (x >> 3) + (r >> 2) * 37) % 100; dens = c < 30 ? dens * 0.25 : c < 70 ? dens : dens * 1.6; }
-        if (n < dens) P.px(x, top + r, (st.clumpy && (n % 5 === 0)) ? shade(PAL.reed, 1.05) : st.speck);
-        else if (n > 1000 - st.darkD * 1000) P.px(x, top + r, st.dark);
-        else if (st.light && n > 500 && n < 500 + st.lightD * 1000) P.px(x, top + r, st.light);
+        const nx = x - cx + ox, ny = (r + oy) * 2;             // iso: stretch the field 2:1
+        let n;
+        if (L.marsh) n = 0.55 * pnoise(seed, X0 + x - cx, Y0 + r - 16, 16, 8, 256, 128) + 0.30 * pnoise(seed + 7, X0 + x - cx, Y0 + r - 16, 8, 4, 256, 128) + 0.15 * ((hash(seed, x + r * 131 + pv * 2048) & 255) / 256);
+        else {
+          n = 0.55 * vnoise(seed, nx, ny, 13) + 0.30 * vnoise(seed + 7, nx, ny, 5) + 0.15 * ((hash(seed, x + r * 131 + v * 2048) & 255) / 256);
+          const ed = diamondDist(x, y, cx, cy);
+          if (ed > 0.84) n += (0.5 - n) * Math.min(1, (ed - 0.84) * 8);   // edge pull → seamless neighbours
+        }
+        let col;
+        if (L.marsh) {
+          if (n < 0.40) col = (((r + (hash(seed, 3) % 6)) % 6) === 0 && (x & 1) === 0) ? MARSH_SHEEN : MARSH_WATER;   // standing water with a sheen
+          else if (n < 0.45) col = RAMPS.marshMud[0];                                                                   // mud edge around the pools
+          else col = MARSH_GRASS[toneAt((n - 0.45) / 0.55, x, r, TH_GROUND, 0.1)];
+        } else if (L.bed) {
+          col = R[toneAt(n, x, r, L.th, 0.08)];
+          if (shallow && L.bed !== 2 && ((r + Math.round(2 * Math.sin((x - cx) / 7))) % 6) === 0) col = R[3];         // sand ripples on a shallow bed
+          if (L.bed === 3 && n > 0.86) col = RAMPS.reed[1];                                                             // pond algae
+        } else {
+          col = R[toneAt(n, x, r, L.th, 0.1)];
+          if (L.high && (hash(seed, 9000 + x + r * 97) % 100) < 5) col = mix(col, RAMPS.sand[3], 0.6);                  // sandier crown
+          if (L.wet && n < 0.18) col = RAMPS.mud[1];                                                                     // dark mud mottling
+        }
+        P.px(x, y, col);
       }
     }
-    // grass ticks (2-px verticals) on Dry/High
-    if (st.grass) for (let i = 0; i < 14; i++) { const x = cx - 26 + (hash(seed, 900 + i) % 52), y = top + 4 + (hash(seed, 950 + i) % 24); if (inDiamond(x, y, cx, cy) && inDiamond(x, y + 1, cx, cy)) { P.px(x, y, st.speck); P.px(x, y + 1, shade(st.base, 0.9)); } }
-    // marsh: reed clumps over the dark water + a couple of water glints
-    if (st.reeds) for (let i = 0; i < 6; i++) {
-      const x = cx - 24 + (hash(seed, 700 + i) % 48), y = top + 6 + (hash(seed, 750 + i) % 20);
-      for (let k = 0; k < 3; k++) { const xx = x + k - 1, yy = y - (k === 1 ? 3 : 2); if (inDiamond(xx, yy, cx, cy) && inDiamond(xx, y, cx, cy)) P.vline(xx, yy, y - yy + 1, k === 1 ? shade(PAL.reed, 1.1) : shade(PAL.reed, 0.85)); }
-      const gx = cx - 20 + (hash(seed, 800 + i) % 40), gy = top + 8 + (hash(seed, 850 + i) % 16);
-      if (inDiamond(gx + 1, gy, cx, cy)) P.hline(gx, gy, 2, shade(PAL.shallows, 0.8));
+    const inside = (x, y, m) => diamondDist(x, y, cx, cy) <= m;
+    if (L.grass || L.wet) {
+      // grass tufts: a small V in the light tones with a shadow pixel under it
+      const nt = L.wet ? 4 : 8 + (hash(seed, v) % 5);
+      for (let i = 0; i < nt; i++) {
+        const x = cx - 26 + (hash(seed, 900 + i + v * 64) % 52), y = top + 4 + (hash(seed, 950 + i + v * 64) % 24);
+        if (!inside(x, y, 0.8)) continue;
+        P.px(x, y, R[3]); P.px(x - 1, y - 1, R[4]); P.px(x + 1, y - 1, R[3]); P.px(x, y + 1, R[1]);
+      }
     }
-    // wet ground: 2 small puddle glints
-    if (st.puddles) for (let i = 0; i < 3; i++) { const x = cx - 18 + (hash(seed, 600 + i) % 36), y = top + 8 + (hash(seed, 650 + i) % 16); if (inDiamond(x, y, cx, cy) && inDiamond(x + 3, y, cx, cy)) { P.hline(x, y, 4, mix(PAL.wetGround, PAL.shallows, 0.45)); P.hline(x + 1, y + 1, 2, mix(PAL.wetGround, PAL.shallows, 0.25)); } }
-    // drained marsh: cracked 1-px lines
-    if (st.cracks) for (let i = 0; i < 4; i++) {
-      let x = cx - 16 + (hash(seed, 500 + i) % 32), y = top + 6 + (hash(seed, 550 + i) % 20);
-      for (let k = 0; k < 9; k++) { if (inDiamond(x, y, cx, cy)) P.px(x, y, shade(PAL.mud, 0.62)); x += (hash(seed, 570 + i * 16 + k) % 3) - 1 + (i & 1 ? 1 : -1); y += (hash(seed, 580 + i * 16 + k) % 2); }
+    if (L.grass && (v === 1 || v === 4 || v === 6)) {   // a clover patch (bluer green, dotted)
+      const x = cx - 10 + (hash(seed, 60 + v) % 20), y = cy - 4 + (hash(seed, 70 + v) % 8), cl = mix(R[1], '#2F6E4E', 0.45);
+      P.ellipse(x, y, 6, 3, cl);
+      for (let i = 0; i < 8; i++) { const dx = (hash(seed, 80 + i + v) % 11) - 5, dy = (hash(seed, 90 + i + v) % 5) - 2; P.px(x + dx, y + dy, (i & 1) ? R[3] : mix(cl, R[3], 0.5)); }
     }
-    // bayou: 1-px lighter current line along the channel direction (the bayou runs roughly N–S: up-right/down-left)
-    if (st.current) for (let k = -14; k <= 14; k++) { const x = cx + k, y = cy - (k >> 1) + ((hash(seed, 400 + k) % 3) - 1); if (inDiamond(x, y, cx, cy)) P.px(x, y, shade(PAL.waterDay, 1.22)); }
-    // edge: a 1-px lighter NW/NE rim (light from the upper left) and a darker SW/SE rim so tiles read as facets
-    if (!st.water) for (let r = 1; r < TH; r++) { const half = diamondHalf(TW, TH, r); if (half <= 0) continue; if (r < 16) { P.px(cx - half, top + r, shade(st.base, 1.08)); } else { P.px(cx + half - 1, top + r, shade(st.base, 0.9)); } }
+    if (L.grass && (v === 2 || v === 5)) {   // a bare dirt patch with a dithered rim
+      const x = cx - 10 + (hash(seed, 100 + v) % 20), y = cy - 3 + (hash(seed, 110 + v) % 6), D = L.high ? RAMPS.sand : RAMPS.dirt;
+      const d2 = mix(D[2], R[2], 0.45), d3 = mix(D[3], R[3], 0.45), d1 = mix(D[1], R[1], 0.45);
+      P.ellipse(x, y, 6, 2.5, d2); P.ellipse(x - 1, y - 1, 3, 1, d3);
+      for (let i = 0; i < 12; i++) { const dx = (hash(seed, 120 + i + v) % 17) - 8, dy = (hash(seed, 140 + i + v) % 7) - 3; if (Math.abs(dx) / 7 + Math.abs(dy) / 3.5 > 0.8) P.px(x + dx, y + dy, (i & 1) ? d1 : mix(d2, R[2], 0.5)); }
+    }
+    if (L.high && (v === 3 || v === 7)) {   // a limestone outcrop on the ridge crown
+      const x = cx - 8 + (hash(seed, 150 + v) % 16), y = cy - 2 + (hash(seed, 160 + v) % 4), Lm = RAMPS.limestone;
+      P.ellipse(x, y + 1, 7, 2.5, Lm[0]); P.ellipse(x, y, 7, 2.5, Lm[2]); P.ellipse(x - 2, y - 1, 3, 1, Lm[3]); P.hline(x - 5, y - 2, 6, Lm[4]); P.px(x + 3, y, Lm[1]); P.hline(x - 6, y + 3, 12, Lm[0]);
+    }
+    if (L.wet) for (let i = 0; i < 3; i++) {   // puddles: a shallow-water ellipse with a sky highlight line
+      const x = cx - 16 + (hash(seed, 600 + i + v * 8) % 32), y = top + 9 + (hash(seed, 650 + i + v * 8) % 14);
+      if (!inside(x, y, 0.75)) continue;
+      P.ellipse(x, y, 4, 2, mix(R[1], PAL.shallows, 0.45)); P.hline(x - 2, y - 1, 3, mix(R[3], PAL.shallows, 0.6)); P.px(x + 3, y + 1, R[0]);
+    }
+    if (L.marsh) {
+      // reed clumps, lily pads on the pools, glints
+      for (let i = 0; i < 2; i++) {
+        const x = cx - 22 + (hash(seed, 700 + i + pv * 16) % 44), y = top + 7 + (hash(seed, 750 + i + pv * 16) % 18);
+        if (!inside(x, y, 0.8)) continue;
+        for (let k = -1; k <= 1; k++) { const hgt = 3 + (hash(seed, 760 + i * 3 + k + pv) % 3); P.vline(x + k, y - hgt, hgt, k === 0 ? RAMPS.reed[3] : RAMPS.reed[1]); if (k === 0) P.px(x, y - hgt - 1, RAMPS.reed[4]); }
+        P.hline(x - 1, y, 3, RAMPS.marshMud[0]);
+      }
+      for (let i = 0; i < 5; i++) {
+        const x = cx - 20 + (hash(seed, 800 + i + pv * 16) % 40), y = top + 8 + (hash(seed, 850 + i + pv * 16) % 16);
+        if (!inside(x, y, 0.8)) continue;
+        const n = 0.55 * pnoise(seed, X0 + x - cx, Y0 + y - top - 16, 16, 8, 256, 128) + 0.30 * pnoise(seed + 7, X0 + x - cx, Y0 + y - top - 16, 8, 4, 256, 128);
+        if (n < 0.34) { P.hline(x - 1, y, 3, RAMPS.reed[2]); P.hline(x - 1, y + 1, 3, RAMPS.reed[1]); P.px(x + 1, y, RAMPS.reed[3]); }   // lily pad with a notch
+        else if (i < 2) P.hline(x, y, 2, mix(MARSH_SHEEN, '#FFFFFF', 0.4));
+      }
+    }
+    if (L.drained) {
+      for (let i = 0; i < 4; i++) {   // cracks
+        let x = cx - 16 + (hash(seed, 500 + i + v * 8) % 32), y = top + 6 + (hash(seed, 550 + i + v * 8) % 20);
+        for (let k = 0; k < 9; k++) { if (inDiamond(x, y, cx, cy)) P.px(x, y, DRAINED_RAMP[0]); x += (hash(seed, 570 + i * 16 + k) % 3) - 1 + (i & 1 ? 1 : -1); y += (hash(seed, 580 + i * 16 + k) % 2); }
+      }
+      const px0 = cx - 8 + (hash(seed, 170 + v) % 16), py0 = cy - 2 + (hash(seed, 180 + v) % 4);   // a drying puddle remnant
+      P.ellipse(px0, py0, 6, 2.5, DRAINED_RAMP[1]); P.ellipse(px0, py0, 3, 1.2, RAMPS.mud[1]);
+      for (let i = 0; i < 5; i++) { const x = cx - 20 + (hash(seed, 190 + i + v * 8) % 40), y = top + 8 + (hash(seed, 200 + i + v * 8) % 16); if (inside(x, y, 0.8)) P.vline(x, y - 2, 3, (i & 1) ? RAMPS.sand[1] : RAMPS.dirt[3]); }   // dead reed stubs
+    }
+    if (L.bed === 2 || (L.bed === 1 && !shallow)) for (let k = -14; k <= 14; k++) {   // a faint current streak on the bayou / deep bed
+      const x = cx + k, y = cy - (k >> 1) + ((hash(seed, 400 + k + v) % 3) - 1); if (inDiamond(x, y, cx, cy)) P.px(x, y, R[3]);
+    }
     return { w: g.w, h: g.h, ox: g.ox, oy: g.oy };
   });
 
   // ---------------------------------------------------------------------------
   // cliff — variant = face height in px (6…96), frame 0 = south face (under the SW edge), 1 = east face (SE edge)
   // canvas 32 × (16 + h); anchor = the tile centre (ox −32 south / 0 east, oy 0)
+  // Art pass B1: soil strata (topsoil, clay, limestone on tall faces), roots, stones, a grass overhang; the south face
+  // is one tone lighter than the east (key light from the upper-left: south-facing lit, east-facing in shadow).
   // ---------------------------------------------------------------------------
   M.registerPainter('cliff', function (ctx, spec) {
     const hgt = Math.max(6, Math.min(96, spec.variant || 6));
@@ -554,26 +674,138 @@
     const P = pen(ctx, spec.zoom);
     const g = begin(ctx, 32, 16 + hgt, spec.zoom);
     const seed = hash(hgt, east ? 3 : 5);
-    const base = east ? shade(PAL.mud, 0.95) : shade(PAL.mud, 0.8);       // the east face catches a little more light
+    const k = east ? -1 : 0;
+    const soil = RAMPS.dirt, clay = RAMPS.clay, lime = RAMPS.limestone, grass = RAMPS.grass, bark = RAMPS.bark;
+    const tone = (ramp, i) => ramp[Math.max(0, Math.min(4, i + k))];
+    const topOf = (c) => Math.max(0, east ? 16 - (c >> 1) - 1 : (c >> 1));
     for (let c = 0; c < 32; c++) {
-      const topY = east ? 16 - (c >> 1) - 1 : (c >> 1);   // the edge slope (2:1)
-      const t0 = Math.max(0, topY);
+      const t0 = topOf(c);
       for (let y = 0; y < hgt; y++) {
         const yy = t0 + y; if (yy >= g.h) break;
-        let col = base;
-        const n = hash(seed, c + y * 97) % 100;
-        if (y === 0) col = shade(PAL.highGround, 0.7);                              // grass lip
-        else if (y === 1) col = shade(PAL.mud, 1.25);                                // lit rim
-        else if ((y + (c >> 3)) % 4 === 0) col = (n < 50) ? shade(PAL.bark, 1.1) : shade(base, 0.85);   // strata every 4 px
-        else if (n < 8) col = shade(base, 1.15);
-        else if (n > 92) col = shade(base, 0.8);
-        if (y >= hgt - 2) col = shade(base, 0.62);                                  // darker bottom
+        const n = (hash(seed, c + y * 97) & 255) / 256;
+        const wob = Math.round(vnoise(seed + 11, c * 2, y, 9) * 3);
+        let col;
+        if (y === 0) col = grass[0];                                              // the shadow line under the lip
+        else if (y < 3 + ((hash(seed, c) & 1))) col = tone(soil, n < 0.3 ? 1 : 2);   // topsoil with a ragged bottom
+        else {
+          const d = y + wob, cyc = d % 22;
+          const limeLayer = hgt >= 24 && cyc >= 14 && cyc < 20;                    // a limestone seam in the clay of tall faces
+          const ramp = hgt < 12 ? soil : (limeLayer ? lime : clay);                   // a short terrace is all topsoil
+          let i = n < 0.12 ? 1 : n > 0.9 ? 3 : 2;
+          if (cyc === 0 || (hgt >= 24 && cyc === 14)) i = 0;                        // the layer boundary
+          if (limeLayer && (hash(seed, c * 3 + d * 7) % 19) === 0) i = 0;          // pits in the limestone
+          col = tone(ramp, i);
+        }
+        if (y >= hgt - 2) col = tone(soil, 0);                                     // the foot in deep shadow
         P.px(c, yy, col);
       }
     }
-    // a few small root/stone nubs
-    for (let i = 0; i < 4; i++) { const c = 2 + (hash(seed, 300 + i) % 28), y = 4 + (hash(seed, 350 + i) % Math.max(1, hgt - 8)); const top = (east ? 16 - (c >> 1) - 1 : (c >> 1)) + y; P.hline(c, top, 2, shade(PAL.bark, 0.8)); P.px(c, top - 1, shade(PAL.bark, 1.3)); }
+    for (let c = 0; c < 32 && hgt >= 10; c++) {   // grass overhang: ragged 1–3 px fringe hanging over the lip
+      if ((hash(seed, 600 + c) % 4) === 0) continue;
+      const t0 = topOf(c), len = 1 + (hash(seed, 500 + c) % 3);
+      for (let y = 0; y < len; y++) P.px(c, t0 + y, y === 0 ? grass[3] : grass[2]);
+    }
+    const nr = 2 + (hash(seed, 700) % 3);   // roots wandering down from the topsoil
+    for (let i = 0; i < nr; i++) {
+      let c = 3 + (hash(seed, 710 + i) % 26);
+      const len = 4 + (hash(seed, 720 + i) % Math.max(1, Math.min(14, hgt - 6))), t0 = topOf(c);
+      for (let y = 3; y < 3 + len; y++) { if ((hash(seed, 730 + i * 31 + y) % 3) === 0) c += (hash(seed, 740 + i + y) & 1) ? 1 : -1; c = Math.max(0, Math.min(31, c)); P.px(c, t0 + y, y === 3 + len - 1 ? bark[2] : bark[1]); }
+    }
+    for (let i = 0; i < 3; i++) {   // stones: a lit top, a shadowed underside
+      const c = 2 + (hash(seed, 300 + i) % 27), y = 5 + (hash(seed, 350 + i) % Math.max(1, hgt - 9)), t0 = topOf(c);
+      P.hline(c, t0 + y, 3, tone(lime, 2)); P.px(c, t0 + y - 1, lime[4]); P.hline(c, t0 + y + 1, 3, lime[0]);
+    }
     return { w: g.w, h: g.h, ox: east ? 0 : -32, oy: 0 };
+  });
+
+  // ---------------------------------------------------------------------------
+  // Art pass B1 ground decorations (chunk bake): tuft (8×6, variants 0–3, sub 'high' for the crown), patch:<clover|dirt|lime>
+  // (16×8, variants 0–3), shore:<sand|mud> (land side, variant = mask of WATER neighbours N1 E2 S4 W8) and shore:ripple
+  // (water side, mask of LAND neighbours), tone:<warm|cool> (a 64×32 diamond the bake draws at a small alpha).
+  // ---------------------------------------------------------------------------
+  M.registerPainter('tuft', function (ctx, spec) {
+    const P = pen(ctx, spec.zoom);
+    const g = begin(ctx, 8, 6, spec.zoom);
+    const v = spec.variant & 3, seed = hash(0x7f7, v), R = spec.sub === 'high' ? RAMPS.highGrass : RAMPS.grass;
+    const n = 3 + (hash(seed, 1) % 3);
+    for (let i = 0; i < n; i++) {
+      const x = 1 + (hash(seed, 10 + i) % 6), h = 2 + (hash(seed, 20 + i) % 3), lean = (hash(seed, 30 + i) % 3) - 1;
+      for (let k = 0; k < h; k++) P.px(Math.max(0, Math.min(7, x + (k >= h - 1 ? lean : 0))), 5 - k, k === h - 1 ? R[4] : R[3]);
+    }
+    P.hline(1, 5, 6, R[1]);
+    return { w: g.w, h: g.h, ox: -4, oy: -5 };
+  });
+  M.registerPainter('patch', function (ctx, spec) {
+    const P = pen(ctx, spec.zoom);
+    const g = begin(ctx, 16, 8, spec.zoom);
+    const v = spec.variant & 3, kind = spec.sub || 'dirt', seed = hash(0x9a7 + v, strHash(kind));
+    if (kind === 'clover') {
+      const cl = mix(RAMPS.grass[1], '#2F6E4E', 0.45);
+      P.ellipse(8, 4, 7, 3, cl);
+      for (let i = 0; i < 10; i++) { const x = 2 + (hash(seed, 10 + i) % 12), y = 2 + (hash(seed, 20 + i) % 5); P.px(x, y, (i & 1) ? RAMPS.grass[3] : mix(cl, RAMPS.grass[3], 0.5)); }
+      P.px(4 + (hash(seed, 40) % 8), 3, '#F2EEDC');
+    } else if (kind === 'lime') {
+      const Lm = RAMPS.limestone;
+      P.ellipse(8, 5, 7, 2.5, Lm[0]); P.ellipse(8, 4, 7, 2.5, Lm[2]); P.ellipse(6, 3, 3, 1, Lm[3]); P.hline(3, 2, 6, Lm[4]); P.px(11, 4, Lm[1]); P.px(12, 5, Lm[1]);
+      for (let x = 1; x < 15; x++) P.px(x, 7, Lm[0]);
+    } else {
+      const G = RAMPS.grass, D = [mix(RAMPS.dirt[0], G[0], 0.4), mix(RAMPS.dirt[1], G[1], 0.4), mix(RAMPS.dirt[2], G[2], 0.4), mix(RAMPS.dirt[3], G[3], 0.4), mix(RAMPS.dirt[4], G[4], 0.4)];   // dirt softened toward the grass it sits on
+      P.ellipse(8, 4, 7, 3, D[2]); P.ellipse(7, 3, 4, 1.5, D[3]);
+      for (let i = 0; i < 12; i++) { const x = (hash(seed, 50 + i) % 16), y = (hash(seed, 60 + i) % 8); if (Math.abs(x - 8) / 7 + Math.abs(y - 4) / 3 > 0.75) P.px(x, y, (i & 1) ? D[1] : D[2]); }
+      P.px(5, 5, D[0]); P.px(10, 3, D[4]);
+    }
+    return { w: g.w, h: g.h, ox: -8, oy: -4 };
+  });
+  M.registerPainter('shore', function (ctx, spec) {
+    const P = pen(ctx, spec.zoom);
+    const g = tileCanvas(ctx, spec.zoom, 0, 0);
+    const kind = spec.sub || 'sand', mask = spec.variant & 15, cx = g.cx, cy = g.cy, top = cy - 16, seed = hash(0x5e0 + mask, strHash(kind));
+    const sand = RAMPS.sand, mud = RAMPS.mud, ws = RAMPS.waterShallow, lime = RAMPS.limestone;
+    const bw = kind === 'sand' ? 0.36 : kind === 'mud' ? 0.24 : kind === 'beach' ? 3 : 0.26;
+    for (let r = 0; r < TH; r++) {
+      const half = diamondHalf(TW, TH, r);
+      for (let x = cx - half; x < cx + half; x++) {
+        const dx = (x + 0.5 - cx) / 32, dy = (r + 0.5 - 16) / 16;
+        let d = 2;   // distance from the nearest masked edge (0 at the edge, 2 at the far edge)
+        if (mask & 1) d = Math.min(d, 1 - (dx - dy));
+        if (mask & 2) d = Math.min(d, 1 - (dx + dy));
+        if (mask & 4) d = Math.min(d, 1 + (dx - dy));
+        if (mask & 8) d = Math.min(d, 1 + (dx + dy));
+        if (d >= bw) continue;
+        const n = (hash(seed, x + r * 131) & 255) / 256, y = top + r;
+        if (kind === 'beach') {   // the cove floor: shell sand with a damp lower half and scattered shells
+          const nn = 0.6 * vnoise(seed, x - cx + 7, r * 2, 11) + 0.4 * n;
+          let col = sand[toneAt(nn, x, r, TH_GROUND, 0.1)];
+          if (r > 20 && nn < 0.5) col = sand[1];
+          if (n > 0.975) col = lime[4]; else if (n > 0.96) col = lime[1];
+          P.px(x, y, col); continue;
+        }
+        if (kind === 'ripple') {
+          if (d >= 0.07 && d < 0.11 && n < 0.6) P.px(x, y, ws[3]);
+          else if (d >= 0.19 && d < 0.23 && n < 0.35) P.px(x, y, ws[2]);
+          continue;
+        }
+        if (d > bw - 0.12 && n < (d - (bw - 0.12)) / 0.12) continue;   // dithered inner edge into the grass
+        if (kind === 'sand') {
+          let col = d < 0.05 ? sand[1] : sand[toneAt(n, x, r, TH_GROUND, 0.1)];
+          if (n > 0.965) { col = lime[4]; }                                    // shell flecks
+          else if (n > 0.95) col = lime[1];
+          P.px(x, y, col);
+        } else {
+          let col = mud[toneAt(n, x, r, TH_GROUND, 0.1) >> 1];                    // tones 0–2 only: a wet, dark bank
+          if (d < 0.08 && ((x + r) & 1) === 0) col = mix(mud[3], ws[2], 0.5);     // wet sheen at the waterline
+          if (d < 0.03) col = mud[0];
+          P.px(x, y, col);
+        }
+      }
+    }
+    return { w: g.w, h: g.h, ox: g.ox, oy: g.oy };
+  });
+  M.registerPainter('tone', function (ctx, spec) {
+    const P = pen(ctx, spec.zoom);
+    const g = tileCanvas(ctx, spec.zoom, 0, 0);
+    P.diamond(g.cx, g.cy, TW, TH, spec.sub === 'cool' ? COOL : WARM);
+    return { w: g.w, h: g.h, ox: g.ox, oy: g.oy };
   });
 
   // ---------------------------------------------------------------------------
@@ -582,16 +814,16 @@
   M.registerPainter('reeds', function (ctx, spec) {
     const P = pen(ctx, spec.zoom);
     const g = begin(ctx, 12, 14, spec.zoom);
-    const v = spec.variant % 3, f = spec.frame % 2, seed = hash(0x2ee, v);
+    const v = spec.variant % 3, f = spec.frame % 2, seed = hash(0x2ee, v), R = RAMPS.reed;
     const n = 5 + (hash(seed, 1) % 3);
     for (let i = 0; i < n; i++) {
       const x0 = 2 + (hash(seed, 10 + i) % 8), len = 7 + (hash(seed, 20 + i) % 7);
       const lean = ((hash(seed, 30 + i) % 3) - 1) + f;   // frame 1 leans one more px to the right
-      const col = (i & 1) ? PAL.reed : shade(PAL.reed, 0.8);
-      for (let k = 0; k < len; k++) { const y = 13 - k, x = x0 + Math.round(lean * k / len); if (x >= 0 && x < 12 && y >= 0) P.px(x, y, k === len - 1 ? shade(PAL.reed, 1.2) : col); }
+      const col = (i & 1) ? R[2] : R[1];
+      for (let k = 0; k < len; k++) { const y = 13 - k, x = x0 + Math.round(lean * k / len); if (x >= 0 && x < 12 && y >= 0) P.px(x, y, k === len - 1 ? R[4] : (k > len - 4 ? R[3] : col)); }
     }
-    // seed heads on two stalks
-    for (let i = 0; i < 2; i++) { const x = 3 + (hash(seed, 40 + i) % 6), y = 1 + (hash(seed, 50 + i) % 3); P.vline(x + f, y, 2, shade(PAL.gravel, 0.8)); }
+    { const x = 3 + (hash(seed, 40) % 6), y = 1 + (hash(seed, 50) % 3); P.vline(x + f, y, 3, RAMPS.sand[1]); P.px(x + f, y, RAMPS.reed[4]); }   // one seed head
+    P.hline(2, 13, 8, RAMPS.marshMud[0]);   // the clump's shadow at the waterline
     return { w: g.w, h: g.h, ox: -6, oy: -13 };
   });
   M.registerPainter('knees', function (ctx, spec) {
@@ -605,8 +837,9 @@
   M.registerPainter('worn', function (ctx, spec) {
     const P = pen(ctx, spec.zoom);
     const g = tileCanvas(ctx, spec.zoom, 0, 0);
-    const v = spec.variant % 3, seed = hash(0x0e0, v);
-    for (let r = 1; r < TH; r++) { const half = diamondHalf(TW, TH, r); for (let x = g.cx - half; x < g.cx + half; x++) { const d = diamondDist(x, g.cy - 16 + r, g.cx, g.cy); const dens = 0.4 * Math.max(0, 1 - d * d); const n = hash(seed, x + r * 131) % 1000; if (n < dens * 1000) P.px(x, g.cy - 16 + r, (n & 1) ? PAL.gravel : shade(PAL.gravel, 0.85)); } }
+    const v = spec.variant % 3, dirt = (spec.variant & 4) !== 0, seed = hash(0x0e0, v + (dirt ? 8 : 0));   // art pass B1: bit 4 = dirt tones (wear beside paths) instead of gravel
+    const c1 = dirt ? RAMPS.dirt[2] : PAL.gravel, c2 = dirt ? RAMPS.dirt[1] : shade(PAL.gravel, 0.85);
+    for (let r = 1; r < TH; r++) { const half = diamondHalf(TW, TH, r); for (let x = g.cx - half; x < g.cx + half; x++) { const d = diamondDist(x, g.cy - 16 + r, g.cx, g.cy); const dens = (dirt ? 0.3 : 0.4) * Math.max(0, 1 - d * d); const n = hash(seed, x + r * 131) % 1000; if (n < dens * 1000) P.px(x, g.cy - 16 + r, (n & 1) ? c1 : c2); } }
     return { w: g.w, h: g.h, ox: g.ox, oy: g.oy };
   });
   M.registerPainter('mound', function (ctx, spec) {
@@ -826,10 +1059,10 @@
     if ((spec.variant & 1) === 0) {
       for (let x = cx - 32; x < cx + 32; x++) {
         const y1 = cy - 5 + Math.round(2 * Math.sin((x * Math.PI * 2) / 16)), y2 = cy + 5 + Math.round(2 * Math.sin(((x + 8) * Math.PI * 2) / 16));
-        if (inDiamond(x, y1, cx, cy)) P.px(x, y1, PAL.shallows);
-        if (inDiamond(x, y2, cx, cy)) P.px(x, y2, shade(PAL.shallows, 0.9));
+        if (inDiamond(x, y1, cx, cy) && ((x >> 2) & 1)) P.px(x, y1, RAMPS.waterShallow[3]);
+        if (inDiamond(x, y2, cx, cy) && ((x >> 2) & 1) === 0) P.px(x, y2, RAMPS.waterShallow[2]);
       }
-      for (let i = 0; i < 3; i++) { const x = cx - 20 + (hash(seed, 10 + i) % 40), y = cy - 8 + (hash(seed, 20 + i) % 16); if (inDiamond(x, y, cx, cy)) { P.px(x, y, X.white); P.px(x + 1, y, PAL.goldHi); } }
+      for (let i = 0; i < 3; i++) { const x = cx - 20 + (hash(seed, 10 + i) % 40), y = cy - 8 + (hash(seed, 20 + i) % 16); if (inDiamond(x, y, cx, cy)) { P.px(x, y, RAMPS.waterShallow[4]); P.px(x + 1, y, RAMPS.waterShallow[3]); } }
     } else {
       P.diamond(cx, cy, TW, TH, shade(PAL.waterNight, 0.8));
       for (let i = 0; i < 4; i++) { const x = cx - 20 + (hash(seed, 30 + i) % 40), y = cy - 8 + (hash(seed, 40 + i) % 16); if (inDiamond(x, y, cx, cy) && inDiamond(x + 2, y, cx, cy)) { P.hline(x, y, 3, X.debris); P.px(x + 1, y - 1, shade(X.debris, 1.3)); } }
@@ -1145,7 +1378,10 @@
     baking = true;
     try {
       const SPR = BSU.SPR, data = BSU.data;
-      for (let t = 0; t < 8; t++) for (let v = 0; v < 3; v++) M.get('tile:' + t, v, 0, 1);
+      for (let t = 0; t < 8; t++) for (let v = 0; v < 8; v++) M.get('tile:' + t, v, 0, 1);
+      for (let t = 0; t < 8; t += 7) for (let v = 0; v < 8; v++) M.get('tile:' + t, v | 8, 0, 1);
+      for (let v = 0; v < 4; v++) { M.get('tuft', v, 0, 1); M.get('tuft:high', v, 0, 1); M.get('patch:clover', v, 0, 1); M.get('patch:dirt', v, 0, 1); M.get('patch:lime', v, 0, 1); }
+      M.get('tone:warm', 0, 0, 1); M.get('tone:cool', 0, 0, 1);
       for (const h of CLIFF_PREBAKE) { M.get('cliff', h, 0, 1); M.get('cliff', h, 1, 1); }
       for (let s = 1; s <= 5; s++) for (let m = 0; m < 16; m++) M.get('surf:' + s, m, 0, 1);
       for (let m = 0; m < 16; m++) { M.get('levee', m, 0, 1); M.get('floodwall', m, 0, 1); M.get('canal', m, 0, 1); M.get('preservePost', m, 0, 1); }
@@ -1187,13 +1423,16 @@
       check(shade(PAL.gold, 1) === PAL.gold.toUpperCase() && rgb(255, 0, 16) === '#FF0010', 'hex/rgb round trip');
       // 4. tileVariant + hash
       check(M.hash === BSU.rng.hash, 'hash is BSU.rng.hash');
-      for (let i = 0; i < 50; i++) { const v = tileVariant(i * 7, i * 3); check(v >= 0 && v <= 2 && v === tileVariant(i * 7, i * 3), 'tileVariant stable/in range'); }
+      for (let i = 0; i < 50; i++) { const v = tileVariant(i * 7, i * 3); check(v >= 0 && v <= 7 && v === tileVariant(i * 7, i * 3), 'tileVariant stable/in range'); }
       // 3. agentLook packing and distribution
       let sh = [0, 0, 0];
       for (let s = 0; s < 1000; s++) { const l = M.agentLook(s); const skin = l & 7, hair = (l >> 3) & 7, shirt = l >> 6; check(skin < 6 && hair < 8 && shirt < 3, 'agentLook fields'); sh[shirt]++; }
       check(Math.abs(sh[0] - 550) <= 50 && Math.abs(sh[1] - 250) <= 50 && Math.abs(sh[2] - 200) <= 50, 'shirt distribution 55/25/20 ±5 (got ' + sh.join('/') + ')');
       // 6. every terrain-side id resolves with the documented sizes
-      for (let t = 0; t < 8; t++) for (let v = 0; v < 3; v++) { const e = need('tile:' + t, v); check(e && e.sw === 64 && e.sh === 32 && e.ox === -32 && e.oy === -16, 'tile size/anchor'); }
+      for (let t = 0; t < 8; t++) for (let v = 0; v < 8; v++) { const e = need('tile:' + t, v); check(e && e.sw === 64 && e.sh === 32 && e.ox === -32 && e.oy === -16, 'tile size/anchor'); }
+      for (let m = 1; m < 16; m += 5) { const a = need('shore:sand', m), b = need('shore:mud', m), c = need('shore:ripple', m); check(a && b && c && a.sw === 64 && c.oy === -16, 'shore sprites 64×32 at the tile anchor'); }
+      check(need('tuft', 0).sh === 6 && need('patch:lime', 1).sw === 16 && need('tone:cool', 0).sw === 64, 'tuft / patch / tone sizes');
+      check(Object.keys(RAMPS).length >= 12 && RAMPS.grass.length === 5 && RAMPS.grass[2] === PAL.dryGrass, 'material ramps: 5 tones, base at index 2');
       check(need('cliff', 6).sh === 22 && need('cliff', 96).sh === 112 && need('cliff', 24, 1).ox === 0 && need('cliff', 24, 0).ox === -32, 'cliff sizes/anchors');
       for (let s = 1; s <= 5; s++) for (let m = 0; m < 16; m++) need('surf:' + s, m);
       need('surf:2', 16 | 5); need('surf:4', 32 | 3); need('surf:1', 64 | 10);

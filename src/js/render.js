@@ -27,10 +27,11 @@
   const WATER_SHALLOW = PR.waterShallow || PAL.shallows || '#6FA895', WATER_DEEP = PR.waterDeep || PAL.waterNight || '#1B3A3A';
   const C = {                                   // local constants the GDD states but params does not carry
     chunkMB: 0.85, chunkIdleFrames: 600, firstBakeMs: 150, spriteGcEvery: 300, cliffMin: 6, cliffMax: 96,
-    reedPct: 25, waterCap: 300, waterCapSurge: 700, sparkleEvery: 8, agentAnimDiv: 6, gatorAnimDiv: 8,
+    reedPct: 25, waterCap: 300, waterCapZoom: 420, waterCapSurge: 700, sparkleEvery: 8, agentAnimDiv: 6, gatorAnimDiv: 8,
     titleDriftX: 0.25, titleDriftY: 0.12, squashScale: 1.15, sinkTiltDeg: 2, bubbleLift: 4,
     mossMin: 6, mossMax: 10, mossSway: 3, overlayAlpha: 0.45, ghostAlpha: 0.45, ghostSpriteAlpha: 0.6,
-    shadowAlpha: 0.22, shadowColor: '#0A0718'          // design pass: ground shadows under buildings and trees
+    shadowAlpha: 0.22, shadowColor: '#0A0718',         // design pass: ground shadows under buildings and trees
+    tuftPct: 34, patchPct: 5                            // art pass B1: grass tufts / clover-dirt-limestone patches per 100 open grass tiles
   };
   const hash = (BSU.rng && BSU.rng.hash) ? BSU.rng.hash : function (a, b) { let h = (a * 374761393 + b * 668265263) | 0; h = Math.imul(h ^ (h >>> 13), 1274126177); return (h ^ (h >>> 16)) >>> 0; };
   const fin = (v, d) => (Number.isFinite(v) ? v : d);
@@ -294,18 +295,54 @@
     return false;
   }
   let STEP_COLORS = null;
+  // art pass B1: terrace bands come from the material ramps (docs/ART_STYLE.md) — the south face takes the shadow tone,
+  // the east face the deep-shadow tone (key light from the upper-left), and a 1-px light lip marks the upper tile's edge
   function stepColors() {
     if (STEP_COLORS) return STEP_COLORS;
-    const sh = S().shade;
-    STEP_COLORS = [sh(PAL.waterNight || WATER_DEEP, 0.7), sh(PAL.waterDay || WATER_SHALLOW, 0.6), sh(PAL.mud || '#4A3B2A', 0.85), sh(PAL.wetGround || '#5A6B3A', 0.6), sh(PAL.dryGrass || '#6E8F3C', 0.55), sh(PAL.highGround || '#7FA347', 0.55), sh(PAL.mud || '#4A3B2A', 0.75), sh(PAL.waterDay || '#2E6B5E', 0.6)];
+    const sp = S(), sh = sp.shade, ramp = typeof sp.ramp === 'function' ? sp.ramp : null;
+    const names = ['waterDeep', 'waterDeep', 'marshMud', 'wet', 'grass', 'highGrass', 'dirt', 'waterDeep'];
+    const fall = [sh(PAL.waterNight || WATER_DEEP, 0.7), sh(PAL.waterDay || WATER_SHALLOW, 0.6), sh(PAL.mud || '#4A3B2A', 0.85), sh(PAL.wetGround || '#5A6B3A', 0.6), sh(PAL.dryGrass || '#6E8F3C', 0.55), sh(PAL.highGround || '#7FA347', 0.55), sh(PAL.mud || '#4A3B2A', 0.75), sh(PAL.waterDay || '#2E6B5E', 0.6)];
+    STEP_COLORS = { s: [], e: [], lip: [] };
+    for (let k = 0; k < 8; k++) { const r = ramp ? ramp(names[k]) : null; STEP_COLORS.s[k] = r ? r[1] : fall[k]; STEP_COLORS.e[k] = r ? r[0] : sh(fall[k], 0.8); STEP_COLORS.lip[k] = r ? r[3] : sh(fall[k], 1.6); }
     return STEP_COLORS;
   }
   /** a d-px (1–5) dark band under the tile's lower-left (S) or lower-right (E) edge — the sub-foot terrace step */
   function stepFace(g, cx, cy, d, east, ty8) {
-    const half = S().diamondHalf, top = cy - 16;
-    g.fillStyle = stepColors()[ty8] || stepColors()[4];
+    const half = S().diamondHalf, top = cy - 16, sc = stepColors(), k = (ty8 >= 0 && ty8 < 8) ? ty8 : 4;
+    g.fillStyle = east ? sc.e[k] : sc.s[k];
     for (let r = 16; r < 32; r++) { const hf = half(TW, TH, r); if (hf <= 0) continue; g.fillRect(east ? cx + hf - 2 : cx - hf, top + r + 1, 2, d); }
-    drawCalls += 16;
+    if (ty8 >= T.WET && ty8 !== T.POND && !east) { g.fillStyle = sc.lip[k]; g.globalAlpha = 0.55; for (let r = 16; r < 32; r++) { const hf = half(TW, TH, r); if (hf <= 0) continue; g.fillRect(cx - hf, top + r, 2, 1); } g.globalAlpha = 1; }   // a lit lip along the south (sunward) edge only
+    drawCalls += 32;
+  }
+  // art pass B1: per-tile ground tint baked over the tile sprite — slow world noise (no visible grid), height (high = warm
+  // and light, low = cool and dark) and slope (ground falling toward the west / south faces the upper-left key light)
+  const TONE_K = { noise: 0.10, elev: 0.013, slope: 0.05, max: 0.28 };
+  function groundTone(t, i, tx, ty, e) {
+    const sp = S(), n = typeof sp.vnoise === 'function' ? sp.vnoise(0x7a11, tx, ty, 5) : 0.5, el = t.elev;
+    const eN = ty > 0 ? fin(el[i - W], e) : e, eW = tx > 0 ? fin(el[i - 1], e) : e, eS = ty < HGT - 1 ? fin(el[i + W], e) : e, eE = tx < W - 1 ? fin(el[i + 1], e) : e;
+    const slope = clamp(((eE + eN) - (eW + eS)) / 2, -2, 2);
+    return (n - 0.5) * 2 * TONE_K.noise + (e - 4) * TONE_K.elev + slope * TONE_K.slope;
+  }
+  const WATER_TYPES = [1, 1, 0, 0, 0, 0, 0, 1];   // by tiles.type: OPEN_WATER, BAYOU, POND
+  function waterTypeAt(t, j) { return WATER_TYPES[t.type[j]] === 1 || (t.flags[j] & WATER_FLAGS) !== 0; }
+  /** N1 E2 S4 W8 mask of the 4-neighbours for which pred(j) holds */
+  function nbrMask(t, i, tx, ty, pred) {
+    let m = 0;
+    if (ty > 0 && pred(t, i - W)) m |= 1;
+    if (tx < W - 1 && pred(t, i + 1)) m |= 2;
+    if (ty < HGT - 1 && pred(t, i + W)) m |= 4;
+    if (tx > 0 && pred(t, i - 1)) m |= 8;
+    return m;
+  }
+  const landAt = (t, j) => !waterTypeAt(t, j);
+  const surfAt = (t, j) => t.surface[j] > 0 && t.surface[j] !== SURF.FENCE;
+  let coveMask = null, coveState = null;
+  /** 1 on the cove's tiles (state.plot.cove): the only shore that gets a sand / shell beach; everything else is a mud bank */
+  function coveOf(state) {
+    if (coveState === state && coveMask) return coveMask;
+    coveMask = new Uint8Array(N); coveState = state;
+    try { const c = state.plot && state.plot.cove; if (Array.isArray(c)) for (let k = 0; k < c.length; k++) { const j = c[k] | 0; if (j >= 0 && j < N) coveMask[j] = 1; } } catch (e) { /* no plot */ }
+    return coveMask;
   }
   // ---------------------------------------------------------------------------
   // Smoothing pass — paths, roads and boardwalks as continuous centrelines
@@ -887,17 +924,37 @@
         const e = fin(elev[i], 0), ty8 = type[i], f = fl[i];
         const ep = Math.round(e * PXFT);                       // whole-pixel elevation: no sub-pixel seams between tiles
         const wx = (tx - ty) * 32 - ch.ox, wy = (tx + ty) * 16 - ep - ch.oy;
-        // (a) ground
-        let ref = sp.get('tile:' + ty8, sp.tileVariant(tx, ty), 0, 1);
+        // (a) ground (art pass B1: 8 noise variants; water beds carry bit 8 when shallow, so the cove bed reads sandy)
+        const isWaterTy = waterTypeAt(t, i);
+        let ref = sp.get('tile:' + ty8, sp.tileVariant(tx, ty) | (isWaterTy && fin(depth[i], 0) < 1.5 ? 8 : 0) | (ty8 === T.MARSH ? ((tx & 7) | ((ty & 7) << 3)) << 4 : 0), 0, 1);   // marsh: position bits → pools cross tile edges
         if (ref) blit1(g, ref, wx, wy);
+        if (!isWaterTy) {   // (a2) ground tint: world noise + height + slope, a warm or cool diamond at a small alpha
+          const k = groundTone(t, i, tx, ty, e), ka = Math.min(TONE_K.max, Math.abs(k));
+          if (ka > 0.015) { ref = sp.get(k > 0 ? 'tone:warm' : 'tone:cool', 0, 0, 1); if (ref) { g.globalAlpha = ka; blit1(g, ref, wx, wy); g.globalAlpha = 1; } }
+        }
         // (b) faces toward the S (lower-left edge) and E (lower-right edge) neighbours: ≥ 1 ft → the cliff sprite,
         //     smaller steps → a thin dark terrace band exactly as tall as the pixel step (no background shows through)
         if (ty < HGT - 1) { const d = ep - Math.round(fin(elev[i + W], 0) * PXFT); if (d >= 1) { if (d >= C.cliffMin) { ref = sp.get('cliff', clamp(d, C.cliffMin, C.cliffMax), 0, 1); if (ref) blit1(g, ref, wx, wy); } else stepFace(g, wx, wy, d, false, ty8); } }
         if (tx < W - 1) { const d = ep - Math.round(fin(elev[i + 1], 0) * PXFT); if (d >= 1) { if (d >= C.cliffMin) { ref = sp.get('cliff', clamp(d, C.cliffMin, C.cliffMax), 1, 1); if (ref) blit1(g, ref, wx, wy); } else stepFace(g, wx, wy, d, true, ty8); } }
         // (j) static faint water highlight on water tiles (always baked; pass 3 animates on top at 1×/2×)
         if ((f & WATER_FLAGS) || ty8 === T.OPEN_WATER || ty8 === T.BAYOU) { ref = sp.get('water', 0, 0, 1); if (ref) { g.globalAlpha = 0.35; blit1(g, ref, wx, wy); g.globalAlpha = 1; } }
+        // (c) art pass B1 shorelines: a land tile beside water gets a bank along the shared edges (sand / shell on the cove,
+        //     mud elsewhere); a water tile beside land gets static ripples under the live water
+        if (isWaterTy) { const lm = nbrMask(t, i, tx, ty, landAt); if (lm) { ref = sp.get('shore:ripple', lm, 0, 1); if (ref) { g.globalAlpha = 0.7; blit1(g, ref, wx, wy); g.globalAlpha = 1; } } }
+        else if (ty8 !== T.MARSH) {
+          const cv8 = coveOf(state);
+          if (cv8[i]) { ref = sp.get('shore:beach', 0, 0, 1); if (ref) { g.globalAlpha = 0.9; blit1(g, ref, wx, wy); g.globalAlpha = 1; } }   // the cove floor is a shell-sand beach
+          const wm = nbrMask(t, i, tx, ty, waterTypeAt);
+          if (wm) { const sandy = cv8[i] || (wm & 1 && cv8[i - W]) || (wm & 2 && cv8[i + 1]) || (wm & 4 && cv8[i + W]) || (wm & 8 && cv8[i - 1]); ref = sp.get(sandy ? 'shore:sand' : 'shore:mud', wm, 0, 1); if (ref) blit1(g, ref, wx, wy); }
+        }
         // (d) decorations
         if (ty8 === T.MARSH && (hash(tx, ty) % 100) < C.reedPct) { ref = sp.get('reeds', 0, hash(ty, tx) & 1, 1); if (ref) blit1(g, ref, wx + (hash(tx, ty + 9) % 24) - 12, wy + (hash(tx + 3, ty) % 8) - 4); }
+        if ((ty8 === T.DRY || ty8 === T.HIGH) && surf[i] === 0 && t.owner[i] < 0) {   // art pass B1: tufts, patches, wear beside paths
+          const hv = hash(tx * 3 + 1, ty * 5 + 2);
+          if ((hv % 100) < C.tuftPct) { const dx = ((hv >> 4) % 33) - 16, dy = ((hv >> 10) % 11) - 6; if (Math.abs(dx) / 32 + Math.abs(dy) / 16 <= 0.62) { ref = sp.get(ty8 === T.HIGH ? 'tuft:high' : 'tuft', hv & 3, 0, 1); if (ref) blit1(g, ref, wx + dx, wy + dy); } }
+          if ((hv % 100) >= 100 - C.patchPct) { const dx = ((hv >> 6) % 21) - 10, dy = ((hv >> 12) % 7) - 3; ref = sp.get(ty8 === T.HIGH ? (((hv >> 3) & 1) ? 'patch:lime' : 'patch:dirt') : (((hv >> 3) & 1) ? 'patch:clover' : 'patch:dirt'), (hv >> 5) & 3, 0, 1); if (ref) blit1(g, ref, wx + dx, wy + dy); }
+          if (nbrMask(t, i, tx, ty, surfAt)) { ref = sp.get('worn', 4 | (hv & 3), 0, 1); if (ref) { g.globalAlpha = 0.35; blit1(g, ref, wx, wy); g.globalAlpha = 1; } }
+        }
         if (ty8 >= T.MARSH && ty8 !== T.POND && nearCypress(i, tx, ty) && (fin(depth[i], 0) > 0.05 || ty8 === T.MARSH)) { ref = sp.get('knees', 0, 0, 1); if (ref) blit1(g, ref, wx + (hash(tx, ty + 17) % 20) - 10, wy + 2); }
         if (f & FLAG.DESIRE_WORN) { ref = sp.get('worn', 0, 0, 1); if (ref) blit1(g, ref, wx, wy); }
         // (f) canal cut (open gate variant baked; pass 3 overlays the live gate frame)
@@ -1060,16 +1117,38 @@
   // ---------------------------------------------------------------------------
   // Pass 3 — live water
   // ---------------------------------------------------------------------------
+  // art pass B1 — live water: depth tint, two wave bands (long swells drifting right, short ripples drifting left), sun glints
+  // coloured by the sky clock (white by day, gold at golden hour, silver under the moon), foam dashes along every edge that
+  // meets land, flecks around deck stilts, a current streak on the bayou and the river, a darker choppier surge.
+  // Nothing here allocates per frame: FOAM / GLINT tables are built once, colours come from waterColors().
+  const FOAM = (() => {
+    const a = new Float32Array(32), E = [[0, -16, 32, 0, -1, 2], [32, 0, 0, 16, -1, -2], [0, 16, -32, 0, 1, -2], [-32, 0, 0, -16, 1, 2]];   // edge N, E, S, W: x0 y0 x1 y1 inward-normal
+    for (let e = 0; e < 4; e++) for (let k = 0; k < 4; k++) { const tq = (k + 0.5) / 4, q = E[e], o = (e * 4 + k) * 2; a[o] = q[0] + (q[2] - q[0]) * tq + q[4] * 1.6; a[o + 1] = q[1] + (q[3] - q[1]) * tq + q[5] * 1.6; }
+    return a;
+  })();
+  const GLINT_COL = ['#FFD9C0', '#FFFFFF', '#FFE38A', '#FFB488', '#C9D8FF'], GLINT_A = [0.45, 0.55, 0.9, 0.4, 0.6];   // by SKY phase: dawn, day, golden, dusk, night
+  let WC = null;
+  function waterColors() {
+    if (WC) return WC;
+    const sp = S(), sh = sp.shade, mx = sp.mix, deep = PAL.waterNight || WATER_DEEP, day = PAL.waterDay || WATER_SHALLOW;
+    WC = { surge: sh(deep, 0.72), chopD: sh(deep, 0.45), chopL: mx(deep, '#B8C4BC', 0.4), current: sh(day, 1.25), band1: WATER_SHALLOW, band2: mx(WATER_SHALLOW, '#FFFFFF', 0.35), foam: '#E6F3EC', debris: '#5A4A3A' };
+    return WC;
+  }
   function waterPass(state, g) {
     const t = state.tiles, elev = t.elev, depth = t.depth, type = t.type, fl = t.flags;
     const z = zoomNow, w = TW * z, h = TH * z, step = z === 1 ? 1 : 2;
     const surgeOn = !!(state.hydro && state.hydro.surge);
-    const hyd = mod('hydro');
-    const cap = surgeOn ? C.waterCapSurge : C.waterCap;
-    const phase = info.phase, sparkle = (phase === SKY.DAY || phase === SKY.GOLDEN);
+    const hyd = mod('hydro'), te = mod('terrain');
+    const cap = surgeOn ? C.waterCapSurge : (z >= 1 ? C.waterCapZoom : C.waterCap);   // art pass B1: the detail zooms cover more of the river
+    const phase = clamp(info.phase | 0, 0, 4);
+    const glintCol = GLINT_COL[phase], glintA = GLINT_A[phase], glintW = phase === SKY.GOLDEN ? 2 : 1, glintEvery = phase === SKY.GOLDEN ? 2 : (phase === SKY.NIGHT ? 4 : 3);
     const lines = z >= 1;
-    const surgeColor = S().shade(PAL.waterNight || WATER_DEEP, 0.8), currentColor = S().shade(PAL.waterDay || WATER_SHALLOW, 1.2);
+    const wc = waterColors();
+    const deckArr = (curves && !curvesDirty) ? curves.deck : null;
     const camx = camera.x, camy = camera.y, hw = vw / 2, hh = vh / 2;
+    const phA = frameNo * 0.11, phB = frameNo * 0.07, fr3 = frameNo >> 3;
+    const hasBank = te && typeof te.bank === 'function';
+    let bankRow = -1, bankX = 99;
     waterDrawn = 0;
     g.globalCompositeOperation = 'source-over';
     for (let ty = view.y0; ty <= view.y1 && waterDrawn < cap; ty++) {
@@ -1088,26 +1167,63 @@
         let col = colorFor(WATER_SHALLOW, WATER_DEEP, q / 15, q);
         let a = 0.55 + 0.3 * clamp(d / 2, 0, 1);
         const reached = surgeOn && hyd && typeof hyd.surgeReached === 'function' && hyd.surgeReached(state, i) === true;
-        if (reached) { col = surgeColor; a = 0.85; }
+        if (reached) { col = wc.surge; a = 0.86; }
         g.globalAlpha = a; g.fillStyle = col;
         fillDiamond(g, sx, sy, w, h, step);
-        if (reached) { g.globalAlpha = 0.8; g.fillStyle = '#5A4A3A'; g.fillRect(Math.round(sx - 10 * z + (hash(tx, ty) % 16) * z), Math.round(sy - 3 * z + (hash(ty, tx) % 6) * z), 3 * z, z); g.fillRect(Math.round(sx + (hash(tx + 1, ty) % 12) * z), Math.round(sy + (hash(ty, tx + 1) % 5) * z), 2 * z, z); drawCalls += 2; }
+        const hv = hash(tx, ty);
+        if (reached) {   // surge: debris flecks and short chop strokes that jitter every 4 frames
+          const j = (frameNo >> 2) + tx;
+          g.globalAlpha = 0.8; g.fillStyle = wc.debris; g.fillRect(Math.round(sx - 10 * z + (hv % 16) * z), Math.round(sy - 3 * z + (hash(ty, tx) % 6) * z), 3 * z, z); g.fillRect(Math.round(sx + (hash(tx + 1, ty) % 12) * z), Math.round(sy + (hash(ty, tx + 1) % 5) * z), 2 * z, z);
+          g.globalAlpha = 0.55; g.fillStyle = wc.chopL; g.fillRect(Math.round(sx - 18 * z + ((hv >> 3) % 24) * z), Math.round(sy - 6 * z + ((j * 5 + hv) % 12) * z), 5 * z, z); g.fillRect(Math.round(sx - 4 * z + ((hv >> 7) % 20) * z), Math.round(sy - 2 * z + ((j * 3 + (hv >> 5)) % 9) * z), 4 * z, z);
+          g.globalAlpha = 0.6; g.fillStyle = wc.chopD; g.fillRect(Math.round(sx - 14 * z + ((hv >> 9) % 28) * z), Math.round(sy - 5 * z + 1 * z + ((j * 7 + (hv >> 2)) % 10) * z), 6 * z, z);
+          drawCalls += 5;
+        }
         if (lines && !reached) {
-          // two scrolling 1-px sine highlight lines (8 segments each, clipped to the diamond)
-          g.globalAlpha = 0.5; g.fillStyle = WATER_SHALLOW;
-          const ph = frameNo * 0.12 + (hash(tx, ty) & 7);
+          // band A: long swells drifting right; band B: shorter ripples drifting left, lower, fainter
+          g.globalAlpha = 0.42; g.fillStyle = wc.band1;
+          const oA = (hv & 7) * 3, oB = ((hv >> 3) & 7) * 2;
           for (let k = 0; k < 8; k++) {
-            const lx = -32 + k * 8 + 4, ly1 = -5 + 2 * Math.sin((k * 8 + ph * 4) / 16 * Math.PI * 2), ly2 = 5 + 2 * Math.sin((k * 8 + 8 + ph * 4) / 16 * Math.PI * 2);
-            if (Math.abs(lx) / 32 + Math.abs(ly1) / 16 <= 0.92) { g.fillRect(Math.round(sx + (lx - 4) * z), Math.round(sy + ly1 * z), 8 * z, z); drawCalls++; }
-            if (Math.abs(lx) / 32 + Math.abs(ly2) / 16 <= 0.92) { g.fillRect(Math.round(sx + (lx - 4) * z), Math.round(sy + ly2 * z), 8 * z, z); drawCalls++; }
+            const lx = -28 + k * 8, ly = -6 + 2.4 * Math.sin((lx + phA * 4 + oA) * 0.349);
+            if (Math.abs(lx) / 32 + Math.abs(ly) / 16 <= 0.9) { g.fillRect(Math.round(sx + (lx - 3) * z), Math.round(sy + ly * z), 6 * z, z); drawCalls++; }
           }
-          if (sparkle && ((tx * 7 + ty * 13) & (C.sparkleEvery - 1)) === 0 && ((frameNo >> 4) + tx) % 3 === 0) { g.globalAlpha = 0.5; g.fillStyle = '#FFFFFF'; g.fillRect(Math.round(sx - 16 * z + (hash(tx, ty) % 32) * z), Math.round(sy - 6 * z + (hash(ty, tx) % 12) * z), z, z); drawCalls++; }
+          g.globalAlpha = 0.3; g.fillStyle = wc.band2;
+          for (let k = 0; k < 6; k++) {
+            const lx = -20 + k * 8, ly = 5 + 1.6 * Math.sin((lx - phB * 4 + oB) * 0.523);
+            if (Math.abs(lx) / 32 + Math.abs(ly) / 16 <= 0.9) { g.fillRect(Math.round(sx + (lx - 2) * z), Math.round(sy + ly * z), 4 * z, z); drawCalls++; }
+          }
+          // sun / moon glints: colour and rate follow the sky clock
+          if (((tx * 7 + ty * 13) & (C.sparkleEvery - 1)) === 0 && ((fr3 + tx + ty) % glintEvery) === 0) { g.globalAlpha = glintA; g.fillStyle = glintCol; g.fillRect(Math.round(sx - 14 * z + (hv % 28) * z), Math.round(sy - 5 * z + ((hv >> 5) % 10) * z), glintW * z, z); drawCalls++; }
+          // foam dashes along the edges that meet land (marsh counts as land), blinking so they drift
+          let em = 0;
+          if (ty > 0 && !wetOf(t, i - W)) em |= 1;
+          if (tx < W - 1 && !wetOf(t, i + 1)) em |= 2;
+          if (ty < HGT - 1 && !wetOf(t, i + W)) em |= 4;
+          if (tx > 0 && !wetOf(t, i - 1)) em |= 8;
+          if (em) {
+            g.fillStyle = wc.foam;
+            for (let e = 0; e < 4; e++) {
+              if (!(em & (1 << e))) continue;
+              for (let k = 0; k < 4; k++) {
+                if (((fr3 + k + e + (hv >> 2)) % 3) === 0) continue;
+                const o = (e * 4 + k) * 2;
+                g.globalAlpha = 0.16 + 0.16 * Math.sin(frameNo * 0.09 + k * 1.7 + e + (hv & 15));
+                g.fillRect(Math.round(sx + (FOAM[o] - 1) * z), Math.round(sy + FOAM[o + 1] * z), 3 * z, z); drawCalls++;
+              }
+            }
+          }
+          if (deckArr && deckArr[i] === deckArr[i]) {   // flecks around the stilts of a deck over this tile
+            g.fillStyle = wc.foam;
+            for (let k = 0; k < 3; k++) { if (((fr3 + k + (hv >> 4)) & 3) === 0) continue; g.globalAlpha = 0.35; g.fillRect(Math.round(sx - 12 * z + ((hv >> (k * 3)) % 24) * z), Math.round(sy + 2 * z + ((hv >> (k * 2 + 1)) % 7) * z), 3 * z, z); drawCalls++; }
+          }
           if (f & FLAG.BAYOU) {   // the bayou current line along the direction of the next bayou tile
             const dirE = (tx < W - 1 && (fl[i + 1] & FLAG.BAYOU)) ? 1 : 0, dirS = (ty < HGT - 1 && (fl[i + W] & FLAG.BAYOU)) ? 1 : 0;
             const off = ((frameNo >> 1) + tx * 3) % 24 - 12;
-            g.globalAlpha = 0.35; g.fillStyle = currentColor;
+            g.globalAlpha = 0.35; g.fillStyle = wc.current;
             const cxp = sx + (dirE - dirS) * off * z * 1.0, cyp = sy + (dirE + dirS) * off * z * 0.5;
             g.fillRect(Math.round(cxp - 6 * z), Math.round(cyp), 12 * z, z); drawCalls++;
+          } else if (ty8 === T.OPEN_WATER && hasBank) {   // the river (east of the bank) runs south: a slower streak down-left
+            if (bankRow !== ty) { bankRow = ty; try { bankX = fin(te.bank(ty), 99); } catch (e) { bankX = 99; } }
+            if (tx > bankX) { const off = ((frameNo >> 2) + ty * 5 + (hv & 3)) % 24 - 12; g.globalAlpha = 0.28; g.fillStyle = wc.current; g.fillRect(Math.round(sx - off * z - 5 * z), Math.round(sy + off * z * 0.5), 10 * z, z); drawCalls++; }
           }
         }
         if (f & FLAG.FLOODGATE) {   // live floodgate frame (0 open → 3 closed; animated over 20 ticks from the gate:* event)
@@ -1279,14 +1395,14 @@
     info.bloom = info.month === 3 || (info.month === 4 && info.dom <= 10);
     info.perfMode = !!(state.ui && state.ui.perfMode);
     // design pass: ground shadows follow the sky clock — long and low at dawn/dusk, short at midday, faint moonlight at night;
-    // they fall down-left (the sprites are lit from the SE), sliding further out when the sun is low
+    // they fall down-RIGHT (art pass B1: the key light is at the upper-left, docs/ART_STYLE.md), sliding further out when the sun is low
     const t = clamp(fin(sky ? sky.t : (state.sky ? state.sky.t : 0.5), 0.5), 0, 1);
-    let sx = -0.9, sy = 0.42, len = 0.6, al = C.shadowAlpha;
-    if (info.phase === SKY.DAWN) { sx = -1; sy = 0.3; len = 1.1 - 0.3 * t; al = 0.14 + 0.08 * t; }
-    else if (info.phase === SKY.DAY) { const c = Math.abs(Math.cos(Math.PI * t)); sx = -(0.55 + 0.45 * c); sy = 0.45 - 0.1 * c; len = 0.4 + 0.5 * c; al = C.shadowAlpha; }
-    else if (info.phase === SKY.GOLDEN) { sx = -1; sy = 0.35; len = 0.9 + 0.3 * t; al = 0.24; }
-    else if (info.phase === SKY.DUSK) { sx = -1; sy = 0.3; len = 1.2; al = 0.16 * (1 - t) + 0.06 * t; }
-    else { sx = -0.6; sy = 0.45; len = 0.5; al = 0.07; }
+    let sx = 0.9, sy = 0.42, len = 0.6, al = C.shadowAlpha;
+    if (info.phase === SKY.DAWN) { sx = 1; sy = 0.3; len = 1.1 - 0.3 * t; al = 0.14 + 0.08 * t; }
+    else if (info.phase === SKY.DAY) { const c = Math.abs(Math.cos(Math.PI * t)); sx = (0.55 + 0.45 * c); sy = 0.45 - 0.1 * c; len = 0.4 + 0.5 * c; al = C.shadowAlpha; }
+    else if (info.phase === SKY.GOLDEN) { sx = 1; sy = 0.35; len = 0.9 + 0.3 * t; al = 0.24; }
+    else if (info.phase === SKY.DUSK) { sx = 1; sy = 0.3; len = 1.2; al = 0.16 * (1 - t) + 0.06 * t; }
+    else { sx = 0.6; sy = 0.45; len = 0.5; al = 0.07; }
     info.shX = sx * len; info.shY = sy * len; info.shAlpha = al;
   }
   /** entrance side for the sprite: SE (default) unless a path/road/boardwalk touches only the SW edge */
@@ -2167,6 +2283,8 @@
     const t0 = nowMs(); const timeBudget = firstFrame ? C.firstBakeMs : 0;
     const maxBakes = PR.chunkRebakesPerFrame || 2;
     bakesThisFrame = 0;
+    const smooth = z < 1 && !info.perfMode;   // art pass B1: a filtered 2:1 downsample at 0.5× (nearest sparkled the noisy ground); off in perf mode
+    if (smooth) g.imageSmoothingEnabled = true;
     if (curves && !curvesDirty && (frameNo % 30) === 7 && curves.deckCount > 0 && stageRefOf(state) !== curves.stageRef) { curvesDirty = true; M.dirtyAll(); }
     for (let s = 0; s <= 14; s++) {
       for (let cx = Math.max(0, s - 7); cx <= Math.min(7, s); cx++) {
@@ -2182,6 +2300,7 @@
         g.drawImage(ch.canvas, 0, 0, CW, CHH, Math.round(dx), Math.round(dy), Math.round(cw), Math.round(chh)); drawCalls++;
       }
     }
+    if (smooth) g.imageSmoothingEnabled = false;
     if ((frameNo % 60) === 0) evictChunks();
   }
   /** passes 2–9 on context g (shared by frame and renderInto) */

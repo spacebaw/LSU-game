@@ -467,7 +467,10 @@
   // ---------------------------------------------------------------------------
   // Pass 7: lights (additive sprites on the offscreen composite; skipped by Day)
   // ---------------------------------------------------------------------------
-  function pushLight(kind, x, y, r, a, rot) { if (lightsN >= lightsList.length) return null; const L = lightsList[lightsN++]; L.kind = kind; L.x = x; L.y = y; L.r = r; L.a = a; L.rot = rot || 0; return L; }
+  function pushLight(kind, x, y, r, a, rot) { if (lightsN >= lightsList.length) return null; const L = lightsList[lightsN++]; L.kind = kind; L.x = x; L.y = y; L.r = r; L.a = a; L.rot = rot || 0; L.refl = 0; return L; }
+  // art pass B1: a lamp beside water (its S or E neighbour is wet) mirrors as a stretched, fainter pool on the water
+  function wetBelow(state, i) { const tx = i & 63, ty = i >> 6; return (ty < HGT - 1 && isWaterTile(state, i + W)) || (tx < W - 1 && isWaterTile(state, i + 1)); }
+  function pushReflection(x, y, z, a) { const L = pushLight('lamp', x, y + 14 * z, 0.9, a, 0); if (L) L.refl = 1; return L; }
   function lightsCtxFor(view) {
     const c = R.composites && R.composites.lights; if (!c || typeof c.getContext !== 'function') return null;
     if (c !== lightsCanvasRef) { lightsCanvasRef = c; try { lightsCtx = c.getContext('2d'); } catch (e) { lightsCtx = null; } }
@@ -483,13 +486,13 @@
     // streetlamps
     try {
       const lamps = te && typeof te.streetlamps === 'function' ? te.streetlamps(state) : null;
-      if (lamps && lamps.length) for (let k = 0; k < lamps.length && lightsN < LMAX; k++) { const i = lamps[k] | 0; const tx = i & 63, ty = i >> 6; if (tx < view.x0 - 1 || tx > view.x1 + 1 || ty < view.y0 - 1 || ty > view.y1 + 1) continue; const p = R.tilePx(i); if (inScreen(p.x, p.y)) pushLight('lamp', p.x, p.y - 14 * z, 1, 0.95, 0); }
+      if (lamps && lamps.length) for (let k = 0; k < lamps.length && lightsN < LMAX; k++) { const i = lamps[k] | 0; const tx = i & 63, ty = i >> 6; if (tx < view.x0 - 1 || tx > view.x1 + 1 || ty < view.y0 - 1 || ty > view.y1 + 1) continue; const p = R.tilePx(i); if (inScreen(p.x, p.y)) { pushLight('lamp', p.x, p.y - 14 * z, 1, 0.95, 0); if (wetBelow(state, i)) pushReflection(p.x, p.y, z, 0.4); } }
     } catch (e) { /* no terrain */ }
     // bridge pass: the lamps on decks over water (boardwalk / road bridge / Pedestrian Bridge), at deck height
     try {
       const cv = R.curves && typeof R.curves.current === 'function' ? R.curves.current() : null, L = cv && cv.lamps;
       const dark = typeof R.curves.overtopped === 'function' ? R.curves.overtopped : null;
-      if (L && L.length) for (let k = 0; k < L.length && lightsN < LMAX; k++) { const q = L[k]; if (dark && dark(q.i)) continue; if (q.x < view.x0 - 1 || q.x > view.x1 + 1 || q.y < view.y0 - 1 || q.y > view.y1 + 1) continue; const p = R.tileToScreen(q.x, q.y, q.ft); if (inScreen(p.x, p.y)) pushLight('lamp', p.x, p.y - 2 * z, 1, 0.9, 0); }
+      if (L && L.length) for (let k = 0; k < L.length && lightsN < LMAX; k++) { const q = L[k]; if (dark && dark(q.i)) continue; if (q.x < view.x0 - 1 || q.x > view.x1 + 1 || q.y < view.y0 - 1 || q.y > view.y1 + 1) continue; const p = R.tileToScreen(q.x, q.y, q.ft); if (inScreen(p.x, p.y)) { pushLight('lamp', p.x, p.y - 2 * z, 1, 0.9, 0); pushReflection(p.x, p.y + 4 * z, z, 0.45); } }
     } catch (e) { /* no curves */ }
     // dug canals: a cool water highlight on every visible CANAL tile so the cut (and the canal objective, which
     // can be offered after Dusk) reads at night — ≤ 64 per frame, nearest-first like everything else
@@ -510,7 +513,7 @@
         if (e.kind === 'building' && e.b) {
           const b = e.b, v = e.variant | 0, span = (b.w | 0) + (b.h | 0);
           const cx = e.sx + ((b.h | 0) - (b.w | 0)) * 16 * z, cy = e.sy - (span - 2) * 8 * z;
-          if (v & SPR.NIGHT) { const L = pushLight('window', cx, cy - (10 + span * 3) * z, 1.6 + 0.7 * span, 0.9, 0); if (L) L.d = 1; }
+          if (v & SPR.NIGHT) { const L = pushLight('window', cx, cy - (10 + span * 3) * z, 1.6 + 0.7 * span, 0.9, 0); if (L) L.d = 1; if (v & SPR.PILINGS) pushReflection(cx, cy + (span * 4) * z, z, 0.3); }
           if (b.type === 'bell_tower' && b.built >= 1 && !b.ruin) pushLight('beacon', cx, cy - 78 * z, 2.2 + 0.4 * Math.sin(frameNo * 0.05), prestige, 0);
           else if (b.type === 'water_tower' && b.built >= 1 && !b.ruin && (((frameNo / 60) | 0) & 1) === 0) pushLight('blink', cx, cy - 64 * z, 1.5, 1, 0);
           else if (b.type === 'substation' && (v & SPR.NIGHT) && (frameNo % 180) < 6) pushLight('arc', cx, cy - 10 * z, 2.5, 1, 0);
@@ -553,7 +556,7 @@
         const L = lightsList[k], ref = lightRef(L.kind); if (!ref) continue;
         const w = ref.sw * L.r * z, h = ref.sh * L.r * z;
         if (L.kind === 'mast') { lg.save(); lg.translate(L.x, L.y); lg.rotate(L.rot); lg.globalAlpha = L.a; lg.drawImage(ref.canvas, ref.sx, ref.sy, ref.sw, ref.sh, -w / 2, 0, w, h); lg.restore(); continue; }
-        if (L.kind === 'lamp') { drawRef(lg, ref, L.x, L.y + 10 * z, w * 3.2, h * 1.6, L.a * 0.55); drawRef(lg, ref, L.x, L.y, w, h, L.a); continue; }   // pool on the ground + the core
+        if (L.kind === 'lamp') { if (L.refl) { drawRef(lg, ref, L.x, L.y, w * 0.9, h * 2.8, L.a * 0.6); continue; } drawRef(lg, ref, L.x, L.y + 10 * z, w * 3.2, h * 1.6, L.a * 0.55); drawRef(lg, ref, L.x, L.y, w, h, L.a); continue; }   // pool on the ground + the core; refl = a mirrored smear on water
         if (L.kind === 'window') { drawRef(lg, ref, L.x, L.y + 16 * z, w * 2.2, h * 1.2, L.a * 0.35); drawRef(lg, ref, L.x, L.y, w, h, L.a); continue; }
         if (L.kind === 'canal') { drawRef(lg, ref, L.x, L.y, w * 2.3, h * 1.15, L.a); continue; }   // stretched 2:1 over the tile diamond
         drawRef(lg, ref, L.x, L.y, w, h, L.a);

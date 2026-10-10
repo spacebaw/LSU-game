@@ -480,3 +480,67 @@ Josh's playtest note (with a screenshot of a boardwalk crossing the bayou, plank
 - **Drag rules (buildings.js `dragTileRule` PLACE.BRIDGE, `pedBridgeOk`)** — water only ('Bridges go over water'), 'Occupied' / 'Already a bridge'; every water segment of the run must reach land at both ends (a land tile in the run, or land / an existing bridge just off the run) or 'Both ends must reach land'; a single click extends an existing bridge or starts beside the bank. A land tile inside a drag run is a LANDING (`r.landing`, cost 0 in the ghost): `placeRun` lays a gravel path on a bare landing at the path's own price in the same undo record, so the deck meets the land (the tour's first bridge hooked sideways to a nearby path before this). Refund, upkeep (`per.bridge`), `stats.bridges`, the surge-barrier run's 'Occupied' tolerance and `applyDragTile` know the surface.
 - **Tests** — `contract.test` 44 ids / `SURF.BRIDGE` / `PLACE.BRIDGE`; `data.test` 44 rows + the bridge row's numbers, tab position and requirement line; `data.selfTest` 44 rows, 16 `requirements.place` entries; `buildings.test` +14 (land refused, mid-channel refused, $45k beside the bank, a landless run refused with the plain reason, a land-to-land run = 3 bridge tiles + 2 gravel landings for $139k, SURF.BRIDGE on the water tiles, walkable, +$900 upkeep, 'Already a bridge', a path still refused on water, extending an existing bridge, undo clears and refunds); `render.test` +12 (deck 1.5 / 4 / 6 ft + the symmetric arch, nine deck tiles, the shoreline steps keyed on the marsh tiles with `deck: true`, no steps inside the deck run, the bridge polyline edge to edge into its paths, ramp records on both path tiles, one lamp per 3-tile run, the exposed helpers); `sprites.selfTest` warms / needs `surf:5`.
 - **Not changed, noted:** road spans still need dry land to continue on (every seed-42 bank is marsh, so the tour's road span is a 3-tile deck to nowhere with round caps — `bridge-05/06`); a far-edge boardwalk post is not drawn (hidden behind the deck anyway); the surge screenshots are dark (storm tint + landfall rain), the overtopped boardwalk reads mostly as its lamps going out and the walk grid flipping to 0; the fallback `surf:5` stamp is only the palette icon / ghost. Next: a drag ghost at deck elevation, a pedestrian bridge over a canal cut, and a boat-clearance rule for pirogues under low decks.
+
+## art pass B1
+
+Josh's note: "upgrade the art quality across the board; improve fidelity of art for all elements." B1 is the foundation
+(docs/ART_STYLE.md — light, 5-tone ramps, outline/dither/noise rules, accents, night/lights interaction, the zoom
+mechanism, a checklist) plus the most-seen layer: terrain and water. Real-Chrome tour (`art_tour.mjs` / `art_detail.mjs`
+in the scratchpad, 1280×800, seed 42 skipTutorial; `art1-NN-before/after-*.png`): campus ridge 1×, bayou/marsh 2×, cove
+2×, whole map 0.5×, night 1×, golden hour 1×, Cat 3 landfall surge 1×, plus river bank 2×, cove beach 2×, flood overlay,
+marsh shore 2×, 0.5× chunk seams. Zero console errors / uncaught exceptions. Later passes read the guide first.
+
+- **Mechanism for 2× / 0.5× (ART_STYLE §6): paint per zoom with shared ramps.** Painters stay in 1× units through the
+  pen; the 2× entry is the same master at 2 device px per art px (crisp pixel-double, built lazily by `get(…, 2)`), 0.5×
+  draws the 1× entry at half size and `chunkPass` turns `imageSmoothingEnabled` on for the ground at 0.5× (box filter —
+  nearest-neighbour sparkled the new noisy ground; off under `perfMode`; set once per pass). The ground chunk stays 1×.
+  Not done: chunks baked at scale 2 (the deck windows, clip hexes and curve transforms are all in 1× chunk px).
+- **sprites.js** — `RAMPS` / `ramp(name)` / `makeRamp(base)` (13 materials, cool `#2B2550` shadows, warm `#FFE0A0`
+  highlights; the hexes are tabulated in ART_STYLE §2), `vnoise` (smooth value noise), `pnoise` (periodic, for tiles that
+  sample one field by map position), `bayer` / `toneAt` (4×4 ordered dither over ramp thresholds). `tile` painter
+  rewritten: 8 variants (`tileVariant` = hash % 8), noise-driven tones from the type's ramp, the outer 16 % of the
+  diamond pulled to the base tone so neighbours meet seamlessly, **no facet rims** (they were the grid); Dry grass with
+  tufts, clover and dirt patches; High ground sandier with limestone outcrops; Wet with mud mottling and puddle glints;
+  Marsh with standing-water pools, mud edges, reed clumps and lily pads — the marsh samples a **periodic field by map
+  position** (variant bits 4–9 = `tx & 7 | (ty & 7) << 3`, 256×128 px periods) so pools cross tile edges; Drained as
+  dusty cracked mud with a drying puddle and dead reed stubs; water beds stay teal (deep = waterDeep ramp, bayou lighter,
+  bit 8 = shallow sandy bed with ripples, pond algae). `cliff` rewritten: topsoil, clay strata with wobble, a limestone
+  seam on faces ≥ 24 px, roots, stones, a ragged grass overhang (faces ≥ 10 px), south face one tone lighter than east.
+  New families: `tuft[:high]`, `patch:clover|dirt|lime`, `shore:sand|mud|ripple` (edge mask) and `shore:beach` (the cove
+  floor), `tone:warm|cool`; `worn` bit 4 = dirt tones; `reeds` / static `water` restyled from the ramps. init warms the
+  new entries; selfTest checks them.
+- **render.js** — `bakeChunk`: shallow-bed and marsh position bits on the ground id; `groundTone` (world noise cell 5
+  tiles ± .10, height .013/ft, slope .05/ft toward the upper-left light) drawn as a `tone:` diamond at ≤ .28 alpha; shore
+  sprites (sand only on / beside `state.plot.cove` tiles — the cove is a WET hollow, not open water — mud everywhere else;
+  ripples on the water side); tufts (`C.tuftPct` 34), patches (`C.patchPct` 5) and `worn|4` at .35 beside paths on open
+  Dry/High tiles without a surface or owner. `stepFace`: ramp shadow / deep tones per face and a .55-alpha lit lip along
+  the south terrace edge. `gatherInfo`: shadows now fall **down-right**. `waterPass`: band A swells drift right, band B
+  ripples drift left; glints by sky phase (`GLINT_COL`: day white, golden gold 2 px, night moon-silver); foam dashes on
+  edges that meet land/marsh (`FOAM` table, blinking); flecks around deck stilts; river current east of `terrain.bank(ty)`;
+  surge chop strokes; `waterColors()` cached, nothing allocated per frame; `C.waterCapZoom` 420 at 1×/2× (300 left ~a
+  third of the river uncovered at 1×, which is why the baked bed must look like water).
+- **render_fx.js** — `pushReflection`: lamps with water to the S/E, every deck lamp and pilings windows push a `lamp`
+  light with `refl = 1`, drawn as a 0.9×/2.8× stretched 60 % smear (additive, so it only shows on the dark water).
+- **sprites_buildings.js** — `wallTones`: left (SW) 0.92 / right (SE) 0.78 (was the reverse): the lit face is now the SW
+  one, matching the guide, the cliffs and the shadows. B3 keeps this.
+- **Before / after (same camera):** ridge 1× — flat two-tone grass with a faint diamond grid → mottled grass with
+  tufts/patches, strata on the bank, a shell-sand cove, a deep river with glints; bayou 2× — speckled brown marsh and
+  flat teal → pools with lily pads crossing tiles, reed clumps, mud banks, two wave bands; cove 2× — grid visible in
+  the lawn → no grid, path-side wear, roots on the terraces; map 0.5× — sparkly nearest-neighbour ground → filtered;
+  night 1× — unchanged mood, moon-silver glints; golden 1× — warm ramps read, sandy cove; surge 1× — darker, choppier
+  water under the landfall rain.
+- **Numbers (headless Chrome, software canvas):** chunk bake 0.29 → 0.53 ms per chunk (≤ 2×); rAF fps 61 → 61 at 1× and
+  61 → 60/61 at 0.5× (whole map); `headless.render()` frame 2.9 ms at 1×, 2.3 ms at 2×, 8.6–13 ms at 0.5× of which the
+  smoothing is ~2.5–4 ms (free on a GPU canvas; perf mode drops it); atlas `memoryMB` 22.2 → 26.7 MB after the tour
+  (the marsh's 64 positional variants at 1× and 2×, the shores), `perf().memMB` 89.5 → 93.9; draw calls unchanged.
+  `CANVAS_LIMIT_MB` (8) remains the GC trigger, not a cap — it was already 22 MB in a live game before B1.
+- **Tests** — `sprites.test` +12 (8 variants, shallow bit, 13 ramps with rising luminance, `vnoise` range/smoothness,
+  tuft/patch/shore/tone sizes, `worn|4`); `sprites.selfTest` warms/needs the new families; all other suites unchanged
+  and green; `node tools/api-index.mjs` regenerated.
+- **Not changed, noted:** the surge screenshots are still dominated by the landfall rain; the `water` static sheen is
+  baked at .35 under the live pass as before; marsh tiles beside water get no mud band (they are mud); the lip on the
+  east terrace edge is omitted on purpose (shadow side). **B2 should pick up from the guide:** canopies from the grass /
+  reed ramps (3–4 leaf tones = indices 1–4), bark from the `bark` ramp with a tone-0 outline, moss from `reed`[3–4],
+  cypress knees on marsh pools (sample `pnoise` with the tile's position bits to land them on water), azalea blossoms
+  as an accent ramp from `makeRamp(PAL.azalea)`, tufts/patches already occupy open grass (plant over them), and tree
+  shadows now fall down-right.
