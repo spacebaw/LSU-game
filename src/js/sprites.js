@@ -1541,7 +1541,7 @@
       for (let i = 0; i < 50; i++) { const v = tileVariant(i * 7, i * 3); check(v >= 0 && v <= 7 && v === tileVariant(i * 7, i * 3), 'tileVariant stable/in range'); }
       // 3. agentLook packing and distribution
       let sh = [0, 0, 0];
-      for (let s = 0; s < 1000; s++) { const l = M.agentLook(s); const skin = l & 7, hair = (l >> 3) & 7, shirt = l >> 6; check(skin < 6 && hair < 8 && shirt < 3, 'agentLook fields'); sh[shirt]++; }
+      for (let s = 0; s < 1000; s++) { const l = M.agentLook(s); const skin = l & 7, hair = (l >> 3) & 7, shirt = (l >> 6) & 3; check(skin < 6 && hair < 8 && shirt < 3, 'agentLook fields (art pass B4: bits 9+ carry outfit, hair style, carry, hat, build)'); sh[shirt]++; }
       check(Math.abs(sh[0] - 550) <= 50 && Math.abs(sh[1] - 250) <= 50 && Math.abs(sh[2] - 200) <= 50, 'shirt distribution 55/25/20 ±5 (got ' + sh.join('/') + ')');
       // 6. every terrain-side id resolves with the documented sizes
       for (let t = 0; t < 8; t++) for (let v = 0; v < 8; v++) { const e = need('tile:' + t, v); check(e && e.sw === 64 && e.sh === 32 && e.ox === -32 && e.oy === -16, 'tile size/anchor'); }
@@ -1567,7 +1567,7 @@
       for (let v = 0; v < 4; v++) { const r = need('shrub', v); check(r.sw === 22 && r.sh === 12, 'shrub ' + v); const o = need('oak', 2 | (v << 4)); check(o.sw === 96 && o.sh === 56, 'oak silhouette ' + v); }
       check(need('knees', 63).sw === 64 && need('knees', 63).sh === 32, 'knees tile overlay');
       // 7. frame totals and wrapping
-      check(M.frames('agent') === 16 && M.frames('agent:idle') === 8 && M.frames('gator') === 6 && M.frames('reeds') === 2 && M.frames('decal:crane') === 4, 'frame table');
+      check((painters.agent ? M.frames('agent') === 64 && M.frames('agent:idle') === 24 && M.frames('gator') === 80 : M.frames('agent') === 16 && M.frames('agent:idle') === 8 && M.frames('gator') === 6) && M.frames('reeds') === 2 && M.frames('decal:crane') === 4, 'frame table (art pass B4: 8 facings × n for agents and gators once sprites_entities is loaded)');
       const r1 = M.get('reeds', 0, 3, 1), r2 = M.get('reeds', 0, 1, 1); check(r1 === r2, 'frame wraps modulo frames(id)');
       check(M.get('tile:3', -5, 0, 1) === M.get('tile:3', 0, 0, 1), 'negative variant clamps to 0');
       // 9. unknown ids: null, never a throw
@@ -1586,7 +1586,7 @@
         for (let t = 1; t <= 3; t++) need('stadium', t << SPR.TIER_SHIFT, 0, 'stadium tier ' + t);
         need('practice_field', 1 << SPR.TIER_SHIFT, 0, 'practice_field tier 1'); need('dorm', SPR.BOARDED, 0, 'dorm BOARDED');
         const d = M.get('dorm', 0, 0, 1); check(d && d.sw === 5 * 32 + 4 && d.ox === -(3 * 32) - 2 && d.oy + d.sh >= 16, '3×2 building geometry');
-        if (painters.agent) check(M.get('agent', 0, 17, 1) === M.get('agent', 0, 1, 1), 'agent frame 17 wraps to 1');
+        if (painters.agent) check(M.get('agent', 0, M.frames('agent') + 1, 1) === M.get('agent', 0, 1, 1), 'agent frame total + 1 wraps to 1');
       } else notes.push('building/entity painters not loaded: their checks skipped');
       for (const fn of M._tests) { try { const r = fn(); if (r && r.ok === false) fail('split test: ' + (r.notes || '')); } catch (e) { fail('split test threw: ' + (e && e.message)); } }
     } catch (e) { notes.push('threw: ' + (e && e.message)); return { ok: false, notes: notes.join('; ') }; }

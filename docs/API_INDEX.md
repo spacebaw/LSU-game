@@ -424,7 +424,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - progress.selfTest()
 
 ## BSU.render
-- values: drawList:array[0], alpha:number, frameNo:number, hoverTile:number, squash:object, titleDrift:boolean, _tests:array[1], teesEnabled:boolean, particleColors:array[16], particles:object, hitStopUntil:number, camera:object, ctx:object, canvas:object, view:object, ghostSpec:object, flashes:array[0], composites:object, overlayFadeStart:number, curves:object, fbEnabled:boolean, lightsList:array[258]
+- values: drawList:array[0], alpha:number, frameNo:number, hoverTile:number, squash:object, titleDrift:boolean, _tests:array[1], teesEnabled:boolean, particleColors:array[16], particles:object, hitStopUntil:number, camera:object, ctx:object, canvas:object, view:object, ghostSpec:object, flashes:array[0], composites:object, overlayFadeStart:number, curves:object, fbEnabled:boolean, lightsList:array[306], fxOpts:object
 - render.sortKey(ax, ay, elev, rank)
 - render.chunkOrigin(cx, cy)
 - render.variantOf(b, ci)
@@ -475,6 +475,10 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - render.init(state)
 - render.reset(state, fresh)
 - render.selfTest()
+- render.groundFx(state, g, pool, n, info)
+- render.entityFx(e, g)
+- render._fxPuddleWet(v)
+- render.fxStats()
 - render.crowd(g, rect, fill, wave, rain)
 - render.cone(state)
 - render.onPerfMode()
@@ -485,6 +489,8 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - render.rainLineCount(rainRate, zoom, perf)
 - render.lightsCount()
 - render.nightAmount(state)
+- render.mistFor(phase, t)
+- render.addShell(wx, wy, z0, z1, scale)
 
 ## BSU.rng
 - values: world:object, sim:object, fx:object
@@ -572,7 +578,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - sports.selfTest()
 
 ## BSU.sprites
-- values: palette:object, CANVAS_LIMIT_MB:number, ZOOM2:boolean, GC_FRAMES:number, TILE_W:number, TILE_H:number, PX_PER_FT:number, extra:object, RAMPS:object, RAMP_BASES:object, COOL_TINT:string, WARM_TINT:string, TH_GROUND:array[4], FONT:object, _tests:array[2], FRAMES:object, DIRS:array[4], EXTRA_DECALS:object, decalPainters:object, LIGHTS:object, TREE_SIL_SHIFT:number, TREE_WATER:number, extraBuildings:object, APRON:object, materials:object, FEATURES:array[23], roofs:object, entityConst:object, entityColors:object, _buf:object, SHEET_LIMIT_MB:number, animFrames:object, entityFrames:object, _gcWrapped:boolean, fbFrames:object, fbSizes:object, fbPoses:object, fbRoles:array[5], fbCompose:object, _initWrappedEntities:boolean, entitySizes:object
+- values: palette:object, CANVAS_LIMIT_MB:number, ZOOM2:boolean, GC_FRAMES:number, TILE_W:number, TILE_H:number, PX_PER_FT:number, extra:object, RAMPS:object, RAMP_BASES:object, COOL_TINT:string, WARM_TINT:string, TH_GROUND:array[4], FONT:object, _tests:array[2], FRAMES:object, DIRS:array[4], EXTRA_DECALS:object, decalPainters:object, LIGHTS:object, TREE_SIL_SHIFT:number, TREE_WATER:number, extraBuildings:object, APRON:object, materials:object, FEATURES:array[23], roofs:object, entityConst:object, entityColors:object, _buf:object, SHEET_LIMIT_MB:number, _gcWrapped:boolean, fbFrames:object, fbSizes:object, fbPoses:object, fbRoles:array[5], fbCompose:object, stuAnims:object, _bake:object, animFrames:object, vehCompose:object, entFrames:object, entityFacings:number, _initWrappedEntities:boolean, entitySizes:object, entityCells:object
 - sprites.hex(h)
 - sprites.rgb(r, g, b)
 - sprites.shade(h, k)
@@ -639,11 +645,6 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - sprites.sheetMemoryMB()
 - sprites.sheetCount()
 - sprites.totalMemoryMB()
-- sprites.agentFrame(anim, dir, f)
-- sprites.agentId(anim)
-- sprites.agentCell(anim)
-- sprites.gatorFrame(mode, f)
-- sprites.composeAgent(anim, look, dir, f, uniform)
 - sprites.gcSheets(frame)
 - sprites.clearSheets()
 - sprites.fbLook(a)
@@ -657,6 +658,31 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - sprites.fbSize(id)
 - sprites.fbWarm(look, zoom, role)
 - sprites.fbSheetBytes()
+- sprites.lookFields(look)
+- sprites.lookPack(o)
+- sprites.stuFar(anim, look, dir, k)
+- sprites.stuCompose(anim, look, dir, f, ov)
+- sprites.stuStyle(look)
+- sprites.sheetStats()
+- sprites.pumpBakes(all)
+- sprites.bakeStats()
+- sprites.agentId(anim, a, zoom)
+- sprites.agentCell(anim)
+- sprites.agentFrame(anim, dir, f, a, zoom, tick)
+- sprites.gatorCompose(v, dir, k)
+- sprites.rouxCompose(dir, k)
+- sprites.nutriaCompose(dir, f)
+- sprites.wrangleCompose(dir, f)
+- sprites.birdCompose(kind, dir, f)
+- sprites.gatorEyes(v, frame)
+- sprites.head8(m, fallback)
+- sprites.gatorFrame(st, f, ga, lunge)
+- sprites.officerFrame(o, tick, wrangle)
+- sprites.vehicleFrame(id, v, tick)
+- sprites.paradeFrame(kind, tick, facing)
+- sprites.rouxFrame(r, tick)
+- sprites.birdFrame(kind, k, tick, d8, flying)
+- sprites.critterFrame(kind, frame, d8)
 - sprites.initEntities()
 - sprites.entitiesSelfTest()
 
@@ -1138,15 +1164,15 @@ sprite: 12×20, 6 skin × 8 hair × shirt 55/25/20, backpack, props, anims), §6
 implement the brief's oak/cypress/palmetto/azalea line by line, so they are
 KEPT rather than re-registered; this file asserts their sizes/anchors).
 What lives here:
-  * a tiny pixel-buffer toolkit (compose → outline → mirror → blit) so every
-    figure gets a per-material 1-px outline and pixel-exact mirrored directions
-    (dirs 1 and 2 are the horizontal mirrors of dirs 0 and 3; agents.js shares
-    the convention: 0 = +tx (down-right), 1 = +ty (down-left), 2 = −tx, 3 = −ty);
-  * the agent figure generator (walk/idle/flee/splash/slap/cheer/sit/wave/tube/
-    umbrella/cap/beads/foam + Tier 2 selfie/binoculars) baked lazily as ONE sheet
-    canvas per (look, anim, zoom) — the core's SpriteRef sx/sw sub-rect hands
-    frames back without a canvas per frame;
-  * the officer (walk sheet + wrangle), the Bayou Brass `band`, the walking `krewe`;
+  * a tiny pixel-buffer toolkit (compose → ramp outline → blit) and the lazily baked sheet machinery (one canvas per
+    (family, anim, look, facing, zoom); a per-frame bake budget hands out the default student's sheet while a look queues);
+  * the football skeleton rig (pass E): joints → two-bone IK → yaw → projection → depth buffer, 8 real facings;
+  * art pass B4 (characters), on the same rig: students (15 anims × 8 facings, 112 pooled looks with 6 skin tones, 16 outfits,
+    6 hair styles, hats, carried items), the Wildlife Officer (and his wrangle scene), the Bayou Brass and the krewe; gators
+    (3 sizes × swim / walk / bask / lunge), Roux on all fours, the nutria, egrets and spoonbills (stand, preen, flap); the
+    fogger truck with its plume start, the bus, pirogues and Cajun Navy boats with paddlers, four parade floats;
+  * the frame API render calls (agentFrame, gatorFrame, officerFrame, vehicleFrame, rouxFrame, birdFrame, paradeFrame,
+    critterFrame): every directional sprite is frame = facing × per + k with facing the football fbDir octant;
 
 ## render.js
 'use strict';

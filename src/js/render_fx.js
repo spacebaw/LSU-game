@@ -133,7 +133,6 @@
   const rainPos = new Float32Array(RAIN_N * 2); let rainSeeded = false, rainRamp = 0;
   const bolt = new Float32Array(24); let boltN = 0, flashUntil = 0, boltUntil = 0, boltTipX = 0, boltTipY = 0;
   const fogBlobs = []; for (let k = 0; k < 8; k++) fogBlobs.push({ x: 0, y: 0, r: 1, vx: 0, ph: 0 });
-  const wisps = []; for (let k = 0; k < 22; k++) wisps.push({ tx: -1, ty: -1, ox: 0, oy: 0, s: 1, ph: 0, ttl: 0 });
   let fogSprite = null, fogSpriteTried = false, lightsCtx = null, lightsCanvasRef = null;
   let stormPhase = -1, godRayUntil = -1, goldFlash = 0, burstsPending = 0, burstTimer = 0, perfChipUntil = 0, subscribed = false, inited = false;
   let frameNo = 0, lastFrameNo = -1;
@@ -141,7 +140,7 @@
   const lightRefs = {};        // kind → SpriteRef (refreshed per frame)
   const LIGHT_KINDS = ['lamp', 'window', 'mast', 'beacon', 'blink', 'arc', 'glow', 'pot', 'fire', 'firefly', 'eye', 'canal'];
   const LMAX = PR.lightsMax || 250;
-  const lightsList = []; for (let k = 0; k < LMAX + 8; k++) lightsList.push({ kind: 'lamp', x: 0, y: 0, r: 1, a: 1, rot: 0, d: 0 });
+  const lightsList = []; for (let k = 0; k < LMAX + 8 + 48; k++) lightsList.push({ kind: 'lamp', x: 0, y: 0, r: 1, a: 1, rot: 0, d: 0 });
   let lightsN = 0;
   R.lightsList = lightsList;
   const TINTS = {};
@@ -193,6 +192,429 @@
   function drawRef(g, ref, cx, cy, w, h, a) { if (!ref || !ref.canvas) return; g.globalAlpha = a; g.drawImage(ref.canvas, ref.sx, ref.sy, ref.sw, ref.sh, cx - w / 2, cy - h / 2, w, h); }
 
   // ---------------------------------------------------------------------------
+  // art pass B5 — effects and atmosphere (docs/ART_STYLE.md §1 and §5; INTEGRATION_NOTES "art pass B5").
+  // Contact AO under trees and after each building's sprite (render hooks `groundFx` / `entityFx`), 2-frame rain
+  // splashes on paved ground, aprons, decks and water, puddles that fill during long rain and dry after, boil-pot
+  // steam, vent and heat shimmer, firework shells with trails and bloom. Everything is preallocated (typed arrays,
+  // fixed pools): nothing allocates per frame. `R.fxOpts` switches each part off (perf A/B, tests); perf mode drops
+  // the AO and the puddles first, then halves the splashes.
+  // ---------------------------------------------------------------------------
+  const SURF = BSU.SURF || {};
+  const TAU = Math.PI * 2;
+  const FXO = { ao: true, puddles: true, splashes: true, steam: true, shimmer: true, fireworks: true, fog: true, haze: true, reflect: true };
+  R.fxOpts = FXO;
+  let fxZoom = 1, fxCamRef = null, fxViewRef = null, aoOn = false, fxPerf = false, aoA0 = 0.23, aoA1 = 0.13, aoSEWide = false, effRainFx = 0;
+  const AO_COL = '#171030';       // the cool shadow tint, darker than the 20 % ground-shadow tint it sits in
+  // --- contact AO ----------------------------------------------------------------
+  const aoGeo = {};               // building type → [flat, rot, pilings, rot + pilings] base geometry in 1× px (or null)
+  function aoBox(b, v) {
+    const k = (b.rot ? 1 : 0) | ((v & SPR.PILINGS) ? 2 : 0);
+    let a = aoGeo[b.type]; if (a === undefined) { a = aoGeo[b.type] = [undefined, undefined, undefined, undefined]; }
+    let s = a[k]; if (s !== undefined) return s;
+    s = null;
+    try {
+      const sp = mod('sprites'), row = BSU.data && BSU.data.catalog ? BSU.data.catalog[b.type] : null;
+      if (row && row.kind === 'footprint' && sp && typeof sp.buildingBox === 'function') {
+        const g = sp.buildingBox(row, v & SPR.PILINGS, 1, b.rot ? 1 : 0);
+        if (g && Number.isFinite(g.bl) && g.bl > 0 && g.br > 0 && g.wallH + g.roofH * 0.6 >= 6) s = { dx: g.ipy - g.ipx, dy: 16 - ((g.ipx + g.ipy) >> 1) - g.lift, bl: g.bl, br: g.br };
+      }
+    } catch (e) { s = null; }
+    a[k] = s; return s;
+  }
+  /** a soft dark band hugging the wall base on the two visible faces: two nested strips (≈ 3.5 and 7 px at 1×) whose alphas stack toward the wall.
+   *  On the SE face the cast shadow already darkens the ground in daylight, so it gets only the narrow strip then (no double-darkening). */
+  function drawAO(e, b, v, g) {
+    const s = aoBox(b, v); if (!s) return;
+    const z = fxZoom, Sx = e.sx + s.dx * z, Sy = e.sy + s.dy * z, bl = s.bl * z, br = s.br * z, k = (v & SPR.SCAFFOLD) ? 0.6 : 1;
+    g.fillStyle = AO_COL;
+    for (let lv = 0; lv < 2; lv++) {
+      const w = (lv === 0 ? 9 : 4) * z;
+      g.globalAlpha = (lv === 0 ? aoA1 : aoA0) * k; g.beginPath();
+      g.moveTo(Sx - bl, Sy - bl / 2); g.lineTo(Sx, Sy); g.lineTo(Sx, Sy + w); g.lineTo(Sx - bl - w, Sy - bl / 2 + w / 2); g.closePath();
+      if (lv === 1 || aoSEWide) { g.moveTo(Sx, Sy); g.lineTo(Sx + br, Sy - br / 2); g.lineTo(Sx + br + w, Sy - br / 2 + w / 2); g.lineTo(Sx, Sy + w); g.closePath(); }
+      g.fill();
+    }
+  }
+  const EB_Y = [-0.72, -0.36, 0, 0.36, 0.72], EB_W = [0.62, 0.9, 1, 0.9, 0.62];
+  /** a pixel-art ellipse of five stacked rects added to the current path (much cheaper than an anti-aliased ellipse, and it matches the sprites' hard edges) */
+  function ellRects(g, cx, cy, rx, ry) {
+    const h = Math.max(1, Math.round(ry * 0.42));
+    for (let k = 0; k < 5; k++) { const w = rx * EB_W[k]; g.rect(Math.round(cx - w), Math.round(cy + ry * EB_Y[k] - h / 2), Math.max(1, Math.round(w * 2)), h); }
+  }
+  /** the 3-band version for the many small shapes (tree AO) */
+  function ellRects3(g, cx, cy, rx, ry) {
+    const h = Math.max(1, Math.round(ry * 0.7));
+    for (let k = 0; k < 3; k++) { const w = rx * (k === 1 ? 1 : 0.78); g.rect(Math.round(cx - w), Math.round(cy + (k - 1) * ry * 0.62 - h / 2), Math.max(1, Math.round(w * 2)), h); }
+  }
+  /** a tight dark ellipse (two nested) at every trunk base, under the sprites */
+  function treeAO(g, pool, n, z) {
+    g.fillStyle = AO_COL;
+    for (let lv = 0; lv < 2; lv++) {
+      let any = false; g.beginPath();
+      for (let k = 0; k < n; k++) {
+        const e = pool[k]; if (e.kind !== 'tree' || !e.ref || (e.variant & 64)) continue;
+        const sw = e.ref.sw * z / (e.ref.zoom || 1); if (sw < 8) continue;
+        const rx = Math.max(3 * z, sw * 0.075) * (lv === 0 ? 1.8 : 1), cy = e.sy + 0.5 * z;
+        ellRects3(g, e.sx, cy, rx, rx * 0.42); any = true;
+      }
+      if (any) { g.globalAlpha = lv === 0 ? aoA1 : aoA0; g.fill(); }
+    }
+  }
+  // --- rain splashes (two frames: the crown, then the ring with two flying drops) --------
+  const SPL_MAX = 160, SPL_F0 = 90, SPL_LIFE = 230;
+  const spX = new Float32Array(SPL_MAX), spY = new Float32Array(SPL_MAX), spAge = new Float32Array(SPL_MAX), spOwn = new Int16Array(SPL_MAX), spKind = new Uint8Array(SPL_MAX);
+  let spN = 0, spApron = 0, spCap = SPL_MAX;
+  function addSplash(wx, wy, kind, own) {
+    if (spN >= spCap) return;
+    spX[spN] = wx; spY[spN] = wy; spAge[spN] = 0; spKind[spN] = kind; spOwn[spN] = own; if (own >= 0) spApron++; spN++;
+  }
+  function updateSplashes(dtMs) {
+    spApron = 0;
+    for (let i = 0; i < spN; i++) {
+      spAge[i] += dtMs;
+      if (spAge[i] >= SPL_LIFE) { spN--; if (i !== spN) { spX[i] = spX[spN]; spY[i] = spY[spN]; spAge[i] = spAge[spN]; spOwn[i] = spOwn[spN]; spKind[i] = spKind[spN]; } i--; continue; }
+      if (spOwn[i] >= 0) spApron++;
+    }
+  }
+  /** own < 0: every splash that is not on an apron (drawn under the entities); own ≥ 0: that building's apron (drawn right after its sprite) */
+  function drawSplashes(g, cam, vw, vh, own) {
+    const z = cam.zoom || 1, ps = Math.max(1, Math.round(z));
+    for (let fr = 0; fr < 2; fr++) {
+      let any = false; g.beginPath();
+      for (let i = 0; i < spN; i++) {
+        if ((spAge[i] >= SPL_F0) !== (fr === 1) || (own < 0 ? spOwn[i] >= 0 : spOwn[i] !== own)) continue;
+        const sx = Math.round((spX[i] - cam.x) * z + vw / 2), sy = Math.round((spY[i] - cam.y) * z + vh / 2);
+        if (sx < -8 || sx > vw + 8 || sy < -8 || sy > vh + 8) continue;
+        if (fr === 0) { g.rect(sx - ps, sy, 3 * ps, ps); g.rect(sx, sy - ps, ps, ps); }
+        else { g.rect(sx - 3 * ps, sy, 2 * ps, ps); g.rect(sx + ps, sy, 2 * ps, ps); g.rect(sx - 3 * ps, sy - ps, ps, ps); g.rect(sx + 2 * ps, sy - ps, ps, ps); }
+        any = true;
+      }
+      if (any) { g.fillStyle = '#E2EEF8'; g.globalAlpha = fr === 0 ? 0.8 : 0.5; g.fill(); }
+    }
+  }
+  /** rain-rate driven: paved ground (path / road / boardwalk / bridge), building aprons and water; ripples on the puddles */
+  function spawnSplashes(state, view, cam, rr) {
+    spCap = fxPerf ? 60 : SPL_MAX;
+    if (!FXO.splashes || rr < 0.08 || (cam.zoom || 1) < 1) return;
+    const t = state.tiles; if (!t || !t.surface) return;
+    const r = rng(), x0 = view.x0 | 0, y0 = view.y0 | 0, spanX = Math.max(1, (view.x1 | 0) - x0 + 1), spanY = Math.max(1, (view.y1 | 0) - y0 + 1);
+    const cv = R.curves && typeof R.curves.current === 'function' ? R.curves.current() : null, dk = cv && cv.deck ? cv.deck : null;
+    const n = Math.round((1.5 + 11 * rr) * (fxPerf ? 0.5 : 1));
+    for (let k = 0, made = 0; k < n * 3 && made < n; k++) {
+      const tx = x0 + r.int(spanX), ty = y0 + r.int(spanY); if (tx < 0 || ty < 0 || tx >= W || ty >= HGT) continue;
+      const i = ty * W + tx; let kind = 0, own = -1, zpx = fin(t.elev[i], 0) * PXFT;
+      if (isWaterTile(state, i)) { kind = 1; zpx = (fin(t.elev[i], 0) + fin(t.depth[i], 0)) * PXFT; if (dk && dk[i] === dk[i]) { zpx = dk[i] * PXFT; kind = 0; } }
+      else { const ow = t.owner ? t.owner[i] : -1, sf = t.surface[i]; if (ow >= 0) own = ow; else if (!((sf >= 1 && sf <= 3) || sf === SURF.BRIDGE)) continue; }
+      const u = r.float() - 0.5, v = r.float() - 0.5;
+      addSplash(tileWorldX(tx, ty) + (u - v) * 32, tileWorldY(tx, ty) + (u + v) * 16 - zpx, kind, own); made++;
+    }
+    if (pvN > 0) { const m = 1 + ((rr * 4) | 0); for (let k = 0; k < m; k++) { const j = r.int(pvN); addSplash(pvWX[j] + (r.float() - 0.5) * pvWR[j], pvWY[j] + (r.float() - 0.5) * pvWR[j] * 0.5, 2, -1); } }
+  }
+  // --- puddles: a translucent layer on low ground that fills during long rain and shrinks after ----
+  const PUD_CAND = 640, PUD_VIS = 160, PUD_FILL_MS = 14000, PUD_DRY_MS = 42000;
+  const pdIdx = new Int32Array(PUD_CAND), pdTh = new Float32Array(PUD_CAND), pdOx = new Float32Array(PUD_CAND), pdOy = new Float32Array(PUD_CAND), pdR = new Float32Array(PUD_CAND);
+  const hotIdx = new Int32Array(256);
+  const pvSX = new Float32Array(PUD_VIS), pvSY = new Float32Array(PUD_VIS), pvWX = new Float32Array(PUD_VIS), pvWY = new Float32Array(PUD_VIS), pvWR = new Float32Array(PUD_VIS), pvA = new Float32Array(PUD_VIS);
+  let pdN = 0, hotN = 0, pdX0 = 0, pdY0 = 0, pdX1 = -1, pdY1 = -1, pdDirty = true, wet = 0, pvN = 0;
+  /** the wetness threshold at which a tile grows a puddle: low against its 4 neighbours and wet ground first; 9 = never (water, building ground, fences, bumps) */
+  function puddleTh(t, i, tx, ty) {
+    if ((t.owner && t.owner[i] >= 0) || (t.flags && (t.flags[i] & WATER_FLAGS) !== 0)) return 9;
+    const ty8 = t.type[i]; if (ty8 === T.OPEN_WATER || ty8 === T.BAYOU || ty8 === T.POND || (t.depth && t.depth[i] >= 0.1)) return 9;
+    const sf = t.surface ? t.surface[i] : 0; if (sf === SURF.FENCE || sf === SURF.BOARDWALK || sf === SURF.BRIDGE) return 9;
+    const e = fin(t.elev[i], 0); let m = 0, n = 0;
+    if (tx > 0) { m += t.elev[i - 1]; n++; } if (tx < W - 1) { m += t.elev[i + 1]; n++; } if (ty > 0) { m += t.elev[i - W]; n++; } if (ty < HGT - 1) { m += t.elev[i + W]; n++; }
+    const low = n ? m / n - e : 0; if (low < -0.2) return 9;
+    let th = 0.3 + 1.0 * ((hash(tx * 7 + 3, ty * 13 + 1) & 1023) / 1024) - 0.55 * clamp(low * 2.5, 0, 1);
+    if (ty8 === T.WET) th -= 0.18; else if (ty8 === T.MARSH) th -= 0.08;
+    if (sf === SURF.PATH || sf === SURF.ROAD) th -= 0.05;
+    return th;
+  }
+  function rebuildPuddles(state, view) {
+    const t = state.tiles; pdN = 0; hotN = 0;
+    pdX0 = Math.max(0, (view.x0 | 0) - 2); pdY0 = Math.max(0, (view.y0 | 0) - 2); pdX1 = Math.min(W - 1, (view.x1 | 0) + 2); pdY1 = Math.min(HGT - 1, (view.y1 | 0) + 2);
+    for (let ty = pdY0; ty <= pdY1; ty++) for (let tx = pdX0; tx <= pdX1; tx++) {
+      const i = ty * W + tx, th = puddleTh(t, i, tx, ty); if (th > 0.55) continue;
+      const sf = t.surface[i];
+      if (hotN < 256 && (sf === SURF.PATH || sf === SURF.ROAD)) hotIdx[hotN++] = i;
+      if (pdN >= PUD_CAND) continue;
+      const h = hash(tx + 11, ty + 5);
+      pdIdx[pdN] = i; pdTh[pdN] = th; pdOx[pdN] = ((h & 255) / 255 - 0.5) * 16; pdOy[pdN] = (((h >> 8) & 255) / 255 - 0.5) * 8; pdR[pdN] = 7 + ((h >> 16) & 15) * 0.8; pdN++;
+    }
+    pdDirty = false;
+  }
+  const PUD_COL = [['#1B2230', '#161C2A', '#10141F'], ['#6E93AE', '#42586F', '#1E2A3F'], ['#DCEBF5', '#9DB2C6', '#566B88']];   // halo / water / glint × day, dusk, night
+  function drawPuddles(state, g, cam, view) {
+    const vw = view.vw, vh = view.vh, z = cam.zoom || 1, t = state.tiles;
+    const wetE = wet * 0.56;
+    for (let k = 0; k < pdN && pvN < PUD_VIS; k++) {
+      const a = clamp((wetE - pdTh[k]) / 0.16, 0, 1); if (a <= 0) continue;
+      const i = pdIdx[k], tx = i & 63, ty = i >> 6;
+      const wx = (tx - ty) * 32 + pdOx[k], wy = (tx + ty) * 16 + pdOy[k] - fin(t.elev[i], 0) * PXFT;
+      const sx = (wx - cam.x) * z + vw / 2, sy = (wy - cam.y) * z + vh / 2; if (sx < -40 || sx > vw + 40 || sy < -20 || sy > vh + 20) continue;
+      const rw = pdR[k] * (0.4 + 0.6 * a);
+      pvSX[pvN] = sx; pvSY[pvN] = sy; pvWX[pvN] = wx; pvWY[pvN] = wy; pvWR[pvN] = rw; pvA[pvN] = a; pvN++;
+    }
+    if (pvN === 0) return;
+    const night = nightAmount(state), pb = night > 0.6 ? 2 : (night > 0.15 ? 1 : 0);   // the water mirrors the sky: bright by day, dim at dusk, near black at night
+    // layer 1: the wet halo (darker ground), layer 2: the sky in the water, layer 3: a glint on the upper-left rim
+    for (let ly = 0; ly < 3; ly++) {
+      g.beginPath();
+      for (let k = 0; k < pvN; k++) {
+        const rx = pvWR[k] * 2 * z * (ly === 0 ? 0.66 : ly === 1 ? 0.5 : 0.2), ry = rx * (ly === 2 ? 0.34 : 0.5);
+        if (ly === 2) g.rect(Math.round(pvSX[k] - rx * 2.2), Math.round(pvSY[k] - ry * 2.3), Math.max(2, Math.round(rx * 1.6)), Math.max(1, Math.round(z)));   // the glint: one light dash on the upper-left rim
+        else ellRects(g, pvSX[k], pvSY[k], rx, ry);
+      }
+      g.fillStyle = PUD_COL[ly][pb]; g.globalAlpha = ly === 0 ? 0.2 : ly === 1 ? 0.44 : 0.5; g.fill();
+    }
+    // night: each puddle mirrors the nearest lamp / window / pot / fire above it (last frame's light list). Drawn here, under the entities,
+    // so a tree in front hides it; additive and boosted ×2 because the tint pass multiplies the frame afterwards.
+    if (FXO.reflect && night > 0.1 && lightsN > 0) {
+      g.globalCompositeOperation = 'lighter'; let shown = 0;
+      for (let p = 0; p < pvN && shown < 40; p++) {
+        if (pvA[p] < 0.3) continue;
+        const qx = pvSX[p], qy = pvSY[p]; let best = -1, bd = 1e9;
+        for (let k = 0; k < lightsN; k++) {
+          const L = lightsList[k]; if (L.refl || (L.kind !== 'lamp' && L.kind !== 'window' && L.kind !== 'pot' && L.kind !== 'fire' && L.kind !== 'glow')) continue;
+          const dx = L.x - qx, dy = qy - L.y; if (dy < 6 * z || dy > 230 * z || dx > 120 * z || dx < -120 * z) continue;
+          const d = dx * dx + dy * dy * 0.4; if (d < bd) { bd = d; best = k; }
+        }
+        if (best < 0) continue;
+        const S = lightsList[best], fall = 1 - Math.sqrt(bd) / (200 * z); if (fall <= 0.05) continue;
+        const rx = pvWR[p] * z * 1.1 * (0.5 + 0.5 * pvA[p]), a = Math.min(1, 0.95 * S.a * pvA[p] * fall * night);
+        g.fillStyle = S.kind === 'window' ? '#FFC56A' : '#FFD98A';
+        g.globalAlpha = a * 0.7; g.beginPath(); ellRects(g, qx + (S.x - qx) * 0.12, qy, rx, rx * 0.5); g.fill();
+        g.globalAlpha = a; g.beginPath(); ellRects(g, qx + (S.x - qx) * 0.12, qy, rx * 0.42, rx * 0.21); g.fill(); shown++;
+      }
+      g.globalCompositeOperation = 'source-over';
+    }
+  }
+  /** called by render's entity pass, before the shadows: puddles, ground splashes, tree AO (all under the sorted entities) */
+  R.groundFx = function (state, g, pool, n, info) {
+    pvN = 0; aoOn = false;
+    const cam = camOf(state), z = cam.zoom || 1, view = R.view; fxZoom = z; fxCamRef = cam; fxViewRef = view;
+    if (z < 1 || !view) return;   // the 0.5× map view and the minimap pass: nothing here is visible at that size
+    fxPerf = !!(info && info.perfMode);
+    const sha = info ? fin(info.shAlpha, 0.2) : 0.2, sun = clamp((sha - 0.07) / 0.15, 0, 1);
+    aoOn = FXO.ao && !fxPerf; aoSEWide = sun < 0.45;
+    const k = (0.6 + 0.4 * sun) * (1 - 0.35 * stormDarkness(state)); aoA0 = 0.23 * k; aoA1 = 0.13 * k;
+    if ((FXO.puddles || FXO.shimmer) && !fxPerf && state.tiles && state.tiles.type && (pdDirty || (view.x0 | 0) < pdX0 || (view.y0 | 0) < pdY0 || (view.x1 | 0) > pdX1 || (view.y1 | 0) > pdY1)) rebuildPuddles(state, view);
+    if (FXO.puddles && !fxPerf && wet > 0.02 && state.tiles && state.tiles.type) drawPuddles(state, g, cam, view);
+    if (spN > spApron && FXO.splashes) drawSplashes(g, cam, view.vw, view.vh, -1);
+    if (aoOn) treeAO(g, pool, n, z);
+    g.globalAlpha = 1;
+  };
+  /** called right after each building entity is drawn: contact AO on the apron, then that building's apron splashes */
+  R.entityFx = function (e, g) {
+    try {
+      if (fxZoom < 1) return;
+      const b = e.b; if (!b) return; const v = e.variant | 0;
+      if (aoOn && !(v & SPR.RUIN)) drawAO(e, b, v, g);
+      if (spApron > 0 && FXO.splashes) drawSplashes(g, fxCamRef, fxViewRef.vw, fxViewRef.vh, b.id | 0);
+      g.globalAlpha = 1;
+    } catch (err) { ferr('entityFx', err); }
+  };
+  /** test / tour hook: set (and read) the rain wetness that drives the puddles (0 dry … 1 saturated) */
+  R._fxPuddleWet = function (v) { if (Number.isFinite(v)) wet = clamp(v, 0, 1); return wet; };
+  R.fxStats = function () { return { wet: wet, puddles: pvN, candidates: pdN, splashes: spN, apron: spApron, plumes: plN, shells: fwN, aoOn: aoOn, shimmer: shimN, sources: srcN, shell0: fwN > 0 ? { t: fwT[0], x: fwX[0], y: fwY[0], z0: fwZ0[0], z1: fwZ1[0], kind: fwKind[0] } : null }; };
+  // --- boil-pot steam, vent shimmer ---------------------------------------------------
+  const PL_MAX = 40;
+  const plX = new Float32Array(PL_MAX), plY = new Float32Array(PL_MAX), plA = new Float32Array(PL_MAX), plL = new Float32Array(PL_MAX), plS = new Float32Array(PL_MAX), plPh = new Float32Array(PL_MAX), plK = new Uint8Array(PL_MAX);
+  let plN = 0;
+  function addPuff(wx, wy, kind, size, life, ph) {
+    if (plN >= PL_MAX) return;
+    plX[plN] = wx; plY[plN] = wy; plA[plN] = 0; plL[plN] = life; plS[plN] = size; plPh[plN] = ph; plK[plN] = kind; plN++;
+  }
+  function updatePlumes(dt, wind, windAngle) {
+    const wvx = Math.cos(windAngle) * wind * 16;
+    for (let i = 0; i < plN; i++) {
+      plA[i] += dt;
+      if (plA[i] >= plL[i]) { plN--; if (i !== plN) { plX[i] = plX[plN]; plY[i] = plY[plN]; plA[i] = plA[plN]; plL[i] = plL[plN]; plS[i] = plS[plN]; plPh[i] = plPh[plN]; plK[i] = plK[plN]; } i--; continue; }
+      plY[i] -= (plK[i] ? 9 : 20) * dt / 1000; plX[i] += (wvx + Math.sin(plPh[i] + plA[i] * 0.003) * 5) * dt / 1000;
+    }
+  }
+  let steamTex = null, steamTried = false;
+  function ensureSteamTex() {
+    if (steamTex || steamTried) return steamTex; steamTried = true;
+    try {
+      const c = document.createElement('canvas'); c.width = 32; c.height = 32; const g = c.getContext('2d'); if (!g) return null;
+      const gr = g.createRadialGradient(16, 16, 0, 16, 16, 16);
+      gr.addColorStop(0, 'rgba(255,255,255,0.95)'); gr.addColorStop(0.45, 'rgba(240,246,252,0.62)'); gr.addColorStop(1, 'rgba(225,232,242,0)');
+      g.fillStyle = gr; g.fillRect(0, 0, 32, 32); steamTex = c;
+    } catch (e) { steamTex = null; }
+    return steamTex;
+  }
+  function drawPlumes(g, cam, vw, vh) {
+    if (plN === 0) return;
+    const spr = ensureSteamTex(); if (!spr) return; const z = cam.zoom || 1;
+    for (let i = 0; i < plN; i++) {
+      const u = plA[i] / plL[i], w = plS[i] * (0.5 + 1 * u) * z, h = w * 0.85;
+      const sx = (plX[i] - cam.x) * z + vw / 2, sy = (plY[i] - cam.y) * z + vh / 2; if (sx < -w || sx > vw + w || sy < -h || sy > vh + h) continue;
+      g.globalAlpha = (plK[i] ? 0.42 : 0.8) * (1 - u) * (u < 0.15 ? u / 0.15 : 1);
+      g.drawImage(spr, sx - w / 2, sy - h / 2, w, h);
+    }
+    g.globalAlpha = 1;
+  }
+  const SRC_MAX = 12, srcX = new Float32Array(SRC_MAX), srcY = new Float32Array(SRC_MAX), srcKind = new Uint8Array(SRC_MAX);   // 0 wastewater stack, 1 generator vent, 2 boil pot
+  let srcN = 0;
+  /** this frame's vents and boil pots from the sorted draw list (screen px at the current zoom); emits the pots' steam puffs */
+  function scanSources(state, view, cam) {
+    srcN = 0; const list = R.drawList; if (!Array.isArray(list) || (cam.zoom || 1) < 1) return;
+    const z = cam.zoom, vw = view.vw, vh = view.vh;
+    for (let k = 0; k < list.length && srcN < SRC_MAX; k++) {
+      const e = list[k]; if (!e || e.kind !== 'building' || !e.b) continue;
+      const b = e.b, ty = b.type; if (!(b.built >= 1) || b.ruin || (ty !== 'wastewater' && ty !== 'generator' && ty !== 'dining_hall' && ty !== 'poboy')) continue;
+      if (e.sx < -140 || e.sx > vw + 140 || e.sy < -60 || e.sy > vh + 240) continue;
+      const span = (b.w | 0) + (b.h | 0), cx = e.sx + ((b.h | 0) - (b.w | 0)) * 16 * z, cy = e.sy - (span - 2) * 8 * z;
+      if (ty === 'wastewater') { srcX[srcN] = cx - 35 * z * (span / 6); srcY[srcN] = cy - 27 * z * (span / 6); srcKind[srcN] = 0; srcN++; }
+      else if (ty === 'generator') { if (!(b.data && fin(b.data.fuelDays, 0) > 0)) continue; srcX[srcN] = cx; srcY[srcN] = cy - 14 * z; srcKind[srcN] = 1; srcN++; }
+      else { srcX[srcN] = e.sx + 11 * z; srcY[srcN] = e.sy - 6 * z; srcKind[srcN] = 2; srcN++; }
+    }
+    if (!FXO.steam) return;
+    for (let k = 0; k < srcN; k++) {
+      const kind = srcKind[k]; if (kind === 1) continue;
+      if (((frameNo + k * 5) % (kind === 2 ? 7 : 16)) !== 0) continue;
+      const wx = (srcX[k] - vw / 2) / z + cam.x, wy = (srcY[k] - vh / 2) / z + cam.y;
+      addPuff(wx + (rng().float() - 0.5) * 3, wy, kind === 2 ? 0 : 1, kind === 2 ? 11 : 18, kind === 2 ? 1500 : 2400, rng().float() * 6.28);
+    }
+  }
+  let shimCv = null, shimG = null, shimW = 0, shimH = 0, shimN = 0;
+  function ensureShim(w, h) {
+    try {
+      if (!shimCv) { shimCv = document.createElement('canvas'); shimG = shimCv.getContext('2d'); }
+      if (!shimG) return false;
+      if (shimW < w) shimCv.width = shimW = w; if (shimH < h) shimCv.height = shimH = h; return true;
+    } catch (e) { shimCv = null; shimG = null; return false; }
+  }
+  const shRX = new Float32Array(32), shRY = new Float32Array(32), shRW = new Float32Array(32), shRH = new Float32Array(32), shRS = new Uint8Array(32);
+  /** heat shimmer: displaced slices of the frame above the vents (always) and above paved ground on advisory days (Tier 2, ≤ 10 strips, one small self-copy) */
+  function shimmerPass(state, g, view, cam) {
+    shimN = 0;
+    if (!FXO.shimmer || fxPerf || BSU.headlessMode || !R.canvas || (cam.zoom || 1) < 1) return;
+    const z = cam.zoom, vw = view.vw, vh = view.vh, dpr = view.dpr || 1, wx = state.weather || {};
+    const heat = fin(wx.heat, 0), adv = heat >= 95 && effRainFx < 0.05 && (sk.phase === SKY.DAY || sk.phase === SKY.GOLDEN);
+    let n = 0;
+    for (let k = 0; k < srcN && n < 20; k++) { if (srcKind[k] === 2) continue; shRX[n] = srcX[k] - 11 * z; shRY[n] = srcY[k] - 30 * z; shRW[n] = 22 * z; shRH[n] = 30 * z; shRS[n] = 7; n++; }
+    if (adv && hotN > 0) {
+      const step = Math.max(1, Math.ceil(hotN / 10)); let cnt = 0;
+      for (let k = (frameNo >> 4) % step; k < hotN && cnt < 10 && n < 30; k += step) {
+        const i = hotIdx[k], tx = i & 63, ty = i >> 6, sx = ((tx - ty) * 32 - cam.x) * z + vw / 2, sy = ((tx + ty) * 16 - fin(state.tiles.elev[i], 0) * PXFT - cam.y) * z + vh / 2;
+        if (Math.abs(sx - vw / 2) > 380 || Math.abs(sy - vh / 2) > 200) continue;
+        shRX[n] = sx - 30 * z; shRY[n] = sy - 17 * z; shRW[n] = 60 * z; shRH[n] = 14 * z; shRS[n] = 3; n++; cnt++;
+      }
+    }
+    shimN = n;
+    if (n === 0) return;
+    let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+    for (let k = 0; k < n; k++) { x0 = Math.min(x0, shRX[k]); y0 = Math.min(y0, shRY[k]); x1 = Math.max(x1, shRX[k] + shRW[k]); y1 = Math.max(y1, shRY[k] + shRH[k]); }
+    x0 = Math.max(0, Math.floor(x0) - 4); y0 = Math.max(0, Math.floor(y0)); x1 = Math.min(vw, Math.ceil(x1) + 4); y1 = Math.min(vh, Math.ceil(y1)); const bw = x1 - x0, bh = y1 - y0; if (bw < 4 || bh < 2) return;
+    if (!ensureShim(Math.ceil(bw * dpr), Math.ceil(bh * dpr))) return;
+    const amp = (adv ? 1.2 + 1.2 * clamp((heat - 95) / 10, 0, 1) : 1.1) * z;
+    try {
+      shimG.setTransform(1, 0, 0, 1, 0, 0); shimG.globalCompositeOperation = 'copy';
+      shimG.drawImage(R.canvas, x0 * dpr, y0 * dpr, bw * dpr, bh * dpr, 0, 0, bw * dpr, bh * dpr);
+      g.globalAlpha = 0.92;
+      for (let k = 0; k < n; k++) {
+        const ns = shRS[k], sh = shRH[k] / ns;
+        for (let s = 0; s < ns; s++) {
+          const dy = shRY[k] + s * sh, off = Math.round(Math.sin(frameNo * 0.11 + s * 1.3 + k * 2.1) * amp * (0.4 + 0.6 * (1 - s / ns)));
+          g.drawImage(shimCv, (shRX[k] - x0) * dpr, (dy - y0) * dpr, shRW[k] * dpr, sh * dpr, shRX[k] + off, dy, shRW[k], sh);
+        }
+      }
+      g.globalAlpha = 1;
+    } catch (e) { /* shimmer is optional */ }
+  }
+  /** once per frame, in the weather pass: wetness, pools, splashes, sources */
+  function fxFrame(state, view, cam, dtMs, rr, wind, windAngle) {
+    const dt = clamp(fin(dtMs, 16.67), 0, 100);
+    effRainFx = rr; fxPerf = !!(state.ui && state.ui.perfMode);
+    if (rr > 0.15) wet = Math.min(1, wet + rr * dt / PUD_FILL_MS); else wet = Math.max(0, wet - dt / PUD_DRY_MS);
+    updateSplashes(dt); updatePlumes(dt, wind, windAngle); updateShells(dt);
+    spawnSplashes(state, view, cam, rr);
+    scanSources(state, view, cam);
+  }
+  // --- firework shells: a rising rocket with a tail, then a burst of velocity-aligned trails, with additive bloom -----------
+  const FW_MAX = 8, FW_SP = 40, FW_RISE = 650, FW_LIFE = 2400;
+  const fwT = new Float32Array(FW_MAX), fwX = new Float32Array(FW_MAX), fwY = new Float32Array(FW_MAX), fwZ0 = new Float32Array(FW_MAX), fwZ1 = new Float32Array(FW_MAX), fwSc = new Float32Array(FW_MAX);
+  const fwKind = new Uint8Array(FW_MAX), fwCol = new Uint8Array(FW_MAX);
+  const fwCos = new Float32Array(FW_MAX * FW_SP), fwSin = new Float32Array(FW_MAX * FW_SP), fwSpd = new Float32Array(FW_MAX * FW_SP);
+  let fwN = 0;
+  const FW_PAL = [['#FFF1A8', '#FDD023'], ['#FFFFFF', '#B79BFF'], ['#FFFFFF', '#9FD2FF']];
+  /** a shell bursting z1 px above the ground point (wx, wy) whose ground is z0 px up (world px at zoom 1) */
+  function addShell(wx, wy, z0, z1, scale) {
+    if (fwN >= FW_MAX || !FXO.fireworks) return;
+    const r = rng(), s = fwN++, kind = r.int(3), base = s * FW_SP;
+    fwT[s] = 0; fwX[s] = wx; fwY[s] = wy; fwZ0[s] = z0; fwZ1[s] = z1; fwSc[s] = scale; fwKind[s] = kind; fwCol[s] = kind === 1 ? 0 : r.int(3);
+    for (let k = 0; k < FW_SP; k++) {
+      const a = (k + (r.float() - 0.5) * 0.7) / FW_SP * TAU;
+      fwCos[base + k] = Math.cos(a); fwSin[base + k] = Math.sin(a) * (kind === 2 ? 0.38 : 0.92);
+      fwSpd[base + k] = (kind === 1 ? 270 : 380) * scale * (kind === 2 ? 1 : 0.66 + 0.34 * r.float());
+    }
+  }
+  function updateShells(dt) {
+    for (let s = 0; s < fwN; s++) {
+      fwT[s] += dt;
+      if (fwT[s] < FW_RISE + FW_LIFE) continue;
+      fwN--;
+      if (s !== fwN) { fwT[s] = fwT[fwN]; fwX[s] = fwX[fwN]; fwY[s] = fwY[fwN]; fwZ0[s] = fwZ0[fwN]; fwZ1[s] = fwZ1[fwN]; fwSc[s] = fwSc[fwN]; fwKind[s] = fwKind[fwN]; fwCol[s] = fwCol[fwN]; for (let k = 0; k < FW_SP; k++) { fwCos[s * FW_SP + k] = fwCos[fwN * FW_SP + k]; fwSin[s * FW_SP + k] = fwSin[fwN * FW_SP + k]; fwSpd[s * FW_SP + k] = fwSpd[fwN * FW_SP + k]; } }
+      s--;
+    }
+  }
+  const bloomTex = [null, null, null]; let bloomTried = false;
+  function ensureBloom() {
+    if (bloomTried) return bloomTex[0]; bloomTried = true;
+    try {
+      for (let p = 0; p < 3; p++) {
+        const c = document.createElement('canvas'); c.width = 64; c.height = 64; const g = c.getContext('2d'); if (!g) return null;
+        const col = FW_PAL[p][1], gr = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+        gr.addColorStop(0, 'rgba(255,255,255,0.95)'); gr.addColorStop(0.18, col); gr.addColorStop(0.5, col + '55'); gr.addColorStop(1, col + '00');
+        g.fillStyle = gr; g.fillRect(0, 0, 64, 64); bloomTex[p] = c;
+      }
+    } catch (e) { bloomTex[0] = bloomTex[1] = bloomTex[2] = null; }
+    return bloomTex[0];
+  }
+  const fwE = new Float32Array(4), fwD = new Float32Array(4);
+  function passFireworks(state, g, view) {
+    if (fwN === 0 || !FXO.fireworks) return;
+    const cam = camOf(state), z = cam.zoom || 1, vw = view.vw, vh = view.vh, ps = Math.max(1, Math.round(z)), bloom = ensureBloom();
+    for (let s = 0; s < fwN; s++) {
+      const t = fwT[s], sx0 = (fwX[s] - cam.x) * z + vw / 2, gy = fwY[s] - fwZ0[s], pal = FW_PAL[fwCol[s]], sc = fwSc[s];
+      if (t < FW_RISE) {   // the rocket: eased climb with a six-point tail
+        g.beginPath(); let hx = 0, hy = 0;
+        for (let j = 5; j >= 0; j--) { const u = clamp((t - j * 32) / FW_RISE, 0, 1), hgt = fwZ1[s] * (1 - (1 - u) * (1 - u)), px_ = sx0 + Math.sin(u * 9 + s) * 1.2 * z, py_ = (gy - hgt - cam.y) * z + vh / 2; if (j === 5) g.moveTo(px_, py_); else g.lineTo(px_, py_); hx = px_; hy = py_; }
+        g.strokeStyle = '#FFE9A0'; g.lineWidth = Math.max(1, z); g.globalAlpha = 0.55; g.stroke();
+        g.fillStyle = '#FFFFFF'; g.globalAlpha = 1; g.fillRect(Math.round(hx - ps / 2), Math.round(hy - ps / 2), ps * 2, ps * 2);
+        continue;
+      }
+      const tau = (t - FW_RISE) / 1000, cxs = sx0, cys = (gy - fwZ1[s] - cam.y) * z + vh / 2, G = fwKind[s] === 1 ? 60 : 24, fade = Math.pow(clamp(1 - tau / (FW_LIFE / 1000), 0, 1), 0.85);
+      for (let j = 0; j < 4; j++) { const tj = Math.max(0, tau - j * 0.05); fwE[j] = (1 - Math.exp(-3.2 * tj)) / 3.2; fwD[j] = 0.5 * G * tj * tj; }
+      const base = s * FW_SP;
+      for (let grp = 0; grp < 2; grp++) {
+        for (let pass = 0; pass < 2; pass++) {   // pass 0: the faint 150-ms trail, pass 1: the bright last 50 ms
+          g.beginPath();
+          for (let k = grp; k < FW_SP; k += 2) {
+            const c = fwCos[base + k], sn = fwSin[base + k], sp = fwSpd[base + k] * z;
+            const x0_ = cxs + c * sp * fwE[0], y0_ = cys + fwD[0] * z - sn * sp * fwE[0], x1_ = cxs + c * sp * fwE[1], y1_ = cys + fwD[1] * z - sn * sp * fwE[1];
+            if (pass === 0) { g.moveTo(cxs + c * sp * fwE[3], cys + fwD[3] * z - sn * sp * fwE[3]); g.lineTo(cxs + c * sp * fwE[2], cys + fwD[2] * z - sn * sp * fwE[2]); g.lineTo(x1_, y1_); g.lineTo(x0_, y0_); }
+            else { g.moveTo(x1_, y1_); g.lineTo(x0_, y0_); }
+          }
+          g.strokeStyle = pal[grp]; g.lineWidth = Math.max(1, z * (pass === 0 ? 1.4 : 2.2)); g.globalAlpha = (pass === 0 ? 0.5 : 1) * fade; g.stroke();
+        }
+        g.beginPath();
+        for (let k = grp; k < FW_SP; k += 2) { const c = fwCos[base + k], sn = fwSin[base + k], sp = fwSpd[base + k] * z; g.rect(Math.round(cxs + c * sp * fwE[0] - ps * 1.5), Math.round(cys + fwD[0] * z - sn * sp * fwE[0] - ps * 1.5), ps * 3, ps * 3); }
+        g.fillStyle = grp === 0 ? '#FFFFFF' : pal[1]; g.globalAlpha = fade; g.fill();
+      }
+      if (bloom) {
+        g.globalCompositeOperation = 'lighter';
+        const fl = Math.exp(-tau * 2.4), bs = (150 + 220 * Math.min(1, tau / 0.25)) * z * sc, b2 = 320 * z * sc;
+        g.globalAlpha = 0.9 * fl; g.drawImage(bloomTex[fwCol[s]], cxs - bs / 2, cys - bs / 2, bs, bs);
+        g.globalAlpha = 0.26 * fade; g.drawImage(bloomTex[fwCol[s]], cxs - b2 / 2, cys - b2 / 2, b2, b2);
+        g.globalCompositeOperation = 'source-over';
+      }
+    }
+    g.globalAlpha = 1;
+  }
+
+  // ---------------------------------------------------------------------------
   // Pass 5: weather (screen space, under the shake transform)
   // ---------------------------------------------------------------------------
   function rainLineCount(rainRate, zoom, perf) {
@@ -208,7 +630,8 @@
     const wx = state.weather || {}, cam = camOf(state), z = cam.zoom || 1, vw = view.vw, vh = view.vh;
     const perf = !!(state.ui && state.ui.perfMode);
     const wind = clamp(fin(wx.wind, 0), 0, 1.5), windAngle = fin(wx.windAngle, 0);
-    if (frameNo !== lastFrameNo) { lastFrameNo = frameNo; update(dtMs, wind, windAngle); perFrameEmitters(state, view, cam); }
+    let newFrame = false;
+    if (frameNo !== lastFrameNo) { lastFrameNo = frameNo; newFrame = true; update(dtMs, wind, windAngle); perFrameEmitters(state, view, cam); }
     const storm = stormDarkness(state);
     rainRamp = storm > 0 ? Math.min(1, rainRamp + fin(dtMs, 16) / 2500) : 0;
     let rainRate = clamp(fin(wx.rainRate, 0), 0, 1);
@@ -216,6 +639,7 @@
     // stadium crowd (world-space but screen px; before the rain so ponchos get wet)
     try { crowdInWorld(state, g, view, cam, rainRate > 0.05); } catch (e) { ferr('crowd', e); }
     curRainRate = rainRate; curStorm = storm; curWind = wind; curWindAngle = windAngle;
+    if (newFrame) { try { fxFrame(state, view, cam, dtMs, rainRate, wind, windAngle); } catch (e) { ferr('fxFrame', e); } }
     // the cell disc: 12 stacked bands, alpha falling to the edge (under the tint)
     const ev = wx.event;
     if (ev && ev.kind === 'cell' && ev.radius > 0) {
@@ -228,15 +652,8 @@
       const cnt = wind >= 0.6 ? 4 : 1, fromLeft = Math.cos(windAngle) >= 0;
       for (let k = 0; k < cnt; k++) { const sy = rng().float() * vh, sx = fromLeft ? -10 : vw + 10; const wpx = (sx - vw / 2) / z + cam.x, wpy = (sy - vh / 2) / z + cam.y; emit(storm > 0 ? 'debris' : 'leaf', wpx, wpy, 1, { vx: Math.cos(windAngle) * (120 + 200 * wind), vy: Math.sin(windAngle) * 40, vz: 30, z: 10 + rng().float() * 40, life: 2500, size: storm > 0 ? 3 : 1 }); }
     }
-    // heat shimmer (Tier 2): re-draw the middle rows of the world offset by a sine
-    try {
-      const heat = fin(wx.heat, 0);
-      if (heat > 95 && rainRate < 0.05 && (sk.phase === SKY.DAY || sk.phase === SKY.GOLDEN) && !BSU.headlessMode && R.canvas && !perf) {
-        const c = R.canvas, dpr = view.dpr || 1, strips = 24, h = Math.max(2, Math.round(vh * 0.3 / strips)), y0 = Math.round(vh * 0.35);
-        g.globalAlpha = 0.35;
-        for (let s = 0; s < strips; s++) { const y = y0 + s * h, off = Math.round(Math.sin(frameNo * 0.15 + s * 0.9) * 1.5); g.drawImage(c, 0, y * dpr, c.width, h * dpr, off, y, vw, h); }
-      }
-    } catch (e) { /* shimmer is optional */ }
+    // boil-pot / vent steam puffs, then the heat shimmer over the vents and (advisory days) paved ground — both read the frame so far (before the tint)
+    try { drawPlumes(g, cam, vw, vh); shimmerPass(state, g, view, cam); } catch (e) { ferr('shimmer', e); }
     // screen-space particles
     const cols = R.particleColors || [GOLD];
     g.globalAlpha = 1;
@@ -361,6 +778,7 @@
     }
     // fireworks queue (game:final)
     if (burstsPending > 0 && --burstTimer <= 0) { burstTimer = 22; burstsPending--; fireworks(state, 1.2); }
+    if (milePending > 0 && --mileTimer <= 0) { mileTimer = 20; milePending--; viewShell(state); }
   }
 
   // ---------------------------------------------------------------------------
@@ -442,6 +860,8 @@
       else if (stormPhase === SPH.CLEARING) { fill(TINTS[SKY.GOLDEN].color, TINTS[SKY.GOLDEN].alpha); fill(STORM_TINT.color, STORM_TINT.alpha * 0.25); }
       else fill(STORM_TINT.color, STORM_TINT.alpha * storm);
     }
+    const rr = clamp(fin(state.weather && state.weather.rainRate, 0), 0, 1) * (1 - storm);   // B5: ordinary rain greys and cools the whole scene (a cool overcast multiply scaled by the rain rate)
+    if (rr > 0.05) fill('#A5B1C4', 0.24 * rr);
     const st = state.storms && state.storms.current;
     if (st && !st.nearMiss && st.phase >= STORM.WATCH && st.phase <= STORM.LANDFALL) fill('#8A8A8A', (PR.stormDesaturate || 0.3) * (st.phase === STORM.WATCH ? 0.5 : 1));
     // colour cast ('overlay' keeps the midtones readable while the multiply sets the mood)
@@ -476,9 +896,30 @@
     if (c !== lightsCanvasRef) { lightsCanvasRef = c; try { lightsCtx = c.getContext('2d'); } catch (e) { lightsCtx = null; } }
     return lightsCtx;
   }
+  // art pass B5: stadium haze entries (drawn after the lights), window reflections on water near lit buildings, puddle reflections
+  const hazeX = new Float32Array(2), hazeY = new Float32Array(2), hazeR = new Float32Array(2), hazeA = new Float32Array(2); let hazeN = 0;
+  let tsx = 0, tsy = 0;
+  function tileScreenXY(state, i, cam, view, ft) { const tx = i & 63, ty = i >> 6, z = cam.zoom || 1; tsx = (tileWorldX(tx, ty) - cam.x) * z + view.vw / 2; tsy = (tileWorldY(tx, ty) - ft * PXFT - cam.y) * z + view.vh / 2; }
+  /** a lit building with water 1–3 tiles off its SW or SE edge mirrors a warm smear on that water (≤ 3 per building) */
+  function windowReflections(state, b, span, cam, view, a) {
+    const t = state.tiles, tx0 = b.tx | 0, ty0 = b.ty | 0, w = b.w | 0, h = b.h | 0; let made = 0;
+    for (let edge = 0; edge < 2 && made < 3; edge++) {
+      for (let d = 1; d <= 3 && made < 3; d++) {
+        const n = edge === 0 ? w : h; let hit = -1;
+        for (let k = 0; k < n; k++) {
+          const x = edge === 0 ? tx0 + k : tx0 + w - 1 + d, y = edge === 0 ? ty0 + h - 1 + d : ty0 + k; if (x < 0 || y < 0 || x >= W || y >= HGT) continue;
+          const i = y * W + x; if (isWaterTile(state, i)) { hit = i; if (k >= (n >> 1)) break; }
+        }
+        if (hit < 0) continue;
+        tileScreenXY(state, hit, cam, view, fin(t.elev[hit], 0) + fin(t.depth[hit], 0));
+        const L = pushLight('window', tsx, tsy, 1.2 + 0.3 * span, a * (1 - 0.22 * (d - 1)), 0); if (L) { L.refl = 1; made++; }
+        break;
+      }
+    }
+  }
   /** gather the frame's light sources (≤ lightsMax, nearest to the camera centre first); exposed for tests via R.lightsList */
   function gatherLights(state, view, cam, nightA) {
-    lightsN = 0;
+    lightsN = 0; hazeN = 0;
     const z = cam.zoom || 1, vw = view.vw, vh = view.vh, pad = 60;
     const inScreen = (x, y) => x > -pad && x < vw + pad && y > -pad && y < vh + pad;
     const list = R.drawList, te = mod('terrain'), game = state.sports && state.sports.game;
@@ -513,7 +954,7 @@
         if (e.kind === 'building' && e.b) {
           const b = e.b, v = e.variant | 0, span = (b.w | 0) + (b.h | 0);
           const cx = e.sx + ((b.h | 0) - (b.w | 0)) * 16 * z, cy = e.sy - (span - 2) * 8 * z;
-          if (v & SPR.NIGHT) { const L = pushLight('window', cx, cy - (10 + span * 3) * z, 1.6 + 0.7 * span, 0.9, 0); if (L) L.d = 1; if (v & SPR.PILINGS) pushReflection(cx, cy + (span * 4) * z, z, 0.3); }
+          if (v & SPR.NIGHT) { const L = pushLight('window', cx, cy - (10 + span * 3) * z, 1.6 + 0.7 * span, 0.9, 0); if (L) L.d = 1; if (v & SPR.PILINGS) pushReflection(cx, cy + (span * 4) * z, z, 0.3); else if (FXO.reflect && state.tiles && state.tiles.depth) windowReflections(state, b, span, cam, view, 0.34); }
           if (b.type === 'bell_tower' && b.built >= 1 && !b.ruin) pushLight('beacon', cx, cy - 78 * z, 2.2 + 0.4 * Math.sin(frameNo * 0.05), prestige, 0);
           else if (b.type === 'water_tower' && b.built >= 1 && !b.ruin && (((frameNo / 60) | 0) & 1) === 0) pushLight('blink', cx, cy - 64 * z, 1.5, 1, 0);
           else if (b.type === 'substation' && (v & SPR.NIGHT) && (frameNo % 180) < 6) pushLight('arc', cx, cy - 10 * z, 2.5, 1, 0);
@@ -522,8 +963,9 @@
           else if (b.type === 'stadium' && (b.tier | 0) >= 2 && b.built >= 1 && !b.ruin && !b.blackout && game && game.home) {
             // six masts around the bowl, cones rotated toward the field
             const rx = (span) * 14 * z, ry = span * 7 * z, fy = cy - 18 * z;
-            for (let m = 0; m < 6 && lightsN < LMAX; m++) { const ang = (m / 6) * Math.PI * 2 + 0.3; const mx = cx + Math.cos(ang) * rx, my = fy + Math.sin(ang) * ry - 40 * z; pushLight('mast', mx, my, 2.2, 0.9, Math.atan2(fy - my, cx - mx) - Math.PI / 2); }
-            pushLight('glow', cx, fy, 7 * span * 0.25, 0.7, 0);
+            for (let m = 0; m < 6 && lightsN < LMAX; m++) { const ang = (m / 6) * Math.PI * 2 + 0.3; const mx = cx + Math.cos(ang) * rx, my = fy + Math.sin(ang) * ry - 40 * z; pushLight('mast', mx, my, 1.9, 0.42, Math.atan2(fy - my, cx - mx) - Math.PI / 2); }   // B5: six overlapping cones used to white out the bowl; the haze below carries the glow now
+            pushLight('glow', cx, fy, 7 * span * 0.25, 0.45, 0);
+            if (FXO.haze && hazeN < 2) { hazeX[hazeN] = cx; hazeY[hazeN] = fy - 22 * z; hazeR[hazeN] = span * 38 * z * (1 + 0.15 * ((b.tier | 0) - 2)); hazeA[hazeN] = 0.9; hazeN++; }
           }
         } else if (!inScreen(e.sx, e.sy)) continue;
         else if (e.kind === 'bonfire') pushLight('fire', e.sx, e.sy - 8 * z, 1.4 + 0.3 * ((frameNo >> 1) % 3) / 2, 0.95, 0);
@@ -557,13 +999,15 @@
         const w = ref.sw * L.r * z, h = ref.sh * L.r * z;
         if (L.kind === 'mast') { lg.save(); lg.translate(L.x, L.y); lg.rotate(L.rot); lg.globalAlpha = L.a; lg.drawImage(ref.canvas, ref.sx, ref.sy, ref.sw, ref.sh, -w / 2, 0, w, h); lg.restore(); continue; }
         if (L.kind === 'lamp') { if (L.refl) { drawRef(lg, ref, L.x, L.y, w * 0.9, h * 2.8, L.a * 0.6); continue; } drawRef(lg, ref, L.x, L.y + 10 * z, w * 3.2, h * 1.6, L.a * 0.55); drawRef(lg, ref, L.x, L.y, w, h, L.a); continue; }   // pool on the ground + the core; refl = a mirrored smear on water
-        if (L.kind === 'window') { drawRef(lg, ref, L.x, L.y + 16 * z, w * 2.2, h * 1.2, L.a * 0.35); drawRef(lg, ref, L.x, L.y, w, h, L.a); continue; }
+        if (L.kind === 'window') { if (L.refl) { drawRef(lg, ref, L.x, L.y, w * 1.1, h * 2.6, L.a * 0.55); continue; } drawRef(lg, ref, L.x, L.y + 16 * z, w * 2.2, h * 1.2, L.a * 0.35); drawRef(lg, ref, L.x, L.y, w, h, L.a); continue; }
         if (L.kind === 'canal') { drawRef(lg, ref, L.x, L.y, w * 2.3, h * 1.15, L.a); continue; }   // stretched 2:1 over the tile diamond
         drawRef(lg, ref, L.x, L.y, w, h, L.a);
       }
+      // stadium glow haze on game nights: a warm dome and a pale veil over the lit bowl
+      if (hazeN > 0) { const hs = ensureFogSprite(), hw = lightRef('lamp'); for (let k = 0; k < hazeN; k++) { const hr = hazeR[k]; if (hs) { lg.globalAlpha = 0.55 * hazeA[k]; lg.drawImage(hs, hazeX[k] - hr, hazeY[k] - hr * 0.6, hr * 2, hr * 1.2); } if (hw) drawRef(lg, hw, hazeX[k], hazeY[k] + hr * 0.1, hr * 2.6, hr * 1.4, 0.34 * hazeA[k]); } }
       // fireflies: blink via sin on life; drawn from the pool (they are also 1-px world particles)
       const ff = lightRef('firefly');
-      if (ff) { let cnt = 0; const capF = (z < 1 ? (PR.fireflyHalfCap || 300) : 2000); for (let i = 0; i < alive && cnt < capF; i++) { if (ptype[i] !== TID.firefly || pscreen[i]) continue; const a = 0.5 + 0.5 * Math.sin(plife[i] * 0.005 + i); if (a < 0.15) continue; const sx = (px[i] - cam.x) * z + vw / 2, sy = (py[i] - pz[i] - cam.y) * z + vh / 2; if (sx < -8 || sx > vw + 8 || sy < -8 || sy > vh + 8) continue; drawRef(lg, ff, sx, sy, ff.sw * 2.5 * z, ff.sh * 2.5 * z, a); cnt++; } }
+      if (ff) { let cnt = 0; const capF = (z < 1 ? (PR.fireflyHalfCap || 300) : 2000); for (let i = 0; i < alive && cnt < capF; i++) { if (ptype[i] !== TID.firefly || pscreen[i]) continue; const a = 0.5 + 0.5 * Math.sin(plife[i] * 0.005 + i); if (a < 0.15) continue; const sx = (px[i] - cam.x) * z + vw / 2, sy = (py[i] - pz[i] - cam.y) * z + vh / 2; if (sx < -8 || sx > vw + 8 || sy < -8 || sy > vh + 8) continue; drawRef(lg, ff, sx, sy, ff.sw * 2.5 * z, ff.sh * 2.5 * z, a); if (z >= 2 && cnt < 160) drawRef(lg, ff, sx, sy, ff.sw * 7 * z, ff.sh * 7 * z, a * 0.2); cnt++; } }   // B5: a soft bloom round each firefly at 2×
       // lightning bloom
       const now = nowMs();
       if (now < flashUntil) { const fs = ensureFogSprite(); const k = (flashUntil - now) / (PR.lightningMs || 250); if (fs) { lg.globalAlpha = k; lg.drawImage(fs, boltTipX - 160, boltTipY - 80, 320, 160); lg.globalAlpha = k * 0.8; lg.drawImage(fs, boltTipX - 70, boltTipY - 35, 140, 70); } }
@@ -578,6 +1022,43 @@
   // ---------------------------------------------------------------------------
   // Pass 8: fog, mist, vignette
   // ---------------------------------------------------------------------------
+  // art pass B5: layered fog volumes. Soft noise-lumped sprites (3 shapes × 4 palettes: cool, warm dawn/dusk, storm grey, dim night)
+  // in two layers — a low sheet hugging the water and a higher, smaller, slower drift — spawned over water (and now and then marsh);
+  // the strength follows the sky clock and burns off through the first 40 % of Day. Storm fog bands sweep across during hurricane bands.
+  const FOG_PAL = [[196, 208, 220], [246, 216, 192], [150, 160, 172], [118, 134, 160]];
+  const fogTex = [[null, null, null], [null, null, null], [null, null, null], [null, null, null]]; let fogTexTried = false;
+  function ensureFogTex() {
+    if (fogTexTried) return fogTex[0][0]; fogTexTried = true;
+    try {
+      for (let p = 0; p < 4; p++) for (let v = 0; v < 3; v++) {
+        const c = document.createElement('canvas'); c.width = 128; c.height = 64; const g = c.getContext('2d'); if (!g) return null;
+        const col = FOG_PAL[p];
+        g.save(); g.scale(1, 0.5);
+        for (let b = 0; b < 7; b++) {
+          const h = hash(v * 31 + b, 977 + p * 7), cx = 22 + b * 14 + ((h & 15) - 8) * 1.2, cy = 64 + (((h >> 4) & 15) - 8) * 2.2, r = 22 + ((h >> 8) & 15) * 1.4, a = 0.3 + 0.14 * (((h >> 12) & 7) / 7);
+          const gr = g.createRadialGradient(cx, cy, 0, cx, cy, r);
+          gr.addColorStop(0, 'rgba(' + col[0] + ',' + col[1] + ',' + col[2] + ',' + a.toFixed(3) + ')'); gr.addColorStop(0.55, 'rgba(' + col[0] + ',' + col[1] + ',' + col[2] + ',' + (a * 0.4).toFixed(3) + ')'); gr.addColorStop(1, 'rgba(' + col[0] + ',' + col[1] + ',' + col[2] + ',0)');
+          g.fillStyle = gr; g.fillRect(0, 0, 128, 128);
+        }
+        g.globalCompositeOperation = 'destination-in';
+        const mk = g.createRadialGradient(64, 64, 0, 64, 64, 64); mk.addColorStop(0, 'rgba(0,0,0,1)'); mk.addColorStop(0.5, 'rgba(0,0,0,0.9)'); mk.addColorStop(1, 'rgba(0,0,0,0)');
+        g.fillStyle = mk; g.fillRect(0, 0, 128, 128); g.restore();
+        fogTex[p][v] = c;
+      }
+    } catch (e) { for (let p = 0; p < 4; p++) for (let v = 0; v < 3; v++) fogTex[p][v] = null; }
+    return fogTex[0][0];
+  }
+  /** the mist strength 0–1 for a sky phase and progress (pure; exposed for tests): strongest at dawn, burned off by 40 % of Day, back at dusk, steady at night */
+  function mistFor(phase, t) {
+    t = clamp(fin(t, 0), 0, 1);
+    if (phase === SKY.DAWN) return lerp(1, 0.55, t);
+    if (phase === SKY.DAY) return 0.55 * (1 - clamp(t / 0.4, 0, 1));
+    if (phase === SKY.DUSK) return 0.6 * t;
+    if (phase === SKY.NIGHT) return 0.6;
+    return 0;
+  }
+  const FOG_N = 32;
+  const wisps = []; for (let k = 0; k < FOG_N; k++) wisps.push({ tx: -1, ty: -1, ox: 0, oy: 0, s: 1, ph: 0, ttl: 0, age: 0, layer: 0, v: 0 });
   function ensureFogSprite() {
     if (fogSprite || fogSpriteTried) return fogSprite; fogSpriteTried = true;
     try {
@@ -592,35 +1073,50 @@
   }
   function respawnWisp(wp, state, view) {
     const r = rng(), x0 = view.x0 | 0, y0 = view.y0 | 0, spanX = Math.max(1, (view.x1 | 0) - x0 + 1), spanY = Math.max(1, (view.y1 | 0) - y0 + 1);
-    for (let k = 0; k < 10; k++) {
+    for (let k = 0; k < 14; k++) {
       const tx = x0 + r.int(spanX), ty = y0 + r.int(spanY); if (tx < 0 || ty < 0 || tx >= W || ty >= HGT) continue;
       const i = ty * W + tx; if (!isMarshy(state, i)) continue;
-      wp.tx = tx; wp.ty = ty; wp.ox = (r.float() - 0.5) * 30; wp.oy = (r.float() - 0.5) * 10; wp.s = 2 + r.float() * 2.4; wp.ph = r.float() * 6.28; wp.ttl = 4000 + r.float() * 5000; return;
+      if (!isWaterTile(state, i) && r.float() > 0.3) continue;   // mostly over open water, now and then a marsh
+      wp.tx = tx; wp.ty = ty; wp.ox = (r.float() - 0.5) * 30; wp.oy = (r.float() - 0.5) * 10; wp.layer = r.float() < 0.4 ? 1 : 0; wp.v = r.int(3);
+      wp.s = wp.layer ? 1.2 + r.float() * 0.8 : 1.7 + r.float() * 1.1; wp.ph = r.float() * 6.28; wp.age = 0; wp.ttl = 5000 + r.float() * 6000; return;
     }
-    wp.ttl = 400;   // nothing marshy in view: retry soon
+    wp.ttl = 400;   // nothing wet in view: retry soon
   }
   function passFog(state, g, view, alpha, dtMs) {
     const vw = view.vw, vh = view.vh, cam = camOf(state), z = cam.zoom || 1, wx = state.weather || {};
     const fog = clamp(fin(wx.fog, 0), 0, 1), s = readSky(state), nightA = nightAmount(state), storm = stormDarkness(state);
     const dt = clamp(fin(dtMs, 16.67), 0, 100), wind = clamp(fin(wx.wind, 0), 0, 1.5), windAngle = fin(wx.windAngle, 0);
     const spr = ensureFogSprite();
-    // mist over water and marsh: strongest at dawn, present at night, never in heavy rain
-    let mistA = 0;
-    if (s.phase === SKY.DAWN) mistA = 1 - s.t * 0.65; else if (s.phase === SKY.NIGHT) mistA = 0.6; else if (s.phase === SKY.DUSK) mistA = 0.3 * s.t;
+    // mist over water and marsh (B5: two layers of soft volumes): strongest at dawn, burned off through the morning, back at dusk, steady at night, never in rain
+    let mistA = FXO.fog ? mistFor(s.phase, s.t) : 0;
     mistA *= 1 - clamp(fin(wx.rainRate, 0), 0, 1); mistA *= 1 - storm;
-    if (spr && mistA > 0.02 && state.tiles && state.tiles.type) {
+    const perfLow = lowMode || (state.ui && state.ui.perfMode);
+    if (mistA > 0.02 && state.tiles && state.tiles.type && ensureFogTex()) {
+      const pal = s.phase === SKY.NIGHT || (s.phase === SKY.DUSK && s.t > 0.6) ? 3 : (s.phase === SKY.DAWN || s.phase === SKY.DUSK || s.phase === SKY.GOLDEN ? 1 : 0);
+      const nW = perfLow ? 16 : (z < 1 ? 22 : wisps.length);
       g.globalCompositeOperation = 'source-over';
-      for (let k = 0; k < wisps.length; k++) {
-        const wp = wisps[k]; wp.ttl -= dt;
+      for (let k = 0; k < nW; k++) {
+        const wp = wisps[k]; wp.ttl -= dt; wp.age += dt;
         if (wp.ttl <= 0 || wp.tx < view.x0 - 2 || wp.tx > view.x1 + 2 || wp.ty < view.y0 - 2 || wp.ty > view.y1 + 2) respawnWisp(wp, state, view);
         if (wp.tx < 0) continue;
-        wp.ox += Math.cos(windAngle) * (4 + 30 * wind) * dt / 1000; wp.ph += dt * 0.0006;
-        const i = wp.ty * W + wp.tx, wpx = tileWorldX(wp.tx, wp.ty) + wp.ox, wpy = tileWorldY(wp.tx, wp.ty) + wp.oy - elevPx(state, i) - 4;
+        wp.ox += Math.cos(windAngle) * (4 + 30 * wind) * (wp.layer ? 0.55 : 1) * dt / 1000; wp.ph += dt * 0.0006;
+        const i = wp.ty * W + wp.tx, wpx = tileWorldX(wp.tx, wp.ty) + wp.ox, wpy = tileWorldY(wp.tx, wp.ty) + wp.oy - elevPx(state, i) - (wp.layer ? 16 : 4);
         const sx = (wpx - cam.x) * z + vw / 2, sy = (wpy - cam.y) * z + vh / 2;
-        const sw = 128 * wp.s * z * (1 + 0.15 * Math.sin(wp.ph)), sh = 64 * wp.s * z * 0.5;
+        const sw = 128 * wp.s * z * (1 + 0.12 * Math.sin(wp.ph)), sh = sw * 0.38;
         if (sx < -sw || sx > vw + sw || sy < -sh || sy > vh + sh) continue;
-        g.globalAlpha = mistA * 0.5 * Math.min(1, wp.ttl / 1200);
-        g.drawImage(spr, sx - sw / 2, sy - sh / 2, sw, sh);
+        g.globalAlpha = mistA * (wp.layer ? 0.62 : 1) * Math.min(1, wp.ttl / 1200) * Math.min(1, wp.age / 1200);
+        g.drawImage(fogTex[pal][wp.v], sx - sw / 2, sy - sh / 2, sw, sh);
+      }
+    }
+    // storm fog bands: long low grey bands streaming across the view during hurricane rain bands and the landfall
+    const evb = wx.event, sbands = storm > 0 && stormPhase !== SPH.EYE ? 0.35 + 0.65 * storm : (evb && evb.kind === 'band' ? 0.5 : 0);
+    if (FXO.fog && sbands > 0.02 && ensureFogTex()) {
+      const nb = perfLow ? 3 : 6, dir = Math.cos(windAngle) >= 0 ? 1 : -1; g.globalCompositeOperation = 'source-over';
+      for (let b = 0; b < nb; b++) {
+        const bw = vw * (0.9 + 0.12 * b), bh = (80 + 20 * b) * z, span = vw + bw, spd = (0.6 + 0.35 * b) * (0.6 + wind);
+        const x = ((((frameNo * spd * dir + b * 331) % span) + span) % span) - bw, y = vh * (0.12 + 0.14 * b) - bh / 2;
+        g.globalAlpha = 0.9 * sbands * (0.75 + 0.25 * Math.sin(frameNo * 0.011 + b * 1.7));
+        g.drawImage(fogTex[2][b % 3], x, y, bw, bh);
       }
     }
     // weather fog: the flat layer (Tier 1) + 8 drifting blobs (Tier 2)
@@ -726,6 +1222,13 @@
   function buildingOf(p) { const s = stateLive(); if (!s || !Array.isArray(s.buildings)) return null; const id = p && Number.isFinite(p.id) ? p.id | 0 : -1; return id >= 0 ? (s.buildings[id] || null) : null; }
   function footprintCenter(b) { return { x: tileWorldX(b.tx + (b.w - 1) / 2, b.ty + (b.h - 1) / 2), y: tileWorldY(b.tx + (b.w - 1) / 2, b.ty + (b.h - 1) / 2), z: elevPx(stateLive(), clamp(b.ty + b.h - 1, 0, HGT - 1) * W + clamp(b.tx + b.w - 1, 0, W - 1)), spread: (b.w + b.h) * 10 }; }
   function tileCenter(i) { const tx = i & 63, ty = i >> 6; return { x: tileWorldX(tx, ty), y: tileWorldY(tx, ty), z: elevPx(stateLive(), i) }; }
+  let milePending = 0, mileTimer = 0;
+  /** a shell over the screen: the burst lands inside the current view (milestones) */
+  function viewShell(state) {
+    const view = R.view; if (!view) return; const cam = camOf(state), z = cam.zoom || 1, r = rng();
+    const H = 110 + 40 * r.float(), sx = view.vw * (0.3 + 0.4 * r.float()), sy = view.vh * (0.2 + 0.18 * r.float());
+    addShell((sx - view.vw / 2) / z + cam.x, (sy - view.vh / 2) / z + cam.y + H, 0, H, 1);
+  }
   function fireworks(state, scale) {
     state = state || stateLive(); if (!state) return;
     let at = null;
@@ -734,10 +1237,9 @@
     else if (Array.isArray(state.buildings)) for (const b of state.buildings) if (b && (b.type === 'stadium' || b.type === 'practice_field') && b.built >= 1) { at = footprintCenter(b); if (b.type === 'stadium') break; }
     if (!at && state.plot && state.plot.founders) at = { x: tileWorldX(state.plot.founders.tx + 1, state.plot.founders.ty + 1), y: tileWorldY(state.plot.founders.tx + 1, state.plot.founders.ty + 1), z: 0, spread: 20 };
     if (!at) return;
-    const r = rng(), ox = (r.float() - 0.5) * 80 * scale, oy = (r.float() - 0.5) * 30 * scale, zz = at.z + 90 + r.float() * 40;
+    const r = rng(), ox = (r.float() - 0.5) * 90 * scale, oy = (r.float() - 0.5) * 30 * scale, zz = at.z + 90 + r.float() * 40;
     emit('confetti', at.x + ox, at.y + oy, Math.round(30 * scale), { z: zz, vx: 0, vy: 0, vz: 40, spread: 6, jitter: 1, size: 3, life: 1500 });
-    emit('sparks', at.x + ox, at.y + oy, Math.round(20 * scale), { z: zz, vz: 90, spread: 3, jitter: 1, size: r.float() < 0.5 ? 3 : 5, color: r.float() < 0.5 ? 0 : 8, life: 700 });
-    for (let k = 0; k < 24; k++) { const a = (k / 24) * Math.PI * 2; emit('sparks', at.x + ox, at.y + oy, 1, { z: zz, vx: Math.cos(a) * 110, vy: Math.sin(a) * 55, vz: 30, jitter: 0.2, size: 2, color: 14, life: 600 }); }
+    addShell(at.x + ox, at.y + oy, at.z, 150 + 60 * r.float(), 1);   // B5: a rising rocket and a trailed burst with bloom (render_fx passFireworks)
   }
   function subscribe() {
     if (subscribed || !BSU.events || typeof BSU.events.on !== 'function') return; subscribed = true;
@@ -806,10 +1308,12 @@
     on(EV.LEVEE_OVERTOP, (p) => { if (!Number.isFinite(p.i)) return; const i = p.i | 0; if (i < 0 || i >= N) return; const c = tileCenter(i); const s = stateLive(); const crest = s && s.tiles && s.tiles.crest ? fin(s.tiles.crest[i], 0) : 0; emit('sheet', c.x, c.y, 8, { z: c.z + crest * PXFT, spread: 14, vz: -30, vy: 20 }); overtop.set(i, 300); });
     on(EV.LEVEE_BREACH, (p) => { if (!Number.isFinite(p.i)) return; const c = tileCenter(p.i | 0); emit('gush', c.x, c.y, 30, { z: c.z + 20, vz: 80, vx: 60, spread: 10, jitter: 1 }); emit('foam', c.x, c.y, 10, { z: c.z + 2, spread: 20, vz: 10 }); R.shake(120, 3); });
     on(EV.SURGE_FRONT, (p) => { if (!Number.isFinite(p.i)) return; const c = tileCenter(p.i | 0); emit('foam', c.x, c.y, 3, { z: c.z + 2, spread: 18, vz: 20 }); emit('debris', c.x, c.y, 1, { z: c.z + 4, vz: 20, spread: 10, size: 3 }); });
-    on(EV.MILESTONE_EARNED, () => { const view = R.view; emit('confetti', view ? view.vw / 2 : 640, 30, 20, { screen: true, vz: 140, vx: 0, spread: 60, jitter: 1, size: 3, life: 1400 }); });
+    // B5: two confetti cannons at the lower corners and a pair of view shells (the burst lands in the current view)
+    on(EV.MILESTONE_EARNED, () => { const view = R.view, vw = view ? view.vw : 1280, vh = view ? view.vh : 800; emit('confetti', 40, vh * 0.72, 26, { screen: true, vz: 300, vx: 150, spread: 12, jitter: 0.6, size: 3, life: 2600 }); emit('confetti', vw - 40, vh * 0.72, 26, { screen: true, vz: 300, vx: -150, spread: 12, jitter: 0.6, size: 3, life: 2600 }); milePending = 2; mileTimer = 6; });
     on(EV.OBJECTIVE_COMPLETE, () => { const view = R.view; emit('sparks', view ? view.vw - 160 : 1100, 120, 8, { screen: true, vz: 120, spread: 20, jitter: 1, size: 2, life: 600 }); });
     on(EV.SETPIECE_START, (p) => { if (p.kind === 'landfall') { rainRamp = 0; stormPhase = SPH.OUTER; } });
     on(EV.SETPIECE_END, (p) => { if (p.kind === 'landfall') { stormPhase = -1; rainRamp = 0; } });
+    on(EV.TILE_CHANGED, () => { pdDirty = true; });
     on(EV.SAVE_LOADED, () => { R._fxReset(stateLive()); });
   }
 
@@ -822,8 +1326,8 @@
   R._fxInit = function () { inited = true; subscribe(); R._fxReset(stateLive()); };
   /** on newGame / load: drop every transient effect */
   R._fxReset = function (state) {
-    alive = 0; overtop.clear(); boltN = 0; flashUntil = 0; boltUntil = 0; godRayUntil = -1; goldFlash = 0; burstsPending = 0; rainRamp = 0; rainSeeded = false; lightsN = 0;
-    for (const wp of wisps) { wp.tx = -1; wp.ttl = 0; } for (const b of fogBlobs) b.r = 1;
+    alive = 0; spN = 0; spApron = 0; plN = 0; fwN = 0; pvN = 0; srcN = 0; milePending = 0; pdDirty = true; wet = state && state.weather && fin(state.weather.rainRate, 0) > 0.3 ? 0.4 : 0; overtop.clear(); boltN = 0; flashUntil = 0; boltUntil = 0; godRayUntil = -1; goldFlash = 0; burstsPending = 0; rainRamp = 0; rainSeeded = false; lightsN = 0;
+    for (const wp of wisps) { wp.tx = -1; wp.ttl = 0; wp.age = 0; } for (const b of fogBlobs) b.r = 1;
     const low = !!(state && state.ui && (state.ui.perfMode || (state.ui.settings && state.ui.settings.particles === 'low')));
     lowMode = low; cap = low ? LOWP : MAXP;
     stormPhase = state && state.setPiece && state.setPiece.kind === 'landfall' ? SPH.OUTER : -1;
@@ -835,12 +1339,15 @@
   /** number of light sources gathered last frame (≤ lightsMax; R.lightsList[0..n) sorted nearest-first) */
   R.lightsCount = function () { return lightsN; };
   R.nightAmount = nightAmount;
+  R.mistFor = mistFor;
+  R.addShell = function (wx, wy, z0, z1, scale) { addShell(wx, wy, z0, z1, fin(scale, 1)); };
 
   // Passes (same-name registrations replace render's fallbacks for 'tint'; overlays/hud stay render's)
   R.registerPass('weather', function (s, g, v, a, dt) { try { passWeather(s, g, v, a, dt); } finally { g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; } }, 5);
   R.registerPass('tint', function (s, g, v) { try { passTint(s, g, v); } finally { g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; } }, 6);
   R.registerPass('lights', function (s, g, v) { try { passLights(s, g, v); } finally { g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; } }, 7);
   R.registerPass('fog', function (s, g, v, a, dt) { try { passFog(s, g, v, a, dt); } finally { g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; } }, 8);
+  R.registerPass('fireworks', function (s, g, v) { try { passFireworks(s, g, v); } finally { g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; } }, 8.2);
   R.registerPass('storm', function (s, g, v, a, dt) { try { passStorm(s, g, v, a, dt); } finally { g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; } }, 8.5);
   R.registerPass('fxhud', function (s, g, v) { try { passFxHud(s, g, v); } finally { g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; } }, 10.5);
   if (inited === false && R.ctx) { try { R._fxInit(); } catch (e) { ferr('lateInit', e); } }   // render.init already ran (manifest order safety)
@@ -864,7 +1371,10 @@
       const fake = { storms: { current: { phase: STORM.WATCH, nearMiss: false, track: [{ tx: 30, ty: 63 }, { tx: 30, ty: 40 }, { tx: 31, ty: 20 }], coneWidth: 24, point: 63 * 64 + 30, landfallDay: 3, cat: 3, forecastCat: 3 } } };
       const wxm = mod('weather'); const c = wxm && typeof wxm.cone === 'function' ? R.cone(fake) : { points: [1, 2, 3, 4] };
       A(c && c.points.length >= 4, 'cone polygon ≥ 4 points');
-      notes.push('render_fx: pool/rain/bands/tint/cone ok');
+      A(mistFor(SKY.DAWN, 0) === 1 && mistFor(SKY.DAY, 0.5) === 0 && mistFor(SKY.NIGHT, 0.5) === 0.6 && mistFor(SKY.GOLDEN, 0.5) === 0, 'mist table');
+      const svShells = fwN; fwN = 0; for (let k = 0; k < 20; k++) addShell(0, 0, 0, 100, 1); A(fwN === FW_MAX, 'shell cap'); fwN = svShells;
+      const svWet = wet; wet = 0.5; A(clamp(wet * 0.56, 0, 1) < 1, 'wet scale'); wet = svWet;
+      notes.push('render_fx: pool/rain/bands/tint/cone/mist/shells ok');
       return { ok: true, notes: notes.join(' ') };
     } catch (e) { return { ok: false, notes: 'render_fx: ' + (e && e.message) }; }
     finally { alive = saved; cap = savedCap; }

@@ -67,6 +67,15 @@
   const cypStamp = new Uint16Array(N); let cypGen = 0;   // cypress adjacency marks for the knees decoration
   const colorCache = new Map();
   let birdTiles = null, birdTilesFrame = -1000;
+  // art pass B4: gators lunge while an agent flees from them; critters get a heading from their last distinct step
+  const fleeStamp = new Int32Array(64).fill(-1), crX = new Float32Array(64), crY = new Float32Array(64), crDX = new Float32Array(64), crDY = new Float32Array(64);
+  function critFrame(sp, c, k) {
+    const j = k & 63; if (c.tx !== crX[j] || c.ty !== crY[j]) { crDX[j] = c.tx - crX[j]; crDY[j] = c.ty - crY[j]; crX[j] = c.tx; crY[j] = c.ty; }
+    const d8 = typeof sp.fbDir === 'function' ? sp.fbDir(crDX[j], crDY[j]) : 1;
+    if (c.kind === 'nutria' && typeof sp.critterFrame === 'function') return sp.critterFrame('nutria', fin(c.frame, 0), d8);
+    if (c.kind === 'spoonbill' && typeof sp.birdFrame === 'function') return sp.birdFrame('spoonbill', k, frameNo, d8, true);
+    return fin(c.frame, 0) & 1;
+  }
   let minimapEl = null, mmBase = null, mmImg = null;
   let nanReported = false;
   const info = { phase: 1, day: 0, month: 1, dom: 1, wind: 0, barrierClosed: false, toppleIds: null, bloom: false, autumn: false, perfMode: false };
@@ -1125,6 +1134,8 @@
     drawCalls++;
   }
   function getRef(id, variant, frame) { const sp = S(); const r = sp.get(id, variant, frame, zoomNow); return r || null; }
+  /** art pass B4: the character / wildlife / vehicle sheets are pure pixel-doubles at 2× (every art pixel is a 2×2 block), so the entity pass asks for the 1× entry at 2× and lets blit() scale it (nearest-neighbour, integer): the 2× sheets are never baked in play (saves ~6 MB of canvases in a crowd) */
+  function getRefE(id, variant, frame) { const sp = S(); const r = sp.get(id, variant, frame, zoomNow > 1 ? 1 : zoomNow); return r || null; }
   function zsOf(ref) { return zoomNow / (ref.zoom || 1); }
 
   // ---------------------------------------------------------------------------
@@ -1376,6 +1387,29 @@
     e.a = fin(size, 1); e.variant = typeof colorIdx === 'number' ? colorIdx : 0; e.id = typeof colorIdx === 'string' ? colorIdx : ''; e.d = type;
     e.sx = (x - camera.x) * zoomNow + vw / 2; e.sy = (y - zz - camera.y) * zoomNow + vh / 2;
   }
+  /** art pass B4: the Tiger Habitat's resident (Roux on all fours) paces its enclosure, then idles, lies down and yawns; deterministic from the frame counter, drawn right after the building */
+  const hbPos = [0, 0, 0, 0];
+  function habitatPos(b, k, t) {
+    const cx = b.tx + b.w / 2, cy = b.ty + b.h / 2, ax = Math.max(0.35, b.w / 2 - 1.05), ay = Math.max(0.35, b.h / 2 - 1.05), ph = (hash(k + 1, 7) % 628) / 100;
+    hbPos[0] = cx + ax * Math.sin(t / 110 + ph) * 0.95 + 0.25 * Math.sin(t / 37); hbPos[1] = cy + ay * Math.sin(t / 83 + ph * 1.7 + 1.3) * 0.95 + 0.25 * Math.cos(t / 41);
+  }
+  function habitatRoux(state, sp) {
+    const bl = mod('buildings');
+    if (typeof sp.rouxFrame !== 'function' || !bl || typeof bl.list !== 'function') return;
+    const list = bl.list(state, 'tiger_habitat'); if (!Array.isArray(list)) return;
+    for (let k = 0; k < list.length; k++) {
+      const b = list[k]; if (!b || fin(b.built, 1) < 1 || b.ruin) continue;
+      const ax = clamp((b.tx | 0) + (b.w | 0) - 1, 0, W - 1), ay = clamp((b.ty | 0) + (b.h | 0) - 1, 0, HGT - 1);
+      if (!inView(ax, ay, 4)) continue;
+      const per = 1000, u = (frameNo + (hash(k + 1, 3) % per)) % per, walked = Math.floor((frameNo + (hash(k + 1, 3) % per)) / per) * 560 + Math.min(u, 560);
+      habitatPos(b, k, walked); const x = hbPos[0], y = hbPos[1]; habitatPos(b, k, walked - 5); const px = hbPos[0], py = hbPos[1];
+      const state2 = u < 560 ? 'PACE' : u < 680 ? 'IDLE' : u < 880 ? 'LIE' : u < 940 ? 'YAWN' : 'IDLE';
+      const r = { tx: x, ty: y, px: u < 560 ? px : x, py: u < 560 ? py : y, dir: 1, state: state2 };
+      const e = push('roux', ax, ay, fin(state.tiles.elev[ay * W + ax], 0), 3, drawSprite);
+      e.ref = getRefE('roux', 0, sp.rouxFrame(r, frameNo)); e.id = 'roux'; e.variant = 0;
+      const sax = e.ax, say = e.ay; e.ax = x - 0.5; e.ay = y - 0.5; moverScreen(e); e.ax = sax; e.ay = say;
+    }
+  }
   function pushMover(kind, m, id, variant, frame, elevFn, state) {
     const ax = fin(m.px, m.tx) + (fin(m.tx, 0) - fin(m.px, fin(m.tx, 0))) * alphaNow, ay = fin(m.py, m.ty) + (fin(m.ty, 0) - fin(m.py, fin(m.ty, 0))) * alphaNow;
     if (!Number.isFinite(ax) || !Number.isFinite(ay)) { reportNaN(kind); return null; }
@@ -1384,7 +1418,7 @@
     const i = ty * W + tx;
     const el = elevFn(state.tiles, i);
     const e = push(kind, ax - 0.5, ay - 0.5, el, 2, kind === 'agent' ? drawAgent : drawSprite);
-    e.ref = getRef(id, variant, frame); e.id = id; e.variant = variant; e.frame = frame;
+    e.ref = getRefE(id, variant, frame); e.id = id; e.variant = variant; e.frame = frame;
     moverScreen(e);
     return e;
   }
@@ -1987,14 +2021,16 @@
     // agents (interpolated; GONE / inside / aboard skipped)
     const A = state.agents;
     if (Array.isArray(A)) {
-      const f = zoomNow < 1 ? ((Math.floor(frameNo / C.agentAnimDiv)) & 2) : Math.floor(frameNo / C.agentAnimDiv);
+      const f = Math.floor(frameNo / C.agentAnimDiv);
       for (let k = 0; k < A.length; k++) {
         const a = A[k]; if (!a || a.state === 'GONE' || a.inside || a.aboard) continue;
         const anim = typeof a.anim === 'string' ? a.anim : 'idle';
-        const id = typeof sp.agentId === 'function' ? sp.agentId(anim) : 'agent';
-        const fr = typeof sp.agentFrame === 'function' ? sp.agentFrame(anim, a.dir | 0, f) : ((a.dir | 0) * 4 + (f & 3));
+        const id = typeof sp.agentId === 'function' ? sp.agentId(anim, a, zoomNow) : 'agent';
+        // art pass B4: 8 facings, per-agent phase, cycle rate by speed, idle fidgets and the 0.5× two-pose rule live in sprites_entities.agentFrame (agent, zoom and frame counter passed)
+        const fr = typeof sp.agentFrame === 'function' ? sp.agentFrame(anim, a.dir | 0, f, a, zoomNow, frameNo) : ((a.dir | 0) * 4 + ((zoomNow < 1 ? f & 2 : f) & 3));
         const e = pushMover('agent', a, id, fin(a.look, 0) | 0, fr, groundElev, state);
         if (e) { e.c = a.state === 'FLEE' ? 1 : 0; e.b = a; agentsDrawn++; }
+        if (a.state === 'FLEE' && a.fleeGator >= 0) fleeStamp[a.fleeGator & 63] = frameNo;
       }
     }
     // gators (+ Le Grand)
@@ -2003,19 +2039,19 @@
       for (let k = 0; k < G.length; k++) {
         const ga = G[k]; if (!ga) continue;
         const variant = ga.size === 'legend' || ga.legend ? 2 : (ga.size === 'big' ? 1 : 0);
-        const fr = typeof sp.gatorFrame === 'function' ? sp.gatorFrame(ga.state, frameNo >> 3) : 0;
+        const fr = typeof sp.gatorFrame === 'function' ? sp.gatorFrame(ga.state, frameNo >> 3, ga, fleeStamp[fin(ga.id, 0) & 63] === frameNo) : 0;
         const e = pushMover('gator', ga, 'gator', variant, fr, surfaceAtTile, state); if (e) e.b = ga;
       }
     }
     const lg = state.wildlife && state.wildlife.leGrand;
-    if (lg && Number.isFinite(lg.tx) && Number.isFinite(lg.ty) && !(Array.isArray(G) && G.indexOf(lg) >= 0)) { const e = pushMover('gator', lg, 'gator', 2, typeof sp.gatorFrame === 'function' ? sp.gatorFrame(lg.state || 'SUN', frameNo >> 3) : 0, surfaceAtTile, state); if (e) e.b = lg; }
+    if (lg && Number.isFinite(lg.tx) && Number.isFinite(lg.ty) && !(Array.isArray(G) && G.indexOf(lg) >= 0)) { const e = pushMover('gator', lg, 'gator', 2, typeof sp.gatorFrame === 'function' ? sp.gatorFrame(lg.state || 'SUN', frameNo >> 3, lg, fleeStamp[fin(lg.id, 0) & 63] === frameNo) : 0, surfaceAtTile, state); if (e) e.b = lg; }
     // officers
     const O = state.wildlife && state.wildlife.officers;
     if (Array.isArray(O)) {
       for (let k = 0; k < O.length; k++) {
         const o = O[k]; if (!o) continue;
         const wr = o.state === 'WRANGLE';
-        pushMover('officer', o, wr ? 'officer:wrangle' : 'officer', 0, wr ? ((frameNo >> 3) & 1) : ((o.dir | 0) * 4 + ((frameNo >> 3) & 3)), groundElev, state);
+        pushMover('officer', o, wr ? 'officer:wrangle' : 'officer', 0, typeof sp.officerFrame === 'function' ? sp.officerFrame(o, frameNo, wr) : (wr ? ((frameNo >> 3) & 1) : ((o.dir | 0) * 4 + ((frameNo >> 3) & 3))), groundElev, state);
       }
     }
     // vehicles
@@ -2024,16 +2060,17 @@
       for (let k = 0; k < V.length; k++) {
         const v = V[k]; if (!v) continue;
         const id = VEH_ID[v.kind] || 'pirogue';
-        const fr = id === 'officer' ? ((v.dir | 0) * 4 + ((frameNo >> 3) & 3)) : ((frameNo >> 3) & 1);
+        const fr = typeof sp.vehicleFrame === 'function' ? sp.vehicleFrame(id, v, frameNo) : (id === 'officer' ? ((v.dir | 0) * 4 + ((frameNo >> 3) & 3)) : ((frameNo >> 3) & 1));
         pushMover('vehicle', v, id, 0, fr, WATER_VEH[v.kind] ? surfaceAtTile : groundElev, state);
       }
     }
     // Roux, critters, egrets
     try {
-      if (wl && typeof wl.roux === 'function') { const r = wl.roux(state); if (r && Number.isFinite(r.tx)) pushMover('roux', r, 'roux', 0, r.state === 'YAWN' ? 2 : ((frameNo >> 3) & 1), groundElev, state); }
+      if (wl && typeof wl.roux === 'function') { const r = wl.roux(state); if (r && Number.isFinite(r.tx)) pushMover('roux', r, 'roux', 0, typeof sp.rouxFrame === 'function' ? sp.rouxFrame(r, frameNo) : (r.state === 'YAWN' ? 2 : ((frameNo >> 3) & 1)), groundElev, state); }
+      habitatRoux(state, sp);
       if (wl && typeof wl.critters === 'function') {
         const cr = wl.critters(state);
-        for (let k = 0; k < cr.length; k++) { const c = cr[k]; if (!c || !c.kind) continue; const e = pushMover('critter', c, c.kind, 0, fin(c.frame, 0) & 1, c.kind === 'pelican' ? surfaceAtTile : groundElev, state); if (e && c.kind === 'spoonbill') { e.elev += 4; e.key = sortKey(e.ax, e.ay, e.elev, 2); keys[count - 1] = e.key; moverScreen(e); } }
+        for (let k = 0; k < cr.length; k++) { const c = cr[k]; if (!c || !c.kind) continue; const e = pushMover('critter', c, c.kind, 0, critFrame(sp, c, k), c.kind === 'pelican' ? surfaceAtTile : groundElev, state); if (e && c.kind === 'spoonbill') { e.elev += 4; e.key = sortKey(e.ax, e.ay, e.elev, 2); keys[count - 1] = e.key; moverScreen(e); } }
       }
       if (wl && typeof wl.birds === 'function') {
         const bd = wl.birds(state), n = Math.min(24, bd ? (bd.egrets | 0) : 0);
@@ -2046,7 +2083,7 @@
             const i = birdTiles[hash(k, 977) % birdTiles.length], tx = i & 63, ty = i >> 6;
             if (!inView(tx, ty, 1)) continue;
             const e = push('bird', tx + (hash(k, 5) % 60) / 100 - 0.3, ty + (hash(k, 9) % 60) / 100 - 0.3, fin(elev[i], 0), 2, drawSprite);
-            e.ref = getRef('egret', 0, ((frameNo >> 5) + k) & 1); e.id = 'egret'; tileScreen(e);
+            e.ref = getRefE('egret', 0, typeof sp.birdFrame === 'function' ? sp.birdFrame('egret', k, frameNo) : (((frameNo >> 5) + k) & 1)); e.id = 'egret'; tileScreen(e);
           }
         }
       }
@@ -2060,7 +2097,7 @@
           const groups = [['floats', 'float'], ['band', 'band'], ['krewe', 'krewe']];
           for (let gi = 0; gi < groups.length; gi++) {
             const arr = pd[groups[gi][0]]; if (!Array.isArray(arr)) continue;
-            for (let k = 0; k < arr.length; k++) { const p = arr[k]; if (!p || !Number.isFinite(p.tx)) continue; pushMover('parade', p, groups[gi][1], (gi ? (k * 37) : 0) & 255, (frameNo >> 3) & 3, groundElev, state); }
+            for (let k = 0; k < arr.length; k++) { const p = arr[k]; if (!p || !Number.isFinite(p.tx)) continue; pushMover('parade', p, groups[gi][1], gi ? (k * 37) & 255 : k & 3, typeof sp.paradeFrame === 'function' ? sp.paradeFrame(groups[gi][1], frameNo) : ((frameNo >> 3) & 3), groundElev, state); }
           }
         }
       }
@@ -2092,10 +2129,13 @@
     // in-world particles (D50): the only hook through which render_fx's pool reaches the sorted pass
     try { if (M.particles && typeof M.particles.forEachWorld === 'function') M.particles.forEachWorld(particleCb); } catch (err) { rerr('entities:particles', err); }
     // design pass: ground shadows under everything, then sort + draw
+    // art pass B5: render_fx's ground layer (puddles, tree contact AO, ground splashes) goes under the shadows and every entity
+    try { if (typeof M.groundFx === 'function') M.groundFx(state, g, pool, count, info); } catch (err) { rerr('entities:groundfx', err); g.globalAlpha = 1; }
     try { shadowPass(g); } catch (err) { rerr('entities:shadows', err); g.globalAlpha = 1; }
     sortList();
     g.globalAlpha = 1; g.globalCompositeOperation = 'source-over';
-    for (let k = 0; k < count; k++) { const e = list[k]; try { e.draw(e, g, view, alphaNow); } catch (err) { rerr('entities:draw:' + e.kind, err); } }
+    const fxAfter = typeof M.entityFx === 'function' ? M.entityFx : null;   // art pass B5: contact AO and apron splashes drawn right after a building's own sprite (the apron is part of the sprite)
+    for (let k = 0; k < count; k++) { const e = list[k]; try { e.draw(e, g, view, alphaNow); if (fxAfter !== null && e.kind === 'building') fxAfter(e, g); } catch (err) { rerr('entities:draw:' + e.kind, err); } }
   }
 
   // ---------------------------------------------------------------------------

@@ -113,6 +113,54 @@ try {
   H.tick(3000); H.render();
 } catch (e) { threw = e; }
 ok(!threw && BSU.errors.size === errs0, 'frames through a Cat 3 landfall and after: no throw, no BSU.error' + (threw ? ': ' + threw.stack : ''));
+// --- art pass B5: AO, splashes, puddles, steam, shimmer, fireworks, fog -----------------------
+{
+  ok(byName.fireworks && byName.fireworks.order > 8 && byName.fireworks.order < 8.5 && !byName.fireworks.builtin, "'fireworks' pass registered between fog (8) and storm (8.5)");
+  ok(typeof R.groundFx === 'function' && typeof R.entityFx === 'function' && typeof R.fxStats === 'function' && typeof R._fxPuddleWet === 'function', 'B5 hooks exposed: groundFx / entityFx / fxStats / _fxPuddleWet');
+  ok(R.fxOpts && ['ao', 'puddles', 'splashes', 'steam', 'shimmer', 'fireworks', 'fog', 'haze', 'reflect'].every((k) => R.fxOpts[k] === true), 'fxOpts: every B5 part is on by default');
+  // fog strength through the day: strongest at dawn, burned off by 40 % of Day, back at dusk, steady at night
+  const mf = R.mistFor;
+  ok(mf(SKY.DAWN, 0) === 1 && Math.abs(mf(SKY.DAWN, 1) - 0.55) < 1e-9 && Math.abs(mf(SKY.DAY, 0) - 0.55) < 1e-9 && mf(SKY.DAY, 0.4) === 0 && mf(SKY.DAY, 0.9) === 0, 'mistFor: dawn 1 → .55, Day .55 → 0 by 40 %');
+  ok(mf(SKY.GOLDEN, 0.5) === 0 && Math.abs(mf(SKY.DUSK, 1) - 0.6) < 1e-9 && mf(SKY.DUSK, 0) === 0 && mf(SKY.NIGHT, 0.5) === 0.6, 'mistFor: golden 0, dusk ramps to .6, night .6');
+  let mono = true; for (let t = 0.05; t <= 1; t += 0.05) { if (mf(SKY.DAWN, t) > mf(SKY.DAWN, t - 0.05) + 1e-12 || mf(SKY.DAY, t) > mf(SKY.DAY, t - 0.05) + 1e-12) mono = false; }
+  ok(mono && [0, 1, 2, 3, 4].every((ph) => [0, 0.3, 1, NaN].every((t) => Number.isFinite(mf(ph, t)))), 'mistFor thins monotonically through dawn and morning, always finite');
+  // wetness setter clamps
+  ok(R._fxPuddleWet(2) === 1 && R._fxPuddleWet(-1) === 0 && R._fxPuddleWet(0.5) === 0.5 && R._fxPuddleWet(NaN) === 0.5, '_fxPuddleWet clamps to 0–1 and ignores NaN');
+  // puddles fill in rain and dry after
+  R._fxReset(s); WX.scriptSky(s, SKY.DAY, 0.5); s.weather.rainRate = 0.8; s.weather.event = { kind: 'frontal', rate: 0.8 };
+  for (let k = 0; k < 120; k++) H.render();
+  const wetRain = R.fxStats().wet; ok(wetRain > 0.05 && wetRain <= 1, `wetness grows in rain (${wetRain.toFixed(3)})`);
+  ok(R.fxStats().splashes >= 0 && R.fxStats().splashes <= 160, `splash pool within its cap (${R.fxStats().splashes} ≤ 160)`);
+  s.weather.rainRate = 0; s.weather.event = null; for (let k = 0; k < 120; k++) H.render();
+  ok(R.fxStats().wet < wetRain, 'puddles shrink after the rain stops');
+  // contact AO: a recording context sees two nested strips per building, the SE face only in the narrow strip while the cast shadow covers it
+  const rec = { n: {}, fills: [] }; const g = new Proxy({}, { get: (t, k) => (k in t ? t[k] : (...a) => { rec.n[k] = (rec.n[k] || 0) + 1; if (k === 'fill') rec.fills.push(t.globalAlpha); }), set: (t, k, v) => { t[k] = v; return true; } });
+  const lib = s.buildings.find((b) => b && b.type === 'founders_hall'); ok(!!lib, "the Founders' Hall exists"); lib.built = 1;
+  const ent = { kind: 'building', b: lib, variant: 0, sx: 400, sy: 300 };
+  R._fxPuddleWet(0); H.render();
+  const run = (sha, perf) => { rec.n = {}; rec.fills = []; R.groundFx(s, g, [], 0, { shAlpha: sha, perfMode: perf }); const f0 = rec.fills.length; rec.n = {}; R.entityFx(ent, g); return { fills: rec.fills.length - f0, moves: rec.n.moveTo || 0, a: rec.fills.slice(f0) }; };
+  const day = run(0.22, false), night = run(0.07, false), perf = run(0.22, true);
+  ok(day.fills === 2 && day.moves === 3, `AO by day: 2 fills, 3 polygons (wide SW + narrow SW/SE) — got ${day.fills}/${day.moves}`);
+  ok(night.fills === 2 && night.moves === 4, `AO at night: 2 fills, 4 polygons (both faces in both strips) — got ${night.fills}/${night.moves}`);
+  ok(perf.fills === 0, 'perf mode draws no AO');
+  ok(day.a.every((a) => a > 0 && a < 0.4) && day.a[0] < day.a[1], `AO alphas are soft and the narrow strip is the darker (${day.a.map((a) => a.toFixed(2))})`);
+  const before = BSU.errors.size; R.entityFx({ kind: 'building', b: null, variant: 0, sx: 0, sy: 0 }, g); R.entityFx({ kind: 'building', b: lib, variant: BSU.SPR.RUIN, sx: 0, sy: 0 }, g);
+  ok(BSU.errors.size === before, 'entityFx tolerates a missing building and ruins');
+  // perf mode: no puddles, no AO, splash cap halves
+  s.ui.perfMode = true; s.weather.rainRate = 0.8; R._fxPuddleWet(1); for (let k = 0; k < 10; k++) H.render();
+  ok(R.fxStats().puddles === 0 && R.fxStats().aoOn === false, 'perfMode disables the puddles and the AO first');
+  ok(R.fxStats().splashes <= 60, `perfMode caps the splashes at 60 (${R.fxStats().splashes})`);
+  s.ui.perfMode = false; s.weather.rainRate = 0;
+  // firework shells: capped at 8, expire after ~3 s of frames
+  R._fxReset(s); for (let k = 0; k < 12; k++) R.addShell(1000, 700, 0, 120, 1);
+  ok(R.fxStats().shells === 8, `firework shells capped at 8 (${R.fxStats().shells})`);
+  for (let k = 0; k < 40; k++) H.render(); ok(R.fxStats().shells === 8, 'shells still burning after ~0.7 s');
+  for (let k = 0; k < 200; k++) H.render(); ok(R.fxStats().shells === 0, 'every shell expired after ~4 s');
+  // the milestone and score events queue shells / confetti without throwing
+  const e0 = BSU.errors.size; R._fxReset(s); BSU.events.emit('milestone:earned', { id: 'firstBell' }); for (let k = 0; k < 80; k++) H.render(); BSU.events.emit('game:score', { side: 'home' }); for (let k = 0; k < 5; k++) H.render();
+  ok(BSU.errors.size === e0 && R.fxStats().shells >= 1, `milestone view shells + home-score shell (${R.fxStats().shells} burning), no BSU.error`);
+  R._fxReset(s);
+}
 // perf guardrail reaction
 P.clear(); R.onPerfMode(s); P.emit('dust', 0, 0, 3000);
 ok(P.count() <= BSU.params.render.particlesLow, `onPerfMode caps the pool at particlesLow (${P.count()} ≤ ${BSU.params.render.particlesLow})`);

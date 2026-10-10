@@ -178,3 +178,24 @@ not done in B1 because the deck windows, clip hexes and curve transforms are all
 - **Checklist additions:** a contact sheet of every vegetation entry on flat ramp bases (`veg_sheet.mjs` in the B2 scratchpad)
   is the fastest way to judge tones — judge silhouettes in the 2× atlas, then confirm in the marsh at 1× and the whole map at
   0.5×. Crowns must keep tones 2–4 on their lit tops so they still read at night.
+
+## 10. Character conventions (written in pass B4)
+
+- **One rig for everything that walks.** Students, the Wildlife Officer, the Bayou Brass, the krewe, boat crews and the parade riders are
+  drawn by the football skeleton rig (`sprites_entities.js`: joints → two-bone IK → yaw → projection → depth buffer), re-skinned with
+  `BSU.sprites.makeRamp` (5 tones), a Bayer-dithered tone pick (`tone5(u)` across a limb or torso, `sph5` on spheres, light from the upper
+  left) and a **ramp-aware outline**: every empty pixel next to the figure takes the neighbour's tone 0 (tone 1 where the empty pixel lies
+  above or left of it, the lit side). Animals and vehicles use the same capsule/orb/box primitives on a ground-plane projection
+  (`scrC`: a point 1 px toward the viewer is 0.5 px lower, the 2:1 iso ground). Silhouette information lives in tones 2–4 (night multiplies
+  tones 0–1 to black); purple tops use `#5E2CA5` or `#6B3FB5` more often than the dark brand `#461D7C` for that reason.
+- **Facings and frames.** Every directional sprite is `frame = facing × per + k` with the football `fbDir` octant (0 SE, 1 S, 2 SW, 3 W,
+  4 NW, 5 N, 6 NE, 7 E); agents.js's 0–3 `dir` maps to 0, 2, 4, 6. Sheets are one lazy canvas per (anim, look, facing, zoom).
+- **Looks** are packed ints (skin, hair colour, purple/gold/other family, glasses, outfit, hair style, carried item, hat, build, accent) from a
+  stratified pool of 112 (55 / 25 / 20 purple / gold / other tops), so the atlas is bounded; a saved game's old 9-bit look is upgraded from its
+  own hash. Outfits mix the school colours with everyday ones; bottoms, shoes and the purple/gold shade vary per look.
+- **0.5× has its own art.** The 1× entry is drawn at half size by the entity pass, so students get `agentfar:<anim>` sheets: the 1× frame
+  reduced 2×2 (box filter) and re-expanded to 2×2 blocks, which lands exactly on screen pixels at 0.5× (no sparkle, the shirt colour survives).
+  Everything bigger than a student (gators, vehicles, floats) is simply drawn at half size.
+- **Bake budget.** Compose is cheap (≈ 0.06 ms a frame in Chrome) but a whole crowd of new looks is not: over a 3.2 ms per-frame budget
+  `stuSheet` hands out the default student's sheet of that pose and queues the real one (`M.pumpBakes`), so there is no hitch; a sheet
+  is updated in place, the SpriteRef stays valid.

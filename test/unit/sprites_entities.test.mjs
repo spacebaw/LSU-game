@@ -96,6 +96,39 @@ const cMs = performance.now() - tc;
 console.log(`      composing 136 player cells: ${cMs.toFixed(0)} ms`);
 ok(true, `136 cells compose in ${cMs.toFixed(0)} ms < 400 ms${BUSY ? ' [machine busy: advisory]' : ''}`);
 
+// --- art pass B4: students, wildlife, staff, vehicles ------------------------------------------------------------
+S.clearSheets();
+const lk = S.agentLook(42);
+a = e('agent', lk, 0); ok(a.sw === 14 && a.sh === 24 && a.ox === -7 && a.oy === -22, 'student cell 14×24, feet anchor (−7, −22)');
+a = e('agent', lk, 0, 2); ok(a.sw === 28 && a.sh === 48 && a.ox === -14 && a.oy === -44, '2× student cell 28×48, anchor (−14, −44)');
+a = e('agent:umbrella', lk, 0); ok(a.sw === 18 && a.sh === 30 && a.oy === -28, 'umbrella cell 18×30, feet at row 28'); eq(S.frames('agent:umbrella'), 32, 'umbrella walk = 8 facings × 4 frames');
+eq(S.frames('agent'), 64, 'walk = 8 facings × 8 frames'); eq(S.frames('agent:idle'), 24, 'idle = 8 × 3 fidget frames'); eq(S.frames('agent:flee'), 32, 'flee = 8 × 4'); eq(S.frames('agent:splash'), 48, 'wade = 8 × 6'); eq(S.frames('gator'), 80, 'gator = 8 facings × (swim 2, walk 4, bask 2, lunge 2)');
+eq(S.frames('roux'), 80, 'Roux = 8 × (pace 4, idle 2, lie 2, yawn 2)'); eq(S.frames('egret'), 32, 'egret = 8 × (stand, preen, wings up, wings down)'); eq(S.frames('float'), 16, 'float = 8 × 2 (4 variants)');
+ok(S.animFrames && S.animFrames.facings === 8 && S.entFrames.officer === 64 && typeof S.entityCells === 'object', 'public tables animFrames / entFrames / entityCells');
+const pool = new Set(); for (let sd = 0; sd < 4000; sd++) pool.add(S.agentLook(sd));
+ok(pool.size >= 60 && pool.size <= 112, 'the look pool bounds the baked sheets: ' + pool.size + ' looks for 4000 seeds');
+const fieldsSeen = { skin: new Set(), outfit: new Set(), style: new Set(), carry: new Set(), hat: new Set() };
+for (const l of pool) { const F = S.lookFields(l); for (const k of Object.keys(fieldsSeen)) fieldsSeen[k].add(F[k]); }
+ok(fieldsSeen.skin.size === 6 && fieldsSeen.outfit.size === 16 && fieldsSeen.style.size === 6 && fieldsSeen.carry.size === 7 && fieldsSeen.hat.size === 4, '6 skin tones, 16 outfits, 6 hair styles, 7 carried-item kinds, 4 hat kinds all occur');
+const tb = performance.now();
+for (const l of pool) for (const d of [0, 2, 4, 6]) e('agent', l, d * 8, 1);
+const bMs = performance.now() - tb, walkMB = S.sheetMemoryMB();
+console.log(`      student walk sheets: ${pool.size} looks × 4 facings = ${pool.size * 4} sheets, ${walkMB.toFixed(2)} MB @1×, ${(bMs / (pool.size * 4)).toFixed(2)} ms per 8-frame sheet`);
+ok(walkMB < 6, 'every pooled look walking in all four iso facings stays under 6 MB at 1× (' + walkMB.toFixed(2) + ' MB)');
+const t2 = performance.now(); for (const l of Array.from(pool).slice(0, 40)) for (const d of [0, 6]) e('agent', l, d * 8, 2);
+console.log(`      40 looks × 2 facings at 2×: ${(S.sheetMemoryMB() - walkMB).toFixed(2)} MB, ${(performance.now() - t2).toFixed(0)} ms`);
+ok(S.sheetMemoryMB() < S.SHEET_LIMIT_MB * 2, 'the sheet memory stays near the sheet budget');
+// the 0.5× art: block-reduced figures keep the shirt colour
+const far = S.stuFar('walk', S.lookPack({ outfit: 0 }), 0, 0), farTop = far.d.filter((c) => c);
+ok(far.w === 14 && farTop.length > 40 && S.agentId('walk', null, 0.5) === 'agentfar:walk' && S.agentId('walk', null, 1) === 'agent', '0.5× uses the block-reduced agentfar sheets');
+a = e('agentfar:walk', lk, 0); ok(a.sw === 14 && a.sh === 24 && S.frames('agentfar:walk') === 16, 'agentfar cell is the student cell, 8 facings × 2 poses');
+// gators / Roux / vehicles at 2×: lazy per-facing sheets
+a = e('gator', 2, 3 * 10 + 6, 2); ok(a && a.sw === 132 && a.sh === 92, '2× Le Grand cell 132×92');
+a = e('fogger', 0, 0, 2); ok(a && a.sw === 88 && a.sh === 60, '2× fogger cell 88×60 (plume room)');
+const tcr = performance.now(); for (const v of [0, 1, 2]) for (let d = 0; d < 8; d++) for (let k = 0; k < 10; k++) S.gatorCompose(v, d, k);
+console.log(`      composing 240 gator cells: ${(performance.now() - tcr).toFixed(0)} ms`);
+ok(true, 'gator cells compose');
+
 // --- the core selfTest + its registered tests still pass with this file loaded ---------------------------------
 BSU.SELFTEST = true;
 let core; try { core = S.selfTest(); } catch (err) { core = { ok: false, notes: 'threw: ' + (err.stack || err) }; } finally { BSU.SELFTEST = false; }

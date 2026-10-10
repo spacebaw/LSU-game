@@ -137,7 +137,7 @@ eq(S.hex('#FDD023').join(','), '253,208,35', 'hex → rgb');
 ok(S.hash === BSU.rng.hash, 'hash === BSU.rng.hash');
 ok(S.tileVariant(12, 40) >= 0 && S.tileVariant(12, 40) < 8 && S.tileVariant(12, 40) === S.tileVariant(12, 40) && new Set(Array.from({ length: 64 }, (_, k) => S.tileVariant(k & 7, k >> 3))).size >= 6, 'tileVariant ∈ 0..7, stable, spread');
 const looks = Array.from({ length: 100 }, (_, i) => S.agentLook(i));
-ok(looks.every(l => (l & 7) < 6 && ((l >> 3) & 7) < 8 && (l >> 6) < 3), 'agentLook packs skin<6, hair<8, shirt<3');
+ok(looks.every(l => (l & 7) < 6 && ((l >> 3) & 7) < 8 && ((l >> 6) & 3) < 3), 'agentLook packs skin<6, hair<8, shirt<3 in the low 9 bits');
 ok(looks.join() === Array.from({ length: 100 }, (_, i) => S.agentLook(i)).join(), 'agentLook deterministic');
 ok(S.get('tile:2', 1, 0, 1) === S.get('tile:2', 1, 0, 1), 'cache hit returns the same SpriteRef object');
 eq(S.get('reeds', 0, 5, 1), S.get('reeds', 0, 1, 1), 'frame 5 of a 2-frame sprite wraps to 1');
