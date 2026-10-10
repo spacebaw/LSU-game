@@ -388,6 +388,7 @@
   };
   function crowdInWorld(state, g, view, cam, rain) {
     const game = state.sports && state.sports.game; if (!game || !game.home) return;
+    if (R.fbCrowdFrame === R.frameNo) return;   // football pass F: the sorted football layer drew the crowd (shader + fans) this frame
     const list = R.drawList; if (!Array.isArray(list)) return;
     const S = mod('sprites'), cat = (BSU.data && BSU.data.catalog) || {};
     // the venue the game is played at (sports.venue; the scheduled game's own venue as the fallback), never just the first field in the draw list
@@ -719,7 +720,9 @@
   function fireworks(state, scale) {
     state = state || stateLive(); if (!state) return;
     let at = null;
-    if (Array.isArray(state.buildings)) for (const b of state.buildings) if (b && (b.type === 'stadium' || b.type === 'practice_field') && b.built >= 1) { at = footprintCenter(b); if (b.type === 'stadium') break; }
+    let vb = null; try { vb = typeof R.fieldVenue === 'function' ? R.fieldVenue(state, false) : null; } catch (e) { vb = null; }   // football pass F: the venue the game is played at
+    if (vb) at = footprintCenter(vb);
+    else if (Array.isArray(state.buildings)) for (const b of state.buildings) if (b && (b.type === 'stadium' || b.type === 'practice_field') && b.built >= 1) { at = footprintCenter(b); if (b.type === 'stadium') break; }
     if (!at && state.plot && state.plot.founders) at = { x: tileWorldX(state.plot.founders.tx + 1, state.plot.founders.ty + 1), y: tileWorldY(state.plot.founders.tx + 1, state.plot.founders.ty + 1), z: 0, spread: 20 };
     if (!at) return;
     const r = rng(), ox = (r.float() - 0.5) * 80 * scale, oy = (r.float() - 0.5) * 30 * scale, zz = at.z + 90 + r.float() * 40;
@@ -747,8 +750,21 @@
       if (!c) return; emit('smoke', c.x, c.y, 20, { z: c.z + 6, spread: c.spread || 16, vz: 35, jitter: 0.8 }); R.shake(PR.shakeMs ? PR.shakeMs.demolish : 120, 3);
     });
     on(EV.BUILDING_DAMAGED, (p) => { if (p.cause !== 'wind') return; const b = buildingOf(p); if (!b) return; const c = footprintCenter(b); emit('debris', c.x, c.y, 4, { z: c.z + 30 + (b.w + b.h) * 4, vz: 60, vx: 80, spread: c.spread / 2, jitter: 1, size: 3 }); });
-    on(EV.GAME_SCORE, (p) => { if (p.side !== 'home') return; fireworks(stateLive(), 1); R.shake(PR.shakeMs ? PR.shakeMs.score : 150); });
-    on(EV.GAME_FINAL, (p) => { if (!p.won) return; burstsPending = 3; burstTimer = 1; goldFlash = 6; });
+    // football pass F: crowd reactions (render.fbNotify), the gold flash on home scores, a shake on big hits, audio stings
+    const fbTell = (kind, p) => { try { if (typeof R.fbNotify === 'function') R.fbNotify(kind, p); } catch (e) { ferr('fbNotify', e); } };
+    const sting = (name, opts) => { try { const A = BSU.audio; if (A && typeof A.play === 'function') A.play(name, opts); } catch (e) { ferr('sting', e); } };
+    on(EV.GAME_SCORE, (p) => { fbTell('score', p); if (p.side !== 'home') return; fireworks(stateLive(), 1); goldFlash = Math.max(goldFlash, 4); R.shake(PR.shakeMs ? PR.shakeMs.score : 150); });
+    on(EV.GAME_FINAL, (p) => { fbTell('final', p); if (!p.won) return; burstsPending = 3; burstTimer = 1; goldFlash = 6; });
+    on(EV.GAME_KICKOFF || 'game:kickoff', (p) => { fbTell('kickoff', p); });
+    on(EV.GAME_HALFTIME || 'game:halftime', (p) => { fbTell('halftime', p); if (p.mode === 'highlights' || p.mode === 'full') sting('whistle', { gain: 0.5 }); });
+    on(EV.GAME_PLAY || 'game:play', (p) => {
+      fbTell('play', p);
+      const big = p.type === 'sack' || p.res === 'fumble';
+      if (big) R.shake(PR.shakeMs ? PR.shakeMs.demolish : 120, 3);
+      if (p.poss === 0 && (p.res === 'int' || p.res === 'fumble')) sting('groan', { gain: 0.6 });
+      else if (p.poss === 0 && p.key && fin(p.yds, 0) >= 20 && p.res !== 'td') sting('roar', { gain: 0.35 });
+      else if (p.poss === 1 && p.fourth && p.res === 'downs') sting('roar', { gain: 0.5 });
+    });
     on(EV.STORM_PULSE, () => {
       const s = stateLive(), cam = camOf(s), view = R.view; if (!s || !view) return; const z = cam.zoom || 1, r = rng();
       const wa = fin(s.weather && s.weather.windAngle, 0), fromLeft = Math.cos(wa) >= 0;

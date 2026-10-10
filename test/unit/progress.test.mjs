@@ -242,6 +242,42 @@ ok(merged.length && /want paths in \d+ places/.test(merged[0].args[0].text), 'me
 ok(merged.length && merged[0].args[0].action && merged[0].args[0].action.tiles.length >= 3 && merged[0].args[0].action.label === 'Build them', 'merged action builds every held run');
 eq(progressErrors().length, 0, 'no progress BSU.error through the desire-line throttle');
 
+// --- PLAN_FOOTBALL pass C: the Spring Game 3 days after the field (200 students), no collision with the tutorial/storm -----------
+{
+  s = BSU.session.newGame({ seed: 42, skipTutorial: true }) || BSU.state;
+  const springs = []; BSU.events.on('game:spring', p => springs.push({ day: s.calendar.day, tick: s.tick, score: p.score }), 'test');
+  const sportsErrors = () => [...BSU.errors.keys()].filter(k => k.startsWith('sports|'));
+  s.economy.students = 250; s.economy.cash = 5e6;
+  H.tick(1);
+  ok(PR.unlocked(s, 'practice_field'), 'the Practice Field unlocks at 200 students (250 on campus)');
+  const spot = H.findSpot('practice_field'); ok(spot, 'a Practice Field spot');
+  const r = spot && H.place('practice_field', spot.x, spot.y); ok(r && r.ok, 'Practice Field placed: ' + JSON.stringify(r));
+  const placedDay = s.calendar.day;
+  let g = 0; while (!s.sports.hasTeam && g++ < 60) H.tick(10);
+  const builtDay = s.calendar.day;
+  ok(s.sports.hasTeam && builtDay - placedDay <= 4, 'the field completes and makes a team (' + (builtDay - placedDay) + ' days)');
+  eq(s.sports.springDay, builtDay + 3, 'the Spring Game is on the calendar 3 days after the field completed');
+  ok(s.progress.uiQueue.some(e => e.kind === 'card' && e.args[0] && e.args[0].id === 'springGame'), 'the newsflash card is queued for the ui (ui absent here)');
+  ok(s.ticker.some(l => l.kind === 'sports' && /Spring Game/.test(l.text)), 'and announced on the ticker');
+  // the tutorial (stage < 6) blocks the day it is due → it moves to the next day; back in free play it fires at the first tick of that day
+  while (s.calendar.day < builtDay + 2 && !s.setPiece) H.tick(10);
+  ok(!s.setPiece && s.calendar.day === builtDay + 2, 'no set piece before the scheduled day (day ' + s.calendar.day + ')');
+  s.progress.tutorialStage = 5;
+  while (s.calendar.day < builtDay + 3) H.tick(1);   // the first tick of the scheduled day: the attempt sees the tutorial and defers
+  ok(!s.setPiece && !springs.length && s.sports.springDay === builtDay + 4, 'a tutorial in progress defers the Spring Game by a day (' + s.sports.springDay + ')');
+  s.progress.tutorialStage = 6;
+  g = 0; while (!s.setPiece && g++ < 300) H.tick(1);
+  ok(s.setPiece && s.setPiece.kind === 'spring' && s.setPiece.len === 300 && s.calendar.day === builtDay + 4 && s.storms.current === null, 'the Spring Game set piece starts on the deferred day with no storm on the board');
+  g = 0; while (s.setPiece && g++ < 100) H.tick(5);
+  eq(springs.length, 1, 'game:spring fired once');
+  ok(s.progress.setPiecesSeen.spring === true && PR.setPieceSeen(s, 'spring'), 'setpiece:end{spring} marks it seen');
+  const o15 = s.progress.objectives['15']; ok(o15 && o15.state === 'active' && o15.goal === 4 && o15.progress === 2 && /Spring Game/.test(o15.text), 'objective 15 (background): 2 of 4 steps (field, Spring Game) — Bayou Field and the first home game remain (' + JSON.stringify(o15) + ')');
+  ok(s.sports.lastSpring && s.sports.lastSpring.year === 1 && !s.sports.game, 'lastSpring recorded for Year 1; the game struct cleared');
+  ok(s.ticker.some(l => l.kind === 'sports' && /Spring Game final/.test(l.text)), 'the final is on the ticker');
+  eq(progressErrors().length + sportsErrors().length, 0, 'no progress/sports BSU.error through the Spring Game: ' + progressErrors().concat(sportsErrors()).join(', '));
+  BSU.events.clear('test');
+}
+
 // --- PLAN_FOOTBALL pass A hotfix: setPiecesSeen.game ----------------------------------------------------
 // The first home-game set piece to END marks 'game' seen, so Skip ▸ appears for later games and the Auto-sim montage works.
 s = BSU.session.newGame({ seed: 7, skipTutorial: true }) || BSU.state;

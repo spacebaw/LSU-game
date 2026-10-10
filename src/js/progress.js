@@ -122,7 +122,8 @@
     if (!p.failure || typeof p.failure !== 'object') p.failure = { bankruptcy: 0, receiverUntilDay: NONE, probation: false, underwaterDays: 0 };
     if (p.failure.pendingKind === undefined) p.failure.pendingKind = null;
     if (typeof p.failure.receiver !== 'boolean') p.failure.receiver = false;
-    if (!p.setPiecesSeen) p.setPiecesSeen = { landfall: false, game: false, parade: false, graduation: false };
+    if (!p.setPiecesSeen) p.setPiecesSeen = { landfall: false, game: false, parade: false, graduation: false, spring: false };
+    if (typeof p.setPiecesSeen.spring !== 'boolean') p.setPiecesSeen.spring = false;   // PLAN_FOOTBALL pass C: the Spring Game set piece (older saves)
     if (!p.firsts) p.firsts = { gatorDay: NONE, mosquitoDay: NONE, floodDay: NONE, cellDay: NONE };
     if (!p.hints || typeof p.hints !== 'object') p.hints = {};
     if (!Number.isFinite(p.forceFirefliesDay)) p.forceFirefliesDay = NONE;
@@ -607,7 +608,7 @@
     '12': function (s) { return stormChecklist(s); },
     '13': function () { return { progress: 0, goal: 1 }; },
     '14': function (s) { const st = call('buildings', 'stats', s) || {}; return { progress: fin(st.unrepaired, 0) === 0 ? 1 : 0, goal: 1 }; },
-    '15': function (s) { let n = 0; if (bcount(s, 'practice_field')) n++; if (bhas(s, 'practice_field', 1)) n++; if (fin(s.sports && s.sports.firstHomeGameDay, NONE) >= 0) n++; return { progress: n, goal: 3 }; },
+    '15': function (s) { let n = 0; if (bcount(s, 'practice_field')) n++; if (M.setPieceSeen(s, 'spring') || (s.sports && s.sports.lastSpring)) n++; if (bhas(s, 'practice_field', 1)) n++; if (fin(s.sports && s.sports.firstHomeGameDay, NONE) >= 0) n++; return { progress: n, goal: 4 }; },   // PLAN_FOOTBALL §2.4 (pass C): field → Spring Game → Bayou Field → first home game
     '16': function (s) { return { progress: Math.min(preserveSouth(s), fin(G.preserve16, 20)), goal: fin(G.preserve16, 20) }; },
     '17': function (s) { return { progress: (students(s) >= fin(G.target17, 1500) ? 1 : 0) + (bhas(s, 'wastewater') ? 1 : 0), goal: 2 }; },
     '18a': function (s) { const r = s.sports && s.sports.record; return { progress: Math.min(fin(r && r.wins, 0), fin(G.wins18a, 4)), goal: fin(G.wins18a, 4) }; },
@@ -1314,6 +1315,33 @@
   /** session dispatch for parade/graduation: nothing left to resolve mid-script; jump to the last tick */
   M.skipSetPiece = function (state) { try { const sp = state && state.setPiece; if (sp && (sp.kind === 'parade' || sp.kind === 'graduation')) sp.tick = sp.len - 1; } catch (e) { BSU.error('progress', 'skipSetPiece', e); } };
   M.setPieceSeen = function (state, kind) { const s = state && state.progress && state.progress.setPiecesSeen; return !!(s && s[kind]); };
+  /** PLAN_FOOTBALL pass C: a sports newsflash card (spring game, bowl, season recap) through the ui queue — held during a set piece, queued when ui is absent. spec = ui.card spec {id, kicker, title, body[], actions?}. */
+  M.sportsCard = function (state, spec) {
+    try {
+      if (!state || !spec || typeof spec !== 'object' || !spec.id) return false;
+      if (!spec.kicker) spec.kicker = 'Athletics';
+      return ui(state, 'card', spec);
+    } catch (e) { BSU.error('progress', 'sportsCard', e); return false; }
+  };
+  /** PLAN_FOOTBALL pass C: the off-season prospect board as a card with one Sign button per prospect and Pass; sports.prospects(state) is the board. */
+  M.offerProspects = function (state) {
+    try {
+      const board = call('sports', 'prospects', state);
+      if (!board || !Array.isArray(board.list) || !board.list.length) return false;
+      const money = function (n) { return BSU.formatMoney ? BSU.formatMoney(n) : '$' + Math.round(n / 1000) + 'k'; };
+      const body = board.list.map(function (pr, i) { return (i + 1) + '. ' + pr.pos + ' ' + pr.name + ' (' + pr.hometown + ') · ' + pr.title + ' · rated ' + pr.rating + ' · ' + money(pr.cost) + (pr.signed ? ' · SIGNED' : ''); });
+      body.push('Up to ' + fin(board.maxSignings, 2) + ' signings; a signed prospect replaces the starter at that position at the Aug 5 lock. The coaching budget sets the board size and quality.');
+      const actions = board.list.map(function (pr, i) {
+        return { label: 'Sign ' + pr.pos + ' ' + String(pr.name).split(' ').pop() + ' · ' + money(pr.cost), fn: function (s) {
+          const r = call('sports', 'signProspect', s, i) || { ok: false, reason: 'error' };
+          notify(s, { text: r.ok ? pr.pos + ' ' + pr.name + ' signs for ' + money(r.cost) + '. Arrives Aug 5.' : 'Cannot sign ' + pr.name + ': ' + (r.reason || ''), kind: 'sports' });
+          return true;   // keep the card open for a second signing
+        } };
+      });
+      actions.push({ label: 'Pass', primary: true, fn: function (s) { call('sports', 'passProspects', s); } });
+      return ui(state, 'card', { id: 'prospects', kicker: 'Recruiting · off-season', title: 'Prospect board ' + fin(board.year, 0), body: body, actions: actions });
+    } catch (e) { BSU.error('progress', 'offerProspects', e); return false; }
+  };
   /** tiles with a bonfire tonight (Oct 7 quad; Dec 9 every 5th levee tile) */
   M.bonfires = function (state) {
     try {
@@ -1594,6 +1622,7 @@
         else if (e && e.kind === 'graduation') { p.setPiecesSeen.graduation = true; M.ticker(state, 41, { n: num(c.lastGraduates) }); }
         else if (e && e.kind === 'landfall') { /* storm:report / storm:passed carry the bookkeeping */ }
         else if (e && (e.kind === 'game' || e.kind === 'montage')) p.setPiecesSeen.game = true;   // PLAN_FOOTBALL §1.1 finding 2: unlocks Skip ▸ and the auto-sim montage for later home games
+        else if (e && e.kind === 'spring') p.setPiecesSeen.spring = true;   // PLAN_FOOTBALL pass C: later Spring Games are skippable
         break;
       case EV.POWER_BLACKOUT: {
         const ids = (e && Array.isArray(e.affected)) ? e.affected : [];

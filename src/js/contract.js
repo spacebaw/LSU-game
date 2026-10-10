@@ -466,9 +466,11 @@
           homecomingRating: [0, 1, 2]        // PLAN_FOOTBALL §2.3 rating bonus on Homecoming for budget tier $0 / $50k / $150k
         },
         playbook: {                          // PLAN_FOOTBALL §2.1 play calling: run share + style multipliers
-          ground:   { runShare: 0.66, passShare: 0.34, passVar: 1,   intMult: 1,    compAdj: 0,     runYdsAdd: 0.6, clockAdd: 4, fumbleMult: 1.1 },
+          // pass C calibration (equal ratings vs a balanced opponent, 800 silent games each): the plan's numbers gave ground .60 / balanced .50 / air .40 win share;
+          // ground's run bonus is halved and its fumbles up, air's picks and completion eased, so the three sit within a few points (see INTEGRATION_NOTES "football pass C")
+          ground:   { runShare: 0.66, passShare: 0.34, passVar: 1,   intMult: 1,    compAdj: 0,     runYdsAdd: 0.1, clockAdd: 4, fumbleMult: 1.3 },
           balanced: { runShare: 0.52, passShare: 0.48, passVar: 1,   intMult: 1,    compAdj: 0,     runYdsAdd: 0,   clockAdd: 0, fumbleMult: 1 },
-          air:      { runShare: 0.36, passShare: 0.64, passVar: 1.3, intMult: 1.25, compAdj: -0.02, runYdsAdd: 0,   clockAdd: 0, fumbleMult: 1 }
+          air:      { runShare: 0.36, passShare: 0.64, passVar: 1.3, intMult: 1,    compAdj: 0.03,  runYdsAdd: 0,   clockAdd: 0, fumbleMult: 1 }
         },
         situational: {                       // PLAN_FOOTBALL §2.1 overrides of the base run share
           longPassDist: 7, longPassShare: 0.85,        // 3rd & ≥ 7 → pass 85 %
@@ -540,16 +542,21 @@
           unlockStudents: 200, offsetDays: 3,          // Practice Field unlocks at 200 students; the game is 3 days after it completes
           windowDays: [0, 69],                         // day-of-year (10-day months): Jan 1 … Jul 10 (the last day of Jul)
           ticks: 300, kickoffTick: 40, halfTicks: 100, scriptedToastTick: 140,   // SET_PIECES.spring 300; two 100-tick halves of highlights
-          goldHandicap: 6, happiness: 1
+          goldHandicap: 6, happiness: 1,
+          // pass C: the set-piece tick table (kickoff 40 → halftime 140 → final 240 → exit 280), later-year date, the small concession line, no record
+          date: 'Apr 8', exitTick: 280, slots: 12, slotTicks: 16, toastCap: 1,
+          prestige: 1, concessions: 4000, attendanceShare: 0.25, deferDays: 1
         },
         recruit: {                           // PLAN_FOOTBALL §2.1 / §2.3 prospects board
           boardSizes: [3, 4, 5], boardCoachingTiers: [500000, 1000000],   // 3 below $500k, 4 from $500k, 5 from $1M of coaching budget
           maxSignings: 2, ratingMin: 70, ratingMax: 95, costMin: 150000, costMax: 900000,   // cost interpolates with rating (the plan's "$12k × (rating − 60)" tops at $420k, so the stated $150k–$900k range wins)
-          signRating: 95                     // the existing building-priced recruit stays a 95 (= recruitRating)
+          signRating: 95,                    // the existing building-priced recruit stays a 95 (= recruitRating)
+          // pass C: prospect quality = ratingMin + qualityBase + qualityPerTier × (coaching / boardCoachingTiers[1]) + qualityPerStar × (coach stars − 2) + archetype bias ± qualityNoise
+          qualityBase: 8, qualityPerTier: 6, qualityPerStar: 2, qualityNoise: 6, costRound: 10000
         },
         tickets: { tiers: [25, 35, 60], mults: [1.15, 1, 0.85] },   // PLAN_FOOTBALL §2.3 ordered mirror of `tickets` for the Season panel
         bowl: { minWins: 5 },   // PLAN_FOOTBALL §2.3 bowl eligibility (≥ 5 wins; neutral crowd = homeField.neutralFill; payout = bowlWin/bowlLose above)
-        records: { seasonsKept: 5, hofQbYds: 2500, hofRbYds: 1000, hofWrYds: 900, hofDbInts: 5, bookLines: 7 }   // PLAN_FOOTBALL §2.1 records / Hall of Fame thresholds
+        records: { seasonsKept: 5, seasonsMax: 50, hofQbYds: 2500, hofRbYds: 1000, hofWrYds: 900, hofDbInts: 5, bookLines: 7 }   // PLAN_FOOTBALL §2.1 records / Hall of Fame thresholds (seasonsMax: records.seasons cap)
       }
     },
     agents: {                                // GDD §7
@@ -638,7 +645,7 @@
       tutorial: { cellPlaySeconds: 75, cellInches: 3, arrivalSeconds: 35, stages: 6, freePlayStage: 6 },   // §10.1
       goals: {                               // §10.2 objective thresholds
         oaks6: 5, roadTiles7: 10, students8: 500, deadline8: 'Aug 5', deadline8b: 'Jan 10', beds8: 435, seats8: 358,
-        mosq10: 0.3, ringH11: 5, leveeTiles11: [8, 16], obj11Date: 'Jun 1', students15: 400, preserve16: 20, ecology16: 75,
+        mosq10: 0.3, ringH11: 5, leveeTiles11: [8, 16], obj11Date: 'Jun 1', students15: 200, preserve16: 20, ecology16: 75,
         students17: 1000, target17: 1500, wins18a: 4, wins18b: 5, students19: 2000, prestige19: 30, students20: 1500,
         students21: 5000, students22: 10000, prestige22: 60, coneDays12: 6
       },
@@ -731,6 +738,7 @@
     'festival:start', 'festival:end',
     'game:scheduled', 'game:kickoff', 'game:score', 'game:halftime', 'game:final', 'season:end', 'coach:changed',
     'game:play', 'game:drive', 'game:decision',   // PLAN_FOOTBALL pass B: the drive/play engine (sports.js)
+    'game:spring',                                 // PLAN_FOOTBALL pass C: the Purple & Gold Spring Game final (sports.js)
     'econ:income', 'econ:expense', 'econ:month', 'econ:stat', 'econ:card',
     'enroll:round', 'enroll:lock', 'enroll:attrition', 'enroll:graduation',
     'board:offered', 'board:resolved', 'voice:offered', 'voice:resolved',
@@ -1140,13 +1148,14 @@
         rating: 0, ratingTerms: {}, nightToggle: false, autoSim: false, permits: 'paid', homecomingBudget: 0, rivalryLossStreak: 0,
         game: null, firstHomeGameDay: -1, firstNightGameDay: -1, scriptedNightDay: -1,
         playbook: 'balanced', aggression: 'normal', watchFull: false, lastSummary: null,   // PLAN_FOOTBALL pass B (sports.ensureKeys fills records)
-        records: { allTime: { wins: 0, losses: 0 }, bestWin: null, longestPlay: null, seasonBests: {}, book: {}, seasons: [], hof: [] }
+        records: { allTime: { wins: 0, losses: 0 }, bestWin: null, longestPlay: null, seasonBests: {}, book: {}, seasons: [], hof: [] },
+        springDay: -1, springYear: 0, lastSpring: null, prospects: null, seasonLog: [], seasonLines: null   // PLAN_FOOTBALL pass C: spring game, prospect board, the season's game log and stat lines
       },
       progress: {
         tutorialStage: 0, objectives: objectives, card: null, background: null, interruptQueue: [], backgroundQueue: [],
         milestones: milestones, timers: [], voiceCards: [], boardCards: [],
         failure: { bankruptcy: 0, receiverUntilDay: -1, probation: false, underwaterDays: 0 },
-        setPiecesSeen: { landfall: false, game: false, parade: false, graduation: false },
+        setPiecesSeen: { landfall: false, game: false, parade: false, graduation: false, spring: false },
         firsts: { gatorDay: -1, mosquitoDay: -1, floodDay: -1, cellDay: -1 },
         recap: null, achievementsWhileDebug: false, hints: {}
       },

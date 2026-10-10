@@ -488,5 +488,135 @@ if (existsSync(join(root, 'index.html'))) {
   rec.seen = false;
 }
 
+// --- PLAN_FOOTBALL pass C: the Spring Game (3 days after the field, deferred by a busy day), no record, the live state ----------------
+{
+  const springs = [];
+  BSU.events.on('game:spring', (p) => springs.push(JSON.parse(JSON.stringify(p))), 'test');
+  const s = newGame(21);
+  s.calendar.day = BSU.dateToDay('Feb 10', 1);   // the stub field "completes" on Feb 10 Y1 (inside the Jan 1 – Jul 10 window)
+  rec.notifies.length = 0; rec.tickers.length = 0; rec.posts.length = 0; rec.bumps.length = 0; events.length = 0;
+  run(s, 1);
+  const d0 = BSU.dateToDay('Feb 10', 1);
+  eq(s.sports.springDay, d0 + 3, 'the Spring Game is scheduled 3 days after the field completes');
+  ok(rec.notifies.some(t => /Spring Game/.test(t)) && rec.tickers.some(t => typeof t.line === 'string' && /Spring Game/.test(t.line)), 'announced by a notify and a ticker line (the card goes through progress.sportsCard)');
+  const sp0 = SP.spring(s); ok(sp0.scheduledDay === d0 + 3 && sp0.daysUntil === 3 && sp0.playedYear === 0, 'sports.spring() reports the date');
+  // a storm on the board the day it is due → deferred by a day; cleared → it fires at the first tick of the next day
+  runUntilDay(s, d0 + 2); s.storms.current = { name: 'Test', cat: 1, forecastCat: 1, nearMiss: false, landfallDay: d0 + 6 };
+  runUntilDay(s, d0 + 3); run(s, 3);
+  ok(!s.setPiece && !s.sports.game && s.sports.springDay === d0 + 4, 'a storm on the scheduled day defers the Spring Game to the next day (' + s.sports.springDay + ')');
+  s.storms.current = null;
+  runUntilDay(s, d0 + 4); run(s, 2);
+  ok(s.setPiece && s.setPiece.kind === 'spring' && s.setPiece.len === 300 && s.sports.game && s.sports.game.kind === 'spring' && s.sports.game.mode === 'highlights' && s.sports.game.night === false, 'the Spring Game set piece: kind spring, 300 ticks, highlights, a day game');
+  const wins0 = s.sports.record.wins + s.sports.record.losses, cash0 = rec.posts.length;
+  let lives = 0, players22 = true, maxTick = 0, toasts = 0;
+  const g = s.sports.game;
+  while (s.setPiece && maxTick < 600) { tick1(s); maxTick++; const lv = SP.live(s); if (lv.active && g.kickedOff && !g.finalized) { lives++; if (lv.players.length !== 22) players22 = false; } if (g.decision && !g.decision._seen) { g.decision._seen = true; toasts++; } }
+  ok(!s.setPiece && !s.sports.game && g.finalized && g.over && maxTick >= 300 && maxTick <= 300 + 120, 'the set piece ran its 300 ticks (+ a paused toast) and ended (' + maxTick + ' ticks, ' + toasts + ' toasts)');
+  ok(lives > 150 && players22, 'live() carried 22 players through the scrimmage (' + lives + ' ticks)');
+  ok(toasts <= 1 + 1, 'at most one 4th-down/two-point toast plus the halftime one in a Spring Game');
+  eq(s.sports.record.wins + s.sports.record.losses, wins0, 'no record impact');
+  eq(springs.length, 1, 'game:spring emitted once');
+  ok(springs[0].kind === 'spring' && springs[0].summary && springs[0].summary.mvp && Array.isArray(springs[0].score) && springs[0].score[0] !== springs[0].score[1], 'game:spring carries the summary, the MVP and a decided score (' + springs[0].score + ')');
+  ok(s.sports.lastSpring && s.sports.lastSpring.year === 1 && s.sports.springYear === 1 && s.sports.springDay === -1, 'lastSpring recorded; one per year');
+  ok(rec.posts.length === cash0 + 1 && rec.posts[cash0].key === 'athletics' && rec.posts[cash0].amount === BSU.params.sports.engine.spring.concessions, 'the concession line is the only revenue');
+  ok(rec.bumps.some(b => b.stat === 'happiness' && b.delta === 1 && /Spring/.test(b.why)) && rec.bumps.some(b => b.stat === 'prestige' && b.delta === 1), '+1 happiness and +1 prestige');
+  ok(rec.notifies.some(t => /Spring Game final/.test(t)) && rec.tickers.some(t => typeof t.line === 'string' && /final/.test(t.line)), 'the final is on the ticker and a notify');
+  ok(!events.some(e => e.name === 'game:final'), 'no game:final for the scrimmage (progress achievements untouched)');
+  ok(s.sports.lastSummary && s.sports.lastSummary.kind === 'spring' && s.sports.lastSummary.revenue.tickets === 0 && s.sports.lastSummary.revenue.concessions > 0, 'summary(): kind spring, no ticket revenue');
+  const dr = SP.drill(s); ok(dr && dr.phase === 'drill' && dr.players.length === 11 && dr.players.every(p => Number.isFinite(p.x) && Number.isFinite(p.y) && p.team === 0) && SP.live(s).drill && SP.live(s).active === false, 'the idle practice drill: 11 players on the field between games (live().drill)');
+  // a second start the same year is refused by the scheduler but allowed on demand; a later year schedules Apr 8
+  run(s, 100); ok(s.sports.springDay === -1, 'nothing rescheduled the same year');
+  const s2 = newGame(22); run(s2, 100);   // Aug 5 Y1: outside the window → no Y1 Spring Game; Y2 → Apr 8
+  ok(s2.sports.springDay === -1 && s2.sports.springYear === 0, 'a team formed in August has no Spring Game that year');
+  runUntilDay(s2, BSU.dateToDay('Jan 2', 2)); while (s2.setPiece) tick1(s2); run(s2, 2);
+  eq(s2.sports.springDay, BSU.dateToDay('Apr 8', 2), 'Year 2: the Spring Game is on Apr 8');
+  ok(SP.startSpringGame(s2).ok === true && s2.setPiece && s2.setPiece.kind === 'spring', 'startSpringGame() starts it on demand');
+  while (s2.setPiece) tick1(s2);
+  ok(!s2.sports.game && s2.sports.springYear === 2 && springs.length === 2, 'the on-demand game finished and counted for Year 2');
+  BSU.events.clear('test');
+  for (const name of ['game:scheduled', 'game:kickoff', 'game:score', 'game:halftime', 'game:final', 'season:end', 'coach:changed', 'setpiece:end', 'game:play', 'game:drive', 'game:decision']) {
+    BSU.events.on(name, (p) => events.push({ name, p: JSON.parse(JSON.stringify(p)), tick: cur && cur.tick }), 'test');
+  }
+}
+
+// --- PLAN_FOOTBALL pass C: season records + Hall of Fame at season:end, the Sugar Cane Bowl, away-game notifies ----------------------
+{
+  const s = newGame(23); events.length = 0; rec.notifies.length = 0; rec.tickers.length = 0;
+  run(s, 100);
+  ok(Array.isArray(s.sports.seasonLog) && s.sports.seasonLog.length === 0 && s.sports.seasonLines && s.sports.seasonLines.QB, 'seasonLog/seasonLines reset with the schedule');
+  const dec9 = BSU.dateToDay('Dec 9', 1);
+  runUntilDay(s, dec9); while (s.setPiece) tick1(s);
+  const se = events.find(e => e.name === 'season:end');
+  ok(se && Number.isFinite(se.p.pf) && Number.isFinite(se.p.pa) && Array.isArray(se.p.hof) && se.p.seasons === 1, 'season:end carries pf/pa/mvp/hof (' + se.p.wins + '-' + se.p.losses + ', ' + se.p.pf + ':' + se.p.pa + ')');
+  const R1 = s.sports.records;
+  eq(R1.seasons.length, 1, 'records.seasons appended at season:end');
+  const row = R1.seasons[0];
+  ok(row.year === 1 && row.wins === se.p.wins && row.losses === se.p.losses && row.pf === se.p.pf && row.pa === se.p.pa && typeof row.coach === 'string' && (row.mvp === null || (row.mvp.name && row.mvp.pos && row.mvp.line)) && row.games >= 7, 'the season row: year, W-L, points for/against, coach, MVP');
+  const regular = s.sports.seasonLog.filter(e => e.kind !== 'bowl');
+  ok(regular.length >= 7 && row.pf === regular.reduce((a, e) => a + e.score[0], 0) && row.pa === regular.reduce((a, e) => a + e.score[1], 0), 'pf/pa are the regular-season sums of the game log');
+  ok(row.bowl === null ? row.wins < 5 : (row.wins >= 5 && row.bowl.opp && row.bowl.score.length === 2 && typeof row.bowl.won === 'boolean'), 'bowl eligibility at 5 wins; the bowl result sits in the row (' + (row.bowl ? row.bowl.opp + ' ' + row.bowl.score : 'no bowl') + ')');
+  ok(s.sports.seasonLog.filter(e => !e.home).every(e => rec.notifies.some(t => t.indexOf(e.oppName) >= 0 && /·\s[WL]\s·/.test(t))) , 'every away game left a notify with its line');
+  ok(rec.tickers.some(t => typeof t.line === 'string' && /bowl/i.test(t.line)), 'the bowl verdict is on the ticker');
+  ok(R1.hof.every(h => h.name && h.pos && h.year === 1 && h.why), 'Hall of Fame entries (' + R1.hof.length + ') are well-formed');
+  // the thresholds: a QB season of 2,500 yards enters the Hall
+  s.sports.seasonLines.QB.yds = 2600; s.sports.seasonLog.push({ day: 0, opp: 'delta', oppName: 'Delta A&M', home: true, kind: 'regular', score: [20, 10], won: true, mvp: null });
+  const hof0 = R1.hof.length; s.sports.seasonDone = false; s.sports.record.wins = 3; s.sports.record.losses = 4;
+  s.calendar.day = BSU.dateToDay('Dec 8', 1); SP._buildSchedule(s); s.sports.seasonLines.QB.yds = 2600; for (const e of s.sports.schedule) { e.played = true; e.result = null; e.cancelled = true; }
+  run(s, 101);
+  ok(R1.seasons.length === 2 && R1.hof.length === hof0 + 1 && R1.hof[R1.hof.length - 1].pos === 'QB' && /2500/.test(R1.hof[R1.hof.length - 1].why), 'a 2,500-yard QB season enters the Hall of Fame');
+}
+
+// --- PLAN_FOOTBALL pass C: the prospect board (Dec 9, once), signing, the Aug 5 arrival; hire/fire untouched ----------------------
+{
+  const s = newGame(24); rec.notifies.length = 0; rec.tickers.length = 0;
+  run(s, 100);
+  const dec9 = BSU.dateToDay('Dec 9', 1);
+  runUntilDay(s, dec9 - 1); while (s.setPiece) tick1(s);
+  eq(SP.prospects(s), null, 'no board before Dec 9');
+  runUntilDay(s, dec9); run(s, 2);
+  const board = SP.prospects(s);
+  ok(board && board.list.length === 3 && board.maxSignings === 2 && board.signed === 0 && board.open === true, 'Dec 9: a 3-prospect board at $200k coaching');
+  ok(board.list.every(p => ['QB', 'RB', 'WR', 'OL', 'DL', 'LB', 'DB', 'K'].indexOf(p.pos) >= 0 && p.rating >= 70 && p.rating <= 95 && p.cost >= 150000 && p.cost <= 900000 && p.cost % 10000 === 0 && p.name && p.hometown && p.title), 'prospects: position, rating 70–95, cost $150k–$900k (rounded to $10k), archetype');
+  ok(rec.notifies.filter(t => /Prospect board/.test(t)).length === 1 && s.sports.prospects.offered === true, 'offered once (the notify fallback when progress lacks the card)');
+  run(s, 300); ok(rec.notifies.filter(t => /Prospect board/.test(t)).length === 1, 'not re-offered on later days');
+  const p0 = board.list[0];
+  const r1 = SP.signProspect(s, 0);
+  ok(r1.ok === true && r1.cost === p0.cost && SP.prospects(s).list[0].signed === true && SP.prospects(s).signed === 1, 'signProspect charges the cost and marks the prospect (' + p0.pos + ' ' + p0.name + ')');
+  ok(SP.signProspect(s, 0).ok === false, 'cannot sign the same prospect twice');
+  const same = board.list.findIndex((p, i) => i > 0 && p.pos === p0.pos);
+  if (same > 0) ok(SP.signProspect(s, same).ok === false, 'one signing per position');
+  ok(SP.signProspect(s, 99).ok === false && SP.passProspects(s).ok === true && SP.prospects(s).answered === true, 'bad index refused; Pass marks the board answered');
+  // a bigger coaching budget → a bigger board, better prospects on average
+  const s5 = newGame(25); s5.economy.coaching = 1500000; run(s5, 100); runUntilDay(s5, dec9); run(s5, 2);
+  const b5 = SP.prospects(s5);
+  ok(b5 && b5.list.length === 5, 'a $1.5M coaching budget draws a 5-prospect board');
+  const avg = (b) => b.list.reduce((a, p) => a + p.rating, 0) / b.list.length;
+  ok(avg(b5) > avg(board) - 4, 'quality follows the coaching budget (' + avg(board).toFixed(1) + ' → ' + avg(b5).toFixed(1) + ')');
+  // Aug 5 Y2: the signed prospect replaces the starter at that position
+  const before = s.sports.starters.find(x => x.pos === p0.pos);
+  runUntilDay(s, BSU.dateToDay('Aug 6', 2)); while (s.setPiece) tick1(s);
+  const after = s.sports.starters.find(x => x.pos === p0.pos);
+  ok(after && after.name === p0.name && after.rating === p0.rating && after.class === 'Fr' && (!before || before.name !== p0.name), 'Aug 5: ' + p0.pos + ' ' + p0.name + ' replaced ' + (before && before.name) + ' (' + (before && before.rating) + ' → ' + after.rating + ')');
+  ok(s.sports.prospects === null && s.sports.starters.length === 8, 'the board closes at the lock; eight starters');
+  ok(rec.notifies.some(t => t.indexOf(p0.name) >= 0 && /arrives/.test(t)), 'the arrival is a notify');
+  // hire/fire still work with a board open
+  const s6 = newGame(26); run(s6, 100); runUntilDay(s6, dec9); run(s6, 2);
+  const fired = SP.fireCoach(s6); ok(fired.ok === true && s6.sports.candidates.length === 3, 'fireCoach works in the off-season');
+  const hired = SP.hireCoach(s6, 0); ok(hired.ok === true || /budget|fee/i.test(hired.reason), 'hireCoach answers (' + (hired.ok ? 'hired' : hired.reason) + ')');
+}
+
+// --- PLAN_FOOTBALL pass C: playbook calibration — air ≈ ground at equal ratings (home field still +2 to +5.5 above) ------------------
+{
+  const s = newGame(27); run(s, 100);
+  s.sports.coach = { name: 'x', stars: 2, hiredYear: 1, quote: '', rep: '' };
+  s.sports.starters = s.sports.starters.map(x => Object.assign({}, x, { rating: 75 }));
+  SP._deps.data = Object.assign({}, BSU.data, { opponents: Object.assign({}, BSU.data.opponents, { neutral: { name: 'Neutral University', nick: 'Neutrals', rating: 60, colors: ['#888888', '#ffffff'], rival: false, crosstown: false, style: 'balanced', defBias: 0 } }) });
+  const pb = (style, n) => { s.sports.playbook = style; BSU.rng.sim.state = 4242; let w = 0, py = 0, ints = 0; for (let i = 0; i < n; i++) { const g = SP._playGame(s, { opp: 'neutral', oppRating: 60, rating: 60, home: false, kind: 'bowl' }); if (g.score[0] > g.score[1]) w++; py += g.box[0].passYds; ints += g.box[0].ints; } return { win: w / n, py: py / n, ints: ints / n }; };
+  const N = 500, ground = pb('ground', N), air = pb('air', N), bal = pb('balanced', N); s.sports.playbook = 'balanced';
+  ok(Math.abs(air.win - ground.win) <= 0.08 && Math.abs(air.win - bal.win) <= 0.08 && Math.abs(ground.win - bal.win) <= 0.08, 'air ≈ ground ≈ balanced at equal ratings (ground ' + ground.win.toFixed(3) + ', balanced ' + bal.win.toFixed(3) + ', air ' + air.win.toFixed(3) + ')');
+  ok(air.py >= ground.py * 1.25 && air.ints >= ground.ints * 1.2, 'air still throws for ≥ 25% more yards and ≥ 20% more picks (' + ground.py.toFixed(0) + ' → ' + air.py.toFixed(0) + ' yds, ' + ground.ints.toFixed(2) + ' → ' + air.ints.toFixed(2) + ' INT)');
+  delete SP._deps.data;
+}
+
 console.log(`\n${passes} passed, ${failures} failed`);
 process.exit(failures ? 1 : 0);

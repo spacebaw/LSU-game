@@ -23,7 +23,7 @@ ok(!/innerHTML/.test(src), 'no innerHTML (every node is created and kept in M.el
 ok(!/querySelector|closest\(|matches\(|instanceof\s+(Node|HTMLInputElement|HTMLCanvasElement|Text)/.test(src), 'no querySelector/closest/matches/instanceof Node');
 ok(!/setTimeout|setInterval/.test(src.replace(/\/\/.*$/gm, '')), 'no timers for game logic');
 const css = readFileSync(join(root, 'src', 'style.css'), 'utf8');
-ok(Buffer.byteLength(css) <= 40 * 1024, `style.css ≤ 40 KB (${(Buffer.byteLength(css) / 1024).toFixed(1)} KB)`);   // UX pass: build menu + tracker + coach marks (was 25 KB)
+ok(Buffer.byteLength(css) <= 48 * 1024, `style.css ≤ 48 KB (${(Buffer.byteLength(css) / 1024).toFixed(1)} KB)`);   // UX pass: build menu + tracker + coach marks (was 25 KB); football pass D: Season panel, game HUD, summary card (was 40 KB)
 const cssNoComments = css.replace(/\/\*[\s\S]*?\*\//g, '');
 ok(!/@import|url\(/.test(cssNoComments) && /--purple:\s*#461D7C/.test(css) && /--gold:\s*#FDD023/.test(css), 'css tokens present, no @import/url()');
 

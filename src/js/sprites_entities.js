@@ -881,6 +881,675 @@
     }
   });
 
+  // @@FB-BEGIN
+  // ---------------------------------------------------------------------------
+  // FOOTBALL PASS E (docs/PLAN_FOOTBALL.md §2.2): the football sprite family.
+  // Every humanoid (players, referee, chain crew, cheerleaders, band, coaches, fans, Roux) is drawn by ONE tiny
+  // skeleton rig: joints in a figure-local frame (x = its right hand, y up, z forward) → two-bone IK for knees and
+  // elbows → yaw by the facing direction → orthographic projection → per-pixel depth buffer (capsules for limbs, a
+  // slab stack for the torso, shaded spheres for helmets/heads) → 1-px outline → blit through the pen (so 1× and 2×
+  // come from the same code). The 8 facing directions are 8 real yaws, not mirrors. Pure + deterministic (no rng).
+  // Ids (docs/INTEGRATION_NOTES.md '## football pass E'): fbplayer[:pose], fbball, fbref, fbcrew, fbdown, fbstick,
+  // fbcheer, fbband, fbstaff, fbroux, fbfan:<pose>.
+  // ---------------------------------------------------------------------------
+  const FBL = Object.freeze({ cw: 18, ch: 24, gy: 22, pitch: 0.42 });
+  const v3add = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+  const v3sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+  const v3mul = (a, k) => [a[0] * k, a[1] * k, a[2] * k];
+  const v3dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  const v3len = (a) => Math.sqrt(v3dot(a, a));
+  const v3lerp = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+  const clamp01 = (t) => t < 0 ? 0 : t > 1 ? 1 : t;
+  const FPI = Math.PI;
+  const matCache = new Map();
+  function mat(c) { let m = matCache.get(c); if (!m) { m = { c: c, l: shade(c, 1.2), d: shade(c, 0.72), hl: mix(c, '#FFFFFF', 0.5) }; matCache.set(c, m); } return m; }
+
+  // --- the depth-buffered pixel rig ------------------------------------------------------------
+  function newRig(w, h, cx, gy) { return { w: w, h: h, cx: cx, gy: gy, c: new Array(w * h).fill(null), z: new Float32Array(w * h).fill(-1e9), t: new Uint8Array(w * h) }; }
+  /** world (x right, y up, z toward the viewer) → [screen x, screen y, depth] */
+  function scr(R, p) { return [R.cx + p[0], R.gy - p[1] - p[2] * FBL.pitch, p[2]]; }
+  function rput(R, x, y, c, d, tag) {
+    if (x < 0 || y < 0 || x >= R.w || y >= R.h) return;
+    const i = y * R.w + x;
+    if (d >= R.z[i]) { R.z[i] = d; R.c[i] = c; R.t[i] = tag; }
+  }
+  /** tapered capsule A→B (world points); m = a material {c,l,d} or fn(t, u, x, y) → colour */
+  function cap(R, A, B, rA, rB, m, tag) {
+    const a = scr(R, A), b = scr(R, B), rm = Math.max(rA, rB) + 1, dx = b[0] - a[0], dy = b[1] - a[1], l2 = dx * dx + dy * dy, fn = typeof m === 'function';
+    for (let y = Math.floor(Math.min(a[1], b[1]) - rm); y <= Math.ceil(Math.max(a[1], b[1]) + rm); y++)
+      for (let x = Math.floor(Math.min(a[0], b[0]) - rm); x <= Math.ceil(Math.max(a[0], b[0]) + rm); x++) {
+        const px = x + 0.5, py = y + 0.5;
+        let t = l2 > 1e-6 ? ((px - a[0]) * dx + (py - a[1]) * dy) / l2 : 0; t = t < 0 ? 0 : t > 1 ? 1 : t;
+        const ex = px - (a[0] + dx * t), ey = py - (a[1] + dy * t), r = rA + (rB - rA) * t, d2 = ex * ex + ey * ey;
+        if (d2 > r * r) continue;
+        const u = ex / r;
+        rput(R, x, y, fn ? m(t, u, x, y) : (u < -0.4 ? m.l : u > 0.45 ? m.d : m.c), a[2] + (b[2] - a[2]) * t + Math.sqrt(r * r - d2) * 0.8, tag);
+      }
+  }
+  /** shaded sphere at world point C; fn(nx, ny, nz, x, y) → colour | null (nx right, ny up, nz toward the viewer) */
+  function orb(R, C, r, fn, tag, ry) {
+    const s0 = scr(R, C); ry = ry || r;
+    for (let y = Math.floor(s0[1] - ry - 1); y <= Math.ceil(s0[1] + ry + 1); y++)
+      for (let x = Math.floor(s0[0] - r - 1); x <= Math.ceil(s0[0] + r + 1); x++) {
+        const dx = (x + 0.5 - s0[0]) / r, dy = (y + 0.5 - s0[1]) / ry, d2 = dx * dx + dy * dy;
+        if (d2 > 1) continue;
+        const nz = Math.sqrt(1 - d2), col = fn(dx, -dy, nz, x, y);
+        if (col) rput(R, x, y, col, C[2] + nz * r, tag);
+      }
+  }
+  const orbMat = (m) => (dx, ny) => (dx < -0.4 || ny > 0.55 ? m.l : dx > 0.45 || ny < -0.6 ? m.d : m.c);
+
+  // --- two-bone IK + the pose solver -----------------------------------------------------------
+  function ik2(A, T, l1, l2, pole) {
+    let d = v3sub(T, A), L = v3len(d);
+    const mx = (l1 + l2) * 0.998;
+    if (L > mx) { d = v3mul(d, mx / L); L = mx; T = v3add(A, d); }
+    if (L < 0.3) return [v3add(A, [0, -l1, 0.3]), T];
+    const dir = v3mul(d, 1 / L);
+    let q = v3sub(pole, v3mul(dir, v3dot(pole, dir))), ql = v3len(q);
+    if (ql < 1e-4) { q = v3sub([0, 0, 1], v3mul(dir, dir[2])); ql = v3len(q) || 1; }
+    q = v3mul(q, 1 / ql);
+    const a = (l1 * l1 - l2 * l2 + L * L) / (2 * L), h = Math.sqrt(Math.max(0, l1 * l1 - a * a));
+    return [v3add(A, v3add(v3mul(dir, a), v3mul(q, h))), T];
+  }
+  /** local joints for a build B and pose p (all in the figure frame, after body tilt/scale/grounding) */
+  function solve(B, p) {
+    const py = p.py !== undefined ? p.py : B.hipY, pz = p.pz || 0, Ln = p.lean || 0, tw = p.tw || 0, TL = p.tilt || 0, sc = p.scale || 1;
+    const cL = Math.cos(Ln), sL = Math.sin(Ln), cw = Math.cos(tw), sw = Math.sin(tw);
+    const uT = [0, cL, sL], f0 = [0, -sL, cL];
+    const lat = v3add([cw, 0, 0], v3mul(f0, sw)), fT = v3sub(v3mul(f0, cw), [sw, 0, 0]);
+    const P = [0, py, pz], N = v3add(P, v3mul(uT, B.torso));
+    const sb = v3sub(N, v3mul(uT, 0.8)), sx = B.sw - 0.6;
+    const S2 = [v3add(sb, v3mul(lat, sx)), v3sub(sb, v3mul(lat, sx))];
+    const hip = [[B.hw, py, pz], [-B.hw, py, pz]], th = (B.hipY + 0.8) / 2;
+    const feet = [p.fr || [B.hw + 0.3, 0, 0], p.fl || [-B.hw - 0.3, 0, 0]];
+    const kn = [], an = [], toe = [], elb = [], hands = [];
+    for (let s = 0; s < 2; s++) {
+      const sg = s ? -1 : 1, r = ik2(hip[s], v3add(feet[s], [0, 0.9, 0]), th, th, (s ? p.kpL : p.kpR) || [0.12 * sg, 0.2, 1]);
+      kn.push(r[0]); an.push(r[1]); toe.push(v3add(r[1], [0, -0.55, 2.0]));
+    }
+    for (let s = 0; s < 2; s++) {
+      const sg = s ? -1 : 1, rel = s ? p.hl : p.hr, ab = s ? p.hal : p.har;
+      const tgt = ab || v3add(S2[s], rel || [0.5 * sg, -5.9, 0.3]);
+      const r = ik2(S2[s], tgt, B.upper, B.fore, (s ? p.epL : p.epR) || [0.55 * sg, -1, -0.45]);
+      elb.push(r[0]); hands.push(r[1]);
+    }
+    const H = v3add(N, [0, B.headR * 0.82 + (p.hu || 0), 0.3 + (p.hf || 0)]);
+    const cT = Math.cos(TL), sT = Math.sin(TL);
+    const tp = (q) => { const y = q[1] - py, z = q[2] - pz; return [q[0] * sc, (y * cT - z * sT + py) * sc, (z * cT + y * sT + pz) * sc]; };
+    const tv = (v) => [v[0], v[1] * cT - v[2] * sT, v[2] * cT + v[1] * sT];
+    const J = { P: tp(P), N: tp(N), lat: tv(lat), fT: tv(fT), uT: tv(uT), sh: S2.map(tp), el: elb.map(tp), ha: hands.map(tp), hip: hip.map(tp), kn: kn.map(tp), an: an.map(tp), toe: toe.map(tp), H: tp(H), sc: sc };
+    if (p.ground !== undefined) {   // lying poses: rest the lowest joint on the ground
+      let lo = 1e9; for (const k of ['sh', 'el', 'ha', 'hip', 'kn', 'an', 'toe']) for (const q of J[k]) lo = Math.min(lo, q[1] - (k === 'toe' || k === 'an' ? 0.9 : 0.8)); lo = Math.min(lo, J.H[1] - B.headR * sc);
+      const dy = p.ground - lo; for (const k of ['sh', 'el', 'ha', 'hip', 'kn', 'an', 'toe']) for (const q of J[k]) q[1] += dy; J.P[1] += dy; J.N[1] += dy; J.H[1] += dy;
+    }
+    return J;
+  }
+
+  // --- the human renderer ------------------------------------------------------------------------
+  /** style S: {m:{jersey,pants,sock,shoe,skin,glove,sleeve}, head:'helmet'|'bare'|'tiger', ...} — see the style builders below */
+  function drawHuman(R, B, S, p, yaw, opt) {
+    const J = solve(B, p), sY = Math.sin(yaw), cY = Math.cos(yaw), sc = J.sc, m = S.m;
+    const W = (q) => [-q[0] * cY + q[2] * sY, q[1], q[0] * sY + q[2] * cY];
+    const ctx = { R: R, B: B, S: S, J: J, W: W, p: p, yaw: yaw, sc: sc, opt: opt || {} };
+    // legs: thigh (pants), shin (sock or long pants), shoe
+    for (let s = 0; s < 2; s++) {
+      const hip = W(J.hip[s]), kn = W(J.kn[s]), an = W(J.an[s]), toe = W(J.toe[s]), lr = B.legR * sc;
+      cap(R, hip, kn, lr, lr * 0.95, S.legFn ? S.legFn(0) : m.pants, 4);
+      cap(R, kn, an, lr * 0.92, lr * 0.8, S.legFn ? S.legFn(1) : (S.longPants ? m.pants : m.sock), 4);
+      cap(R, an, toe, 0.95 * sc, 0.85 * sc, m.shoe, 4);
+    }
+    // torso: a slab stack from the pelvis to the neck (wedge: narrow waist, wide shoulders)
+    const Pw = W(J.P), Nw = W(J.N), latW = W(J.lat), fW = W(J.fT), pk = FBL.pitch, nS = 28;
+    for (let k = 0; k <= nS; k++) {
+      const t = k / nS, c = v3lerp(Pw, Nw, t), sm = clamp01((t - 0.1) / 0.7), sm2 = sm * sm * (3 - 2 * sm);
+      const a = (B.hw + 0.8 + (B.sw - B.hw - 0.8) * sm2) * sc, b = B.sd * (0.9 + 0.2 * sm2) * sc;
+      const hx = Math.max(0.4, a * Math.abs(latW[0]) + b * Math.abs(fW[0])), hv = Math.max(0.3, a * (Math.abs(latW[1]) + Math.abs(latW[2]) * pk) + b * (Math.abs(fW[1]) + Math.abs(fW[2]) * pk));
+      const s0 = scr(R, c), dep = c[2] + (b * Math.abs(fW[2]) + a * Math.abs(latW[2])) * 0.9;
+      for (let y = Math.ceil(s0[1] - hv - 0.5); y <= Math.floor(s0[1] + hv - 0.5); y++)
+        for (let x = Math.ceil(s0[0] - hx - 0.5); x <= Math.floor(s0[0] + hx - 0.5); x++) {
+          const u = (x + 0.5 - s0[0]) / hx;
+          let col;
+          if (t < 0.07) col = m.pants.c;
+          else if (S.jerseyFn) col = S.jerseyFn(t, u, x, y);
+          else col = u < -0.45 ? m.jersey.l : u > 0.5 ? m.jersey.d : m.jersey.c;
+          rput(R, x, y, col, dep, 1);
+        }
+    }
+    // arms (sleeve with an optional stripe, forearm, glove) and shoulder pads
+    for (let s = 0; s < 2; s++) {
+      const sh = W(J.sh[s]), el = W(J.el[s]), ha = W(J.ha[s]), ar = B.armR * sc;
+      if (B.pad) orb(R, sh, B.pad * sc, orbMat(m.jersey), 7);
+      cap(R, sh, el, ar + 0.15, ar, S.sleeveFn || m.sleeve, 3);
+      cap(R, el, ha, ar, ar * 0.9, S.armFn ? S.armFn() : (S.longSleeve ? m.sleeve : m.skin), 3);
+      if (!S.noGlove) orb(R, ha, ar + 0.35, orbMat(m.glove), 3);
+    }
+    // the ball tucked/held (only when the variant asks for it, or the pose always carries it)
+    if (p.ball && (ctx.opt.carry || p.ballAlways)) {
+      const R0 = W(J.ha[0]), L0 = W(J.ha[1]);
+      const c = p.ball === 'both' ? v3add(v3lerp(R0, L0, 0.5), [0, 0.3, 0.9]) : v3add(R0, p.ball === 'ear' ? [0.4, 0.9, 0] : [-0.2, 0.4, 0.5]);
+      const ax = p.ball === 'both' ? W([1, 0, 0]) : W([0, 0.15, 1]), bm = mat('#8B4A1E');
+      cap(R, v3sub(c, v3mul(ax, 1.7)), v3add(c, v3mul(ax, 1.7)), 1.15, 1.15, bm, 5);
+      cap(R, v3add(c, [0, 1.0, 0]), v3add(c, v3add([0, 1.0, 0], v3mul(ax, 0.1))), 0.6, 0.6, mat('#F4F4F4'), 5);
+    }
+    // the head
+    const Hc = W(J.H), hr = B.headR * sc, yh = yaw + (p.ht || 0), sYh = Math.sin(yh), cYh = Math.cos(yh);
+    const hp = (l, u, f) => [Hc[0] - cYh * l * hr + sYh * f * hr, Hc[1] + u * hr, Hc[2] + sYh * l * hr + cYh * f * hr];
+    ctx.Hc = Hc; ctx.hr = hr; ctx.hp = hp; ctx.yh = yh;
+    orb(R, Hc, hr, (dx, ny, nz) => headShade(S, dx, ny, nz, dx * sYh + nz * cYh, -dx * cYh + nz * sYh), 2);
+    if (S.head === 'helmet') {
+      const mm = S.mask, mf = (t) => (t < 0.3 ? mm.hl : mm.c);
+      cap(R, hp(-0.58, 0.0, 0.84), hp(0.58, 0.0, 0.84), 0.6, 0.6, mf, 5);                       // brow bar
+      cap(R, hp(-0.4, -0.62, 0.78), hp(0.4, -0.62, 0.78), 0.6, 0.6, mm, 5);                      // chin bar
+      cap(R, hp(0, 0.04, 0.94), hp(0, -0.62, 0.84), 0.55, 0.55, mm, 5);                         // centre bar
+      cap(R, hp(-0.6, 0.0, 0.8), hp(-0.4, -0.62, 0.78), 0.55, 0.55, mm, 5);
+      cap(R, hp(0.6, 0.0, 0.8), hp(0.4, -0.62, 0.78), 0.55, 0.55, mm, 5);
+    } else if (S.cap) {
+      const cm = mat(S.cap.bill || S.cap.c);
+      cap(R, hp(-0.62, 0.18, 0.95), hp(0.62, 0.18, 0.95), 0.6, 0.6, cm, 5);
+      cap(R, hp(-0.42, 0.14, 1.32), hp(0.42, 0.14, 1.32), 0.55, 0.55, cm, 5);
+    }
+    if (S.extras) S.extras(ctx);
+    if (S.digits && !(p.tilt && Math.abs(p.tilt) > 0.5)) overlayNumber(R, J, W, S, B);
+    return ctx;
+  }
+  function headShade(S, dx, ny, nz, fwd, lat) {
+    const k = S.head;
+    if (k === 'helmet') {
+      if (fwd > 0.48 && ny < 0.22 && ny > -0.85 && Math.abs(lat) < 0.86) return S.faceDark;
+      if (Math.abs(lat) < 0.2 && ny > 0.02) return S.stripe;
+      if (Math.abs(lat) > 0.8 && ny > -0.15 && ny < 0.45 && fwd > -0.25 && fwd < 0.5) return S.logo;
+      const sm = S.shell;
+      if (ny > 0.5 && dx < -0.1 && dx > -0.6) return sm.hl;
+      return dx < -0.42 ? sm.l : (dx > 0.46 || ny < -0.58) ? sm.d : sm.c;
+    }
+    if (k === 'tiger') {
+      const o = S.fur, aLat = Math.abs(lat);
+      if (fwd > 0.5 && ny > 0.02 && ny < 0.34 && aLat > 0.22 && aLat < 0.55) return aLat < 0.4 ? '#FFE680' : '#1B1B1B';      // eyes
+      if (fwd > 0.7 && ny > -0.18 && ny < -0.04 && aLat < 0.16) return '#1B1B1B';                                           // nose
+      if (fwd > 0.55 && ny > -0.6 && ny < -0.04 && aLat < 0.52) return '#F4EEE2';                                           // muzzle
+      if (ny > 0.42 && fwd > 0 && (aLat < 0.1 || (aLat > 0.4 && aLat < 0.55))) return '#1B1B1B';                          // forehead stripes
+      if (aLat > 0.62 && ny > -0.3 && ny < 0.05 && fwd > -0.2) return '#1B1B1B';                                           // cheek stripe
+      return dx < -0.42 ? o.l : (dx > 0.46 || ny < -0.58) ? o.d : o.c;
+    }
+    // bare head: skin, hair cap on top/back, two eyes, an optional cap
+    if (S.cap && ny > 0.12) return dx < -0.42 ? mat(S.cap.c).l : dx > 0.45 ? mat(S.cap.c).d : S.cap.c;
+    if (fwd > 0.55 && ny > -0.08 && ny < 0.2 && Math.abs(lat) > 0.22 && Math.abs(lat) < 0.55) return '#1B1B1B';
+    if (S.hairC && (ny > 0.38 || (fwd < -0.1 && ny > -0.5) || (S.longHair && fwd < 0.2 && ny > -0.8 && Math.abs(lat) > 0.55))) return dx < -0.42 ? S.hairC.l : dx > 0.45 ? S.hairC.d : S.hairC.c;
+    const sk = S.m.skin;
+    return dx < -0.42 ? sk.l : (dx > 0.46 || ny < -0.6) ? sk.d : sk.c;
+  }
+  /** stamp S.digits (a 1–2 digit string) on whichever torso face (chest / back) points at the viewer, foreshortened by the facing */
+  function overlayNumber(R, J, W, S, B) {
+    const fW = W(J.fT), k = Math.abs(fW[2]);
+    if (k < 0.3) return;
+    const digits = S.digits, texW = digits.length * 4 - 1, front = fW[2] > 0;
+    const c = v3lerp(W(J.P), W(J.N), 0.5), s0 = scr(R, c), fx = s0[0] + (front ? 1 : -1) * B.sd * 0.9 * fW[0] * J.sc, y0 = Math.round(s0[1] - 2.5);
+    for (let y = 0; y < 5; y++) for (let x = Math.floor(fx - 5); x <= Math.ceil(fx + 5); x++) {
+      if (x < 0 || x >= R.w || y0 + y < 0 || y0 + y >= R.h) continue;
+      const i = (y0 + y) * R.w + x;
+      if (R.t[i] !== 1) continue;
+      const tx = Math.floor((x + 0.5 - fx) / k + texW / 2);
+      if (tx < 0 || tx >= texW || (tx & 3) === 3) continue;
+      const g = M.FONT[digits[tx >> 2]]; if (!g) continue;
+      if ((g[y] >> (2 - (tx & 3))) & 1) R.c[i] = S.numCol;
+    }
+  }
+
+  // --- builds (px; hipY = pelvis height standing) ------------------------------------------------
+  const BUILD = {
+    line:  { hipY: 7.2, torso: 6.0, hw: 2.5, sw: 4.3, sd: 2.7, legR: 1.7, armR: 1.45, headR: 3.3, pad: 1.9, upper: 3.3, fore: 3.2, num: 66, skin: 3 },
+    skill: { hipY: 8.6, torso: 6.5, hw: 1.7, sw: 3.1, sd: 2.0, legR: 1.15, armR: 1.05, headR: 3.0, pad: 1.2, upper: 3.4, fore: 3.2, num: 84, skin: 2 },
+    qb:    { hipY: 8.8, torso: 6.7, hw: 1.9, sw: 3.5, sd: 2.2, legR: 1.25, armR: 1.15, headR: 3.0, pad: 1.4, upper: 3.5, fore: 3.2, num: 12, skin: 0 },
+    k:     { hipY: 8.4, torso: 6.2, hw: 1.7, sw: 3.0, sd: 1.9, legR: 1.15, armR: 1.0, headR: 2.9, pad: 0.9, upper: 3.3, fore: 3.1, num: 3, skin: 5 },
+    back:  { hipY: 7.9, torso: 6.3, hw: 2.0, sw: 3.6, sd: 2.3, legR: 1.4, armR: 1.2, headR: 3.1, pad: 1.5, upper: 3.3, fore: 3.2, num: 28, skin: 4 },
+    civ:   { hipY: 8.4, torso: 6.4, hw: 1.8, sw: 3.0, sd: 1.9, legR: 1.15, armR: 1.0, headR: 2.9, pad: 0, upper: 3.3, fore: 3.1 },
+    cheer: { hipY: 8.0, torso: 6.0, hw: 1.6, sw: 2.7, sd: 1.7, legR: 1.05, armR: 0.95, headR: 2.8, pad: 0, upper: 3.1, fore: 3.0 },
+    roux:  { hipY: 8.6, torso: 7.0, hw: 2.5, sw: 3.8, sd: 3.0, legR: 1.7, armR: 1.5, headR: 4.5, pad: 0, upper: 3.7, fore: 3.5 }
+  };
+  const ROLES = ['line', 'skill', 'qb', 'k', 'back'];
+  const POSES = { stance: 1, run: 6, throw: 2, catch: 2, tackle: 2, tackled: 1, celebrate: 2, huddle: 1 };
+
+  // --- players: poses ----------------------------------------------------------------------------
+  function playerPose(kind, role, f) {
+    const B = BUILD[role], hw = B.hw, L = role === 'line', Q = role === 'qb';
+    switch (kind) {
+      case 'stance':
+        if (L) return { py: 5.1, pz: -2.0, lean: 1.12, har: [3.0, 1.2, 4.1], hl: [-1.4, -4.6, -2.2], fr: [hw + 1.0, 0, -0.6], fl: [-hw - 1.0, 0, 0.6], ball: 'tuck' };
+        if (role === 'back') return { py: 6.2, pz: -0.8, lean: 0.62, har: [hw + 0.9, 5.2, 2.3], hal: [-hw - 0.9, 5.2, 2.3], fr: [hw + 1.0, 0, -0.4], fl: [-hw - 1.0, 0, 0.4], ball: 'tuck' };
+        if (Q) return { py: 8.0, lean: 0.14, hr: [-2.8, -3.6, 2.8], hl: [2.8, -3.6, 2.8], fr: [hw + 0.6, 0, -0.4], fl: [-hw - 0.6, 0, 0.4], ball: 'both' };
+        if (role === 'k') return { py: 8.2, lean: 0.1, hr: [0.7, -5.4, 0.6], hl: [-0.7, -5.4, 0.6], fr: [hw + 0.4, 0, -0.5], fl: [-hw - 0.4, 0, 0.5] };
+        return { py: 7.3, pz: -0.4, lean: 0.34, hr: [0.4, -4.9, 2.2], hl: [-0.4, -4.9, 2.2], fr: [hw + 0.8, 0, -0.7], fl: [-hw - 0.8, 0, 0.6], ball: 'tuck' };
+      case 'run': {
+        const ph = f / 6 * FPI * 2, S3 = L ? 2.6 : 3.4, LF = L ? 2.3 : 3.0;
+        const leg = (th, sg) => [sg * (hw + 0.2), Math.max(0, Math.cos(th)) * LF, Math.sin(th) * S3];
+        const arm = (th, sg) => [0.3 * sg, -3.7 + 1.5 * Math.max(0, Math.cos(th)), Math.sin(th) * 3.4 + 0.6];
+        return { py: B.hipY - 0.7 + 0.45 * Math.cos(2 * ph), lean: L ? 0.36 : Q ? 0.2 : 0.3, tw: -0.17 * Math.sin(ph), fr: leg(ph, 1), fl: leg(ph + FPI, -1),
+          hr: arm(ph + FPI, 1), hl: arm(ph, -1), ball: 'tuckRun' };
+      }
+      case 'throw':
+        if (role === 'k') return f === 0
+          ? { py: 8.0, pz: -0.4, lean: 0.06, tw: 0.2, fr: [hw + 0.3, 2.4, -4.4], fl: [-hw - 0.3, 0, 0.8], hr: [3.0, -1.5, 0.5], hl: [-3.0, -3.8, 1.0], kpR: [0, 0.3, 1] }
+          : { py: 8.0, lean: -0.22, tw: -0.2, fr: [hw + 0.4, 5.2, 7.0], fl: [-hw - 0.4, 0, -0.2], hr: [3.6, -0.8, -0.5], hl: [-2.6, -3.0, 1.4] };
+        return f === 0
+          ? { py: B.hipY - 0.8, pz: -0.4, lean: -0.05, tw: -0.7, hr: [1.0, 2.4, -1.2], hl: [-1.0, -0.4, 4.6], fr: [hw + 0.6, 0, -2.4], fl: [-hw - 0.6, 0, 2.2], epR: [1, -0.3, -0.3], ball: 'ear' }
+          : { py: B.hipY - 0.6, pz: 0.5, lean: 0.28, tw: 0.55, hr: [0.4, -1.0, 5.2], hl: [-1.8, -3.6, -0.2], fr: [hw + 0.4, 1.4, -3.0], fl: [-hw - 0.5, 0, 2.4] };
+      case 'catch':
+        return f === 0
+          ? { py: B.hipY + 0.1, lean: -0.08, hr: [-1.2, 4.4, 3.6], hl: [1.2, 4.4, 3.6], fr: [hw + 0.5, 0.5, -0.8], fl: [-hw - 0.5, 0, 0.9], epR: [1, 0.2, -0.2], epL: [-1, 0.2, -0.2], hu: 0.3 }
+          : { py: B.hipY - 0.9, lean: 0.2, hr: [-1.6, -3.6, 2.6], hl: [1.6, -3.6, 2.6], fr: [hw + 0.5, 0, -0.6], fl: [-hw - 0.5, 0, 0.8], ball: 'both', ballAlways: true };
+      case 'tackle':
+        return f === 0
+          ? { py: 7.0, pz: 0.5, lean: 0.25, tilt: 0.7, hr: [-1.4, 2.0, 4.8], hl: [1.4, 2.0, 4.8], fr: [hw + 0.5, 0, -1.2], fl: [-hw - 0.5, 0, 1.0], epR: [1, 0, 0], epL: [-1, 0, 0] }
+          : { py: 5.2, pz: 1.2, lean: 0.2, tilt: 1.15, hr: [-0.9, 2.6, 4.2], hl: [0.9, 2.6, 4.2], fr: [hw + 0.4, 1.6, -1.6], fl: [-hw - 0.4, 0.8, -0.6], epR: [1, 0, 0], epL: [-1, 0, 0] };
+      case 'tackled':
+        return { py: 3.4, lean: 0, tilt: -1.4, scale: 0.88, ground: 0.2, hr: [3.4, -2.2, 0.2], hl: [-3.4, -2.2, 0.2], fr: [hw + 0.4, 3.2, 1.0], fl: [-hw - 0.4, 2.4, 1.6], kpR: [0.2, 0.3, 1], kpL: [-0.2, 0.3, 1], epR: [0.3, -1, 0], epL: [-0.3, -1, 0] };
+      case 'celebrate':
+        return f === 0
+          ? { py: B.hipY - 0.6, lean: -0.05, hr: [2.4, 5.2, 0.6], hl: [-2.4, 5.2, 0.6], fr: [hw + 0.9, 0, 0], fl: [-hw - 0.9, 0, 0], epR: [1, 0, -0.3], epL: [-1, 0, -0.3] }
+          : { py: B.hipY + 0.8, lean: -0.12, hr: [1.6, 5.9, 0.5], hl: [-1.6, 5.9, 0.5], fr: [hw + 0.5, 1.2, -0.8], fl: [-hw - 0.5, 0.6, 0.3], epR: [1, 0, -0.3], epL: [-1, 0, -0.3] };
+      case 'huddle':
+        return { py: 6.1, pz: -0.9, lean: 0.9, har: [hw + 1.6, 5.0, 2.4], hal: [-hw - 1.6, 5.0, 2.4], fr: [hw + 1.2, 0, -0.9], fl: [-hw - 1.2, 0, -0.9], hu: -0.6 };
+    }
+    return {};
+  }
+  // run: the carried ball tucks the right arm (the 'tuckRun' ball mode)
+  function playerPoseCarry(kind, role, f, carry) {
+    const p = playerPose(kind, role, f);
+    if (kind === 'run' && carry) { p.hr = [-1.8, -3.5, 2.5]; p.epR = [1, -1, -0.2]; p.tw = (p.tw || 0) * 0.4; p.ball = 'tuck'; }
+    return p;
+  }
+
+  // --- looks (team colours) ---------------------------------------------------------------------
+  const lum = (h) => { const c = M.hex(h); return 0.3 * c[0] + 0.59 * c[1] + 0.11 * c[2]; };
+  const readable = (fg, bg) => (Math.abs(lum(fg) - lum(bg)) >= 70 ? fg : (lum(bg) > 128 ? '#1B1B1B' : '#FFFFFF'));
+  const dynLooks = new Map(), FB_SCRIM = 62;
+  function oppKeys() { return Object.keys((BSU.data && BSU.data.opponents) || {}); }
+  function strHashLocal(s) { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; }
+  /** a look id (0–63) from 'home' | an opponent key | a {colors:[c0,c1]} object | a number */
+  M.fbLook = function (a) {
+    if (a === undefined || a === null || a === 'home' || a === 'bsu' || a === 0) return 0;
+    if (a === 'scrim' || a === 'gold') return FB_SCRIM;
+    if (typeof a === 'number') return a & 63;
+    if (typeof a === 'string') {
+      const i = oppKeys().indexOf(a);
+      if (i >= 0) return Math.min(39, 1 + i);
+      const h = strHashLocal(a), id = 40 + (h % 22);
+      dynLooks.set(id, [mix('#2B6CB0', '#B22222', (h & 255) / 255), '#F4EEE2']);
+      return id;
+    }
+    if (typeof a === 'object' && Array.isArray(a.colors) && a.colors.length >= 2) {
+      const id = 40 + (strHashLocal(String(a.colors[0]) + String(a.colors[1])) % 22);
+      dynLooks.set(id, [a.colors[0], a.colors[1]]);
+      return id;
+    }
+    return 1;
+  };
+  /** {jersey, pants, helmet, stripe, num, sock, glove} for a look id */
+  function lookDef(look) {
+    look = look | 0;
+    if (look === 0) return { jersey: PAL.purple, pants: PAL.gold, helmet: PAL.gold, stripe: PAL.purple, logo: PAL.purple, num: PAL.gold, sock: '#F4F4F4', glove: '#F4F4F4' };
+    if (look === FB_SCRIM) return { jersey: PAL.gold, pants: PAL.purple, helmet: PAL.purple, stripe: PAL.gold, logo: PAL.gold, num: PAL.purple, sock: '#F4F4F4', glove: '#F4F4F4' };
+    let cols = dynLooks.get(look);
+    if (!cols) { const o = BSU.data && BSU.data.opponents && BSU.data.opponents[oppKeys()[look - 1]]; cols = (o && o.colors) || ['#4A5A6A', '#E8E8E8']; }
+    const c0 = cols[0], c1 = cols[1];
+    return { jersey: c0, pants: c1, helmet: shade(c0, 0.92), stripe: c1, logo: c1, num: readable(c1, c0), sock: c1, glove: c1 };
+  }
+  /** pack a player variant: look 0–63 | role 0–4 << 6 | jersey number 0–99 << 9 (0 = the role default) | carry << 16 */
+  M.fbVariant = function (look, role, num, carry) {
+    const r = typeof role === 'string' ? M.fbRole(role) : (role | 0);
+    return ((M.fbLook(look) & 63) | ((r > 4 || r < 0 ? 1 : r) << 6) | (((num | 0) & 127) << 9) | (carry ? 1 << 16 : 0)) >>> 0;
+  };
+  /** rated position / formation role → role group 0 line, 1 skill, 2 qb, 3 k, 4 back (unknown → skill) */
+  M.fbRole = function (pos) {
+    const map = (BSU.data && BSU.data.football && BSU.data.football.roles) || {};
+    const r = map[pos] || pos;
+    return { OL: 0, DL: 0, WR: 1, DB: 1, QB: 2, K: 3, RB: 4, LB: 4 }[r] !== undefined ? { OL: 0, DL: 0, WR: 1, DB: 1, QB: 2, K: 3, RB: 4, LB: 4 }[r] : 1;
+  };
+  /** the 8 facing directions: dir = round(atan2(dty, dtx) / 45°) mod 8 — 0 SE (+tx), 1 S (+tx+ty), 2 SW (+ty), 3 W, 4 NW (−tx), 5 N, 6 NE (−ty), 7 E */
+  M.fbDir = function (dtx, dty) {
+    if (!Number.isFinite(dtx) || !Number.isFinite(dty) || (dtx === 0 && dty === 0)) return 1;
+    return ((Math.round(Math.atan2(dty, dtx) / (FPI / 4)) % 8) + 8) % 8;
+  };
+  const dirYaw = (dir) => (1 - dir) * FPI / 4;
+  const SKINS = X.skins || ['#F1C27D', '#E0AC69', '#C68642', '#8D5524', '#5C3A1E', '#FFDBAC'], HAIRS = X.hairs || ['#1B1B1B', '#3A2A1E', '#6B4423', '#B0723C', '#E6C27A', '#A8A8A8', '#5E2CA5', '#C7692B'];
+
+  function playerStyle(v) {
+    const look = v & 63, role = ROLES[(v >> 6) & 7] || 'skill', num = (v >> 9) & 127, B = BUILD[role], D = lookDef(look);
+    const skin = SKINS[num ? num % 6 : B.skin], digits = String(num || B.num);
+    const towel = role === 'qb' ? (c) => { const P = c.W(c.J.P); cap(c.R, v3add(P, [0, 0.4, 0]), v3add(P, [0, -3.2, 0]), 0.9, 1.1, mat('#F4F4F4'), 6); } : null;
+    return {
+      extras: towel, noGlove: role === 'k',
+      m: { jersey: mat(D.jersey), pants: mat(D.pants), sock: mat(D.sock), shoe: mat(role === 'k' ? '#F0F0F0' : '#1E1E22'), skin: mat(skin), glove: mat(D.glove), sleeve: mat(D.jersey) },
+      sleeveFn: (t, u) => (t > 0.62 && t < 0.86 ? D.stripe : (u < -0.4 ? mat(D.jersey).l : u > 0.45 ? mat(D.jersey).d : D.jersey)),
+      head: 'helmet', shell: mat(D.helmet), stripe: D.stripe, logo: D.logo, faceDark: shade(skin, 0.5), mask: mat('#CFD3D8'),
+      digits: digits, numCol: D.num
+    };
+  }
+  function composePlayer(pose, v, dir, f, noNumber) {
+    const role = ROLES[(v >> 6) & 7] || 'skill', R = newRig(FBL.cw, FBL.ch, FBL.cw >> 1, FBL.gy), p = playerPoseCarry(pose, role, f, (v >> 16) & 1), S = playerStyle(v);
+    if (noNumber) S.digits = '';
+    drawHuman(R, BUILD[role], S, p, dirYaw(dir), { carry: (v >> 16) & 1 });
+    const b = { w: R.w, h: R.h, d: R.c.slice() };
+    boutline(b, R.h, 0.5);
+    b.shadow = pose === 'tackled' ? 14 : (pose === 'tackle' ? 10 : 8);
+    return b;
+  }
+  // --- sheet families (one canvas per (family, sub-pose, variant, facing, zoom); frame = dir * n + f) -----------------------
+  function shadowFb(P, ox, oy, cx, gy, w) { const h = w >> 1; P.rect(ox + cx - h + 1, oy + gy - 1, w - 2, 1, C.shadow); P.rect(ox + cx - h, oy + gy, w, 1, C.shadow); P.rect(ox + cx - h + 1, oy + gy + 1, w - 2, 1, C.shadow); }
+  const FB_FAM = {}, bufCache = new Map();
+  /** composed cell buffers are kept briefly so the 1× and 2× bakes of one sheet compose each cell once (bounded; cleared by clearFootball) */
+  function memoBuf(key, fn) { let b = bufCache.get(key); if (!b) { b = fn(); bufCache.set(key, b); if (bufCache.size > 160) bufCache.delete(bufCache.keys().next().value); } return b; }
+  function fbFamily(name, o) {
+    FB_FAM[name] = o;
+    return function (ctx, spec) {
+      const sub = spec.sub || o.def, v = spec.variant | 0, n = o.nOf(sub, v);
+      if (!n) throw new Error('unknown ' + name + ' sub "' + sub + '"');
+      spec.frames = n * 8;
+      const fr = ((spec.frame % (n * 8)) + n * 8) % (n * 8), dir = (fr / n) | 0, d = o.dim(sub);
+      // one lazily baked sheet per (sub-pose, variant, facing, zoom): only the directions a game actually uses cost memory
+      const s = getSheet(name + '|' + sub + '|' + v + '|' + dir + '|' + spec.zoom, d.cw, d.ch, n, spec.zoom, (P, f, ox, oy) => {
+        const b = memoBuf(name + '|' + sub + '|' + v + '|' + dir + '|' + f, () => o.cell(sub, v, dir, f));
+        shadowFb(P, ox, oy, d.cw >> 1, d.gy, b.shadow || 8);
+        bblit(b, P, ox, oy);
+      });
+      return sheetRef(s, fr % n, -(d.cw >> 1), -d.gy);
+    };
+  }
+  const FB_PAINTERS = {};
+  FB_PAINTERS.fbplayer = fbFamily('fbplayer', { dim: () => ({ cw: FBL.cw, ch: FBL.ch, gy: FBL.gy }), def: 'stance', nOf: (sub) => POSES[sub] || 0, cell: (sub, v, dir, f) => composePlayer(sub, v, dir, f) });
+  // --- the other humans: civilians' style, poses, props ------------------------------------------------------------
+  function civStyle(o) {
+    const sk = o.skin || SKINS[1];
+    return {
+      m: { jersey: mat(o.jersey), pants: mat(o.pants), sock: mat(o.sock || o.pants), shoe: mat(o.shoe || '#1E1E22'), skin: mat(sk), glove: mat(o.glove || sk), sleeve: mat(o.sleeve || o.jersey) },
+      head: 'bare', hairC: o.hair ? mat(o.hair) : null, longHair: !!o.longHair, cap: o.cap || null, longPants: !!o.longPants, longSleeve: !!o.longSleeve, noGlove: o.noGlove !== false,
+      jerseyFn: o.jerseyFn || null, extras: o.extras || null, faceDark: shade(sk, 0.5)
+    };
+  }
+  function composeHuman(B, S, p, dir, cw, ch, gy, shadow) {
+    const R = newRig(cw, ch, cw >> 1, gy);
+    drawHuman(R, B, S, p, dirYaw(dir), null);
+    const b = { w: R.w, h: R.h, d: R.c.slice() };
+    boutline(b, R.h, 0.5);
+    b.shadow = shadow || 8;
+    return b;
+  }
+  const skinOf = (n) => SKINS[((n % 6) + 6) % 6], hairOf = (n) => HAIRS[((n % 8) + 8) % 8];
+  const fuzz = (dx, ny, nz, x, y) => ['#FDD023', '#FFE680', '#F4F4F4', '#FDD023', '#F5B700'][(x * 3 + y * 5 + (dx < 0 ? 0 : 1)) % 5];
+  const shadeBand = (base) => (t, u) => (u < -0.4 ? mat(base).l : u > 0.45 ? mat(base).d : base);
+
+  // referee: 1-px black/white stripes, white cap, black pants; 0 = stand, 1 = signal (both arms up: touchdown)
+  function composeRef(v, dir, f) {
+    const S = civStyle({ jersey: '#F2F2F2', pants: '#1E1E22', shoe: '#101012', skin: skinOf(v), hair: hairOf(1), cap: { c: '#F4F4F4', bill: '#1B1B1B' }, longPants: true });
+    S.jerseyFn = (t, u, x) => ((x & 1) ? '#1B1B1B' : '#F2F2F2');
+    S.sleeveFn = (t) => ((t * 7 | 0) & 1 ? '#1B1B1B' : '#F2F2F2');
+    const p = f === 0 ? { py: 8.4, hr: [0.7, -5.2, 0.6], hl: [-0.7, -5.2, 0.6], fr: [2.1, 0, 0], fl: [-2.1, 0, 0] }
+      : { py: 8.5, hr: [0.5, 6.0, 0.3], hl: [-0.5, 6.0, 0.3], fr: [2.1, 0, 0], fl: [-2.1, 0, 0], epR: [1, 0, 0], epL: [-1, 0, 0] };
+    return composeHuman(BUILD.civ, S, p, dir, FBL.cw, FBL.ch, FBL.gy);
+  }
+  // chain crew: orange vest over a white long-sleeve shirt, dark pants, white cap
+  function composeCrew(v, dir, f) {
+    const S = civStyle({ jersey: '#F07830', pants: '#2B2B33', sleeve: '#EDEDED', longSleeve: true, skin: skinOf(v), hair: hairOf(v >> 3), cap: { c: '#EDEDED', bill: '#EDEDED' }, longPants: true });
+    return composeHuman(BUILD.civ, S, { py: 8.4, hr: [0.9, -4.6, 1.8], hl: [-0.9, -4.6, 1.8], fr: [2.1, 0, 0], fl: [-2.1, 0, 0] }, dir, FBL.cw, FBL.ch, FBL.gy);
+  }
+  // cheerleaders: purple top, gold skirt, gold/white pom-poms, ponytail; 4-frame routine (V, T, hip-pop, jump)
+  const CHEER_CW = 18, CHEER_CH = 28, CHEER_GY = 25;
+  function composeCheer(v, dir, f) {
+    const S = civStyle({ jersey: PAL.purple, pants: '#F4F4F4', sock: '#F4F4F4', shoe: '#F4F4F4', skin: skinOf(v), hair: hairOf((v >> 3) + 1), longHair: false });
+    S.extras = (c) => {
+      const Pw = c.W(c.J.P);
+      cap(c.R, v3add(Pw, [0, 0.5, 0]), v3add(Pw, [0, -3.4, 0]), 2.4, 3.4, (t) => (t > 0.86 ? PAL.purple : t < 0.25 ? mat(PAL.gold).l : PAL.gold), 6);
+      cap(c.R, c.hp(0, 0.35, -0.85), c.hp(0, -0.85, -1.2), 0.95, 0.7, S.hairC, 6);
+      orb(c.R, c.hp(0, 0.5, -0.9), 0.75, orbMat(mat(PAL.gold)), 6);
+      for (let s = 0; s < 2; s++) orb(c.R, v3add(c.W(c.J.ha[s]), [0, 0.9, 0]), 2.1, fuzz, 6);
+    };
+    const P4 = [
+      { py: 8.0, hr: [2.4, 5.0, 0.7], hl: [-2.4, 5.0, 0.7], fr: [1.3, 0, 0], fl: [-1.3, 0, 0], epR: [1, 0, -0.3], epL: [-1, 0, -0.3] },
+      { py: 8.0, hr: [5.2, 0.4, 0.4], hl: [-5.2, 0.4, 0.4], fr: [2.4, 0, 0], fl: [-2.4, 0, 0], epR: [1, 0.2, 0], epL: [-1, 0.2, 0] },
+      { py: 7.7, tw: 0.2, hr: [2.2, 5.2, 0.6], hl: [0.9, -3.8, 1.0], fr: [2.6, 0, 0], fl: [-1.8, 0, 0.4], epR: [1, 0, -0.3], epL: [-1, -0.2, -0.2] },
+      { py: 10.0, hr: [1.5, 5.6, 0.5], hl: [-1.5, 5.6, 0.5], fr: [1.0, 2.2, -1.2], fl: [-1.0, 2.2, 1.6], epR: [1, 0, -0.3], epL: [-1, 0, -0.3] }
+    ];
+    return composeHuman(BUILD.cheer, S, P4[f], dir, CHEER_CW, CHEER_CH, CHEER_GY);
+  }
+  // band: purple coat with a gold front stripe, white trousers, shako with a plume; v = instrument 0 snare / 1 trumpet / 2 bass drum | skin << 2 | hair << 5
+  const BAND_CW = 18, BAND_CH = 30, BAND_GY = 27;
+  function composeBand(v, dir, f) {
+    const inst = (v & 3) > 2 ? 0 : (v & 3), B = BUILD.civ;
+    const S = civStyle({ jersey: PAL.purple, pants: '#F4F4F4', shoe: '#1E1E22', skin: skinOf(v >> 2), hair: hairOf(v >> 5), longPants: true, longSleeve: true, sleeve: PAL.purple });
+    S.jerseyFn = (t, u) => (Math.abs(u) < 0.2 ? PAL.gold : u < -0.45 ? mat(PAL.purple).l : u > 0.5 ? mat(PAL.purple).d : PAL.purple);
+    S.extras = (c) => {
+      const top = v3add(c.Hc, [0, c.hr * 0.5, 0]), end = v3add(top, [0, 3.6, 0]);
+      cap(c.R, top, end, 2.1, 2.0, (t, u) => (t < 0.18 ? PAL.gold : u < -0.4 ? mat(PAL.purple).l : u > 0.45 ? mat(PAL.purple).d : PAL.purple), 6);
+      cap(c.R, end, v3add(end, [0, 1.8, 0]), 0.65, 0.4, mat('#F4F4F4'), 6);
+      const Pw = c.W(c.J.P), py = c.p.py, W = c.W;
+      if (inst === 0) {          // snare drum on the waist
+        cap(c.R, W([0, py + 1.0, 2.5]), W([0, py + 3.6, 2.5]), 2.3, 2.3, (t) => (t > 0.8 ? '#F4F4F4' : t < 0.2 ? PAL.gold : mat(PAL.gold).c), 6);
+      } else if (inst === 1) {   // trumpet: a gold tube from the mouth with a flared bell
+        const m0 = c.hp(0, -0.5, 0.95), m1 = c.hp(0, -0.35, 2.6);
+        cap(c.R, m0, m1, 0.7, 0.7, mat(PAL.gold), 6);
+        orb(c.R, m1, 1.7, orbMat(mat(PAL.gold)), 6);
+      } else {                   // bass drum: a fat disc on the chest
+        cap(c.R, W([0, py + 2.6, 2.1]), W([0, py + 2.6, 3.5]), 3.5, 3.5, (t, u) => (u < -0.55 || u > 0.55 ? PAL.purple : '#F4F4F4'), 6);
+      }
+    };
+    const hands = inst === 1 ? { hr: [-1.6, 0.2, 3.0], hl: [1.6, 0.4, 4.4] } : { hr: [-0.6, -3.0, 3.3], hl: [0.6, -3.0, 3.3] };
+    const p = f === 0 ? { py: 8.4, fr: [2.0, 2.8, 1.4], fl: [-2.0, 0, -0.6] } : { py: 8.4, fr: [2.0, 0, -0.6], fl: [-2.0, 2.8, 1.4] };
+    return composeHuman(B, S, Object.assign(p, hands), dir, BAND_CW, BAND_CH, BAND_GY);
+  }
+  // staff: v & 3 = 0 head coach (purple, gold cap, headset), 1 assistant (white polo, purple cap, headset), 2 trainer (white, no cap), 3 water boy (grey tee, jug) | skin << 2 | hair << 5
+  function composeStaff(v, dir, f) {
+    const kind = v & 3, skin = skinOf(v >> 2), hair = hairOf(v >> 5);
+    const o = [
+      { jersey: PAL.purple, pants: '#23232B', cap: { c: PAL.gold, bill: PAL.goldShadow }, longSleeve: true },
+      { jersey: '#EDEDED', pants: '#8E845A', cap: { c: PAL.purple, bill: PAL.purple }, longSleeve: false },
+      { jersey: '#EDEDED', pants: '#23232B', cap: null, longSleeve: false },
+      { jersey: '#9AA0A8', pants: '#8E845A', cap: { c: '#9AA0A8', bill: '#9AA0A8' }, longSleeve: false }][kind];
+    const S = civStyle({ jersey: o.jersey, pants: o.pants, skin: skin, hair: hair, cap: o.cap, longPants: true, longSleeve: o.longSleeve, sleeve: o.jersey });
+    S.extras = (c) => {
+      if (kind < 2) {   // headset: band over the crown, ear cups, a mic boom
+        const hp = c.hp, d = mat('#2A2A30');
+        cap(c.R, hp(-1.0, 0.1, 0), hp(0, 1.04, 0), 0.5, 0.5, d, 6); cap(c.R, hp(0, 1.04, 0), hp(1.0, 0.1, 0), 0.5, 0.5, d, 6);
+        orb(c.R, hp(-1.02, 0, 0), 0.85, orbMat(d), 6); orb(c.R, hp(1.02, 0, 0), 0.85, orbMat(d), 6);
+        cap(c.R, hp(-0.95, -0.2, 0.2), hp(-0.3, -0.55, 0.95), 0.5, 0.5, d, 6);
+      }
+      if (kind === 3) { const h = c.W(c.J.ha[0]); cap(c.R, v3add(h, [0, 0.8, 0]), v3add(h, [0, -2.8, 0]), 1.6, 1.6, (t) => (t < 0.18 ? '#F4F4F4' : '#F07830'), 6); }
+    };
+    const p = f === 0 ? { py: 8.4, hr: [0.6, -5.4, 0.6], hl: [-0.6, -5.4, 0.6], fr: [2.1, 0, 0], fl: [-2.1, 0, 0] } :
+      kind === 3 ? { py: 8.4, hr: [0.8, -4.8, 1.0], hl: [-0.5, -5.6, -1.2], fr: [2.0, 0, 2.0], fl: [-2.0, 0, -2.0] } :
+        { py: 8.4, tw: -0.2, hr: [1.4, -0.9, 5.4], hl: [-0.2, -3.6, 0.8], fr: [2.2, 0, 0.4], fl: [-2.2, 0, -0.4], epL: [-1, -0.5, -0.2] };
+    return composeHuman(BUILD.civ, S, p, dir, FBL.cw, FBL.ch, FBL.gy);
+  }
+  // fans: v = look 0–63 (shirt colour) | skin << 6 | hair << 9 | cap << 12; poses seated 1, standing 2 (clap open / clap), wave 2 (arms up, alternating)
+  const FAN_DIM = { seated: [14, 20, 17], standing: [14, 26, 22], wave: [14, 26, 22] };
+  function composeFan(sub, v, dir, f) {
+    const look = v & 63, D = lookDef(look), skin = skinOf((v >> 6) & 7), hair = hairOf((v >> 9) & 7), dim = FAN_DIM[sub];
+    const shirt = look === 0 ? PAL.purple : D.jersey, S = civStyle({ jersey: shirt, pants: '#3B4F86', shoe: '#2A2A30', skin: skin, hair: hair, cap: ((v >> 12) & 1) ? { c: look === 0 ? PAL.gold : D.pants, bill: look === 0 ? PAL.gold : D.pants } : null, longPants: true });
+    const mid = look === 0 ? PAL.gold : D.pants;
+    S.jerseyFn = (t, u) => (t > 0.3 && t < 0.52 && Math.abs(u) < 0.55 ? mid : u < -0.45 ? mat(shirt).l : u > 0.5 ? mat(shirt).d : shirt);
+    const hw = BUILD.civ.hw;
+    let p;
+    if (sub === 'seated') p = { py: 4.6, lean: 0.05, hr: [0.3, -3.3, 1.8], hl: [-0.3, -3.3, 1.8], fr: [hw + 0.3, 0, 4.2], fl: [-hw - 0.3, 0, 4.2], kpR: [0, 1, 0.8], kpL: [0, 1, 0.8] };
+    else if (sub === 'standing') p = f === 0 ? { py: 8.4, hr: [-0.8, -3.2, 3.2], hl: [0.8, -3.2, 3.2], fr: [hw + 0.4, 0, 0], fl: [-hw - 0.4, 0, 0] } : { py: 8.4, hr: [-2.6, -3.0, 3.4], hl: [2.6, -3.0, 3.4], fr: [hw + 0.4, 0, 0], fl: [-hw - 0.4, 0, 0] };
+    else p = f === 0 ? { py: 8.7, hr: [2.2, 5.4, 0.4], hl: [-2.0, 4.2, 0.6], fr: [hw + 0.5, 0, 0], fl: [-hw - 0.5, 0, 0], epR: [1, 0, -0.3], epL: [-1, 0, -0.3] } : { py: 8.2, hr: [1.8, 4.2, 0.6], hl: [-2.2, 5.4, 0.4], fr: [hw + 0.5, 0, 0], fl: [-hw - 0.5, 0, 0], epR: [1, 0, -0.3], epL: [-1, 0, -0.3] };
+    return composeHuman(BUILD.civ, S, p, dir, dim[0], dim[1], dim[2], 6);
+  }
+  // Roux: the tiger mascot (upright, purple jersey #1, orange fur with black stripes); 3 frames: idle, wave, pounce
+  const ROUX_CW = 24, ROUX_CH = 32, ROUX_GY = 29;
+  function composeRoux(v, dir, f) {
+    const fur = '#E07020', S = civStyle({ jersey: PAL.purple, pants: fur, sock: fur, shoe: '#2A2A30', skin: fur, glove: fur, noGlove: false });
+    S.head = 'tiger'; S.fur = mat(fur); S.digits = '1'; S.numCol = PAL.gold;
+    const stripe = (base) => (t, u) => ((t > 0.38 && t < 0.52) || (t > 0.78 && t < 0.9) ? '#1B1B1B' : u < -0.4 ? mat(base).l : u > 0.45 ? mat(base).d : base);
+    S.legFn = () => stripe(fur); S.armFn = () => stripe(fur);
+    S.sleeveFn = (t, u) => (u < -0.4 ? mat(PAL.purple).l : u > 0.45 ? mat(PAL.purple).d : PAL.purple);
+    S.jerseyFn = (t, u) => (u < -0.45 ? mat(PAL.purple).l : u > 0.5 ? mat(PAL.purple).d : t > 0.82 ? PAL.gold : PAL.purple);
+    S.extras = (c) => {
+      const W = c.W, p = c.p, py = p.py === undefined ? BUILD.roux.hipY : p.py, pz = p.pz || 0;
+      const tail = (t) => (t > 0.8 ? '#1B1B1B' : t > 0.45 && t < 0.58 ? '#1B1B1B' : fur);
+      cap(c.R, W([0, py + 0.2, pz - 1.4]), W([0, py + 1.2, pz - 4.4]), 1.0, 0.9, tail, 6);
+      cap(c.R, W([0, py + 1.2, pz - 4.4]), W([0.5, py + 4.6, pz - 5.2]), 0.9, 0.8, tail, 6);
+      for (let s = -1; s <= 1; s += 2) { orb(c.R, c.hp(0.78 * s, 0.86, -0.12), c.hr * 0.36, orbMat(mat(fur)), 6); orb(c.R, c.hp(0.78 * s, 0.86, 0.04), c.hr * 0.2, () => '#F4A6C0', 6); }
+    };
+    const hw = BUILD.roux.hw;
+    const P3 = [
+      { py: 8.6, hr: [1.4, -5.6, 0.8], hl: [-1.4, -5.6, 0.8], fr: [hw + 0.4, 0, 0], fl: [-hw - 0.4, 0, 0] },
+      { py: 8.2, tw: -0.1, hr: [2.8, 4.2, 1.0], hl: [-0.6, -3.2, 1.6], fr: [hw + 0.6, 0, 0], fl: [-hw - 0.6, 0, 0], epR: [1, 0, -0.3] },
+      { py: 7.4, pz: 1.0, lean: 0.5, tilt: 0.2, hr: [-0.8, 0.8, 5.6], hl: [0.8, 0.8, 5.6], fr: [hw + 0.4, 1.8, -3.2], fl: [-hw - 0.4, 0, 1.6], epR: [1, -0.2, 0], epL: [-1, -0.2, 0] }
+    ];
+    return composeHuman(BUILD.roux, S, P3[f], dir, ROUX_CW, ROUX_CH, ROUX_GY, 12);
+  }
+  const dimOf = (cw, ch, gy) => () => ({ cw: cw, ch: ch, gy: gy });
+  FB_PAINTERS.fbref = fbFamily('fbref', { dim: dimOf(FBL.cw, FBL.ch, FBL.gy), def: 'stand', nOf: () => 2, cell: (sub, v, dir, f) => composeRef(v, dir, f) });
+  FB_PAINTERS.fbcrew = fbFamily('fbcrew', { dim: dimOf(FBL.cw, FBL.ch, FBL.gy), def: 'stand', nOf: () => 1, cell: (sub, v, dir, f) => composeCrew(v, dir, f) });
+  FB_PAINTERS.fbcheer = fbFamily('fbcheer', { dim: dimOf(CHEER_CW, CHEER_CH, CHEER_GY), def: 'cheer', nOf: () => 4, cell: (sub, v, dir, f) => composeCheer(v, dir, f) });
+  FB_PAINTERS.fbband = fbFamily('fbband', { dim: dimOf(BAND_CW, BAND_CH, BAND_GY), def: 'march', nOf: () => 2, cell: (sub, v, dir, f) => composeBand(v, dir, f) });
+  FB_PAINTERS.fbstaff = fbFamily('fbstaff', { dim: dimOf(FBL.cw, FBL.ch, FBL.gy), def: 'stand', nOf: () => 2, cell: (sub, v, dir, f) => composeStaff(v, dir, f) });
+  FB_PAINTERS.fbroux = fbFamily('fbroux', { dim: dimOf(ROUX_CW, ROUX_CH, ROUX_GY), def: 'idle', nOf: () => 3, cell: (sub, v, dir, f) => composeRoux(v, dir, f) });
+  FB_PAINTERS.fbfan = fbFamily('fbfan', { dim: (sub) => { const d = FAN_DIM[sub] || FAN_DIM.standing; return { cw: d[0], ch: d[1], gy: d[2] }; }, def: 'standing', nOf: (sub) => ({ seated: 1, standing: 2, wave: 2 }[sub] || 0), cell: (sub, v, dir, f) => composeFan(sub, v, dir, f) });
+  // --- static sprites: the football (4 spin frames × 8 axis angles), the down marker, the line-to-gain stick ----------
+  // fbball: variant = the ball's axis angle on screen, k × 22.5° up from horizontal (0–7); frames 0–3 = the spin (laces up, front, hidden, down)
+  FB_PAINTERS.fbball = function (ctx, spec) {
+    const k = (((spec.variant | 0) % 8) + 8) % 8, f = (((spec.frame | 0) % 4) + 4) % 4;
+    spec.frames = 4;
+    begin(ctx, 10, 10, spec.zoom);
+    const P = pen(ctx, spec.zoom), a = k * FPI / 8, ca = Math.cos(a), sa = Math.sin(a), lp = [-0.95, 0, 9, 0.95][f];
+    for (let y = 0; y < 10; y++) for (let x = 0; x < 10; x++) {
+      const rx = x + 0.5 - 5, ry = y + 0.5 - 5, u = rx * ca - ry * sa, v = rx * sa + ry * ca;
+      if ((u * u) / 10.89 + (v * v) / 3.42 <= 1) {
+        let c = v < -0.55 ? '#A86228' : v > 0.7 ? '#5A3016' : '#8A4B1F';
+        if (Math.abs(u) > 1.75 && Math.abs(u) < 2.5) c = '#F4F4F4';
+        if (Math.abs(u) < 1.35 && Math.abs(v - lp) < 0.55) c = '#F4F4F4';
+        P.px(x, y, c);
+      } else if ((u * u) / 17.64 + (v * v) / 7.56 <= 1) P.px(x, y, '#2A160A');
+    }
+    return { w: 10, h: 10, ox: -5, oy: -5 };
+  };
+  // fbdown: the down marker on its pole; variant = the down 1–4 (3×5 digit on an orange plate); anchor = the base
+  FB_PAINTERS.fbdown = function (ctx, spec) {
+    const d = Math.max(1, Math.min(4, (spec.variant | 0) || 1));
+    spec.frames = 1;
+    begin(ctx, 11, 30, spec.zoom);
+    const P = pen(ctx, spec.zoom);
+    P.rect(2, 28, 7, 1, C.shadow); P.rect(3, 29, 5, 1, C.shadow);
+    P.rect(2, 27, 7, 1, '#3A3A42'); P.rect(3, 26, 5, 1, '#5A5A64'); P.rect(5, 11, 1, 15, '#9AA0A8'); P.rect(4, 11, 1, 15, '#C8CCD2');
+    P.rect(0, 0, 11, 11, '#4A2208'); P.rect(1, 1, 9, 9, '#F07830'); P.rect(1, 1, 9, 1, '#FFA868'); P.rect(1, 9, 9, 1, '#B8501A');
+    P.glyph(String(d), 4, 3, '#FFFFFF');
+    return { w: 11, h: 30, ox: -5, oy: -28 };
+  };
+  FB_PAINTERS.fbstick = function (ctx, spec) {
+    spec.frames = 1;
+    begin(ctx, 7, 28, spec.zoom);
+    const P = pen(ctx, spec.zoom);
+    P.rect(1, 26, 5, 1, C.shadow); P.rect(2, 27, 3, 1, C.shadow);
+    P.rect(1, 25, 5, 1, '#3A3A42'); P.rect(3, 4, 1, 21, '#E8E8E8'); P.rect(2, 4, 1, 21, '#FFFFFF');
+    for (let y = 8; y < 22; y += 4) P.rect(2, y, 2, 2, '#F07830');
+    P.rect(1, 0, 5, 4, '#B22222'); P.rect(1, 0, 5, 1, '#E05050'); P.rect(2, 2, 3, 1, '#F4F4F4');
+    return { w: 7, h: 28, ox: -3, oy: -26 };
+  };
+  // --- registration + public helpers ----------------------------------------------------------------------------
+  Object.assign(SHEET_PAINTERS, FB_PAINTERS);
+  for (const fam of Object.keys(FB_PAINTERS)) M.registerPainter(fam, FB_PAINTERS[fam]);
+  const FB_FRAMES = { fbplayer: POSES.stance * 8, fbref: 16, 'fbref:signal': 16, fbcrew: 8, fbcheer: 32, fbband: 16, fbstaff: 16, fbroux: 24, fbball: 4, fbdown: 1, fbstick: 1, fbfan: 16, 'fbfan:standing': 16, 'fbfan:seated': 8, 'fbfan:wave': 16 };
+  for (const pose of Object.keys(POSES)) FB_FRAMES['fbplayer:' + pose] = POSES[pose] * 8;
+  const FB_SIZES = { fbplayer: [FBL.cw, FBL.ch], fbref: [FBL.cw, FBL.ch], fbcrew: [FBL.cw, FBL.ch], fbcheer: [CHEER_CW, CHEER_CH], fbband: [BAND_CW, BAND_CH], fbstaff: [FBL.cw, FBL.ch], fbroux: [ROUX_CW, ROUX_CH], fbball: [10, 10], fbdown: [11, 30], fbstick: [7, 28], fbfan: [14, 26], 'fbfan:standing': [14, 26], 'fbfan:wave': [14, 26], 'fbfan:seated': [14, 20] };
+  const FB_ANCHOR = { fbball: [-5, -5], fbdown: [-5, -28], fbstick: [-3, -26] };   // everything else: (−cw/2, −gy), the feet
+  const FB_GY = { fbplayer: FBL.gy, fbref: FBL.gy, fbcrew: FBL.gy, fbcheer: CHEER_GY, fbband: BAND_GY, fbstaff: FBL.gy, fbroux: ROUX_GY, fbfan: 22, 'fbfan:standing': 22, 'fbfan:wave': 22, 'fbfan:seated': 17 };
+  for (const id of Object.keys(FB_FRAMES)) M.setFrames(id, FB_FRAMES[id]);
+  M.fbFrames = Object.freeze(Object.assign({}, FB_FRAMES));
+  M.fbSizes = Object.freeze(Object.assign({}, FB_SIZES));
+  M.fbPoses = Object.freeze(Object.assign({}, POSES));
+  M.fbRoles = Object.freeze(ROLES.slice());
+  M.fbCompose = { player: composePlayer, ref: composeRef, crew: composeCrew, cheer: composeCheer, band: composeBand, staff: composeStaff, roux: composeRoux, fan: composeFan };
+  /** frame index for a directional football id: dir (0–7, see fbDir) * framesPerDir + (f mod framesPerDir); `id` may be a pose name ('run') or a full id ('fbcheer') */
+  M.fbFrame = function (id, dir, f) {
+    const full = POSES[id] ? 'fbplayer:' + id : id, tot = FB_FRAMES[full] || FB_FRAMES[String(full).split(':')[0]] || 8, n = Math.max(1, tot / 8);
+    dir = Number.isFinite(dir) ? (((dir | 0) % 8) + 8) % 8 : 1; f = Number.isFinite(f) ? (f | 0) : 0;
+    return dir * n + (((f % n) + n) % n);
+  };
+  /** the sprite id of a player pose (unknown → stance) */
+  M.fbId = function (pose) { return POSES[pose] ? 'fbplayer:' + pose : 'fbplayer:stance'; };
+  /** the foot anchor of a football id at 1× as [ox, oy] (add to the feet position; multiply by the zoom for the atlas entry) */
+  M.fbAnchor = function (id) { if (FB_ANCHOR[id]) return FB_ANCHOR[id].slice(); const s = M.fbSize(id), gy = FB_GY[id] || FB_GY[String(id).split(':')[0]] || FBL.gy; return [-(s[0] >> 1), -gy]; };
+  /** drop every football sheet and the compose cache (call after the game; gcSheets also reclaims them by age) */
+  M.clearFootball = function () {
+    let n = 0;
+    for (const [k, s] of Array.from(sheets.entries())) if (k.slice(0, 2) === 'fb') { sheets.delete(k); n++; try { s.canvas.width = 1; s.canvas.height = 1; } catch (e) { /* stub */ } }
+    bufCache.clear();
+    for (const fam of Object.keys(FB_PAINTERS)) M.registerPainter(fam, FB_PAINTERS[fam]);
+    return n;
+  };
+  /** the 1× cell size of a football id as [w, h] */
+  M.fbSize = function (id) { const s = FB_SIZES[id] || FB_SIZES[String(id).split(':')[0]] || [18, 24]; return s.slice(); };
+  /** pre-bake a look's stance + run sheets for every facing (all five role groups, or just `role`) at `zoom`; returns the sheets touched. ~10–20 ms per role in Chrome — call it per role to spread the cost at kickoff */
+  M.fbWarm = function (look, zoom, role) {
+    let n = 0;
+    try {
+      for (let r = 0; r < 5; r++) {
+        if (role !== undefined && role !== null && (typeof role === 'string' ? M.fbRole(role) : role | 0) !== r) continue;
+        const v = M.fbVariant(look, r);
+        for (let d = 0; d < 8; d++) { if (M.get('fbplayer:stance', v, d, zoom)) n++; if (M.get('fbplayer:run', v, d * 6, zoom)) n++; }
+      }
+    } catch (e) { try { BSU.error('sprites_entities', 'fbWarm', e); } catch (e2) { /* never throw */ } }
+    return n;
+  };
+  M.fbSheetBytes = function () { let b = 0; for (const [k, s] of sheets.entries()) if (k.slice(0, 2) === 'fb') b += s.bytes; return b; };
+
+  /** selfTest block 10 (called from entitiesSelfTest): every football id bakes at both zooms with the documented size/anchor/frame count */
+  function fbSelfTest(check) {
+    const pix = (b) => b.d.filter((c) => c).length;
+    for (const id of Object.keys(FB_FRAMES)) {
+      check(M.frames(id) === FB_FRAMES[id], 'frames(' + id + ') = ' + FB_FRAMES[id] + ' (got ' + M.frames(id) + ')');
+      const sz = M.fbSize(id), an = M.fbAnchor(id);
+      for (const z of [1, 2]) {
+        for (const f of [0, FB_FRAMES[id] - 1]) {
+          const e = M.get(id, 0, f, z);
+          check(e && e.sw === sz[0] * z && e.sh === sz[1] * z && e.ox === an[0] * z && e.oy === an[1] * z, id + ' f' + f + ' @' + z + '× is ' + sz.join('×') + ' with anchor ' + an.join(','));
+        }
+      }
+    }
+    check(M.get('fbplayer:run', 0, 36, 1).canvas === M.get('fbplayer:run', 0, 41, 1).canvas && M.get('fbplayer:run', 0, 36, 1).canvas !== M.get('fbplayer:run', 0, 6, 1).canvas, 'run frames of one facing share a sheet (one lazy sheet per direction)');
+    check(M.get('fbplayer:run', 0, 48, 1) === M.get('fbplayer:run', 0, 0, 1), 'player frame indices wrap');
+    // directions
+    check(M.fbDir(1, 0) === 0 && M.fbDir(1, 1) === 1 && M.fbDir(0, 1) === 2 && M.fbDir(-1, 1) === 3 && M.fbDir(-1, 0) === 4 && M.fbDir(-1, -1) === 5 && M.fbDir(0, -1) === 6 && M.fbDir(1, -1) === 7 && M.fbDir(0, 0) === 1 && M.fbDir(NaN, 1) === 1, 'fbDir octants');
+    check(M.fbFrame('run', 3, 7) === 3 * 6 + 1 && M.fbFrame('fbcheer', 7, 5) === 7 * 4 + 1 && M.fbFrame('stance', -1, 9) === 7 && M.fbFrame('nope', NaN, NaN) === 1, 'fbFrame packing');
+    // looks / roles / variants
+    const opp = oppKeys();
+    check(M.fbLook('home') === 0 && M.fbLook(null) === 0 && M.fbLook('scrim') === FB_SCRIM && (!opp.length || M.fbLook(opp[0]) === 1) && (opp.length < 3 || M.fbLook(opp[2]) === 3), 'fbLook resolution');
+    const odd = M.fbLook('no-such-school'); check(odd >= 40 && odd < 62 && M.fbLook('no-such-school') === odd && M.fbLook({ colors: ['#123456', '#FEDCBA'] }) >= 40, 'unknown opponents get a stable dynamic look');
+    check(M.fbRole('QB') === 2 && M.fbRole('K') === 3 && M.fbRole('OL') === 0 && M.fbRole('LB') === 4 && M.fbRole('WR') === 1 && M.fbRole('LT') === 0 && M.fbRole('nope') === 1, 'fbRole mapping');
+    check(M.fbVariant('home', 'QB', 12, true) === (0 | (2 << 6) | (12 << 9) | (1 << 16)) && M.fbVariant(1, 0, 0, false) === 1, 'fbVariant packing');
+    // compose: deterministic, directional, role/pose/look sensitive
+    const cp = M.fbCompose.player, v0 = M.fbVariant(0, 'WR'), vQ = M.fbVariant(0, 'QB'), vL = M.fbVariant(0, 'OL');
+    check(bequal(cp('stance', v0, 1, 0), cp('stance', v0, 1, 0)), 'player compose deterministic');
+    const dirs = []; for (let d = 0; d < 8; d++) dirs.push(cp('stance', v0, d, 0));
+    let same = 0; for (let i = 0; i < 8; i++) for (let j = i + 1; j < 8; j++) if (bequal(dirs[i], dirs[j])) same++;
+    check(same === 0, '8 facing directions are 8 distinct images');
+    const runs = []; for (let f = 0; f < 6; f++) runs.push(cp('run', v0, 7, f));
+    let rs = 0; for (let i = 0; i < 6; i++) for (let j = i + 1; j < 6; j++) if (bequal(runs[i], runs[j])) rs++;
+    check(rs === 0, 'run cycle: 6 distinct frames');
+    for (const pose of Object.keys(POSES)) for (let f = 0; f < POSES[pose]; f++) check(pix(cp(pose, v0, 1, f)) > 60, pose + ' f' + f + ' draws a figure');
+    check(!bequal(cp('throw', v0, 1, 0), cp('throw', v0, 1, 1)) && !bequal(cp('stance', v0, 1, 0), cp('run', v0, 1, 0)) && !bequal(cp('celebrate', v0, 1, 0), cp('celebrate', v0, 1, 1)), 'poses and frames differ');
+    check(pix(cp('stance', vL, 1, 0)) > pix(cp('stance', v0, 1, 0)) && !bequal(cp('stance', vQ, 1, 0), cp('stance', v0, 1, 0)), 'role groups differ (line bulkier than skill; QB is its own build)');
+    const colors = (b) => new Set(b.d.filter((c) => c));
+    const homeC = colors(cp('stance', v0, 1, 0)), awayC = colors(cp('stance', M.fbVariant(1, 'WR'), 1, 0));
+    check(homeC.has(mat(PAL.purple).c) && homeC.has(PAL.gold) && !awayC.has(PAL.gold), 'home look is purple and gold; an away look is not');
+    if (opp.length) check(awayC.has(mat(lookDef(1).jersey).c), 'away jersey colour comes from data.opponents[id].colors[0]');
+    // numbers: the QB number shows on the chest and the back, hidden from the side
+    const numPix = (v, d) => { const a = cp('stance', v, d, 0), b = cp('stance', v, d, 0, true); let n = 0; for (let i = 0; i < a.d.length; i++) if (a.d[i] !== b.d[i]) n++; return n; };
+    check(numPix(vQ, 1) >= 6 && numPix(vQ, 5) >= 6 && numPix(vQ, 7) === 0 && numPix(vQ, 3) === 0, 'jersey number visible front and back, hidden from the side');
+    check(bequal(cp('stance', M.fbVariant(0, 'QB', 7), 5, 0), cp('stance', M.fbVariant(0, 'QB', 7), 5, 0)) && !bequal(cp('stance', M.fbVariant(0, 'QB', 7), 5, 0), cp('stance', M.fbVariant(0, 'QB', 12), 5, 0)), 'an explicit number changes the sprite');
+    // ball / ref / sideline
+    check(M.get('fbball', 3, 0, 1) && M.get('fbball', 3, 1, 1) && M.get('fbball', 3, 0, 1) !== M.get('fbball', 3, 1, 1), 'ball spin frames are separate entries');
+    check(M.get('fbdown', 4, 0, 1) && M.get('fbdown', 99, 0, 1) && M.get('fbdown', 0, 0, 1), 'down marker clamps its digit');
+    check(!bequal(M.fbCompose.ref(0, 1, 0), M.fbCompose.ref(0, 1, 1)), 'referee: stand and signal differ');
+    for (let f = 1; f < 4; f++) check(!bequal(M.fbCompose.cheer(0, 1, 0), M.fbCompose.cheer(0, 1, f)), 'cheer frame ' + f + ' differs from 0');
+    check(!bequal(M.fbCompose.band(0, 1, 0), M.fbCompose.band(1, 1, 0)) && !bequal(M.fbCompose.band(1, 1, 0), M.fbCompose.band(2, 1, 0)) && !bequal(M.fbCompose.band(0, 1, 0), M.fbCompose.band(0, 1, 1)), 'band: 3 instruments × 2 frames differ');
+    check(!bequal(M.fbCompose.roux(0, 1, 0), M.fbCompose.roux(0, 1, 2)) && !bequal(M.fbCompose.staff(0, 1, 0), M.fbCompose.staff(1, 1, 0)), 'Roux pounce / staff kinds differ');
+    check(!bequal(M.fbCompose.fan('seated', 0, 1, 0), M.fbCompose.fan('standing', 0, 1, 0)) && !bequal(M.fbCompose.fan('wave', 0, 1, 0), M.fbCompose.fan('wave', 0, 1, 1)) && !bequal(M.fbCompose.fan('standing', 0, 1, 0), M.fbCompose.fan('standing', 1, 1, 0)), 'fans: seated / standing / wave, home vs opponent colours');
+    check(M.fbSheetBytes() > 0 && M.fbSheetBytes() < M.SHEET_LIMIT_MB * 1048576, 'football sheets stay within the sheet budget (' + (M.fbSheetBytes() / 1048576).toFixed(2) + ' MB)');
+  }
+  // @@FB-END
+
   // ---------------------------------------------------------------------------
   // Init: pre-bake the entity sprites the first frame is likely to need (≤ 20 ms)
   // ---------------------------------------------------------------------------
@@ -962,6 +1631,8 @@
       // 9. zoom 2 entries double the cell and the anchor
       const z2 = M.get('agent', 0, 0, 2); if (M.ZOOM2) check(z2 && z2.sw === 24 && z2.sh === 40 && z2.ox === -12 && z2.oy === -36, '2× agent sheet 24×40 at (−12, −36)');
       const gz = M.get('gator', 2, 3, 2); if (M.ZOOM2) check(gz && gz.sw === 112 && gz.sh === 34, '2× legend gator');
+      // 10. football pass E: every fb* id at both zooms, directions, poses, looks, numbers, sideline sprites
+      fbSelfTest(check);
     } catch (e) { notes.push('threw: ' + (e && e.message)); }
     return { ok: notes.length === 0, notes: notes.length ? notes.join('; ') : 'entities ok' };
   }

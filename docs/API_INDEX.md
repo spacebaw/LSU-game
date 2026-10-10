@@ -11,9 +11,9 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 
 ## BSU.B_ORDER  — enum/table, 43 keys (e.g. 0, 1, 2, 3, 4, 5, 6, 7)
 
-## BSU.EV  — enum/table, 100 keys (e.g. TILE_CHANGED, BUILDING_PLACED, BUILDING_REMOVED, BUILDING_COMPLETE, BUILDING_UPGRADED, BUILDING_FLOODED, BUILDING_DRIED, BUILDING_DAMAGED)
+## BSU.EV  — enum/table, 101 keys (e.g. TILE_CHANGED, BUILDING_PLACED, BUILDING_REMOVED, BUILDING_COMPLETE, BUILDING_UPGRADED, BUILDING_FLOODED, BUILDING_DRIED, BUILDING_DAMAGED; + GAME_SPRING 'game:spring' — PLAN_FOOTBALL pass C)
 
-## BSU.EV_LIST  — enum/table, 100 keys (e.g. 0, 1, 2, 3, 4, 5, 6, 7)
+## BSU.EV_LIST  — enum/table, 101 keys (e.g. 0, 1, 2, 3, 4, 5, 6, 7)
 
 ## BSU.FLAG
 - values: WETLAND_ORIGINAL:number, PRESERVE:number, CANAL:number, DRAINED:number, FLOODGATE:number, POND_SINK:number, BAYOU:number, OPEN_WATER:number, DIRTY_CHUNK:number, DESIRE_WORN:number, DEBRIS:number, MOUND:number, RESTORING:number, JAMMED:number
@@ -408,6 +408,8 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - progress.paradeClick(state, px, py)
 - progress.skipSetPiece(state)
 - progress.setPieceSeen(state, kind)
+- progress.sportsCard(state, spec)  — PLAN_FOOTBALL pass C: a sports newsflash card (ui.card spec {id, kicker, title, body[], actions?}) through the ui queue (held during a set piece, queued when ui is absent)
+- progress.offerProspects(state)  — pass C: the off-season prospect board as a card (one Sign button per prospect + Pass) built from sports.prospects(state)
 - progress.bonfires(state)
 - progress.recap(state)
 - progress._onDate(state, date, day)
@@ -534,7 +536,13 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - sports.live(state)  — renderer view: {active, mode, quarter, clock, clockText, down, distance, spot, possession, score, phase, frac, lastPlay, anim, formation{off,def}, players[22]{team,pos,role,x,y,state}, ball{x,y}, drive, decision}
 - sports.playState(state)  — the field core {down, dist, spot, poss, quarter, clock, phase, over, ot, score, lastPlay, drive, box, timeouts, decision, mode} or null
 - sports.recentPlays(state, n)  — the last n play records of the running game
-- sports.summary(state)  — post-game summary (live totals while a game runs; state.sports.lastSummary afterwards)
+- sports.summary(state)  — post-game summary (live totals while a game runs; state.sports.lastSummary afterwards); + boosts {marshMob, homecoming, homeField}, neutral (pass C)
+- sports.prospects(state)  — pass C: the off-season prospect board {year, offeredDay, maxSignings, signed, answered, open, list[{index, name, pos, hometown, rating, cost, title, blurb, archetype, signed}]} or null
+- sports.signProspect(state, idx)  — pass C: charges the cost now (coaching); the player replaces the starter at that position at the Aug 5 lock → {ok, cost, name, pos, rating, reason}
+- sports.passProspects(state)  — pass C: marks the board answered
+- sports.spring(state)  — pass C: the Spring Game calendar {scheduledDay, daysUntil, playedYear, last, title, window}
+- sports.startSpringGame(state)  — pass C: start the 300-tick Purple & Gold Spring Game now (needs a team, no running set piece) → {ok, reason, len}
+- sports.drill(state)  — pass C: the idle practice drill for the renderer {phase:'drill', frac, formation, players[11], ball, los} or null (also live().drill while no game runs)
 - sports.setNight(state)
 - sports.setAutoSim(state)
 - sports.setPermits(state)
@@ -712,7 +720,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - ui.update(state, dtMs)
 - ui.reset(state, fresh)
 - ui.selfTest()
-- ui.scoreBug(state)
+- ui.scoreBug(state, force)  — football pass D game-day HUD (#score-bug-hud, #game-hud/#pbp); ui.update's 'scorebug' section calls it each frame, it recomputes when state.tick moved or force; ui.fb = pure formatters (downText, spotText, playbookFx, summaryBody …); card 'gamesummary' ({summary})
 
 - BSU.validateCatalogRow(row)
 

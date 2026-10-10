@@ -7,7 +7,9 @@
 //           the scripted night day) plus the lazily-initialized saved keys
 //           listed in docs/INTEGRATION_NOTES.md (clubOnly, homeWins,
 //           losingSeasons, seasonDone, playbook, aggression, watchFull,
-//           records, lastSummary — PLAN_FOOTBALL pass B).
+//           records, lastSummary — PLAN_FOOTBALL pass B; springDay,
+//           springYear, lastSpring, prospects, seasonLog, seasonLines —
+//           pass C: the Spring Game, the prospect board, season records).
 // Engine:   PLAN_FOOTBALL §2.1 drive/play engine (pass B): eight position
 //           ratings → four units → a per-play edge; run/pass/kick/clock tables
 //           from params.sports.engine; highlights / full / montage / silent
@@ -79,7 +81,11 @@
     intAirYds: 8, timeoutSec: 5, playGuard: 2000,   // interception depth, a timeout's stoppage, the per-game play cap (never reached)
     convBase: 0.78, convPerYd: 0.07, convEdge: 0.05, convMin: 0.15, convMax: 0.9,   // 4th-down conversion estimate for the toast odds
     epDiv: 14, epBase: 1.3,                   // expected points of a possession ≈ own/14 − 1.3 (the live estimate's field-position term)
-    fullPlaysEstimate: 135                    // watch-full-game set-piece length: baseTicks + 135 × perPlayTicks + tailTicks
+    fullPlaysEstimate: 135,                   // watch-full-game set-piece length: baseTicks + 135 × perPlayTicks + tailTicks
+    // --- pass C: the Spring Game, prospects, records ---
+    springOpp: 'gold', springNames: Object.freeze(['Purple', 'Gold']), springAbbr: 'GLD', springTitle: 'Purple & Gold Spring Game',
+    drillCycleTicks: 60, drillLos: 50,        // the idle practice drill: a two-formation loop every 60 ticks at midfield
+    recruitClass: 'Fr', seasonLogMax: 12, hofMax: 60   // a signed prospect arrives as a freshman; per-season game log cap; Hall of Fame cap
   });
   const TOAST_TICKS = PT.toastTicks;          // 80
   const CONCESSIONS = (P.econ && typeof P.econ.concessions === 'number') ? P.econ.concessions : L.concessionsFallback;
@@ -127,7 +133,7 @@
     return Math.max(dx, dy);
   }
   function oppInfo(key) { const o = data().opponents; return (o && o[key]) ? o[key] : null; }
-  function oppName(key) { const o = oppInfo(key); return o ? String(o.name).replace(/ University$/, '') : String(key); }
+  function oppName(key) { if (key === L.springOpp) return L.springNames[1] + ' squad'; const o = oppInfo(key); return o ? String(o.name).replace(/ University$/, '') : String(key); }
   function oppBaseRating(key) { const o = oppInfo(key); return o ? num(o.rating, 50) : 50; }
   function isRival(key) { const o = oppInfo(key); return !!(o && o.rival); }
   function probWord(p) { return p < L.wordUnderdog ? 'Underdog' : (p < L.wordFavored ? 'Even' : 'Favored'); }
@@ -147,6 +153,7 @@
       awaiting: NONE,                // schedule index of a home game waiting on the playThrough toast
       playThrough: null,             // {day, tick, answered} — the open Play Through It toast (not saved)
       playThroughAnsweredDay: NONE,  // D43 guard: one answer per day
+      springTriedDay: NONE,          // pass C: one Spring Game start attempt per day (a busy day defers to tomorrow)
       landfallNow: false,            // storm:landfall seen this tick → postpone in tick
       passedDay: NONE                // storm:passed seen → schedule makeups from this day
     };
@@ -183,6 +190,14 @@
     if (!sp.records || typeof sp.records !== 'object') sp.records = {};
     ensureRecords(sp.records);
     if (sp.hasTeam && sp.starters.length > 0 && sp.starters.length < POS.length) fillStarters(state);   // a pre-engine save: 3 starters → 8 (the originals stay)
+    // PLAN_FOOTBALL pass C: the Spring Game, the prospect board, the season log / stat lines
+    sp.springDay = int(sp.springDay, NONE);
+    sp.springYear = int(sp.springYear, 0);
+    if (sp.lastSpring === undefined || (sp.lastSpring !== null && typeof sp.lastSpring !== 'object')) sp.lastSpring = null;
+    if (sp.prospects === undefined || (sp.prospects !== null && typeof sp.prospects !== 'object')) sp.prospects = null;
+    if (sp.prospects && !Array.isArray(sp.prospects.list)) sp.prospects = null;
+    if (!Array.isArray(sp.seasonLog)) sp.seasonLog = [];
+    if (!sp.seasonLines || typeof sp.seasonLines !== 'object') sp.seasonLines = newLines();
   }
 
   // ---------------------------------------------------------------------------
@@ -257,6 +272,7 @@
         emit(EV.COACH_CHANGED, { name: sp.coach.name, stars: sp.coach.stars });
       }
       if (!sp.starters.length) sp.starters = drawStarters(state);
+      scheduleSpring(state, true);   // PLAN_FOOTBALL §2.4: the Spring Game three days after the field completes (Jan 1 – Jul 10)
     }
     if (!sp.hasTeam && hadTeam) {
       // the field is gone (ruin/demolition): remaining games are cancelled, the rating collapses
@@ -467,13 +483,22 @@
     let sBsu = num(sp.rating, 0), sOpp = num(g.oppRating, 50);
     let advB = 0, advO = 0;
     const k = g.origKind || g.kind;
+    const boosts = { marshMob: 0, homecoming: 0, homeField: 0 };
+    if (g.kind === 'spring') {
+      // PLAN_FOOTBALL §2.1 Spring Game: intrasquad — Gold = the starters − goldHandicap with the same scheme, no home field, no weather
+      const pb = sp.playbook, pos = bsuPositions(sp), gold = {};
+      for (let i = 0; i < POS.length; i++) gold[POS[i]] = pos[POS[i]] - num(PE.spring.goldHandicap, 6);
+      return { units: [unitsFor(pos, sBsu), unitsFor(gold, sBsu)], adv: [0, 0], strength: [sBsu, sBsu], style: [pb, pb], aggression: [sp.aggression, 'normal'], coachStyle: coachStyle(sp), fit: { comp: 0, runYds: 0 }, rain: false, wind: false, edge: 0, boosts: boosts };
+    }
     if (g.home) {
       const seats = venueInfo(state).seats; const fill = seats > 0 ? clamp(num(g.attendance, 0) / seats, 0, 1) : 0;
       advB = num((g.night ? PE.homeField.night : PE.homeField.day)[tier], PS.homeDay) * (PE.homeField.fillBase + PE.homeField.fillSpan * fill);
       sOpp -= num(PE.homeField.oppPenalty[tier], 0);
       if (habitatComplete(state)) advB += L.habitatAdv;
-      if (k === 'rivalry' || isRival(g.opp)) sBsu += num(PE.homeField.marshMob, 0);
-      if (k === 'homecoming') sBsu += num(PE.homeField.homecomingRating[L.homecomingTiers.indexOf(sp.homecomingBudget)], 0);
+      // PLAN_FOOTBALL §2.3 rivalry week / Homecoming: rating-scale boosts through the engine's strength input (no separate roll)
+      if (k === 'rivalry' || isRival(g.opp)) { boosts.marshMob = num(PE.homeField.marshMob, 0); sBsu += boosts.marshMob; }
+      if (k === 'homecoming') { boosts.homecoming = num(PE.homeField.homecomingRating[L.homecomingTiers.indexOf(sp.homecomingBudget)], 0); sBsu += boosts.homecoming; }
+      boosts.homeField = advB;
     } else if (g.kind !== 'bowl' && g.kind !== 'club') advO = PS.homeDay * (PE.homeField.fillBase + PE.homeField.fillSpan * L.awayFill);
     const pb = sp.playbook, cst = coachStyle(sp), pos = bsuPositions(sp);
     const fit = { comp: 0, runYds: 0 };
@@ -487,7 +512,7 @@
       adv: [advB, advO], strength: [sBsu, sOpp],
       style: [pb, o.style || 'balanced'], aggression: [sp.aggression, 'normal'], coachStyle: cst, fit: fit,
       rain: !!(g.home && raining(state)), wind: !!(wind && num(wind.speed, 0) >= PE.weather.windThreshold),
-      edge: (sBsu - sOpp) / PE.edgeDiv
+      edge: (sBsu - sOpp) / PE.edgeDiv, boosts: boosts
     };
   }
   function newBox() { return { plays: 0, rushAtt: 0, rushYds: 0, passAtt: 0, passComp: 0, passYds: 0, sacks: 0, ints: 0, fumbles: 0, to: 0, firstDowns: 0, top: 0, pts: 0, fgm: 0, fga: 0, xpm: 0, xpa: 0, twoM: 0, twoA: 0, tdRush: 0, tdPass: 0, downs: 0, long: 0, longType: '' }; }
@@ -552,8 +577,8 @@
     if (g.drive && g.drive.team === t) g.drive.pts += pts;
     if (!silentMode(g)) emit(EV.GAME_SCORE, scorePayload(g, { quarter: clamp(g.quarter, 1, 5), side: sideOf(g, t), team: t, pts: pts, play: play ? play.type : null, score: g.score.slice() }));
   }
-  function teamNick(g, t) { if (t === BSU_T) return L.bsuNick; const o = oppInfo(g.opp); return (o && o.nick) ? String(o.nick) : oppName(g.opp); }
-  function oppAbbr(g) { return String(g.opp || 'OPP').slice(0, 3).toUpperCase(); }
+  function teamNick(g, t) { if (g.kind === 'spring') return L.springNames[t === BSU_T ? 0 : 1]; if (t === BSU_T) return L.bsuNick; const o = oppInfo(g.opp); return (o && o.nick) ? String(o.nick) : oppName(g.opp); }
+  function oppAbbr(g) { return g.kind === 'spring' ? L.springAbbr : String(g.opp || 'OPP').slice(0, 3).toUpperCase(); }
   /** "the MAG 38" / "the BSU 20" / "midfield" for an absolute spot (0 = BSU goal line). */
   function spotWordsAbs(g, spot) { spot = Math.round(spot); if (spot === 50) return 'midfield'; return spot < 50 ? 'the BSU ' + spot : 'the ' + oppAbbr(g) + ' ' + (100 - spot); }
   function spotWords(g, t, own) { return spotWordsAbs(g, t === BSU_T ? own : 100 - own); }
@@ -950,7 +975,7 @@
   function wantsDecision(g, kind) {
     if (!watched(g) || g.poss !== BSU_T) return false;
     const D = PE.decision;
-    if (g.mode === 'highlights' && g.toasts >= D.highlightsCap) return false;
+    if (g.mode === 'highlights' && g.toasts >= (g.kind === 'spring' ? num(PE.spring.toastCap, 1) : D.highlightsCap)) return false;   // the Spring Game shows one 4th-down/two-point toast (the tutorial for the mechanic)
     if (g.tOff >= D.pauseCap) return false;
     const own = ownYd(g), m = margin(g, BSU_T);
     if (kind === 'fourthDown') return (g.dist <= D.fourthDist && own >= D.fourthSpot) || own >= D.fourthRedZoneSpot || (!g.ot && m < -D.fourthTrailMargin && g.quarter === PE.clock.quarters && g.clock <= D.fourthTrailSec && own >= D.fourthTrailSpot);
@@ -1094,8 +1119,10 @@
       kicking: [{ fgm: b.fgm, fga: b.fga, xpm: b.xpm, xpa: b.xpa }, { fgm: o.fgm, fga: o.fga, xpm: o.xpm, xpa: o.xpa }],
       mvp: pickMvp(sp, g), lines: lines, bigPlay: big ? { text: big.text, yds: big.yds, type: big.type, quarter: big.q } : null,
       drives: g.drives.length, attendance: att,
-      revenue: g.home && g.kind !== 'club' ? { tickets: att * ticket, concessions: att * CONCESSIONS, tailgate: num(g.tailgate, 0), total: att * (ticket + CONCESSIONS) + num(g.tailgate, 0) } : { tickets: 0, concessions: 0, tailgate: 0, total: num(g.revenue, 0) },
-      halftime: g.halftimeChoice, decisions: g.decisionN
+      revenue: g.kind === 'spring' ? { tickets: 0, concessions: num(PE.spring.concessions, 0), tailgate: 0, total: num(PE.spring.concessions, 0) }
+        : g.home && g.kind !== 'club' ? { tickets: att * ticket, concessions: att * CONCESSIONS, tailgate: num(g.tailgate, 0), total: att * (ticket + CONCESSIONS) + num(g.tailgate, 0) } : { tickets: 0, concessions: 0, tailgate: 0, total: num(g.revenue, 0) },
+      halftime: g.halftimeChoice, decisions: g.decisionN,
+      boosts: g.eng && g.eng.boosts ? g.eng.boosts : { marshMob: 0, homecoming: 0, homeField: 0 }, neutral: g.kind === 'bowl'   // pass C: the rating-line boosts of this game (Season panel / summary card)
     };
   }
   function ensureRecords(r) {
@@ -1205,9 +1232,27 @@
     }
     return { players: out, ball: ball, formation: fm };
   }
+  /** PLAN_FOOTBALL §2.1 the idle practice drill (pass C): with a Practice Field and no game, 11 players loop between two formations at midfield (no sim cost, no draws). */
+  function drillState(state) {
+    const sp = state.sports;
+    if (!sp.hasTeam || sp.game) return null;
+    const F = (data().football || {}).formations || {}, ROLES = (data().football || {}).roles || {};
+    const a = F.iform, b = F.shotgun;
+    if (!a || !b) return null;
+    const cyc = L.drillCycleTicks, t = num(state.tick, 0) % cyc, half = cyc / 2;
+    const f = t < half ? t / half : 1 - (t - half) / half;   // 0 → 1 → 0: iform → shotgun → iform
+    const k = f < 0.5 ? f * 2 : (1 - f) * 2;                // ease both ways
+    const players = [];
+    for (let i = 0; i < a.pos.length; i++) {
+      const r = f < 0.5 ? a.pos[i] : b.pos[i];
+      const x = L.drillLos + a.xy[i][0] + (b.xy[i][0] - a.xy[i][0]) * f, y = a.xy[i][1] + (b.xy[i][1] - a.xy[i][1]) * f;
+      players.push({ team: BSU_T, pos: ROLES[r] || r, role: r, x: x, y: y, state: k > 0.1 ? 'route' : 'set' });
+    }
+    return { phase: 'drill', frac: f, formation: { off: f < 0.5 ? 'iform' : 'shotgun', def: null }, players: players, ball: { x: L.drillLos, y: 0 }, los: L.drillLos };
+  }
   function liveState(state) {
     const sp = state.sports, g = sp.game;
-    if (!g || g.mode === 'silent') return { active: false, mode: g ? g.mode : null };
+    if (!g || g.mode === 'silent') return { active: false, mode: g ? g.mode : null, drill: drillState(state) };
     const spc = state.setPiece;
     const t = spc ? num(spc.tick, 0) : 0, tg = t - num(g.tOff, 0);
     const a = g.anim;
@@ -1271,6 +1316,7 @@
     sp.seasonDone = false;
     sp.homeWins = 0;
     sp.record.wins = 0; sp.record.losses = 0;
+    sp.seasonLog = []; sp.seasonLines = newLines();   // pass C: the season's game log and the starters' season stat lines start over
     for (let i = 0; i < out.length; i++) { out[i].night = nightFor(state, out[i]); emit(EV.GAME_SCHEDULED, { day: out[i].day, opp: out[i].opp, home: out[i].home, kind: out[i].kind }); }
     return out;
   }
@@ -1371,6 +1417,7 @@
   /** The final whistle: the engine finishes if needed, then totals, record, revenue, tickers, rivalry, timers, summary, records, events. */
   function finalize(state, g, silent) {
     if (g.finalized) return;
+    if (g.kind === 'spring') return finalizeSpring(state, g);
     const sp = state.sports;
     if (!g.kickedOff) kickoff(state, g);
     if (!g.over) runSilent(state, g);
@@ -1404,12 +1451,19 @@
     g.summary = sum;
     sp.lastSummary = sum;
     updateRecords(state, g, sum);
+    addSeasonLines(sp, g.lines);
+    logSeasonGame(sp, g, sum);
     // ticker lines 43/44 and the recap 60 (the MVP's real stat line)
     const on = oppName(g.opp);
     if (won) ticker(state, 43, { w: bsuPts, opp: on, l: oppPts }); else ticker(state, 44, { opp: on, w: oppPts, l: bsuPts });
     if (sum.mvp) {
       g.stats = sum.mvp.line;
       ticker(state, 60, { pos: sum.mvp.pos, name: sum.mvp.name, hometown: sum.mvp.hometown, stat: g.stats, opp: on });
+    }
+    // pass C: an off-screen game (away, club, bowl) is reported through a notify with the line that matters
+    if (g.mode === 'silent' && !g.home) {
+      const where = g.kind === 'bowl' ? 'Sugar Cane Bowl' : (g.kind === 'club' ? 'Club game at ' + on : 'At ' + on);
+      call('ui', 'notify', state, { text: where + ': ' + L.bsuNick + ' ' + bsuPts + '–' + oppPts + (g.ot ? ' (OT)' : '') + ' · ' + (won ? 'W' : 'L') + (sum.mvp ? ' · ' + sum.mvp.pos + ' ' + sum.mvp.name + ' ' + sum.mvp.line : '') + ' · ' + (sp.record.wins) + '–' + (sp.record.losses), kind: 'sports', ttl: 9000 });
     }
     // rivalry (§8)
     if (isRival(g.opp) && g.kind !== 'bowl') {
@@ -1487,7 +1541,7 @@
   }
   /** Golden 0–200 → Dusk 200–300 → Night for night games; Day throughout otherwise (t = game time, frozen while a decision is open). */
   function scriptSky(state, g, t) {
-    if (!g.night) { call('weather', 'scriptSky', state, SKY.DAY, clamp(t / PT.gameTicks, 0, 1)); return; }
+    if (!g.night) { call('weather', 'scriptSky', state, SKY.DAY, clamp(t / (g.len0 > 0 ? g.len0 : PT.gameTicks), 0, 1)); return; }
     if (t < PS.kickoffTick) call('weather', 'scriptSky', state, SKY.GOLDEN, t / PS.kickoffTick);
     else if (t < PS.kickoffTick + PS.quarterTicks) call('weather', 'scriptSky', state, SKY.DUSK, (t - PS.kickoffTick) / PS.quarterTicks);
     else call('weather', 'scriptSky', state, SKY.NIGHT, clamp((t - PS.kickoffTick - PS.quarterTicks) / (PT.gameTicks - PS.kickoffTick - PS.quarterTicks), 0, 1));
@@ -1511,19 +1565,29 @@
     const tg = t - g.tOff;
     scriptSky(state, g, tg);
     if (g.mode === 'full') fullTick(state, g, tg, t);
-    else highlightsTick(state, g, tg);
+    else highlightsTick(state, g, tg, hlTable(g));
+  }
+  /** The highlights tick table: the 750-tick home game (PS.kickoffTick…exitTick, 24 slots) or the 300-tick Spring Game (PE.spring: 40 → 140 → 240 → 280, 12 slots). */
+  function hlTable(g) {
+    const H = PE.highlights;
+    if (g.kind === 'spring') {
+      const Sg = PE.spring, k = num(Sg.kickoffTick, 40), h = num(Sg.halfTicks, 100), slots = Math.max(4, int(Sg.slots, 12));
+      return { kickoff: k, halftime: k + h, final: k + 2 * h, exit: num(Sg.exitTick, k + 2 * h + 40), firstSlot: k, slots: slots, spq: Math.max(1, Math.floor(slots / 4)), slotTicks: num(Sg.slotTicks, 16) };
+    }
+    return { kickoff: PS.kickoffTick, halftime: PS.halftimeTick, final: PS.finalTick, exit: PS.exitTick, firstSlot: H.firstSlotTick, slots: H.slots, spq: H.slotsPerQuarter, slotTicks: H.slotTicks };
   }
   function catchUp(state, g, q, clk) {
     runUntil(state, g, function (x) { return x.quarter > q || (x.quarter === q && x.clock <= clk) || (x.phase === 'half' && q <= 2); });
   }
   /** Highlights: 24 slots of 16 ticks (6 per quarter) from tick 200; each slot catches the game up to its clock, then animates the next key play. */
-  function highlightsTick(state, g, tg) {
+  function highlightsTick(state, g, tg, T) {
     const H = PE.highlights;
-    if (tg >= PS.kickoffTick) kickoff(state, g);
+    if (!T) T = hlTable(g);
+    if (tg >= T.kickoff) kickoff(state, g);
     if (!g.kickedOff) return;
-    if (tg >= PS.finalTick) {
+    if (tg >= T.final) {
       if (!g.finalized) { runSilent(state, g); finalize(state, g, false); }
-      if (tg >= PS.exitTick) busesOff(state, g);
+      if (tg >= T.exit) busesOff(state, g);
       return;
     }
     if (g.anim) {
@@ -1532,7 +1596,8 @@
     }
     if (g.over) return;
     let s;
-    if (tg < PS.halftimeTick) s = Math.min(H.slots / 2 - 1, Math.floor((tg - H.firstSlotTick) / H.slotTicks));
+    const half = T.slots / 2;
+    if (tg < T.halftime) s = Math.min(half - 1, Math.floor((tg - T.firstSlot) / T.slotTicks));
     else {
       if (!g.halfDone) {
         runUntil(state, g, function (x) { return x.phase === 'half'; });
@@ -1540,12 +1605,12 @@
         if (g.phase === 'half') step(state, g);   // the halftime step: opens the decision (pauses) or applies the default and kicks off
         if (g.decision) return;
       }
-      s = H.slots / 2 + Math.min(H.slots / 2 - 1, Math.floor((tg - PS.halftimeTick) / H.slotTicks));
+      s = half + Math.min(half - 1, Math.floor((tg - T.halftime) / T.slotTicks));
     }
     if (s < 0) return;
     if (s >= g.hl.next) {
       g.hl.next = s + 1; g.hl.budget = H.maxPlaysPerSlot;
-      g.hl.target = { q: Math.floor(s / H.slotsPerQuarter) + 1, clk: PE.clock.quarterSec * (1 - (s % H.slotsPerQuarter) / H.slotsPerQuarter) };
+      g.hl.target = { q: Math.floor(s / T.spq) + 1, clk: PE.clock.quarterSec * (1 - (s % T.spq) / T.spq) };
     }
     if (g.hl.target) { catchUp(state, g, g.hl.target.q, g.hl.target.clk); if (g.decision) return; g.hl.target = null; }
     // scan up to maxPlaysPerSlot plays: the first key play is animated, else the last one of the scan (one animated play per slot)
@@ -1645,7 +1710,7 @@
     const sp = state.sports;
     const year = yearOf(state);
     const regWins = sp.record.wins, regLosses = sp.record.losses;
-    let bowl = false, bowlWon = false;
+    let bowl = false, bowlWon = false, bowlOpp = null, bowlScore = null;
     if (regWins >= PS.bowlWins) {
       // the Sugar Cane Bowl: a neutral-site game vs the strongest opponent not on the schedule (off-screen in Tier 1)
       const used = {};
@@ -1656,17 +1721,32 @@
       if (!opp) opp = L.bowlOppFallback;
       const day = dayOfDate(PS.schedule.bowl, year);
       const e = makeEntry(day >= 0 ? day : today(state), opp, false, 'bowl', (data().schedule || []).length - 1, oppBaseRating(opp) + R.range(-PS.oppNoise, PS.oppNoise));
+      e.neutral = true;   // PLAN_FOOTBALL §2.3: a neutral-site game (no home field either way; engineFor gives a bowl no advantage)
       sp.schedule.push(e);
       emit(EV.GAME_SCHEDULED, { day: e.day, opp: e.opp, home: false, kind: 'bowl' });
+      ticker(state, 'Bowl eligible at ' + regWins + ' wins: the Sugar Cane Bowl vs ' + oppName(opp) + '.', {});
       const res = playOffscreen(state, sp.schedule.length - 1);
-      bowl = true;
+      bowl = true; bowlOpp = opp;
       bowlWon = !!(res && res.won);
+      bowlScore = res ? [res.bsu, res.opp] : null;
       if (bowlWon) { call('economy', 'post', state, 'athletics', PS.bowlWin, { note: 'Sugar Cane Bowl (won)' }); call('economy', 'bump', state, 'prestige', PS.bowlPrestige, 'Sugar Cane Bowl'); }
       else call('economy', 'post', state, 'athletics', PS.bowlLose, { note: 'Sugar Cane Bowl' });
-    }
+    } else ticker(state, 'No bowl this year: ' + regWins + ' wins, ' + PS.bowlWins + ' needed for the Sugar Cane Bowl.', {});
     const undefeated = regWins >= PS.undefeatedWins && regLosses === 0;
     sp.lastSeason = { wins: sp.record.wins, losses: sp.record.losses, bowlWon: bowlWon, undefeated: undefeated };
     if (undefeated) call('progress', 'achieve', state, 'undefeated');
+    // PLAN_FOOTBALL §2.1 season records + Hall of Fame (pass C), then the season recap card
+    const rs = recordSeason(state, { year: year, wins: regWins, losses: regLosses, bowl: bowl, bowlOpp: bowlOpp, bowlScore: bowlScore, bowlWon: bowlWon, undefeated: undefeated });
+    const money = function (n) { return BSU.formatMoney ? BSU.formatMoney(n) : '$' + n; };
+    const body = [regWins + '–' + regLosses + ' regular season · ' + rs.row.pf + ' points for, ' + rs.row.pa + ' against · ' + (sp.coach ? sp.coach.name : '') + ' (' + num(sp.coach && sp.coach.stars, 0) + '★)'];
+    if (bowl) body.push('Sugar Cane Bowl vs ' + oppName(bowlOpp) + ': ' + (bowlScore ? bowlScore[0] + '–' + bowlScore[1] : '') + (bowlWon ? ' · won · ' + money(PS.bowlWin) + ' and +' + PS.bowlPrestige + ' prestige' : ' · lost · ' + money(PS.bowlLose)));
+    else body.push('No bowl: ' + PS.bowlWins + ' wins are needed for the Sugar Cane Bowl.');
+    if (rs.mvp) body.push('Season MVP: ' + rs.mvp.pos + ' ' + rs.mvp.name + ' (' + rs.mvp.hometown + ') · ' + rs.mvp.line);
+    if (rs.hof.length) body.push('Hall of Fame: ' + rs.hof.map(function (h) { return h.pos + ' ' + h.name + ' (' + h.why + ')'; }).join('; '));
+    body.push('Off-season: the prospect board opens tomorrow; the coaching budget sets its size and quality.');
+    call('progress', 'sportsCard', state, { id: 'seasonRecap', kicker: 'Season ' + year + ' · final', title: (undefeated ? 'Undefeated. ' : '') + L.bsuNick + ' ' + regWins + '–' + regLosses + (bowlWon ? ' · bowl champions' : ''), body: body });
+    if (rs.mvp) ticker(state, 'Season MVP: ' + rs.mvp.pos + ' ' + rs.mvp.name + ', ' + rs.mvp.line + '.', {});
+    for (let i = 0; i < rs.hof.length; i++) { const h = rs.hof[i]; ticker(state, h.pos + ' ' + h.name + ' enters the Hall of Fame: ' + h.why + '.', {}); call('ui', 'notify', state, { text: 'Hall of Fame: ' + h.pos + ' ' + h.name + ' (' + h.line + ').', kind: 'sports', ttl: 9000 }); }
     // coach stars drift (§8)
     if (sp.coach && sp.coach.name) {
       if (bowlWon || undefeated) sp.coach.stars = Math.min(PS.starMax, num(sp.coach.stars, 2) + 1);
@@ -1676,10 +1756,207 @@
     sp.seasonDone = true;
     sp.homeWins = 0;
     sp.record.wins = 0; sp.record.losses = 0;
-    emit(EV.SEASON_END, { wins: sp.lastSeason.wins, losses: sp.lastSeason.losses, bowl: bowl, bowlWon: bowlWon, undefeated: undefeated, year: year });
+    emit(EV.SEASON_END, { wins: sp.lastSeason.wins, losses: sp.lastSeason.losses, bowl: bowl, bowlWon: bowlWon, undefeated: undefeated, year: year,
+      bowlOpp: bowlOpp, bowlScore: bowlScore, pf: rs.row.pf, pa: rs.row.pa, mvp: rs.row.mvp, hof: rs.hof.map(function (h) { return { name: h.name, pos: h.pos, why: h.why }; }), seasons: sp.records.seasons.length });
   }
   function seasonActive(state) { const sp = state.sports; return sp.hasTeam && sp.seasonYear === yearOf(state) && !sp.seasonDone && sp.schedule.length > 0; }
   function unplayedRegular(state) { return findEntry(state, function (e) { return !e.played && !e.cancelled && e.kind !== 'bowl'; }) >= 0; }
+
+  // ---------------------------------------------------------------------------
+  // PLAN_FOOTBALL pass C: season log / stat lines, records.seasons + Hall of Fame, the Spring Game, the prospect board
+  // ---------------------------------------------------------------------------
+  /** Accumulate a game's BSU starter lines into the season's (max for `long`, sums otherwise). */
+  function addSeasonLines(sp, lines) {
+    if (!sp.seasonLines || typeof sp.seasonLines !== 'object') sp.seasonLines = newLines();
+    const T = sp.seasonLines;
+    for (const pos in lines) {
+      const src = lines[pos]; if (!src || typeof src !== 'object') continue;
+      if (!T[pos] || typeof T[pos] !== 'object') T[pos] = {};
+      for (const k in src) T[pos][k] = k === 'long' ? Math.max(num(T[pos].long, 0), num(src.long, 0)) : num(T[pos][k], 0) + num(src[k], 0);
+    }
+  }
+  /** One compact row per game of the season (the Season panel's results list; pass D). */
+  function logSeasonGame(sp, g, sum) {
+    if (!Array.isArray(sp.seasonLog)) sp.seasonLog = [];
+    sp.seasonLog.push({ day: g.day, opp: g.opp, oppName: sum.oppName, home: !!g.home, kind: g.kind, night: !!g.night, score: g.score.slice(), won: !!sum.won, ot: !!g.ot,
+      mvp: sum.mvp ? { name: sum.mvp.name, pos: sum.mvp.pos, line: sum.mvp.line } : null, attendance: num(g.attendance, 0), revenue: num(g.revenue, 0), mode: g.mode });
+    while (sp.seasonLog.length > L.seasonLogMax) sp.seasonLog.shift();
+  }
+  /** The season's MVP: the current starter whose accumulated line scores best (lineScore over seasonLines). */
+  function seasonMvp(sp) {
+    const T = sp.seasonLines || {}, mp = starterMap(sp);
+    let best = null;
+    for (let i = 0; i < POS.length; i++) {
+      const pos = POS[i]; if (!T[pos] || !mp[pos]) continue;
+      const sc = lineScore(pos, T[pos]);
+      if (!best || sc > best.score) best = { name: mp[pos].name, pos: pos, hometown: mp[pos].hometown, line: lineText(pos, T[pos]), score: sc };
+    }
+    return best;
+  }
+  /** season:end: records.seasons gets {year, wins, losses, pf, pa, bowl, mvp, coach}; records.hof the plan's thresholds (QB 2,500 yds, RB 1,000, WR 900, DB 5 INT, or the MVP of a rivalry-win + bowl-win season). */
+  function recordSeason(state, info) {
+    const sp = state.sports; if (!sp.records) sp.records = {}; const r = sp.records; ensureRecords(r);
+    const RC = PE.records, T = sp.seasonLines || {}, mp = starterMap(sp);
+    let pf = 0, pa = 0, rivalryWon = false;
+    for (let i = 0; i < sp.seasonLog.length; i++) { const e = sp.seasonLog[i]; if (e.kind === 'bowl') continue; pf += num(e.score[0], 0); pa += num(e.score[1], 0); if (e.won && isRival(e.opp)) rivalryWon = true; }
+    const mvp = seasonMvp(sp);
+    const row = { year: info.year, wins: info.wins, losses: info.losses, pf: pf, pa: pa,
+      bowl: info.bowl ? { opp: info.bowlOpp, oppName: oppName(info.bowlOpp), score: info.bowlScore, won: !!info.bowlWon } : null, bowlWon: !!info.bowlWon, undefeated: !!info.undefeated,
+      coach: sp.coach ? String(sp.coach.name || '') : '', stars: num(sp.coach && sp.coach.stars, 0), playbook: sp.playbook, mvp: mvp ? { name: mvp.name, pos: mvp.pos, hometown: mvp.hometown, line: mvp.line } : null, games: sp.seasonLog.length };
+    r.seasons.push(row);
+    while (r.seasons.length > num(RC.seasonsMax, 50)) r.seasons.shift();
+    const hof = [];
+    const add = function (pos, line, why) { const st = mp[pos]; if (!st) return; hof.push({ name: st.name, pos: pos, hometown: st.hometown, year: info.year, line: line, why: why }); };
+    if (T.QB && num(T.QB.yds, 0) >= RC.hofQbYds) add('QB', lineText('QB', T.QB), RC.hofQbYds + ' passing yards');
+    if (T.RB && num(T.RB.yds, 0) >= RC.hofRbYds) add('RB', lineText('RB', T.RB), RC.hofRbYds + ' rushing yards');
+    if (T.WR && num(T.WR.yds, 0) >= RC.hofWrYds) add('WR', lineText('WR', T.WR), RC.hofWrYds + ' receiving yards');
+    if (T.DB && num(T.DB.ints, 0) >= RC.hofDbInts) add('DB', lineText('DB', T.DB), RC.hofDbInts + ' interceptions');
+    if (rivalryWon && info.bowlWon && mvp && !hof.some(function (h) { return h.pos === mvp.pos; })) add(mvp.pos, mvp.line, 'the rivalry win and the Sugar Cane Bowl');
+    for (let i = 0; i < hof.length; i++) r.hof.push(hof[i]);
+    while (r.hof.length > L.hofMax) r.hof.shift();
+    return { row: row, hof: hof, mvp: mvp };
+  }
+
+  // --- the Purple & Gold Spring Game (PLAN_FOOTBALL §2.1 / §2.4) -----------------------------------------------------
+  function springYd(day) { const dpy = Math.max(1, int(P.time.daysPerYear, 120)); return ((day % dpy) + dpy) % dpy; }
+  function inSpringWindow(day) { const w = PE.spring.windowDays || [0, 69], yd = springYd(day); return yd >= num(w[0], 0) && yd <= num(w[1], 69); }
+  /** Put the Spring Game on the calendar once per year: `fieldJustBuilt` → offsetDays after today inside the Jan 1 – Jul 10 window; later years → PE.spring.date (Apr 8) while it is still ahead. */
+  function scheduleSpring(state, fieldJustBuilt) {
+    const sp = state.sports, day = today(state), year = yearOf(state);
+    if (!sp.hasTeam || sp.springYear === year || sp.springDay >= 0) return false;
+    let d = NONE;
+    if (fieldJustBuilt) { if (inSpringWindow(day)) d = day + num(PE.spring.offsetDays, 3); }
+    else { const pd = dayOfDate(PE.spring.date, year); if (pd >= day && inSpringWindow(pd)) d = pd; }
+    if (d < 0 || !inSpringWindow(d)) return false;
+    sp.springDay = d;
+    announceSpring(state, d);
+    return true;
+  }
+  /** The newsflash: ticker + notify + a card through progress (held while a set piece runs; queued when ui is absent). */
+  function announceSpring(state, d) {
+    const sp = state.sports, n = d - today(state);
+    const when = n <= 0 ? 'today' : (n === 1 ? 'tomorrow' : 'in ' + n + ' days');
+    ticker(state, L.springTitle + ' ' + when + ' on the Practice Field: ' + L.springNames[0] + ' (the starters) vs ' + L.springNames[1] + '.', {});
+    call('ui', 'notify', state, { text: L.springTitle + ' ' + when + '. ' + L.springNames[0] + ' vs ' + L.springNames[1] + ' on the Practice Field.', kind: 'sports', ttl: 9000 });
+    call('progress', 'sportsCard', state, { id: 'springGame', kicker: 'Newsflash · Athletics', title: L.springTitle,
+      body: ['The first look at the ' + L.bsuNick + ': ' + L.springNames[0] + ' (the starters) against the ' + L.springNames[1] + ' scrimmage squad on the Practice Field, ' + when + '.',
+        'No gate and no record: a concession line, +' + num(PE.spring.happiness, 1) + ' happiness, and your first 4th-down call.',
+        'Coach ' + ((sp.coach && sp.coach.name) || 'Cheramie') + ' runs the ' + sp.playbook + ' playbook. Change it in the Season panel before kickoff.'] });
+  }
+  /** The scheduled day: start the set piece unless the day is busy (tutorial, a storm on the board, a set piece, a game today) → the next day. */
+  function trySpring(state) {
+    const sp = state.sports, day = today(state);
+    if (sp.springDay < 0 || day < sp.springDay) return false;
+    if (!sp.hasTeam) { sp.springDay = NONE; return false; }
+    if (!inSpringWindow(day)) { sp.springDay = NONE; call('ui', 'notify', state, { text: 'The Spring Game window closed; the next one is in the spring.', kind: 'sports' }); return false; }
+    const tut = call('progress', 'tutorialStage', state);
+    const busy = !!state.setPiece || !!sp.game || (typeof tut === 'number' && tut < 6) || !!stormNow(state) || !!pv.landfallNow || todaysHomeIndex(state) >= 0;
+    if (busy) { sp.springDay = day + Math.max(1, int(PE.spring.deferDays, 1)); return false; }
+    return startSpring(state).ok === true;
+  }
+  /** Start the 300-tick Spring Game set piece now (highlights mode, kind 'spring'); without a session it resolves off-screen. */
+  function startSpring(state) {
+    const sp = state.sports;
+    if (!sp.hasTeam) return { ok: false, reason: 'No team' };
+    if (state.setPiece || sp.game) return { ok: false, reason: 'A set piece is running' };
+    const Sg = PE.spring, year = yearOf(state);
+    if (sp.starters.length < POS.length) fillStarters(state);
+    storeRating(state);
+    const e = { day: today(state), opp: L.springOpp, home: true, kind: 'spring', origKind: 'spring', oppRating: num(sp.rating, 0), slot: NONE, night: false };
+    const g = makeGame(state, e, NONE, 'highlights');
+    g.night = false;
+    g.attendance = Math.round(num(state.economy && state.economy.students, 0) * num(Sg.attendanceShare, 0.25));
+    g.len0 = Math.max(60, int(Sg.ticks, 300));
+    sp.game = g;
+    sp.springYear = year; sp.springDay = NONE;
+    const seen = call('progress', 'setPieceSeen', state, 'spring') === true;
+    call('session', 'startSetPiece', state, 'spring', { len: g.len0, skippable: seen });
+    if (!state.setPiece) { sp.game = null; g.mode = 'silent'; kickoff(state, g); runSilent(state, g); finalizeSpring(state, g); return { ok: true, offscreen: true }; }
+    if (!Number.isFinite(state.setPiece.tick)) state.setPiece.tick = 0;
+    ticker(state, 'Kickoff on the Practice Field: the ' + L.springTitle + '. ' + L.springNames[0] + ' vs ' + L.springNames[1] + '.', {});
+    call('ui', 'notify', state, { text: L.springTitle + ': kickoff. ' + L.springNames[0] + ' vs ' + L.springNames[1] + '.', kind: 'sports', ttl: 6000 });
+    scriptSky(state, g, 0);
+    return { ok: true, kind: 'spring', mode: 'highlights', len: g.len0 };
+  }
+  /** The Spring Game final: no record, no gate; the concession line, +happiness/+prestige, lastSpring, game:spring. */
+  function finalizeSpring(state, g) {
+    if (g.finalized) return;
+    const sp = state.sports, Sg = PE.spring;
+    if (!g.kickedOff) kickoff(state, g);
+    if (!g.over) runSilent(state, g);
+    g.revealDone = true; syncPts(g); g.finalized = true; g.anim = null;
+    const sum = buildSummary(state, g);
+    g.summary = sum; sp.lastSummary = sum;
+    const purple = g.score[0], gold = g.score[1], won = purple > gold;
+    sp.lastSpring = { year: yearOf(state), day: g.day, score: g.score.slice(), won: won, ot: !!g.ot, mvp: sum.mvp ? { name: sum.mvp.name, pos: sum.mvp.pos, line: sum.mvp.line } : null, bigPlay: sum.bigPlay, attendance: num(g.attendance, 0) };
+    const cons = num(Sg.concessions, 0);
+    if (cons > 0) { call('economy', 'post', state, 'athletics', cons, { i: venueTile(state), note: 'Spring Game concessions' }); g.revenue = cons; }
+    if (num(Sg.happiness, 0) > 0) call('economy', 'bump', state, 'happiness', num(Sg.happiness, 0), 'Spring Game');
+    if (num(Sg.prestige, 0) > 0) call('economy', 'bump', state, 'prestige', num(Sg.prestige, 0), 'Spring Game');
+    const mvpText = sum.mvp ? ' ' + sum.mvp.pos + ' ' + sum.mvp.name + ': ' + sum.mvp.line + '.' : '';
+    ticker(state, L.springTitle + ' final: ' + L.springNames[0] + ' ' + purple + ', ' + L.springNames[1] + ' ' + gold + '.' + mvpText, {});
+    call('ui', 'notify', state, { text: 'Spring Game final: ' + L.springNames[0] + ' ' + purple + '–' + gold + ' ' + L.springNames[1] + '.' + mvpText + ' +' + num(Sg.happiness, 0) + ' happiness.', kind: 'sports', ttl: 9000 });
+    emit(EV.GAME_SPRING, scorePayload(g, { score: g.score.slice(), won: won, ot: !!g.ot, summary: sum, mode: g.mode, year: yearOf(state), attendance: num(g.attendance, 0), revenue: cons }));
+    return { home: g.homePts, away: g.awayPts, won: won, bsu: purple, opp: gold };
+  }
+
+  // --- the off-season prospect board (PLAN_FOOTBALL §2.3 recruiting) ---------------------------------------------------
+  function boardSize(state) {
+    const RC = PE.recruit, c = num(state.economy && state.economy.coaching, 0), tiers = RC.boardCoachingTiers || [], sizes = RC.boardSizes || [3];
+    let k = 0; for (let i = 0; i < tiers.length; i++) if (c >= tiers[i]) k = i + 1;
+    return Math.max(1, int(sizes[Math.min(k, sizes.length - 1)], 3));
+  }
+  /** One prospect (fixed draw order: position weight, archetype, rating noise, name, hometown). Quality follows the coaching budget and the coach's stars. */
+  function drawProspect(state) {
+    const RC = PE.recruit, FB = data().football || {}, PR = FB.prospects || {}, arch = PR.archetypes || [], w = PR.posWeights || {};
+    let total = 0; for (let i = 0; i < POS.length; i++) total += Math.max(0, num(w[POS[i]], 1));
+    let r = R.range(0, total), pos = POS[POS.length - 1];
+    for (let i = 0; i < POS.length; i++) { r -= Math.max(0, num(w[POS[i]], 1)); if (r <= 0) { pos = POS[i]; break; } }
+    const cands = arch.filter(function (a) { return a && a.pos === pos; });
+    const a = cands.length ? R.pick(cands) : { id: 'walkOn', title: 'Walk-on', blurb: '', ratingBias: 0, costMult: 1 };
+    const c = num(state.economy && state.economy.coaching, 0), stars = num(state.sports.coach && state.sports.coach.stars, PS.coachStarBase);
+    const q = RC.ratingMin + num(RC.qualityBase, 8) + num(RC.qualityPerTier, 6) * clamp(c / Math.max(1, num((RC.boardCoachingTiers || [])[1], 1000000)), 0, 1.5)
+      + num(RC.qualityPerStar, 2) * (stars - PS.coachStarBase) + num(a.ratingBias, 0) + R.range(-num(RC.qualityNoise, 6), num(RC.qualityNoise, 6));
+    const rating = clamp(Math.round(q), RC.ratingMin, RC.ratingMax);
+    const span = Math.max(1, RC.ratingMax - RC.ratingMin), round = Math.max(1, int(RC.costRound, 10000));
+    const cost = Math.round((RC.costMin + (RC.costMax - RC.costMin) * (rating - RC.ratingMin) / span) * num(a.costMult, 1) / round) * round;
+    return { name: fbName(), pos: pos, hometown: drawHometown(), rating: rating, cost: clamp(cost, RC.costMin, RC.costMax), archetype: String(a.id || ''), title: String(a.title || ''), blurb: String(a.blurb || ''), signed: false };
+  }
+  function drawProspects(state) {
+    const sp = state.sports, n = boardSize(state), list = [];
+    for (let i = 0; i < n; i++) list.push(drawProspect(state));
+    sp.prospects = { year: yearOf(state), offeredDay: today(state), list: list, signed: 0, answered: false, offered: false };
+    return sp.prospects;
+  }
+  /** Dec 9: the board is offered once — the card through progress → ui.card; a notify when progress lacks the card. */
+  function offerProspects(state) {
+    const sp = state.sports, b = sp.prospects;
+    if (!b || b.offered) return false;
+    b.offered = true;
+    ticker(state, 'Recruiting season: ' + b.list.length + ' prospects on the board. Sign up to ' + int(PE.recruit.maxSignings, 2) + ' before Aug 5.', {});
+    const delivered = call('progress', 'offerProspects', state);
+    if (delivered !== true) {
+      const money = function (n) { return BSU.formatMoney ? BSU.formatMoney(n) : '$' + n; };
+      call('ui', 'notify', state, { text: 'Prospect board: ' + b.list.map(function (p) { return p.pos + ' ' + p.name + ' (' + p.rating + ', ' + money(p.cost) + ')'; }).join(' · ') + '. Sign up to ' + int(PE.recruit.maxSignings, 2) + ' in the Season panel.', kind: 'sports', ttl: 12000 });
+    }
+    return true;
+  }
+  /** Aug 5: every signed prospect replaces the starter at that position (the money was charged at signing). */
+  function applyProspects(state) {
+    const sp = state.sports, b = sp.prospects;
+    if (!b) return;
+    if (sp.starters.length < POS.length) fillStarters(state);
+    for (let i = 0; i < b.list.length; i++) {
+      const p = b.list[i]; if (!p || !p.signed) continue;
+      let k = NONE; for (let j = 0; j < sp.starters.length; j++) if (sp.starters[j].pos === p.pos) { k = j; break; }
+      if (k < 0) k = Math.max(0, POS.indexOf(p.pos));
+      const old = sp.starters[k];
+      sp.starters[k] = { name: p.name, pos: p.pos, hometown: p.hometown, rating: p.rating, class: L.recruitClass };
+      call('ui', 'notify', state, { text: p.pos + ' ' + p.name + ' (' + p.hometown + ') arrives rated ' + p.rating + (old ? ', replacing ' + old.name + ' (' + old.rating + ')' : '') + '.', kind: 'sports', ttl: 9000 });
+      ticker(state, p.pos + ' ' + p.name + ' reports for fall camp.' + (p.blurb ? ' ' + p.blurb : ''), {});
+    }
+    sp.prospects = null;
+  }
 
   // ---------------------------------------------------------------------------
   // Recruiting card (Tier 2 #6; cheap)
@@ -1725,9 +2002,12 @@
       // the roster: three starters (drawn here the first time; May 5 turns seniors over), then the recruit lands
       if (sp.starters.length < POS.length) fillStarters(state);
       applyRecruit(state);
+      applyProspects(state);   // pass C: signed prospects replace their position's starter at the lock
       if (sp.seasonYear !== year) buildSchedule(state, year);
       if (call('buildings', 'has', state, 'stadium') === true) drawRecruit(state);
     }
+    // pass C: the Spring Game in later years (Apr 8) — one per year; Year 1's comes from the field completing (refreshTeam)
+    if (sp.hasTeam && sp.springYear !== year && sp.springDay < 0) scheduleSpring(state, false);
     // a team that first exists between Aug 5 and Dec 8: the remaining dates only
     if (sp.hasTeam && sp.seasonYear !== year) {
       const aug5 = dayOfDate(PS.schedule.recruitDate, year), dec8 = dayOfDate(PS.schedule.seasonEnd, year);
@@ -1735,8 +2015,8 @@
     }
     // May 5: seniors leave
     if (sp.hasTeam && sp.starters.length && day === dayOfDate('May 5', year)) seniorsLeave(state);
-    // Dec 9: the offseason hire card
-    if (sp.hasTeam && day === dayOfDate(PS.schedule.offseasonStart, year)) drawCandidates(state);
+    // Dec 9: the offseason hire card and the prospect board (pass C: offered once per off-season)
+    if (sp.hasTeam && day === dayOfDate(PS.schedule.offseasonStart, year)) { drawCandidates(state); drawProspects(state); offerProspects(state); }
     storeRating(state);
     if (!sp.hasTeam) return;
     // catch-up: an unplayed game whose date passed (a set piece blocked it) resolves off-screen
@@ -1768,10 +2048,11 @@
     const sp = state.sports;
     const spc = state.setPiece;
     const g = sp.game;
-    if (g && spc && spc.kind === 'game') { gameTick(state, g, num(spc.tick, 0)); return; }
+    if (g && spc && (spc.kind === 'game' || spc.kind === 'spring')) { gameTick(state, g, num(spc.tick, 0)); return; }
     if (g && spc && spc.kind === 'montage') { montageTick(state, g, num(spc.tick, 0)); return; }
     if (g && !spc) { if (!g.finalized) { g.halftimeAnswered = true; finalize(state, g, true); } clearGame(state); }
     if (pv.landfallNow) { pv.landfallNow = false; const idx = todaysHomeIndex(state); if (idx >= 0 && !sp.game) M.postpone(state, idx); }
+    if (sp.springDay >= 0 && !spc && !sp.game && pv.pending < 0 && today(state) >= sp.springDay && pv.springTriedDay !== today(state)) { pv.springTriedDay = today(state); trySpring(state); }
     if (pv.playThrough && !pv.playThrough.answered && state.tick >= pv.playThrough.tick + TOAST_TICKS) {
       call('ui', 'answerDecision', 'playThrough', 'default');
       if (!pv.playThrough.answered) resolvePlayThrough(state, 'default');
@@ -1792,7 +2073,7 @@
   function onLandfall() { if (pv) pv.landfallNow = true; }
   function onPassed() { if (pv && S) pv.passedDay = today(S); }
   function onSetPieceEnd(p) {
-    if (!S || !p || (p.kind !== 'game' && p.kind !== 'montage')) return;
+    if (!S || !p || (p.kind !== 'game' && p.kind !== 'montage' && p.kind !== 'spring')) return;
     try {
       const g = S.sports.game;
       if (g && !g.finalized) { g.halftimeAnswered = true; finalize(S, g, true); }
@@ -1940,9 +2221,10 @@
   M.skipToFinal = function (state) {
     try {
       const spc = state.setPiece, g = state.sports.game;
-      if (!spc || !g || (spc.kind !== 'game' && spc.kind !== 'montage')) return;
-      const seen = call('progress', 'setPieceSeen', state, 'game') === true;
+      if (!spc || !g || (spc.kind !== 'game' && spc.kind !== 'montage' && spc.kind !== 'spring')) return;
+      const seen = call('progress', 'setPieceSeen', state, spc.kind === 'spring' ? 'spring' : 'game') === true;
       if (spc.kind === 'game' && (num(spc.tick, 0) < PS.kickoffTick || !seen)) return;
+      if (spc.kind === 'spring' && (num(spc.tick, 0) < hlTable(g).kickoff || !seen)) return;
       kickoff(state, g);
       if (g.decision) { const id = g.decision.id; call('ui', 'answerDecision', id, 'default'); if (g.decision) applyDecision(state, g, g.decision.def); }
       runSilent(state, g);
@@ -1951,6 +2233,53 @@
       spc.tick = Math.max(num(spc.tick, 0), num(spc.len, PT.gameTicks) - 1);
     } catch (e) { BSU.error('sports', 'skipToFinal', e); }
   };
+  /** PLAN_FOOTBALL pass C: the prospect board {year, offeredDay, maxSignings, signed, answered, open, list[{index, name, pos, hometown, rating, cost, title, blurb, signed}]} or null outside the off-season. */
+  M.prospects = function (state) {
+    try {
+      if (!state || !state.sports) return null;
+      const b = state.sports.prospects; if (!b || !Array.isArray(b.list)) return null;
+      const max = int(PE.recruit.maxSignings, 2);
+      return { year: b.year, offeredDay: b.offeredDay, maxSignings: max, signed: int(b.signed, 0), answered: !!b.answered, open: int(b.signed, 0) < max,
+        list: b.list.map(function (p, i) { return { index: i, name: p.name, pos: p.pos, hometown: p.hometown, rating: p.rating, cost: p.cost, title: p.title, blurb: p.blurb, archetype: p.archetype, signed: !!p.signed }; }) };
+    } catch (e) { BSU.error('sports', 'prospects', e); return null; }
+  };
+  /** Sign prospect idx: charges the cost now (coaching ledger); the player arrives at the Aug 5 lock → {ok, cost, name, pos, reason}. */
+  M.signProspect = function (state, idx) {
+    try {
+      const sp = state.sports, b = sp.prospects;
+      if (!b || !Array.isArray(b.list)) return { ok: false, cost: 0, reason: 'No prospect board' };
+      const p = b.list[int(idx, NONE)];
+      if (!p) return { ok: false, cost: 0, reason: 'No such prospect' };
+      if (p.signed) return { ok: false, cost: 0, reason: p.name + ' already signed' };
+      const max = int(PE.recruit.maxSignings, 2);
+      if (int(b.signed, 0) >= max) return { ok: false, cost: p.cost, reason: 'Only ' + max + ' signings per off-season' };
+      if (b.list.some(function (q) { return q !== p && q.signed && q.pos === p.pos; })) return { ok: false, cost: p.cost, reason: 'A ' + p.pos + ' is already signed' };
+      if (call('economy', 'canAfford', state, p.cost) === false) return { ok: false, cost: p.cost, reason: 'Cannot afford ' + (BSU.formatMoney ? BSU.formatMoney(p.cost) : p.cost) };
+      if (call('economy', 'charge', state, p.cost, 'coaching', { note: 'signing ' + p.name }) === false) return { ok: false, cost: p.cost, reason: 'Cannot afford the signing' };
+      p.signed = true; b.signed = int(b.signed, 0) + 1;
+      ticker(state, p.pos + ' ' + p.name + ' (' + p.hometown + ') signs with the ' + L.bsuNick + '. Rated ' + p.rating + '; arrives Aug 5.', {});
+      return { ok: true, cost: p.cost, name: p.name, pos: p.pos, rating: p.rating, reason: '' };
+    } catch (e) { BSU.error('sports', 'signProspect', e); return { ok: false, cost: 0, reason: 'error' }; }
+  };
+  /** Pass on the board (it stays readable in the Season panel until Aug 5). */
+  M.passProspects = function (state) { try { const b = state.sports.prospects; if (b) b.answered = true; return { ok: !!b }; } catch (e) { BSU.error('sports', 'passProspects', e); return { ok: false }; } };
+  /** The Spring Game's calendar: {scheduledDay, daysUntil, playedYear, last} (pass C). */
+  M.spring = function (state) {
+    try {
+      const sp = state.sports, d = int(sp.springDay, NONE);
+      return { scheduledDay: d, daysUntil: d >= 0 ? d - today(state) : NONE, playedYear: int(sp.springYear, 0), last: sp.lastSpring || null, title: L.springTitle, window: PE.spring.windowDays };
+    } catch (e) { BSU.error('sports', 'spring', e); return { scheduledDay: NONE, daysUntil: NONE, playedYear: 0, last: null }; }
+  };
+  /** Start the Spring Game now (the Season panel button / debug): needs a team and no running set piece → {ok, reason, len}. */
+  M.startSpringGame = function (state) {
+    try {
+      if (S !== state || !pv) { rebind(state); ensureKeys(state); }
+      if (!state.sports.hasTeam) return { ok: false, reason: 'No team: build a Practice Field' };
+      return startSpring(state);
+    } catch (e) { BSU.error('sports', 'startSpringGame', e); return { ok: false, reason: 'error' }; }
+  };
+  /** The idle practice drill for the renderer (pass F): {phase:'drill', frac, formation, players[11], ball, los} or null (no field / a game runs). */
+  M.drill = function (state) { try { return drillState(state); } catch (e) { BSU.error('sports', 'drill', e); return null; } };
   /** PLAN_FOOTBALL §2.1 player controls (D46: functions only) */
   M.setPlaybook = function (state, style) { try { state.sports.playbook = (style === 'ground' || style === 'air') ? style : 'balanced'; } catch (e) { BSU.error('sports', 'setPlaybook', e); } };
   M.setAggression = function (state, level) { try { state.sports.aggression = (level === 'conservative' || level === 'aggressive') ? level : 'normal'; } catch (e) { BSU.error('sports', 'setAggression', e); } };
@@ -2372,11 +2701,13 @@
         A(g.halftimeAnswered === true && g.halftimeChoice === 'open' && tickers.filter(function (x) { return x === 61; }).length === before61 + 1, 'ticker 61 once; halftimeAnswered');
         // the tick-based timeline: the halftime toast opens at the end of Q2 (set-piece tick 376–400), times out 80 ticks later, the final at game-time 600
         const g3 = makeGame(s, s.sports.schedule[0], 0, 'highlights'); g3.len0 = 750; s.sports.game = g3;
-        let openedAt = -1, answeredAt = -1, plays = 0;
-        for (let t = 0; t <= 760 && !g3.finalized; t++) { s.setPiece.tick = t; M.tick(s, { newDay: false, day: s.calendar.day }); if (openedAt < 0 && g3.halftimeOpenedTick >= 0) openedAt = g3.halftimeOpenedTick; if (answeredAt < 0 && g3.halftimeAnswered) answeredAt = t; }
+        let openedAt = -1, answeredAt = -1, plays = 0, pausedBefore = 0;
+        for (let t = 0; t <= 760 && !g3.finalized; t++) { s.setPiece.tick = t; M.tick(s, { newDay: false, day: s.calendar.day }); if (openedAt < 0 && g3.halftimeOpenedTick >= 0) { openedAt = g3.halftimeOpenedTick; pausedBefore = g3.tOff; } if (answeredAt < 0 && g3.halftimeAnswered) answeredAt = t; }
         plays = g3.plays.length;
-        A(openedAt >= 370 && openedAt <= 400, 'halftime opens at the end of Q2 (' + openedAt + ')');
-        A(answeredAt === openedAt + PE.decision.halftimeTicks, 'the timeout answers 80 ticks later (' + answeredAt + ')');
+        // in game time (set-piece tick minus the ticks a first-half 4th-down toast paused): the stream depends on the shared rng, so the pause is not fixed
+        A(openedAt - pausedBefore >= 370 && openedAt - pausedBefore <= 400, 'halftime opens at the end of Q2 (' + openedAt + ', paused ' + pausedBefore + ')');
+        // the toast length is capped by what is left of pauseCap after earlier 4th-down pauses (openDecision)
+        A(answeredAt === openedAt + Math.min(PE.decision.halftimeTicks, PE.decision.pauseCap - pausedBefore), 'the timeout answers 80 ticks later, less any pauseCap already spent (opened ' + openedAt + ', answered ' + answeredAt + ', paused before ' + pausedBefore + ')');
         A(g3.finalized && g3.over && g3.tOff >= PE.decision.halftimeTicks - 1 && s.setPiece.len === 750 + g3.tOff && g3.tOff <= PE.decision.pauseCap, 'the set piece stretched by the paused ticks (' + g3.tOff + ')');
         A(plays >= 90 && g3.plays.filter(function (e) { return e.key; }).length >= 10 && g3.score[0] !== g3.score[1], 'the highlights game played every play (' + plays + ') with key plays animated');
         A(log.some(function (x) { return x.name === EV.GAME_KICKOFF; }) && log.some(function (x) { return x.name === EV.GAME_HALFTIME; }) && log.some(function (x) { return x.name === EV.GAME_PLAY; }) && log.some(function (x) { return x.name === EV.GAME_DRIVE; }) && log.some(function (x) { return x.name === EV.GAME_DECISION; }), 'kickoff, halftime, play, drive and decision events');

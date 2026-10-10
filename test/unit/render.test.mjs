@@ -211,6 +211,78 @@ s.setPiece = { kind: 'x', cameraTouched: false }; R.panBy(1, 0, true); ok(s.setP
   ok(flat.polys.length === 0 && flat.buckets.size === 0 && flat.steps.size === 0, 'an empty map builds empty curves');
 }
 
+// --- football pass F: field mapping, venue pick, players on the field, camera ----------------
+{
+  const H = BSU.headless;
+  // (a) nothing drawn without a live game or a drill (seed 42 has no practice field)
+  H.render();
+  let fi = R.fbInfo();
+  ok(fi.drawn === 0 && fi.players === 0 && !fi.active && !fi.drill, 'football layer draws nothing without a game or a drill');
+  // (b) the field quad per venue, as the painters draw it
+  const st = { type: 'stadium', tx: 20, ty: 20, w: 6, h: 5, tier: 1, built: 1, id: 7 }, pf = { type: 'practice_field', tx: 30, ty: 30, w: 4, h: 3, tier: 1, built: 1, id: 8 };
+  const qs = R.fieldQuad(st), qp = R.fieldQuad(pf);
+  ok(qs && qs.x0 === 1 && qs.y0 === 1 && qs.x1 === 5 && qs.y1 === 4, 'stadium field quad {1,1,fw-1,fh-1}: ' + JSON.stringify(qs));
+  ok(qp && Math.abs(qp.x0 - 0.6) < 1e-9 && Math.abs(qp.y0 - 0.3) < 1e-9 && Math.abs(qp.x1 - 3.4) < 1e-9 && Math.abs(qp.y1 - 2.7) < 1e-9, 'practice field quad {0.6,0.3,fw-0.6,fh-0.3}: ' + JSON.stringify(qp));
+  ok(R.fieldQuad({ type: 'dorm', w: 2, h: 2 }) === null && R.fieldQuad(null) === null, 'no field quad for other buildings');
+  // (c) corners: u -10 / 110 (the end lines) and v 0 / 53.3 (the sidelines) land on the quad corners, in footprint units along +tx / +ty
+  for (const [b, q] of [[st, qs], [pf, qp]]) {
+    const c00 = R.fieldToTile(b, -10, 0), c11 = R.fieldToTile(b, 110, 53.3), c10 = R.fieldToTile(b, 110, 0), mid = R.fieldToTile(b, 50, 53.3 / 2);
+    ok(Math.abs(c00.tx - (b.tx + q.x0)) < 1e-9 && Math.abs(c00.ty - (b.ty + q.y0)) < 1e-9, b.type + ': far end line / far sideline corner = (tx+x0, ty+y0)');
+    ok(Math.abs(c11.tx - (b.tx + q.x1)) < 1e-9 && Math.abs(c11.ty - (b.ty + q.y1)) < 1e-9, b.type + ': near corner = (tx+x1, ty+y1)');
+    ok(c10.tx > c00.tx && Math.abs(c10.ty - c00.ty) < 1e-9, b.type + ': u runs along +tx (the long axis the yard lines cross)');
+    ok(Math.abs(mid.tx - (b.tx + (q.x0 + q.x1) / 2)) < 1e-9 && Math.abs(mid.ty - (b.ty + (q.y0 + q.y1) / 2)) < 1e-9, b.type + ': midfield maps to the quad centre (the BSU logo)');
+    const g0 = R.fieldToTile(b, 0, 0), g1 = R.fieldToTile(b, 100, 0);
+    ok(Math.abs((g0.tx - c00.tx) - (q.x1 - q.x0) / 12) < 1e-9 && Math.abs((c10.tx - g1.tx) - (q.x1 - q.x0) / 12) < 1e-9, b.type + ': goal lines sit one end-zone (1/12 of the span) in from the end lines');
+    const w = R.fieldToWorld(b, -10, 0, 0), w2 = R.fieldToWorld(b, -10, 0, 10);
+    ok(w && Math.abs(w.x - (c00.tx - c00.ty) * 32) < 1e-9 && Math.abs(w2.y - (w.y - 10)) < 1e-9, b.type + ': fieldToWorld is the iso projection; up lifts by px');
+  }
+  // (d) the venue pick follows sports.venue (highest complete stadium tier; Bayou Field = the practice field with bleachers)
+  const fake = { buildings: [{ type: 'practice_field', tx: 1, ty: 1, w: 4, h: 3, tier: 1, built: 1, id: 0 }, { type: 'stadium', tx: 10, ty: 10, w: 6, h: 5, tier: 1, built: 1, id: 1 }, { type: 'stadium', tx: 20, ty: 20, w: 6, h: 5, tier: 2, built: 1, id: 2 }, { type: 'stadium', tx: 30, ty: 30, w: 6, h: 5, tier: 3, built: 0.5, id: 3 }], sports: { venue: 'stadium2', game: null } };
+  ok(R.fieldVenue(fake, false).id === 2, 'venue pick: the highest complete stadium tier for a stadium venue');
+  fake.sports.venue = 'bayou_field';
+  ok(R.fieldVenue(fake, false).id === 0 && R.fieldVenue(fake, true).id === 0, 'venue pick: the practice field for bayou_field / the drill');
+  // (e) a real home game at Bayou Field: 22 players drawn inside the field quad, the camera frames the venue at 2x and yields to the player
+  s.economy.cash = 60e6; s.economy.students = 700;
+  const spot = H.findSpot('practice_field');
+  const placed = spot ? H.place('practice_field', spot.x, spot.y) : null;
+  ok(placed && placed.ok !== false, 'practice field placed for the game test: ' + JSON.stringify(placed));
+  H.tick(900);
+  const fld = BSU.buildings.list(s, 'practice_field')[0];
+  if (fld) { BSU.buildings.upgrade(s, fld.id); H.tick(800); }
+  const venue = BSU.sports.season(s).venue;
+  ok(venue === 'bayou_field', 'Bayou Field is the venue after the upgrade: ' + venue);
+  R.panToTile(fld ? fld.tx : 32, fld ? fld.ty : 32, false);
+  const drill = R.fbInfo(); H.render(); const dr = R.fbInfo();
+  ok(dr.drill ? dr.players === 11 && dr.drawn >= 12 : true, 'the idle practice drill draws 11 players and the ball when sports exposes it (' + dr.players + ')');
+  const zoomBefore = s.ui.camera.zoom;
+  const ph = BSU.sports.playHome(s);
+  ok(ph && ph.ok, 'playHome starts a watched game: ' + JSON.stringify(ph));
+  H.tick(260);
+  const lv = BSU.sports.live(s);
+  ok(lv && lv.active && Array.isArray(lv.players) && lv.players.length === 22, 'sports.live is active with 22 players at tick 260: ' + (lv && lv.phase));
+  H.render(); H.render();
+  fi = R.fbInfo();
+  ok(fi.active && fi.players === 22 && fi.drawn >= 22 + 1 + 6 + 3 + 1, 'football layer draws 22 players + ball/officials/sideline/crowd (' + fi.drawn + ' entries, ' + fi.players + ' players)');
+  const qf = R.fieldQuad(fld);
+  ok(fi.minX >= qf.x0 - 0.01 && fi.maxX <= qf.x1 + 0.01 && fi.minY >= qf.y0 - 0.01 && fi.maxY <= qf.y1 + 0.01, 'every drawn player maps inside the painted field quad: X ' + fi.minX.toFixed(2) + '-' + fi.maxX.toFixed(2) + ' in [' + qf.x0 + ',' + qf.x1 + '], Y ' + fi.minY.toFixed(2) + '-' + fi.maxY.toFixed(2) + ' in [' + qf.y0 + ',' + qf.y1 + ']');
+  ok(s.setPiece && s.setPiece.kind === 'game' && fi.camera && s.ui.camera.zoom === 2 && s.setPiece.cameraTouched === false, 'the game camera took over at 2x for Bayou Field without touching cameraTouched (zoom ' + s.ui.camera.zoom + ')');
+  const fbEntries = R.drawList.filter((e) => e && (e.kind === 'fbplayer' || e.kind === 'fbball' || e.kind === 'fbcrowd' || e.kind === 'fbcheer'));
+  const venueEntry = R.drawList.find((e) => e && e.kind === 'building' && e.b === fld);
+  ok(venueEntry && fbEntries.length > 0 && fbEntries.every((e) => e.key > venueEntry.key) && R.drawList.indexOf(venueEntry) < R.drawList.indexOf(fbEntries[0]), 'football entries sort after the venue sprite (never under the turf)');
+  const kinds = {}; for (const e of R.drawList) if (e && e.kind && e.kind.slice(0, 2) === 'fb') kinds[e.kind] = (kinds[e.kind] || 0) + 1;
+  ok(kinds.fbplayer === 22 && kinds.fbref === 1 && kinds.fbcheer === 6 && kinds.fbstaff === 3 && kinds.fbroux === 1 && kinds.fbcrowd === 1 && (kinds.fbline || 0) <= 1 && (kinds.fbball || 0) <= 1, 'one entry per on-field thing: ' + JSON.stringify(kinds));
+  const lineE = R.drawList.find((e) => e && e.kind === 'fbline');
+  ok(!lineE || (Number.isFinite(lineE.a) && lineE.a >= 0 && lineE.a <= 100 && lineE.key < fbEntries[0].key + 1e9 && lineE.key > venueEntry.key), 'the scrimmage line sits on the turf at the engine spot: ' + (lineE && lineE.a));
+  const pl0 = R.drawList.filter((e) => e && e.kind === 'fbplayer');
+  ok(pl0.every((e) => e.ref && e.ref.zoom === 1 && /^fbplayer:/.test(e.id)), 'players blit from the 1x atlas with a pose id');
+  R.panBy(40, 0, true); H.render();
+  ok(s.setPiece.cameraTouched === true && R.fbInfo().camera === true && !s.ui.camera.hasTarget, 'a user pan sets cameraTouched and the game camera stops following');
+  BSU.session.skipSetPiece(s); H.tick(700);
+  H.render();
+  ok(!s.setPiece && R.fbInfo().camera === false, 'after the skip the set piece ended and the game camera let go (zoom stays ' + s.ui.camera.zoom + ' because the player touched it)');
+  void zoomBefore; void drill;
+}
+
 // --- selfTest under the harness flag ---------------------------------------------------
 BSU.SELFTEST = true; let r; try { r = R.selfTest(); } catch (e) { r = { ok: false, notes: e.stack }; } finally { BSU.SELFTEST = false; }
 ok(r && r.ok, 'selfTest ok: ' + (r && r.notes));

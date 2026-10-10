@@ -136,6 +136,7 @@
   let hoverKey = '', hoverSince = 0, hoverPx = 0, hoverPy = 0, tipShown = '', lastPx = 0, lastPy = 0;
   const notifs = [];                       // {spec, el, born, bornTick, closed}
   let toast = null; const toastQueue = [];
+  const gameDecs = {};   // football pass D: game:decision payloads (options with win probabilities) by decision id, consumed by the toast
   let card = null; const cardQueue = [];
   let insp = null, inspAt = -1e9, inspDirty = false, renaming = null;
   let tk = { x: 0, line: null, seen: 0, w: 0, lastLen: 0, logOpen: false };
@@ -275,10 +276,12 @@
   function buildToast() {
     const t = el('div', 'hidden'); t.id = 'decision-toast';
     const tx = el('div', null, ''); tx.id = 'dt-text'; const bar = el('div', 'bar'); bar.id = 'dt-countdown'; const fill = el('div', 'fill'); bar.appendChild(fill);
-    const acts = el('div', 'card-actions'); const y = btn('btn-dt-yes', 'Yes', 'primary', function () { if (toast) M.answerDecision(toast.id, 'yes'); }); const n = btn('btn-dt-no', 'No', '', function () { if (toast) M.answerDecision(toast.id, 'no'); });
+    const opts = el('div', 'hidden'); opts.id = 'dt-options';   // football pass D: one button per engine option (label, win probability, delta); the yes/no row hides while it shows
+    const acts = el('div', 'card-actions'); const y = btn('btn-dt-yes', 'Yes', 'primary', function () { if (toast) answerToast(toast.id, 'yes'); }); const n = btn('btn-dt-no', 'No', '', function () { if (toast) answerToast(toast.id, 'no'); });
     const ky = el('span', 'key', 'Y'), kn = el('span', 'key', 'N'); y.appendChild(ky); n.appendChild(kn); acts.appendChild(y); acts.appendChild(n);
-    t.appendChild(tx); t.appendChild(bar); t.appendChild(acts);
-    E['decision-toast'] = t; E['dt-text'] = tx; E['dt-countdown'] = bar; E['dt-fill'] = fill; E['btn-dt-yes'] = y; E['btn-dt-no'] = n; return t;
+    const foot = el('div', 'hidden'); foot.id = 'dt-foot';
+    t.appendChild(tx); t.appendChild(opts); t.appendChild(bar); t.appendChild(acts); t.appendChild(foot);
+    E['decision-toast'] = t; E['dt-text'] = tx; E['dt-options'] = opts; E['dt-foot'] = foot; E['dt-countdown'] = bar; E['dt-fill'] = fill; E['btn-dt-yes'] = y; E['btn-dt-no'] = n; E['dt-actions'] = acts; return t;
   }
   function buildInspect() {
     const p = el('div', 'panel side hidden'); p.id = 'inspect';
@@ -448,6 +451,7 @@
     on('objective:dismissed', function () { objKey = ''; }); on('objective:progress', function () { objKey = ''; });
     on('ring:changed', function () { objKey = ''; });
     on('milestone:earned', function () { msAt = -1e9; paletteDirty = true; });   // progress posts the paw-stamped notify itself
+    on('game:decision', function (p) { if (!p || !p.id) return; if (p.closed) { delete gameDecs[p.id]; return; } gameDecs[p.id] = { id: p.id, kind: p.kind, options: Array.isArray(p.options) ? p.options : null, def: p.def, deadlineTicks: fin(p.deadlineTicks, 0) }; });   // football pass D: the engine emits this just before ui.decision, so openToast finds the options
     on('storm:toast', function (p) { const s = stateOf(); if (s) M.decision(s, { id: p.id, text: p.text, yes: p.yes, no: p.no, untilTick: p.untilTick, ticks: L.toastTicks }); });
     on('storm:named', function () { alertAt = -1e9; }); on('storm:watch', function () { alertAt = -1e9; }); on('storm:bands', function () { alertAt = -1e9; }); on('storm:landfall', function () { alertAt = -1e9; }); on('storm:passed', function () { alertAt = -1e9; });
     on('mosquito:warning', function (p) { alertAt = -1e9; const s = stateOf(); if (s && p && p.text) M.notify(s, { kind: 'wildlife', text: p.text }); });
@@ -473,7 +477,7 @@
     });
     on('setpiece:end', function () { skipShown = false; if (!card && cardQueue.length) { const s = stateOf(); if (s) openCard(s, cardQueue.shift()); } });
     on('error', function () { errCount++; });
-    on('game:kickoff', function (p) { const s = stateOf(); if (s) M.notify(s, { kind: 'sports', text: 'Kickoff vs ' + (p.opp && p.opp.name ? p.opp.name : p.opp || 'the visitors') + (p.night ? ' under the lights' : ''), ttl: 8000 }); });
+    on('game:kickoff', function (p) { const s = stateOf(); if (s) M.notify(s, { kind: 'sports', text: 'Kickoff vs ' + (p.opp && p.opp.name ? p.opp.name : ((BSU.data && BSU.data.opponents && BSU.data.opponents[p.opp] && BSU.data.opponents[p.opp].name) || p.opp || 'the visitors')) + (p.night ? ' under the lights' : ''), ttl: 8000 }); });
     on('festival:start', function (p) { const s = stateOf(); if (s && p && p.id === 'mardiGras') M.notify(s, { kind: 'event', text: 'Laissez les bons temps rouler — Mardi Gras!' }); });
     on('econ:card', function () { /* ui_panels opens the failure card */ });
     on('camera:moved', function () { /* render draws the minimap viewport */ });
@@ -661,8 +665,9 @@
       // (1) decision toast
       if (toast) {
         const tkeys = (BSU.data && BSU.data.toastKeys) || { yes: ['y', 'Enter'], no: ['n', 'Escape'] };
-        if (tkeys.yes.indexOf(key) >= 0) { M.answerDecision(toast.id, 'yes'); return true; }
-        if (tkeys.no.indexOf(key) >= 0) { M.answerDecision(toast.id, 'no'); return true; }
+        if (toast.options && key.length === 1 && key >= '1' && key <= '9') { const o = toast.options[Number(key) - 1]; if (o) { answerToast(toast.id, o.key); return true; } }   // football pass D: 1/2/3 pick an engine option
+        if (tkeys.yes.indexOf(key) >= 0) { answerToast(toast.id, 'yes'); return true; }
+        if (tkeys.no.indexOf(key) >= 0) { answerToast(toast.id, 'no'); return true; }
       }
       // (2) a focused text field takes every key
       if (focusedInput) {
@@ -1596,16 +1601,56 @@
   };
   function openToast(s, spec) {
     const ticks = Math.max(1, fin(spec.ticks, L.toastTicks)); const t0 = tickOf(s);
-    toast = { id: spec.id, text: spec.text || '', ticks: ticks, startTick: t0, untilTick: Number.isFinite(spec.untilTick) && spec.untilTick > t0 ? spec.untilTick : t0 + ticks, onAnswer: typeof spec.onAnswer === 'function' ? spec.onAnswer : null, resolved: false };
-    if (dom()) { setText(E['dt-text'], toast.text); setText(E['btn-dt-yes'], spec.yes || 'Yes'); E['btn-dt-yes'].appendChild(el('span', 'key', 'Y')); setText(E['btn-dt-no'], spec.no || 'No'); E['btn-dt-no'].appendChild(el('span', 'key', 'N')); E['dt-fill'].style.width = '100%'; show(E.popover, false); show(E['decision-toast'], true); }
+    let gd = gameDecs[spec.id] || null;
+    if (!gd && (spec.id === 'halftime' || spec.id === 'fourthDown' || spec.id === 'twoPoint')) {   // a toast re-issued after a load: game:decision is not re-emitted, the engine's live view still holds the options
+      const lv = call('sports', 'live', s), d = lv && lv.decision;
+      if (d && d.id === spec.id && Array.isArray(d.options)) gd = { id: d.id, kind: d.kind, options: d.options, def: d.def };
+    }
+    const options = spec.options || (gd && gd.options) || null;
+    toast = { id: spec.id, text: spec.text || '', ticks: ticks, startTick: t0, untilTick: Number.isFinite(spec.untilTick) && spec.untilTick > t0 ? spec.untilTick : t0 + ticks, onAnswer: typeof spec.onAnswer === 'function' ? spec.onAnswer : null, resolved: false,
+      game: !!gd, options: Array.isArray(options) && options.length ? options.slice(0, 9) : null, def: (gd && gd.def) || spec.def || null, kind: (gd && gd.kind) || spec.kind || null, secs: -1 };
+    if (toast.options) toast.secs = Math.max(0, Math.ceil((toast.untilTick - t0) / L.autoCardTicksPerSec));
+    if (toast.options && toast.kind === 'fourthDown' && toast.text.indexOf(' · ') > 0) toast.text = toast.text.slice(0, toast.text.indexOf(' · '));   // the buttons carry the Go / FG / Punt odds the engine text repeats
+    if (dom()) {
+      setText(E['dt-text'], toast.text); setText(E['btn-dt-yes'], spec.yes || 'Yes'); E['btn-dt-yes'].appendChild(el('span', 'key', 'Y')); setText(E['btn-dt-no'], spec.no || 'No'); E['btn-dt-no'].appendChild(el('span', 'key', 'N')); E['dt-fill'].style.width = '100%';
+      renderToastOptions();
+      show(E.popover, false); show(E['decision-toast'], true);
+    }
     emit('decision:open', { id: toast.id });
+  }
+  /** football pass D: the option buttons of an engine decision ("1 Go for it · 54% · best", "2 Punt · 49% · -5"): win probability as the engine supplies it, delta against the best option */
+  function renderToastOptions() {
+    const t = toast; const box = E['dt-options']; if (!t || !box) return;
+    clear(box);
+    const on = !!t.options; show(box, on); show(E['dt-actions'], !on); cls(E['decision-toast'], 'dt-opts', on);
+    if (!on) { show(E['dt-foot'], false); return; }
+    let best = -1, bp = -1; t.options.forEach(function (o, i) { const p = fin(o.p, -1); if (p > bp) { bp = p; best = i; } });
+    t.options.forEach(function (o, i) {
+      const p = fin(o.p, NaN); const d = Number.isFinite(p) && bp >= 0 ? Math.round(p * 100) - Math.round(bp * 100) : null;
+      const b = btn('btn-dt-opt-' + i, String(o.label || o.key), (i === best ? 'primary' : '') + (o.key === t.def ? ' def' : ''), function () { if (toast && toast.id === t.id) answerToast(t.id, o.key); });
+      b.dataset.key = String(o.key); b.appendChild(el('span', 'key', String(i + 1)));
+      if (Number.isFinite(p)) { b.appendChild(el('span', 'dt-p', Math.round(p * 100) + '%')); if (d !== null) b.appendChild(el('span', 'dt-d' + (d < 0 ? ' down' : ' up'), d === 0 ? (i === best ? 'best' : '=') : String(d))); }
+      box.appendChild(b);
+    });
+    show(E['dt-foot'], true); toastFoot();
+  }
+  function toastFoot() {
+    const t = toast; if (!t || !t.options || !E['dt-foot']) return;
+    const defOpt = t.options.filter(function (o) { return o.key === t.def; })[0];
+    setText(E['dt-foot'], 'Win probability per option (change vs the best) · keys 1-' + t.options.length + ' or Y / N' + (defOpt ? ' · default: ' + defOpt.label : '') + (t.secs >= 0 ? ' · ' + t.secs + 's' : ''));
+  }
+  /** a toast answer: engine decisions go through sports.decide (the halftime / 4th-down / two-point hook); anything else (storm, play-through) closes by id */
+  function answerToast(id, choice) {
+    const t = toast; if (!t || t.id !== id) return;
+    if (t.game) { const s = stateOf(); const r = s ? call('sports', 'decide', s, choice) : null; if (r && r.ok) { if (toast && toast.id === id) M.answerDecision(id, 'default'); return; } }
+    M.answerDecision(id, choice);
   }
   /** idempotent: resolves the open toast with 'yes'|'no'|'default' — emits decision:closed once */
   M.answerDecision = function (id, answer) {
     try {
       if (!toast || toast.id !== id || toast.resolved) return;
-      const t = toast; t.resolved = true; toast = null;
-      if (dom()) show(E['decision-toast'], false);
+      const t = toast; t.resolved = true; toast = null; delete gameDecs[id];
+      if (dom()) { show(E['decision-toast'], false); cls(E['decision-toast'], 'dt-opts', false); show(E['dt-options'], false); show(E['dt-foot'], false); show(E['dt-actions'], true); }
       emit('decision:closed', { id: id, answer: answer || 'default' });
       if (t.onAnswer) { try { t.onAnswer(answer || 'default'); } catch (e) { uerr('toast:onAnswer', e); } }
       if (toastQueue.length) { const next = toastQueue.shift(); const s = stateOf(); if (s) openToast(s, next); }
@@ -1615,7 +1660,10 @@
     if (!toast) return;
     const tick = tickOf(s);
     if (tick >= toast.untilTick) { M.answerDecision(toast.id, 'default'); return; }
-    if (dom()) { const frac = clamp((toast.untilTick - tick) / Math.max(1, toast.untilTick - toast.startTick), 0, 1); const w = Math.round(frac * 100) + '%'; if (E['dt-fill'].style.width !== w) E['dt-fill'].style.width = w; }
+    if (dom()) {
+      const frac = clamp((toast.untilTick - tick) / Math.max(1, toast.untilTick - toast.startTick), 0, 1); const w = Math.round(frac * 100) + '%'; if (E['dt-fill'].style.width !== w) E['dt-fill'].style.width = w;
+      if (toast.options) { const secs = Math.max(0, Math.ceil((toast.untilTick - tick) / L.autoCardTicksPerSec)); if (secs !== toast.secs) { toast.secs = secs; toastFoot(); } }   // the footer's countdown ticks once a second; the buttons are built once (a re-render would eat a half-finished click)
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -2090,7 +2138,7 @@
       root = state || null; void fresh;
       toolLocked = false; live.down = null; live.run = []; live.runTile = -1; mcSet(live, 'IDLE');
       if (state && state.ui) { state.ui.tool = null; state.ui.panel = null; }
-      card = null; cardQueue.length = 0; toast = null; toastQueue.length = 0; insp = null; renaming = null; focusedInput = null; hint = null; manualAlert = null; itemHover = null; hoverKey = '';
+      card = null; cardQueue.length = 0; toast = null; toastQueue.length = 0; for (const k in gameDecs) delete gameDecs[k]; insp = null; renaming = null; focusedInput = null; hint = null; manualAlert = null; itemHover = null; hoverKey = '';
       for (let k = notifs.length - 1; k >= 0; k--) { notifs[k].closed = true; } notifs.length = 0;
       odo.cash = NaN; odo.students = NaN; odo.lastStudents = NaN; odo.holdUntil = -1; odo.deltaUntil = 0;
       tk = { x: 0, line: null, seen: Math.max(0, ((state && state.ticker) || []).length - 1), w: 0, lastLen: -1, logOpen: false, cycle: 0 };

@@ -1204,6 +1204,379 @@
     }
     g.globalAlpha = 1;
   }
+  // ---------------------------------------------------------------------------
+  // Football pass F — the field quad, the 22 players, ball, officials, sideline, stands and the
+  // game camera (PLAN_FOOTBALL §2.2). Reads BSU.sports.live(state) / drill(state) and the fb*
+  // sprites (pass E). Every on-field entity is pushed at the VENUE'S anchor with rank 0.4–60
+  // (depth inside the footprint) so it sorts right after the bowl and never under the turf.
+  // Nothing is drawn or allocated without a live game or an idle drill.
+  // ---------------------------------------------------------------------------
+  // Field entities are drawn from the 1x atlas at HALF the camera zoom (18x24 px at 2x): the field is only
+  // ~4 tiles long for 120 yd, so a full-size figure would be 8 yd wide and the formation a blob. No fractional
+  // zoom exists, and at 1x even half-size players are an ant farm, so every venue is framed at 2x (the whole
+  // Stadium bowl fits 1280x800 at 2x). M.fbEnabled = false hides the layer and freezes its camera (perf A/B).
+  const FB_YD_U = 120, FB_YD_V = 53.3, FB_ZOOM = { practice_field: 2, stadium: 2 }, FB_SCALE = 0.5;
+  M.fbEnabled = true;
+  const FB = {                                   // render-local football state (never saved)
+    live: null, drill: null, venue: null, game: null, tickSeen: -1, n: 0, playT0: -2, huddleAt: -1,
+    px: new Float32Array(22), py: new Float32Array(22), cx: new Float32Array(22), cy: new Float32Array(22), team: new Int8Array(22), face: new Int8Array(22),
+    bpx: 50, bpy: 0, bcx: 50, bcy: 0, crewU: 50, gainU: 60, refU: 50, refV: 18,
+    warm: 0, warmZoom: 0, crowdUp: 0, waveAt: -1e9, scoreAt: -1e9, keyAt: -1e9, hitAt: -1e9, sigAt: -1e9, bellsAt: -1e9,
+    cam: { active: false, zoomBefore: 1, touched: false },
+    drawn: 0, players: 0, fans: 0, minX: 0, maxX: 0, minY: 0, maxY: 0, crowdFrame: -1
+  };
+  /** the painted field's footprint rect {x0, y0, x1, y1, fw, fh} (tiles; X along +tx, Y along +ty) exactly as the stadium / practice-field painters draw it */
+  M.fieldQuad = function (b) {
+    if (!b) return null;
+    const fw = Math.max(1, fin(b.w, 1)), fh = Math.max(1, fin(b.h, 1));
+    if (b.type === 'practice_field') return { x0: 0.6, y0: 0.3, x1: fw - 0.6, y1: fh - 0.3, fw: fw, fh: fh };
+    if (b.type === 'stadium') return { x0: 1, y0: 1, x1: fw - 1, y1: fh - 1, fw: fw, fh: fh };
+    return null;
+  };
+  /** field yards → continuous tile coords: u −10…110 along the field (end zones included; BSU's goal line u = 0, the engine's `spot`), v 0…53.3 across (0 = the far sideline = the home bench) */
+  M.fieldToTile = function (b, u, v, q) {
+    q = q || M.fieldQuad(b); if (!q) return null;
+    return { tx: fin(b.tx, 0) + q.x0 + (fin(u, 0) + 10) / FB_YD_U * (q.x1 - q.x0), ty: fin(b.ty, 0) + q.y0 + fin(v, 0) / FB_YD_V * (q.y1 - q.y0) };
+  };
+  /** → world px (zoom 1) of that field point on the venue's ground plane, `up` px above it (the venue's anchor elevation, like the building sprite) */
+  M.fieldToWorld = function (b, u, v, up, q) {
+    const t = M.fieldToTile(b, u, v, q); if (!t) return null;
+    const ax = clamp((fin(b.tx, 0) | 0) + (fin(b.w, 1) | 0) - 1, 0, W - 1), ay = clamp((fin(b.ty, 0) | 0) + (fin(b.h, 1) | 0) - 1, 0, HGT - 1);
+    return { x: (t.tx - t.ty) * 32, y: (t.tx + t.ty - 1) * 16 - elevAt(ax, ay) * PXFT - fin(up, 0) };
+  };
+  /** the building a game is played at: sports.venue (else the game's own venue) → the highest complete stadium tier, or the Practice Field with bleachers; forDrill = any complete practice field */
+  M.fieldVenue = function (state, forDrill) {
+    state = state || root; if (!state || !Array.isArray(state.buildings)) return null;
+    const sp = state.sports, g = sp && sp.game;
+    const venue = forDrill ? 'bayou_field' : String((sp && sp.venue) || (g && g.venue) || '');
+    const want = venue.indexOf('stadium') === 0 ? 'stadium' : 'practice_field';
+    let pick = null;
+    for (let k = 0; k < state.buildings.length; k++) {
+      const b = state.buildings[k]; if (!b || b.type !== want || !(fin(b.built, 0) >= 1) || b.ruin) continue;
+      if ((want === 'stadium' || !forDrill) && !(fin(b.tier, 0) >= 1)) continue;
+      if (!pick || fin(b.tier, 0) > fin(pick.tier, 0)) pick = b;
+    }
+    return pick;
+  };
+  /** test/debug view of the football layer: what the last frame drew */
+  M.fbInfo = function () { return { drawn: FB.drawn, players: FB.players, fans: FB.fans, active: !!FB.live, drill: !!FB.drill, venue: FB.venue ? FB.venue.id : -1, minX: FB.minX, maxX: FB.maxX, minY: FB.minY, maxY: FB.maxY, camera: FB.cam.active, crowdUp: FB.crowdUp }; };
+  /** game events forwarded by render_fx (score / play / kickoff / halftime / final) → crowd reactions */
+  M.fbNotify = function (kind, p) {
+    p = p || {};
+    if (kind === 'score') { if (p.side === 'home') { FB.scoreAt = frameNo; FB.waveAt = frameNo; FB.crowdUp = 200; FB.sigAt = frameNo; } else FB.crowdUp = 0; }
+    else if (kind === 'play') {
+      if (p.key) { FB.crowdUp = Math.max(FB.crowdUp, 90); FB.keyAt = frameNo; }
+      if (p.type === 'sack' || p.res === 'fumble') FB.hitAt = frameNo;
+      if (p.fourth && p.res === 'downs' && p.poss === 1) { FB.waveAt = frameNo; FB.crowdUp = 150; }
+      if (p.res === 'good' && p.poss === 0) FB.sigAt = frameNo;
+    }
+    else if (kind === 'kickoff') { FB.crowdUp = 120; }
+    else if (kind === 'final') { if (p.won) { FB.scoreAt = frameNo; FB.waveAt = frameNo; FB.crowdUp = 400; } }
+  };
+  function fbGather(state) {
+    FB.live = null; FB.drill = null; FB.venue = null;
+    if (M.fbEnabled === false) return;
+    const sp = mod('sports'); if (!sp || !state.sports || typeof sp.live !== 'function') return;
+    let lv = null; try { lv = sp.live(state); } catch (e) { rerr('fb:live', e); lv = null; }
+    if (lv && lv.active && Array.isArray(lv.players)) { FB.live = lv; FB.venue = M.fieldVenue(state, false); }
+    else {
+      let d = lv && lv.drill ? lv.drill : null;
+      if (!d && typeof sp.drill === 'function') { try { d = sp.drill(state); } catch (e) { d = null; } }
+      if (d && Array.isArray(d.players) && info.phase !== SKY.NIGHT) { FB.drill = d; FB.venue = M.fieldVenue(state, true); }
+    }
+    if (!FB.venue) { FB.live = null; FB.drill = null; }
+    if (!FB.live) { FB.crowdUp = 0; FB.game = null; FB.warm = 0; }
+  }
+  /** the game camera: frame the venue when a game set piece starts, follow the ball during plays, hand control back on skip / final (never fights a player who touched the camera) */
+  function fbCamera(state, cam) {
+    if (M.fbEnabled === false) return;   // frozen, not released (perf A/B keeps the same view)
+    const spc = state.setPiece, kind = spc ? spc.kind : '';
+    const on = !!(spc && (kind === 'game' || kind === 'spring') && FB.live && FB.venue);
+    const C = FB.cam;
+    if (!on) {
+      if (C.active) { C.active = false; if (!C.touched && cam.zoom !== C.zoomBefore) setZoomCam(cam, C.zoomBefore, vw / 2, vh / 2, vw, vh); cam.hasTarget = false; markMoved(false); }
+      return;
+    }
+    const b = FB.venue, q = M.fieldQuad(b); if (!q) return;
+    if (!C.active) {
+      C.active = true; C.zoomBefore = cam.zoom; C.touched = !!spc.cameraTouched;
+      if (!spc.cameraTouched) { const z = FB_ZOOM[b.type] || 1; if (cam.zoom !== z) setZoomCam(cam, z, vw / 2, vh / 2, vw, vh); markMoved(false); }
+    }
+    if (spc.cameraTouched) { C.touched = true; return; }
+    const lv = FB.live, ph = lv.phase;
+    let u = 50, v = FB_YD_V / 2;
+    if (ph === 'live' || ph === 'snap') { u = clamp(fin(lv.ball && lv.ball.x, 50), -10, 110); v = FB_YD_V / 2 + clamp(fin(lv.ball && lv.ball.y, 0), -26.6, 26.6) * 0.4; }
+    else if (ph === 'huddle' || ph === 'decision' || ph === 'pregame') u = clamp(fin(lv.anim ? lv.anim.end : lv.spot, 50), 0, 100);
+    const w = M.fieldToWorld(b, u, v, 0, q); if (!w) return;
+    cam.tx = w.x; cam.ty = w.y; cam.hasTarget = true;     // eased by the camera LERP below
+  }
+  // -- entity helpers -----------------------------------------------------------------------
+  const fbScr = { x: 0, y: 0 };
+  function fbScreen(G, X, Y, up) {   // footprint (X, Y) tiles lifted `up` px → canvas px (into fbScr)
+    const tx = G.tx0 + X, ty = G.ty0 + Y;
+    const wx = (tx - ty) * 32, wy = (tx + ty - 1) * 16 - G.el * PXFT - (up || 0);
+    fbScr.x = (wx - camera.x) * zoomNow + vw / 2; fbScr.y = (wy - camera.y) * zoomNow + vh / 2;
+    return fbScr;
+  }
+  function drawFbSprite(e, g) { if (!e.ref) return; blit(g, e.ref, e.sx, e.sy, zoomNow * FB_SCALE / (e.ref.zoom || 1)); }
+  function fbPush(G, kind, id, variant, frame, u, v, up, draw) {   // field yards → one sorted entry at the venue anchor (1x atlas, half the zoom)
+    const X = G.q.x0 + (u + 10) * G.kx, Y = G.q.y0 + v * G.ky;
+    const e = push(kind, G.ax, G.ay, G.el, 1 + clamp((X + Y) / (G.q.fw + G.q.fh), 0, 1) * 58, draw || drawFbSprite);
+    fbScreen(G, X, Y, up); e.sx = fbScr.x; e.sy = fbScr.y;
+    e.id = id; e.variant = variant; e.frame = frame; e.ref = id ? (G.sp.get(id, variant, frame, 1) || null) : null;
+    FB.drawn++;
+    return e;
+  }
+  function fbGeom(state, b, q) {
+    const ax = clamp((b.tx | 0) + (b.w | 0) - 1, 0, W - 1), ay = clamp((b.ty | 0) + (b.h | 0) - 1, 0, HGT - 1);
+    return { b: b, q: q, ax: ax, ay: ay, el: fin(state.tiles.elev[ay * W + ax], 0), kx: (q.x1 - q.x0) / FB_YD_U, ky: (q.y1 - q.y0) / FB_YD_V, tx0: fin(b.tx, 0), ty0: fin(b.ty, 0), sp: S() };
+  }
+  function drawFbLines(e, g) {   // line of scrimmage (blue) and the line to gain (yellow) across the turf, TV style
+    const G = e.b; if (!G) return;
+    g.save(); g.lineWidth = Math.max(1, Math.round(zoomNow * 1.5));
+    for (let k = 0; k < 2; k++) {
+      const u = k === 0 ? e.a : e.c; if (!Number.isFinite(u) || u < 0 || u > 100) continue;
+      if (k === 1 && e.d === 0) continue;
+      const X = G.q.x0 + (u + 10) * G.kx;
+      fbScreen(G, X, G.q.y0, 0); const x0 = fbScr.x, y0 = fbScr.y; fbScreen(G, X, G.q.y1, 0);
+      g.strokeStyle = k === 0 ? 'rgba(60,120,255,0.8)' : 'rgba(255,230,40,0.85)';
+      g.beginPath(); g.moveTo(x0, y0); g.lineTo(fbScr.x, fbScr.y); g.stroke(); drawCalls++;
+    }
+    g.restore();
+  }
+  function drawFbBall(e, g) { if (!e.ref) return; blit(g, e.ref, e.sx, e.sy, zoomNow * 0.65 / (e.ref.zoom || 1)); }
+  // -- the crowd: the shader backdrop (render_fx's R.crowd) under fan sprites on the visible stand treads --
+  const FB_ROWS1 = [[0, 0.8875, 3], [2, 0.4375, 8.5]];                                  // tier I far bleachers: [tread, Y, lift]
+  function fbStandRows(tier) {
+    if (tier <= 1) return { far: FB_ROWS1, farX: [1, 0], end: null, upper: null };
+    const dh = tier === 3 ? 3 : 3.8, rows = [[0, 0.91, 3], [2, 0.55, 3 + 2 * dh], [4, 0.19, 3 + 4 * dh]];
+    return { far: rows, farX: [0.1, 0.1], end: rows, upper: tier === 3 ? [[1, 0.3, 25.3]] : null };
+  }
+  function drawFbCrowd(e, g) {
+    const G = e.b, state = root; if (!G || !state) return;
+    const b = G.b, sp = G.sp, fill = e.a, rain = e.c === 1;
+    const z = zoomNow;
+    // 1. the shader (render_fx) on the bowl rect (stadium) or the bleachers decal (Bayou Field)
+    if (typeof M.crowd === 'function') {
+      let rect = null;
+      if (b.type === 'stadium') {
+        const cat = (BSU.data && BSU.data.catalog) || {}; let box = null;
+        try { box = typeof sp.buildingBox === 'function' ? sp.buildingBox(cat[b.type], (clamp(b.tier | 0, 0, 3) << SPR.TIER_SHIFT) >>> 0, z, b.rot) : null; } catch (err) { box = null; }
+        const br = box && box.bowlRect; if (br) { const bs = z / (box.zoom || 1); rect = { x: e.sx + br.x * bs, y: e.sy + br.y * bs, w: br.w * bs, h: br.h * bs }; }
+      } else { fbScreen(G, G.q.fw / 2, 0.45, 0); rect = { x: fbScr.x - 24 * z, y: fbScr.y - 10 * z, w: 48 * z, h: 9 * z }; }
+      if (rect) {
+        g.save();
+        if (b.type === 'stadium') {   // the bowl ellipse covers the turf: keep the shader off the field quad
+          g.beginPath(); g.rect(0, 0, vw, vh);
+          const Q = G.q, pts = [[Q.x0, Q.y0], [Q.x1, Q.y0], [Q.x1, Q.y1], [Q.x0, Q.y1]];
+          for (let k = 0; k < 4; k++) { fbScreen(G, pts[k][0], pts[k][1], 0); if (k === 0) g.moveTo(fbScr.x, fbScr.y); else g.lineTo(fbScr.x, fbScr.y); }
+          g.closePath(); g.clip('evenodd');
+        }
+        try { M.crowd(g, rect, fill, frameNo, rain); } catch (err) { rerr('fb:crowd', err); }
+        g.restore(); g.globalAlpha = 1;
+      }
+    }
+    FB.crowdFrame = frameNo; M.fbCrowdFrame = frameNo;
+    // 2. fans on the treads (1× cells: half size at 1×, full at 2×; none at 0.5×)
+    if (z < 1 || typeof sp.fbFrame !== 'function') return;
+    const zs = z * FB_SCALE, step = 0.22;
+    const sweep = frameNo - FB.waveAt < 150 ? (frameNo - FB.waveAt) / 150 : -1;
+    const cheer = frameNo - FB.scoreAt < 90, up = FB.crowdUp > 0, opp = e.d | 0;
+    let seat = 0;
+    const row = function (rowIdx, X0, Y0, X1, Y1, lift, dir, t0, t1) {
+      const len = Math.max(0.01, Math.abs(X1 - X0) + Math.abs(Y1 - Y0)), cnt = Math.max(1, Math.floor(len / step));
+      for (let k = 0; k < cnt; k++) {
+        seat++;
+        const h = hash(seat, rowIdx + 11);
+        if ((h % 100) >= fill * 100) continue;
+        const f = (k + 0.5) / cnt, t = t0 + (t1 - t0) * f;
+        const look = ((seat >> 3) % 7 === 3) ? opp : 0;
+        let pose = 'seated', fr = 0;
+        if (sweep >= 0 && Math.abs(t - sweep) < 0.1) { pose = 'wave'; fr = ((frameNo >> 2) + k) & 1; }
+        else if (cheer) { pose = 'wave'; fr = ((frameNo >> 3) + k) & 1; }
+        else if (up && ((h >> 7) & 3) !== 0) { pose = 'standing'; fr = ((frameNo >> 3) + k) & 1; }
+        const id = 'fbfan:' + pose, v = (look & 63) | (((h >> 2) % 6) << 6) | (((h >> 5) & 7) << 9) | (((h >> 9) & 1) << 12);
+        const ref = sp.get(id, v, sp.fbFrame(id, dir, fr), 1); if (!ref || !ref.canvas) continue;
+        fbScreen(G, X0 + (X1 - X0) * f, Y0 + (Y1 - Y0) * f, lift);
+        g.drawImage(ref.canvas, ref.sx, ref.sy, ref.sw, ref.sh, Math.round(fbScr.x + ref.ox * zs), Math.round(fbScr.y + ref.oy * zs), ref.sw * zs, ref.sh * zs); drawCalls++; FB.fans++;
+      }
+    };
+    const fw = G.q.fw, fh = G.q.fh;
+    if (b.type === 'stadium') {
+      const SR = fbStandRows(clamp(b.tier | 0, 1, 3));
+      if (SR.upper) for (let r = SR.upper.length - 1; r >= 0; r--) { const w = SR.upper[r]; row(30 + r, 0.1, w[1], fw - 0.1, w[1], w[2], 1, 0, 0.6); row(40 + r, w[1], fh - 0.5, w[1], 0.5, w[2], 0, 0.75, 1); }
+      for (let r = SR.far.length - 1; r >= 0; r--) { const w = SR.far[r]; row(r, SR.farX[0], w[1], fw - SR.farX[0], w[1], w[2], 1, 0, 0.6); }
+      if (SR.end) for (let r = SR.end.length - 1; r >= 0; r--) { const w = SR.end[r]; row(10 + r, w[1], fh - 1, w[1], 1, w[2], 0, 0.75, 1); }
+    } else row(0, fw / 2 - 0.72, 0.45, fw / 2 + 0.72, 0.45, 6, 1, 0, 1);
+  }
+  // -- players, ball, officials, sideline ------------------------------------------------------
+  const FB_RUNNING = { carry: 1, block: 1, route: 1, cover: 1, rush: 1, pursue: 1, return: 1, dropback: 1 };
+  function fbPlayers(G, state, lv, dr) {
+    const sp = G.sp, P = lv ? lv.players : dr.players, n = Math.min(P.length, 22);
+    const tick = fin(state.tick, 0);
+    const a = lv ? lv.anim : null, t = fin(lv ? lv.frac : dr.frac, 0), ph = lv ? lv.phase : 'drill';
+    const type = a ? String(a.type) : '', res = a ? String(a.res) : '', poss = lv ? (a ? a.poss : lv.possession) : 0, dir = poss === 0 ? 1 : -1;
+    const liveNow = ph === 'live' || ph === 'snap' || ph === 'drill';
+    const t0 = a ? a.t0 : -1;
+    if (t0 !== FB.playT0) { FB.playT0 = t0; for (let i = 0; i < 22; i++) FB.face[i] = -1; }
+    if (tick !== FB.tickSeen) {
+      FB.tickSeen = tick; FB.px.set(FB.cx); FB.py.set(FB.cy); FB.bpx = FB.bcx; FB.bpy = FB.bcy;
+      for (let i = 0; i < n; i++) { const p = P[i]; FB.cx[i] = fin(p.x, 50); FB.cy[i] = fin(p.y, 0); if (FB.team[i] !== (p.team | 0) || FB.n !== n) { FB.px[i] = FB.cx[i]; FB.py[i] = FB.cy[i]; } FB.team[i] = p.team | 0; }
+      FB.n = n;
+      const bl = lv ? lv.ball : dr.ball; FB.bcx = fin(bl && bl.x, 50); FB.bcy = fin(bl && bl.y, 0);
+      if (!liveNow || Math.abs(FB.bcx - FB.bpx) > 15) { FB.bpx = FB.bcx; FB.bpy = FB.bcy; }
+    }
+    if (ph === 'huddle' || ph === 'decision') { if (FB.huddleAt < 0) FB.huddleAt = frameNo; } else FB.huddleAt = -1;
+    const huddleAge = FB.huddleAt >= 0 ? frameNo - FB.huddleAt : 0;
+    const homeLook = sp.fbLook('home'), awayLook = lv ? sp.fbLook(lv.opp) : homeLook;
+    // who has the ball / who is the target / returner / the nearest defender to the carrier
+    let carrier = -1, target = -1, qb = -1, returner = -1;
+    for (let i = 0; i < n; i++) { const p = P[i]; if (p.state === 'carry' && carrier < 0) carrier = i; if ((p.team | 0) === poss) { if (p.role === 'QB' && qb < 0) qb = i; if (target < 0 && p.role === 'WR') target = i; } else if (p.state === 'return' && returner < 0) returner = i; }
+    const isPass = type === 'pass' || type === 'int', isRun = type === 'run' || type === 'two' || type === 'kneel', isKick = type === 'punt' || type === 'fg' || type === 'xp';
+    let holder = -1, flight = -1, loose = false;
+    if (liveNow && a) {
+      if (isRun) holder = t < 0.15 ? qb : (carrier >= 0 ? carrier : qb);
+      else if (type === 'sack') holder = qb;
+      else if (isPass) {
+        if (t < 0.45) holder = qb; else if (t < 0.75) flight = (t - 0.45) / 0.3;
+        else if (res === 'inc') loose = true;
+        else if (type === 'int') { let best = -1, bd = 1e9; for (let i = 0; i < n; i++) { const p = P[i]; if ((p.team | 0) === poss) continue; const dx = FB.cx[i] - FB.bcx, dy = FB.cy[i] - FB.bcy, d = dx * dx + dy * dy; if (d < bd) { bd = d; best = i; } } holder = best; }
+        else holder = carrier >= 0 ? carrier : target;
+      }
+      else if (isKick) { if (t >= 0.2 && t < 0.8) flight = (t - 0.2) / 0.6; else if (t >= 0.8) { if (type === 'punt') holder = returner; else loose = true; } }
+      else if (type === 'kickoff') { if (t >= 0.1 && t < 0.7) flight = (t - 0.1) / 0.6; else if (t >= 0.7) holder = returner; }
+    } else if (ph === 'drill') holder = -1;
+    const endNow = lv && a && (liveNow ? t >= 0.9 : ((ph === 'huddle' || ph === 'decision') && huddleAge <= 30));
+    const downed = !!endNow && (type === 'punt' ? res !== 'touchback' : (!isKick && !(res === 'td' || res === 'touchback' || res === 'inc' || res === 'safety')));
+    const victim = endNow ? (type === 'sack' ? qb : holder) : -1;
+    let tackler = -1;
+    if (downed && victim >= 0) { let bd = 1e9; for (let i = 0; i < n; i++) { const p = P[i]; if ((p.team | 0) === (P[victim].team | 0)) continue; const dx = FB.cx[i] - FB.cx[victim], dy = FB.cy[i] - FB.cy[victim], d = dx * dx + dy * dy; if (d < bd) { bd = d; tackler = i; } } }
+    const faceLos = function (own) { return sp.fbDir((own ? dir : -dir) * G.kx, 0); };
+    let minX = 1e9, maxX = -1e9, minY = 1e9, maxY = -1e9;
+    for (let i = 0; i < n; i++) {
+      const p = P[i];
+      if (ph === 'halftime') break;
+      const x = FB.px[i] + (FB.cx[i] - FB.px[i]) * alphaNow, y = FB.py[i] + (FB.cy[i] - FB.py[i]) * alphaNow;
+      const dx = FB.cx[i] - FB.px[i], dy = FB.cy[i] - FB.py[i], moving = dx * dx + dy * dy > 0.0025;
+      if (moving) FB.face[i] = sp.fbDir(dx * G.kx, dy * G.ky);
+      const own = (p.team | 0) === poss, st = String(p.state);
+      let face = FB.face[i] >= 0 ? FB.face[i] : faceLos(own);
+      let pose = 'stance', f = 0, carry = holder === i;
+      if (ph === 'final') { const won = lv.score && lv.score[0] > lv.score[1]; pose = won === ((p.team | 0) === 0) ? 'celebrate' : 'huddle'; f = (frameNo >> 3) & 1; }
+      else if (ph === 'pregame') pose = 'stance';
+      else if (!liveNow && !endNow) { pose = 'huddle'; face = sp.fbDir((fin(lv.spot, 50) - x) * G.kx, (0 - y) * G.ky); }
+      else {
+        if (FB_RUNNING[st]) pose = (moving || liveNow && t < 0.9) ? 'run' : 'stance';
+        if (st === 'handoff') { pose = t < 0.3 ? 'run' : 'stance'; if (t >= 0.3 && carrier >= 0) face = sp.fbDir((FB.cx[carrier] - x) * G.kx, (FB.cy[carrier] - y) * G.ky); }
+        else if (st === 'dropback') { if (t >= 0.35) { pose = 'throw'; f = 0; face = faceLos(true); } }
+        else if (st === 'throw') { if (t < 0.6) { pose = 'throw'; f = 1; } else pose = 'stance'; face = faceLos(true); }
+        else if (st === 'sacked') { pose = t < 0.7 ? 'run' : 'tackled'; }
+        else if (st === 'kick') { pose = 'throw'; f = t < 0.1 ? 0 : 1; face = faceLos(true); }
+        else if (st === 'watch' || st === 'set') pose = 'stance';
+        if (isPass && i === target && t >= 0.6 && t < 0.8) { pose = 'catch'; f = (t >= 0.72 && res !== 'inc' && type !== 'int') ? 1 : 0; face = faceLos(false); carry = false; }
+        if (type === 'int' && i === holder && t < 0.85) { pose = 'catch'; f = 1; carry = false; }
+        if (endNow) {
+          if (res === 'td' || (type === 'fg' || type === 'xp') && res === 'good') { if (own) { pose = 'celebrate'; f = ((frameNo >> 3) + i) & 1; carry = false; } else pose = 'stance'; }
+          else if (downed && i === victim) { pose = 'tackled'; f = 0; carry = false; }
+          else if (downed && i === tackler) { pose = 'tackle'; f = liveNow && t < 0.95 ? 0 : 1; face = sp.fbDir((FB.cx[victim] - x) * G.kx, (FB.cy[victim] - y) * G.ky); }
+          else if (!liveNow) { pose = 'huddle'; }
+          else if (pose === 'run') pose = 'stance';
+        }
+      }
+      if (pose === 'run') f = ((frameNo + i * 5) >> 2) % 6;
+      const look = (p.team | 0) === 0 ? homeLook : awayLook;
+      const variant = sp.fbVariant(look, p.pos, 0, carry ? 1 : 0);
+      const id = 'fbplayer:' + pose;
+      const e = fbPush(G, 'fbplayer', id, variant, sp.fbFrame(id, face, f), x, FB_YD_V / 2 + y, 0, drawFbSprite);
+      e.a = i; FB.players++;
+      const X = G.q.x0 + (x + 10) * G.kx, Y = G.q.y0 + (FB_YD_V / 2 + y) * G.ky;
+      if (X < minX) minX = X; if (X > maxX) maxX = X; if (Y < minY) minY = Y; if (Y > maxY) maxY = Y;
+    }
+    if (FB.players) { FB.minX = minX; FB.maxX = maxX; FB.minY = minY; FB.maxY = maxY; }
+    // the ball: on the ground at the spot, in the carrier's arm (baked), or in flight on a parabola
+    if (holder < 0 && ph !== 'halftime' && ph !== 'final' && typeof sp.fbFrame === 'function') {
+      let bx, by, bz = 0, spin = 1, axis = 0;
+      if (liveNow || ph === 'drill') { bx = FB.bpx + (FB.bcx - FB.bpx) * alphaNow; by = FB.bpy + (FB.bcy - FB.bpy) * alphaNow; }
+      else { bx = fin(lv.spot, 50); by = 0; }
+      if (flight >= 0) {
+        const H = type === 'kickoff' ? 60 : type === 'punt' ? 52 : isKick ? 34 : clamp(10 + Math.abs(fin(a.yds, 0)) * 0.9, 10, 40);
+        bz = 4 * H * flight * (1 - flight) + (isKick && type !== 'punt' ? 14 * flight : 0);
+        spin = (frameNo >> 1) & 3; axis = dir > 0 ? 7 : 1;
+      } else if (loose) spin = 2;
+      const e = fbPush(G, 'fbball', 'fbball', axis, spin, bx, FB_YD_V / 2 + by, bz, drawFbBall); e.a = bz;
+    }
+    if (!lv) return;
+    // the referee trails the ball; signals a score
+    const losU = a ? fin(a.los, lv.spot) : fin(lv.spot, 50);
+    const refTarget = clamp((liveNow ? FB.bcx : losU) - dir * 7, -8, 108);
+    FB.refU += (refTarget - FB.refU) * 0.12; FB.refV = FB_YD_V / 2 - 10;
+    if (ph !== 'halftime') {
+      const sig = frameNo - FB.sigAt < 60;
+      const rf = sp.fbDir((FB.bcx - FB.refU) * G.kx, (FB.bcy + FB_YD_V / 2 - FB.refV) * G.ky);
+      fbPush(G, 'fbref', 'fbref', 2, sp.fbFrame('fbref', rf, sig ? 1 : 0), FB.refU, FB.refV, 0, drawFbSprite);
+    }
+    // the chain crew and the down marker on the home sideline (slide to the spot and the line to gain)
+    const scrim = ph !== 'halftime' && ph !== 'final' && (a ? (type !== 'kickoff' && type !== 'xp' && type !== 'two') : true);
+    if (scrim) {
+      const gain = losU + dir * clamp(fin(lv.distance, 10), 0, 99);
+      FB.crewU += (losU - FB.crewU) * 0.1; FB.gainU += (gain - FB.gainU) * 0.1;
+      if (Math.abs(losU - FB.crewU) > 40) FB.crewU = losU; if (Math.abs(gain - FB.gainU) > 40) FB.gainU = gain;
+      fbPush(G, 'fbcrew', 'fbdown', clamp(fin(lv.down, 1) | 0, 1, 4), 0, FB.crewU, 0.7, 0, drawFbSprite);
+      fbPush(G, 'fbcrew', 'fbcrew', 3, sp.fbFrame('fbcrew', 1, 0), FB.crewU - 1.1, 0.9, 0, drawFbSprite);
+      if (FB.gainU >= 0 && FB.gainU <= 100) {
+        fbPush(G, 'fbcrew', 'fbstick', 0, 0, FB.gainU, 0.7, 0, drawFbSprite);
+        fbPush(G, 'fbcrew', 'fbcrew', 12, sp.fbFrame('fbcrew', 1, 0), FB.gainU + 1.1, 0.9, 0, drawFbSprite);
+      }
+      const le = fbPush(G, 'fbline', null, 0, 0, losU, 0, 0, drawFbLines); le.b = G; le.a = losU; le.c = gain; le.d = (gain >= 0 && gain <= 100 && fin(lv.distance, 10) < 99) ? 1 : 0;
+      le.key = sortKey(G.ax, G.ay, G.el, 0.5); keys[count - 1] = le.key;   // on the turf, under everyone
+    }
+    // cheerleaders (routine; jump on a home score), staff with headsets, Roux at the bench, the band at halftime
+    const scored = frameNo - FB.scoreAt < 90, keyed = frameNo - FB.keyAt < 40;
+    for (let k = 0; k < 6; k++) {
+      const f = scored ? (((frameNo >> 3) + k) & 1 ? 3 : 0) : (ph === 'halftime' ? (((frameNo >> 3) + k) & 3) : (((frameNo >> 5) + k) & 3));
+      fbPush(G, 'fbcheer', 'fbcheer', (k % 6) | (((k + 1) & 7) << 3), sp.fbFrame('fbcheer', 1, f), 22 + 5 * k, 1.4, 0, drawFbSprite);
+    }
+    for (let k = 0; k < 3; k++) fbPush(G, 'fbstaff', 'fbstaff', k | ((k + 2) % 6) << 2 | ((k * 3) & 7) << 5, sp.fbFrame('fbstaff', 2, keyed || scored ? ((frameNo >> 3) + k) & 1 : 0), 58 + 3 * k, 1.6, 0, drawFbSprite);
+    const rouxF = scored ? 2 : ((frameNo % 240) < 50 ? 1 : 0);
+    fbPush(G, 'fbroux', 'fbroux', 0, sp.fbFrame('fbroux', 2, rouxF), 70, 1.7, 0, drawFbSprite);
+    if (ph === 'halftime') {
+      for (let k = 0; k < 24; k++) {
+        const th = Math.PI * 2 * k / 24 + frameNo * 0.012;
+        const u = 50 + 22 * Math.sin(th), v = FB_YD_V / 2 + 13 * Math.sin(3 * th);
+        const bd = sp.fbDir(22 * Math.cos(th) * G.kx, 39 * Math.cos(3 * th) * G.ky);
+        fbPush(G, 'fbband', 'fbband', (k % 3) | (((k * 5) % 6) << 2) | ((k & 7) << 5), sp.fbFrame('fbband', bd, ((frameNo >> 3) + k) & 1), u, v, 0, drawFbSprite);
+      }
+    }
+  }
+  /** one (look, role) sheet pair per frame after kickoff so the first plays do not hitch */
+  function fbWarmStep(G, lv) {
+    const sp = G.sp; if (typeof sp.fbWarm !== 'function') return;
+    const z = 1;   // field entities use the 1x atlas at every zoom
+    if (FB.warmZoom !== z) { FB.warmZoom = z; FB.warm = 0; }
+    if (FB.warm >= 10) return;
+    const k = FB.warm++, look = k < 5 ? 'home' : lv.opp, role = k % 5;
+    try { sp.fbWarm(look, z, role); } catch (e) { FB.warm = 10; }
+  }
+  function footballPass(state) {
+    FB.drawn = 0; FB.players = 0; FB.fans = 0;
+    if (FB.crowdUp > 0) FB.crowdUp--;
+    const lv = FB.live, dr = FB.drill, b = FB.venue;
+    if ((!lv && !dr) || !b) return;
+    const q = M.fieldQuad(b); if (!q) return;
+    const G = fbGeom(state, b, q);
+    if (!inView(G.ax, G.ay, 8) || !G.sp || typeof G.sp.fbVariant !== 'function') return;
+    if (lv) {
+      if (FB.game !== state.sports.game) { FB.game = state.sports.game; FB.warm = 0; FB.crewU = fin(lv.spot, 50); FB.gainU = FB.crewU + 10; FB.refU = FB.crewU; }
+      fbWarmStep(G, lv);
+      if (lv.home) {
+        const seats = Math.max(1, fin(mod('sports') && mod('sports').venueSeats ? mod('sports').venueSeats(state) : 0, 0) || 15000);
+        const e = push('fbcrowd', G.ax, G.ay, G.el, 0.4, drawFbCrowd); tileScreen(e);
+        e.b = G; e.a = clamp(fin(state.sports.game && state.sports.game.attendance, 0) / seats, 0, 1); e.c = fin(state.weather && state.weather.rainRate, 0) > 0.05 ? 1 : 0; e.d = G.sp.fbLook(lv.opp) | 0;
+        FB.drawn++;
+      }
+    }
+    fbPlayers(G, state, lv, dr);
+  }
   function entityPass(state, g) {
     count = 0; agentsDrawn = 0; particlesDrawn = 0; teeBakes = 0;
     const sp = S(), t = state.tiles, elev = t.elev;
@@ -1352,6 +1725,8 @@
         if (h && h.wave) { const u = bl.list(state, 'union')[0]; if (u) { const tx = u.tx + u.w, ty = u.ty + u.h - 1; if (BSU.inBounds(tx, ty) && inView(tx, ty, 1)) { const e = push('snoball', tx, ty, fin(elev[ty * W + tx], 0), 2, drawSprite); e.ref = getRef('snoball', 0, (frameNo >> 4) & 1); e.id = 'snoball'; tileScreen(e); } } }
       }
     } catch (err) { rerr('entities:dressing', err); }
+    // football pass F: players, ball, officials, sideline, stands (sorted right after the venue sprite)
+    try { footballPass(state); } catch (err) { rerr('entities:football', err); }
     // in-world particles (D50): the only hook through which render_fx's pool reaches the sorted pass
     try { if (M.particles && typeof M.particles.forEachWorld === 'function') M.particles.forEachWorld(particleCb); } catch (err) { rerr('entities:particles', err); }
     // design pass: ground shadows under everything, then sort + draw
@@ -1602,6 +1977,8 @@
       if (a && a.state !== 'GONE') { const wx = (fin(a.tx, 0) - fin(a.ty, 0)) * 32, wy = (fin(a.tx, 0) + fin(a.ty, 0) - 1) * 16 - elevAt(clamp(Math.floor(a.tx), 0, W - 1), clamp(Math.floor(a.ty), 0, HGT - 1)) * PXFT; M.panTo(wx, wy, true); }
       else cam.follow = -1;
     }
+    // football pass F: the game camera (frames the venue, follows the ball, yields to the player)
+    try { fbGather(state); fbCamera(state, cam); } catch (e) { rerr('football:camera', e); }
     // easing toward the target
     if (cam.hasTarget) {
       cam.x += (cam.tx - cam.x) * LERP; cam.y += (cam.ty - cam.y) * LERP;
