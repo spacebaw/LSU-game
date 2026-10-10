@@ -124,6 +124,31 @@ s.tiles.flags[BSU.idx(23, 21)] &= ~BSU.FLAG.PRESERVE;
 eq(B.canPlace(s, 'road', 23, 23, {}).reason, 'Use a Boardwalk or a bridge', 'road on marsh');
 ok(B.canPlace(s, 'boardwalk', 23, 23, {}).ok, 'boardwalk on marsh');
 
+// --- bridge pass: the Pedestrian Bridge drag (water only, both ends on land, $45k/tile, landings get a path) ----
+{
+  const W64 = 64, at = (x, y) => y * W64 + x;
+  for (let x = 23; x <= 25; x++) for (let y = 29; y <= 31; y++) { const i = at(x, y); s.tiles.type[i] = BSU.T.BAYOU; s.tiles.flags[i] |= BSU.FLAG.BAYOU; s.tiles.elev[i] = -2; s.tiles.depth[i] = 2; }
+  eq(B.canPlace(s, 'bridge', 22, 30, {}).reason, 'Bridges go over water', 'bridge on land is refused');
+  eq(B.canPlace(s, 'bridge', 24, 30, {}).reason, 'Both ends must reach land', 'a lone mid-channel bridge tile does not reach land');
+  const edge = B.canPlace(s, 'bridge', 23, 30, {});
+  ok(edge.ok && edge.cost === 45000, 'a bridge tile beside the bank is fine at $45k (' + edge.reason + ' ' + edge.cost + ')');
+  const noLand = B.placeRun(s, 'bridge', [at(24, 30), at(24, 31)], { ignoreCash: true });
+  ok(noLand.placed === 0 && noLand.skipped.length === 2 && noLand.skipped[0].reason === 'Both ends must reach land', 'a run that never touches land is refused with the plain reason');
+  const cash0 = s.economy.cash, up0 = B.upkeepTotal(s);
+  const span = B.placeRun(s, 'bridge', [at(22, 30), at(23, 30), at(24, 30), at(25, 30), at(26, 30)], {});
+  ok(span.ok && span.placed === 5 && span.cost === 3 * 45000 + 2 * 2000, 'land-to-land run: 3 bridge tiles + 2 gravel landings, $139k (' + span.placed + ', ' + span.cost + ')');
+  ok([23, 24, 25].every(x => s.tiles.surface[at(x, 30)] === BSU.SURF.BRIDGE) && s.tiles.surface[at(22, 30)] === BSU.SURF.PATH && s.tiles.surface[at(26, 30)] === BSU.SURF.PATH, 'water tiles carry SURF.BRIDGE, the landings a path');
+  ok([23, 24, 25].every(x => s.tiles.walk[at(x, 30)] > 0), 'bridge tiles are walkable');
+  eq(cash0 - s.economy.cash, 139000, 'the run charged $139k');
+  eq(B.upkeepTotal(s) - up0, 900, 'upkeep +$300 per bridge tile');
+  eq(B.canPlace(s, 'bridge', 24, 30, {}).reason, 'Already a bridge', 'already a bridge');
+  eq(B.canPlace(s, 'path', 24, 30, {}).reason, 'Not on water', 'a path still cannot go on the water');
+  const ext = B.canPlace(s, 'bridge', 24, 31, {});
+  ok(ext.ok, 'a tile beside an existing bridge extends it (' + ext.reason + ')');
+  const u = B.undoInfo(s); ok(u && u.ok !== false, 'the run is undoable: ' + JSON.stringify(u).slice(0, 80));
+  ok(B.undo(s) && [23, 24, 25, 22, 26].every(x => s.tiles.surface[at(x, 30)] === BSU.SURF.NONE) && s.economy.cash === cash0, 'undo clears the bridge and its landings and refunds');
+}
+
 // --- scenario: cost math (§0.3 examples) --------------------------------------
 for (let x = 30; x <= 32; x++) for (let y = 12; y <= 13; y++) { const i = BSU.idx(x, y); s.tiles.elev[i] = 2.5; s.tiles.type[i] = BSU.T.WET; }
 for (let x = 30; x <= 33; x++) lay(x, 14); for (let y = 8; y <= 14; y++) lay(33, y); for (let x = 34; x <= 40; x++) lay(x, 8);

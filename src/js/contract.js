@@ -19,7 +19,7 @@
   // 3.1 Enums (plain frozen objects)
   // ---------------------------------------------------------------------------
   BSU.T = freeze({ OPEN_WATER: 0, BAYOU: 1, MARSH: 2, WET: 3, DRY: 4, HIGH: 5, DRAINED: 6, POND: 7 });   // tiles.type (GDD §3.3)
-  BSU.SURF = freeze({ NONE: 0, PATH: 1, ROAD: 2, BOARDWALK: 3, FENCE: 4 });                                // tiles.surface (GDD §3.2)
+  BSU.SURF = freeze({ NONE: 0, PATH: 1, ROAD: 2, BOARDWALK: 3, FENCE: 4, BRIDGE: 5 });   // BRIDGE: bridge pass (pedestrian bridge deck over water)                                // tiles.surface (GDD §3.2)
   BSU.FLAG = freeze({
     WETLAND_ORIGINAL: 1 << 0,  // terrain
     PRESERVE: 1 << 1,          // terrain
@@ -44,17 +44,17 @@
   BSU.OBJ = freeze({ INTERRUPT: 0, BACKGROUND: 1 });
   BSU.PLACE = freeze({
     LAND: 0, PATH: 1, ROAD: 2, BOARDWALK: 3, LEVEE: 4, CANAL: 5, FENCE: 6, PRESERVE: 7, NEAR_WATER: 8, TOUCH_MARSH_BAYOU: 9,
-    TOUCH_CANAL_WATER: 10, CYPRESS: 11, MARSH_OR_PRESERVE: 12, BARRIER: 13, RESTORE: 14, UPGRADE: 15
-  });   // catalog placeRule
+    TOUCH_CANAL_WATER: 10, CYPRESS: 11, MARSH_OR_PRESERVE: 12, BARRIER: 13, RESTORE: 14, UPGRADE: 15, BRIDGE: 16
+  });   // catalog placeRule (BRIDGE: bridge pass — water-only drag, both ends on land)
   BSU.SPR = freeze({ NIGHT: 1, DAMAGED: 2, PILINGS: 4, SCAFFOLD: 8, RUIN: 16, TIER_SHIFT: 5, TIER_MASK: 3 << 5, BOARDED: 128, FRONT_L: 256 });   // building sprite variant bits (D17); FRONT_L = entrance (door, walk, lamps) on the SW face (design pass)
 
-  // The 43 catalog ids in GDD §0.3 row order (BSU.B_ORDER[n-1] is row n).
+  // The 43 catalog ids in GDD §0.3 row order (BSU.B_ORDER[n-1] is row n) + row 44 'bridge' (bridge pass).
   BSU.B_ORDER = freeze([
     'path', 'road', 'boardwalk', 'substation', 'water_tower', 'generator', 'wastewater', 'founders_hall', 'lecture_hall',
     'library', 'engineering', 'coastal_institute', 'dorm', 'res_tower', 'greek_house', 'dining_hall', 'poboy', 'practice_field',
     'stadium', 'union', 'rec_center', 'health_center', 'quad', 'parking', 'levee', 'floodwall', 'canal', 'pump', 'pond',
     'pilings', 'gator_fence', 'abatement', 'bat_house', 'wildlife_post', 'preserve', 'live_oak', 'cypress', 'azalea',
-    'bell_tower', 'tiger_habitat', 'surge_barrier', 'marsh_restoration', 'rookery'
+    'bell_tower', 'tiger_habitat', 'surge_barrier', 'marsh_restoration', 'rookery', 'bridge'
   ]);
   {
     const B = {};
@@ -187,7 +187,7 @@
       canalCut: 2, canalBedMin: 0.5,         // §0.3 row 27
       gateCloseStage: 1,                     // Floodgate closes above +1 ft (§4.11)
       barrierCloseStage: 2, barrierPumps: 2, // Surge Barrier (§0.3 row 41)
-      thresholds: { puddle: 0.05, wading: 0.3, flood: 0.5, floodPilings: 3, impassable: 0.6, surgeDmg: 2, surgeDmg2: 4, bridgeSurge: 2 },   // §6.1.6
+      thresholds: { puddle: 0.05, wading: 0.3, flood: 0.5, floodPilings: 3, impassable: 0.6, surgeDmg: 2, surgeDmg2: 4, bridgeSurge: 2, pedBridgeSurge: 6 },   // §6.1.6; pedBridgeSurge: bridge pass (the Pedestrian Bridge deck is 6 ft over normal stage)
       dmgPerDay: { flood: 0.02, surge: 0.05, surge2: 0.25 },   // §6.1.6
       marshDrain: { daysToDrain: 5, drainDepth: 0.1, canalRadius: 2, revertDepth: 0.5, revertDays: 20, mudDays: 15, mudMosq: 0.3 },   // §6.1.7
       rain: { shower: 0.04, frontal: 0.125, cellMin: 1, cellMax: 3, cellScripted: 3, cellRadius: 14, cellSteps: 60, cellTicks: 150, cellDriftTicks: 10, band: 0.33, hurricane: [6, 8, 10, 13, 16], hurricaneSteps: 360, mapWideSteps: 40 },   // §6.1.2 (hurricane in inches)
@@ -598,6 +598,7 @@
     render: {                                // GDD §12
       tileW: 64, tileH: 32, pxPerFt: 6, zooms: [0.5, 1, 2],   // §12.1
       chunk: 8, chunkW: 512, chunkH: 416, chunkRebakesPerFrame: 2,   // §12.1, ARCH D19
+      deckFt: { boardwalk: 1.5, road: 4, bridge: 6 }, deckArchFt: 1, deckArchMaxSpan: 6, deckLampEvery: 4,   // bridge pass: deck clearance over normal stage per surface, the Pedestrian Bridge arch, lamp spacing
       cameraLerp: 0.15, cameraMargin: 200, dragThreshold: 4, panPxPerFrame: 12,   // §11.7
       worldX: [-2016, 2016], worldY: [-84, 2040],   // clamp extents at zoom 1 (ARCH §6.2)
       rainLines: [300, 1200], rainLinesHalf: 400, rainLinesLandfall: 900,   // §12.5
@@ -1277,7 +1278,7 @@
     BSU.SELFTEST = true;
     try {
       for (const k of ['T', 'SURF', 'FLAG', 'SKY', 'OV', 'STORM', 'STORM_PHASE', 'OBJ', 'PLACE', 'SPR', 'B', 'EV', 'MAP']) BSU.assert(Object.isFrozen(BSU[k]), k + ' frozen');
-      BSU.assert(BSU.B_ORDER.length === 43 && Object.keys(BSU.B).length === 43, '43 catalog ids');
+      BSU.assert(BSU.B_ORDER.length === 44 && Object.keys(BSU.B).length === 44, '44 catalog ids');
       BSU.assert(BSU.MILESTONES.length === 26, '26 milestones');
       BSU.assert(new Set(BSU.EV_LIST).size === BSU.EV_LIST.length, 'event names unique');
       BSU.assert(Object.keys(BSU.EV).length === BSU.EV_LIST.length, 'EV constants unique');

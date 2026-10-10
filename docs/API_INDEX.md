@@ -4,16 +4,16 @@ Loaded: contract.js, data.js, terrain.js, hydro.js, weather.js, wildlife.js, bui
 
 Read this instead of the module sources. Signatures are the real ones. See docs/ARCHITECTURE.md for semantics.
 
-## BSU.B  — enum/table, 43 keys (e.g. path, road, boardwalk, substation, water_tower, generator, wastewater, founders_hall)
+## BSU.B  — enum/table, 44 keys (e.g. path, road, boardwalk, substation, water_tower, generator, wastewater, founders_hall)
 
 ## BSU.BOARD_CARDS
 - values: 0:string, 1:string, 2:string, 3:string, 4:string, 5:string, 6:string, 7:string
 
-## BSU.B_ORDER  — enum/table, 43 keys (e.g. 0, 1, 2, 3, 4, 5, 6, 7)
+## BSU.B_ORDER  — enum/table, 44 keys (e.g. 0, 1, 2, 3, 4, 5, 6, 7)
 
-## BSU.EV  — enum/table, 101 keys (e.g. TILE_CHANGED, BUILDING_PLACED, BUILDING_REMOVED, BUILDING_COMPLETE, BUILDING_UPGRADED, BUILDING_FLOODED, BUILDING_DRIED, BUILDING_DAMAGED; + GAME_SPRING 'game:spring' — PLAN_FOOTBALL pass C)
+## BSU.EV  — enum/table, 104 keys (e.g. TILE_CHANGED, BUILDING_PLACED, BUILDING_REMOVED, BUILDING_COMPLETE, BUILDING_UPGRADED, BUILDING_FLOODED, BUILDING_DRIED, BUILDING_DAMAGED; + GAME_SPRING 'game:spring' — PLAN_FOOTBALL pass C)
 
-## BSU.EV_LIST  — enum/table, 101 keys (e.g. 0, 1, 2, 3, 4, 5, 6, 7)
+## BSU.EV_LIST  — enum/table, 104 keys (e.g. 0, 1, 2, 3, 4, 5, 6, 7)
 
 ## BSU.FLAG
 - values: WETLAND_ORIGINAL:number, PRESERVE:number, CANAL:number, DRAINED:number, FLOODGATE:number, POND_SINK:number, BAYOU:number, OPEN_WATER:number, DIRTY_CHUNK:number, DESIRE_WORN:number, DEBRIS:number, MOUND:number, RESTORING:number, JAMMED:number
@@ -46,7 +46,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - values: NONE:number, FLOOD:number, WATER:number, MOSQUITO:number, POWER:number, COVERAGE:number, ECOLOGY:number
 
 ## BSU.PLACE
-- values: LAND:number, PATH:number, ROAD:number, BOARDWALK:number, LEVEE:number, CANAL:number, FENCE:number, PRESERVE:number, NEAR_WATER:number, TOUCH_MARSH_BAYOU:number, TOUCH_CANAL_WATER:number, CYPRESS:number, MARSH_OR_PRESERVE:number, BARRIER:number, RESTORE:number, UPGRADE:number
+- values: LAND:number, PATH:number, ROAD:number, BOARDWALK:number, LEVEE:number, CANAL:number, FENCE:number, PRESERVE:number, NEAR_WATER:number, TOUCH_MARSH_BAYOU:number, TOUCH_CANAL_WATER:number, CYPRESS:number, MARSH_OR_PRESERVE:number, BARRIER:number, RESTORE:number, UPGRADE:number, BRIDGE:number
 
 ## BSU.SAVE_SKIP
 - values: 0:string, 1:string, 2:string, 3:string, 4:string, 5:string, 6:string, 7:string, 8:string, 9:string, 10:string
@@ -76,7 +76,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - values: OUTER:number, WALL:number, LANDFALL:number, EYE:number, BACK:number, CLEARING:number
 
 ## BSU.SURF
-- values: NONE:number, PATH:number, ROAD:number, BOARDWALK:number, FENCE:number
+- values: NONE:number, PATH:number, ROAD:number, BOARDWALK:number, FENCE:number, BRIDGE:number
 
 ## BSU.T
 - values: OPEN_WATER:number, BAYOU:number, MARSH:number, WET:number, DRY:number, HIGH:number, DRAINED:number, POND:number
@@ -169,11 +169,11 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - buildings.has(state, type, minTier)
 - buildings.footprint(state, id)
 - buildings.setbackSpot(state, id, tx, ty, opts)
-- buildings.connectorFor(state, rowId, tx, ty, rot)  — connector pass: the gravel tie a footprint placement would lay to reach the access network, {tiles, cost} or null (already touching / none within params.build.connectorMax); canPlace carries it as r.connector
 - buildings.dumpsterTile(state, id)
 - buildings.unlocked(state, id)
 - buildings.constructionMult(state)
 - buildings.rename(state, id, name)
+- buildings.connectorFor(state, rowId, tx, ty, rot)
 - buildings.canPlace(state, id, tx, ty, opts)
 - buildings.place(state, id, tx, ty, opts)
 - buildings.placeRun(state, id, tiles, opts)
@@ -232,7 +232,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - contract.selfTest()
 
 ## BSU.data
-- values: catalog:object, catalogList:array[43], tabs:array[10], decals:object, names:object, students:object, coaches:array[10], coachQuotes:array[12], gatorNames:array[14], leGrand:string, stormNames:array[26], opponents:object, schedule:array[8], calendar:object, ticker:array[62], tickerKinds:object, tickerKindList:array[7], objectives:object, milestones:array[26], voiceCards:array[12], boardCards:array[8], failureCards:object, tutorial:array[7], thibodeaux:array[12], stormQuotes:array[8], overlays:array[6], keys:array[47], toastKeys:object, panKeys:object, rainKinds:object, guide:object, needs:object, requirements:object, coach:array[6], football:object
+- values: catalog:object, catalogList:array[44], tabs:array[10], decals:object, names:object, students:object, coaches:array[10], coachQuotes:array[12], gatorNames:array[14], leGrand:string, stormNames:array[26], opponents:object, schedule:array[8], calendar:object, ticker:array[62], tickerKinds:object, tickerKindList:array[7], objectives:object, milestones:array[26], voiceCards:array[12], boardCards:array[8], failureCards:object, tutorial:array[7], thibodeaux:array[12], stormQuotes:array[8], overlays:array[6], keys:array[47], toastKeys:object, panKeys:object, rainKinds:object, guide:object, needs:object, requirements:object, coach:array[6], football:object
 - data.selfTest()
 
 - BSU.dateToDay(str, year)
@@ -322,6 +322,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - hydro.depthAt(state, tx, ty)
 - hydro.surfaceAt(state, i)
 - hydro.stageAt(state, i)
+- hydro.normalStageAt(state, i)
 - hydro.floodedBuildings(state)
 - hydro.floodedTiles(state)
 - hydro.footprintDepth(state, id)
@@ -409,8 +410,8 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - progress.paradeClick(state, px, py)
 - progress.skipSetPiece(state)
 - progress.setPieceSeen(state, kind)
-- progress.sportsCard(state, spec)  — PLAN_FOOTBALL pass C: a sports newsflash card (ui.card spec {id, kicker, title, body[], actions?}) through the ui queue (held during a set piece, queued when ui is absent)
-- progress.offerProspects(state)  — pass C: the off-season prospect board as a card (one Sign button per prospect + Pass) built from sports.prospects(state)
+- progress.sportsCard(state, spec)
+- progress.offerProspects(state)
 - progress.bonfires(state)
 - progress.recap(state)
 - progress._onDate(state, date, day)
@@ -423,7 +424,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - progress.selfTest()
 
 ## BSU.render
-- values: drawList:array[0], alpha:number, frameNo:number, hoverTile:number, squash:object, titleDrift:boolean, _tests:array[1], teesEnabled:boolean, particleColors:array[16], particles:object, hitStopUntil:number, camera:object, ctx:object, canvas:object, view:object, ghostSpec:object, flashes:array[0], composites:object, overlayFadeStart:number, curves:object, lightsList:array[258]
+- values: drawList:array[0], alpha:number, frameNo:number, hoverTile:number, squash:object, titleDrift:boolean, _tests:array[1], teesEnabled:boolean, particleColors:array[16], particles:object, hitStopUntil:number, camera:object, ctx:object, canvas:object, view:object, ghostSpec:object, flashes:array[0], composites:object, overlayFadeStart:number, curves:object, fbEnabled:boolean, lightsList:array[258]
 - render.sortKey(ax, ay, elev, rank)
 - render.chunkOrigin(cx, cy)
 - render.variantOf(b, ci)
@@ -459,6 +460,12 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - render.attachMinimap(el)
 - render.teesOf(state, b, frontLeft)
 - render.teeStats()
+- render.fieldQuad(b)
+- render.fieldToTile(b, u, v, q)
+- render.fieldToWorld(b, u, v, up, q)
+- render.fieldVenue(state, forDrill)
+- render.fbInfo()
+- render.fbNotify(kind, p)
 - render.minimap(state)
 - render.renderInto(g, w, h, state, camOverride)
 - render.postcard(state, caption)
@@ -529,21 +536,21 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - sports.playHome(state)
 - sports.simGame(state)
 - sports.halftime(state)
+- sports.decide(state)
 - sports.skipToFinal(state)
-- sports.decide(state, choice)  — answers the pending game:decision (halftime open|pound|stay · fourthDown go|fg|punt|kick · twoPoint two|kick · yes|no|default) → {ok, id, kind, chosen}
-- sports.setPlaybook(state, style)  — ground|balanced|air
-- sports.setAggression(state, level)  — conservative|normal|aggressive (the 4th-down / two-point / timed-out default)
-- sports.setWatchFull(state, on)  — the next home game animates every play (~2,200-tick set piece)
-- sports.live(state)  — renderer view: {active, mode, quarter, clock, clockText, down, distance, spot, possession, score, phase, frac, lastPlay, anim, formation{off,def}, players[22]{team,pos,role,x,y,state}, ball{x,y}, drive, decision}
-- sports.playState(state)  — the field core {down, dist, spot, poss, quarter, clock, phase, over, ot, score, lastPlay, drive, box, timeouts, decision, mode} or null
-- sports.recentPlays(state, n)  — the last n play records of the running game
-- sports.summary(state)  — post-game summary (live totals while a game runs; state.sports.lastSummary afterwards); + boosts {marshMob, homecoming, homeField}, neutral (pass C)
-- sports.prospects(state)  — pass C: the off-season prospect board {year, offeredDay, maxSignings, signed, answered, open, list[{index, name, pos, hometown, rating, cost, title, blurb, archetype, signed}]} or null
-- sports.signProspect(state, idx)  — pass C: charges the cost now (coaching); the player replaces the starter at that position at the Aug 5 lock → {ok, cost, name, pos, rating, reason}
-- sports.passProspects(state)  — pass C: marks the board answered
-- sports.spring(state)  — pass C: the Spring Game calendar {scheduledDay, daysUntil, playedYear, last, title, window}
-- sports.startSpringGame(state)  — pass C: start the 300-tick Purple & Gold Spring Game now (needs a team, no running set piece) → {ok, reason, len}
-- sports.drill(state)  — pass C: the idle practice drill for the renderer {phase:'drill', frac, formation, players[11], ball, los} or null (also live().drill while no game runs)
+- sports.prospects(state)
+- sports.signProspect(state, idx)
+- sports.passProspects(state)
+- sports.spring(state)
+- sports.startSpringGame(state)
+- sports.drill(state)
+- sports.setPlaybook(state)
+- sports.setAggression(state)
+- sports.setWatchFull(state)
+- sports.live(state)
+- sports.playState(state)
+- sports.recentPlays(state)
+- sports.summary(state)
 - sports.setNight(state)
 - sports.setAutoSim(state)
 - sports.setPermits(state)
@@ -560,13 +567,12 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - sports._seniorsLeave(state)
 - sports._probFor(state, team, oppRating, night, home)
 - sports._venueInfo(state)
-- sports._liveProb(state, team, over)  — the P_live estimate for the running game
-- sports._playGame(state, opts)  — calibration hook: one silent engine game {opp, oppRating, rating, home, night, kind, attendance} → the game struct (no finalize side effects)
-- engine: PLAN_FOOTBALL §2.1 drive/play engine (pass B) — params.sports.engine (teamModDiv 2 after calibration), BSU.data.football (formations, phrases, roster pools); state.sports.game carries the whole engine state (score[bsu,opp], qpts, quarter, clock, poss, down, dist, spot 0–100 from BSU's goal line, timeouts, phase, ot, plays[], drives[], box[2], lines, decision, tOff, anim, mode); events game:play / game:drive / game:decision (+ game:score/halftime/final); see INTEGRATION_NOTES "football pass B"
+- sports._liveProb(state, team, o)
+- sports._playGame(state, opts)
 - sports.selfTest()
 
 ## BSU.sprites
-- values: palette:object, CANVAS_LIMIT_MB:number, ZOOM2:boolean, GC_FRAMES:number, TILE_W:number, TILE_H:number, PX_PER_FT:number, extra:object, FONT:object, _tests:array[2], FRAMES:object, DIRS:array[4], EXTRA_DECALS:object, decalPainters:object, LIGHTS:object, extraBuildings:object, APRON:object, roofs:object, entityConst:object, entityColors:object, _buf:object, SHEET_LIMIT_MB:number, animFrames:object, entityFrames:object, _gcWrapped:boolean, _initWrappedEntities:boolean, entitySizes:object
+- values: palette:object, CANVAS_LIMIT_MB:number, ZOOM2:boolean, GC_FRAMES:number, TILE_W:number, TILE_H:number, PX_PER_FT:number, extra:object, FONT:object, _tests:array[2], FRAMES:object, DIRS:array[4], EXTRA_DECALS:object, decalPainters:object, LIGHTS:object, extraBuildings:object, APRON:object, roofs:object, entityConst:object, entityColors:object, _buf:object, SHEET_LIMIT_MB:number, animFrames:object, entityFrames:object, _gcWrapped:boolean, fbFrames:object, fbSizes:object, fbPoses:object, fbRoles:array[5], fbCompose:object, _initWrappedEntities:boolean, entitySizes:object
 - sprites.hex(h)
 - sprites.rgb(r, g, b)
 - sprites.shade(h, k)
@@ -631,6 +637,17 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - sprites.composeAgent(anim, look, dir, f, uniform)
 - sprites.gcSheets(frame)
 - sprites.clearSheets()
+- sprites.fbLook(a)
+- sprites.fbVariant(look, role, num, carry)
+- sprites.fbRole(pos)
+- sprites.fbDir(dtx, dty)
+- sprites.fbFrame(id, dir, f)
+- sprites.fbId(pose)
+- sprites.fbAnchor(id)
+- sprites.clearFootball()
+- sprites.fbSize(id)
+- sprites.fbWarm(look, zoom, role)
+- sprites.fbSheetBytes()
 - sprites.initEntities()
 - sprites.entitiesSelfTest()
 
@@ -682,7 +699,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - BSU.ty(i)
 
 ## BSU.ui
-- values: el:object, debug:object, state:string, hoverTile:number, cards:object, _tests:array[1], _deps:object, fmt:object, _ux:object, panels:object
+- values: el:object, debug:object, state:string, hoverTile:number, cards:object, _tests:array[1], _deps:object, fmt:object, _ux:object, panels:object, fb:object
 - ui.registerPanel(name, def)
 - ui.registerCard(id, builder)
 - ui.init(state)
@@ -721,7 +738,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - ui.update(state, dtMs)
 - ui.reset(state, fresh)
 - ui.selfTest()
-- ui.scoreBug(state, force)  — football pass D game-day HUD (#score-bug-hud, #game-hud/#pbp); ui.update's 'scorebug' section calls it each frame, it recomputes when state.tick moved or force; ui.fb = pure formatters (downText, spotText, playbookFx, summaryBody …); card 'gamesummary' ({summary})
+- ui.scoreBug(state, force)
 
 - BSU.validateCatalogRow(row)
 
@@ -798,7 +815,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 
 - BSU.worldToScreen(tx, ty, elev, cam, vw, vh)
 
-## BSU.params groups (17): time[29], terrain[59], hydro[46], storm[116], wildlife[4], subsidence[17], heat[21], weather[18], econ[62], sports[78], agents[29], build[33], render[55], ui[16], audio[6], palette[34], progress[16]
+## BSU.params groups (17): time[29], terrain[59], hydro[46], storm[116], wildlife[4], subsidence[17], heat[21], weather[18], econ[62], sports[78], agents[29], build[34], render[59], ui[16], audio[6], palette[34], progress[16]
 
 ## BSU.newState(seed) tree
 - v:number
@@ -823,7 +840,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - wildlife:{nutria:number, leGrandDay:number, leGrand:null, officers:array[0], relocations:number, incidents:array[0], ecology:number, ecologyTerms:object, foggerPenalty:number, mosqIndex:number, mosqWarnedDay:number, biblicalDays:number, campusMask:null, fireflies:number, birds:object, wetlandOriginal:number}
 - economy:{cash:number, students:number, alumni:number, prestige:number, happiness:number, happinessRaw:number, ecology:number, tuition:number, quality:string, selectivity:string, coaching:number, ticket:number, autoRepair:boolean, interestPaid:number, loanLimit:number, negMonths:number, insurance:boolean, endowment:number, westCampus:boolean, pool:number, applicants:number, capacity:number, capacityTerms:object, targets:object, happyTerms:object, attendanceCycles:array[0], sick:number, suspendCapPenalties:boolean, suppressCoverage:boolean, runway:object}
 - ledger:{month:object, last:object, year:object, history:array[0]}
-- sports:{hasTeam:boolean, venue:string, seasonYear:number, schedule:array[0], record:object, lastSeason:object, coach:object, candidates:array[0], starters:array[0], recruit:null, rating:number, ratingTerms:object, nightToggle:boolean, autoSim:boolean, permits:string, homecomingBudget:number, rivalryLossStreak:number, game:null, firstHomeGameDay:number, firstNightGameDay:number, scriptedNightDay:number}
+- sports:{hasTeam:boolean, venue:string, seasonYear:number, schedule:array[0], record:object, lastSeason:object, coach:object, candidates:array[0], starters:array[0], recruit:null, rating:number, ratingTerms:object, nightToggle:boolean, autoSim:boolean, permits:string, homecomingBudget:number, rivalryLossStreak:number, game:null, firstHomeGameDay:number, firstNightGameDay:number, scriptedNightDay:number, playbook:string, aggression:string, watchFull:boolean, lastSummary:null, records:object, springDay:number, springYear:number, lastSpring:null, prospects:null, seasonLog:array[0], seasonLines:null}
 - progress:{tutorialStage:number, objectives:object, card:null, background:null, interruptQueue:array[0], backgroundQueue:array[0], milestones:object, timers:array[0], voiceCards:array[0], boardCards:array[0], failure:object, setPiecesSeen:object, firsts:object, recap:null, achievementsWhileDebug:boolean, hints:object}
 - ticker:array[0]
 - ui:{camera:object, overlay:number, speed:number, speedBefore:number, tool:null, panel:null, paletteTab:string, tabsSeen:object, newPips:object, tabsIntroduced:object, settings:object, perfMode:boolean}
@@ -848,7 +865,7 @@ time. The ONLY window reads are inside the BSU.headlessMode try/catch (§3.5).
 'use strict';
 ============================================================================
 BAYOU STATE — data.js (module 1; immutable tables)
-Owner: nothing at runtime. Assigns BSU.data: the 43-row building catalog,
+Owner: nothing at runtime. Assigns BSU.data: the 43-row building catalog (+ row 44 'bridge', bridge pass),
 tabs, decals, name pools, students/coaches/gators/storms, opponents and the
 schedule, the calendar, the 62 ticker lines, objectives, milestones, Student
 Voice and Board cards, failure cards, the tutorial script, overlays, the key
@@ -1030,7 +1047,9 @@ Owner of: state.sports (hasTeam, venue, the season schedule, record, coach,
           the scripted night day) plus the lazily-initialized saved keys
           listed in docs/INTEGRATION_NOTES.md (clubOnly, homeWins,
           losingSeasons, seasonDone, playbook, aggression, watchFull,
-          records, lastSummary — PLAN_FOOTBALL pass B).
+          records, lastSummary — PLAN_FOOTBALL pass B; springDay,
+          springYear, lastSpring, prospects, seasonLog, seasonLines —
+          pass C: the Spring Game, the prospect board, season records).
 Engine:   PLAN_FOOTBALL §2.1 drive/play engine (pass B): eight position
           ratings → four units → a per-play edge; run/pass/kick/clock tables
           from params.sports.engine; highlights / full / montage / silent
@@ -1044,14 +1063,6 @@ Implements: ARCHITECTURE.md §1 row 9, §2.8, §3.2 params.sports, §3.4
           (postponement, Play Through It, the Resilience Bowl), §10.4 (the
           scripted night game), §10.5 milestones 12–15 (progress awards
           them on our events; we call achieve for the rivalry/undefeated
-          ones the brief assigns to us), §14.1 (coaches, starters, hometowns),
-          §14.4 ticker lines 20, 42–44, 46, 60, 61.
-Rules: 'use strict' IIFE; zero DOM/timer/audio access at definition time;
-       every emit goes through M._deps.emit (§10.6); every cross-module call
-       goes through M._deps.<module> (default BSU.<module>) so selfTest can
-       stub them; all sim randomness through BSU.rng.sim in a fixed order;
-       reset draws nothing (the season is drawn on Aug 5 in tick); no state
-       on the module object (D46) — there is NO BSU.sports.game accessor, the
 
 ## sprites.js
 'use strict';
@@ -1186,8 +1197,10 @@ DOM skeleton (ARCHITECTURE §7.1; every node is kept in BSU.ui.el, never re-quer
 'use strict';
 ============================================================================
 BAYOU STATE — ui_panels.js (module 16) → extends BSU.ui
-Owns: the Budget, Storm, Season, Milestones (replaces the built-in fallback)
-and Almanac panels, plus the cards ui.js's notes leave to this module:
+Owns: the Budget, Storm, Season (football pass D: playbook/aggression/watch-full/coaching controls, starters,
+prospects, schedule), Milestones (replaces the built-in fallback) and Almanac (with a Football section) panels,
+the game-day HUD (UI.scoreBug: score bug + down & distance + play-by-play strip), the post-game summary card
+(gamesummary) and the cards ui.js's notes leave to this module:
 newsflash, wetfeet, failure, damage (the storm damage report), hire, and the
 openers (one per card, D44) that call them: storm:report → damage,
 storm:named → newsflash, board:offered → board, econ:card → failure,

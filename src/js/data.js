@@ -1,7 +1,7 @@
 'use strict';
 // ============================================================================
 // BAYOU STATE — data.js (module 1; immutable tables)
-// Owner: nothing at runtime. Assigns BSU.data: the 43-row building catalog,
+// Owner: nothing at runtime. Assigns BSU.data: the 43-row building catalog (+ row 44 'bridge', bridge pass),
 // tabs, decals, name pools, students/coaches/gators/storms, opponents and the
 // schedule, the calendar, the 62 ticker lines, objectives, milestones, Student
 // Voice and Board cards, failure cards, the tutorial script, overlays, the key
@@ -80,7 +80,7 @@
   const ESSENTIALS = { path: 1, dorm: 1, dining_hall: 1, lecture_hall: 1, poboy: 1, quad: 1, live_oak: 1 };
   const NOT_DEMOLISHABLE = { founders_hall: 1, library: 1, res_tower: 1, stadium: 1, bell_tower: 1, tiger_habitat: 1, rookery: 1, surge_barrier: 1, marsh_restoration: 1 };
   const TAB_OF_ROW = function (n) {
-    if (n <= 3) return 'paths';
+    if (n <= 3 || n === 44) return 'paths';   // 44 = Pedestrian Bridge (bridge pass): the Paths tab after the boardwalk
     if (n <= 7) return 'utilities';
     if (n <= 12) return 'academic';
     if (n <= 15) return 'housing';
@@ -96,6 +96,7 @@
     path: 'A gravel walkway. Every building needs one on its edge.',
     road: 'A paved road for buses, parades and the Stadium; bridges up to 3 water tiles.',
     boardwalk: 'A raised walk over marsh and water that leaves the wetland alone.',
+    bridge: 'A high pedestrian span over the bayou: six feet of clearance, passable through a Cat 3 surge.',
     substation: 'Powers up to 40 buildings within 10 tiles.',
     water_tower: 'Water for 50 buildings within 12 tiles. Needs power itself.',
     generator: 'Three days of backup power for everything within 6 tiles.',
@@ -411,7 +412,14 @@
       effects: { landmark: 6, happiness: { value: 2, radius: 8 }, special: ['spoonbills', 'postcardFrame'] },
       paint: flat(['#8B7355', '#6F5A42'], ['stilts', 'nest'], 'rookery'),
       why: 'Spoonbills at dawn, whatever the ecology. The Marketing office cries.',
-      desc: 'Landmark +6; +2 happiness radius 8; spoonbills every Dawn; +1 prestige target; the postcard frame.' })
+      desc: 'Landmark +6; +2 happiness radius 8; spoonbills every Dawn; +1 prestige target; the postcard frame.' }),
+    // bridge pass — row 44, Paths tab after the boardwalk: a 1×1 water-only drag whose deck sits 6 ft over normal stage
+    row({ n: 44, name: 'Pedestrian Bridge', kind: 'drag', cost: 45000, upkeep: 300, wr: 4, placeRule: PLACE.BRIDGE,
+      unlock: { any: [{ students: 800 }, { building: 'engineering' }] },
+      effects: { surfaceId: SURF.BRIDGE },
+      paint: flat(['#B8B8BC', '#8E8E94'], ['stilts', 'lights'], 'bridge'),
+      why: 'Six feet up: the one crossing that stays open through a Cat 3 surge.',
+      desc: 'Walkable at path speed; water only, both ends on land; concrete piers, purple truss rails, lamps; WR 4; overtopped only above +6 ft.' })
   ];
   const catalog = {};
   for (const r of catalogList) catalog[r.id] = r;
@@ -1196,6 +1204,7 @@
   requirements.place[PLACE.PATH] = { glyph: '↔', text: 'Drag a run across land' };
   requirements.place[PLACE.ROAD] = { glyph: '↔', text: 'Drag a run; bridges up to 3 water tiles; not on marsh' };
   requirements.place[PLACE.BOARDWALK] = { glyph: '↔', text: 'Drag a run over marsh, preserve or water' };
+  requirements.place[PLACE.BRIDGE] = { glyph: '↔', text: 'Drag a run across water from land to land' };
   requirements.place[PLACE.LEVEE] = { glyph: '↔', text: 'Drag a run along the ground; close the ring' };
   requirements.place[PLACE.CANAL] = { glyph: '↔', text: 'Drag a run downhill to the bayou or open water' };
   requirements.place[PLACE.FENCE] = { glyph: '↔', text: 'Drag a run along a water edge' };
@@ -1247,8 +1256,8 @@
     try {
       const D = BSU.data, L = D.catalogList, C = D.catalog;
       // 1. row count and numbering
-      check(L.length === 43, 'catalogList.length === 43 (got ' + L.length + ')');
-      check(Object.keys(C).length === 43, 'catalog has 43 keys');
+      check(L.length === 44, 'catalogList.length === 44 (got ' + L.length + ')');
+      check(Object.keys(C).length === 44, 'catalog has 44 keys');
       for (let i = 0; i < L.length; i++) {
         check(L[i].n === i + 1, 'row ' + (i + 1) + ' has n ' + L[i].n);
         check(C[L[i].id] === L[i], 'catalog[' + L[i].id + '] is the same object as catalogList[' + i + ']');
@@ -1271,7 +1280,7 @@
         check(r.needsPower === !!NEEDS_POWER[r.id] && r.needsWater === !!NEEDS_WATER[r.id], r.id + ' power/water flags');
         check(Number.isInteger(r.cost) && Number.isInteger(r.upkeep) && r.cost >= 0 && r.upkeep >= 0, r.id + ' money is integer $');
       }
-      notes.push('43 rows validated' + (schemaErrors ? ' (' + schemaErrors + ' schema errors)' : ''));
+      notes.push(L.length + ' rows validated' + (schemaErrors ? ' (' + schemaErrors + ' schema errors)' : ''));
       // 3. ids
       for (const r of L) check(BSU.B[r.id] === r.id, r.id + ' in BSU.B');
       check(BSU.B_ORDER.every((id, i) => L[i] && L[i].id === id), 'B_ORDER equals catalogList ids');
@@ -1329,7 +1338,7 @@
       // 7b. UX tables: a guide line for every objective (+ the accreditation pair), needs/requirements/coach shapes
       for (const id of BSU.OBJECTIVE_IDS.concat(['p1', 'p2'])) { const g = D.guide[id]; check(!!g && g.why.length > 0 && Array.isArray(g.build) && g.build.every(b => !!C[b]), 'guide ' + id); }
       check(['beds', 'seats', 'dining', 'power', 'water', 'wastewater', 'parking'].every(k => D.needs[k] && !!C[D.needs[k].build] && D.needs[k].label.length > 0), 'needs table');
-      check(['power', 'water', 'path', 'road', 'marsh'].every(k => D.requirements[k].glyph && D.requirements[k].text) && Object.keys(D.requirements.place).length === 15, 'requirements table');
+      check(['power', 'water', 'path', 'road', 'marsh'].every(k => D.requirements[k].glyph && D.requirements[k].text) && Object.keys(D.requirements.place).length === 16, 'requirements table');
       check(D.coach.length === 6 && D.coach.every(c => c.id && c.title && c.text.length > 0 && typeof c.target === 'string'), '6 coach steps');
       check(D.keys.some(k => k.key === 'g' && k.action === 'buildMenu' && !k.ctrl && !k.shift) && !D.keys.some(k => k.key === 'q'), 'G opens the build menu; Q stays unbound');
       check(D.overlays.length === 6 && D.overlays[2].legend.join() === 'Ambient,Annoying,Biblical,State Bird', '6 overlays, K legend');

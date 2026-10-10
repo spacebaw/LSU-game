@@ -652,7 +652,7 @@
   M.registerPainter('surf', function (ctx, spec) {
     const P = pen(ctx, spec.zoom);
     const g = tileCanvas(ctx, spec.zoom, SURF_ABOVE, SURF_BELOW);
-    const kind = Math.max(1, Math.min(4, parseInt(spec.sub, 10) || 1));
+    const kind = Math.max(1, Math.min(5, parseInt(spec.sub, 10) || 1));   // 5 = Pedestrian Bridge (bridge pass): palette icon + ghost only; the map strokes decks
     const v = spec.variant, mask = v & 15, bridge = !!(v & 16), sign = !!(v & 32), culvert = !!(v & 64);
     const cx = g.cx, cy = g.cy, seed = hash(kind * 131 + v, 0x5f);
     if (kind === BSU.SURF.PATH) {
@@ -675,6 +675,23 @@
         // purple 2-px railings along both edges of the run, 6 px above the deck, 1-px posts every 8 px
         const dirs = DIRS.filter(d => mask & d.bit); const list = dirs.length ? dirs : [DIRS[0], DIRS[2]];
         for (const d of list) for (let k = 0; k <= 16; k++) { const x = cx + d.dx * k, yTop = cy + d.dy * (k >> 1) - (t >> 1); P.rect(x, yTop - 6, 1, 2, PAL.purple); P.rect(x, yTop + t - 7, 1, 2, PAL.purple2); if (k % 8 === 0) { P.vline(x, yTop - 4, 4, PAL.purpleShadow); P.vline(x, yTop + t - 5, 4, PAL.purpleShadow); } }
+      }
+    } else if (kind === BSU.SURF.BRIDGE) {
+      // Pedestrian Bridge (bridge pass): concrete piers, a pale stone deck with a darker kerb, purple truss rails with gold caps
+      const t = 14;
+      bridgeUnder(P, cx, cy, mask, t);
+      strip(P, cx, cy, mask, t, (k, j, d, edge) => {
+        if (edge) return shade(X.concrete, 0.72);
+        if (j === 1 || j === t - 2) return shade(X.concrete, 1.1);
+        const n = hash(seed, k + j * 17 + (d ? d.bit * 100 : 0)) % 100;
+        return (k % 5 === 4) ? shade(X.concrete, 0.9) : n < 8 ? shade(X.concrete, 1.06) : X.concrete;   // expansion joints every 5 px
+      });
+      const dirs = DIRS.filter(d => mask & d.bit); const list = dirs.length ? dirs : [DIRS[0], DIRS[2]];
+      for (const d of list) for (let k = 0; k <= 16; k++) {
+        const x = cx + d.dx * k, yTop = cy + d.dy * (k >> 1) - (t >> 1);
+        P.rect(x, yTop - 7, 1, 2, PAL.purple); P.rect(x, yTop + t - 8, 1, 2, PAL.purple2);
+        if ((k & 1) === 0) { P.px(x, yTop - 4, PAL.purpleShadow); P.px(x, yTop + t - 5, PAL.purpleShadow); }   // truss diagonals read as a dotted lower chord
+        if (k % 8 === 0) { P.vline(x, yTop - 6, 6, PAL.purpleShadow); P.vline(x, yTop + t - 7, 6, PAL.purpleShadow); P.px(x, yTop - 8, PAL.gold); P.px(x, yTop + t - 9, PAL.gold); }
       }
     } else if (kind === BSU.SURF.BOARDWALK) {
       const t = 12;
@@ -1130,7 +1147,7 @@
       const SPR = BSU.SPR, data = BSU.data;
       for (let t = 0; t < 8; t++) for (let v = 0; v < 3; v++) M.get('tile:' + t, v, 0, 1);
       for (const h of CLIFF_PREBAKE) { M.get('cliff', h, 0, 1); M.get('cliff', h, 1, 1); }
-      for (let s = 1; s <= 4; s++) for (let m = 0; m < 16; m++) M.get('surf:' + s, m, 0, 1);
+      for (let s = 1; s <= 5; s++) for (let m = 0; m < 16; m++) M.get('surf:' + s, m, 0, 1);
       for (let m = 0; m < 16; m++) { M.get('levee', m, 0, 1); M.get('floodwall', m, 0, 1); M.get('canal', m, 0, 1); M.get('preservePost', m, 0, 1); }
       M.get('water', 0, 0, 1); M.get('water', 1, 0, 1);
       for (let v = 0; v < 3; v++) { M.get('reeds', v, 0, 1); M.get('reeds', v, 1, 1); M.get('knees', v, 0, 1); M.get('worn', v, 0, 1); }
@@ -1178,7 +1195,7 @@
       // 6. every terrain-side id resolves with the documented sizes
       for (let t = 0; t < 8; t++) for (let v = 0; v < 3; v++) { const e = need('tile:' + t, v); check(e && e.sw === 64 && e.sh === 32 && e.ox === -32 && e.oy === -16, 'tile size/anchor'); }
       check(need('cliff', 6).sh === 22 && need('cliff', 96).sh === 112 && need('cliff', 24, 1).ox === 0 && need('cliff', 24, 0).ox === -32, 'cliff sizes/anchors');
-      for (let s = 1; s <= 4; s++) for (let m = 0; m < 16; m++) need('surf:' + s, m);
+      for (let s = 1; s <= 5; s++) for (let m = 0; m < 16; m++) need('surf:' + s, m);
       need('surf:2', 16 | 5); need('surf:4', 32 | 3); need('surf:1', 64 | 10);
       for (let m = 0; m < 16; m++) { need('levee', m); need('levee', m | 16); need('floodwall', m); need('canal', m); need('canal', m | 32); need('canal', m | 32 | 64); need('preservePost', m); }
       check(need('water', 0).sw === 64 && need('water', 1).sh === 32, 'water');

@@ -483,7 +483,7 @@
     const fb = blist(state, 'founders_hall')[0];
     const ring = fb ? BSU.edgeTiles(fb.tx, fb.ty, fb.w, fb.h) : BSU.edgeTiles(f.tx, f.ty, 3, 3);
     const surf = state.tiles.surface, seen = new Uint8Array(N), q = [];
-    const passable = function (i) { return surf[i] >= SURF.PATH && surf[i] <= SURF.BOARDWALK; };
+    const passable = function (i) { return surf[i] >= SURF.PATH && surf[i] <= SURF.BOARDWALK || surf[i] === SURF.BRIDGE; };
     for (const i of ring) if (i >= 0 && i < N && passable(i) && !seen[i]) { seen[i] = 1; q.push(i); }
     if (target < N && passable(target) === false) { /* the shoulder itself may be bare: accept adjacency */ }
     let head = 0;
@@ -505,7 +505,7 @@
   }
   function oaksAlongPaths(state) {
     const surf = state.tiles.surface; let n = 0;
-    for (const v of (state.veg || [])) if (v && v.type === 'oak' && v.planted && near(BSU.idx(v.tx, v.ty), 1, function (i) { return surf[i] >= SURF.PATH && surf[i] <= SURF.BOARDWALK; })) n++;
+    for (const v of (state.veg || [])) if (v && v.type === 'oak' && v.planted && near(BSU.idx(v.tx, v.ty), 1, function (i) { return surf[i] >= SURF.PATH && surf[i] <= SURF.BOARDWALK || surf[i] === SURF.BRIDGE; })) n++;
     return n;
   }
   function longestRoadRun(state) {
@@ -633,7 +633,7 @@
     poboyRoute: function (s) {
       const dorms = blist(s, 'dorm'), hall = blist(s, 'lecture_hall')[0];
       if (!hall || !dorms.length) return { progress: 0, goal: 1 };
-      const surf = s.tiles.surface, passable = function (i) { return surf[i] >= SURF.PATH && surf[i] <= SURF.BOARDWALK; };
+      const surf = s.tiles.surface, passable = function (i) { return surf[i] >= SURF.PATH && surf[i] <= SURF.BOARDWALK || surf[i] === SURF.BRIDGE; };
       const shacks = blist(s, 'poboy').filter(complete); if (!shacks.length) return { progress: 0, goal: 1 };
       const shackEdges = new Set(); for (const sh of shacks) for (const e of BSU.edgeTiles(sh.tx, sh.ty, sh.w, sh.h)) shackEdges.add(e);
       // BFS from any dorm edge over surfaces; the path to the hall must touch a shack edge: approximate by reachability of both from a shack edge

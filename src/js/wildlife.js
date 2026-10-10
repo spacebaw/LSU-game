@@ -766,7 +766,7 @@
     u8Buf.fill(0);
     const owner = state.tiles.owner, surface = state.tiles.surface, r = PM.disturbRadius;
     for (let i = 0; i < N; i++) {
-      if (owner[i] < 0 && (surface[i] < SURF.PATH || surface[i] > SURF.BOARDWALK)) continue;
+      if (owner[i] < 0 && (surface[i] < SURF.PATH || surface[i] > SURF.BOARDWALK) && surface[i] !== SURF.BRIDGE) continue;
       const tx = i & 63, ty = i >> 6;
       for (let y = Math.max(0, ty - r); y <= Math.min(H - 1, ty + r); y++) for (let x = Math.max(0, tx - r); x <= Math.min(W - 1, tx + r); x++) u8Buf[y * W + x] = 1;
     }

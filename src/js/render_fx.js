@@ -485,6 +485,12 @@
       const lamps = te && typeof te.streetlamps === 'function' ? te.streetlamps(state) : null;
       if (lamps && lamps.length) for (let k = 0; k < lamps.length && lightsN < LMAX; k++) { const i = lamps[k] | 0; const tx = i & 63, ty = i >> 6; if (tx < view.x0 - 1 || tx > view.x1 + 1 || ty < view.y0 - 1 || ty > view.y1 + 1) continue; const p = R.tilePx(i); if (inScreen(p.x, p.y)) pushLight('lamp', p.x, p.y - 14 * z, 1, 0.95, 0); }
     } catch (e) { /* no terrain */ }
+    // bridge pass: the lamps on decks over water (boardwalk / road bridge / Pedestrian Bridge), at deck height
+    try {
+      const cv = R.curves && typeof R.curves.current === 'function' ? R.curves.current() : null, L = cv && cv.lamps;
+      const dark = typeof R.curves.overtopped === 'function' ? R.curves.overtopped : null;
+      if (L && L.length) for (let k = 0; k < L.length && lightsN < LMAX; k++) { const q = L[k]; if (dark && dark(q.i)) continue; if (q.x < view.x0 - 1 || q.x > view.x1 + 1 || q.y < view.y0 - 1 || q.y > view.y1 + 1) continue; const p = R.tileToScreen(q.x, q.y, q.ft); if (inScreen(p.x, p.y)) pushLight('lamp', p.x, p.y - 2 * z, 1, 0.9, 0); }
+    } catch (e) { /* no curves */ }
     // dug canals: a cool water highlight on every visible CANAL tile so the cut (and the canal objective, which
     // can be offered after Dusk) reads at night — ≤ 64 per frame, nearest-first like everything else
     try {

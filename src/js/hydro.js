@@ -114,6 +114,7 @@
       activeN: 0,
       depthClass: new Uint8Array(N),
       overtoppedToday: new Uint8Array(N),
+      deckOver: new Uint8Array(N),         // bridge pass: 1 while a deck over water (road / boardwalk / bridge) is overtopped
       stormOvertopped: new Uint8Array(N),
       surgeContacted: new Uint8Array(N),
       dryDays: new Uint8Array(N),
@@ -828,8 +829,18 @@
   function classCrossings(state, ctx) {
     const D = ctx.D, dc = ctx.depthClass, land = ctx.land, type = state.tiles.type, list = ctx.activeList, n = ctx.activeN;
     const Tn = terrainApi();
+    const surf = state.tiles.surface, elev = state.tiles.elev, SF = BSU.SURF, th = P.thresholds, dov = ctx.deckOver;
+    const deckRoad = Math.max(th.bridgeSurge, (BSU.params.render.deckFt && BSU.params.render.deckFt.road) || 0);
     for (let a = 0; a < n; a++) {
       const i = list[a];
+      if (!land[i]) {   // bridge pass: a deck over water rewalks when the live head crosses its overtop threshold (water tiles never change depth class)
+        const sf = surf[i];
+        if (sf === SF.ROAD || sf === SF.BOARDWALK || sf === SF.BRIDGE) {
+          const lim = sf === SF.BRIDGE ? (th.pedBridgeSurge || 6) : (sf === SF.ROAD ? deckRoad : th.bridgeSurge);
+          const over = (elev[i] + D[i] - liveStage(state, ctx, i, true)) > lim ? 1 : 0;
+          if (over !== dov[i]) { dov[i] = over; try { if (typeof Tn.rewalk === 'function') Tn.rewalk(state, i); } catch (e) { BSU.error('hydro', 'classCrossings', e); } }
+        }
+      }
       const c = classOf(D[i]);
       const o = dc[i];
       if (c === o) continue;
@@ -1060,6 +1071,11 @@
   /** boundary stage of a water tile (river/bayou/barrier-held, surge included); 0 on land */
   M.stageAt = function (state, i) {
     try { const ctx = ensure(state); i |= 0; if (i < 0 || i >= N || !ctx.water[i]) return 0; return liveStage(state, ctx, i, false); } catch (e) { return 0; }
+  };
+  /** bridge pass: the stage with no surge in it — the base / seasonal stage the decks (boardwalk, road bridge, Pedestrian Bridge)
+   *  are built over, and the reference the overtopping rule in terrain.walkClassOf measures the live surface against */
+  M.normalStageAt = function (state, i) {
+    try { const ctx = ensure(state); i |= 0; if (i < 0 || i >= N || !ctx.water[i]) return 0; return liveStage(state, ctx, i, true); } catch (e) { return 0; }
   };
   M.floodedBuildings = function (state) {
     const out = [];

@@ -211,6 +211,30 @@ s.setPiece = { kind: 'x', cameraTouched: false }; R.panBy(1, 0, true); ok(s.setP
   ok(flat.polys.length === 0 && flat.buckets.size === 0 && flat.steps.size === 0, 'an empty map builds empty curves');
 }
 
+// --- bridge pass: decks over water, the run split at the shoreline, the bridge meeting its paths ----------
+{
+  const CV = R.curves, col = (x, y) => y * 64 + x;
+  const st = { tiles: { surface: new Uint8Array(4096), elev: new Float32Array(4096), type: new Uint8Array(4096).fill(BSU.T.DRY), flags: new Uint32Array(4096), depth: new Float32Array(4096) }, buildings: [], plot: { bayou: [] } };
+  // a boardwalk from marsh (20,10) over three bayou tiles (bed −2 ft) to marsh (20,14); a Pedestrian Bridge (22,11..13) between path tiles; a road span (24,11..13) between road tiles
+  for (let y = 10; y <= 14; y++) { const wet = y >= 11 && y <= 13; for (const x of [20, 22, 24]) { const k = col(x, y); st.tiles.type[k] = wet ? BSU.T.BAYOU : BSU.T.MARSH; st.tiles.flags[k] = wet ? BSU.FLAG.BAYOU : 0; st.tiles.elev[k] = wet ? -2 : 0.5; st.tiles.depth[k] = wet ? 2 : 0; } st.tiles.surface[col(20, y)] = BSU.SURF.BOARDWALK; st.tiles.surface[col(22, y)] = wet ? BSU.SURF.BRIDGE : BSU.SURF.PATH; st.tiles.surface[col(24, y)] = BSU.SURF.ROAD; }
+  const cv = CV.build(st);
+  ok(Math.abs(cv.deck[col(20, 12)] - 1.5) < 1e-6 && Number.isNaN(cv.deck[col(20, 10)]) && Math.abs(cv.water[col(20, 12)]) < 1e-6, 'boardwalk deck = max(bed −2, stage 0) + 1.5 ft over water; the marsh tile is no deck');
+  ok(Math.abs(cv.deck[col(24, 12)] - 4) < 1e-6, 'a road over water is a deck 4 ft up');
+  ok(cv.deck[col(22, 12)] > 6 && cv.deck[col(22, 12)] < 7.01 && cv.deck[col(22, 11)] < cv.deck[col(22, 12)] && Math.abs(cv.deck[col(22, 11)] - cv.deck[col(22, 13)]) < 1e-6, 'bridge deck 6 ft + a gentle symmetric arch, highest mid-span');
+  ok(cv.deckCount === 9 && CV.clearance[BSU.SURF.BRIDGE] === 6 && CV.clearance[BSU.SURF.BOARDWALK] === 1.5, 'nine deck tiles; clearances 6 / 1.5 ft');
+  const stepN = cv.steps.get(col(20, 10)), stepS = cv.steps.get(col(20, 14));
+  ok(stepN && stepN.length === 1 && stepN[0].hi === col(20, 11) && stepN[0].lo === col(20, 10) && stepN[0].kind === BSU.SURF.BOARDWALK && stepN[0].deck === true && stepN[0].hiEp === 9 && stepN[0].loEp === 3, 'north shoreline: the run splits there — a step from the deck (9 px) down to the marsh (3 px): ' + JSON.stringify(stepN && stepN[0]));
+  ok(stepS && stepS.length === 1 && stepS[0].hi === col(20, 13) && stepS[0].lo === col(20, 14), 'south shoreline step too');
+  ok(!cv.steps.has(col(20, 11)) && !cv.steps.has(col(20, 12)) && !cv.steps.has(col(20, 13)), 'no steps inside the deck run (the water tiles are one run at deck elevation)');
+  const brP = cv.polys.find((p) => p.kind === BSU.SURF.BRIDGE);
+  ok(brP && brP.tiles.length === 3 && brP.ext && brP.ext[0] && brP.ext[0].j === col(22, 10) && brP.ext[1] && brP.ext[1].j === col(22, 14) && brP.pts[0] === 22 && brP.pts[1] === 10.5 && brP.pts[brP.pts.length - 1] === 13.5, 'the bridge polyline runs edge to edge (y 10.5 → 13.5) into the path tiles, no gap');
+  const rampN = cv.steps.get(col(22, 10)), rampS = cv.steps.get(col(22, 14));
+  ok(rampN && rampN.length === 1 && rampN[0].kind === BSU.SURF.BRIDGE && rampN[0].hi === col(22, 11) && rampN[0].sign === -1 && rampN[0].t === 0 && rampN[0].hiEp === Math.round(cv.deck[col(22, 11)] * 6), 'a ramp record on the north path tile, walking back past the bridge start');
+  ok(rampS && rampS.length === 1 && rampS[0].sign === 1 && rampS[0].t === 1, 'and one on the south path tile, walking on past its end');
+  ok(cv.lamps.length === 3 && cv.lampAt.has(col(20, 12)) && cv.lampAt.has(col(22, 12)) && cv.lampAt.has(col(24, 12)) && cv.lamps.every((L) => L.ft > 3), 'one lamp per 3-tile deck run on its second deck tile, at deck height');
+  ok(Number.isNaN(CV.deckOf(-1)) && typeof CV.decksDrawn() === 'number' && CV.overtopped(0) === false, 'deckOf / decksDrawn / overtopped are exposed');
+}
+
 // --- football pass F: field mapping, venue pick, players on the field, camera ----------------
 {
   const H = BSU.headless;

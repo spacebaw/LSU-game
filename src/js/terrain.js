@@ -210,17 +210,19 @@
       const fl = t.flags[i], surf = t.surface[i], type = t.type[i], depth = t.depth[i];
       const water = (fl & WATER_FLAGS) !== 0 || type === T.OPEN_WATER || type === T.BAYOU || type === T.POND;
       const th = PH.thresholds;
-      if (surf === SURF.PATH || surf === SURF.ROAD || surf === SURF.BOARDWALK) {
-        if (surf === SURF.BOARDWALK || water) {
-          // boardwalk / bridge: passable unless the local surface is more than 2 ft above normal stage
+      if (surf === SURF.PATH || surf === SURF.ROAD || surf === SURF.BOARDWALK || surf === SURF.BRIDGE) {
+        if (surf === SURF.BOARDWALK || surf === SURF.BRIDGE || water) {
+          // boardwalk / road bridge: passable unless the local surface is more than 2 ft above normal stage;
+          // the Pedestrian Bridge deck (bridge pass) is 6 ft up, so it takes a 6-ft head to overtop it
           const hy = hydro();
           let head, stage;
           if (hy && typeof hy.surfaceAt === 'function' && typeof hy.stageAt === 'function') {
-            head = hy.surfaceAt(state, i); stage = hy.stageAt(state, i);
+            head = hy.surfaceAt(state, i); stage = typeof hy.normalStageAt === 'function' ? hy.normalStageAt(state, i) : hy.stageAt(state, i);   // bridge pass: the surge is not the normal stage
             if (!finite(head)) head = t.elev[i] + depth;
             if (!finite(stage)) stage = 0;
           } else { head = t.elev[i] + depth; stage = 0; }
-          return (head - stage > th.bridgeSurge) ? 0 : PA.walkClass.path;
+          const lim = surf === SURF.BRIDGE ? (th.pedBridgeSurge || 6) : (surf === SURF.ROAD ? Math.max(th.bridgeSurge, (P.render.deckFt && P.render.deckFt.road) || 0) : th.bridgeSurge);   // a road bridge's deck is deckFt.road up
+          return (head - stage > lim) ? 0 : PA.walkClass.path;
         }
         if (depth >= th.impassable) return 0;
         if (depth >= th.wading) return PA.walkClass.wading;
@@ -272,7 +274,7 @@
   M.setSurface = function (state, i, surf) {
     try {
       if (!validI(i)) return;
-      if (!(surf === SURF.NONE || surf === SURF.PATH || surf === SURF.ROAD || surf === SURF.BOARDWALK || surf === SURF.FENCE)) { fail('setSurface', new Error('bad surface ' + surf)); return; }
+      if (!(surf === SURF.NONE || surf === SURF.PATH || surf === SURF.ROAD || surf === SURF.BOARDWALK || surf === SURF.FENCE || surf === SURF.BRIDGE)) { fail('setSurface', new Error('bad surface ' + surf)); return; }
       state.tiles.surface[i] = surf;
       M.touch(state, i, 'surface');
     } catch (e) { fail('setSurface', e); }
@@ -505,7 +507,7 @@
         const t = state.tiles, mask = new Uint8Array(N), rad = P.wildlife.mosq.disturbRadius;
         for (let k = 0; k < N; k++) {
           const s = t.surface[k];
-          if (t.owner[k] < 0 && !(s === SURF.PATH || s === SURF.ROAD || s === SURF.BOARDWALK)) continue;
+          if (t.owner[k] < 0 && !(s === SURF.PATH || s === SURF.ROAD || s === SURF.BOARDWALK || s === SURF.BRIDGE)) continue;
           const tx = k & 63, ty = k >> 6;
           for (let dy = -rad; dy <= rad; dy++) { const y = ty + dy; if (y < 0 || y >= H) continue; for (let dx = -rad; dx <= rad; dx++) { const x = tx + dx; if (x >= 0 && x < W) mask[y * W + x] = 1; } }
         }

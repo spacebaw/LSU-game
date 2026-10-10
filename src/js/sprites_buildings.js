@@ -1284,7 +1284,7 @@
   // Drag/paint rows show their terrain tile (mask 5, N+S straight); Pilings shows a dorm on stilts
   // at half scale; everything else is the row's own variant-0 building sprite.
   // ---------------------------------------------------------------------------
-  const ICON_SURF = { path: 'surf:1', road: 'surf:2', boardwalk: 'surf:3', gator_fence: 'surf:4' };
+  const ICON_SURF = { path: 'surf:1', road: 'surf:2', boardwalk: 'surf:3', gator_fence: 'surf:4', bridge: 'surf:5' };
   function paintIcon(ctx, spec) {
     const id = spec.sub;
     const dims = begin(ctx, ICON, ICON, spec.zoom);

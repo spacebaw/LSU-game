@@ -58,7 +58,7 @@
   const passes = [];                                 // {name, fn, order, builtin}
   const gates = new Map();                           // tile → {closed, t0 (frameNo)}
   const perfRing = new Float32Array(PR.perfFrames || 60); let perfI = 0, perfFilled = false, perfTripped = false;
-  let frameMs = 0, drawCalls = 0, agentsDrawn = 0, particlesDrawn = 0, waterDrawn = 0;
+  let frameMs = 0, drawCalls = 0, agentsDrawn = 0, particlesDrawn = 0, waterDrawn = 0, decksDrawn = 0;
   let movedFlag = 0;                                 // 0 none, 1 programmatic, 2 by user (camera:moved once per frame)
   const camEvent = { x: 0, y: 0, zoom: 1, byUser: false };
   const cypStamp = new Uint16Array(N); let cypGen = 0;   // cypress adjacency marks for the knees decoration
@@ -238,7 +238,7 @@
       dirtyBits[k] = 1;
     }
   }
-  function dropChunk(ch) { if (ch.canvas) { try { ch.canvas.width = 1; ch.canvas.height = 1; } catch (e) { /* stub */ } } ch.canvas = null; ch.ctx = null; ch.dirty = 1; dirtyBits[ch.cx + ch.cy * 8] = 1; }
+  function dropChunk(ch) { if (ch.canvas) { try { ch.canvas.width = 1; ch.canvas.height = 1; } catch (e) { /* stub */ } } ch.canvas = null; ch.ctx = null; ch.dirty = 1; dirtyBits[ch.cx + ch.cy * 8] = 1; dropDeck(ch); }
   function liveChunks() { let n = 0; for (let k = 0; k < NCH; k++) if (chunks[k] && chunks[k].canvas) n++; return n; }
   /** mark chunk i (0–63) dirty */
   M.dirtyChunk = function (i) { i = i | 0; if (i >= 0 && i < NCH) { dirtyBits[i] = 1; if (chunks[i]) chunks[i].dirty = 1; } };
@@ -317,22 +317,33 @@
   // clipped to the tile's diamond so a raised neighbour drawn later still occludes it. Elevation steps along a polyline
   // get stairs (paths, boardwalks) or a ramp (roads) on the lower tile's side of the shared edge. Walkability, A*, costs
   // and placement are untouched: agents walk tile centres, which a Chaikin corner passes within 0.18 tile of (< w/2).
-  const CURVE_W = [0, 0.42, 0.72, 0.5];           // stroke width in tiles by surface kind (PATH, ROAD, BOARDWALK)
+  const CURVE_W = [0, 0.42, 0.72, 0.5, 0, 0.6];     // stroke width in tiles by surface kind (PATH, ROAD, BOARDWALK, —, BRIDGE)
+  const CURVE_KINDS = [SURF.PATH, SURF.ROAD, SURF.BOARDWALK, SURF.BRIDGE];
+  const isCurveKind = (s) => (s >= 1 && s <= 3) || s === SURF.BRIDGE;
+  // bridge pass: a boardwalk / road / Pedestrian Bridge on a water tile is a DECK at max(bed, normal stage) + its clearance
+  const DECK_FT = PR.deckFt || { boardwalk: 1.5, road: 4, bridge: 6 };
+  const DECK_KIND_FT = [0, 0, fin(DECK_FT.road, 4), fin(DECK_FT.boardwalk, 1.5), 0, fin(DECK_FT.bridge, 6)];
+  const DECK_UP = 20;                               // px above the deck the clip allows for rails and lamps
   const STUB_W = 0.25, STUB_LEN = 0.58;             // tee / entrance-walk connector: 7 px like the sprite strip, to 0.08 past the footprint edge
   const CLIP_EPS = 0.06, CHAIKIN_ITERS = 3, SEG_PAD = 0.12;
-  const EMPTY_DASH = [], DASH_SPECK = [0.03, 0.13], DASH_ROAD = [0.14, 0.14], DASH_PLANK = [0.03, 0.09];
+  const EMPTY_DASH = [], DASH_SPECK = [0.03, 0.13], DASH_ROAD = [0.14, 0.14], DASH_PLANK = [0.03, 0.09], DASH_WEATHER = [0.06, 0.27], DASH_JOINT = [0.02, 0.22];
   let curves = null, curvesDirty = true, CC = null;
   function curveColors() {
     if (CC) return CC;
     const sp = S(), sh = sp.shade, X = sp.extra || {};
     const stone = PAL.creamStone || '#F5ECD7';
+    const WOOD = X.deckWood || '#9B6A48';            // bridge pass: weathered rust-brown cypress planks (reads against water and marsh)
+    const CONC = X.concrete || '#B8B8BC';
     CC = {
-      pathEdge: sh(PAL.gravel, 0.72), path: PAL.gravel, pathHi: sh(PAL.gravel, 1.08), pathDk: sh(PAL.gravel, 0.8), pathLo: sh(PAL.gravel, 0.9), deckLo: sh(PAL.boardwalk, 0.85),
+      pathEdge: sh(PAL.gravel, 0.72), path: PAL.gravel, pathHi: sh(PAL.gravel, 1.08), pathDk: sh(PAL.gravel, 0.8), pathLo: sh(PAL.gravel, 0.9), deckLo: sh(WOOD, 0.85),
       curb: sh(PAL.asphalt, 1.3), road: PAL.asphalt, dash: PAL.gold, ramp: sh(PAL.asphalt, 0.85), hatch: sh(PAL.gold, 1.1),
-      rail: sh(PAL.boardwalk, 0.45), deck: PAL.boardwalk, gap: sh(PAL.boardwalk, 0.7), post: PAL.bark, postShadow: sh(PAL.waterNight || '#1E3A4A', 0.8),
+      rail: sh(WOOD, 0.4), deck: WOOD, deckHi: sh(WOOD, 1.18), gap: sh(WOOD, 0.58), post: PAL.bark, postShadow: sh(PAL.waterNight || '#1E3A4A', 0.8),
       stoneTread: sh(stone, 0.82), stoneRiser: sh(stone, 0.52), stoneNose: stone,
-      woodTread: PAL.boardwalk, woodRiser: sh(PAL.boardwalk, 0.55), woodNose: sh(PAL.boardwalk, 1.15),
-      concrete: X.concrete || '#B8B8BC', steelDark: X.steelDark || '#6A6A70', steelDk2: sh(X.steelDark || '#6A6A70', 0.7), black: X.black || '#1B1B1B',
+      woodTread: WOOD, woodRiser: sh(WOOD, 0.55), woodNose: sh(WOOD, 1.15),
+      concrete: CONC, steelDark: X.steelDark || '#6A6A70', steelDk2: sh(X.steelDark || '#6A6A70', 0.7), black: X.black || '#1B1B1B',
+      kerb: sh(CONC, 0.7), bridgeDeck: CONC, bridgeJoint: sh(CONC, 0.86), bridgeLine: sh(CONC, 1.1), bridgeRamp: sh(CONC, 0.92),
+      pier: sh(CONC, 0.95), pierDark: sh(CONC, 0.6), waterline: sh(PAL.waterDay || '#4F86A8', 1.35), shadow: 'rgba(8, 10, 24, 0.32)',
+      lampPost: X.steelDark || '#6A6A70', lampHead: '#F5D77A', lampCap: '#3A2A1E', gold: PAL.gold,
       purple: PAL.purple, purple2: PAL.purple2, purpleShadow: PAL.purpleShadow,
     };
     return CC;
@@ -342,7 +353,7 @@
   function traceNets(surf, w, h) {
     const out = [], n = w * h, deg = new Uint8Array(n), used = new Uint8Array(n), STEP = [-w, 1, w, -1];
     for (let i = 0; i < n; i++) {
-      const v = surf[i]; if (v < 1 || v > 3) continue;
+      const v = surf[i]; if (!isCurveKind(v)) continue;
       const x = i % w, y = (i / w) | 0; let m = 0;
       if (y > 0 && surf[i - w] === v) m |= 1;
       if (x < w - 1 && surf[i + 1] === v) m |= 2;
@@ -367,14 +378,14 @@
       return { tiles: tiles, closed: false };
     }
     for (let i = 0; i < n; i++) {
-      const v = surf[i]; if (v < 1 || v > 3) continue;
+      const v = surf[i]; if (!isCurveKind(v)) continue;
       const m = deg[i], c = bitCount4(m);
       if (c === 2) continue;
       if (c === 0) { out.push({ kind: v, tiles: [i], closed: false }); continue; }
       for (let d = 0; d < 4; d++) if ((m & (1 << d)) && !(used[i] & (1 << d))) { const r = walk(i, d); out.push({ kind: v, tiles: r.tiles, closed: false }); }
     }
     for (let i = 0; i < n; i++) {   // what is left are pure loops (every tile degree 2)
-      const v = surf[i]; if (v < 1 || v > 3) continue;
+      const v = surf[i]; if (!isCurveKind(v)) continue;
       const m = deg[i]; if (bitCount4(m) !== 2) continue;
       for (let d = 0; d < 4; d++) if ((m & (1 << d)) && !(used[i] & (1 << d))) { const r = walk(i, d); out.push({ kind: v, tiles: r.tiles, closed: r.closed }); break; }
     }
@@ -423,7 +434,8 @@
   function sampleCurve(pts, closed, j, t, sign, dists, out) {
     const n = pts.length >> 1, j1 = closed ? (j + 1) % n : Math.min(n - 1, j + 1);
     let x0 = pts[2 * j] + (pts[2 * j1] - pts[2 * j]) * t, y0 = pts[2 * j + 1] + (pts[2 * j1 + 1] - pts[2 * j + 1]) * t;
-    let i = sign > 0 ? j1 : j, acc = 0, q = 0, tx = 0, ty = 0;
+    let i = sign > 0 ? j1 : j, acc = 0, q = 0, tx = (pts[2 * j1] - pts[2 * j]) * sign, ty = (pts[2 * j1 + 1] - pts[2 * j + 1]) * sign;
+    { const L0 = Math.hypot(tx, ty); if (L0 > 1e-9) { tx /= L0; ty /= L0; } else { tx = 0; ty = 0; } }
     for (let guard = 0; guard <= n && q < dists.length; guard++) {
       if (i < 0 || i >= n) break;
       const x1 = pts[2 * i], y1 = pts[2 * i + 1], dx = x1 - x0, dy = y1 - y0, L = Math.hypot(dx, dy);
@@ -459,24 +471,94 @@
         if (Math.abs(32 * kk + 16 - n * 16) >= 24) continue;
         const x = side === 0 ? tx + w : tx + w - 1 - kk, y = side === 0 ? ty + h - 1 - kk : ty + h;
         if (x < 0 || y < 0 || x >= W || y >= HGT) continue;
-        const s = surf[y * W + x]; if (s >= 1 && s <= 3) add(side, kk, s);
+        const s = surf[y * W + x]; if (isCurveKind(s)) add(side, kk, s);
       }
     }
   }
-  /** the whole map's curves: smoothed polylines, per-tile segment ranges (bbox-bucketed) and per-lower-tile elevation steps */
+  const DX4 = [0, 1, 0, -1], DY4 = [-1, 0, 1, 0];
+  function wetOf(t, i) { const ty8 = t.type[i]; return (t.flags[i] & WATER_FLAGS) !== 0 || ty8 === T.OPEN_WATER || ty8 === T.BAYOU || ty8 === T.POND; }
+  /** bridge pass — the deck elevation (ft) of every water tile carrying a boardwalk / road / Pedestrian Bridge: max(bed, normal
+   *  stage) + the surface's clearance (the live wave and the surge are NOT in it, so the deck holds still), plus a gentle arch on a
+   *  simple Pedestrian Bridge span of ≤ deckArchMaxSpan tiles; NaN elsewhere. water[] is the surface the stilts stand in. */
+  function computeDecks(state, polys) {
+    const t = state.tiles, surf = t.surface, elev = t.elev, dep = t.depth, fl = t.flags;
+    const deck = new Float32Array(N).fill(NaN), water = new Float32Array(N).fill(NaN); let count = 0;
+    const hy = mod('hydro'), stageFn = hy ? (typeof hy.normalStageAt === 'function' ? hy.normalStageAt : (typeof hy.stageAt === 'function' ? hy.stageAt : null)) : null;
+    for (let i = 0; i < N; i++) {
+      const cl = DECK_KIND_FT[surf[i]] || 0; if (!cl || !wetOf(t, i)) continue;
+      const bed = fin(elev[i], 0);
+      let stage = stageFn ? fin(stageFn(state, i), NaN) : NaN;
+      if (!Number.isFinite(stage)) stage = bed + Math.max(0.5, fin(dep[i], 0));
+      if (!(fl[i] & WATER_FLAGS)) stage = Math.max(stage, bed + fin(dep[i], 0));   // a pond: its own level
+      water[i] = Math.max(bed, stage); deck[i] = water[i] + cl; count++;
+    }
+    const archFt = fin(PR.deckArchFt, 1), archMax = fin(PR.deckArchMaxSpan, 6) | 0;
+    for (let p = 0; p < polys.length; p++) {
+      const P = polys[p]; if (P.stub || P.closed || P.kind !== SURF.BRIDGE || P.tiles.length < 2 || P.tiles.length > archMax) continue;
+      const m = P.tiles.length;
+      for (let k = 0; k < m; k++) { const i = P.tiles[k]; if (deck[i] === deck[i]) deck[i] += archFt * Math.sin(Math.PI * (k + 0.5) / m); }
+    }
+    return { deck: deck, water: water, count: count };
+  }
+  /** a dead end beside a different walkable kind (path ↔ boardwalk ↔ bridge) runs on to the shared edge, so the two meet with no gap;
+   *  P.ext[end] = {i: our tile, j: the neighbour} for the kind-change step records */
+  function extendEnds(P, raw, surf) {
+    const m = P.tiles.length, ext = [null, null];
+    for (let e = 0; e < 2; e++) {
+      const k = e === 0 ? 0 : m - 1, i = P.tiles[k], x = i & 63, y = i >> 6;
+      let same = 0, best = -1, bestScore = 0;
+      for (let d = 0; d < 4; d++) { const nx = x + DX4[d], ny = y + DY4[d]; if (nx >= 0 && ny >= 0 && nx < W && ny < HGT && surf[ny * W + nx] === P.kind) same++; }
+      if (same > 1) continue;   // a junction, not a dead end
+      const prev = m > 1 ? P.tiles[e === 0 ? 1 : m - 2] : -1;
+      for (let d = 0; d < 4; d++) {
+        const nx = x + DX4[d], ny = y + DY4[d]; if (nx < 0 || ny < 0 || nx >= W || ny >= HGT) continue;
+        const j = ny * W + nx, s = surf[j]; if (!isCurveKind(s) || s === P.kind) continue;
+        if (ext[0] && ext[0].j === j) continue;
+        const score = (prev >= 0 && j === 2 * i - prev) ? 2 : 1;   // straight through scores best
+        if (score > bestScore) { best = j; bestScore = score; }
+      }
+      if (best < 0) continue;
+      const mx = (x + (best & 63)) * 0.5, my = (y + (best >> 6)) * 0.5;
+      if (e === 0) raw.unshift(mx, my); else raw.push(mx, my);
+      ext[e] = { i: i, j: best };
+    }
+    if (ext[0] || ext[1]) P.ext = ext;
+  }
+  /** the whole map's curves: smoothed polylines, per-tile segment ranges (bbox-bucketed), per-lower-tile elevation steps, the decks */
   function buildCurves(state) {
     const t = state.tiles, surf = t.surface, elev = t.elev;
     const polys = traceNets(surf, W, HGT);
     addStubs(state, polys);
-    const buckets = new Map(), steps = new Map();
-    const epOf = (i) => Math.round(fin(elev[i], 0) * PXFT);
+    const dk = computeDecks(state, polys), deck = dk.deck;
+    const buckets = new Map(), steps = new Map(), lamps = [], lampAt = new Map();
+    const lampEvery = Math.max(2, (PR.deckLampEvery | 0) || 4), lampSpan = 1 << CHAIKIN_ITERS;
+    const epOf = (i) => Math.round((deck[i] === deck[i] ? deck[i] : fin(elev[i], 0)) * PXFT);
+    const addStep = (lo, st) => { let list = steps.get(lo); if (!list) { list = []; steps.set(lo, list); } list.push(st); };
     for (let p = 0; p < polys.length; p++) {
       const P = polys[p], w = P.w = P.stub ? STUB_W : CURVE_W[P.kind];
       if (!P.pts) {
         const raw = []; for (let k = 0; k < P.tiles.length; k++) raw.push(P.tiles[k] & 63, P.tiles[k] >> 6);
-        P.pts = P.tiles.length === 1 ? [raw[0] - 0.12, raw[1], raw[0] + 0.12, raw[1]] : smoothPoly(raw, P.closed, CHAIKIN_ITERS);
+        if (!P.closed) extendEnds(P, raw, surf);
+        P.pts = raw.length === 2 ? [raw[0] - 0.12, raw[1], raw[0] + 0.12, raw[1]] : smoothPoly(raw, P.closed, CHAIKIN_ITERS);
       }
       const pts = P.pts, n = pts.length >> 1, segs = P.closed ? n : n - 1, pad = w * 0.5 + SEG_PAD;
+      if (P.ext) for (let e = 0; e < 2; e++) {   // the step where this run meets another kind: drawn by the higher side, on the lower tile
+        const ex = P.ext[e]; if (!ex) continue;
+        const ea = epOf(ex.i), eb = epOf(ex.j); if (ea <= eb) continue;
+        addStep(ex.j, { p: p, j: e === 0 ? 0 : Math.max(0, n - 2), t: e === 0 ? 0 : 1, sign: e === 0 ? -1 : 1, d: ea - eb, hiEp: ea, loEp: eb, lo: ex.j, hi: ex.i, kind: P.kind, w: w, ux: (ex.j & 63) - (ex.i & 63), uy: (ex.j >> 6) - (ex.i >> 6), deck: deck[ex.i] === deck[ex.i] });
+      }
+      if (!P.stub && DECK_KIND_FT[P.kind]) {   // lamps: every lampEvery-th deck tile along the run, on the viewer-side edge
+        const off0 = P.ext && P.ext[0] ? 1 : 0;
+        for (let k = 0, q = 0; k < P.tiles.length; k++) {
+          const i = P.tiles[k]; if (deck[i] !== deck[i]) { q = 0; continue; }
+          if ((q++ % lampEvery) !== 1 || lampAt.has(i)) continue;
+          const kk = k + off0, at = nearestOnCurve(pts, P.closed, i & 63, i >> 6, kk * lampSpan - lampSpan, kk * lampSpan + 2 * lampSpan);
+          const j = at.j, j1 = P.closed ? (j + 1) % n : Math.min(n - 1, j + 1), x = pts[2 * j] + (pts[2 * j1] - pts[2 * j]) * at.t, y = pts[2 * j + 1] + (pts[2 * j1 + 1] - pts[2 * j + 1]) * at.t;
+          const nrm = normalAt(pts, n, P.closed, j); let nx = nrm[0], ny = nrm[1]; if (nx + ny < 0) { nx = -nx; ny = -ny; }
+          const L = { i: i, x: x + nx * (w * 0.5 + 0.1), y: y + ny * (w * 0.5 + 0.1), ft: deck[i] + 2 };
+          lamps.push(L); lampAt.set(i, L);
+        }
+      }
       for (let k = 0; k < segs; k++) {
         const j = (k + 1) % n, x0 = pts[2 * k], y0 = pts[2 * k + 1], x1 = pts[2 * j], y1 = pts[2 * j + 1];
         const ax = Math.max(0, Math.floor(Math.min(x0, x1) - pad + 0.5)), bx = Math.min(W - 1, Math.floor(Math.max(x0, x1) + pad + 0.5));
@@ -496,12 +578,16 @@
         const hi = ea > eb ? a : b, lo = ea > eb ? b : a;
         const xm = ((a & 63) + (b & 63)) * 0.5, ym = ((a >> 6) + (b >> 6)) * 0.5;
         const at = nearestOnCurve(pts, P.closed, xm, ym, ka * span - span, ka * span + 2 * span);
-        const st = { p: p, j: at.j, t: at.t, sign: hi === a ? 1 : -1, d: Math.abs(ea - eb), hiEp: Math.max(ea, eb), loEp: Math.min(ea, eb), lo: lo, hi: hi, kind: P.kind, w: w, ux: (lo & 63) - (hi & 63), uy: (lo >> 6) - (hi >> 6) };
-        let list = steps.get(lo); if (!list) { list = []; steps.set(lo, list); } list.push(st);
+        const st = { p: p, j: at.j, t: at.t, sign: hi === a ? 1 : -1, d: Math.abs(ea - eb), hiEp: Math.max(ea, eb), loEp: Math.min(ea, eb), lo: lo, hi: hi, kind: P.kind, w: w, ux: (lo & 63) - (hi & 63), uy: (lo >> 6) - (hi >> 6), deck: deck[hi] === deck[hi] };
+        addStep(lo, st);
       }
       void m;
     }
-    return { polys: polys, buckets: buckets, steps: steps, state: state };
+    return { polys: polys, buckets: buckets, steps: steps, state: state, deck: deck, water: dk.water, deckCount: dk.count, lamps: lamps, lampAt: lampAt, stageRef: stageRefOf(state) };
+  }
+  /** the normal stage at the bayou's middle: when the season moves it, the decks (and their steps) follow on the next bake */
+  function stageRefOf(state) {
+    try { const hy = mod('hydro'), b = state.plot && state.plot.bayou; if (!hy || typeof hy.normalStageAt !== 'function' || !b || !b.length) return 0; return Math.round(fin(hy.normalStageAt(state, b[b.length >> 1]), 0) * 20) / 20; } catch (e) { return 0; }
   }
   function ensureCurves(state) {
     if (curves && !curvesDirty && curves.state === state) return curves;
@@ -557,10 +643,20 @@
       g.lineWidth = w + 0.1; g.strokeStyle = C.curb; g.stroke();
       g.lineWidth = w; g.strokeStyle = C.road; g.stroke(); drawCalls += 2;
       if (!stub) { g.lineCap = 'butt'; g.lineWidth = 0.045; g.setLineDash(DASH_ROAD); g.strokeStyle = C.dash; g.stroke(); drawCalls++; }
-    } else {
+    } else if (kind === SURF.BRIDGE) {   // bridge pass: a pale concrete deck with a dark kerb, expansion joints and a centre line
+      g.lineWidth = w + 0.1; g.strokeStyle = C.kerb; g.stroke();
+      g.lineWidth = w; g.strokeStyle = C.bridgeDeck; g.stroke(); drawCalls += 2;
+      if (!stub) {
+        g.lineCap = 'butt'; g.lineWidth = w - 0.04; g.setLineDash(DASH_JOINT); g.lineDashOffset = (seed % 5) * 0.04; g.strokeStyle = C.bridgeJoint; g.stroke();
+        g.lineWidth = 0.04; g.setLineDash(EMPTY_DASH); g.strokeStyle = C.bridgeLine; g.stroke(); drawCalls += 2;
+      }
+    } else {   // boardwalk: dark cypress edge, weathered planks with gaps, a lighter plank now and then
       g.lineWidth = w + 0.1; g.strokeStyle = C.rail; g.stroke();
       g.lineWidth = w; g.strokeStyle = C.deck; g.stroke(); drawCalls += 2;
-      if (!stub) { g.lineCap = 'butt'; g.lineWidth = w - 0.02; g.setLineDash(DASH_PLANK); g.strokeStyle = C.gap; g.stroke(); drawCalls++; }
+      if (!stub) {
+        g.lineCap = 'butt'; g.lineWidth = w - 0.02; g.setLineDash(DASH_PLANK); g.lineDashOffset = 0; g.strokeStyle = C.gap; g.stroke();
+        g.setLineDash(DASH_WEATHER); g.lineDashOffset = (seed % 9) * 0.05 + 0.04; g.strokeStyle = C.deckHi; g.stroke(); drawCalls += 2;
+      }
     }
   }
   /** posts under a boardwalk's viewer-side edge (every other smoothed point ≈ 0.25 tile) */
@@ -578,43 +674,126 @@
       }
     }
   }
-  /** a road over water: concrete piers under the deck, purple railings 6 px above it with posts */
-  function piers(g, C, wx, wy) {
-    g.setTransform(1, 0, 0, 1, 0, 0);
-    for (let s = 0; s < 2; s++) { const x = s ? wx + 20 : wx - 24, y = wy + 12; g.fillStyle = C.concrete; g.fillRect(x, y, 4, 8); g.fillStyle = C.steelDark; g.fillRect(x + 3, y, 1, 8); g.fillRect(x, y + 7, 4, 1); drawCalls += 3; }
+  // ---- bridge pass: decks over water -----------------------------------------------------------------------------
+  /** clip: the diamond's upper edges at topEp (raised `up` px) and its lower edges at botEp (+down), grown CLIP_EPS to the S/E like clipTile */
+  function clipHex(g, ch, tx, ty, topEp, botEp, up, down) {
+    const e = CLIP_EPS, px = (x, y) => (x - y) * 32 - ch.ox, py = (x, y, ep) => (x + y) * 16 - ep - ch.oy;
+    const Tx = px(tx - 0.5, ty - 0.5), Rx = px(tx + 0.5 + e, ty - 0.5), Bx = px(tx + 0.5 + e, ty + 0.5 + e), Lx = px(tx - 0.5, ty + 0.5 + e);
+    g.setTransform(1, 0, 0, 1, 0, 0); g.beginPath();
+    g.moveTo(Tx, py(tx - 0.5, ty - 0.5, topEp) - up); g.lineTo(Rx, py(tx + 0.5 + e, ty - 0.5, topEp) - up);
+    g.lineTo(Rx, py(tx + 0.5 + e, ty - 0.5, botEp)); g.lineTo(Bx, py(tx + 0.5 + e, ty + 0.5 + e, botEp) + down); g.lineTo(Lx, py(tx - 0.5, ty + 0.5 + e, botEp));
+    g.lineTo(Lx, py(tx - 0.5, ty + 0.5 + e, topEp) - up); g.closePath(); g.clip();
   }
-  function bridgeRails(g, C, ch, cv, list, ep) {
-    g.setTransform(1, 0, 0, 1, 0, 0); g.fillStyle = C.purpleShadow;
+  /** stilts (boardwalk: 2-px cypress posts every ≈ 0.25 tile on the viewer-side edge) or piers (road / bridge: 4-px concrete columns
+   *  every ≈ 2 tiles under both edges) from the deck down to botEp, with a waterline mark where they enter the water */
+  function deckStilts(g, C, ch, cv, list, kind, deckEp, waterEp, botEp, wetAt) {
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    const pier = kind !== SURF.BOARDWALK, off = CURVE_W[kind] * 0.5 + (pier ? -0.03 : 0.03);
     for (let r = 0; r < list.length; r++) {
-      const rg = list[r], P = cv.polys[rg.p]; if (P.stub || P.kind !== SURF.ROAD) continue;
-      const pts = P.pts, np = pts.length >> 1, off = P.w * 0.5 - 0.04;
+      const rg = list[r], P = cv.polys[rg.p]; if (P.stub || P.kind !== kind) continue;
+      const pts = P.pts, np = pts.length >> 1;
+      for (let k = rg.a; k <= rg.b + 1; k++) {
+        const j = P.closed ? k % np : k;
+        if (pier ? (j % 16 !== 4) : (j & 1)) continue;
+        const nrm = normalAt(pts, np, P.closed, j);
+        for (let s = -1; s <= 1; s += 2) {
+          if (!pier && (nrm[0] + nrm[1]) * s < 0) continue;
+          const x = pts[2 * j] + nrm[0] * off * s, y = pts[2 * j + 1] + nrm[1] * off * s;
+          if (!wetAt(x, y)) continue;
+          const sx = Math.round((x - y) * 32 - ch.ox), top = Math.round((x + y) * 16 - deckEp - ch.oy), wl = Math.round((x + y) * 16 - waterEp - ch.oy), bot = Math.round((x + y) * 16 - botEp - ch.oy);
+          if (pier) { g.fillStyle = C.pier; g.fillRect(sx - 2, top, 4, bot - top + 1); g.fillStyle = C.pierDark; g.fillRect(sx + 1, top, 1, bot - top + 1); g.fillStyle = C.waterline; g.fillRect(sx - 3, wl, 6, 1); drawCalls += 3; }
+          else { g.fillStyle = C.post; g.fillRect(sx - 1, top, 2, bot - top + 1); g.fillStyle = C.postShadow; g.fillRect(sx - 2, wl, 4, 1); drawCalls += 2; }
+        }
+      }
+    }
+  }
+  /** rails along both deck edges: a low cypress rail on a boardwalk; purple truss rails with gold caps on a road bridge / Pedestrian Bridge */
+  function deckRails(g, C, ch, cv, list, kind, deckEp) {
+    const wood = kind === SURF.BOARDWALK, h = wood ? 5 : 8, off = CURVE_W[kind] * 0.5 - 0.04;
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    for (let r = 0; r < list.length; r++) {
+      const rg = list[r], P = cv.polys[rg.p]; if (P.stub || P.kind !== kind) continue;
+      const pts = P.pts, np = pts.length >> 1, prev = [null, null];
       for (let k = rg.a; k <= rg.b + 1; k++) {
         const j = P.closed ? k % np : k; if (j & 1) continue;
         const nrm = normalAt(pts, np, P.closed, j);
-        for (let s = -1; s <= 1; s += 2) { const x = pts[2 * j] + nrm[0] * off * s, y = pts[2 * j + 1] + nrm[1] * off * s; g.fillRect(Math.round((x - y) * 32 - ch.ox), Math.round((x + y) * 16 - ep - ch.oy) - 5, 1, 5); drawCalls++; }
+        for (let s = -1; s <= 1; s += 2) {
+          const q = (s + 1) >> 1, x = pts[2 * j] + nrm[0] * off * s, y = pts[2 * j + 1] + nrm[1] * off * s;
+          const sx = Math.round((x - y) * 32 - ch.ox), sy = Math.round((x + y) * 16 - deckEp - ch.oy);
+          g.fillStyle = wood ? C.rail : C.purpleShadow; g.fillRect(sx, sy - h, 1, h); drawCalls++;
+          if (!wood) {
+            if ((j & 7) === 0) { g.fillStyle = C.gold; g.fillRect(sx - 1, sy - h - 1, 3, 1); drawCalls++; }
+            if (prev[q]) { g.strokeStyle = C.purpleShadow; g.lineWidth = 1; g.beginPath(); g.moveTo(prev[q][0] + 0.5, prev[q][1] - h + 0.5); g.lineTo(sx + 0.5, sy - 1.5); g.stroke(); drawCalls++; }   // truss diagonal
+          }
+          prev[q] = [sx, sy];
+        }
       }
     }
-    groundTransform(g, ch, ep + 6); g.lineJoin = 'round'; g.lineCap = 'butt'; g.setLineDash(EMPTY_DASH); g.lineWidth = 0.07;
-    for (let s = -1; s <= 1; s += 2) { if (!buildPath(g, cv, list, false, SURF.ROAD, s * (CURVE_W[2] * 0.5 - 0.04))) continue; g.strokeStyle = s < 0 ? C.purple : C.purple2; g.stroke(); drawCalls++; }
+    groundTransform(g, ch, deckEp + h); g.lineJoin = 'round'; g.lineCap = 'butt'; g.setLineDash(EMPTY_DASH); g.lineWidth = wood ? 0.05 : 0.07;
+    for (let s = -1; s <= 1; s += 2) { if (!buildPath(g, cv, list, false, kind, s * off)) continue; g.strokeStyle = wood ? C.rail : (s < 0 ? C.purple : C.purple2); g.stroke(); drawCalls++; }
+    if (!wood) { groundTransform(g, ch, deckEp + 2); g.lineWidth = 0.04; for (let s = -1; s <= 1; s += 2) { if (!buildPath(g, cv, list, false, kind, s * off)) continue; g.strokeStyle = C.purpleShadow; g.stroke(); drawCalls++; } }
   }
-  function culvertPipes(g, C, wx, wy) {
+  /** a lamp post on the deck's viewer-side edge (lit at night by render_fx through curves.lamps) */
+  function deckLamp(g, C, ch, L, kind, deckEp) {
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    const sx = Math.round((L.x - L.y) * 32 - ch.ox), sy = Math.round((L.x + L.y) * 16 - deckEp - ch.oy), wood = kind === SURF.BOARDWALK, H = wood ? 11 : 14;
+    g.fillStyle = wood ? C.post : C.lampPost; g.fillRect(sx, sy - H, 1, H); g.fillRect(sx - 1, sy - 1, 3, 1);
+    g.fillStyle = C.lampCap; g.fillRect(sx - 1, sy - H - 3, 3, 1);
+    g.fillStyle = C.lampHead; g.fillRect(sx - 1, sy - H - 2, 3, 2); drawCalls += 4;
+  }
+  /** one deck tile: the shadow on the water, stilts / piers, the deck at deckEp, rails, its lamp and any steps keyed to it.
+   *  `full` (the ground canvas copy, under the live water: what shows when a surge overtops the deck) runs the stilts to the
+   *  bed so they show through shallow water; the deck-layer copy (drawn after the water) stops them at the water surface */
+  function drawDeckAt(g, ch, cv, i, tx, ty, sf, deckEp, waterEp, bedEp, full, wetAt) {
+    const list = cv.buckets.get(i), steps = cv.steps.get(i);
+    if (!list && !steps) return;
+    const C = curveColors(), w = CURVE_W[sf];
+    if (list) {
+      g.save(); clipTile(g, ch, tx, ty, waterEp, 0, 0);   // the shadow stays on the water
+      g.setTransform(32, 16, -32, 16, -ch.ox + 6, -waterEp - ch.oy + 4); g.lineJoin = 'round'; g.lineCap = 'round'; g.setLineDash(EMPTY_DASH);
+      for (let pass = 0; pass < 2; pass++) if (buildPath(g, cv, list, pass === 0, sf, 0)) { g.lineWidth = (pass ? w : STUB_W) + 0.08; g.strokeStyle = C.shadow; g.stroke(); drawCalls++; }
+      g.restore();
+      g.save(); clipHex(g, ch, tx, ty, deckEp, full ? bedEp : waterEp, DECK_UP, 2);
+      deckStilts(g, C, ch, cv, list, sf, deckEp, waterEp, full ? Math.min(bedEp, waterEp) : waterEp, wetAt);
+      groundTransform(g, ch, deckEp);
+      for (let pass = 0; pass < 2; pass++) if (buildPath(g, cv, list, pass === 0, sf, 0)) strokeLayers(g, C, sf, pass === 0, hash(tx, ty));
+      deckRails(g, C, ch, cv, list, sf, deckEp);
+      const L = cv.lampAt.get(i); if (L) deckLamp(g, C, ch, L, sf, deckEp);
+      g.restore();
+    }
+    if (steps) for (let k = 0; k < steps.length; k++) drawStep(g, C, ch, cv, steps[k]);
+  }
+  function dropDeck(ch) { if (ch.deck) { try { ch.deck.width = 1; ch.deck.height = 1; } catch (e) { /* stub */ } } ch.deck = null; ch.deckCtx = null; ch.deckTiles = null; }
+  function deckChunks() { let n = 0; for (let k = 0; k < NCH; k++) if (chunks[k] && chunks[k].deck) n++; return n; }
+  /** bake one deck tile into the ground canvas (full stilts) and the chunk's deck layer; records the tile's window for deckPass */
+  function bakeDeckTile(ch, g, cv, i, tx, ty, sf, bedEp, state) {
+    const deckEp = Math.round(cv.deck[i] * PXFT), waterEp = Math.round(fin(cv.water[i], cv.deck[i]) * PXFT), t = state.tiles;
+    const wetAt = (x, y) => { const xi = Math.round(x), yi = Math.round(y); return xi >= 0 && yi >= 0 && xi < W && yi < HGT && wetOf(t, yi * W + xi); };
+    drawDeckAt(g, ch, cv, i, tx, ty, sf, deckEp, waterEp, bedEp, true, wetAt);
+    if (!ch.deck) { ch.deck = makeCanvas(CW, CHH); ch.deckCtx = ctx2d(ch.deck); }
+    const dg = ch.deckCtx; dg.globalAlpha = 1; dg.globalCompositeOperation = 'source-over';
+    drawDeckAt(dg, ch, cv, i, tx, ty, sf, deckEp, waterEp, bedEp, false, wetAt);
+    const wx = (tx - ty) * 32 - ch.ox, y0 = (tx + ty) * 16 - deckEp - ch.oy - 16 - DECK_UP, y1 = (tx + ty) * 16 - waterEp - ch.oy + 16 + 4;
+    const x0 = Math.max(0, wx - 34), x1 = Math.min(CW, wx + 34), ya = Math.max(0, y0), yb = Math.min(CHH, y1);
+    if (x1 > x0 && yb > ya) ch.deckTiles.push({ i: i, sf: sf, x: x0, y: ya, w: x1 - x0, h: yb - ya });
+  }
+  function culvertPipes(g, C, wx, wy) {   // (the old bed-level piers / bridgeRails are gone: decks over water are drawDeckAt's)
     g.setTransform(1, 0, 0, 1, 0, 0);
     for (let s = -1; s <= 1; s += 2) { const x = wx + s * 14 - 2, y = wy + 6; g.fillStyle = C.steelDark; g.fillRect(x, y, 4, 4); g.fillStyle = C.black; g.fillRect(x + 1, y + 1, 2, 2); g.fillStyle = C.steelDk2; g.fillRect(x, y + 4, 4, 1); drawCalls += 3; }
   }
-  /** the surface pieces that touch tile i, drawn at its elevation (called for every non-fence tile; cheap when none) */
-  function drawCurvesAt(g, ch, cv, i, tx, ty, ep, wx, wy, sf, wet, canal) {
-    const list = cv.buckets.get(i), steps = cv.steps.get(i);
+  /** the surface pieces that touch tile i, drawn at its elevation (called for every non-fence tile; cheap when none);
+   *  a deck tile (bridge pass) passes skipKind = its own surface: that kind, and its steps, are drawDeckAt's at deck elevation */
+  function drawCurvesAt(g, ch, cv, i, tx, ty, ep, wx, wy, sf, wet, canal, skipKind) {
+    const list = cv.buckets.get(i), steps = skipKind ? null : cv.steps.get(i);
     if (!list && !steps) return;
     const C = curveColors();
     if (list) {
-      const bridge = wet && sf === SURF.ROAD, up = bridge ? 9 : 0, down = sf === SURF.BOARDWALK ? 5 : (bridge ? 14 : 0);
+      const down = sf === SURF.BOARDWALK && !wet ? 5 : 0;
       g.save();
-      clipTile(g, ch, tx, ty, ep, up, down);
-      if (bridge) piers(g, C, wx, wy);
-      if (sf === SURF.BOARDWALK) boardwalkPosts(g, C, ch, cv, list, ep);
+      clipTile(g, ch, tx, ty, ep, 0, down);
+      if (sf === SURF.BOARDWALK && !wet) boardwalkPosts(g, C, ch, cv, list, ep);
       groundTransform(g, ch, ep);
-      for (let pass = 0; pass < 2; pass++) for (let kind = 1; kind <= 3; kind++) { if (buildPath(g, cv, list, pass === 0, kind, 0)) strokeLayers(g, C, kind, pass === 0, hash(tx, ty)); }
-      if (bridge) bridgeRails(g, C, ch, cv, list, ep);
+      for (let pass = 0; pass < 2; pass++) for (let q = 0; q < CURVE_KINDS.length; q++) { const kind = CURVE_KINDS[q]; if (kind === skipKind) continue; if (buildPath(g, cv, list, pass === 0, kind, 0)) strokeLayers(g, C, kind, pass === 0, hash(tx, ty)); }
       if (canal) culvertPipes(g, C, wx, wy);
       g.restore();
     }
@@ -626,8 +805,9 @@
     const px = (x, y) => (x - y) * 32 - ch.ox, py = (x, y, e) => (x + y) * 16 - e - ch.oy;
     g.setTransform(1, 0, 0, 1, 0, 0); g.setLineDash(EMPTY_DASH); g.lineWidth = 1; g.lineJoin = 'miter'; g.lineCap = 'butt';
     const S = [];
-    const quad = (k0, e0, k1, e1, fill) => {   // the curve strip between samples k0 and k1 (indices into S), corners at levels e0/e1
-      const x0 = S[k0 * 4], y0 = S[k0 * 4 + 1], nx0 = S[k0 * 4 + 2] * hw, ny0 = S[k0 * 4 + 3] * hw, x1 = S[k1 * 4], y1 = S[k1 * 4 + 1], nx1 = S[k1 * 4 + 2] * hw, ny1 = S[k1 * 4 + 3] * hw;
+    const quad = (k0, e0, k1, e1, fill, grow) => {   // the curve strip between samples k0 and k1 (indices into S), corners at levels e0/e1
+      const hg = hw + (grow || 0);
+      const x0 = S[k0 * 4], y0 = S[k0 * 4 + 1], nx0 = S[k0 * 4 + 2] * hg, ny0 = S[k0 * 4 + 3] * hg, x1 = S[k1 * 4], y1 = S[k1 * 4 + 1], nx1 = S[k1 * 4 + 2] * hg, ny1 = S[k1 * 4 + 3] * hg;
       g.fillStyle = fill; g.beginPath();
       g.moveTo(px(x0 - nx0, y0 - ny0), py(x0 - nx0, y0 - ny0, e0)); g.lineTo(px(x0 + nx0, y0 + ny0), py(x0 + nx0, y0 + ny0, e0));
       g.lineTo(px(x1 + nx1, y1 + ny1), py(x1 + nx1, y1 + ny1, e1)); g.lineTo(px(x1 - nx1, y1 - ny1), py(x1 - nx1, y1 - ny1, e1));
@@ -644,19 +824,25 @@
       const x = S[k * 4], y = S[k * 4 + 1], nx = S[k * 4 + 2] * (hw + (grow || 0)), ny = S[k * 4 + 3] * (hw + (grow || 0));
       g.strokeStyle = color; g.beginPath(); g.moveTo(px(x - nx, y - ny), py(x - nx, y - ny, e)); g.lineTo(px(x + nx, y + ny), py(x + nx, y + ny, e)); g.stroke(); drawCalls++;
     };
+    const landing = (k0, L0, fill, edge, grow) => {   // bridge pass: a wider pad at the foot of a deck's stairs / ramp, on the land
+      sampleCurve(pts, P.closed, st.j, st.t, st.sign, [L0, L0 + 0.2], S);
+      quad(k0, st.loEp, k0 + 1, st.loEp, fill, grow); g.strokeStyle = edge; line(k0 + 1, st.loEp, edge, grow);
+    };
     if (d < 3) {   // under half a foot: a short ramp wedge blends the two levels
       sampleCurve(pts, P.closed, st.j, st.t, st.sign, [0, 0.1], S);
-      quad(0, st.hiEp, 1, st.loEp, st.kind === SURF.ROAD ? C.ramp : st.kind === SURF.BOARDWALK ? C.deckLo : C.pathLo);
+      quad(0, st.hiEp, 1, st.loEp, st.kind === SURF.ROAD ? C.ramp : st.kind === SURF.BRIDGE ? C.bridgeRamp : st.kind === SURF.BOARDWALK ? C.deckLo : C.pathLo);
       return;
     }
-    if (st.kind === SURF.ROAD) {   // cars take a ramp, not stairs: asphalt slope with its curbs and hatched edge marks
-      const L = Math.min(0.5, 0.12 + d * 0.012);
+    if (st.kind === SURF.ROAD || st.kind === SURF.BRIDGE) {   // cars take a ramp, not stairs: asphalt slope with its curbs and hatched edge marks; the Pedestrian Bridge a longer concrete ramp with handrails
+      const bridge = st.kind === SURF.BRIDGE, L = bridge ? Math.min(0.9, 0.2 + d * 0.02) : Math.min(0.5, 0.12 + d * 0.012);
       sampleCurve(pts, P.closed, st.j, st.t, st.sign, [0, L * 0.25, L * 0.5, L * 0.75, L], S);
-      quad(0, st.hiEp, 4, st.loEp, C.ramp);
-      g.strokeStyle = C.curb; g.beginPath();
+      quad(0, st.hiEp, 4, st.loEp, bridge ? C.bridgeRamp : C.ramp);
+      g.strokeStyle = bridge ? C.kerb : C.curb; g.beginPath();
       for (let s = -1; s <= 1; s += 2) for (let k = 0; k <= 4; k++) { const e = st.hiEp - (st.hiEp - st.loEp) * k / 4, x = S[k * 4] + S[k * 4 + 2] * hw * s, y = S[k * 4 + 1] + S[k * 4 + 3] * hw * s; if (k === 0) g.moveTo(px(x, y), py(x, y, e)); else g.lineTo(px(x, y), py(x, y, e)); }
       g.stroke(); drawCalls++;
-      for (let k = 1; k <= 3; k++) line(k, st.hiEp - (st.hiEp - st.loEp) * k / 4, C.hatch, -0.06);
+      if (bridge) {   // handrail posts down the ramp on both sides, a purple rail over them
+        for (let s = -1; s <= 1; s += 2) { g.beginPath(); for (let k = 0; k <= 4; k++) { const e = st.hiEp - (st.hiEp - st.loEp) * k / 4, x = S[k * 4] + S[k * 4 + 2] * hw * s, y = S[k * 4 + 1] + S[k * 4 + 3] * hw * s, sx = Math.round(px(x, y)), sy = Math.round(py(x, y, e)); g.fillStyle = C.purpleShadow; g.fillRect(sx, sy - 7, 1, 7); if (k === 0) g.moveTo(sx + 0.5, sy - 7.5); else g.lineTo(sx + 0.5, sy - 7.5); } g.strokeStyle = s < 0 ? C.purple : C.purple2; g.stroke(); drawCalls += 6; }
+      } else for (let k = 1; k <= 3; k++) line(k, st.hiEp - (st.hiEp - st.loEp) * k / 4, C.hatch, -0.06);
       return;
     }
     const wood = st.kind === SURF.BOARDWALK, tread = wood ? C.woodTread : C.stoneTread, rise = wood ? C.woodRiser : C.stoneRiser, nose = wood ? C.woodNose : C.stoneNose;
@@ -670,14 +856,17 @@
       if (toward) { riser(k - 1, level(k - 1), level(k), rise); if (k < nT) { quad(k - 1, level(k), k, level(k), tread); line(k, level(k), nose); } }
       else { if (k < nT) { quad(k - 1, level(k), k, level(k), tread); line(k, level(k), nose); } riser(k - 1, level(k - 1), level(k), rise); }
     }
+    if (st.deck && wood) landing(nT + 1, nT * run, C.deck, C.rail, 0.1);   // the boardwalk's landing where it meets the land
     // handrail posts at both ends
     g.fillStyle = C.post;
     for (let s = -1; s <= 1; s += 2) for (let k = 0; k <= nT; k += nT) {
       const x = S[k * 4] + S[k * 4 + 2] * (hw + 0.03) * s, y = S[k * 4 + 1] + S[k * 4 + 3] * (hw + 0.03) * s, e = k ? st.loEp : st.hiEp;
-      const sx = Math.round(px(x, y)), sy = Math.round(py(x, y, e)); g.fillRect(sx, sy - 6, 1, 6); g.fillRect(sx - 1, sy - 7, 3, 1); drawCalls += 2;
+      const sx = Math.round(px(x, y)), sy = Math.round(py(x, y, e)); g.fillStyle = C.post; g.fillRect(sx, sy - 6, 1, 6); g.fillRect(sx - 1, sy - 7, 3, 1); drawCalls += 2;
     }
   }
-  M.curves = { trace: traceNets, smooth: smoothPoly, runs: elevRuns, build: buildCurves, current: () => curves, invalidate: () => { curvesDirty = true; } };
+  M.curves = { trace: traceNets, smooth: smoothPoly, runs: elevRuns, build: buildCurves, current: () => curves, invalidate: () => { curvesDirty = true; },
+    deckOf: (i) => (curves && curves.deck && i >= 0 && i < N) ? curves.deck[i] : NaN, decksDrawn: () => decksDrawn, deckChunks: deckChunks, clearance: DECK_KIND_FT, overtopped: (i) => overtoppedNow.has(i),
+    deckStats: () => Object.assign({ chunks: chunks.filter((c) => c && c.deck).map((c) => [c.cx, c.cy, c.deckTiles ? c.deckTiles.length : -1, c.dirty]) }, deckStats) };
   /** bake chunk (cx, cy) at 1× into its canvas (ARCHITECTURE §6.3 step 2) */
   function bakeChunk(ch, state) {
     const sp = S();
@@ -688,7 +877,9 @@
     g.clearRect(0, 0, CW, CHH);
     const t = state.tiles, elev = t.elev, type = t.type, fl = t.flags, surf = t.surface, crest = t.crest, integ = t.integrity, depth = t.depth;
     markCypress(state);
-    const cv = ensureCurves(state);
+    const cv = ensureCurves(state), deck = cv ? cv.deck : null;
+    if (ch.deck) { try { ch.deckCtx.setTransform(1, 0, 0, 1, 0, 0); ch.deckCtx.clearRect(0, 0, CW, CHH); } catch (e) { /* stub */ } }
+    ch.deckTiles = [];
     const bx = ch.cx * CS, by = ch.cy * CS;
     for (let s = 0; s <= 14; s++) {              // tiles by tx+ty ascending (draw order inside the chunk)
       for (let dx = Math.max(0, s - 7); dx <= Math.min(7, s); dx++) {
@@ -714,8 +905,9 @@
         // (e) surfaces: fences stay auto-tiled stamps; paths / roads / boardwalks are stroked centrelines (smoothing pass),
         //     drawn for every non-fence tile the curves touch (a curve may spill into a neighbour at a corner)
         const sf = surf[i], wet = (f & WATER_FLAGS) !== 0 || ty8 === T.OPEN_WATER || ty8 === T.BAYOU || ty8 === T.POND;
-        if (cv && sf !== SURF.FENCE) drawCurvesAt(g, ch, cv, i, tx, ty, ep, wx, wy, sf, wet, (f & FLAG.CANAL) !== 0 && sf > 0);
-        else if (sf > 0 && sf <= 4) {
+        const isDeck = deck !== null && deck[i] === deck[i];   // bridge pass: a boardwalk / road / Pedestrian Bridge over water
+        if (cv && sf !== SURF.FENCE) drawCurvesAt(g, ch, cv, i, tx, ty, ep, wx, wy, sf, wet, (f & FLAG.CANAL) !== 0 && sf > 0, isDeck ? sf : 0);
+        else if (sf > 0 && sf <= 5) {
           let v = sameMask(surf, i, tx, ty, sf);
           if (wet) v |= 16;
           if (sf === SURF.FENCE && (hash(tx, ty) % 6) === 0) v |= 32;
@@ -734,15 +926,17 @@
         if (f & FLAG.PRESERVE) { const v = flagMask(fl, i, tx, ty, FLAG.PRESERVE, true); if (v) { ref = sp.get('preservePost', v, 0, 1); if (ref) blit1(g, ref, wx, wy); } }
         if (f & FLAG.MOUND) { ref = sp.get('mound', 0, 0, 1); if (ref) blit1(g, ref, wx, wy); }
         if (f & FLAG.DEBRIS) { ref = sp.get('decal:debris', 0, hash(tx, ty) & 3, 1); if (ref) blit1(g, ref, wx, wy); }
+        if (isDeck && cv) { try { bakeDeckTile(ch, g, cv, i, tx, ty, sf, ep, state); } catch (err) { rerr('deck:bake', err); } }
       }
     }
+    if (ch.deck && !ch.deckTiles.length) dropDeck(ch);
     ch.dirty = 0; dirtyBits[ch.cx + ch.cy * 8] = 0; ch.lastSeen = frameNo;
   }
   function evictChunks() {
     let mem = 0;
     try { const sp = S(); mem = typeof sp.totalMemoryMB === 'function' ? sp.totalMemoryMB() : sp.memoryMB(); } catch (e) { mem = 0; }
     const compMB = canvas ? (canvas.width * canvas.height * 4 * 3) / 1048576 : 0;
-    mem += liveChunks() * C.chunkMB + compMB;
+    mem += (liveChunks() + deckChunks()) * C.chunkMB + compMB;
     const budget = PR.canvasBudgetMB || 64;
     while (mem > budget) {
       let victim = null;
@@ -928,6 +1122,43 @@
   }
 
   // ---------------------------------------------------------------------------
+  // Pass 3b — decks over water (bridge pass): each chunk's deck layer, drawn after the live water so boardwalks, road
+  // bridges and the Pedestrian Bridge sit ON the water. A deck the hydro overtopping rule calls impassable (live surface
+  // more than its threshold above normal stage) is left out, so its ground-canvas copy shows under the surge.
+  // ---------------------------------------------------------------------------
+  function deckOvertopped(state, hy, th, d) {
+    const head = hy.surfaceAt(state, d.i) - hy.normalStageAt(state, d.i);
+    return head > (d.sf === SURF.BRIDGE ? fin(th.pedBridgeSurge, 6) : d.sf === SURF.ROAD ? Math.max(fin(th.bridgeSurge, 2), DECK_KIND_FT[SURF.ROAD]) : fin(th.bridgeSurge, 2));
+  }
+  const overtoppedNow = new Set(), overtoppedScratch = new Set();   // deck tiles left under the water this frame (render_fx keeps their lamps dark); the scratch set serves renderInto (minimap / postcard) so it never clobbers the frame's
+  const deckStats = { seen: 0, culled: 0, under: 0, live: false, calls: 0 };
+  function deckPass(state, g, track) {
+    const over = track ? overtoppedNow : overtoppedScratch; over.clear();
+    if (track) { decksDrawn = 0; deckStats.seen = 0; deckStats.culled = 0; deckStats.under = 0; deckStats.calls++; }
+    const z = zoomNow, cw = CW * z, chh = CHH * z, hw = vw / 2, hh = vh / 2, camx = camera.x, camy = camera.y;
+    const hy = mod('hydro'), th = (BSU.params.hydro && BSU.params.hydro.thresholds) || {};
+    const live = !!(hy && typeof hy.surfaceAt === 'function' && typeof hy.normalStageAt === 'function');
+    g.globalAlpha = 1; g.globalCompositeOperation = 'source-over';
+    for (let s = 0; s <= 14; s++) {
+      for (let cx = Math.max(0, s - 7); cx <= Math.min(7, s); cx++) {
+        const cy = s - cx, ch = chunks[cx + cy * 8];
+        if (!ch || !ch.deck || !ch.deckTiles || !ch.deckTiles.length) continue;
+        if (track) deckStats.seen++;
+        const dx = (ch.ox - camx) * z + hw, dy = (ch.oy - camy) * z + hh;
+        if (dx > vw || dy > vh || dx + cw < 0 || dy + chh < 0) { if (track) deckStats.culled++; continue; }
+        let under = 0;
+        if (live) for (let q = 0; q < ch.deckTiles.length; q++) if (deckOvertopped(state, hy, th, ch.deckTiles[q])) { under++; over.add(ch.deckTiles[q].i); }
+        if (track) { deckStats.under += under; deckStats.live = live; }
+        if (!under) { g.drawImage(ch.deck, 0, 0, CW, CHH, Math.round(dx), Math.round(dy), Math.round(cw), Math.round(chh)); drawCalls++; if (track) decksDrawn += ch.deckTiles.length; continue; }
+        for (let q = 0; q < ch.deckTiles.length; q++) {   // a surge: tile by tile, the overtopped ones left under the water
+          const d = ch.deckTiles[q]; if (over.has(d.i)) continue;
+          g.drawImage(ch.deck, d.x, d.y, d.w, d.h, Math.round(dx + d.x * z), Math.round(dy + d.y * z), Math.round(d.w * z), Math.round(d.h * z)); drawCalls++; if (track) decksDrawn++;
+        }
+      }
+    }
+  }
+
+  // ---------------------------------------------------------------------------
   // Pass 4 — depth-sorted entities
   // ---------------------------------------------------------------------------
   function grow() { const nk = new Float64Array(keys.length * 2); nk.set(keys); keys = nk; const no = new Int32Array(order.length * 2); no.set(order); order = no; }
@@ -1028,7 +1259,8 @@
     moverScreen(e);
     return e;
   }
-  const groundElev = (t, i) => fin(t.elev[i], 0);
+  /** ground elevation — or, on a deck over water (bridge pass), the deck's: students and buses walk the deck, not the bed */
+  const groundElev = (t, i) => { const d = curves && curves.deck; return (d && d[i] === d[i]) ? d[i] : fin(t.elev[i], 0); };
   const VEH_ID = { pirogue: 'pirogue', bus: 'bus', fogger: 'fogger', cajunNavy: 'navy', navy: 'navy', crew: 'officer', float: 'float' };
   const WATER_VEH = { pirogue: 1, cajunNavy: 1, navy: 1 };
 
@@ -1935,6 +2167,7 @@
     const t0 = nowMs(); const timeBudget = firstFrame ? C.firstBakeMs : 0;
     const maxBakes = PR.chunkRebakesPerFrame || 2;
     bakesThisFrame = 0;
+    if (curves && !curvesDirty && (frameNo % 30) === 7 && curves.deckCount > 0 && stageRefOf(state) !== curves.stageRef) { curvesDirty = true; M.dirtyAll(); }
     for (let s = 0; s <= 14; s++) {
       for (let cx = Math.max(0, s - 7); cx <= Math.min(7, s); cx++) {
         const cy = s - cx, ch = chunks[cx + cy * 8];
@@ -1955,6 +2188,7 @@
   function runWorld(state, g, alpha, dtMs, withRegistered) {
     try { chunkPass(state, g); } catch (e) { rerr('chunks', e); }
     try { waterPass(state, g); } catch (e) { rerr('water', e); }
+    try { deckPass(state, g, withRegistered !== false); } catch (e) { rerr('deck', e); }
     try { entityPass(state, g); } catch (e) { rerr('entities', e); }
     if (withRegistered === false) return;
     for (let k = 0; k < passes.length; k++) {

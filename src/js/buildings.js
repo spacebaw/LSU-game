@@ -291,7 +291,7 @@
   // Access network: `connected` = surface 1–3 tiles 4-connected to the Highway 1 stub
   // or to any tile 4-adjacent to Founders' Hall (GDD §3.6 Access)
   // ---------------------------------------------------------------------------
-  function isAccessSurface(s) { return s === SURF.PATH || s === SURF.ROAD || s === SURF.BOARDWALK; }
+  function isAccessSurface(s) { return s === SURF.PATH || s === SURF.ROAD || s === SURF.BOARDWALK || s === SURF.BRIDGE; }
   function rebuildConnected(state) {
     const c = cache(state), conn = c.connected, surf = state.tiles.surface, q = c.scratchQueue;
     conn.fill(0); c.founderRing.fill(0);
@@ -451,6 +451,29 @@
     if (Math.max(spanX, spanY) > PB.bridgeMaxSpan) return { ok: false, reason: 'Bridges span 3 tiles at most' };
     return { ok: true };
   }
+  /** bridge pass — the Pedestrian Bridge: every water segment of the run must reach land at both ends (a land tile in the run,
+   *  or an existing bridge / access surface just off the run); a single click extends an existing bridge or starts from land */
+  function pedBridgeOk(state, i, run) {
+    const surf = state.tiles.surface;
+    const anchored = function (j) { return j >= 0 && j < N && (isLand(state, j) || surf[j] === SURF.BRIDGE); };
+    if (Array.isArray(run) && run.length) {
+      const k = run.indexOf(i);
+      if (k < 0) return { ok: false, reason: 'Both ends must reach land' };
+      let a = k, b = k;
+      while (a - 1 >= 0 && !isLand(state, run[a - 1])) a--;
+      while (b + 1 < run.length && !isLand(state, run[b + 1])) b++;
+      const ends = [[a - 1 >= 0 ? run[a - 1] : -1, run[a]], [b + 1 < run.length ? run[b + 1] : -1, run[b]]];
+      for (const e of ends) {
+        if (e[0] >= 0 && isLand(state, e[0])) continue;
+        let touches = false;
+        for (const n of BSU.nbr4(e[1])) if (run.indexOf(n) < 0 && anchored(n)) touches = true;
+        if (!touches) return { ok: false, reason: 'Both ends must reach land' };
+      }
+      return { ok: true };
+    }
+    for (const n of BSU.nbr4(i)) if (anchored(n)) return { ok: true };
+    return { ok: false, reason: 'Both ends must reach land' };
+  }
   /** the per-tile terrain rule of a drag / paint row; returns '' or the reason; sets r.bridge for roads on water */
   function dragTileRule(state, row, i, opts, r) {
     const surf = state.tiles.surface[i], owner = state.tiles.owner[i];
@@ -463,14 +486,14 @@
         if (owner >= 0) return 'Occupied';
         if (surf === SURF.PATH) return 'Already a path';
         if (surf === SURF.FENCE) return 'Fence in the way';
-        if (surf === SURF.ROAD || surf === SURF.BOARDWALK) return 'Occupied';
+        if (surf === SURF.ROAD || surf === SURF.BOARDWALK || surf === SURF.BRIDGE) return 'Occupied';
         return '';
       case PLACE.ROAD:
         if (isPreserve(state, i)) return 'Preserve';
         if (owner >= 0) return 'Occupied';
         if (surf === SURF.ROAD) return 'Already a road';
         if (surf === SURF.FENCE) return 'Fence in the way';
-        if (surf === SURF.BOARDWALK) return 'Occupied';
+        if (surf === SURF.BOARDWALK || surf === SURF.BRIDGE) return 'Occupied';
         if (water) { const b = bridgeSpanOk(state, i, opts.tiles); if (!b.ok) return b.reason; r.bridge = true; return ''; }
         if (isMarsh(state, i)) return 'Use a Boardwalk or a bridge';
         return '';
@@ -478,7 +501,14 @@
         if (owner >= 0) return 'Occupied';
         if (surf === SURF.BOARDWALK) return 'Already a boardwalk';
         if (surf === SURF.FENCE) return 'Fence in the way';
-        if (surf === SURF.PATH || surf === SURF.ROAD) return 'Occupied';
+        if (surf === SURF.PATH || surf === SURF.ROAD || surf === SURF.BRIDGE) return 'Occupied';
+        return '';
+      case PLACE.BRIDGE:   // bridge pass: water only; a land tile inside a drag run is the landing (placed as nothing, see placeRun)
+        if (!water) { if (Array.isArray(opts.tiles) && opts.tiles.length > 1 && opts.tiles.indexOf(i) >= 0) { r.landing = true; return ''; } return 'Bridges go over water'; }
+        if (owner >= 0) return 'Occupied';
+        if (surf === SURF.BRIDGE) return 'Already a bridge';
+        if (surf !== SURF.NONE) return 'Occupied';
+        { const b = pedBridgeOk(state, i, opts.tiles); if (!b.ok) return b.reason; }
         return '';
       case PLACE.LEVEE:
         if (water) return 'Not on water';
@@ -647,6 +677,8 @@
       if (marsh || row.alwaysPilings || opts.pilings === true) r.needsPilings = true;
     } else if (r.bridge) {
       base = row.cost * PB.bridgeCostMult;
+    } else if (r.landing) {
+      base = 0;   // a Pedestrian Bridge run's land tile: nothing is built there
     }
     r.terrainMod = mod;
     const eng = (M.has(state, 'engineering') && (id === 'levee' || id === 'floodwall' || id === 'canal' || id === 'pump')) ? 1 + PE.terrainCost.engineering : 1;
@@ -731,7 +763,7 @@
     const endOk = function (i) { return isLand(state, i) && (state.tiles.elev[i] >= PB.barrierEndElev || state.tiles.crest[i] > 0); };
     if (!endOk(first) || !endOk(last)) return fail(r, 'Ends must stand on land ≥ 1.5 ft or a levee');
     for (let k = 1; k < run.length - 1; k++) if (!(state.tiles.flags[run[k]] & FLAG.BAYOU) && state.tiles.type[run[k]] !== T.BAYOU) return fail(r, 'The middle must cross the Bayou');
-    for (const i of run) if (state.tiles.owner[i] !== -1 || (state.tiles.surface[i] !== SURF.NONE && state.tiles.surface[i] !== SURF.BOARDWALK)) return fail(r, 'Occupied');
+    for (const i of run) if (state.tiles.owner[i] !== -1 || (state.tiles.surface[i] !== SURF.NONE && state.tiles.surface[i] !== SURF.BOARDWALK && state.tiles.surface[i] !== SURF.BRIDGE)) return fail(r, 'Occupied');
     if (M.count(state, 'surge_barrier') > 0) return fail(r, 'One barrier per bayou');
     // ≥ 2 powered pumps upstream (their network touches a bayou tile with a smaller spline index)
     const bayou = (state.plot && state.plot.bayou) || [];
@@ -812,7 +844,7 @@
     const ent = { kind: 'tile', prev: prev, post: null, eco: 0 };   // post = what this placement left behind: undo refuses when the tile was changed since
     undoRec.entries.push(ent);
     switch (row.placeRule) {
-      case PLACE.PATH: case PLACE.ROAD: case PLACE.BOARDWALK:
+      case PLACE.PATH: case PLACE.ROAD: case PLACE.BOARDWALK: case PLACE.BRIDGE:
         setSurface(state, i, row.effects.surfaceId); rewalk(state, i); break;
       case PLACE.FENCE:
         setSurface(state, i, SURF.FENCE); rewalk(state, i); break;
@@ -954,9 +986,24 @@
           if (!chk.ok) bad.set(run[k], chk.reason);
         }
       }
+      // bridge pass: a Pedestrian Bridge run is its water tiles; land tiles are the landings (nothing placed, nothing charged)
+      let landings = null;
+      if (row.placeRule === PLACE.BRIDGE) {
+        landings = new Set();
+        for (let k = 0; k < run.length; k++) {
+          if (isLand(state, run[k])) { landings.add(run[k]); continue; }
+          const chk = pedBridgeOk(state, run[k], run);
+          if (!chk.ok) bad.set(run[k], chk.reason);
+        }
+        if (landings.size === run.length) { out.skipped.push({ i: run[0], reason: 'Bridges go over water' }); return out; }
+      }
       const undoRec = { tick: fin(state.tick, 0), entries: [], cost: 0 };
       const o = Object.assign({}, opts, { tiles: run });
       for (const i of run) {
+        if (landings && landings.has(i)) {   // a bare landing gets a gravel path (its own price) so the bridge meets the land properly
+          if (state.tiles.surface[i] === SURF.NONE && state.tiles.owner[i] === -1) { const lr = placeInner(state, 'path', i & 63, i >> 6, opts, undoRec); if (lr.ok) { out.placed++; out.cost += lr.cost; } }
+          continue;
+        }
         if (bad.has(i)) { out.skipped.push({ i: i, reason: bad.get(i) }); continue; }
         const r = placeInner(state, id, i & 63, i >> 6, o, undoRec);
         if (r.ok) { out.placed++; out.cost += r.cost; } else out.skipped.push({ i: i, reason: r.reason });
@@ -974,6 +1021,7 @@
     if (s === SURF.PATH && cat.path) v += cat.path.cost;
     if (s === SURF.ROAD && cat.road) v += cat.road.cost * (hasWaterFlag(state, i) ? PB.bridgeCostMult : 1);
     if (s === SURF.BOARDWALK && cat.boardwalk) v += cat.boardwalk.cost;
+    if (s === SURF.BRIDGE && cat.bridge) v += cat.bridge.cost;
     if (s === SURF.FENCE && cat.gator_fence) v += cat.gator_fence.cost;
     if (isPreserve(state, i) && cat.preserve) v += cat.preserve.cost;
     return v;
@@ -1544,7 +1592,7 @@
     s.parkingLots = s.lots;
     for (const m of ((state.plot && state.plot.mounds) || [])) { let reached = false; for (const n of BSU.nbr4(m)) if (isAccessSurface(tl.surface[n])) reached = true; if (reached) { s.landmarks += PE.landmarks.mounds; break; } }
     if (state.economy && state.economy.westCampus) s.landmarks += PE.landmarks.west;
-    for (let i = 0; i < N; i++) if (tl.surface[i] === SURF.ROAD && (tl.flags[i] & (FLAG.BAYOU | FLAG.OPEN_WATER))) s.bridges++;
+    for (let i = 0; i < N; i++) if ((tl.surface[i] === SURF.ROAD && (tl.flags[i] & (FLAG.BAYOU | FLAG.OPEN_WATER))) || tl.surface[i] === SURF.BRIDGE) s.bridges++;
     s.beds = Math.round(s.beds); s.seats = Math.round(s.seats); s.feeds = Math.round(s.feeds);
     s.shelter = M.shelter(state);
     return s;
@@ -1571,10 +1619,10 @@
         sum += u;
       }
       const tl = state.tiles;
-      const per = { road: cat.road ? cat.road.upkeep : 100, boardwalk: cat.boardwalk ? cat.boardwalk.upkeep : 150, fence: cat.gator_fence ? cat.gator_fence.upkeep : 80, levee: cat.levee ? cat.levee.upkeep : 400, floodwall: cat.floodwall ? cat.floodwall.upkeep : 900, canal: cat.canal ? cat.canal.upkeep : 500 };
+      const per = { road: cat.road ? cat.road.upkeep : 100, boardwalk: cat.boardwalk ? cat.boardwalk.upkeep : 150, bridge: cat.bridge ? cat.bridge.upkeep : 300, fence: cat.gator_fence ? cat.gator_fence.upkeep : 80, levee: cat.levee ? cat.levee.upkeep : 400, floodwall: cat.floodwall ? cat.floodwall.upkeep : 900, canal: cat.canal ? cat.canal.upkeep : 500 };
       for (let i = 0; i < N; i++) {
         const s = tl.surface[i];
-        if (s === SURF.ROAD) sum += per.road; else if (s === SURF.BOARDWALK) sum += per.boardwalk; else if (s === SURF.FENCE) sum += per.fence;
+        if (s === SURF.ROAD) sum += per.road; else if (s === SURF.BOARDWALK) sum += per.boardwalk; else if (s === SURF.BRIDGE) sum += per.bridge; else if (s === SURF.FENCE) sum += per.fence;
         if (tl.crest[i] === 12) sum += per.floodwall; else if (tl.crest[i] > 0) sum += per.levee;
         if (tl.flags[i] & FLAG.CANAL) sum += per.canal;
       }
