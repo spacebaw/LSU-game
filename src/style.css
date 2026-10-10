@@ -241,7 +241,9 @@ input.rename{width:100%;font:700 14px/1.2 var(--font-title);color:var(--text);ba
 .board-name{font-weight:700} .board-text{font-size:11px;color:var(--text-dim);font-weight:400;margin-top:2px}
 #panels{position:absolute;inset:0;pointer-events:none;z-index:4}
 #panels .panel{position:absolute;left:50%;top:calc(var(--topbar-h) + 24px);transform:translateX(-50%);width:560px;max-width:calc(100vw - 40px);max-height:calc(100vh - var(--topbar-h) - var(--palette-h) - var(--ticker-h) - 48px);overflow:auto;padding:14px 16px 16px;pointer-events:auto;animation:rise .2s ease-out}
-.panel-head{position:absolute;right:8px;top:8px}
+.panel-head{position:absolute;right:8px;top:8px;z-index:5} .panel-head .icon{width:30px;height:30px;font-size:15px}
+.panel-status{font:600 11px/1.3 var(--font-ui);letter-spacing:.08em;text-transform:uppercase;color:var(--text-dim);margin:-4px 0 10px}
+#panels .panel .card-kicker{margin-top:14px}
 .set-row{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:7px 0;border-bottom:1px solid rgba(255,255,255,.07);font-size:12px}
 .set-row .k{color:var(--text-dim);flex:0 0 110px;padding-top:4px}
 .toggle{min-width:56px}

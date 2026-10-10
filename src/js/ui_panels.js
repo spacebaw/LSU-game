@@ -189,7 +189,8 @@
     return 0;
   }
   function buildStorm(host) {
-    host.appendChild(el('div', 'panel-title', 'Storm')); host.firstChild.id = 'storm-title';
+    const title = el('div', 'panel-title', 'Storm'); title.id = 'storm-title'; host.appendChild(title);
+    host._status = el('div', 'panel-status'); host._status.id = 'storm-status'; host.appendChild(host._status);   // status line (the panel's firstChild is the chrome head with the ✕ — never write into it)
     const seg = el('div', 'seg'); seg.id = 'seg-testcat'; host.appendChild(seg); host._testcat = seg;
     const cv = el('canvas'); cv.id = 'storm-cone'; cv.width = 200; cv.height = 200; cv.className = 'card-canvas'; host.appendChild(cv); host._cone = cv;
     host._ring = el('div', 'row'); host._ring.id = 'storm-ring'; host.appendChild(host._ring);
@@ -262,7 +263,7 @@
   function refreshStorm(s, host) {
     if (!host) return;
     const storm = call('weather', 'storm', s);
-    if (!storm) { setText(host.firstChild, 'STORM · no storm in the Gulf'); show(host._cone, false); setText(host._ring, ''); setText(host._reached, ''); clear(host._windList); clear(host._log); show(host._testcat, false); return; }
+    if (!storm) { setText(host._status, 'STORM · no storm in the Gulf'); show(host._cone, false); setText(host._ring, ''); setText(host._reached, ''); clear(host._windList); clear(host._log); show(host._testcat, false); return; }
     show(host._testcat, true); show(host._cone, true);
     const fc = int(storm.forecastCat, 1);
     const opts = [clamp(fc - 1, 1, 5), clamp(fc, 1, 5), clamp(fc + 1, 1, 5)];
@@ -274,7 +275,7 @@
     for (const b of host._testcat.children) cls(b, 'active', Number(b.dataset.c) === UI.panels.storm.testCat);
     const H = fin(call('weather', 'forecastSurge', s, UI.panels.storm.testCat), fin(PS.surge && PS.surge[fc], 5));
     const days = Math.max(0, fin(storm.landfallDay, todayOf(s)) - todayOf(s));
-    setText(host.firstChild, 'HURRICANE ' + (storm.name || '').toUpperCase() + ' · Cat ' + fc + ' (±1) · landfall in ' + days + ' days · surge ' + H + ' ft');
+    setText(host._status, 'HURRICANE ' + (storm.name || '').toUpperCase() + ' · Cat ' + fc + ' (±1) · landfall in ' + days + ' days · surge ' + H + ' ft');
     drawCone(s, host._cone, H);
 
     const ringClosed = !!call('buildings', 'ringClosed', s, H);

@@ -248,7 +248,9 @@ input.rename{width:100%;font:700 14px/1.2 var(--font-title);color:var(--text);ba
 .board-name{font-weight:700} .board-text{font-size:11px;color:var(--text-dim);font-weight:400;margin-top:2px}
 #panels{position:absolute;inset:0;pointer-events:none;z-index:4}
 #panels .panel{position:absolute;left:50%;top:calc(var(--topbar-h) + 24px);transform:translateX(-50%);width:560px;max-width:calc(100vw - 40px);max-height:calc(100vh - var(--topbar-h) - var(--palette-h) - var(--ticker-h) - 48px);overflow:auto;padding:14px 16px 16px;pointer-events:auto;animation:rise .2s ease-out}
-.panel-head{position:absolute;right:8px;top:8px}
+.panel-head{position:absolute;right:8px;top:8px;z-index:5} .panel-head .icon{width:30px;height:30px;font-size:15px}
+.panel-status{font:600 11px/1.3 var(--font-ui);letter-spacing:.08em;text-transform:uppercase;color:var(--text-dim);margin:-4px 0 10px}
+#panels .panel .card-kicker{margin-top:14px}
 .set-row{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:7px 0;border-bottom:1px solid rgba(255,255,255,.07);font-size:12px}
 .set-row .k{color:var(--text-dim);flex:0 0 110px;padding-top:4px}
 .toggle{min-width:56px}
@@ -26392,6 +26394,7 @@ input[type="range"]{width:180px;accent-color:var(--gold)}
       px = fin(px, 0); py = fin(py, 0); lastPx = px; lastPy = py; mods = mods || M0;
       heldShift = !!mods.shift;
       if (titleOn) return;
+      if (type === 'down' && s.ui.panel && !s.ui.tool && !bm.open) { M.openPanel(null); return; }   // a map click dismisses an open panel
       if (type === 'down') { if (call('progress', 'tutorialStage', s) === 1) { call('progress', 'skipSwoop', s); return; } if (s.setPiece) call('render', 'captureCameraTouch', s); show(E.popover, false); if (bm.open) M.closeBuildMenu(); }   // a press on the map while the menu is up (Build it keeps it open) is the player's answer: close it and place   // the swoop-skipping click must not also open the tile inspector behind the charter card
       if (type === 'move' || type === 'down') { const i = tileIndexAt(px, py); M.hoverTile = i; if (BSU.render) BSU.render.hoverTile = i; }
       mcStep(live, { type: type, px: px, py: py, button: fin(button, 0) | 0, mods: mods });
@@ -28235,7 +28238,8 @@ input[type="range"]{width:180px;accent-color:var(--gold)}
     return 0;
   }
   function buildStorm(host) {
-    host.appendChild(el('div', 'panel-title', 'Storm')); host.firstChild.id = 'storm-title';
+    const title = el('div', 'panel-title', 'Storm'); title.id = 'storm-title'; host.appendChild(title);
+    host._status = el('div', 'panel-status'); host._status.id = 'storm-status'; host.appendChild(host._status);   // status line (the panel's firstChild is the chrome head with the ✕ — never write into it)
     const seg = el('div', 'seg'); seg.id = 'seg-testcat'; host.appendChild(seg); host._testcat = seg;
     const cv = el('canvas'); cv.id = 'storm-cone'; cv.width = 200; cv.height = 200; cv.className = 'card-canvas'; host.appendChild(cv); host._cone = cv;
     host._ring = el('div', 'row'); host._ring.id = 'storm-ring'; host.appendChild(host._ring);
@@ -28308,7 +28312,7 @@ input[type="range"]{width:180px;accent-color:var(--gold)}
   function refreshStorm(s, host) {
     if (!host) return;
     const storm = call('weather', 'storm', s);
-    if (!storm) { setText(host.firstChild, 'STORM · no storm in the Gulf'); show(host._cone, false); setText(host._ring, ''); setText(host._reached, ''); clear(host._windList); clear(host._log); show(host._testcat, false); return; }
+    if (!storm) { setText(host._status, 'STORM · no storm in the Gulf'); show(host._cone, false); setText(host._ring, ''); setText(host._reached, ''); clear(host._windList); clear(host._log); show(host._testcat, false); return; }
     show(host._testcat, true); show(host._cone, true);
     const fc = int(storm.forecastCat, 1);
     const opts = [clamp(fc - 1, 1, 5), clamp(fc, 1, 5), clamp(fc + 1, 1, 5)];
@@ -28320,7 +28324,7 @@ input[type="range"]{width:180px;accent-color:var(--gold)}
     for (const b of host._testcat.children) cls(b, 'active', Number(b.dataset.c) === UI.panels.storm.testCat);
     const H = fin(call('weather', 'forecastSurge', s, UI.panels.storm.testCat), fin(PS.surge && PS.surge[fc], 5));
     const days = Math.max(0, fin(storm.landfallDay, todayOf(s)) - todayOf(s));
-    setText(host.firstChild, 'HURRICANE ' + (storm.name || '').toUpperCase() + ' · Cat ' + fc + ' (±1) · landfall in ' + days + ' days · surge ' + H + ' ft');
+    setText(host._status, 'HURRICANE ' + (storm.name || '').toUpperCase() + ' · Cat ' + fc + ' (±1) · landfall in ' + days + ' days · surge ' + H + ' ft');
     drawCone(s, host._cone, H);
 
     const ringClosed = !!call('buildings', 'ringClosed', s, H);

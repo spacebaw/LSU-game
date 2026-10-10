@@ -619,6 +619,7 @@
       px = fin(px, 0); py = fin(py, 0); lastPx = px; lastPy = py; mods = mods || M0;
       heldShift = !!mods.shift;
       if (titleOn) return;
+      if (type === 'down' && s.ui.panel && !s.ui.tool && !bm.open) { M.openPanel(null); return; }   // a map click dismisses an open panel
       if (type === 'down') { if (call('progress', 'tutorialStage', s) === 1) { call('progress', 'skipSwoop', s); return; } if (s.setPiece) call('render', 'captureCameraTouch', s); show(E.popover, false); if (bm.open) M.closeBuildMenu(); }   // a press on the map while the menu is up (Build it keeps it open) is the player's answer: close it and place   // the swoop-skipping click must not also open the tile inspector behind the charter card
       if (type === 'move' || type === 'down') { const i = tileIndexAt(px, py); M.hoverTile = i; if (BSU.render) BSU.render.hoverTile = i; }
       mcStep(live, { type: type, px: px, py: py, button: fin(button, 0) | 0, mods: mods });
