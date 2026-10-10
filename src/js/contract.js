@@ -583,6 +583,7 @@
       bridgeMaxSpan: 3, bridgeCostMult: 4,   // §3.6
       roadWithin: 4, nearWater: 3,           // §0.3 rows 7, 19, 24, 28
       accessSurfaces: [1, 2, 3],             // §3.6 access
+      connectorMax: 4,                       // §3.6 access, connector pass: a path-adjacency building up to this many tiles from the network lays its own gravel tie (charged + undone with it)
       pilingsMult: 0.4, pilingsUpkeep: 0.05, // §0.3 row 30
       demolishRefund: 0.4, ruinRebuild: 0.6, // §4.11, §6.1.6
       regradeCost: 15000, regradeDays: 3, regradeFt: 1,   // §6.5

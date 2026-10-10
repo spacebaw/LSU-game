@@ -169,6 +169,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - buildings.has(state, type, minTier)
 - buildings.footprint(state, id)
 - buildings.setbackSpot(state, id, tx, ty, opts)
+- buildings.connectorFor(state, rowId, tx, ty, rot)  — connector pass: the gravel tie a footprint placement would lay to reach the access network, {tiles, cost} or null (already touching / none within params.build.connectorMax); canPlace carries it as r.connector
 - buildings.dumpsterTile(state, id)
 - buildings.unlocked(state, id)
 - buildings.constructionMult(state)

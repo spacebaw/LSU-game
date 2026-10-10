@@ -1783,6 +1783,8 @@
     const gs = ghostSpec;
     if (gs) {
       if (Array.isArray(gs.tiles)) { g.globalAlpha = C.ghostAlpha; g.fillStyle = gs.color || GOLD; for (let k = 0; k < gs.tiles.length; k++) { const i = gs.tiles[k] | 0; if (i < 0 || i >= N) continue; tileDiamondScreen(i, tmpPt); fillDiamond(g, tmpPt.x, tmpPt.y, w, h, step); } }
+      // connector pass: the gravel tie a footprint placement would lay, in the path drag's own ghost style
+      if (Array.isArray(gs.connectorTiles)) { g.globalAlpha = C.ghostAlpha; g.fillStyle = gs.color || GOLD; for (let k = 0; k < gs.connectorTiles.length; k++) { const i = gs.connectorTiles[k] | 0; if (i < 0 || i >= N) continue; tileDiamondScreen(i, tmpPt); fillDiamond(g, tmpPt.x, tmpPt.y, w, h, step); } }
       const ring = gs.ringTiles;
       if (ring) {
         const reached = Array.isArray(ring) ? ring : (ring.reached || []), unreached = Array.isArray(ring) ? [] : (ring.unreached || []);

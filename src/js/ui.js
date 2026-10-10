@@ -805,9 +805,17 @@
     const row = rowOf(tool.id);
     if (row && row.kind === 'footprint' && tool.id !== 'founders_hall' && !heldShift && !cove) {
       const sb = call('buildings', 'setbackSpot', s, tool.id, g.tx, g.ty, { rot: tool.rot });
-      if (sb && sb.snapped) { g.tx = sb.tx; g.ty = sb.ty; g.setback = true; }
+      // connector pass: the setback must never push the ghost off its path — keep the candidate that touches a path
+      // outright, else the one with the shorter tie, else the snapped one (Shift still forces flush)
+      if (sb && sb.snapped && pathScore(s, tool, sb.tx, sb.ty) >= pathScore(s, tool, g.tx, g.ty)) { g.tx = sb.tx; g.ty = sb.ty; g.setback = true; }
     }
     return g;
+  }
+  /** how well a footprint candidate reaches the path network: touching 200, a tie 100 − its length, unplaceable −1 */
+  function pathScore(s, tool, tx, ty) {
+    const r = call('buildings', 'canPlace', s, tool.id, tx, ty, { rot: tool.rot, ignoreCash: true });
+    if (!r || !r.ok) return -1;
+    return r.connector && Array.isArray(r.connector.tiles) ? 100 - r.connector.tiles.length : 200;
   }
   /** re-run the ghost at the last pointer position (Shift released / pressed) */
   function updateGhostQuiet() { try { const s = stateOf(); if (s && s.ui && s.ui.tool && s.ui.tool.id !== 'bulldoze') updateGhost(s, lastPx, lastPy); } catch (e) { uerr('ghost', e); } }
@@ -836,7 +844,8 @@
     let tiles = r.tiles && r.tiles.length ? r.tiles : [g.ty * W + g.tx];
     if (dragging && live.run.length) tiles = live.run;
     if (g.cove && s.plot && s.plot.cove) tiles = s.plot.cove;
-    const spec = { tiles: tiles, color: color, ringTiles: r.ring && Array.isArray(r.ring.tiles) ? r.ring.tiles : null, label: '', radius: fin(r.radius, 0), radiusCenter: { tx: g.tx, ty: g.ty } };
+    const conn = (!dragging && !g.cove && r.connector && Array.isArray(r.connector.tiles) && r.connector.tiles.length) ? r.connector : null;   // connector pass: the gravel tie this placement would lay
+    const spec = { tiles: tiles, color: color, connectorTiles: conn ? conn.tiles : null, ringTiles: r.ring && Array.isArray(r.ring.tiles) ? r.ring.tiles : null, label: '', radius: fin(r.radius, 0), radiusCenter: { tx: g.tx, ty: g.ty } };
     if (row.kind === 'footprint' || row.kind === 'upgrade') spec.sprite = { id: tool.id, variant: r.needsPilings ? SPR.PILINGS : 0, tx: g.tx, ty: g.ty, rot: tool.rot };
     call('render', 'ghost', spec);
     if (!dom()) return;
@@ -846,6 +855,7 @@
     else if (!r.ok) { l1 = r.reason || 'Cannot build here'; l2 = ridgeText(r.ridgeFull) || sinkText(r.sink) || ''; }
     else {
       l1 = money(r.cost); if (row.kind === 'drag') l1 += ' / tile';
+      if (conn) { const n = conn.tiles.length; l1 += ' + ' + n + (n === 1 ? ' path tile ' : ' path tiles ') + money(conn.cost); }   // "+ 3 path tiles $6k"
       if (r.needsGrading) l1 += ' · Grade the site +' + money(r.gradingCost || 0); else if (r.needsPilings) l1 += ' · Pilings +' + money(r.pilingsCost || 0);
       if (ridgeText(r.ridgeFull)) l2 = ridgeText(r.ridgeFull); else if (sinkText(r.sink)) l2 = sinkText(r.sink); else if (r.ring && r.ring.text) l2 = r.ring.text; else if (!r.affordable) l2 = 'Not enough cash';
       else { const uw = utilityWarning(s, row, r); if (uw) l2 = uw; }
@@ -859,7 +869,7 @@
   // (or says why not); the ui adds the 5 s wall-clock half of the window (D16) and tells the player what happened.
   // ---------------------------------------------------------------------------
   function undoWallOpen() { return !!BSU.headlessMode || clock - undoAtMs <= fin(PU.undoSeconds, 5) * 1000 + 250; }
-  function undoLabel(info) { return info ? (info.n > 1 ? info.n + ' × ' + info.name : info.name) : ''; }
+  function undoLabel(info) { if (!info) return ''; let t = info.n > 1 ? info.n + ' × ' + info.name : info.name; const k = fin(info.connector, 0); if (k > 0) t += ' + ' + k + (k === 1 ? ' path tile' : ' path tiles'); return t; }   // connector pass: "Dining Hall + 3 path tiles"
   function doUndo(s) {
     if (!s) return false;
     const info = call('buildings', 'undoInfo', s);

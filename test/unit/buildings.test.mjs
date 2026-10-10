@@ -100,8 +100,8 @@ const pd2 = B.place(s, 'dorm', 46, 9, { rot: 0 });
 ok(pd2.ok && s.buildings[pd2.id].name === 'Fontenot Hall', 'second dorm is Fontenot Hall (' + (pd2.ok ? s.buildings[pd2.id].name : pd2.reason) + ')');
 
 // --- scenario: illegal placements carry the documented reasons ----------------
-eq(B.canPlace(s, 'dorm', 20, 40, {}).reason, 'Needs a path', 'no path reason');
-eq(B.canPlace(s, 'stadium', 40, 20, {}).reason, 'Needs a path', 'stadium: access checked before road (order)');
+eq(B.canPlace(s, 'dorm', 20, 40, {}).reason, 'No path within 4 tiles', 'no path reason (connector pass wording)');
+eq(B.canPlace(s, 'stadium', 40, 20, {}).reason, 'No path within 4 tiles', 'stadium: access checked before road (order)');
 eq(B.canPlace(s, 'dorm', 50, 8, {}).reason, 'Occupied', 'occupied reason');
 eq(B.canPlace(s, 'founders_hall', 10, 10, {}).reason, 'Founders’ Hall goes on the ridge', 'founders elsewhere');
 for (let y = 10; y <= 16; y++) lay(50, y);
@@ -112,7 +112,7 @@ s.economy.cash = 4000000;
 // preserve refused for a dorm; marsh gives pilings
 for (let x = 20; x <= 25; x++) for (let y = 20; y <= 25; y++) { const i = BSU.idx(x, y); s.tiles.elev[i] = 1; s.tiles.type[i] = BSU.T.MARSH; }
 for (let x = 26; x <= 40; x++) lay(x, 22);   // a path (unconnected)
-eq(B.canPlace(s, 'dorm', 23, 21, {}).reason, 'Needs a path', 'unconnected path does not count');
+eq(B.canPlace(s, 'dorm', 23, 21, {}).reason, 'No path within 4 tiles', 'unconnected path does not count (not even as a connector target)');
 for (let y = 8; y <= 22; y++) lay(40, y);    // connect it to the Founders' ring
 for (let x = 40; x <= 49; x++) lay(x, 8);    // (49,8) is a Founders' west edge tile
 B.tick(s, {});
@@ -142,8 +142,10 @@ const pg = B.place(s, 'dorm', 30, 12, {});
 ok(pg.ok && Math.abs(s.tiles.elev[BSU.idx(30, 12)] - s.tiles.elev[BSU.idx(31, 12)]) < 1e-6, 'grading levelled the footprint');
 
 // --- scenario: coverage + effective + undo/demolish on the live bus ---------------
-const ps = B.place(s, 'substation', 44, 3, {}), pt = B.place(s, 'water_tower', 44, 5, {});
-ok(!ps.ok && ps.reason === 'Needs a path', 'substation needs a path too: ' + ps.reason);
+// connector pass: (44,3) is now 3 tiles from the y=8 path (it would tie in), so the "needs a path" case moves out of connector reach
+const ps = B.place(s, 'substation', 44, 1, {}), pt = B.place(s, 'water_tower', 44, 0, {});
+ok(!ps.ok && ps.reason === 'No path within 4 tiles' && !pt.ok, 'substation needs a path too (beyond connector reach): ' + ps.reason + ' / ' + pt.reason);
+ok(B.canPlace(s, 'substation', 44, 3, {}).connector && B.canPlace(s, 'substation', 44, 3, {}).connector.tiles.length === 3, 'substation 3 tiles above the path: a 3-tile connector is offered');
 for (let x = 41; x <= 46; x++) lay(x, 9);
 for (let y = 3; y <= 9; y++) lay(43, y);
 B.tick(s, {});
@@ -297,6 +299,74 @@ ok(lr.length === 1 && lr[0].tiles.length === 36 && lr[0].name === 'The Great Wal
     const goneB = B.undo(su); ok(goneB.ok === false && /gone|replaced/.test(goneB.reason) && su.economy.cash === cashB, 'undo of a demolished building refused: ' + goneB.reason);
     su.tick = 4200; const bp2 = B.place(su, bid, 50, 22, {}); ok(bp2.ok && B.undo(su).ok && su.buildings[bp2.id] === null, bid + ' placed and undone');
   } else ok(true, 'no no-path building placeable on the synthetic plot; building undo covered by the selfTest');
+}
+
+// --- scenario: connector pass — a path-adjacency building up to 4 tiles from the network lays its own gravel tie ------
+{
+  const sc = BSU.newState(41);
+  for (let i = 0; i < 4096; i++) { sc.tiles.owner[i] = -1; sc.tiles.elev[i] = 6; sc.tiles.type[i] = BSU.T.DRY; sc.tiles.surface[i] = 0; sc.tiles.crest[i] = 0; sc.tiles.flags[i] = 0; }
+  sc.plot.bank0 = 57; sc.plot.founders = { tx: 50, ty: 7 }; sc.plot.highway = []; sc.plot.cove = []; sc.plot.mouth = [0, 0, 0]; sc.plot.bayou = []; sc.plot.cheniers = []; sc.plot.mounds = [];
+  sc.economy.suppressCoverage = true; sc.economy.cash = 50000000;
+  BSU.state = sc; B.reset(sc, true);
+  BSU.terrain.rewalk(sc);
+  ok(B.place(sc, 'founders_hall', 50, 7, { ignoreCash: true, instant: true }).ok, 'connector world: Founders\' placed');
+  for (let x = 30; x <= 49; x++) BSU.terrain.setSurface(sc, BSU.idx(x, 7), BSU.SURF.PATH);   // a path from the Founders' west ring tile (49,7) → connected
+  B.tick(sc, {});
+  const PATH = BSU.SURF.PATH, NONE = BSU.SURF.NONE;
+  const pathCount = () => { let n = 0; for (let i = 0; i < 4096; i++) if (sc.tiles.surface[i] === PATH) n++; return n; };
+  const adj4 = (a, b) => (Math.abs((a & 63) - (b & 63)) + Math.abs((a >> 6) - (b >> 6))) === 1;
+  // 1. a dining hall (3×2) with its north edge 3 tiles below the path: a 3-tile tie, charged with the building, undone with it
+  const c3 = B.canPlace(sc, 'dining_hall', 36, 11, { rot: 0 });
+  ok(c3.ok && c3.connector && c3.connector.tiles.length === 3 && c3.connector.cost === 6000 && c3.access === true, 'dining hall 3 tiles from the path: placeable with a 3-tile connector (' + c3.reason + ' ' + JSON.stringify(c3.connector) + ')');
+  const cf = B.connectorFor(sc, 'dining_hall', 36, 11, 0);
+  ok(cf && cf.tiles.join() === c3.connector.tiles.join(), 'connectorFor agrees with canPlace');
+  ok(cf.tiles.every((t, k) => k === 0 || adj4(t, cf.tiles[k - 1])), 'connector is 4-connected');
+  ok(BSU.edgeTiles(36, 11, 3, 2).indexOf(cf.tiles[0]) >= 0, 'connector starts beside the footprint edge');
+  ok(BSU.nbr4(cf.tiles[cf.tiles.length - 1]).some(n => sc.tiles.surface[n] === PATH), 'connector ends beside the existing path');
+  ok(cf.tiles.every(t => (t & 63) === 36 && (t >> 6) >= 8 && (t >> 6) <= 10), 'the tie runs straight up column 36 (rows 8–10): ' + cf.tiles.map(t => [(t & 63), (t >> 6)]).join(' '));
+  const paths0 = pathCount(), cash0 = sc.economy.cash; sc.tick = 2000;
+  const p3 = B.place(sc, 'dining_hall', 36, 11, { rot: 0 });
+  ok(p3.ok && p3.cost === 500000 + 6000 && p3.connector && p3.connector.tiles.length === 3 && p3.connector.cost === 6000, 'place charges building + tie in one purchase: ' + p3.cost + ' ' + p3.reason);
+  eq(sc.economy.cash, cash0 - 506000, 'cash down by $506k');
+  eq(pathCount(), paths0 + 3, 'three gravel tiles laid');
+  ok(cf.tiles.every(t => sc.tiles.surface[t] === PATH && sc.tiles.walk[t] === BSU.terrain.walkClassOf(sc, t)), 'the tie is on the surface grid and walked');
+  const ui3 = B.undoInfo(sc);
+  ok(ui3 && ui3.n === 1 && ui3.connector === 3 && ui3.refund === 506000 && /Dining/.test(ui3.name), 'undoInfo: one Dining Hall + 3 connector tiles, refund $506k: ' + JSON.stringify(ui3));
+  sc.tick = 2010;
+  const u3 = B.undo(sc);
+  ok(u3.ok && u3.refund === 506000 && u3.connector === 3, 'undo refunds building + tie: ' + JSON.stringify(u3));
+  ok(sc.buildings[p3.id] === null && cf.tiles.every(t => sc.tiles.surface[t] === NONE && sc.tiles.owner[t] === -1) && pathCount() === paths0 && sc.economy.cash === cash0, 'undo removed the building and the tie and restored the cash');
+  // 2. touching the path: no tie, nothing extra charged
+  const ct = B.canPlace(sc, 'dining_hall', 36, 8, { rot: 0 });
+  ok(ct.ok && ct.connector === null && ct.access === true, 'dining hall touching the path: no connector');
+  const cashT = sc.economy.cash;
+  const pt3 = B.place(sc, 'dining_hall', 36, 8, { rot: 0 });
+  ok(pt3.ok && pt3.connector === null && pt3.cost === 500000 && sc.economy.cash === cashT - 500000 && pathCount() === paths0, 'touching: placed for $500k, no gravel laid');
+  ok(B.undo(sc).ok && pathCount() === paths0, 'touching undo leaves the path count alone');
+  // 3. beyond 4 tiles: rejected with the reason
+  const cfar = B.canPlace(sc, 'dining_hall', 36, 13, { rot: 0 });
+  ok(!cfar.ok && cfar.reason === 'No path within 4 tiles' && cfar.connector === null, 'dining hall 5 tiles away: ' + cfar.reason);
+  ok(B.connectorFor(sc, 'dining_hall', 36, 13, 0) === null && !B.place(sc, 'dining_hall', 36, 13, { rot: 0 }).ok, 'connectorFor null beyond reach, place refuses');
+  const c4 = B.canPlace(sc, 'dining_hall', 36, 12, { rot: 0 });
+  ok(c4.ok && c4.connector && c4.connector.tiles.length === 4, 'exactly 4 tiles away still ties in (4-tile connector)');
+  // 4. water in the way: the tie routes around it (never through)
+  for (const x of [36, 37, 38]) { const i = BSU.idx(x, 9); sc.tiles.type[i] = BSU.T.OPEN_WATER; sc.tiles.flags[i] |= BSU.FLAG.OPEN_WATER; }
+  BSU.terrain.rewalk(sc); B.tick(sc, {});
+  const cw = B.canPlace(sc, 'dining_hall', 36, 11, { rot: 0 });
+  ok(cw.ok && cw.connector && cw.connector.tiles.length === 4, 'water across the straight line: a 4-tile detour (' + cw.reason + ' ' + (cw.connector ? cw.connector.tiles.length : '-') + ')');
+  ok(cw.connector.tiles.every(t => !(sc.tiles.flags[t] & BSU.FLAG.OPEN_WATER) && sc.tiles.type[t] !== BSU.T.OPEN_WATER), 'connector avoids water');
+  ok(cw.connector.tiles.every((t, k) => k === 0 || adj4(t, cw.connector.tiles[k - 1])) && BSU.nbr4(cw.connector.tiles[3]).some(n => sc.tiles.surface[n] === PATH), 'detour is 4-connected and reaches the path');
+  for (const x of [36, 37, 38]) { const i = BSU.idx(x, 9); sc.tiles.type[i] = BSU.T.DRY; sc.tiles.flags[i] &= ~BSU.FLAG.OPEN_WATER; }
+  // 5. not enough cash for the tie: one purchase, refused as a whole
+  sc.economy.cash = 503000 - sc.economy.loanLimit;
+  const cpoor = B.canPlace(sc, 'dining_hall', 36, 11, { rot: 0 });
+  ok(!cpoor.ok && cpoor.reason === 'Not enough cash' && cpoor.cost === 500000 && cpoor.connector && cpoor.connector.cost === 6000, 'building affordable but not building + tie → Not enough cash');
+  sc.economy.cash = 50000000;
+  // 6. drag tools and placeRun are untouched
+  const run = [BSU.idx(20, 20), BSU.idx(21, 20), BSU.idx(22, 20)];
+  const prr = B.placeRun(sc, 'path', run, {});
+  ok(prr.ok && prr.placed === 3 && prr.cost === 6000 && B.undoInfo(sc).n === 3 && B.undoInfo(sc).connector === 0, 'path run: 3 tiles, no connector bookkeeping');
+  ok(B.undo(sc).ok, 'run undone');
 }
 
 // --- scenario: no exceptions on garbage input -------------------------------------
