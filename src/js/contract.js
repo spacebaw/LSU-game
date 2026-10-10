@@ -46,7 +46,7 @@
     LAND: 0, PATH: 1, ROAD: 2, BOARDWALK: 3, LEVEE: 4, CANAL: 5, FENCE: 6, PRESERVE: 7, NEAR_WATER: 8, TOUCH_MARSH_BAYOU: 9,
     TOUCH_CANAL_WATER: 10, CYPRESS: 11, MARSH_OR_PRESERVE: 12, BARRIER: 13, RESTORE: 14, UPGRADE: 15, BRIDGE: 16
   });   // catalog placeRule (BRIDGE: bridge pass — water-only drag, both ends on land)
-  BSU.SPR = freeze({ NIGHT: 1, DAMAGED: 2, PILINGS: 4, SCAFFOLD: 8, RUIN: 16, TIER_SHIFT: 5, TIER_MASK: 3 << 5, BOARDED: 128, FRONT_L: 256 });   // building sprite variant bits (D17); FRONT_L = entrance (door, walk, lamps) on the SW face (design pass)
+  BSU.SPR = freeze({ NIGHT: 1, DAMAGED: 2, PILINGS: 4, SCAFFOLD: 8, RUIN: 16, TIER_SHIFT: 5, TIER_MASK: 3 << 5, BOARDED: 128, FRONT_L: 256, FLOODED: 512 });   // FLOODED (art pass B3): waterline stain + sandbags; render.variantOf sets it from b.flooded   // building sprite variant bits (D17); FRONT_L = entrance (door, walk, lamps) on the SW face (design pass)
 
   // The 43 catalog ids in GDD §0.3 row order (BSU.B_ORDER[n-1] is row n) + row 44 'bridge' (bridge pass).
   BSU.B_ORDER = freeze([
@@ -1225,7 +1225,8 @@
     }),
     paint: freeze({
       wall: 'array:string', roof: 'enum:flat|gable|hip|dome|barrel|bowl|none', roofColor: 'string', floors: 'int',
-      windows: 'object:colsRows', decals: 'array:string', accent: 'string', lift: 'number', special: 'string'
+      windows: 'object:colsRows', decals: 'array:string', accent: 'string', lift: 'number', special: 'string',
+      material: 'optional:string', trim: 'optional:string', features: 'optional:array:string'   // art pass B3: wall material (stucco|brick|stone|metal|wood|glass), trim colour, feature list (sprites.FEATURES)
     }),
     colsRows: freeze({ cols: 'int', rows: 'int' })
   });

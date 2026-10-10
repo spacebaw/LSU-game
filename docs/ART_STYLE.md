@@ -41,6 +41,15 @@ Never hand-pick a fourth green: pick a tone index. The ramps B1 uses (base = the
 | sand / shell | #5B5452 | #8D8271  | #D9C9A1 | #FBE8B7 | #FFF6C8 |
 | reed         | #3F4333 | #5D653B  | #8A9A4B | #ABB860 | #CCD375 |
 | mud          | #282027 | #342A27  | #4A3B2A | #69573D | #8F7855 |
+| oak leaf     | #222B27 | #2B3D27  | #3B5A2A | #5A763D | #809555 |
+| cypress leaf | #232D2D | #2E4030  | #3F5E3A | #5F7B4E | #849964 |
+| cypress rust | #553127 | #824727  | #C7692B | #E9853E | #FFA456 |
+| palm leaf    | #2F3D2D | #415C30  | #5E8A3A | #7FA84E | #A1C364 |
+| azalea leaf  | #1D2B27 | #233D27  | #2E5A2A | #4D763D | #739555 |
+| azalea bloom | #612946 | #963A5C  | #E75480 | #FF7095 | #FF8FA8 |
+| moss         | #45494A | #676F62  | #9BAA8A | #BCC8A0 | #DCE2B1 |
+
+(The last seven are B2's vegetation ramps: `oakLeaf`, `cypressLeaf`, `cypressRust`, `palmLeaf`, `azaleaLeaf`, `azaleaBloom`, `moss`.)
 
 Distribution on a flat surface: mostly 2 with islands of 3, threads of 1, a few px of 0 and 4
 (`TH_GROUND = [0.14, 0.36, 0.70, 0.90]` over a noise value in [0, 1)).
@@ -134,3 +143,38 @@ not done in B1 because the deck windows, clip hexes and curve transforms are all
 7. **Tests**: `node build.mjs --check && node test/smoke.mjs && node test/modules.mjs && node test/contract.test.mjs`
    and every `test/unit/*.test.mjs`; sprite tests assert sizes/anchors and ramp order, not pixel values.
 8. **Notes**: add a `## art pass Bn` section to `docs/INTEGRATION_NOTES.md` with the before/after pairs and numbers.
+
+## 9. Vegetation conventions (written in pass B2)
+
+- **Variant packing for trees** (`sprites.treeVariant(stage, autumn, bloom, sil, water)`): `stage 0–2 | autumn 4 | bloom 8 |
+  silhouette (0–3) << 4 | water 64`. The entity pass picks the silhouette from `hash(tx, ty) & 3`, so a row of oaks shows four
+  shapes that never move; the icon and the Quad Lawn's oak (`get('oak', 2)`) are silhouette 0, the symmetric full crown. Trees
+  are entities, so they do **not** carry the 64 positional variants of marsh tiles — four silhouettes keep the atlas small
+  (12 oak entries, 48 cypress). Bit 64 is set by render for a cypress on a marsh / water tile: the sprite gets a tone-0
+  waterline ring and a dithered trunk reflection in the 4 rows under the anchor instead of a ground shadow.
+- **Canopies** come from `sprites.canopy(P, blobs, w, h, ramp, seed, opts)`: ellipse clusters lit from the upper-left of each
+  cluster, leaf texture from `vnoise` (cell 5–6) through `toneAt` (amp .12), the lower `opts.under` of the height pulled to
+  tones 0–1 with sun holes, a tone-0 outline on the right and bottom only (the lit top edge is painted in tones 3–4 inside
+  the silhouette). It returns the bottom-edge points for moss and `.inside` (the mask) so `limb()` can draw branches only
+  where no foliage covers them. Live oaks: a broad crown of 6–8 clusters, 2-px limbs from the trunk top to the side clusters,
+  a 6-px trunk with a 4-px buttress over the bottom 6 rows (`trunk(P, x, top, w, h, flare, flareH)`: lit left column, tone-0
+  right edge and bottom, flutes in the flare).
+- **Bald cypress** is a spindle, not a cone: widest at 65 % of the crown height, each spray's reach from the seed (0.8–1.2),
+  a tuck row between sprays with the trunk showing, tone 3 on the left third, 2 in the middle, 1 at the right rim, a ragged
+  tone-0 underside with drips. Silhouette 3 at stage 2 is the flat-topped old cypress. November swaps the ramp
+  (`cypressRust`), nothing else.
+- **Spanish moss** is two-layered: baked strands from the canopy's bottom points (`mossStrands`, three length classes, tones
+  1–2 with a tone-3 tip, long ones in two threads) and the live swaying strokes in `render.drawTree` (`MOSS_LIVE` = moss ramp
+  tone 3, three length classes, wind × `C.mossSway`). Keep both: the baked strands survive 0.5× and perf mode.
+- **Cypress knees** are not part of the tree: `knees` is a 64×32 tile overlay whose variant is the tile's position bits
+  (`tx & 7 | (ty & 7) << 3`), baked on marsh / wet tiles under or 4-adjacent to a cypress. It samples the marsh painter's
+  periodic field (same seed, cells 16×8 + 8×4, periods 256×128, plus the grain's mean .075) and plants 1–6 knees where
+  `0.37 < n < 0.49` — the mud rim of the standing-water pools — clustered within 14×7 px of the first one. 64 variants at
+  1× only (the chunk is 1× at every zoom) cost 0.5 MB.
+- **Understory shrubs** (`shrub`, 22×12, 4 variants) are baked on open marsh tiles with dry / wet ground on a 4-side
+  (`C.shrubPct` 38): a mound from the azalea-leaf ramp draped with moss. Azaleas bloom from the `azaleaBloom` ramp as plus-shaped
+  clusters with a tone-4 petal highlight on the upper-left and a tone-1 centre; palmettos are fan fronds (petiole + 5–7 rays),
+  two silhouettes (spreading / upright), back row in tone 1, front row lit in tone 3 with tone-4 tips.
+- **Checklist additions:** a contact sheet of every vegetation entry on flat ramp bases (`veg_sheet.mjs` in the B2 scratchpad)
+  is the fastest way to judge tones — judge silhouettes in the 2× atlas, then confirm in the marsh at 1× and the whole map at
+  0.5×. Crowns must keep tones 2–4 on their lit tops so they still read at night.

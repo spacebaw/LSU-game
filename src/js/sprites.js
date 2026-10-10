@@ -138,7 +138,9 @@
   }
   const RAMP_BASES = Object.freeze({
     grass: PAL.dryGrass, highGrass: PAL.highGround, wet: PAL.wetGround, dirt: '#7A5A38', clay: '#9A6A44', limestone: '#B9AE93',
-    bark: PAL.bark, marshMud: '#4C4530', waterDeep: PAL.waterNight, waterShallow: PAL.shallows, sand: '#D9C9A1', reed: PAL.reed, mud: PAL.mud
+    bark: PAL.bark, marshMud: '#4C4530', waterDeep: PAL.waterNight, waterShallow: PAL.shallows, sand: '#D9C9A1', reed: PAL.reed, mud: PAL.mud,
+    // art pass B2: vegetation ramps (base = the palette colour where one exists)
+    oakLeaf: PAL.oakCanopy, cypressLeaf: PAL.cypress, cypressRust: PAL.cypressAutumn, palmLeaf: X.palmetto, azaleaLeaf: X.azaleaLeaf, azaleaBloom: PAL.azalea, moss: PAL.moss
   });
   const RAMPS = {}; for (const k in RAMP_BASES) RAMPS[k] = makeRamp(RAMP_BASES[k]);
   M.RAMPS = RAMPS; M.RAMP_BASES = RAMP_BASES; M.COOL_TINT = COOL; M.WARM_TINT = WARM;
@@ -337,7 +339,7 @@
   // Default frame totals per family / id (ARCH §6.1, the entities brief's table, the decal table).
   // Painters may override through spec.frames; data.decals frames win for decals.
   const FRAMES = {
-    tile: 1, cliff: 2, reeds: 2, knees: 1, worn: 1, mound: 1, surf: 1, levee: 1, floodwall: 1, canal: 1, preservePost: 1, water: 1,
+    tile: 1, cliff: 2, reeds: 2, knees: 1, worn: 1, mound: 1, shrub: 1, surf: 1, levee: 1, floodwall: 1, canal: 1, preservePost: 1, water: 1,
     light: 1, oak: 1, cypress: 1, palmetto: 1, azalea: 1, building: 1, ruin: 1, thibodeaux: 2, icon: 1, bubble: 3,
     agent: 16, 'agent:walk': 16, 'agent:idle': 8, 'agent:flee': 8, 'agent:splash': 8, 'agent:slap': 8, 'agent:cheer': 8, 'agent:sit': 4,
     'agent:wave': 8, 'agent:tube': 8, 'agent:umbrella': 16, 'agent:cap': 4, 'agent:beads': 8, 'agent:foam': 16,
@@ -809,7 +811,7 @@
   });
 
   // ---------------------------------------------------------------------------
-  // reeds (12×14, variants 0–2, 2 sway frames), knees (12×5), worn (64×32 overlay), mound (24×14)
+  // reeds (12×14, variants 0–2, 2 sway frames), knees (64×32 tile overlay, variant = position bits), worn (64×32 overlay), mound (24×14)
   // ---------------------------------------------------------------------------
   M.registerPainter('reeds', function (ctx, spec) {
     const P = pen(ctx, spec.zoom);
@@ -826,13 +828,33 @@
     P.hline(2, 13, 8, RAMPS.marshMud[0]);   // the clump's shadow at the waterline
     return { w: g.w, h: g.h, ox: -6, oy: -13 };
   });
+  // art pass B2: knees are a tile overlay (64×32 at the tile centre) whose variant is the tile's position bits (tx & 7 | (ty & 7) << 3):
+  // it samples the marsh painter's periodic field, so the knees cluster on the mud rim of the standing-water pools and cross tile edges
   M.registerPainter('knees', function (ctx, spec) {
     const P = pen(ctx, spec.zoom);
-    const g = begin(ctx, 12, 5, spec.zoom);
-    const v = spec.variant % 3, seed = hash(0x4ee, v);
-    const n = 2 + (hash(seed, 1) % 3);
-    for (let i = 0; i < n; i++) { const x = (hash(seed, 10 + i) % 10), h = 2 + (hash(seed, 20 + i) % 3); P.rect(x, 5 - h, 2, h, PAL.bark); P.px(x, 5 - h, shade(PAL.bark, 1.5)); P.px(x + 1, 4, shade(PAL.bark, 0.7)); }
-    return { w: g.w, h: g.h, ox: -6, oy: -4 };
+    const g = tileCanvas(ctx, spec.zoom, 0, 0);
+    const pv = spec.variant & 63, seed = hash(pv, 0x4ee), B = RAMPS.bark;
+    const fseed = hash(((BSU.T && BSU.T.MARSH) || 2) * 131 + 7, 0x51), X0 = ((pv & 7) - (pv >> 3)) * 32 + 256, Y0 = ((pv & 7) + (pv >> 3)) * 16;
+    const cx = g.cx, cy = g.cy, top = cy - 16;
+    const cand = [];
+    for (let r = 4; r < TH - 3; r += 2) {
+      const half = diamondHalf(TW, TH, r) - 3;
+      for (let x = cx - half; x < cx + half; x += 3) {
+        const n = 0.55 * pnoise(fseed, X0 + x - cx, Y0 + r - 16, 16, 8, 256, 128) + 0.30 * pnoise(fseed + 7, X0 + x - cx, Y0 + r - 16, 8, 4, 256, 128) + 0.075;
+        if (n > 0.37 && n < 0.49) cand.push([x, top + r]);                       // the pool's mud rim (the tile painter floods n < 0.40, muds < 0.45)
+      }
+    }
+    const knees = [];
+    if (cand.length) {
+      const c0 = cand[hash(seed, 1) % cand.length]; knees.push(c0);
+      for (let i = 0; i < cand.length && knees.length < 6; i++) { const c = cand[(i * 7 + hash(seed, 2)) % cand.length]; if (Math.abs(c[0] - c0[0]) <= 14 && Math.abs(c[1] - c0[1]) <= 7 && !knees.some(k => Math.abs(k[0] - c[0]) < 3 && Math.abs(k[1] - c[1]) < 2)) knees.push(c); }
+    } else { const n = 2 + (hash(seed, 3) % 2); for (let i = 0; i < n; i++) knees.push([cx - 8 + (hash(seed, 10 + i) % 16), cy + (hash(seed, 20 + i) % 6) - 2]); }
+    knees.sort((a, b) => a[1] - b[1]);
+    for (let i = 0; i < knees.length; i++) {
+      const x = knees[i][0], y = knees[i][1], kh = 3 + (hash(seed, 30 + i) % 3);
+      P.px(x, y - kh, B[4]); P.px(x + 1, y - kh, B[3]); for (let yy = y - kh + 1; yy < y; yy++) { P.px(x, yy, B[2]); P.px(x + 1, yy, B[1]); } P.hline(x, y, 2, B[0]);
+    }
+    return { w: g.w, h: g.h, ox: g.ox, oy: g.oy };
   });
   M.registerPainter('worn', function (ctx, spec) {
     const P = pen(ctx, spec.zoom);
@@ -1189,173 +1211,265 @@
   });
 
   // ---------------------------------------------------------------------------
-  // Vegetation — oak (variant = stage 0–2), cypress (stage | autumn<<2), palmetto (stage), azalea (stage | bloom<<3).
-  // Anchor = the trunk base at the tile centre: ox −w/2, oy −h + 4.
+  // Vegetation (art pass B2, docs/ART_STYLE.md §9) — oak / cypress / palmetto / azalea from 5-tone ramps.
+  // variant = stage 0–2 | autumn 4 (cypress) | bloom 8 (azalea) | silhouette (0–3) << 4 | water 64 (cypress on a wet tile).
+  // Anchor = the trunk base at the tile centre: ox −w/2, oy −h + 4. Light from the upper-left; tone-0 outline on the
+  // shadow side and the bottom of every silhouette, tone 3/4 on the lit top edge; dappled undersides in tones 0–1.
   // ---------------------------------------------------------------------------
-  /** stage | (autumn ? 4 : 0) | (bloom ? 8 : 0) */
-  M.treeVariant = function (stage, autumn, bloom) { return (Math.max(0, Math.min(2, stage | 0))) | (autumn ? 4 : 0) | (bloom ? 8 : 0); };
+  /** stage | (autumn ? 4 : 0) | (bloom ? 8 : 0) | (sil & 3) << 4 | (water ? 64 : 0) */
+  M.treeVariant = function (stage, autumn, bloom, sil, water) { return (Math.max(0, Math.min(2, stage | 0))) | (autumn ? 4 : 0) | (bloom ? 8 : 0) | (((sil | 0) & 3) << 4) | (water ? 64 : 0); };
+  M.TREE_SIL_SHIFT = 4; M.TREE_WATER = 64;
+  const TH_LEAF = [0.12, 0.34, 0.68, 0.90];
 
-  /** a lit, dithered canopy made of ellipse blobs; returns the list of bottom-edge points (for moss) */
-  function canopy(P, blobs, w, h, base, seed, opts) {
+  /** a lit, dithered canopy of ellipse blobs [cx, cy, rx, ry] from a 5-tone ramp R; returns the bottom-edge points (for moss)
+   *  with `.inside` (a Uint8Array w×h mask, for limbs drawn between the clusters) */
+  function canopy(P, blobs, w, h, R, seed, opts) {
     opts = opts || {};
-    const hi = shade(base, opts.hi || 1.18), mid = base, lo = shade(base, opts.lo || 0.78), rim = shade(base, 0.55);
-    const bottoms = [];
-    for (let y = 0; y < h; y++) {
-      let lastIn = false;
-      for (let x = 0; x < w; x++) {
-        let best = -1, bi = -1;
-        for (let i = 0; i < blobs.length; i++) { const b = blobs[i]; const v = P.ellipseTest(x + 0.5, y + 0.5, b[0], b[1], b[2], b[3]); if (v > best) { best = v; bi = i; } }
-        const n = hash(seed, x + y * 257) % 100;
-        let inside = best > 0;
-        if (inside && best < 0.10 && (n & 1)) inside = false;         // dithered outer edge
-        if (!inside) { if (lastIn && n < 55) P.px(x, y, rim); lastIn = false; continue; }
-        const b = blobs[bi];
-        const lit = ((b[0] - x) / b[2]) * 0.35 + ((b[1] - y) / b[3]) * 0.75;   // light from the upper-left
-        let col = lit > 0.42 ? hi : lit > -0.15 ? mid : lo;
-        if (n < 7) col = shade(col, 1.12); else if (n > 93) col = shade(col, 0.86);   // leaf texture
-        if (best < 0.22 && n > 40) col = shade(col, 0.9);                             // darker rim
-        P.px(x, y, col);
-        lastIn = true;
-        if (y + 1 < h) { let below = false; for (const bb of blobs) if (P.ellipseTest(x + 0.5, y + 1.5, bb[0], bb[1], bb[2], bb[3]) > 0) { below = true; break; } if (!below) bottoms.push([x, y]); }
+    if (!Array.isArray(R)) R = makeRamp(R);                 // legacy callers passed a base hex
+    const inside = new Uint8Array(w * h), bestV = new Float32Array(w * h), bestI = new Int8Array(w * h);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      let best = -1, bi = -1;
+      for (let i = 0; i < blobs.length; i++) { const b = blobs[i]; const v = P.ellipseTest(x + 0.5, y + 0.5, b[0], b[1], b[2], b[3]); if (v > best) { best = v; bi = i; } }
+      const n = hash(seed, x + y * 257) % 100;
+      let inn = best > 0;
+      if (inn && best < 0.07 && (n & 1)) inn = false;                       // ragged leaf edge
+      if (inn && best < 0.14 && n < 18) inn = false;
+      const k = y * w + x; inside[k] = inn ? 1 : 0; bestV[k] = best; bestI[k] = bi;
+    }
+    const at = (x, y) => (x < 0 || y < 0 || x >= w || y >= h) ? 0 : inside[y * w + x];
+    const bottoms = []; bottoms.inside = inside; bottoms.w = w; bottoms.h = h;
+    const cell = opts.cell || 5, under0 = opts.under === undefined ? 0.62 : opts.under;
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const k = y * w + x;
+      if (!inside[k]) {
+        if (opts.outline !== false && (at(x - 1, y) || at(x, y - 1)) && (hash(seed, 5000 + x + y * 257) % 100) < 85) P.px(x, y, R[0]);   // outline: shadow side + bottom
+        continue;
       }
+      const b = blobs[bestI[k]];
+      const lit = ((b[0] - x) / b[2]) * 0.38 + ((b[1] - y) / b[3]) * 0.72;                     // + toward the upper-left of each cluster
+      const tex = 0.6 * vnoise(seed, x, y * 2, cell) + 0.4 * ((hash(seed, 31 + x + y * 131) & 255) / 256);
+      let v = 0.55 + lit * 0.4 + (tex - 0.5) * 0.45;
+      const under = (y - b[1]) / b[3]; if (under > 0.3) v -= (under - 0.3) * 0.6;                // the cluster's own underside
+      if (y > h * under0) v -= (y / h - under0) * 0.7;                                            // the canopy's dappled underside
+      if (y > h * under0 && tex > 0.8) v += 0.25;                                                // sun holes in the underside
+      const edgeTop = !at(x, y - 1) || !at(x - 1, y), edgeBot = !at(x, y + 1) || !at(x + 1, y);
+      if (edgeTop && lit > 0.05) v += 0.3;
+      let t = toneAt(v, x, y, TH_LEAF, 0.12);
+      if (tex > 0.92 && v > 0.35) t = Math.min(4, t + 1);                                        // sun flecks
+      if (edgeBot && !edgeTop && t > 1) t = 1;                                                    // the shaded lower rim
+      P.px(x, y, R[t]);
+      if (!at(x, y + 1)) bottoms.push([x, y]);
     }
     return bottoms;
   }
-  function trunk(P, x, top, w, h, flare) {
-    P.rect(x, top, w, h, PAL.bark);
-    P.vline(x, top, h, shade(PAL.bark, 1.35)); P.vline(x + w - 1, top, h, shade(PAL.bark, 0.65));
-    if (w > 3) P.vline(x + 1, top, h, shade(PAL.bark, 1.12));
-    for (let y = top + 2; y < top + h; y += 3) P.px(x + 1 + (y % w), y, shade(PAL.bark, 0.85));
-    if (flare) { P.rect(x - 1, top + h - 2, w + 2, 2, PAL.bark); P.rect(x - 2, top + h - 1, w + 4, 1, shade(PAL.bark, 0.8)); P.px(x - 1, top + h - 2, shade(PAL.bark, 1.3)); }
+  /** a bark-ramp trunk: lit left column, tone-0 right outline, flecks; `flare` px of buttress spread over the bottom `flareH` rows */
+  function trunk(P, x, top, w, h, flare, flareH) {
+    const R = RAMPS.bark; flare = flare === true ? 2 : (flare | 0); flareH = flareH || Math.min(h, 4);
+    for (let y = top; y < top + h; y++) {
+      const fy = y - (top + h - flareH), ex = (flare && fy >= 0) ? Math.round(flare * (fy + 1) / flareH) : 0;
+      const x0 = x - ex, x1 = x + w - 1 + ex, span = Math.max(1, x1 - x0);
+      for (let xx = x0; xx <= x1; xx++) {
+        const f = (xx - x0) / span;
+        let t = f < 0.2 ? 3 : f < 0.5 ? 2 : f < 0.86 ? 1 : 0;
+        if (span >= 4 && xx === x0 && (y & 3) === 1) t = 4;                                       // sheen on the lit edge
+        if (ex > 0 && span >= 5 && ((xx - x0 + fy) % 3) === 1 && f > 0.1 && f < 0.9) t = Math.max(0, t - 1);   // buttress flutes
+        if (t > 0 && t < 3 && (hash(0xba2, xx * 7 + y * 97) % 100) < 12) t -= 1;                 // bark flecks
+        if (y === top + h - 1) t = 0;                                                             // bottom outline
+        P.px(xx, y, R[t]);
+      }
+    }
+  }
+  /** a limb `thick` px deep from (x0,y0) to (x1,y1): tone 3 on top, 2 inside, 0 beneath; `mask(x, y)` true = covered by foliage */
+  function limb(P, x0, y0, x1, y1, thick, mask) {
+    const R = RAMPS.bark;
+    x0 = Math.round(x0); y0 = Math.round(y0); x1 = Math.round(x1); y1 = Math.round(y1);
+    let dx = Math.abs(x1 - x0), dy = -Math.abs(y1 - y0), sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1, err = dx + dy, n = 0;
+    for (;;) {
+      for (let k = 0; k < thick; k++) { const y = y0 + k; if (!mask || !mask(x0, y)) P.px(x0, y, R[k === 0 ? 3 : (k === thick - 1 ? 0 : 2)]); }
+      if ((x0 === x1 && y0 === y1) || ++n > 512) break;
+      const e2 = 2 * err; if (e2 >= dy) { err += dy; x0 += sx; } if (e2 <= dx) { err += dx; y0 += sy; }
+    }
   }
   function shadowEllipse(P, cx, cy, rx, ry, c) { P.ellipse(cx, cy, rx, ry, c); }
+  /** Spanish moss from the canopy's bottom points in three length classes (short / mid / long), two tones plus a lit tip */
   function mossStrands(P, bottoms, n, seed, minLen, maxLen, h) {
     if (!bottoms.length) return;
+    const R = RAMPS.moss, span = Math.max(1, maxLen - minLen);
     for (let i = 0; i < n; i++) {
       const b = bottoms[hash(seed, 700 + i) % bottoms.length];
-      const len = minLen + (hash(seed, 800 + i) % (maxLen - minLen + 1));
+      const cls = hash(seed, 750 + i) % 3;                                        // 0 short, 1 mid, 2 long
+      const len = minLen + Math.round(span * (cls * 0.4 + (hash(seed, 800 + i) % 100) / 400));
       let x = b[0];
       for (let k = 1; k <= len; k++) {
         const y = b[1] + k; if (y >= h) break;
         if (k % 4 === 0) x += ((hash(seed, 900 + i * 31 + k) % 3) - 1);
-        P.px(x, y, (k & 1) ? PAL.moss : shade(PAL.moss, 0.82));
+        P.px(x, y, R[(k & 1) ? 1 : 2]);
+        if (cls === 2 && (k % 3) === 1 && x > 0) P.px(x - 1, y, R[2]);           // long strands hang in two threads
       }
-      P.px(x, Math.min(h - 1, b[1] + len + 1), shade(PAL.moss, 1.1));
+      P.px(x, Math.min(h - 1, b[1] + len + 1), R[3]);
     }
   }
-  M.canopy = canopy; M.trunk = trunk; M.mossStrands = mossStrands;
+  M.canopy = canopy; M.trunk = trunk; M.mossStrands = mossStrands; M.limb = limb;
 
   M.registerPainter('oak', function (ctx, spec) {
-    const stage = Math.max(0, Math.min(2, spec.variant & 3));
-    const P = pen(ctx, spec.zoom), seed = hash(0x0ac, spec.variant);
+    const stage = Math.max(0, Math.min(2, spec.variant & 3)), sil = (spec.variant >> 4) & 3;
+    const P = pen(ctx, spec.zoom), seed = hash(0x0ac, stage * 4 + sil), R = RAMPS.oakLeaf;
+    const j = (k, m) => (hash(seed, 40 + k) % (2 * m + 1)) - m;                   // per-variant jitter ±m
     let g;
     if (stage === 0) {
       g = begin(ctx, 8, 14, spec.zoom);
-      shadowEllipse(P, 4, 12, 3, 1, shade(PAL.dryGrass, 0.6));
-      trunk(P, 3, 6, 2, 6, false);
-      canopy(P, [[4, 3.5, 3.5, 3.2]], 8, 8, PAL.oakCanopy, seed);
+      shadowEllipse(P, 4, 12, 3, 1, RAMPS.grass[1]);
+      trunk(P, 3, 7, 2, 4, 0);
+      canopy(P, [[4 + (sil & 1), 4 + (sil >> 1), 3.5, 3.4]], 8, 9, R, seed, { under: 0.7 });
     } else if (stage === 1) {
       g = begin(ctx, 40, 36, spec.zoom);
-      shadowEllipse(P, 20, 33, 12, 3, shade(PAL.dryGrass, 0.62));
-      trunk(P, 18, 22, 4, 12, true);
-      const bottoms = canopy(P, [[20, 13, 17, 9.5], [11, 17, 11, 7], [29, 17, 11, 7], [20, 8, 10, 6]], 40, 30, PAL.oakCanopy, seed);
-      mossStrands(P, bottoms.filter(b => b[1] > 16), 4, seed, 4, 8, 36);
+      shadowEllipse(P, 20, 33, 12, 3, RAMPS.grass[1]);
+      const lx = 8 + j(0, 2), rx = 32 + j(1, 2), ly = 18 + j(2, 1), ry = 18 + j(3, 1);
+      const blobs = [[20 + j(4, 1), 12, 15, 8], [lx, ly, 9, 6], [rx, ry, 9, 6], [20 + j(5, 2), 6, 9, 5]];
+      if (sil === 3) { blobs[1][2] = 7; blobs[2][2] = 7; blobs[0][3] = 9.5; }       // narrow, tall
+      const bottoms = canopy(P, blobs, 40, 30, R, seed, { under: 0.6 });
+      const mask = (x, y) => (x >= 0 && y >= 0 && x < 40 && y < 30) ? bottoms.inside[y * 40 + x] : 0;
+      trunk(P, 18, 22, 4, 10, 2, 4);
+      limb(P, 19, 24, lx, ly + 3, 2, mask); limb(P, 21, 24, rx, ry + 3, 2, mask);
+      mossStrands(P, bottoms.filter(b => b[1] > 14 && Math.abs(b[0] - 20) > 3), 4 + (sil & 1), seed, 3, 9, 36);
     } else {
       g = begin(ctx, 96, 56, spec.zoom);
-      shadowEllipse(P, 48, 53, 30, 3, shade(PAL.dryGrass, 0.62));
-      trunk(P, 45, 34, 6, 18, true);
-      // two limbs
-      P.line(46, 36, 34, 28, PAL.bark); P.line(50, 36, 62, 27, PAL.bark); P.line(47, 35, 35, 28, shade(PAL.bark, 1.3));
-      const bottoms = canopy(P, [[48, 21, 30, 14], [24, 26, 18, 10.5], [72, 26, 18, 10.5], [36, 12, 17, 8.5], [60, 12, 17, 8.5], [48, 8, 12, 6]], 96, 44, PAL.oakCanopy, seed);
-      mossStrands(P, bottoms.filter(b => b[1] > 22 && Math.abs(b[0] - 48) > 6), 9, seed, 6, 12, 56);
+      shadowEllipse(P, 48, 53, 30, 3, RAMPS.grass[1]);
+      // four silhouettes: 0 full symmetric (the quad's oak and the icon), 1 left-heavy, 2 right-heavy, 3 two crowns with the limbs showing
+      const lx = (sil === 1 ? 16 : sil === 2 ? 24 : 19) + j(0, 2), rx = (sil === 2 ? 80 : sil === 1 ? 72 : 77) + j(1, 2);
+      const ly = (sil === 1 ? 29 : 26) + j(2, 1), ry = (sil === 2 ? 29 : 26) + j(3, 1);
+      const blobs = [[48 + j(4, 2), 19 + j(5, 1), 27, 12], [lx, ly, sil === 1 ? 17 : 14, sil === 1 ? 9.5 : 8.5], [rx, ry, sil === 2 ? 17 : 14, sil === 2 ? 9.5 : 8.5],
+        [34 + j(6, 2), 11, 15, 7.5], [62 + j(7, 2), 10, 15, 7.5], [48 + j(8, 3), 6, 11, 5.5]];
+      if (sil === 3) { blobs[0] = [40, 17, 19, 11]; blobs.push([64, 16, 17, 10]); blobs[5] = [42, 6, 10, 5.5]; blobs[4] = [66, 9, 12, 6.5]; }
+      else blobs.push([48 + j(9, 4), 27, 11, 4.5]);                                   // a hanging lower cluster (the limbs show either side)
+      const bottoms = canopy(P, blobs, 96, 44, R, seed, { under: 0.64, cell: 6 });
+      const mask = (x, y) => (x >= 0 && y >= 0 && x < 96 && y < 44) ? bottoms.inside[y * 96 + x] : 0;
+      trunk(P, 45, 34, 6, 18, 4, 6);
+      limb(P, 46, 36, lx + 2, ly + 4, 2, mask); limb(P, 50, 36, rx - 2, ry + 4, 2, mask);
+      limb(P, 47, 35, 36 + j(10, 3), 22, 2, mask); limb(P, 49, 35, 60 + j(11, 3), 21, 2, mask);
+      if (sil === 1) limb(P, 46, 37, 10, 33, 2, mask); else if (sil === 2) limb(P, 50, 37, 86, 32, 2, mask);
+      mossStrands(P, bottoms.filter(b => b[1] > 20 && Math.abs(b[0] - 48) > 5), 9 + (sil & 1) * 2, seed, 4, 14, 56);
     }
     return { w: g.w, h: g.h, ox: -(g.w >> 1), oy: -g.h + 4 };
   });
 
   M.registerPainter('cypress', function (ctx, spec) {
-    const stage = Math.max(0, Math.min(2, spec.variant & 3)), autumn = !!(spec.variant & 4);
-    const P = pen(ctx, spec.zoom), seed = hash(0xc7, spec.variant);
-    const base = autumn ? PAL.cypressAutumn : PAL.cypress;
-    const sizes = [[6, 16, 1, 3], [16, 48, 3, 10], [24, 80, 6, 16]][stage];   // w, h, trunk w, trunk h
+    const stage = Math.max(0, Math.min(2, spec.variant & 3)), autumn = !!(spec.variant & 4), sil = (spec.variant >> 4) & 3, water = !!(spec.variant & 64);
+    const P = pen(ctx, spec.zoom), seed = hash(0xc7, stage * 4 + sil);
+    const R = autumn ? RAMPS.cypressRust : RAMPS.cypressLeaf, B = RAMPS.bark;
+    const sizes = [[6, 16, 2, 4, 0, 2], [16, 48, 4, 11, 2, 4], [24, 80, 6, 24, 4, 8]][stage];   // w, h, trunk w, trunk h, flare, flare rows
     const g = begin(ctx, sizes[0], sizes[1], spec.zoom);
-    const w = g.w, h = g.h, tw = sizes[2], th = sizes[3], cx = w >> 1;
-    const folTop = 1, folBot = h - th - 2;
-    shadowEllipse(P, cx, h - 3, (w >> 1) - 1, 2, shade(PAL.wetGround, 0.6));
-    trunk(P, cx - (tw >> 1), h - th - 4, tw, th, stage > 0);
-    // knees at the water line (2–4 bark nubs)
-    if (stage > 0) { const n = 2 + (hash(seed, 1) % 3); for (let i = 0; i < n; i++) { const x = (i & 1 ? cx + (tw >> 1) + 1 : cx - (tw >> 1) - 3) + (i >> 1) * (i & 1 ? 2 : -2), kh = 2 + (hash(seed, 10 + i) % 2); if (x < 0 || x > w - 2) continue; P.rect(x, h - 4 - kh, 2, kh + 1, PAL.bark); P.px(x, h - 4 - kh, shade(PAL.bark, 1.5)); } }
-    // conical feathery foliage: half-width grows down the cone, tiers every 7 rows with jagged lower edges, dithered outer 2 px
-    const hi = shade(base, 1.2), lo = shade(base, 0.75), dk = shade(base, 0.55);
-    const tier = stage === 2 ? 7 : stage === 1 ? 5 : 3;
-    for (let y = folTop; y <= folBot; y++) {
-      const t = (y - folTop) / Math.max(1, folBot - folTop);
-      let hw = 0.6 + ((w >> 1) - 1) * t;
-      const ph = (y - folTop) % tier;
-      hw += ph >= tier - 2 ? 1.0 : ph === 0 ? -0.8 : 0;      // tier ends flare out, tier starts tuck in
-      const hwI = Math.round(hw);
-      for (let x = cx - hwI; x <= cx + hwI; x++) {
-        if (x < 0 || x >= w) continue;
-        const d = Math.abs(x - cx) / Math.max(1, hw);
-        const n = hash(seed, x + y * 131) % 100;
-        if (d > 0.72 && (n % 3 === 0)) continue;                          // feathery edge
-        if (d > 0.9 && (n & 1)) continue;
-        let col = d < 0.35 ? (x < cx ? hi : base) : (x < cx ? base : lo);
-        if (ph === tier - 1 && n < 60) col = dk;                          // the shaded underside of each tier
-        if (n < 6) col = shade(col, 1.15); else if (n > 94) col = shade(col, 0.85);
-        if (stage > 0 && Math.abs(x - cx) < 1 && (y % tier) === 3) col = PAL.bark;   // the trunk glimpsed between tiers
-        P.px(x, y, col);
+    const w = g.w, h = g.h, tw = sizes[2], th = sizes[3], cx = w >> 1, base = h - 4;
+    const folTop = 1, folBot = base - th + (stage === 2 ? 6 : stage === 1 ? 3 : 1);
+    if (water) {   // reflection-friendly base: a tone-0 waterline ring and a dithered trunk reflection under the anchor
+      const half = (tw >> 1) + sizes[4] + 1;
+      P.hline(cx - half, base, 2 * half, B[0]);
+      for (let y = base + 1; y < h; y++) for (let x = cx - half + 1; x < cx + half - 1; x++) if (((x + y) & 1) === 0) P.px(x, y, mix(B[1], RAMPS.waterDeep[1], 0.55));
+      P.px(cx - half - 1, base, RAMPS.waterShallow[4]); P.px(cx + half, base + 1, RAMPS.waterShallow[3]);
+    } else shadowEllipse(P, cx, h - 3, (w >> 1) - 1, 2, RAMPS.wet[0]);
+    trunk(P, cx - (tw >> 1), base - th, tw, th, sizes[4], sizes[5]);
+    if (stage > 0) {   // knees at the base, outside the buttress
+      const n = 2 + (hash(seed, 1) % 3);
+      for (let i = 0; i < n; i++) {
+        const x = (i & 1) ? cx + (tw >> 1) + sizes[4] + 1 + (i >> 1) * 2 : cx - (tw >> 1) - sizes[4] - 3 - (i >> 1) * 2, kh = 2 + (hash(seed, 10 + i) % 3);
+        if (x < 0 || x > w - 2) continue;
+        P.px(x, base - kh, B[3]); P.px(x + 1, base - kh, B[2]); for (let y = base - kh + 1; y < base; y++) { P.px(x, y, B[2]); P.px(x + 1, y, B[1]); } P.hline(x, base, 2, B[0]);
       }
     }
-    P.px(cx, folTop, hi); P.px(cx, folTop - 1 < 0 ? 0 : folTop - 1, base);
+    // tapered crown: a spindle of feathered sprays (widest at 65 % of the height, each spray's reach from the seed; sil 3 = the
+    // flat-topped old cypress), tone 3 on the lit left, 2 in the middle, 1 at the shadow rim, a ragged tone-0 underside per spray
+    const tier = stage === 2 ? 6 : stage === 1 ? 5 : 3, phase = hash(seed, 2) % tier, lean = stage > 0 ? ((hash(seed, 3) % 3) - 1) : 0;
+    const flat = sil === 3 && stage === 2;
+    for (let y = folTop; y <= folBot; y++) {
+      const t = (y - folTop) / Math.max(1, folBot - folTop);
+      const ti = Math.floor((y - folTop + phase) / tier), ph = (y - folTop + phase) % tier;
+      const env = flat ? Math.min(1, 0.45 + t) : (t < 0.65 ? Math.pow(t / 0.65, 0.8) : 1 - (t - 0.65) * 0.45);
+      const tierK = stage === 0 ? 1 : 0.8 + (hash(seed, 60 + ti) % 40) / 100;
+      let hw = 0.6 + ((w >> 1) - 1) * env * tierK;
+      hw += ph >= tier - 2 ? 1.0 : ph === 0 ? -1.2 : ph === 1 ? -0.4 : 0;               // each spray widens downward; a tuck between sprays
+      const tipX = cx + Math.round(lean * (1 - t));
+      const hwI = Math.round(hw);
+      for (let x = tipX - hwI; x <= tipX + hwI; x++) {
+        if (x < 0 || x >= w) continue;
+        const f = (x - tipX) / Math.max(1, hw), af = Math.abs(f), n = hash(seed, x + y * 131) % 100;
+        if (af > 0.65 && (n % 3 === 0)) continue;                                      // feathery edge
+        if (af > 0.85 && (n & 1)) continue;
+        const tex = vnoise(seed, x * 2, y, 4);
+        let tn = f < -0.25 ? 3 : f < 0.4 ? 2 : 1;
+        if (tex > 0.68 && tn < 3) tn++; else if (tex < 0.3 && tn > 1) tn--;
+        if (ph === tier - 1) { tn = (n < 55) ? 0 : 1; if (af > 0.5 && n < 30 && y + 1 <= folBot + 1) P.px(x, y + 1, R[0]); }   // ragged underside with drips
+        else if (ph <= 1 && f < 0.2) tn = Math.min(4, tn + 1);                          // the lit top of each spray
+        if (f > 0.85) tn = Math.min(tn, 1);                                              // shadow-side rim
+        if (stage > 0 && Math.abs(x - tipX) < 1 && ph === 0 && y > folTop + 3) tn = -1;  // the trunk between sprays
+        P.px(x, y, tn < 0 ? B[1] : R[tn]);
+      }
+    }
+    P.px(cx + lean, folTop, R[4]); if (folTop > 0) P.px(cx + lean, folTop - 1, R[3]);
     return { w: g.w, h: g.h, ox: -(g.w >> 1), oy: -g.h + 4 };
   });
 
   M.registerPainter('palmetto', function (ctx, spec) {
-    const stage = Math.max(0, Math.min(2, spec.variant & 3));
-    const P = pen(ctx, spec.zoom), seed = hash(0x9a1, spec.variant);
+    const stage = Math.max(0, Math.min(2, spec.variant & 3)), sil = (spec.variant >> 4) & 1;
+    const P = pen(ctx, spec.zoom), seed = hash(0x9a1, stage * 2 + sil), R = RAMPS.palmLeaf, B = RAMPS.bark;
     const sz = [[12, 10], [18, 15], [24, 20]][stage];
     const g = begin(ctx, sz[0], sz[1], spec.zoom);
-    const w = g.w, h = g.h, cx = w >> 1, cy = h - 3;
-    shadowEllipse(P, cx, h - 2, (w >> 1) - 1, 1.5, shade(PAL.wetGround, 0.6));
-    // a dark leafy base clump so the fan has a silhouette, then two fans of rays (back darker/shorter, front lit)
-    P.ellipse(cx, cy - 1, Math.max(2, (w >> 2)), Math.max(1.5, h / 6), shade(X.palmetto, 0.6));
-    P.rect(cx - 1, h - 5, 2, 3, PAL.bark);
-    const fans = [[shade(X.palmetto, 0.7), 0.85, 0.3], [X.palmetto, 1.0, 0]];
-    for (const [col, lenK, off] of fans) {
-      const n = 8 + stage * 3;
-      for (let i = 0; i < n; i++) {
-        const a = Math.PI + 0.2 + off + (Math.PI - 0.4) * (i / (n - 1)) + ((hash(seed, i + (off ? 100 : 0)) % 7) - 3) * 0.02;
-        const len = (h - 3) * lenK * (0.72 + 0.28 * Math.sin((i / (n - 1)) * Math.PI)) * (0.9 + (hash(seed, 50 + i) % 20) / 100);
-        const ex = cx + Math.cos(a) * len * 1.2, ey = cy + Math.sin(a) * len * 0.8;
-        P.line(cx, cy, ex, ey, col);
-        if (stage > 0) P.line(cx, cy - 1, Math.round(cx + Math.cos(a) * len * 0.55 * 1.2), Math.round(cy - 1 + Math.sin(a) * len * 0.55 * 0.8), shade(col, 0.85));   // 2-px-thick blade near the crown
-        P.px(Math.round(ex), Math.round(ey), shade(col, 1.3));
-        if (len > 6) P.px(Math.round(cx + Math.cos(a) * len * 0.5 * 1.2), Math.round(cy + Math.sin(a) * len * 0.5 * 0.8), shade(col, 1.15));
+    const w = g.w, h = g.h, cx = w >> 1, cy = h - 4;
+    shadowEllipse(P, cx, h - 2, (w >> 1) - 1, 1.5, RAMPS.wet[0]);
+    P.ellipse(cx, cy, Math.max(2, w >> 2), Math.max(1.5, h / 7), R[0]);                 // the dark base clump
+    P.rect(cx - 1, h - 5, 2, 3, B[2]); P.px(cx - 1, h - 5, B[3]); P.hline(cx - 1, h - 3, 2, B[0]);
+    // fan fronds: each a petiole to a hand, then 5–7 rays; back fronds (upper, shorter) in the shadow tone, front fronds lit on the left
+    const n = 4 + stage * 2, spread = sil ? 0.75 : 1.0;                                  // variant 1 = upright, variant 0 = spreading
+    const fr = (len, col, tip, a, k) => {
+      const L = len * (0.85 + (hash(seed, 50 + k) % 30) / 100);
+      const hx = cx + Math.cos(a) * L * 0.55 * 1.2, hy = cy + Math.sin(a) * L * 0.55 * 0.8;
+      P.line(cx, cy, hx, hy, col);
+      const rays = 5 + (stage > 0 ? 2 : 0);
+      for (let r = 0; r < rays; r++) {
+        const ra = a + (r / (rays - 1) - 0.5) * 1.1, rl = L * 0.5 * (0.7 + 0.3 * Math.sin((r / (rays - 1)) * Math.PI));
+        const ex = hx + Math.cos(ra) * rl * 1.2, ey = hy + Math.sin(ra) * rl * 0.8;
+        P.line(hx, hy, ex, ey, col); P.px(Math.round(ex), Math.round(ey), tip);
+      }
+    };
+    for (let i = 0; i < n; i++) { const a = -Math.PI * 0.5 + (i / (n - 1) - 0.5) * Math.PI * 0.9 * spread + ((hash(seed, i) % 7) - 3) * 0.03; fr((h - 4) * 0.8, R[1], R[2], a, i); }           // back row (up)
+    for (let i = 0; i < n; i++) { const a = Math.PI + 0.25 + (Math.PI - 0.5) * (i / (n - 1)) * spread + (1 - spread) * 1.2 + ((hash(seed, 20 + i) % 7) - 3) * 0.03; const lit = Math.cos(a) < 0; fr(h - 4, lit ? R[3] : R[2], lit ? R[4] : R[1], a, 20 + i); }   // front row
+    P.px(cx, cy - 1, R[4]);
+    return { w: g.w, h: g.h, ox: -(g.w >> 1), oy: -g.h + 4 };
+  });
+
+  M.registerPainter('azalea', function (ctx, spec) {
+    const stage = Math.max(0, Math.min(2, spec.variant & 3)), bloom = !!(spec.variant & 8), sil = (spec.variant >> 4) & 3;
+    const P = pen(ctx, spec.zoom), seed = hash(0xa2, stage * 4 + sil), R = RAMPS.azaleaLeaf, F = RAMPS.azaleaBloom, B = RAMPS.bark;
+    const sz = stage === 0 ? [10, 6] : [16, 10];
+    const g = begin(ctx, sz[0], sz[1], spec.zoom);
+    const w = g.w, h = g.h, cx = w >> 1;
+    shadowEllipse(P, cx, h - 1, (w >> 1) - 0.5, 1, RAMPS.grass[1]);
+    if (stage === 0) {   // shredded: bare twigs, a few leaves, a bloom or two
+      for (let i = 0; i < 3; i++) { const x = 2 + i * 3 + (sil & 1); P.vline(x, 1 + (i & 1), 3, B[2]); P.px(x, 1 + (i & 1), B[3]); P.px(x + 1, 3, R[2]); if (bloom && (hash(seed, i) & 1)) P.px(x - 1, 2, F[2]); }
+      return { w: g.w, h: g.h, ox: -(g.w >> 1), oy: -g.h + 4 };
+    }
+    const blobs = [[cx - 3 + (sil & 1), 5.5, 5.5, 3.8], [cx + 3 - (sil >> 1), 5.5, 5.5, 3.8], [cx + ((sil & 1) ? 1 : -1), 3.5 + (stage === 2 ? -0.5 : 0), 4.5, 3]];
+    const bottoms = canopy(P, blobs, w, h - 1, R, seed, { under: 0.7, cell: 3 });
+    if (bloom) {   // blossom clusters: a tone-2 plus with a warm petal highlight on its upper-left and a deep centre
+      const k = 5 + stage * 2;
+      for (let i = 0; i < k; i++) {
+        const x = 2 + (hash(seed, 100 + i) % (w - 4)), y = 1 + (hash(seed, 130 + i) % (h - 5));
+        if (!bottoms.inside[y * w + x]) continue;
+        P.px(x, y, F[2]); P.px(x - 1, y, F[2]); P.px(x + 1, y, F[1]); P.px(x, y - 1, F[3]); P.px(x, y + 1, F[1]); P.px(x - 1, y - 1, F[4]);
       }
     }
     return { w: g.w, h: g.h, ox: -(g.w >> 1), oy: -g.h + 4 };
   });
 
-  M.registerPainter('azalea', function (ctx, spec) {
-    const stage = Math.max(0, Math.min(2, spec.variant & 3)), bloom = !!(spec.variant & 8);
-    const P = pen(ctx, spec.zoom), seed = hash(0xa2, spec.variant);
-    const sz = stage === 0 ? [10, 6] : [16, 10];
-    const g = begin(ctx, sz[0], sz[1], spec.zoom);
-    const w = g.w, h = g.h, cx = w >> 1, ry = h - 2, rx = (w >> 1) - 0.5;
-    shadowEllipse(P, cx, h - 1, rx, 1, shade(PAL.dryGrass, 0.62));
-    for (let y = 0; y < h - 1; y++) for (let x = 0; x < w; x++) {
-      const v = P.ellipseTest(x + 0.5, y + 0.5, cx, h - 1.5, rx, ry);
-      const n = hash(seed, x + y * 131) % 100;
-      if (v <= 0 || (v < 0.12 && (n & 1))) continue;
-      const lit = ((cx - x) / rx) * 0.3 + ((h - 1.5 - y) / ry) * 0.7;
-      let col = lit > 0.4 ? shade(X.azaleaLeaf, 1.4) : lit > 0.05 ? shade(X.azaleaLeaf, 1.12) : shade(X.azaleaLeaf, 0.75);
-      if (stage === 2 && n < 10) col = shade(col, 1.15);
-      if (bloom && stage > 0 && y < h - 3 && n < 60) col = (n < 20) ? shade(PAL.azalea, 1.2) : PAL.azalea;
-      if (bloom && stage === 0 && n < 25) col = PAL.azalea;
-      P.px(x, y, col);
-    }
-    if (stage === 0) { for (let i = 0; i < 3; i++) P.vline(2 + i * 3, 1, 3, PAL.bark); }   // shredded: bare twigs
-    return { w: g.w, h: g.h, ox: -(g.w >> 1), oy: -g.h + 4 };
+  /** understory shrub for marsh edges (22×12, variants 0–3): a low leafy mound draped with Spanish moss; anchored at its base */
+  M.registerPainter('shrub', function (ctx, spec) {
+    const P = pen(ctx, spec.zoom), v = spec.variant & 3, seed = hash(0x5b, v), R = RAMPS.azaleaLeaf;
+    const g = begin(ctx, 22, 12, spec.zoom);
+    P.hline(4, 11, 14, RAMPS.marshMud[0]);
+    const blobs = [[8 + (v & 1) * 2, 7, 6.5, 4], [14 - (v >> 1), 7, 6, 3.8], [11 + ((v & 1) ? -2 : 2), 4.5, 5, 3.2]];
+    const bottoms = canopy(P, blobs, 22, 11, R, seed, { under: 0.7, cell: 3 });
+    mossStrands(P, bottoms.filter(b => b[1] < 9), 3 + (v & 1), seed, 2, 5, 11);
+    for (let i = 0; i < 2 + (v & 1); i++) { const x = 3 + (hash(seed, 20 + i) % 16), y = 1 + (hash(seed, 30 + i) % 3); P.px(x, y, RAMPS.moss[3]); P.px(x, y + 1, RAMPS.moss[2]); P.px(x + ((i & 1) ? 1 : -1), y + 2, RAMPS.moss[2]); }   // moss hung over the top
+    return { w: g.w, h: g.h, ox: -11, oy: -10 };
   });
 
   // ---------------------------------------------------------------------------
@@ -1388,6 +1502,7 @@
       M.get('water', 0, 0, 1); M.get('water', 1, 0, 1);
       for (let v = 0; v < 3; v++) { M.get('reeds', v, 0, 1); M.get('reeds', v, 1, 1); M.get('knees', v, 0, 1); M.get('worn', v, 0, 1); }
       M.get('mound', 0, 0, 1);
+      for (let v = 0; v < 4; v++) M.get('shrub', v, 0, 1);
       const names = Object.keys(Object.assign({}, (data && data.decals) || {}, EXTRA_DECALS));
       for (const n of names) M.get('decal:' + n, 0, 0, 1);
       for (const k of Object.keys(LIGHTS)) M.get('light:' + k, 0, 0, 1);
@@ -1448,7 +1563,9 @@
       check(need('oak', 0).sw === 8 && need('oak', 1).sw === 40, 'oak stages 0/1');
       const cy2 = need('cypress', 2); check(cy2.sw === 24 && cy2.sh === 80 && need('cypress', 2 | 4).sh === 80 && need('cypress', 0).sh === 16, 'cypress sizes');
       check(need('palmetto', 2).sw === 24 && need('azalea', 2 | 8).sw === 16 && need('azalea', 0).sw === 10, 'palmetto/azalea sizes');
-      check(M.treeVariant(2, true, false) === 6 && M.treeVariant(1, false, true) === 9, 'treeVariant packing');
+      check(M.treeVariant(2, true, false) === 6 && M.treeVariant(1, false, true) === 9 && M.treeVariant(2, false, false, 3, true) === (2 | 48 | 64), 'treeVariant packing (stage | autumn 4 | bloom 8 | sil << 4 | water 64)');
+      for (let v = 0; v < 4; v++) { const r = need('shrub', v); check(r.sw === 22 && r.sh === 12, 'shrub ' + v); const o = need('oak', 2 | (v << 4)); check(o.sw === 96 && o.sh === 56, 'oak silhouette ' + v); }
+      check(need('knees', 63).sw === 64 && need('knees', 63).sh === 32, 'knees tile overlay');
       // 7. frame totals and wrapping
       check(M.frames('agent') === 16 && M.frames('agent:idle') === 8 && M.frames('gator') === 6 && M.frames('reeds') === 2 && M.frames('decal:crane') === 4, 'frame table');
       const r1 = M.get('reeds', 0, 3, 1), r2 = M.get('reeds', 0, 1, 1); check(r1 === r2, 'frame wraps modulo frames(id)');

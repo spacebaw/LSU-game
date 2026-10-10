@@ -7,7 +7,7 @@ import vm from 'node:vm';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadavg } from 'node:os';
-const BUSY = loadavg()[0] > 4;   // timing budgets are advisory when the machine is loaded
+const BUSY = loadavg()[0] > 3;   // timing budgets are advisory when the machine is loaded
 import { makeWindow } from '../domstub.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));

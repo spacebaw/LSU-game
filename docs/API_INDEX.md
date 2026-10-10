@@ -67,7 +67,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - values: 0:number, 1:number, 2:number, 3:number, 4:number
 
 ## BSU.SPR
-- values: NIGHT:number, DAMAGED:number, PILINGS:number, SCAFFOLD:number, RUIN:number, TIER_SHIFT:number, TIER_MASK:number, BOARDED:number, FRONT_L:number
+- values: NIGHT:number, DAMAGED:number, PILINGS:number, SCAFFOLD:number, RUIN:number, TIER_SHIFT:number, TIER_MASK:number, BOARDED:number, FRONT_L:number, FLOODED:number
 
 ## BSU.STORM
 - values: NONE:number, WAVE:number, NAMED:number, WATCH:number, BANDS:number, LANDFALL:number, RECOVERY:number, PASSED:number
@@ -572,7 +572,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - sports.selfTest()
 
 ## BSU.sprites
-- values: palette:object, CANVAS_LIMIT_MB:number, ZOOM2:boolean, GC_FRAMES:number, TILE_W:number, TILE_H:number, PX_PER_FT:number, extra:object, RAMPS:object, RAMP_BASES:object, COOL_TINT:string, WARM_TINT:string, TH_GROUND:array[4], FONT:object, _tests:array[2], FRAMES:object, DIRS:array[4], EXTRA_DECALS:object, decalPainters:object, LIGHTS:object, extraBuildings:object, APRON:object, roofs:object, entityConst:object, entityColors:object, _buf:object, SHEET_LIMIT_MB:number, animFrames:object, entityFrames:object, _gcWrapped:boolean, fbFrames:object, fbSizes:object, fbPoses:object, fbRoles:array[5], fbCompose:object, _initWrappedEntities:boolean, entitySizes:object
+- values: palette:object, CANVAS_LIMIT_MB:number, ZOOM2:boolean, GC_FRAMES:number, TILE_W:number, TILE_H:number, PX_PER_FT:number, extra:object, RAMPS:object, RAMP_BASES:object, COOL_TINT:string, WARM_TINT:string, TH_GROUND:array[4], FONT:object, _tests:array[2], FRAMES:object, DIRS:array[4], EXTRA_DECALS:object, decalPainters:object, LIGHTS:object, TREE_SIL_SHIFT:number, TREE_WATER:number, extraBuildings:object, APRON:object, materials:object, FEATURES:array[23], roofs:object, entityConst:object, entityColors:object, _buf:object, SHEET_LIMIT_MB:number, animFrames:object, entityFrames:object, _gcWrapped:boolean, fbFrames:object, fbSizes:object, fbPoses:object, fbRoles:array[5], fbCompose:object, _initWrappedEntities:boolean, entitySizes:object
 - sprites.hex(h)
 - sprites.rgb(r, g, b)
 - sprites.shade(h, k)
@@ -615,10 +615,11 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - sprites.diamondDist(x, y, cx, cy)
 - sprites.strip(P, cx, cy, mask, t, colorFn, stub, yoff)
 - sprites.decalInfo(name)
-- sprites.treeVariant(stage, autumn, bloom)
-- sprites.canopy(P, blobs, w, h, base, seed, opts)
-- sprites.trunk(P, x, top, w, h, flare)
+- sprites.treeVariant(stage, autumn, bloom, sil, water)
+- sprites.canopy(P, blobs, w, h, R, seed, opts)
+- sprites.trunk(P, x, top, w, h, flare, flareH)
 - sprites.mossStrands(P, bottoms, n, seed, minLen, maxLen, h)
+- sprites.limb(P, x0, y0, x1, y1, thick, mask)
 - sprites.agentLook(seed)
 - sprites.lookColors(look)
 - sprites.init(state)
@@ -630,6 +631,8 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - sprites.buildingBox(row, variant, zoom, rot)
 - sprites.teeable(row, rot)
 - sprites.teeCode(side, k, surf)
+- sprites.rampOf(hex)
+- sprites.noiseAt(x, y, seed)
 - sprites.placeDecal(ctx, g, name, anchor, frame)
 - sprites.paintBuilding(ctx, row, variant, frame, zoom, seed, rot, tees)
 - sprites.sheetBytes()

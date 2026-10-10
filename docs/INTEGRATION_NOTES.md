@@ -544,3 +544,136 @@ marsh shore 2×, 0.5× chunk seams. Zero console errors / uncaught exceptions. L
   cypress knees on marsh pools (sample `pnoise` with the tile's position bits to land them on water), azalea blossoms
   as an accent ramp from `makeRamp(PAL.azalea)`, tufts/patches already occupy open grass (plant over them), and tree
   shadows now fall down-right.
+
+## art pass B2
+
+Vegetation, following docs/ART_STYLE.md (light, ramps, outline/dither, the per-zoom mechanism). Real-Chrome tour
+(`art2_tour.mjs` / `veg_sheet.mjs` / `art2_perf.mjs` in the scratchpad, 1280×800, seed 42 skipTutorial, a Quad Lawn placed and
+built out, a row of mature oaks + azaleas + palmettos planted near Founders'; `art2-NN-before/after-*.png`): cypress marsh 2×,
+oak row 2×, quad 2×, whole map 0.5×, November 1×, azaleas in bloom 2×, night 1×. Zero console errors / uncaught exceptions.
+
+- **sprites.js** — seven vegetation ramps in `RAMP_BASES` (`oakLeaf`, `cypressLeaf`, `cypressRust`, `palmLeaf`, `azaleaLeaf`,
+  `azaleaBloom`, `moss`; hexes in ART_STYLE §2). `treeVariant(stage, autumn, bloom, sil, water)` adds silhouette bits 4–5 and
+  the cypress water bit 64 (`TREE_SIL_SHIFT`, `TREE_WATER`). `canopy()` rewritten (ramp input, `vnoise` leaf texture through
+  `toneAt`, dappled underside with sun holes, outline on the shadow side/bottom, returns `.inside` for limbs); `trunk()` takes
+  `flare, flareH` (buttress with flutes, bark ramp, tone-0 outline); new `limb()` (masked 2-px branches); `mossStrands()` in
+  three length classes from the moss ramp. `oak`: 4 silhouettes per stage (0 full symmetric — the quad's and the icon's — 1
+  left-heavy, 2 right-heavy, 3 two crowns), spreading limbs, buttressed trunk, baked moss. `cypress`: spindle crown of
+  feathered sprays, flat-top old cypress (sil 3), fluted buttress, knees at the base, waterline + reflection rows under the
+  anchor on wet tiles; November = the rust ramp. `palmetto`: fan fronds (petiole + rays), 2 silhouettes. `azalea`: canopy
+  mound from the leaf ramp, bloom clusters with petal highlights, shredded stage 0 keeps 10×6. New `shrub` (22×12, 4 variants,
+  moss-draped understory). `knees` is now a 64×32 tile overlay keyed by position bits that samples the marsh pool field (see
+  ART_STYLE §9). Sizes/anchors of every tree entry are unchanged (oak 8×14/40×36/96×56, cypress 6×16/16×48/24×80, palmetto
+  12×10/18×15/24×20, azalea 10×6/16×10); init warms the shrubs; selfTest checks the packing, the silhouettes, shrub and knees.
+- **render.js** — `entityPass` trees: `treeVariant(…, hash(tx, ty) & 3, wet)` where `wet` = cypress on a tile ≤ MARSH or with
+  depth > .05; `bakeChunk`: knees with position bits on the cypress's own tile too (no hashed offset — the field places them),
+  understory shrubs on open marsh-edge tiles (`marshEdge`, `C.shrubPct` 38); `drawTree` moss strokes use `MOSS_LIVE` (moss
+  ramp tone 3), three length classes, start points in the canopy's lower half. Shadow pass unchanged (ellipse down-right).
+- **Before / after (same camera):** cypress marsh 2× — dense fir-like cones on a bare marsh → spindle crowns with sprays and
+  trunk glimpses, buttressed bases with a waterline, knees on the pool rims, moss-draped shrubs on the marsh edge; oak row
+  2× — four identical blob canopies with grey lines → four silhouettes with clustered lit crowns, dappled undersides, limbs,
+  buttressed trunks and two-tone moss; quad 2× — the lawn's oak is the full-crown silhouette; map 0.5× — spires and crowns
+  still read as trees, no sparkle; November 1× — rust spindles over the marsh, oaks stay green; azaleas 2× — hot-pink
+  clusters with petal highlights on dark mounds, palmettos as fans; night 1× — crowns keep their lit tops (tones 2–4).
+- **Numbers (headless Chrome):** rAF fps 61 at 1× over the dense marsh, 61 at 2×, 61 at 0.5× (whole map), 61 at night; chunk
+  bake 0.53 → 0.71 ms per chunk (knees overlay + shrubs; ≤ 2×); atlas `memoryMB` 27.05 → 28.24 MB after the same tour
+  (+1.2 MB: 12 oak + 48 cypress lazily built entries, 64 knee overlays at 1×), `perf().memMB` 94.8 → 96.0; draw calls
+  unchanged; nothing new allocated per frame.
+- **Tests** — `sprites.test` +20 (20 ramps rising, variant packing, four silhouettes per oak stage with one size/anchor,
+  cypress water/rust entries, palmetto/azalea silhouettes, knees overlay, shrub, 2× pixel-doubles); all other suites unchanged
+  and green; `node tools/api-index.mjs` regenerated.
+- **Not done, noted:** crepe myrtles were skipped — as a silhouette variant of the azalea they would bloom in March under the
+  azalea's bloom flag and change what the Azalea row plants; they need their own veg type / catalog row (bloom June–Sept,
+  lavender ramp) and a terrain `VEG_TYPES` entry. Knees on open-water tiles sit under the live water pass (tinted, as they
+  should be); the baked tree shadow ellipse stays in the sprites for 0.5×/perf mode where `shadowPass` skips trees.
+
+## art pass B3
+
+Buildings (PLAN_FIDELITY B3): one architectural language, "Louisiana Collegiate", with a distinctive silhouette per
+catalog row, painted to docs/ART_STYLE.md (5-tone ramps, SW face lit / SE face shadow, tone-0 outlines, no rect dithers
+that spill outside a quad). Scratchpad tour `art3_tour.mjs` (seed 42, skipTutorial, every row unlocked by a tour cheat,
+a cluster placed around Founders': lecture hall, library, two dorms, dining hall, union, po'boy; one dorm hp .4 + tarp,
+the lecture hall flooded, the second dorm built .5) → `art3-NN-before/after-*.png`; contact sheets `bld_sheet.mjs`
+(pages a–d all footprint rows × day / night / damaged / boarded / build 1 / build 2 / pilings / 0.5×, h/h2 heroes at 3×)
+→ `art3-00-before/after-sheet-*.png`. Zero console errors / uncaught exceptions.
+
+- **contract.js** — `SPR.FLOODED = 512` (bit 9) and three optional paint-schema keys: `material`
+  (`stucco|brick|stone|metal|wood|glass`), `trim` (hex), `features` (`array:string`, vocabulary `sprites.FEATURES`).
+  **Not wired in render.js (owned by B2 this pass):** `variantOf` needs one line,
+  `if (b.flooded && built >= 1 && !b.ruin) v |= SPR.FLOODED;` — the tour patches it at runtime for the screenshots.
+- **data.js** — `P()` defaults `material: 'stucco', trim: '', features: []`; per-row descriptors: founders_hall
+  `pediment, cupola:gold, banner:roux, steps, planters, arched, mullions, gutters`; lecture_hall `gallery, awnings,
+  mullions, planters, steps` (accent purple); library `arched, mullions, gutters, sign:LIBRARY, steps, planters`;
+  engineering metal + `hvac, vents, tank, stack, mullions`; coastal_institute wood + `shutters, gallery, gutters`; dorm
+  brick + `shutters, vents, gutters, planters, steps`; res_tower `tank, hvac, mullions, gutters`; greek_house
+  `pediment, gallery, shutters, steps` (green shutters); dining_hall `awnings, vents, hvac, sign:DINING, planters`;
+  poboy wood + `awnings`; union `gallery:both, mullions, sign:UNION, flagpole, planters, steps`; rec_center green barrel
+  + `mullions, sign:REC, hvac`; health_center `awnings, sign:HEALTH`; pump metal + `vents`; abatement metal +
+  `sign:FOG`; bell_tower stone + `belfry, arched`; tiger_habitat stone + `sign:TIGERS`; wastewater metal + `vents, stack`.
+- **sprites_buildings.js** —
+  - *Materials:* `rampOf(hex)` (memoised `makeRamp`), `MAT` (`sprites.materials`: trim limestone, iron, glass, tile,
+    concrete, block, wood, sheathing, sandbag, tin, steel, stain, purple, gold, green, clay, crane), `GLOWS` (four warm
+    window glows around `#FFD27A`), `faceColors` → SW face tone 2 / SE face tone 1 of the wall ramp (mismatched pairs
+    mix 2→1), trim from `paint.trim` (gold on purple walls). `wallTexture` per material: stucco islands/threads from a
+    shared 64×64 periodic noise tile (`noiseAt`, built once with `pnoise` 8×4 cells so the bake pays an array read, not
+    four hashes, per sample), brick courses every 3 px with staggered joints, stone 5-px courses, metal panel seams,
+    board-and-batten battens, glass spandrels + mullion grid. `drawBox` adds belt courses at every floor line, a 2-row
+    cornice (trim 4/3 lit, 2/1 shadow), a plinth row, tone-0 outline, the lit top edge; `faceLine` draws a line `up` px
+    above the base across both faces; `quadSpeckle` replaces the rect dithers (they spilled outside the top quad).
+  - *Windows:* 3×4 cells (were 2×3) with sill + lintel, `mullions` cross, `arched` heads with a keystone, `shutters`
+    in the accent ramp; NIGHT lit cells take one of four glows, a quarter show a curtain, dark cells keep a sky px;
+    `opening` mode (construction) paints block-tone-0 holes. `drawDoor` gets a limestone frame, a two-tone panel, a
+    transom (glowing at night) and a doorstep glow.
+  - *Roofs:* ramp tones NW 3 / SW 2 / NE 2− / SE 1, `courses()` tile courses parallel to the eaves on all planes (grey
+    roof colours = tin standing seams, `satOf < .12`), ridge cap 4 over 0, hips 0, eave 0; gable ends get a vent, the
+    barrel a fan window; flat roofs: wall-tone parapet with a limestone coping and gravel speckle. Every roof records
+    `g.roofGeom` (corners, ridge, ramp) for `frontPlane/planePt` (dormers, tarp), `roofTop` (ridge/top-quad equipment).
+  - *Features (`drawKnownDecals`):* `drawColumns` 3-px limestone shafts with capital/base in a recessed portico band,
+    `drawPediment` (gold seal, or the clock in the tympanum), `drawGallery` (slab, iron railing, slender posts between
+    the ground-floor windows), `drawAwnings` (accent/white stripes over the entrance face's ground windows and door),
+    `drawShutters` (in windows), `drawSign` (purple board, gold letters on the far face, lit edges at night),
+    `drawRouxBanners` (purple, gold border, R over a tiger-orange stripe, flanking the door), `drawDormers`,
+    `drawCupola` (louvered box, pyramid or gold dome + finial), `drawRoofGear` (HVAC, water tank on legs, vents,
+    stack), `drawGutters` (downspout), `drawFlagpole`; arcades got keystones, limestone piers and a lit floor.
+    `SKIP_DECAL` now also skips `tank`/`vents` (drawn by hand). Entrance-side aware (`FRONT_L`).
+  - *Grounds:* `drawFoundation` is a cool contact shadow (2 rows, `mix(base, COOL, .42/.2)`); `drawMargins` adds
+    `steps` (two limestone treads over the walk's first rows) and `planters` (clay pots with azalea) flanking the door,
+    plank gangway rails on pilings walks; `drawStilts` bark-ramp posts with cross-braces and ripple rings (back posts
+    still painted before the box, qa pass 2).
+  - *States:* `applyDamaged` — three torn patches down to the sheathing with loose tiles, a tarp lashed over one end
+    of the front plane (`frontPlane`; flat roofs get a hole + tarp), 30 % of windows boarded (`boardCell`: plywood,
+    nails, plank line), two cracked, a wall crack, debris on the apron. `applyBoarded` uses `boardCell`. `applyFlooded`
+    (new) — a 6-px waterline stain fading up the walls with a mineral line, one course of sandbags along both faces
+    (skipping the door), the lower apron speckled wet. `drawScaffoldStage` — stage 0 concrete slab with rebar dowels
+    and pallets (bricks, lumber); stage 1 half-height block walls open to the sky (slab floor + the inner faces of the
+    back walls) in steel scaffolding (`scaffoldFace`: standards every 8 px, ledgers every 7 with planks, braces) and a
+    tower crane behind the box on rows ≥ 3×3 (`drawCrane`, drawn before the walls so the mast is occluded); stage 2
+    full height with window openings, a lumber deck and rafters; wall-less rows get the slab, site fencing and sand
+    piles instead of a 6-px tub.
+  - *Specials:* bell tower belfry (arched openings with gold bells over the top-floor cells, two-tone spire, finial);
+    stadium `STAD` from ramps, stand end faces and back walls in concrete (`CONC`, +Y lit / +X shadow) with a concourse
+    band, concrete entry ramps at both near corners, white-hot mast heads with glare rays at night; practice-field turf
+    from the turf ramp; water tower purple-ramp tank with cross-braced steel legs; new `SPECIAL.wastewater` (standard
+    box + a clarifier with a turning skimmer arm).
+- **Before / after (same camera):** cluster 2× day — flat two-tone walls with 2×3 window dots → stucco with belt
+  courses and cornices, 3×4 windows with sills, arcades with keystones, LIBRARY / DINING / UNION signs, Founders'
+  portico + gold cupola + Roux banners (`art3-01`); night — uniform yellow dots → four warm glows with dark and
+  curtained windows, lit transoms, arcade floors (`art3-02`); Founders' 2× (`art3-03`); damaged dorm — a floating
+  tarp strip above the roof → tarp on the roof corner, torn tiles, boarded + cracked windows, crack, debris
+  (`art3-04`); flooded lecture hall — unchanged → waterline, sandbags, wet apron (`art3-05`, tour-patched variant);
+  construction dorm — grey slab box → open block walls in scaffolding with pallets (`art3-06`); campus 0.5× — rows
+  distinct by material (brick dorm, cream/tile academic, white greek, grey metal engineering, green barrel rec)
+  (`art3-07`); golden hour 1× (`art3-08`).
+- **Numbers:** bake of 33 footprint rows × 6 variants at 1× in the DOM stub (best of 5, `bld_bake.mjs`) 169 → 193 ms
+  (1.14×, budget 1.5×; the first draft was 2.0× before the noise tile replaced `vnoise` per sample and the rect dithers);
+  atlas 1×+2× for those entries 77.4 → 77.6 MB (same canvas sizes); Chrome after the tour: `sprites.memoryMB()` 29.8 →
+  28.7 MB, `render.perf().memMB` 73.9 → 73.6, 61 fps at 2× over the cluster. Unit-test budgets: init 500 → 600 ms
+  (idle 492 → ~520 ms), selfTest 200 → 320 ms (10 variant combos per row instead of 8).
+- **Tests** — `sprites_buildings.test.mjs` +21 (FLOODED bit, eight material ramps with rising luminance, `rampOf`
+  memoisation, `FEATURES` vocabulary and every data feature known, hero descriptors, `noiseAt` range/period/smoothness,
+  FLOODED/NIGHT never change geometry, FLOODED renders for five rows at 1× and 2×, stadium II night size, two more
+  variant combos); the registered self-test paints FLOODED and FLOODED|NIGHT|DAMAGED for every row and validates
+  features; `data.test` (schema keys) and all other suites unchanged and green.
+- **Not done, noted:** `render.variantOf` FLOODED wiring (one line, above); per-row roof colours were kept terracotta on
+  purpose (one language) — at 0.5× rows separate by wall material, signage and roof furniture, not roof hue; `porch`
+  and `belfry` are reserved words in `FEATURES` (the belfry is drawn by the bell tower special, porch is unused).

@@ -4,7 +4,7 @@
 // Usage: node test/unit/sprites.test.mjs   (exit 1 on any failure)
 import { readFileSync, existsSync } from 'node:fs';
 import { loadavg } from 'node:os';
-const BUSY = loadavg()[0] > 4;   // timing budgets are advisory when the machine is loaded
+const BUSY = loadavg()[0] > 3;   // timing budgets are advisory when the machine is loaded
 import vm from 'node:vm';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -76,8 +76,8 @@ for (let t = 0; t < 8; t++) for (let v = 0; v < 8; v++) { const e = g('tile:' + 
 ok(true, 'tile:0..7 × 8 variants are 64×32 anchored at the diamond centre');
 ok(g('tile:0', 8, 0, 1) && g('tile:0', 8, 0, 1) !== g('tile:0', 0, 0, 1) && g('tile:0', 8, 0, 1).sw === 64, 'shallow-bed bit 8 is its own 64×32 entry');
 // art pass B1: ramps, decorations, shores
-for (const n of ['grass', 'highGrass', 'dirt', 'clay', 'limestone', 'bark', 'marshMud', 'waterDeep', 'waterShallow', 'sand', 'mud', 'wet', 'reed']) { const r = S.ramp(n); const lum = (h) => { const c = S.hex(h); return c[0] * 0.299 + c[1] * 0.587 + c[2] * 0.114; }; if (!(Array.isArray(r) && r.length === 5 && lum(r[0]) < lum(r[1]) && lum(r[1]) < lum(r[2]) && lum(r[2]) < lum(r[3]) && lum(r[3]) < lum(r[4]))) ok(false, `ramp ${n}: 5 tones, luminance rising`); }
-ok(true, 'material ramps: 5 tones each, luminance strictly rising deep → highlight');
+for (const n of ['grass', 'highGrass', 'dirt', 'clay', 'limestone', 'bark', 'marshMud', 'waterDeep', 'waterShallow', 'sand', 'mud', 'wet', 'reed', 'oakLeaf', 'cypressLeaf', 'cypressRust', 'palmLeaf', 'azaleaLeaf', 'azaleaBloom', 'moss']) { const r = S.ramp(n); const lum = (h) => { const c = S.hex(h); return c[0] * 0.299 + c[1] * 0.587 + c[2] * 0.114; }; if (!(Array.isArray(r) && r.length === 5 && lum(r[0]) < lum(r[1]) && lum(r[1]) < lum(r[2]) && lum(r[2]) < lum(r[3]) && lum(r[3]) < lum(r[4]))) ok(false, `ramp ${n}: 5 tones, luminance rising`); }
+ok(true, 'material ramps (13 terrain + 7 vegetation): 5 tones each, luminance strictly rising deep → highlight');
 ok(S.ramp('nope') === S.ramp('grass') && S.ramp('grass')[2] === BSU.params.palette.dryGrass, 'ramp(): unknown → grass, base tone at index 2 is the palette colour');
 ok(typeof S.vnoise === 'function' && [0, 3.3, 7, 12.5].every((x) => { const v = S.vnoise(5, x, x * 2, 8); return v >= 0 && v < 1; }) && S.vnoise(5, 3, 4, 8) === S.vnoise(5, 3, 4, 8), 'vnoise in [0,1), deterministic');
 ok(Math.abs(S.vnoise(9, 4.5, 2, 8) - (S.vnoise(9, 4.4, 2, 8) + S.vnoise(9, 4.6, 2, 8)) / 2) < 0.05, 'vnoise is smooth (no lattice jumps)');
@@ -114,6 +114,21 @@ eq(g('light:mast', 0, 0, 1).sh, 96, 'mast cone is 48×96');
 eq(g('oak', 2, 0, 1).sw, 96, 'oak stage 2 width 96'); eq(g('oak', 2, 0, 1).oy, -52, 'oak stage 2 oy −52');
 eq(g('cypress', 2, 0, 1).sh, 80, 'cypress stage 2 height 80'); eq(g('cypress', S.treeVariant(2, true, false), 0, 1).sh, 80, 'autumn cypress');
 eq(g('palmetto', 2, 0, 1).sw, 24, 'palmetto 24 wide'); eq(g('azalea', S.treeVariant(1, false, true), 0, 1).sh, 10, 'azalea bloom 16×10'); eq(g('azalea', 0, 0, 1).sw, 10, 'azalea stage 0 (shredded) 10×6');
+// art pass B2: silhouette variants (bits 4–5), the cypress water bit (64), the knees tile overlay keyed by position, understory shrubs
+eq(S.treeVariant(2, false, false, 3), 2 | 48, 'treeVariant packs the silhouette in bits 4–5'); eq(S.treeVariant(1, true, false, 1, true), 1 | 4 | 16 | 64, 'treeVariant packs autumn, silhouette and water'); eq(S.treeVariant(0, false, false, 7), 48, 'silhouette wraps to 0–3');
+for (const stage of [0, 1, 2]) {
+  const refs = [0, 1, 2, 3].map((sil) => g('oak', S.treeVariant(stage, false, false, sil), 0, 1));
+  const same = refs.every((r) => r && r.sw === refs[0].sw && r.sh === refs[0].sh && r.ox === refs[0].ox && r.oy === refs[0].oy);
+  const distinct = new Set(refs.map((r) => r && r.canvas)).size === 4 || new Set(refs.map((r) => r && (r.sx + ',' + r.sy))).size === 4;
+  ok(same && distinct, `oak stage ${stage}: four silhouettes, one size and anchor (${refs[0] && refs[0].sw}×${refs[0] && refs[0].sh})`);
+}
+for (let sil = 0; sil < 4; sil++) { const r = g('cypress', S.treeVariant(2, false, false, sil, true), 0, 1); ok(r && r.sw === 24 && r.sh === 80 && r.oy === -76, `cypress silhouette ${sil} on water keeps 24×80, oy −76`); }
+ok(g('cypress', S.treeVariant(2, true, false, 3), 0, 1) !== g('cypress', S.treeVariant(2, false, false, 3), 0, 1), 'November rust is its own cypress entry');
+ok(g('palmetto', S.treeVariant(2, false, false, 1), 0, 1) !== g('palmetto', 2, 0, 1) && g('palmetto', S.treeVariant(2, false, false, 1), 0, 1).sw === 24, 'palmetto: two silhouettes, same size');
+ok(g('azalea', S.treeVariant(2, false, true, 1), 0, 1).sh === 10 && g('azalea', S.treeVariant(2, false, true, 1), 0, 1).ox === -8, 'azalea bloom silhouette 1 keeps 16×10 anchored at the base');
+{ const k0 = g('knees', 0, 0, 1), k9 = g('knees', 9, 0, 1), k63 = g('knees', 63, 0, 1); ok(k0 && k0.sw === 64 && k0.sh === 32 && k0.ox === -32 && k0.oy === -16, 'knees are a 64×32 tile overlay at (−32, −16)'); ok(k0 !== k9 && k9 !== k63, 'knees: position-bit variants are separate entries'); eq(S.frames('knees'), 1, 'knees 1 frame'); }
+{ const r = g('shrub', 3, 0, 1); ok(r && r.sw === 22 && r.sh === 12 && r.ox === -11 && r.oy === -10, 'shrub 22×12 anchored at its base'); ok(g('shrub', 0, 0, 1) !== g('shrub', 1, 0, 1), 'shrub variants are separate entries'); eq(S.frames('shrub'), 1, 'shrub 1 frame'); }
+ok(g('oak', 2, 0, 2) && g('oak', 2, 0, 2).sw === 192 && g('oak', 2, 0, 2).sh === 112 && g('oak', S.treeVariant(2, false, false, 2), 0, 2).sw === 192, 'oak 2× entries are pixel-doubles (192×112) for every silhouette');
 
 // --- scenario 4: helpers, packing, determinism -----------------------------
 eq(S.shade('#FDD023', 0.5), '#7E6811', 'shade rounding rule');

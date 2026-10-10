@@ -25,13 +25,15 @@
   const BG = '#0E1230';
   const GOLD = PAL.gold || '#FDD023', GOLD_HI = PAL.goldHi || '#FFE680';
   const WATER_SHALLOW = PR.waterShallow || PAL.shallows || '#6FA895', WATER_DEEP = PR.waterDeep || PAL.waterNight || '#1B3A3A';
+  const MOSS_LIVE = (BSU.sprites && typeof BSU.sprites.ramp === 'function') ? BSU.sprites.ramp('moss')[3] : (PAL.moss || '#9BAA8A');   // art pass B2: the live moss strokes share the moss ramp
   const C = {                                   // local constants the GDD states but params does not carry
     chunkMB: 0.85, chunkIdleFrames: 600, firstBakeMs: 150, spriteGcEvery: 300, cliffMin: 6, cliffMax: 96,
     reedPct: 25, waterCap: 300, waterCapZoom: 420, waterCapSurge: 700, sparkleEvery: 8, agentAnimDiv: 6, gatorAnimDiv: 8,
     titleDriftX: 0.25, titleDriftY: 0.12, squashScale: 1.15, sinkTiltDeg: 2, bubbleLift: 4,
     mossMin: 6, mossMax: 10, mossSway: 3, overlayAlpha: 0.45, ghostAlpha: 0.45, ghostSpriteAlpha: 0.6,
     shadowAlpha: 0.22, shadowColor: '#0A0718',         // design pass: ground shadows under buildings and trees
-    tuftPct: 34, patchPct: 5                            // art pass B1: grass tufts / clover-dirt-limestone patches per 100 open grass tiles
+    tuftPct: 34, patchPct: 5,                           // art pass B1: grass tufts / clover-dirt-limestone patches per 100 open grass tiles
+    shrubPct: 38                                        // art pass B2: moss-draped understory shrubs per 100 open marsh-edge tiles
   };
   const hash = (BSU.rng && BSU.rng.hash) ? BSU.rng.hash : function (a, b) { let h = (a * 374761393 + b * 668265263) | 0; h = Math.imul(h ^ (h >>> 13), 1274126177); return (h ^ (h >>> 16)) >>> 0; };
   const fin = (v, d) => (Number.isFinite(v) ? v : d);
@@ -154,6 +156,7 @@
     else if (b.ruin) v |= SPR.RUIN;
     else if (hp < 1 && b.tarp) v |= SPR.DAMAGED;
     if (b.pilings) v |= SPR.PILINGS;
+    if (b.flooded && built >= 1 && !b.ruin && SPR.FLOODED) v |= SPR.FLOODED;   // art pass B3: waterline + sandbags
     const phase = fin(ci.phase, SKY.DAY);
     const eff = fin(ci.effective, 1);
     if ((phase === SKY.DUSK || phase === SKY.NIGHT) && eff > 0 && !b.blackout && !ci.blackout && built >= 1 && !b.ruin) v |= SPR.NIGHT;
@@ -286,6 +289,15 @@
     cypGen = (cypGen + 1) & 0xFFFF; if (cypGen === 0) { cypStamp.fill(0); cypGen = 1; }
     const veg = state.veg; if (!Array.isArray(veg)) return;
     for (let k = 0; k < veg.length; k++) { const v = veg[k]; if (v && v.type === 'cypress' && Number.isFinite(v.tx) && Number.isFinite(v.ty) && BSU.inBounds(v.tx, v.ty)) cypStamp[BSU.idx(v.tx | 0, v.ty | 0)] = cypGen; }
+  }
+  /** art pass B2: a marsh tile with dry / wet ground on one of its 4 sides (where the understory shrubs grow) */
+  function marshEdge(t, i, tx, ty) {
+    const ty8 = t.type;
+    if (ty > 0 && ty8[i - W] >= T.WET) return true;
+    if (tx < W - 1 && ty8[i + 1] >= T.WET) return true;
+    if (ty < HGT - 1 && ty8[i + W] >= T.WET) return true;
+    if (tx > 0 && ty8[i - 1] >= T.WET) return true;
+    return false;
   }
   function nearCypress(i, tx, ty) {
     if (ty > 0 && cypStamp[i - W] === cypGen) return true;
@@ -949,13 +961,14 @@
         }
         // (d) decorations
         if (ty8 === T.MARSH && (hash(tx, ty) % 100) < C.reedPct) { ref = sp.get('reeds', 0, hash(ty, tx) & 1, 1); if (ref) blit1(g, ref, wx + (hash(tx, ty + 9) % 24) - 12, wy + (hash(tx + 3, ty) % 8) - 4); }
+        if (ty8 === T.MARSH && surf[i] === 0 && t.owner[i] < 0 && (hash(tx + 5, ty + 2) % 100) < C.shrubPct && marshEdge(t, i, tx, ty)) { const hs = hash(tx + 11, ty + 7); ref = sp.get('shrub', hs & 3, 0, 1); if (ref) blit1(g, ref, wx + ((hs >> 2) % 28) - 14, wy + ((hs >> 7) % 10) - 2); }   // art pass B2: understory shrubs on the marsh edge
         if ((ty8 === T.DRY || ty8 === T.HIGH) && surf[i] === 0 && t.owner[i] < 0) {   // art pass B1: tufts, patches, wear beside paths
           const hv = hash(tx * 3 + 1, ty * 5 + 2);
           if ((hv % 100) < C.tuftPct) { const dx = ((hv >> 4) % 33) - 16, dy = ((hv >> 10) % 11) - 6; if (Math.abs(dx) / 32 + Math.abs(dy) / 16 <= 0.62) { ref = sp.get(ty8 === T.HIGH ? 'tuft:high' : 'tuft', hv & 3, 0, 1); if (ref) blit1(g, ref, wx + dx, wy + dy); } }
           if ((hv % 100) >= 100 - C.patchPct) { const dx = ((hv >> 6) % 21) - 10, dy = ((hv >> 12) % 7) - 3; ref = sp.get(ty8 === T.HIGH ? (((hv >> 3) & 1) ? 'patch:lime' : 'patch:dirt') : (((hv >> 3) & 1) ? 'patch:clover' : 'patch:dirt'), (hv >> 5) & 3, 0, 1); if (ref) blit1(g, ref, wx + dx, wy + dy); }
           if (nbrMask(t, i, tx, ty, surfAt)) { ref = sp.get('worn', 4 | (hv & 3), 0, 1); if (ref) { g.globalAlpha = 0.35; blit1(g, ref, wx, wy); g.globalAlpha = 1; } }
         }
-        if (ty8 >= T.MARSH && ty8 !== T.POND && nearCypress(i, tx, ty) && (fin(depth[i], 0) > 0.05 || ty8 === T.MARSH)) { ref = sp.get('knees', 0, 0, 1); if (ref) blit1(g, ref, wx + (hash(tx, ty + 17) % 20) - 10, wy + 2); }
+        if (ty8 >= T.MARSH && ty8 !== T.POND && (nearCypress(i, tx, ty) || cypStamp[i] === cypGen) && (fin(depth[i], 0) > 0.05 || ty8 === T.MARSH)) { ref = sp.get('knees', (tx & 7) | ((ty & 7) << 3), 0, 1); if (ref) blit1(g, ref, wx, wy); }   // art pass B2: a tile overlay keyed by position, knees on the pool rims
         if (f & FLAG.DESIRE_WORN) { ref = sp.get('worn', 0, 0, 1); if (ref) blit1(g, ref, wx, wy); }
         // (f) canal cut (open gate variant baked; pass 3 overlays the live gate frame)
         if (f & FLAG.CANAL) { let v = flagMask(fl, i, tx, ty, FLAG.CANAL, false); if (surf[i] > 0) v |= 16; ref = sp.get('canal', v, 0, 1); if (ref) blit1(g, ref, wx, wy); }
@@ -1333,12 +1346,12 @@
     if (e.id === 'oak' && e.variant >= 1 && zoomNow >= 1) {   // Spanish moss: one path per oak, hashed canopy points, wind sway
       const seed = e.a | 0, n = C.mossMin + (hash(seed, 11) % (C.mossMax - C.mossMin + 1));
       const left = e.sx + ref.ox * zs, top = e.sy + ref.oy * zs, sw = ref.sw * zs, sh = ref.sh * zs;
-      g.strokeStyle = PAL.moss || '#9BAA8A'; g.lineWidth = zoomNow; g.globalAlpha = 0.9;
+      g.strokeStyle = MOSS_LIVE; g.lineWidth = zoomNow; g.globalAlpha = 0.85;
       g.beginPath();
       for (let k = 0; k < n; k++) {
         const hx = hash(seed, 100 + k), hy = hash(seed, 200 + k);
-        const x0 = left + sw * 0.15 + (hx % 1000) / 1000 * sw * 0.7, y0 = top + sh * 0.2 + (hy % 1000) / 1000 * sh * 0.35;
-        const len = (6 + (hash(seed, 300 + k) % 9)) * zoomNow;
+        const x0 = left + sw * 0.12 + (hx % 1000) / 1000 * sw * 0.76, y0 = top + sh * 0.3 + (hy % 1000) / 1000 * sh * 0.3;
+        const len = (4 + (k % 3) * 4 + (hash(seed, 300 + k) % 4)) * zoomNow;   // art pass B2: three length classes (short / mid / long)
         const sway = Math.sin(frameNo / 20 + (hx & 15)) * info.wind * C.mossSway * zoomNow;
         g.moveTo(Math.round(x0) + 0.5, Math.round(y0)); g.lineTo(Math.round(x0 + sway) + 0.5, Math.round(y0 + len));
       }
@@ -1963,10 +1976,11 @@
         const v = veg[k]; if (!v || !v.type) continue;
         const tx = v.tx | 0, ty = v.ty | 0;
         if (!BSU.inBounds(tx, ty) || !inView(tx, ty, 4)) continue;
-        const stage = clamp(fin(v.stage, 0) | 0, 0, 2);
-        const variant = sp.treeVariant(stage, info.autumn && v.type === 'cypress', info.bloom && v.type === 'azalea');
-        const e = push('tree', tx, ty, fin(elev[ty * W + tx], 0), 1, drawTree);
-        e.id = v.type; e.variant = stage; e.a = hash(tx, ty); e.ref = getRef(v.type, variant, 0);
+        const stage = clamp(fin(v.stage, 0) | 0, 0, 2), hv = hash(tx, ty), ti = ty * W + tx;
+        const wet = v.type === 'cypress' && (t.type[ti] <= T.MARSH || fin(t.depth[ti], 0) > 0.05);   // art pass B2: a waterline base on marsh / water
+        const variant = sp.treeVariant(stage, info.autumn && v.type === 'cypress', info.bloom && v.type === 'azalea', hv & 3, wet);   // bits 4–5: one of four silhouettes per tile
+        const e = push('tree', tx, ty, fin(elev[ti], 0), 1, drawTree);
+        e.id = v.type; e.variant = stage; e.a = hv; e.ref = getRef(v.type, variant, 0);
         tileScreen(e);
       }
     }

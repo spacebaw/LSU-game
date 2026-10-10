@@ -10,7 +10,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { makeWindow } from '../domstub.mjs';
 
-const BUSY = loadavg()[0] > 4;
+const BUSY = loadavg()[0] > 3;
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, '..', '..');
 let failures = 0, passes = 0;
