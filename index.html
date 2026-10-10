@@ -130,10 +130,10 @@ background:var(--panel-bg);border:1px solid var(--line);color:var(--text);border
 #hud.scorebug #objective-card.collapsed{top:calc(var(--topbar-h) + 82px)}
 /* needs strip: five gauges + the binding line */
 #needs-strip{margin-top:8px;padding-top:7px;border-top:1px solid rgba(255,255,255,.08)}
-.needs-gauges{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}
-.need{cursor:pointer;border-radius:4px;padding:2px 3px;transition:background .15s} .need:hover{background:rgba(255,255,255,.07)}
+.needs-gauges{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px;overflow:hidden}
+.need{cursor:pointer;border-radius:4px;padding:2px 3px;transition:background .15s;min-width:0;overflow:hidden} .need:hover{background:rgba(255,255,255,.07)}
 .need-label{font:600 9px/1 var(--font-ui);letter-spacing:.08em;text-transform:uppercase;color:var(--text-dim)}
-.need .bar{height:5px;margin:3px 0 2px} .need-val{font:600 10px/1 var(--font-ui);color:var(--text);font-variant-numeric:tabular-nums;white-space:nowrap}
+.need .bar{height:5px;margin:3px 0 2px;overflow:hidden;max-width:100%} .need-val{font:600 10px/1 var(--font-ui);color:var(--text);font-variant-numeric:tabular-nums;white-space:nowrap}
 .need[data-level="warn"] .fill{background:linear-gradient(90deg,#F39C2B,#FFC46B)} .need[data-level="bad"] .fill{background:linear-gradient(90deg,#B8302B,var(--danger))} .need[data-level="bad"] .need-val{color:#FF8A84}
 .needs-text{display:block;width:100%;margin-top:6px;text-align:left;font:600 11px/1.3 var(--font-ui);color:var(--gold-hi);background:rgba(253,208,35,.08);border:1px solid rgba(253,208,35,.3);border-radius:4px;padding:5px 7px;cursor:pointer;white-space:normal}
 .needs-text:hover{background:rgba(253,208,35,.16);border-color:var(--gold)} .needs-text:disabled{cursor:default;opacity:.8}
@@ -26180,7 +26180,7 @@ input[type="range"]{width:180px;accent-color:var(--gold)}
     world.addEventListener('pointermove', pt('move'));
     world.addEventListener('pointerup', pt('up'));
     world.addEventListener('pointercancel', function () { M.pointer('cancel', lastPx, lastPy, 0, M0); });
-    world.addEventListener('pointerleave', function () { hideTooltip(); if (live.down) M.pointer('cancel', lastPx, lastPy, 0, M0); });
+    world.addEventListener('pointerleave', function () { hideTooltip(); show(E['ghost-label'], false); if (live.down) M.pointer('cancel', lastPx, lastPy, 0, M0); });   // the ghost label must not linger over HUD panels
     world.addEventListener('contextmenu', function (e) { if (e.preventDefault) e.preventDefault(); });
     world.addEventListener('dblclick', function (e) { if (e.preventDefault) e.preventDefault(); });
     world.addEventListener('wheel', function (e) { try { M.wheel(fin(e.offsetX, 0), fin(e.offsetY, 0), fin(e.deltaX, 0), fin(e.deltaY, 0), !!(e.ctrlKey || e.metaKey)); if (e.preventDefault) e.preventDefault(); } catch (err) { uerr('wheel', err); } }, { passive: false });
@@ -27032,6 +27032,7 @@ input[type="range"]{width:180px;accent-color:var(--gold)}
     if (b && b.build && unlockOf(s, b.build).ok && !out[b.build]) out[b.build] = b.level === 'ok' ? 'Next' : 'Needed';
     return out;
   }
+  function compactNum(n) { n = fin(n, 0); return n >= 10000 ? Math.round(n / 1000) + 'k' : n >= 1000 ? (Math.round(n / 100) / 10).toFixed(1).replace(/\.0$/, '') + 'k' : String(n); }
   function refreshNeeds(s) {
     const n = needsNow(s); if (!n || !E.needEls) return;
     const key = JSON.stringify(n.terms) + '|' + (n.binding ? n.binding.text + n.binding.level : '');
@@ -27040,7 +27041,7 @@ input[type="range"]{width:180px;accent-color:var(--gold)}
       const g = E.needEls[t.key]; if (!g) continue;
       const ratio = t.cap > 0 ? t.used / t.cap : (t.used > 0 ? 1 : 0);
       const w = Math.round(clamp(ratio, 0, 1) * 100) + '%'; if (g.fill.style.width !== w) g.fill.style.width = w;
-      setText(g.val, t.used + ' / ' + t.cap);
+      setText(g.val, compactNum(t.used) + ' / ' + compactNum(t.cap));   // 1500 / 7680 → 1.5k / 7.7k so five gauges fit the strip
       const lvl = (t.short > 0 || (t.cap <= t.used && t.used > 0)) ? 'bad' : (ratio >= 0.85 ? 'warn' : 'ok');
       if (g.el.dataset.level !== lvl) g.el.dataset.level = lvl;
       g.el.title = (needsData()[t.key] || {}).label + ': ' + t.used + ' ' + ((needsData()[t.key] || {}).unit || '') + ' using ' + t.cap + ' of capacity' + (t.short > 0 ? ' · ' + t.short + ' unserved' : '') + ' · click to build a ' + ((rowOf((needsData()[t.key] || {}).build) || {}).name || '');

@@ -407,7 +407,7 @@
     world.addEventListener('pointermove', pt('move'));
     world.addEventListener('pointerup', pt('up'));
     world.addEventListener('pointercancel', function () { M.pointer('cancel', lastPx, lastPy, 0, M0); });
-    world.addEventListener('pointerleave', function () { hideTooltip(); if (live.down) M.pointer('cancel', lastPx, lastPy, 0, M0); });
+    world.addEventListener('pointerleave', function () { hideTooltip(); show(E['ghost-label'], false); if (live.down) M.pointer('cancel', lastPx, lastPy, 0, M0); });   // the ghost label must not linger over HUD panels
     world.addEventListener('contextmenu', function (e) { if (e.preventDefault) e.preventDefault(); });
     world.addEventListener('dblclick', function (e) { if (e.preventDefault) e.preventDefault(); });
     world.addEventListener('wheel', function (e) { try { M.wheel(fin(e.offsetX, 0), fin(e.offsetY, 0), fin(e.deltaX, 0), fin(e.deltaY, 0), !!(e.ctrlKey || e.metaKey)); if (e.preventDefault) e.preventDefault(); } catch (err) { uerr('wheel', err); } }, { passive: false });
@@ -1259,6 +1259,7 @@
     if (b && b.build && unlockOf(s, b.build).ok && !out[b.build]) out[b.build] = b.level === 'ok' ? 'Next' : 'Needed';
     return out;
   }
+  function compactNum(n) { n = fin(n, 0); return n >= 10000 ? Math.round(n / 1000) + 'k' : n >= 1000 ? (Math.round(n / 100) / 10).toFixed(1).replace(/\.0$/, '') + 'k' : String(n); }
   function refreshNeeds(s) {
     const n = needsNow(s); if (!n || !E.needEls) return;
     const key = JSON.stringify(n.terms) + '|' + (n.binding ? n.binding.text + n.binding.level : '');
@@ -1267,7 +1268,7 @@
       const g = E.needEls[t.key]; if (!g) continue;
       const ratio = t.cap > 0 ? t.used / t.cap : (t.used > 0 ? 1 : 0);
       const w = Math.round(clamp(ratio, 0, 1) * 100) + '%'; if (g.fill.style.width !== w) g.fill.style.width = w;
-      setText(g.val, t.used + ' / ' + t.cap);
+      setText(g.val, compactNum(t.used) + ' / ' + compactNum(t.cap));   // 1500 / 7680 → 1.5k / 7.7k so five gauges fit the strip
       const lvl = (t.short > 0 || (t.cap <= t.used && t.used > 0)) ? 'bad' : (ratio >= 0.85 ? 'warn' : 'ok');
       if (g.el.dataset.level !== lvl) g.el.dataset.level = lvl;
       g.el.title = (needsData()[t.key] || {}).label + ': ' + t.used + ' ' + ((needsData()[t.key] || {}).unit || '') + ' using ' + t.cap + ' of capacity' + (t.short > 0 ? ' · ' + t.short + ' unserved' : '') + ' · click to build a ' + ((rowOf((needsData()[t.key] || {}).build) || {}).name || '');

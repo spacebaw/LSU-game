@@ -123,10 +123,10 @@ background:var(--panel-bg);border:1px solid var(--line);color:var(--text);border
 #hud.scorebug #objective-card.collapsed{top:calc(var(--topbar-h) + 82px)}
 /* needs strip: five gauges + the binding line */
 #needs-strip{margin-top:8px;padding-top:7px;border-top:1px solid rgba(255,255,255,.08)}
-.needs-gauges{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}
-.need{cursor:pointer;border-radius:4px;padding:2px 3px;transition:background .15s} .need:hover{background:rgba(255,255,255,.07)}
+.needs-gauges{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px;overflow:hidden}
+.need{cursor:pointer;border-radius:4px;padding:2px 3px;transition:background .15s;min-width:0;overflow:hidden} .need:hover{background:rgba(255,255,255,.07)}
 .need-label{font:600 9px/1 var(--font-ui);letter-spacing:.08em;text-transform:uppercase;color:var(--text-dim)}
-.need .bar{height:5px;margin:3px 0 2px} .need-val{font:600 10px/1 var(--font-ui);color:var(--text);font-variant-numeric:tabular-nums;white-space:nowrap}
+.need .bar{height:5px;margin:3px 0 2px;overflow:hidden;max-width:100%} .need-val{font:600 10px/1 var(--font-ui);color:var(--text);font-variant-numeric:tabular-nums;white-space:nowrap}
 .need[data-level="warn"] .fill{background:linear-gradient(90deg,#F39C2B,#FFC46B)} .need[data-level="bad"] .fill{background:linear-gradient(90deg,#B8302B,var(--danger))} .need[data-level="bad"] .need-val{color:#FF8A84}
 .needs-text{display:block;width:100%;margin-top:6px;text-align:left;font:600 11px/1.3 var(--font-ui);color:var(--gold-hi);background:rgba(253,208,35,.08);border:1px solid rgba(253,208,35,.3);border-radius:4px;padding:5px 7px;cursor:pointer;white-space:normal}
 .needs-text:hover{background:rgba(253,208,35,.16);border-color:var(--gold)} .needs-text:disabled{cursor:default;opacity:.8}
