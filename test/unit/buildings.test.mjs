@@ -215,6 +215,90 @@ ok(lr.length === 1 && lr[0].tiles.length === 36 && lr[0].name === 'The Great Wal
   ok(B.setbackSpot(null, 'dorm', 1, 1).tx === 1 && B.setbackSpot(sd, 'nope', 1, 1).snapped === false, 'setbackSpot tolerates garbage');
 }
 
+// --- scenario: undo pass — a drag run is undone EXACTLY (surface, flags, crest, integrity, elevation, walk class, cash) --------
+{
+  const su = BSU.newState(31);
+  for (let i = 0; i < 4096; i++) { su.tiles.owner[i] = -1; su.tiles.elev[i] = 6; su.tiles.type[i] = BSU.T.DRY; su.tiles.surface[i] = 0; su.tiles.crest[i] = 0; su.tiles.flags[i] = 0; }
+  su.plot.bank0 = 57; su.plot.founders = { tx: 50, ty: 7 }; su.plot.highway = []; su.plot.cove = []; su.plot.mouth = [0, 0, 0]; su.plot.bayou = []; su.plot.cheniers = []; su.plot.mounds = [];
+  su.economy.suppressCoverage = true; su.economy.cash = 50000000;
+  BSU.state = su; B.reset(su, true);
+  BSU.terrain.rewalk(su);
+  const A = ['surface', 'crest', 'integrity', 'flags', 'elev', 'walk', 'owner', 'type'];
+  const snap = () => { const o = {}; for (const k of A) o[k] = su.tiles[k].slice(); o.cash = su.economy.cash; o.veg = su.veg.length; return o; };
+  const same = (a, b) => { for (const k of A) for (let i = 0; i < a[k].length; i++) if (a[k][i] !== b[k][i]) return k + '[' + i + '] ' + a[k][i] + ' != ' + b[k][i]; return a.cash === b.cash && a.veg === b.veg ? '' : 'cash/veg ' + a.cash + '/' + b.cash; };
+  const Lrun = [], tx0 = 12, ty0 = 30;
+  for (let x = tx0; x <= tx0 + 4; x++) Lrun.push(BSU.idx(x, ty0));
+  for (let y = ty0 + 1; y <= ty0 + 3; y++) Lrun.push(BSU.idx(tx0 + 4, y));
+  // 1. an L-shaped gravel path
+  su.tick = 1000; const before = snap();
+  const pr = B.placeRun(su, 'path', Lrun, {});
+  ok(pr.ok && pr.placed === Lrun.length && pr.cost === 2000 * Lrun.length, 'path run placed: ' + pr.placed + ' tiles for ' + pr.cost);
+  ok(su.tiles.surface[Lrun[3]] === BSU.SURF.PATH && su.economy.cash === before.cash - pr.cost, 'path surface laid, cash charged');
+  const inf = B.undoInfo(su);
+  ok(inf && inf.n === Lrun.length && inf.refund === pr.cost && /path/i.test(inf.name) && inf.ticksLeft > 0, 'undoInfo reports what Undo will take back: ' + JSON.stringify(inf));
+  su.tick = 1020;
+  const un = B.undo(su);
+  ok(un.ok && un.refund === pr.cost && un.n === Lrun.length, 'run undo ok, refund ' + un.refund);
+  eq(same(before, snap()), '', 'path run undone: every tile array and the cash are exactly as before');
+  ok(B.undoInfo(su) === null && B.undo(su).ok === false, 'a second undo has nothing to take');
+  // 2. a road run over an existing path (prev surface PATH must come back, not NONE)
+  B.placeRun(su, 'path', Lrun, {}); su.tick = 1100; const b2 = snap();
+  const fr = B.placeRun(su, 'road', Lrun.slice(0, 4), {});
+  ok(fr.ok && su.tiles.surface[Lrun[1]] === BSU.SURF.ROAD, 'road laid over the path: ' + JSON.stringify(fr));
+  ok(B.undo(su).ok, 'road run undone'); eq(same(b2, snap()), '', 'road undo restores the PATH surface under it');
+  const fz = [BSU.idx(60, 50), BSU.idx(61, 50), BSU.idx(62, 50)]; const bf = snap();
+  const fnr = B.placeRun(su, 'gator_fence', fz, {});
+  if (fnr.ok) { ok(B.undo(su).ok, 'fence run undone'); eq(same(bf, snap()), '', 'fence undo exact'); } else ok(true, 'fence run skipped on bare ground: ' + (fnr.skipped[0] && fnr.skipped[0].reason));
+  const cRun = []; for (let x = 20; x <= 26; x++) cRun.push(BSU.idx(x, 40));
+  su.tick = 1200; const b3 = snap();
+  const cr = B.placeRun(su, 'canal', cRun, {});
+  ok(cr.ok && cr.placed === cRun.length && (su.tiles.flags[cRun[2]] & BSU.FLAG.CANAL) !== 0 && su.tiles.elev[cRun[2]] < 6, 'canal dug: flag set and bed cut');
+  const eco0 = su.wildlife && su.wildlife.ecologyTerms ? su.wildlife.ecologyTerms.once : 0;
+  ok(B.undo(su).ok, 'canal run undone'); eq(same(b3, snap()), '', 'canal undo restores flags, elevation, walk class and cash exactly');
+  const lRun = []; for (let x = 30; x <= 36; x++) lRun.push(BSU.idx(x, 44));
+  su.tick = 1300; const b4 = snap();
+  const lr = B.placeRun(su, 'levee', lRun, {});
+  ok(lr.ok && su.tiles.crest[lRun[3]] > 0, 'levee raised');
+  ok(B.undo(su).ok, 'levee run undone'); eq(same(b4, snap()), '', 'levee undo restores crest, integrity, flags and cash exactly');
+  // levee over a canal tile = a floodgate; its undo must clear the floodgate and leave the canal
+  B.placeRun(su, 'canal', cRun, {}); su.tick = 1400; const b5 = snap();
+  B.placeRun(su, 'levee', cRun.slice(2, 4), {}); ok((su.tiles.flags[cRun[2]] & BSU.FLAG.FLOODGATE) !== 0, 'levee across the canal makes a floodgate');
+  ok(B.undo(su).ok, 'floodgate levee undone'); eq(same(b5, snap()), '', 'floodgate undo leaves the plain canal');
+  B.undo(su);
+  // 3. the window: refused once it has closed, nothing changes, no money appears
+  B.remove(su, { tile: Lrun[0] }); for (const i of Lrun) B.remove(su, { tile: i }); const Mrun = Lrun.map(i => i + 64 * 8); su.tick = 2000; const b6pre = snap(); B.placeRun(su, 'path', Mrun, {}); const b6 = snap();
+  su.tick = 2000 + 51;
+  ok(B.undoInfo(su) === null, 'undoInfo is null once the window has closed');
+  const late = B.undo(su);
+  ok(late.ok === false && /Too late/.test(late.reason) && same(b6, snap()) === '', 'undo refused after the window: ' + late.reason);
+  void b6pre;
+  // 4. something changed since: refused with a reason, and the refund cannot be farmed
+  su.tick = 3000; B.remove(su, { tile: Mrun[0] }); for (const i of Mrun) B.remove(su, { tile: i }); const Nrun = Lrun.map(i => i + 64 * 14); B.placeRun(su, 'path', Nrun, {}); const cashRun = su.economy.cash;
+  ok(B.remove(su, { tile: Nrun[2] }).ok, 'one tile of the run bulldozed afterwards');
+  const cashMid = su.economy.cash; su.tick = 3010;
+  const blocked = B.undo(su);
+  ok(blocked.ok === false && /changed since/.test(blocked.reason) && su.economy.cash === cashMid && su.tiles.surface[Nrun[1]] === BSU.SURF.PATH, 'undo refused when a tile was changed since: ' + blocked.reason);
+  ok(B.undo(su).ok === false, 'the blocked record is dropped');
+  // 5. demolished since: refused, and the refund cannot be farmed (tree and building)
+  su.tick = 4000; const oak = B.place(su, 'live_oak', 46, 16, {}); ok(oak.ok, 'live oak planted: ' + oak.reason);
+  const oi = B.undoInfo(su); ok(oi && oi.n === 1 && oi.refund === oak.cost && /oak/i.test(oi.name), 'tree undoInfo: ' + JSON.stringify(oi));
+  B.remove(su, { tile: BSU.idx(46, 16) }); su.tick = 4005; const cashOak = su.economy.cash;
+  const goneT = B.undo(su); ok(goneT.ok === false && /tree is gone/.test(goneT.reason) && su.economy.cash === cashOak, 'undo of a removed tree refused: ' + goneT.reason);
+  su.tick = 4010; const oak2 = B.place(su, 'live_oak', 47, 16, {}); ok(oak2.ok && su.veg.some(v => v.tx === 47 && v.ty === 16), 'second oak planted');
+  ok(B.undo(su).ok && !su.veg.some(v => v.tx === 47 && v.ty === 16), 'undo removes the planted tree (terrain.removeVeg takes tx,ty)');
+  su.tick = 4020; B.place(su, 'live_oak', 48, 16, {}); su.tick = 4030; B.undo(su); su.tick = 4040; B.place(su, 'live_oak', 48, 16, {}); B.remove(su, { tile: BSU.idx(48, 16) }); ok(!su.veg.some(v => v.tx === 48 && v.ty === 16), 'bulldozing a tree removes it');
+  su.veg.push({ type: 'oak', tx: 49, ty: 20, stage: 3, plantedDay: 0 }); const wild = B.remove(su, { tile: BSU.idx(49, 20) });
+  ok(wild.ok && wild.refund === 0 && !su.veg.some(v => v.tx === 49 && v.ty === 20), 'bulldozing a wild tree clears it for no refund');
+  let bid = null, bp = null;
+  for (const cand of ['pond', 'water_tower', 'substation', 'gazebo', 'bandstand']) { su.tick = 4100; bp = B.place(su, cand, 50, 22, {}); if (bp.ok) { bid = cand; break; } }
+  if (bid) {
+    const bi = B.undoInfo(su); ok(bi && bi.n === 1 && bi.refund === bp.cost, 'building undoInfo (' + bid + '): ' + JSON.stringify(bi));
+    B.remove(su, bp.id); su.tick = 4105; const cashB = su.economy.cash;
+    const goneB = B.undo(su); ok(goneB.ok === false && /gone|replaced/.test(goneB.reason) && su.economy.cash === cashB, 'undo of a demolished building refused: ' + goneB.reason);
+    su.tick = 4200; const bp2 = B.place(su, bid, 50, 22, {}); ok(bp2.ok && B.undo(su).ok && su.buildings[bp2.id] === null, bid + ' placed and undone');
+  } else ok(true, 'no no-path building placeable on the synthetic plot; building undo covered by the selfTest');
+}
+
 // --- scenario: no exceptions on garbage input -------------------------------------
 let threwAny = false;
 try {

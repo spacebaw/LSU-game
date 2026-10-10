@@ -740,12 +740,19 @@
     for (const [x, y] of order) { if (!BSU.inBounds(x, y)) continue; const i = BSU.idx(x, y); if (edges.indexOf(i) >= 0 && free(i)) return i; }
     return -1;
   }
-  function pushUndo(state, rec) { cache(state).undo = rec; }
+  /** one undo record per placement or run: entries (reverse-applied by undo), the full cost, and a label for the Undo chip */
+  function pushUndo(state, rec, id) {
+    const row = rowOf(id); let n = 0;
+    for (const e of rec.entries) if (e.kind === 'tile' || e.kind === 'building' || e.kind === 'veg') n++;
+    rec.id = id; rec.name = row ? row.name : String(id); rec.n = n;
+    cache(state).undo = rec;
+  }
   /** apply one legal drag tile (validation already done); records undo entries; returns the tiles written */
   function applyDragTile(state, row, i, undoRec, day) {
     const tl = state.tiles;
     const prev = { i: i, surface: tl.surface[i], crest: tl.crest[i], integrity: tl.integrity[i], flags: tl.flags[i], elev: tl.elev[i] };
-    undoRec.entries.push({ kind: 'tile', prev: prev });
+    const ent = { kind: 'tile', prev: prev, post: null, eco: 0 };   // post = what this placement left behind: undo refuses when the tile was changed since
+    undoRec.entries.push(ent);
     switch (row.placeRule) {
       case PLACE.PATH: case PLACE.ROAD: case PLACE.BOARDWALK:
         setSurface(state, i, row.effects.surfaceId); rewalk(state, i); break;
@@ -757,12 +764,13 @@
       case PLACE.CANAL:
         setElev(state, i, Math.max(tl.elev[i] - PH.canalCut, PH.canalBedMin));
         markCanal(state, i, true); rewalk(state, i);
-        if (isMarsh(state, i)) call('wildlife', 'applyEcologyOnce', [state, row.effects.ecologyPerTile], null);
+        if (isMarsh(state, i)) { ent.eco = fin(row.effects.ecologyPerTile, 0); call('wildlife', 'applyEcologyOnce', [state, row.effects.ecologyPerTile], null); }
         break;
       case PLACE.PRESERVE:
         setFlag(state, i, FLAG.PRESERVE, true); break;
       default: break;
     }
+    ent.post = { surface: tl.surface[i], crest: tl.crest[i], flags: tl.flags[i] & (FLAG.CANAL | FLAG.PRESERVE), owner: tl.owner[i] };
     touch(state, i, 'decor');
   }
   /** Place a footprint row, a drag tile, the pilings upgrade or the surge barrier. Charges economy. */
@@ -792,7 +800,7 @@
     if (row.kind === 'drag' && row.placeRule !== PLACE.BARRIER || row.kind === 'paint') {
       const i = r.tiles[0];
       applyDragTile(state, row, i, undoRec, day);
-      if (!sharedUndo) pushUndo(state, undoRec);
+      if (!sharedUndo) pushUndo(state, undoRec, id);
       c.aurasDirty = true; c.statsCache = null;
       return { ok: true, id: -1, tiles: [i], cost: r.cost };
     }
@@ -804,7 +812,7 @@
       if (tr && typeof tr.plantVeg === 'function') tr.plantVeg(state, vtype, tx, ty);
       else state.veg.push({ type: vtype, tx: tx, ty: ty, stage: 0, plantedDay: day, planted: true });
       undoRec.entries.push({ kind: 'veg', tx: tx, ty: ty, type: vtype });
-      if (!sharedUndo) pushUndo(state, undoRec);
+      if (!sharedUndo) pushUndo(state, undoRec, id);
       touch(state, i, 'decor');
       c.aurasDirty = true; c.statsCache = null;
       return { ok: true, id: -1, tiles: [i], cost: r.cost };
@@ -826,7 +834,7 @@
       for (const i of r.tiles) { undoRec.entries.push({ kind: 'elev', i: i, elev: state.tiles.elev[i] }); setElev(state, i, mean); }
     }
     state.buildings.push(b);
-    undoRec.entries.push({ kind: 'building', id: b.id });
+    undoRec.entries.push({ kind: 'building', id: b.id, type: b.type, pilings: b.pilings, tier: b.tier });
     for (const i of r.tiles) { state.tiles.owner[i] = b.id; rewalk(state, i); touch(state, i, 'decor'); }
     if (id === 'dining_hall') b.data.dumpsterTile = pickDumpster(state, b);
     if (id === 'wastewater') { for (const i of r.tiles) if (isMarsh(state, i)) { call('wildlife', 'applyEcologyOnce', [state, -P.wildlife.ecology.wastewaterMarsh], null); break; } }
@@ -835,7 +843,7 @@
       markPond(state, r.tiles, b.id, true);
     }
     if (id === 'founders_hall') c.connectedDirty = true;
-    if (!sharedUndo) pushUndo(state, undoRec);
+    if (!sharedUndo) pushUndo(state, undoRec, id);
     dirtyAll(c);
     emit(EV.BUILDING_PLACED, { id: b.id, type: b.type, tx: b.tx, ty: b.ty, w: b.w, h: b.h, cost: r.cost, pilings: b.pilings });
     if (b.built >= 1) onComplete(state, b);
@@ -879,7 +887,7 @@
         const r = placeInner(state, id, i & 63, i >> 6, o, undoRec);
         if (r.ok) { out.placed++; out.cost += r.cost; } else out.skipped.push({ i: i, reason: r.reason });
       }
-      if (out.placed > 0) { pushUndo(state, undoRec); out.ok = true; dirtyAll(cache(state)); }
+      if (out.placed > 0) { pushUndo(state, undoRec, id); out.ok = true; dirtyAll(cache(state)); }
       return out;
     } catch (e) { if (BSU.SELFTEST) throw e; BSU.error('buildings', 'placeRun', e); out.skipped.push({ i: -1, reason: 'Cannot place here' }); return out; }
   };
@@ -935,9 +943,9 @@
         if (vegIdx >= 0) {
           const v = state.veg[vegIdx], cat = catalog();
           const rowId = v.type === 'oak' ? 'live_oak' : v.type;
-          if (reason === 'demolish' && cat[rowId]) amount += Math.round(cat[rowId].cost * PE.demolishRefund);
+          if (reason === 'demolish' && cat[rowId] && v.planted) amount += Math.round(cat[rowId].cost * PE.demolishRefund);   // only trees the player planted refund; clearing a wild one pays nothing
           const tr = dep.terrain();
-          if (tr && typeof tr.removeVeg === 'function') tr.removeVeg(state, vegIdx); else state.veg.splice(vegIdx, 1);
+          if (tr && typeof tr.removeVeg === 'function') tr.removeVeg(state, v.tx, v.ty); else state.veg.splice(vegIdx, 1);   // terrain.removeVeg takes (state, tx, ty), not an index
           touch(state, i, 'decor'); any = true;
         }
         if (!any) return { ok: false, refund: 0, reason: 'Nothing here' };
@@ -954,13 +962,44 @@
       return { ok: true, refund: amount };
     } catch (e) { if (BSU.SELFTEST) throw e; BSU.error('buildings', 'remove', e); return { ok: false, refund: 0, reason: 'Cannot remove' }; }
   };
-  /** the last placement within 50 ticks (ui also checks 5 s wall-clock): full refund */
+  /** the undo window in sim ticks: 50 at 1× (5 s of wall-clock), scaled with the speed (paused = frozen, never wider than 1×) */
+  function undoWindow(state) { return P.ui.undoTicks * Math.max(1, fin(state.ui && state.ui.speed, 1)); }
+  /** what Ctrl+Z / the Undo chip would take back right now: {id, name, n, refund, ticksLeft, windowTicks} or null (nothing, or the window closed) */
+  M.undoInfo = function (state) {
+    try {
+      if (!state) return null;
+      const u = cache(state).undo; if (!u) return null;
+      const win = undoWindow(state), left = win - (fin(state.tick, 0) - u.tick);
+      if (left < 0) return null;
+      return { id: u.id || '', name: u.name || '', n: fin(u.n, 0), refund: fin(u.cost, 0), ticksLeft: left, windowTicks: win };
+    } catch (e) { if (BSU.SELFTEST) throw e; BSU.error('buildings', 'undoInfo', e); return null; }
+  };
+  /** why a record can no longer be taken back, or '' when every tile/building/tree is still exactly as the placement left it */
+  function undoBlocker(state, u) {
+    const tl = state.tiles;
+    for (const e of u.entries) {
+      if (e.kind === 'tile' && e.post) {
+        const i = e.prev.i, q = e.post;
+        if (tl.surface[i] !== q.surface || (tl.crest[i] > 0) !== (q.crest > 0) || (tl.flags[i] & (FLAG.CANAL | FLAG.PRESERVE)) !== q.flags || tl.owner[i] !== q.owner) return "Can't undo: that ground has been changed since";
+      } else if (e.kind === 'building') {
+        const b = state.buildings[e.id];
+        if (!b || b.type !== e.type) return "Can't undo: that building is gone or replaced";
+        if (b.pilings !== e.pilings || b.tier !== e.tier) return "Can't undo: that building has been upgraded since";
+      } else if (e.kind === 'veg') {
+        if (!state.veg.some(function (v) { return v && v.tx === e.tx && v.ty === e.ty && v.type === e.type && v.planted; })) return "Can't undo: that tree is gone";
+      }
+    }
+    return '';
+  }
+  /** take back the last placement or drag run inside the undo window: every touched tile returns to its exact previous surface / flags / crest / canal / elevation through the same hooks placing used, the cost is refunded */
   M.undo = function (state) {
     try {
       const c = cache(state), u = c.undo;
       if (!u) return { ok: false, reason: 'Nothing to undo' };
-      const win = P.ui.undoTicks * Math.max(1, fin(state.ui && state.ui.speed, 1));   // D16: 5 s wall-clock in the browser → the tick window scales with the sim speed (50 ticks headless / at 1×)
-      if (fin(state.tick, 0) - u.tick > win) { c.undo = null; return { ok: false, reason: 'Too late to undo' }; }
+      const win = undoWindow(state);   // D16: 5 s wall-clock in the browser → the tick window scales with the sim speed (50 ticks headless / at 1×)
+      if (fin(state.tick, 0) - u.tick > win) { c.undo = null; return { ok: false, reason: 'Too late to undo (' + P.ui.undoSeconds + ' s window)' }; }
+      const why = undoBlocker(state, u);
+      if (why) { c.undo = null; return { ok: false, reason: why }; }
       const tl = state.tiles;
       for (let k = u.entries.length - 1; k >= 0; k--) {
         const e = u.entries[k];
@@ -975,19 +1014,22 @@
           if (isPreserve(state, i) !== ((p.flags & FLAG.PRESERVE) !== 0)) setFlag(state, i, FLAG.PRESERVE, (p.flags & FLAG.PRESERVE) !== 0);
           if (tl.crest[i] !== p.crest || tl.integrity[i] !== p.integrity) { tl.crest[i] = p.crest; tl.integrity[i] = p.integrity; markLeveeChange(state, i); }
           if (Math.abs(tl.elev[i] - p.elev) > 1e-6) setElev(state, i, p.elev);
+          if (e.eco) call('wildlife', 'applyEcologyOnce', [state, -e.eco], null);
           rewalk(state, i); touch(state, i, 'decor');
+        } else if (e.kind === 'eco') {
+          call('wildlife', 'applyEcologyOnce', [state, -e.amount], null);
         } else if (e.kind === 'elev') {
           setElev(state, e.i, e.elev);
         } else if (e.kind === 'veg') {
           let idx = -1;
           for (let j = state.veg.length - 1; j >= 0; j--) { const v = state.veg[j]; if (v && v.tx === e.tx && v.ty === e.ty && v.type === e.type && v.planted) { idx = j; break; } }
-          if (idx >= 0) { const tr = dep.terrain(); if (tr && typeof tr.removeVeg === 'function') tr.removeVeg(state, idx); else state.veg.splice(idx, 1); touch(state, BSU.idx(e.tx, e.ty), 'decor'); }
+          if (idx >= 0) { const tr = dep.terrain(); if (tr && typeof tr.removeVeg === 'function') tr.removeVeg(state, e.tx, e.ty); else state.veg.splice(idx, 1); touch(state, BSU.idx(e.tx, e.ty), 'decor'); }
         }
       }
       if (u.cost > 0) refund(state, u.cost, { key: 'construction' });
       c.undo = null;
       dirtyAll(c);
-      return { ok: true };
+      return { ok: true, id: u.id || '', name: u.name || '', n: fin(u.n, 0), refund: fin(u.cost, 0) };
     } catch (e) { if (BSU.SELFTEST) throw e; BSU.error('buildings', 'undo', e); return { ok: false, reason: 'Cannot undo' }; }
   };
   /** documented opts of place(): {rot, pilings, grade, tiles, ignoreCash, instant, target} */

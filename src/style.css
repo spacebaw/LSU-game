@@ -177,6 +177,11 @@ input.rename{width:100%;font:700 14px/1.2 var(--font-title);color:var(--text);ba
 #pop-next{margin-top:6px;font-size:11px;color:var(--text-dim)}
 #popover .btn.icon{position:absolute;right:6px;top:6px}
 #hint{position:absolute;left:50%;bottom:calc(var(--palette-h) + var(--ticker-h) + 14px);transform:translateX(-50%);padding:7px 12px;font-size:12px;display:flex;gap:8px;align-items:center;border-color:var(--gold);animation:rise .25s ease-out;z-index:4}
+#undo-chip{position:absolute;left:12px;bottom:calc(var(--palette-h) + var(--ticker-h) + 12px);z-index:4;display:flex;align-items:center;gap:8px;padding:8px 12px 10px;overflow:hidden;animation:rise .2s ease-out}
+#undo-chip .uc-glyph{font-size:15px;line-height:1}
+#undo-chip .uc-main{max-width:300px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#undo-chip .uc-bar{position:absolute;left:0;right:0;bottom:0;height:3px;background:rgba(255,255,255,.1)}
+#undo-chip .uc-fill{display:block;height:100%;width:100%;background:var(--gold)}
 #perf-chip,#perfmode-chip{position:absolute;left:12px;top:calc(var(--topbar-h) + 10px);font-family:ui-monospace,Menlo,monospace;font-size:10px}
 #perfmode-chip{left:auto;right:190px;color:var(--gold-hi)}
 #btn-skip{position:absolute;right:12px;bottom:var(--bot);z-index:4}

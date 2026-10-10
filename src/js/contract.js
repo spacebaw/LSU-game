@@ -87,7 +87,7 @@
   BSU.MONTHS = freeze(['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']);
   BSU.SEASONS = freeze(['spring', 'summer', 'fall', 'winter']);
   BSU.SEMESTERS = freeze(['spring', 'summer', 'fall', 'break']);
-  BSU.SET_PIECES = freeze({ landfall: 900, nearMiss: 150, game: 750, parade: 250, graduation: 150, montage: 50 });   // kind → len (GDD §0.1)
+  BSU.SET_PIECES = freeze({ landfall: 900, nearMiss: 150, game: 750, parade: 250, graduation: 150, montage: 50, spring: 300 });   // kind → len (GDD §0.1)
 
   // ---------------------------------------------------------------------------
   // 3.2 BSU.params — every tuning constant. Leaves are numbers, booleans, strings,
@@ -446,7 +446,111 @@
       autoSimTicks: 50, halftimeTick: 400, kickoffTick: 200, quarterTicks: 100, finalTick: 600, exitTick: 700,
       fanSprites: 40, buses: 3, bandSize: 24, tailgateGatorAttract: 6,
       statYardsBase: 60, statYardsPer: 9, statTdMult: 0.6, statTackleBase: 6, statTackleDiv: 3,
-      schedule: { opener: 'Aug 8', homecoming: 'Oct 8', rivalry: 'Nov 8', bowl: 'Dec 8', seasonEnd: 'Dec 8', offseasonStart: 'Dec 9', offseasonEnd: 'Aug 7', recruitDate: 'Aug 5', gamesPerSeason: 7 }
+      schedule: { opener: 'Aug 8', homecoming: 'Oct 8', rivalry: 'Nov 8', bowl: 'Dec 8', seasonEnd: 'Dec 8', offseasonStart: 'Dec 9', offseasonEnd: 'Aug 7', recruitDate: 'Aug 5', gamesPerSeason: 7 },
+      // ---- PLAN_FOOTBALL pass A: every number the drive/play engine (pass B/C) consumes. Numeric leaves only; nothing reads this block yet. ----
+      engine: {                              // PLAN_FOOTBALL §2.1
+        positions: ['QB', 'RB', 'WR', 'OL', 'DL', 'LB', 'DB', 'K'],   // PLAN_FOOTBALL §2.1 the eight rated starters (slot order of state.sports.starters)
+        composite: {                         // PLAN_FOOTBALL §2.1 position weights per unit (each sums to 1)
+          offRun: { RB: 0.35, OL: 0.35, QB: 0.15, WR: 0.15 },
+          offPass: { QB: 0.45, WR: 0.30, OL: 0.25 },
+          defRun: { DL: 0.45, LB: 0.35, DB: 0.20 },
+          defPass: { DB: 0.45, LB: 0.30, DL: 0.25 }
+        },
+        teamModDiv: 2, unitMin: 30, unitMax: 110,   // PLAN_FOOTBALL §2.1 teamMod = (rating − 50)/teamModDiv; unit = clamp(composite + teamMod, 30, 110). Pass B calibration: 2 (not the plan's 5) puts the engine's win share on winProb's elo/25 curve; home advantage enters through teamMod on the rating scale
+        edgeDiv: 25,                         // PLAN_FOOTBALL §2.1 e = (attackUnit − defendUnit + homeAdv)/25
+        homeField: {                         // PLAN_FOOTBALL §2.1/§2.3 by venue tier [Bayou Field, Red Stick I, Cauldron II, Cauldron Grand III]
+          day: [6, 6, 6, 6], night: [6, 6, 14, 14], oppPenalty: [0, 0, 0, 5],   // = homeDay/homeNight/stadium3Opp today (night needs tier ≥ 2)
+          fillBase: 0.6, fillSpan: 0.4,      // PLAN_FOOTBALL §2.1 homeAdv × (.6 + .4 × attendance/seats)
+          neutralFill: 0.5,                  // PLAN_FOOTBALL §2.3 bowl: neutral crowd tint
+          marshMob: 2,                       // PLAN_FOOTBALL §2.3 rating line for a home rivalry game
+          homecomingRating: [0, 1, 2]        // PLAN_FOOTBALL §2.3 rating bonus on Homecoming for budget tier $0 / $50k / $150k
+        },
+        playbook: {                          // PLAN_FOOTBALL §2.1 play calling: run share + style multipliers
+          ground:   { runShare: 0.66, passShare: 0.34, passVar: 1,   intMult: 1,    compAdj: 0,     runYdsAdd: 0.6, clockAdd: 4, fumbleMult: 1.1 },
+          balanced: { runShare: 0.52, passShare: 0.48, passVar: 1,   intMult: 1,    compAdj: 0,     runYdsAdd: 0,   clockAdd: 0, fumbleMult: 1 },
+          air:      { runShare: 0.36, passShare: 0.64, passVar: 1.3, intMult: 1.25, compAdj: -0.02, runYdsAdd: 0,   clockAdd: 0, fumbleMult: 1 }
+        },
+        situational: {                       // PLAN_FOOTBALL §2.1 overrides of the base run share
+          longPassDist: 7, longPassShare: 0.85,        // 3rd & ≥ 7 → pass 85 %
+          twoMinPassShare: 0.8,                        // 2-minute drill → pass 80 %
+          leadRunMargin: 9, leadRunShare: 0.75, leadRunQuarter: 4   // leading by ≥ 9 in Q4 → run 75 %
+        },
+        coachFit: {                          // PLAN_FOOTBALL §2.1 data.coaches[k].style matching the playbook
+          completion: 0.02, runYds: 0.3,     // match bonus
+          mismatchCompletion: -0.05, mismatchQb: 70   // 'air' with a QB below 70
+        },
+        aggression: {                        // PLAN_FOOTBALL §2.1 default 4th-down rule: go when dist ≤ goDist and spot ≥ goSpot (spot 0 = BSU goal line, 100 = opp goal line)
+          conservative: { goDist: 0, goSpot: 101, trailLateGo: 1 },   // never, unless trailing late (trailLateGo 1)
+          normal:       { goDist: 2, goSpot: 55,  trailLateGo: 1 },   // 4th & ≤ 2 inside the opponent 45
+          aggressive:   { goDist: 4, goSpot: 50,  trailLateGo: 1 }    // 4th & ≤ 4 anywhere past midfield
+        },
+        decision: {                          // PLAN_FOOTBALL §2.1 decisions during a watched home game
+          fourthTicks: 40, twoPointTicks: 30, halftimeTicks: 80,   // toast lengths (ticks)
+          fourthDist: 3, fourthSpot: 55, fourthRedZoneSpot: 95,    // toast when 4th & ≤ 3 past the opp 45, or 4th & any inside the 5
+          fourthTrailMargin: 3, fourthTrailSec: 240, fourthTrailSpot: 50,   // …or trailing by > 3 inside 4:00 past midfield
+          twoPointMargins: [-1, 1, 4, 5, -2, -5],      // margin after the XP at which the chart says go for two
+          twoPointQuarter: 4,
+          highlightsCap: 2, pauseCap: 120,             // toasts per highlights game; max set-piece ticks the engine may pause
+          openPass: 0.2, openBigPlay: 1.4, openTurnover: 1.4,   // halftime "Open it up": pass +20 %, big plays ×1.4, turnovers ×1.4
+          poundRun: 0.25, poundClockAdd: 4,            // halftime "Pound the rock": run +25 %, clock bleeds
+          liveEdgeMult: 14, liveScaleBase: 6, liveScaleRem: 8   // P_live = 1/(1 + 10^(−(margin + 14·remFrac·edge)/(6 + 8·remFrac)))
+        },
+        run: {                               // PLAN_FOOTBALL §2.1 play table: Run
+          ydsBase: 3.8, ydsEdge: 1.6, ydsSd: 3.2, ydsFloor: -4,
+          breakawayP: 0.06, breakawayEdge: 0.5, breakawayAdd: 15, breakawayRand: 40,
+          fumbleP: 0.012, fumbleEdge: 0.3
+        },
+        pass: {                              // PLAN_FOOTBALL §2.1 play table: Pass (incomplete = 1 − completion − sack)
+          compBase: 0.60, compEdge: 0.08, compMin: 0.35, compMax: 0.80,
+          ydsBase: 10, ydsEdge: 2, ydsSd: 7, ydsFloor: -2,
+          bigP: 0.10, bigAdd: 20, bigRand: 25,
+          sackP: 0.07, sackEdge: 0.4, sackYds: -6,
+          intP: 0.028, intEdge: 0.35, intReturnMean: 10, intReturnSd: 8   // return mean/sd = PLAN_FOOTBALL §2.1 gap (not in the plan's table)
+        },
+        fg: {                                // PLAN_FOOTBALL §2.1 field goal: d = (100 − spot) + 17; p = clamp(.98 − .016·max(0, d − 20)·(1 − .3·(K − 75)/25), .10, .99)
+          snapDist: 17, base: 0.98, perYd: 0.016, freeDist: 20, kFactor: 0.3, kBase: 75, kRange: 25,
+          pMin: 0.1, pMax: 0.99, maxDist: 60, missSpotMin: 20   // missSpotMin: defense takes over no closer than its own 20 (gap)
+        },
+        kick: {                              // PLAN_FOOTBALL §2.1 punt / kickoff / PAT
+          puntNet: 42, puntSd: 6, puntTouchbackSpot: 20, fairCatchP: 0.5,
+          koTouchbackP: 0.65, koTouchbackSpot: 25, koReturnMean: 25, koReturnSd: 8,
+          onsideTrailMax: 8, onsideSec: 120, onsideRecover: 0.12,
+          xpP: 0.96, twoPointP: 0.47, twoPointEdge: 0.06
+        },
+        weather: {                           // PLAN_FOOTBALL §2.1/§2.3 (numbers are a pass-A gap fill): rain/wind on passing and kicking
+          rainComp: -0.04, rainPassYds: -1.0, rainFumbleMult: 1.3, rainFg: -0.04, rainPuntNet: -2,
+          windComp: -0.03, windFg: -0.06, windPuntNet: -3, windThreshold: 0.5   // windThreshold: weather wind strength (0–1) at which wind counts
+        },
+        clock: {                             // PLAN_FOOTBALL §2.1 clock rules
+          quarterSec: 900, quarters: 4, firstDownYds: 10, fieldYds: 100, driveStartSpot: 25,
+          runSec: 38, completeSec: 32, incompleteSec: 8, kickSec: 10,     // punt/FG/kickoff 10 s
+          sackSec: 30, turnoverSec: 12, kneelSec: 40,                      // gap fill
+          twoMinSec: 120, twoMinCompleteSec: 14,                          // inside 2:00 the trailing offense uses 14 s on completes
+          timeoutsPerHalf: 3, timeoutBelowSec: 120                        // trailing team stops the clock inside 2:00 of a half
+        },
+        highlights: {                        // PLAN_FOOTBALL §2.1 highlights mode inside the 750-tick set piece (animated plays; skipped plays post one summary line)
+          slots: 24, slotsPerQuarter: 6, slotTicks: 16, firstSlotTick: 200,   // 24 slots × 16 ticks = ticks 200–584
+          animTicks: 10, huddleTicks: 4, maxPlaysPerSlot: 6, keyGain: 15,
+          playsMin: 110, playsMax: 160       // a full game's total plays (calibration test window)
+        },
+        full: { animTicks: 14, baseTicks: 200, perPlayTicks: 14, tailTicks: 150 },   // PLAN_FOOTBALL §2.1 watch-full-game: len = 200 + plays × 14 + 150
+        montage: { montageTicks: 60, kickoffTick: 5, finalTick: 55, halftimeTick: 20, halftimeTicks: 30, keyPlaysMin: 6, keyPlaysMax: 10, tickerEvery: 4 },   // PLAN_FOOTBALL §2.1 montage (auto-sim)
+        calibration: { winTol: 0.05, gaps: [-30, -15, 0, 15, 30], games: 2000, nightShare: [0.08, 0.12], totalPts: [38, 62], turnovers: [1, 4] },   // PLAN_FOOTBALL §2.6 test windows
+        spring: {                            // PLAN_FOOTBALL §2.1 Spring Game / §2.4 reachability
+          unlockStudents: 200, offsetDays: 3,          // Practice Field unlocks at 200 students; the game is 3 days after it completes
+          windowDays: [0, 69],                         // day-of-year (10-day months): Jan 1 … Jul 10 (the last day of Jul)
+          ticks: 300, kickoffTick: 40, halfTicks: 100, scriptedToastTick: 140,   // SET_PIECES.spring 300; two 100-tick halves of highlights
+          goldHandicap: 6, happiness: 1
+        },
+        recruit: {                           // PLAN_FOOTBALL §2.1 / §2.3 prospects board
+          boardSizes: [3, 4, 5], boardCoachingTiers: [500000, 1000000],   // 3 below $500k, 4 from $500k, 5 from $1M of coaching budget
+          maxSignings: 2, ratingMin: 70, ratingMax: 95, costMin: 150000, costMax: 900000,   // cost interpolates with rating (the plan's "$12k × (rating − 60)" tops at $420k, so the stated $150k–$900k range wins)
+          signRating: 95                     // the existing building-priced recruit stays a 95 (= recruitRating)
+        },
+        tickets: { tiers: [25, 35, 60], mults: [1.15, 1, 0.85] },   // PLAN_FOOTBALL §2.3 ordered mirror of `tickets` for the Season panel
+        bowl: { minWins: 5 },   // PLAN_FOOTBALL §2.3 bowl eligibility (≥ 5 wins; neutral crowd = homeField.neutralFill; payout = bowlWin/bowlLose above)
+        records: { seasonsKept: 5, hofQbYds: 2500, hofRbYds: 1000, hofWrYds: 900, hofDbInts: 5, bookLines: 7 }   // PLAN_FOOTBALL §2.1 records / Hall of Fame thresholds
+      }
     },
     agents: {                                // GDD §7
       cap: 300, base: 40, perStudents: 25,   // visible agents = min(300, 40 + students/25)
@@ -510,7 +614,7 @@
       agentPx: [12, 20], gatorPx: [40, 12], leGrandPx: 56   // §12.3
     },
     ui: {                                    // GDD §11
-      undoSeconds: 5, undoTicks: 50,         // §11.2, ARCH D16
+      undoSeconds: 10, undoTicks: 50,        // §11.2, ARCH D16 (50 ticks at baseTps 5 = 10 s wall-clock at 1×; chip drain matches)
       minWidth: 1024, compactWidth: 1180, topbarH: 44, tickerH: 24, paletteH: 112, inspectW: 300, itemPx: 72, iconPx: 64,   // §11
       tickerMax: 30, tickerNoLineDays: 3,    // §11.1
       hoverTagMs: 300, panelRefreshMs: 500,  // §6.3, ARCH §7.7
@@ -626,6 +730,7 @@
     'mosquito:warning', 'ecology:changed',
     'festival:start', 'festival:end',
     'game:scheduled', 'game:kickoff', 'game:score', 'game:halftime', 'game:final', 'season:end', 'coach:changed',
+    'game:play', 'game:drive', 'game:decision',   // PLAN_FOOTBALL pass B: the drive/play engine (sports.js)
     'econ:income', 'econ:expense', 'econ:month', 'econ:stat', 'econ:card',
     'enroll:round', 'enroll:lock', 'enroll:attrition', 'enroll:graduation',
     'board:offered', 'board:resolved', 'voice:offered', 'voice:resolved',
@@ -1033,7 +1138,9 @@
         lastSeason: { wins: 0, losses: 0, bowlWon: false, undefeated: false },
         coach: { name: '', stars: 0, hiredYear: 0, quote: '', rep: '' }, candidates: [], starters: [], recruit: null,
         rating: 0, ratingTerms: {}, nightToggle: false, autoSim: false, permits: 'paid', homecomingBudget: 0, rivalryLossStreak: 0,
-        game: null, firstHomeGameDay: -1, firstNightGameDay: -1, scriptedNightDay: -1
+        game: null, firstHomeGameDay: -1, firstNightGameDay: -1, scriptedNightDay: -1,
+        playbook: 'balanced', aggression: 'normal', watchFull: false, lastSummary: null,   // PLAN_FOOTBALL pass B (sports.ensureKeys fills records)
+        records: { allTime: { wins: 0, losses: 0 }, bestWin: null, longestPlay: null, seasonBests: {}, book: {}, seasons: [], hof: [] }
       },
       progress: {
         tutorialStage: 0, objectives: objectives, card: null, background: null, interruptQueue: [], backgroundQueue: [],

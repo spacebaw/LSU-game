@@ -58,7 +58,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - values: 0:string, 1:string, 2:string, 3:string
 
 ## BSU.SET_PIECES
-- values: landfall:number, nearMiss:number, game:number, parade:number, graduation:number, montage:number
+- values: landfall:number, nearMiss:number, game:number, parade:number, graduation:number, montage:number, spring:number
 
 ## BSU.SKY
 - values: DAWN:number, DAY:number, GOLDEN:number, DUSK:number, NIGHT:number
@@ -177,6 +177,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - buildings.place(state, id, tx, ty, opts)
 - buildings.placeRun(state, id, tiles, opts)
 - buildings.remove(state, idOrTile, reason)
+- buildings.undoInfo(state)
 - buildings.undo(state)
 - buildings.retrofitPilings(state, id, opts)
 - buildings.regrade(state, id)
@@ -230,7 +231,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - contract.selfTest()
 
 ## BSU.data
-- values: catalog:object, catalogList:array[43], tabs:array[10], decals:object, names:object, students:object, coaches:array[10], coachQuotes:array[12], gatorNames:array[14], leGrand:string, stormNames:array[26], opponents:object, schedule:array[8], calendar:object, ticker:array[62], tickerKinds:object, tickerKindList:array[7], objectives:object, milestones:array[26], voiceCards:array[12], boardCards:array[8], failureCards:object, tutorial:array[7], thibodeaux:array[12], stormQuotes:array[8], overlays:array[6], keys:array[47], toastKeys:object, panKeys:object, rainKinds:object, guide:object, needs:object, requirements:object, coach:array[6]
+- values: catalog:object, catalogList:array[43], tabs:array[10], decals:object, names:object, students:object, coaches:array[10], coachQuotes:array[12], gatorNames:array[14], leGrand:string, stormNames:array[26], opponents:object, schedule:array[8], calendar:object, ticker:array[62], tickerKinds:object, tickerKindList:array[7], objectives:object, milestones:array[26], voiceCards:array[12], boardCards:array[8], failureCards:object, tutorial:array[7], thibodeaux:array[12], stormQuotes:array[8], overlays:array[6], keys:array[47], toastKeys:object, panKeys:object, rainKinds:object, guide:object, needs:object, requirements:object, coach:array[6], football:object
 - data.selfTest()
 
 - BSU.dateToDay(str, year)
@@ -508,8 +509,6 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 
 ## BSU.sports
 - values: _deps:object
-- sports._generate(P, P2, r)
-- sports._statLine(starter, bsuPts, oppPts)
 - sports._buildSchedule(state)
 - sports._onDecision(p)
 - sports.init(state)
@@ -528,6 +527,14 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - sports.simGame(state)
 - sports.halftime(state)
 - sports.skipToFinal(state)
+- sports.decide(state, choice)  — answers the pending game:decision (halftime open|pound|stay · fourthDown go|fg|punt|kick · twoPoint two|kick · yes|no|default) → {ok, id, kind, chosen}
+- sports.setPlaybook(state, style)  — ground|balanced|air
+- sports.setAggression(state, level)  — conservative|normal|aggressive (the 4th-down / two-point / timed-out default)
+- sports.setWatchFull(state, on)  — the next home game animates every play (~2,200-tick set piece)
+- sports.live(state)  — renderer view: {active, mode, quarter, clock, clockText, down, distance, spot, possession, score, phase, frac, lastPlay, anim, formation{off,def}, players[22]{team,pos,role,x,y,state}, ball{x,y}, drive, decision}
+- sports.playState(state)  — the field core {down, dist, spot, poss, quarter, clock, phase, over, ot, score, lastPlay, drive, box, timeouts, decision, mode} or null
+- sports.recentPlays(state, n)  — the last n play records of the running game
+- sports.summary(state)  — post-game summary (live totals while a game runs; state.sports.lastSummary afterwards)
 - sports.setNight(state)
 - sports.setAutoSim(state)
 - sports.setPermits(state)
@@ -544,6 +551,9 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - sports._seniorsLeave(state)
 - sports._probFor(state, team, oppRating, night, home)
 - sports._venueInfo(state)
+- sports._liveProb(state, team, over)  — the P_live estimate for the running game
+- sports._playGame(state, opts)  — calibration hook: one silent engine game {opp, oppRating, rating, home, night, kind, attendance} → the game struct (no finalize side effects)
+- engine: PLAN_FOOTBALL §2.1 drive/play engine (pass B) — params.sports.engine (teamModDiv 2 after calibration), BSU.data.football (formations, phrases, roster pools); state.sports.game carries the whole engine state (score[bsu,opp], qpts, quarter, clock, poss, down, dist, spot 0–100 from BSU's goal line, timeouts, phase, ot, plays[], drives[], box[2], lines, decision, tOff, anim, mode); events game:play / game:drive / game:decision (+ game:score/halftime/final); see INTEGRATION_NOTES "football pass B"
 - sports.selfTest()
 
 ## BSU.sprites
@@ -779,7 +789,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 
 - BSU.worldToScreen(tx, ty, elev, cam, vw, vh)
 
-## BSU.params groups (17): time[29], terrain[59], hydro[46], storm[116], wildlife[4], subsidence[17], heat[21], weather[18], econ[62], sports[77], agents[29], build[33], render[55], ui[16], audio[6], palette[34], progress[16]
+## BSU.params groups (17): time[29], terrain[59], hydro[46], storm[116], wildlife[4], subsidence[17], heat[21], weather[18], econ[62], sports[78], agents[29], build[33], render[55], ui[16], audio[6], palette[34], progress[16]
 
 ## BSU.newState(seed) tree
 - v:number
@@ -1010,7 +1020,13 @@ Owner of: state.sports (hasTeam, venue, the season schedule, record, coach,
           rivalry streak, the in-progress game struct, the first-game days,
           the scripted night day) plus the lazily-initialized saved keys
           listed in docs/INTEGRATION_NOTES.md (clubOnly, homeWins,
-          losingSeasons, seasonDone).
+          losingSeasons, seasonDone, playbook, aggression, watchFull,
+          records, lastSummary — PLAN_FOOTBALL pass B).
+Engine:   PLAN_FOOTBALL §2.1 drive/play engine (pass B): eight position
+          ratings → four units → a per-play edge; run/pass/kick/clock tables
+          from params.sports.engine; highlights / full / montage / silent
+          modes; decisions (4th down, two-point, halftime) that pause the
+          set piece; live state for the renderer; summary, MVP, record book.
 Implements: ARCHITECTURE.md §1 row 9, §2.8, §3.2 params.sports, §3.4
           (game:*, season:end, coach:changed, decision:closed), §5.1 step 8,
           §5.9 (the API and the 750-tick timeline), D13, D43, D46, D49, D51;

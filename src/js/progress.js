@@ -1593,6 +1593,7 @@
         if (e && e.kind === 'parade') endParade(state, c);
         else if (e && e.kind === 'graduation') { p.setPiecesSeen.graduation = true; M.ticker(state, 41, { n: num(c.lastGraduates) }); }
         else if (e && e.kind === 'landfall') { /* storm:report / storm:passed carry the bookkeeping */ }
+        else if (e && (e.kind === 'game' || e.kind === 'montage')) p.setPiecesSeen.game = true;   // PLAN_FOOTBALL §1.1 finding 2: unlocks Skip ▸ and the auto-sim montage for later home games
         break;
       case EV.POWER_BLACKOUT: {
         const ids = (e && Array.isArray(e.affected)) ? e.affected : [];
@@ -1843,6 +1844,9 @@
       A(!!s.setPiece && s.setPiece.kind === 'parade', 'parade starts at the first Dusk of Feb 8');
       A(M.parade(s) !== null, 'parade() returns positions during the parade');
       s.setPiece = null; C.pendingEvents.push({ name: EV.SETPIECE_END, payload: { kind: 'parade' } }); step(1); A(s.progress.setPiecesSeen.parade === true, 'parade seen after setpiece:end');
+      A(s.progress.setPiecesSeen.game === false, 'game not seen before a game set piece ends');
+      C.pendingEvents.push({ name: EV.SETPIECE_END, payload: { kind: 'game' } }); step(1); A(s.progress.setPiecesSeen.game === true && M.setPieceSeen(s, 'game'), 'game seen after setpiece:end{game} (PLAN_FOOTBALL hotfix)');
+      s.progress.setPiecesSeen.game = false; C.pendingEvents.push({ name: EV.SETPIECE_END, payload: { kind: 'montage' } }); step(1); A(s.progress.setPiecesSeen.game === true, 'game seen after setpiece:end{montage}');
       s.calendar.day = dateDay('May 5', 2); M._onDate(s, 'May 5', s.calendar.day); step(2); A(!!s.setPiece && s.setPiece.kind === 'graduation', 'graduation starts after May 5');
       s.setPiece = null;
 

@@ -519,16 +519,16 @@
   // Coaches (GDD §14.1), gators (§14), storms (§6.2)
   // ---------------------------------------------------------------------------
   const coaches = [
-    { name: 'Bobby Cheramie', rep: 'has played in worse' },
-    { name: 'Delphine Arceneaux', rep: 'runs the option and the boosters' },
-    { name: 'T-Boy Guidry', rep: 'recruits the bayou by pirogue' },
-    { name: 'Marcus Batiste', rep: 'defense, gumbo, in that order' },
-    { name: 'Hollis Duplantis', rep: 'a clipboard and a grudge' },
-    { name: 'Renée Fontenot', rep: 'won a bowl somewhere dry' },
-    { name: 'Cedric Malveaux', rep: 'special teams evangelist' },
-    { name: 'Octave Robichaux', rep: 'older than the levee' },
-    { name: 'Imani Sonnier', rep: 'the analytics one' },
-    { name: 'Wade Terrebonne', rep: 'yells in two languages' }
+    { name: 'Bobby Cheramie', rep: 'has played in worse', style: 'balanced' },
+    { name: 'Delphine Arceneaux', rep: 'runs the option and the boosters', style: 'ground' },
+    { name: 'T-Boy Guidry', rep: 'recruits the bayou by pirogue', style: 'balanced' },
+    { name: 'Marcus Batiste', rep: 'defense, gumbo, in that order', style: 'ground' },
+    { name: 'Hollis Duplantis', rep: 'a clipboard and a grudge', style: 'balanced' },
+    { name: 'Renée Fontenot', rep: 'won a bowl somewhere dry', style: 'balanced' },
+    { name: 'Cedric Malveaux', rep: 'special teams evangelist', style: 'ground' },
+    { name: 'Octave Robichaux', rep: 'older than the levee', style: 'ground' },
+    { name: 'Imani Sonnier', rep: 'the analytics one', style: 'air' },
+    { name: 'Wade Terrebonne', rep: 'yells in two languages', style: 'air' }
   ];
   const coachQuotes = [
     "We don't rebuild. We re-grade.",
@@ -552,15 +552,15 @@
   // Opponents and the season schedule (GDD §8, ARCH §4.2)
   // ---------------------------------------------------------------------------
   const opponents = {
-    magnolia: { name: 'Magnolia State University', nick: 'Magnolias', rating: 78, colors: ['#1E7B3C', '#FFFFFF'], rival: true, crosstown: false },
-    crescent: { name: 'Crescent City University', nick: 'Pelicans', rating: 70, colors: ['#1B3A6B', '#F4EEE2'], rival: false, crosstown: false },
-    delta: { name: 'Delta A&M', nick: 'Catfish', rating: 62, colors: ['#5A4632', '#FDD023'], rival: false, crosstown: false },
-    gulfcoast: { name: 'Gulf Coast Tech', nick: 'Shrimpers', rating: 58, colors: ['#E0443E', '#FFFFFF'], rival: false, crosstown: false },
-    atchafalaya: { name: 'Atchafalaya Polytechnic', nick: 'Bullfrogs', rating: 55, colors: ['#3F5E3A', '#9BAA8A'], rival: false, crosstown: false },
-    pineywoods: { name: 'Pineywoods State', nick: 'Loggers', rating: 52, colors: ['#7A4A1E', '#C9B47C'], rival: false, crosstown: false },
-    sabine: { name: 'Sabine River Baptist', nick: 'Prophets', rating: 45, colors: ['#8A1C2B', '#FFFFFF'], rival: false, crosstown: false },
-    vermilion: { name: 'Vermilion College', nick: 'Cranes', rating: 40, colors: ['#B22222', '#F4EEE2'], rival: false, crosstown: false },
-    redstick: { name: 'Red Stick College', nick: 'Ferrymen', rating: 35, colors: ['#2E6B5E', '#F5B700'], rival: false, crosstown: true }
+    magnolia: { name: 'Magnolia State University', nick: 'Magnolias', rating: 78, colors: ['#1E7B3C', '#FFFFFF'], rival: true, crosstown: false, style: 'air', defBias: 3 },
+    crescent: { name: 'Crescent City University', nick: 'Pelicans', rating: 70, colors: ['#1B3A6B', '#F4EEE2'], rival: false, crosstown: false, style: 'balanced', defBias: 2 },
+    delta: { name: 'Delta A&M', nick: 'Catfish', rating: 62, colors: ['#5A4632', '#FDD023'], rival: false, crosstown: false, style: 'ground', defBias: 4 },
+    gulfcoast: { name: 'Gulf Coast Tech', nick: 'Shrimpers', rating: 58, colors: ['#E0443E', '#FFFFFF'], rival: false, crosstown: false, style: 'air', defBias: -2 },
+    atchafalaya: { name: 'Atchafalaya Polytechnic', nick: 'Bullfrogs', rating: 55, colors: ['#3F5E3A', '#9BAA8A'], rival: false, crosstown: false, style: 'ground', defBias: 1 },
+    pineywoods: { name: 'Pineywoods State', nick: 'Loggers', rating: 52, colors: ['#7A4A1E', '#C9B47C'], rival: false, crosstown: false, style: 'ground', defBias: 0 },
+    sabine: { name: 'Sabine River Baptist', nick: 'Prophets', rating: 45, colors: ['#8A1C2B', '#FFFFFF'], rival: false, crosstown: false, style: 'balanced', defBias: -2 },
+    vermilion: { name: 'Vermilion College', nick: 'Cranes', rating: 40, colors: ['#B22222', '#F4EEE2'], rival: false, crosstown: false, style: 'air', defBias: -3 },
+    redstick: { name: 'Red Stick College', nick: 'Ferrymen', rating: 35, colors: ['#2E6B5E', '#F5B700'], rival: false, crosstown: true, style: 'balanced', defBias: -4 }
   };
   const schedule = [
     { date: 'Aug 8', home: true, kind: 'regular' },
@@ -572,6 +572,241 @@
     { date: 'Nov 8', home: true, kind: 'rivalry' },
     { date: 'Dec 8', home: false, kind: 'bowl' }
   ];
+
+  // ---------------------------------------------------------------------------
+  // Football tables (PLAN_FOOTBALL pass A). Constant data only; the pass B/C engine and the
+  // pass D–F UI/sprites/render consume them. Numbers live in params.sports.engine.
+  // ---------------------------------------------------------------------------
+  const FB_POS = ['QB', 'RB', 'WR', 'OL', 'DL', 'LB', 'DB', 'K'];
+  // §14.1 pools reused: the male half of firstCajun (it lists the men before 'Cécile'), the men of firstModern, the nickname pool + football extras
+  const FB_MODERN_MEN = ['Tyler', 'Jaylen', 'DeShawn', 'Hunter', 'Trey', 'Marcus', 'Darius', 'Cedric', 'Kobe', 'Terrance', 'Tanner', 'Jamal'];
+  const football = {
+    positions: FB_POS,
+    // PLAN_FOOTBALL §2.1: the eight rated starters. field = players of that position on the field for a base play; depth = backups the roster keeps (flavor only).
+    roster: {
+      names: {
+        first: students.firstCajun.slice(0, students.firstCajun.indexOf('Cécile')),
+        modern: students.firstModern.filter(function (n) { return FB_MODERN_MEN.indexOf(n) >= 0; }),
+        last: students.last,
+        nick: students.nicknames.concat(['Big Tee', 'Slim', 'Hoss', 'Doux', 'Cap', 'Bam']),
+        hometowns: students.hometowns,
+        modernShare: 0.3, nickShare: 0.25
+      },
+      classes: ['Fr', 'So', 'Jr', 'Sr'],
+      classWeights: [0.15, 0.25, 0.3, 0.3],
+      template: {
+        QB: { label: 'Quarterback', plural: 'Quarterbacks', jersey: [1, 19], field: 1, depth: 2, build: 'lean', blurb: 'Reads the defense, takes the blame.' },
+        RB: { label: 'Running back', plural: 'Running backs', jersey: [20, 49], field: 2, depth: 3, build: 'stock', blurb: 'Hits the hole like a pirogue hits a dock.' },
+        WR: { label: 'Receiver', plural: 'Receivers', jersey: [80, 89], field: 3, depth: 4, build: 'lean', blurb: 'Hands like a crab trap.' },
+        OL: { label: 'Offensive line', plural: 'Offensive line', jersey: [50, 79], field: 5, depth: 4, build: 'big', blurb: 'The levee. Nobody gets through.' },
+        DL: { label: 'Defensive line', plural: 'Defensive line', jersey: [90, 99], field: 4, depth: 4, build: 'big', blurb: 'Collapses the pocket like a bad levee.' },
+        LB: { label: 'Linebacker', plural: 'Linebackers', jersey: [40, 59], field: 3, depth: 3, build: 'stock', blurb: 'Hits first, asks questions over gumbo.' },
+        DB: { label: 'Defensive back', plural: 'Defensive backs', jersey: [20, 39], field: 4, depth: 4, build: 'lean', blurb: 'Reads the route, steals the ball.' },
+        K: { label: 'Kicker/punter', plural: 'Kickers', jersey: [1, 19], field: 1, depth: 1, build: 'lean', blurb: 'Practices on a boardwalk. Explains a lot.' }
+      }
+    },
+    // PLAN_FOOTBALL §2.3 recruiting board: archetypes the board draws from. ratingBias adds to the drawn rating (clamped by params), costMult scales the price.
+    prospects: {
+      posWeights: { QB: 1.2, RB: 1, WR: 1, OL: 1, DL: 1, LB: 0.8, DB: 1, K: 0.5 },
+      archetypes: [
+        { id: 'gunslinger', pos: 'QB', title: 'Bayou Gunslinger', blurb: 'Throws off the wrong foot and never misses.', ratingBias: 2, costMult: 1.3 },
+        { id: 'gameManager', pos: 'QB', title: 'Game Manager', blurb: 'Never loses it. Never wins it alone either.', ratingBias: -2, costMult: 0.8 },
+        { id: 'workhorse', pos: 'RB', title: 'Cane-Field Workhorse', blurb: 'Carries it forty times and asks for more.', ratingBias: 0, costMult: 1 },
+        { id: 'burner', pos: 'RB', title: 'Delta Burner', blurb: 'Fast enough to outrun the humidity.', ratingBias: 2, costMult: 1.2 },
+        { id: 'deepThreat', pos: 'WR', title: 'Deep Threat', blurb: 'Lives behind the secondary.', ratingBias: 1, costMult: 1.1 },
+        { id: 'possession', pos: 'WR', title: 'Possession Receiver', blurb: 'Catches everything in traffic.', ratingBias: -1, costMult: 0.9 },
+        { id: 'pancake', pos: 'OL', title: 'Pancake Artist', blurb: 'Flattens people like a Sunday breakfast.', ratingBias: 1, costMult: 1.1 },
+        { id: 'leveeTackle', pos: 'OL', title: 'Levee Tackle', blurb: 'Immovable. Quiet. Eats a lot.', ratingBias: -1, costMult: 0.85 },
+        { id: 'edgeRusher', pos: 'DL', title: 'Edge Rusher', blurb: 'Arrives at the quarterback before the snap does.', ratingBias: 2, costMult: 1.25 },
+        { id: 'nose', pos: 'DL', title: 'Nose Tackle', blurb: 'Takes up two gaps and a parking space.', ratingBias: -1, costMult: 0.85 },
+        { id: 'mike', pos: 'LB', title: 'Marsh Mike', blurb: 'Hits first, tackles second, talks all game.', ratingBias: 1, costMult: 1 },
+        { id: 'ballhawk', pos: 'DB', title: 'Ballhawk', blurb: 'Steals passes like a raccoon at a crawfish boil.', ratingBias: 2, costMult: 1.2 },
+        { id: 'shutdown', pos: 'DB', title: 'Shutdown Corner', blurb: 'Takes the other team\'s best and sends him home.', ratingBias: 1, costMult: 1.1 },
+        { id: 'swampBoot', pos: 'K', title: 'Swamp Boot', blurb: 'Kicked on a boardwalk; now he kicks anywhere.', ratingBias: 0, costMult: 0.9 }
+      ]
+    },
+    // PLAN_FOOTBALL §2.2 formations: pos[i] is the role at xy[i] = [x, y] in yards from the line of scrimmage / ball spot
+    // (x along the attack axis, offense faces +x, negative = behind the ball; y across the field, 0 = the ball's hash; the field is 53 yd wide).
+    // Mirrored by the renderer for the away side. 11 entries each; `roles` maps a role to the rated position that draws its sprite look.
+    roles: { QB: 'QB', RB: 'RB', FB: 'RB', KR: 'RB', WR: 'WR', TE: 'WR', LT: 'OL', LG: 'OL', C: 'OL', RG: 'OL', RT: 'OL', LS: 'OL', BLK: 'OL', DE: 'DL', DT: 'DL', RSH: 'DL', LB: 'LB', PP: 'LB', CB: 'DB', S: 'DB', NB: 'DB', GN: 'DB', WNG: 'DB', PR: 'DB', COV: 'DB', K: 'K', P: 'K', H: 'K' },
+    formations: {
+      iform: { side: 'off', pos: ['QB', 'FB', 'RB', 'LT', 'LG', 'C', 'RG', 'RT', 'TE', 'WR', 'WR'], xy: [[-1, 0], [-4, 0], [-7, 0], [0, -4], [0, -2], [0, 0], [0, 2], [0, 4], [0, 6], [0, -20], [0, 18]] },
+      shotgun: { side: 'off', pos: ['QB', 'RB', 'LT', 'LG', 'C', 'RG', 'RT', 'WR', 'WR', 'WR', 'TE'], xy: [[-5, 0], [-5, 3], [0, -4], [0, -2], [0, 0], [0, 2], [0, 4], [0, -22], [0, 20], [0, 12], [0, -6]] },
+      punt: { side: 'kick', pos: ['P', 'PP', 'LS', 'LT', 'LG', 'RG', 'RT', 'BLK', 'BLK', 'GN', 'GN'], xy: [[-14, 0], [-4, 0], [0, 0], [0, -4], [0, -2], [0, 2], [0, 4], [0, -6], [0, 6], [0, -24], [0, 24]] },
+      fieldGoal: { side: 'kick', pos: ['H', 'K', 'LS', 'LG', 'RG', 'LT', 'RT', 'BLK', 'BLK', 'TE', 'TE'], xy: [[-7, 0], [-9, -1], [0, 0], [0, -2], [0, 2], [0, -4], [0, 4], [0, -6], [0, 6], [0, -8], [0, 8]] },
+      kickoff: { side: 'kick', pos: ['K', 'COV', 'COV', 'COV', 'COV', 'COV', 'COV', 'COV', 'COV', 'COV', 'COV'], xy: [[-4, 0], [0, -24], [0, -19], [0, -14], [0, -9], [0, -4], [0, 4], [0, 9], [0, 14], [0, 19], [0, 24]] },
+      victory: { side: 'off', pos: ['QB', 'RB', 'LT', 'LG', 'C', 'RG', 'RT', 'TE', 'WR', 'WR', 'FB'], xy: [[-2, 0], [-4, 2], [0, -4], [0, -2], [0, 0], [0, 2], [0, 4], [0, 6], [-1, -8], [-1, 8], [-4, -2]] },
+      d43: { side: 'def', pos: ['DE', 'DT', 'DT', 'DE', 'LB', 'LB', 'LB', 'CB', 'CB', 'S', 'S'], xy: [[1, -3], [1, -1], [1, 1], [1, 3], [4, -5], [4, 0], [4, 5], [1, -20], [1, 20], [10, -7], [10, 7]] },
+      nickel: { side: 'def', pos: ['DE', 'DT', 'DT', 'DE', 'LB', 'LB', 'CB', 'CB', 'NB', 'S', 'S'], xy: [[1, -3], [1, -1], [1, 1], [1, 3], [4, -3], [4, 3], [1, -22], [1, 20], [6, -12], [10, -7], [10, 7]] },
+      puntReturn: { side: 'def', pos: ['RSH', 'RSH', 'RSH', 'RSH', 'RSH', 'RSH', 'RSH', 'RSH', 'WNG', 'WNG', 'PR'], xy: [[1, -14], [1, -10], [1, -6], [1, -2], [1, 2], [1, 6], [1, 10], [1, 14], [8, -12], [8, 12], [45, 0]] },
+      fgBlock: { side: 'def', pos: ['RSH', 'RSH', 'RSH', 'RSH', 'RSH', 'RSH', 'RSH', 'RSH', 'RSH', 'RSH', 'RSH'], xy: [[1, -10], [1, -8], [1, -6], [1, -4], [1, -2], [1, 0], [1, 2], [1, 4], [1, 6], [1, 8], [1, 10]] },
+      kickoffReturn: { side: 'def', pos: ['BLK', 'BLK', 'BLK', 'BLK', 'BLK', 'BLK', 'BLK', 'BLK', 'BLK', 'KR', 'KR'], xy: [[10, -16], [10, -8], [10, 0], [10, 8], [10, 16], [20, -18], [20, -6], [20, 6], [20, 18], [40, -6], [40, 6]] }
+    },
+    // PLAN_FOOTBALL §2.2/§2.3 play-by-play text. Placeholders: {off} {def} nicknames of the team with / without the ball ·
+    // {qb} {rb} {wr} {k} {dl} {lb} {db} player last names · {yds} yards gained/lost and {d} kick distance (positive numbers) · {spot} reads "the MAG 38" / "own 20".
+    // `reaction` lines are crowd/sideline color appended after BSU plays (good = BSU gains, bad = BSU loses).
+    phraseVars: ['off', 'def', 'qb', 'rb', 'wr', 'k', 'dl', 'lb', 'db', 'yds', 'd', 'spot'],
+    phrases: {
+      run: [
+        '{rb} up the gut for {yds}. Steady as a bayou current.',
+        '{rb} keeps it on the ground, {yds} yards. Mais, that is football.',
+        'Handoff to {rb}, picks up {yds} and a mouthful of turf.',
+        '{rb} finds a seam for {yds}. The line earned its gumbo.',
+        '{rb} off tackle for {yds}. Nothing fancy, nothing wasted.',
+        '{rb} grinds out {yds}. Slow roux, good roux.',
+        '{rb} cuts back for {yds}. The {def} got there late.',
+        '{rb} bounces outside for {yds}. A pirogue\'s pace, but forward.'
+      ],
+      runStuff: [
+        '{rb} stuffed at the line by {lb}. Hardly a gain.',
+        '{lb} meets {rb} in the hole. No room, cher.',
+        'Nowhere to go for {rb}. The {def} closed the door.',
+        '{rb} met at the line, a yard or less. The {def} say no.',
+        '{dl} shuts the gap. {rb} goes nowhere.'
+      ],
+      runBig: [
+        '{rb} breaks free! {yds} yards before anyone remembers to tackle.',
+        '{rb} is loose for {yds}. Somebody call the fire department.',
+        'The hole opens like the Atchafalaya at flood stage. {rb} for {yds}!',
+        '{rb} hits the corner and goes {yds} yards. Cher, he was gone.',
+        'Missed tackle, and {rb} is off for {yds}. Laissez les bons temps rouler.',
+        '{rb} outruns everybody for {yds}. The {def} are still looking.'
+      ],
+      passComplete: [
+        '{qb} to {wr}, {yds} yards. Smooth as étouffée.',
+        '{qb} hits {wr} on the slant for {yds}.',
+        'Quick out to {wr}, {yds} yards. Chains moving.',
+        '{qb} stands tall and finds {wr} for {yds}.',
+        '{wr} makes the catch in traffic, {yds} yards. Hands like a crab trap.',
+        '{qb} checks down to {wr} for {yds}. Patience pays.',
+        '{wr} on the crossing route for {yds}. Wide open as the marsh.',
+        '{qb} over the middle to {wr}, {yds} yards.'
+      ],
+      passBig: [
+        '{qb} airs it out to {wr}! {yds} yards. Hold your hat.',
+        'Deep ball, and {wr} hauls it in. {yds} yards. Mais, look at that.',
+        '{wr} goes over the top of {db}. {yds} yards of pure lagniappe.',
+        '{qb} launches it, {wr} outruns the secondary for {yds}.',
+        'Play-action, and {wr} is behind everyone. {yds} yards!',
+        '{qb} slings it deep. {wr} makes the grab, {yds} yards. Somebody ring something.'
+      ],
+      passIncomplete: [
+        '{qb} throws it away. Better than a sack, cher.',
+        '{qb} to {wr}, but {db} gets a hand in. Incomplete.',
+        'Incomplete. {wr} and the ball were not on speaking terms.',
+        '{qb} overthrows {wr}. The mosquitoes could have caught that one.',
+        '{wr} drops it. The humidity gets the blame.',
+        'Batted down at the line by {dl}. Incomplete.',
+        '{qb} under pressure, ball sails out of bounds.',
+        'Incomplete. {db} had {wr} wrapped like a tamale.'
+      ],
+      sack: [
+        '{dl} gets home! {qb} goes down for a loss of {yds}.',
+        'Sack! {dl} swallows {qb} whole. Loss of {yds}.',
+        '{qb} never had a chance. {dl} drops him for {yds} yards.',
+        'The pocket collapses like a bad levee. {dl} with the sack, minus {yds}.',
+        '{dl} comes off the edge and {qb} is down. Minus {yds}.',
+        'Sack by {dl}. {qb} will feel that in the morning.'
+      ],
+      punt: [
+        'Punt. {k} booms one {d} yards, ball at {spot}.',
+        '{k} sends it {d} yards. Field position is its own kind of gumbo.',
+        'Three and out. {k} punts {d} yards to {spot}.',
+        '{k} hangs one {d} yards. Ball at {spot}. Nicely done.',
+        'Punt team trots out. {k} kicks it {d}, ball at {spot}.',
+        '{k} gets off a {d}-yard punt. The swamp wind helped a little.'
+      ],
+      fgGood: [
+        '{k} from {d}. Good! Bells.',
+        'Field goal is good from {d}. {k} threads it.',
+        '{k} splits the uprights from {d}. Bon temps!',
+        '{d} yards, right down the middle. {k} makes it look like a Sunday stroll.',
+        'Kick is up, kick is good. {k}, {d} yards. Three on the board.',
+        '{k} nails it from {d}. Even the gators looked up.',
+        'Good from {d}! {k} earns his plate lunch.',
+        'Three more. {k} from {d} never wavers.'
+      ],
+      fgMiss: [
+        '{k} from {d}... no good. Wide right, wide left, wide everywhere.',
+        'The {d}-yard try sails wide. Sad trombone.',
+        'No good! {k} hooks it from {d}. The pelicans look away.',
+        'Doinked off the upright. {k} from {d}. So close, cher.',
+        '{k} misses from {d}. The ball hit nothing but regret.',
+        'Short! {d} yards was just too far for {k}.',
+        'Blocked! {dl} gets a hand on the kick.'
+      ],
+      interception: [
+        'Picked off! {db} steps in front and takes it from {qb}.',
+        '{qb} stares down {wr}. {db} jumps it. Interception.',
+        'Interception. {db} reads {qb} like a menu.',
+        'Tipped, and {db} cradles it. Intercepted.',
+        'That ball was meant for {wr}. {db} had other ideas.',
+        '{qb} forces it into coverage and pays for it. {db} with the pick.',
+        'Intercepted by {db}. Somebody\'s grandmother is yelling at the radio.',
+        '{db} jumps the route. Gone. Turnover.'
+      ],
+      fumble: [
+        'Fumble! {rb} loses it and the {def} fall on it.',
+        'Ball\'s out! {def} recover. Turnover.',
+        '{rb} gets stripped. The ball bounces like a crawfish in a skillet. {def} ball.',
+        'Loose ball, and the {def} come up with it. Mais non.',
+        '{lb} rips it loose from {rb}. Turnover.',
+        'Fumble on the exchange, {def} pounce.',
+        '{rb} puts it on the turf and the {def} take it.'
+      ],
+      touchdownRun: [
+        '{rb} punches it in! Touchdown {off}.',
+        '{rb} into the end zone from {yds}. Touchdown! Bells and boudin.',
+        'Touchdown! {rb} dives across the line from {yds}.',
+        '{rb} walks in untouched, {yds} yards. Somebody fire a cannon.',
+        '{rb} bulls over the goal line. Six points. Laissez les bons temps rouler.',
+        'Handoff, hole, end zone. {rb} scores from {yds}.',
+        '{rb} crosses the goal line. The scoreboard operator is already smiling.'
+      ],
+      touchdownPass: [
+        '{qb} throws a touchdown to {wr}! {yds} yards.',
+        '{wr} in the end zone! {qb} hits him from {yds}. Touchdown {off}.',
+        '{qb} lofts it, {wr} hauls it down, six points. {yds} yards.',
+        'Touchdown! {wr} goes up and gets it, {yds} yards from {qb}.',
+        '{qb} finds {wr} wide open as the marsh. {yds}-yard touchdown.',
+        'Corner fade, and {wr} makes the grab. Touchdown, {yds} yards.',
+        '{qb} to {wr} for six! Fireworks, probably.'
+      ],
+      twoPointGood: [
+        'Two-point try is GOOD! {off} goes for it and gets it.',
+        'They go for two... and get it! Mais, what a call.',
+        'Two points! {qb} sneaks it across.',
+        '{off} gambles on two and cashes in. Lagniappe!',
+        'Conversion good. Two points and a big breath.',
+        '{qb} finds {wr} for the two-point conversion. Cold-blooded.'
+      ],
+      twoPointFail: [
+        'Two-point try fails. The {def} hold the line.',
+        'No good! The conversion is stuffed short.',
+        '{off} goes for two and comes up empty. Heavy sigh.',
+        'Two-point pass falls incomplete. Back to the sideline.',
+        'The {def} stop the try. The extra point was right there, cher.',
+        'Stopped! The gamble does not pay. Not today.'
+      ],
+      reaction: {
+        good: [
+          'The Marsh Mob erupts.',
+          'Bells ring across campus.',
+          'Roux yawns approvingly.',
+          'The student section does the gator chomp.',
+          'Somewhere a boudin vendor is dancing.',
+          'The brass band answers with a sting.'
+        ],
+        bad: [
+          'A hush falls over the Marsh Mob.',
+          'Sad trombone near the tailgates.',
+          'Coach studies the clipboard like it owes him money.',
+          'Even the gators look embarrassed.',
+          'The Marsh Mob mutters in two languages.'
+        ]
+      }
+    }
+  };
 
   // ---------------------------------------------------------------------------
   // Calendar (ARCH §4.2 map; festival copy GDD §14.3 verbatim)
@@ -993,7 +1228,7 @@
     tickerKindList: TICKER_KIND_LIST, objectives: objectives, milestones: milestones, voiceCards: voiceCards,
     boardCards: boardCards, failureCards: failureCards, tutorial: tutorial, thibodeaux: thibodeaux,
     stormQuotes: stormQuotes, overlays: overlays, keys: keys, toastKeys: toastKeys, panKeys: panKeys, rainKinds: rainKinds,
-    guide: guide, needs: needs, requirements: requirements, coach: coach
+    guide: guide, needs: needs, requirements: requirements, coach: coach, football: football
   };
 
   /** Recursive Object.freeze; no typed arrays, Maps or functions exist in the tables. */
@@ -1126,7 +1361,53 @@
       check(!C.founders_hall.demolishable && !C.stadium.demolishable && C.dorm.demolishable, 'demolishable');
       check(C.dorm.shelterOwn && C.res_tower.shelterOwn && !C.library.shelterOwn, 'shelterOwn');
       check(D.rainKinds.hurricane.inches.length === 5 && D.rainKinds.cell.steps === 60 && D.rainKinds.shower.total === 0.04, 'rainKinds');
-      notes.push('ticker 62, storms 26, gators 14, milestones 26, objectives 25, keys ' + D.keys.length);
+      // 12. football tables (PLAN_FOOTBALL pass A): roster, prospects, formations, phrases, opponent/coach styles
+      const FB = D.football, FPOS = ['QB', 'RB', 'WR', 'OL', 'DL', 'LB', 'DB', 'K'];
+      const strs = function (a, min) { return Array.isArray(a) && a.length >= min && a.every(x => typeof x === 'string' && x.length > 0); };
+      check(!!FB && FB.positions.join() === FPOS.join() && Object.keys(FB.roster.template).join() === FPOS.join(), 'football: eight rated positions in slot order');
+      if (FB) {
+        const N = FB.roster.names;
+        check(strs(N.first, 20) && strs(N.modern, 8) && strs(N.last, 20) && strs(N.nick, 10) && strs(N.hometowns, 10), 'football: name pools present');
+        check(N.first.indexOf('Cécile') < 0 && N.first.indexOf('Beau') >= 0 && N.first.every(n => D.students.firstCajun.indexOf(n) >= 0) && N.modern.every(n => D.students.firstModern.indexOf(n) >= 0), 'football: name pools drawn from the student tables (men only)');
+        check(FB.roster.classes.length === 4 && FB.roster.classWeights.length === 4 && Math.abs(FB.roster.classWeights.reduce((a, b) => a + b, 0) - 1) < 1e-9, 'football: four classes whose weights sum to 1');
+        for (const p of FPOS) { const t = FB.roster.template[p]; check(!!t && t.jersey.length === 2 && t.jersey[0] <= t.jersey[1] && t.field >= 1 && t.depth >= 1 && typeof t.label === 'string' && t.blurb.length > 0, 'football: roster template ' + p); }
+        check(FB.roster.template.OL.field === 5 && FB.roster.template.DL.field === 4 && FB.roster.template.QB.field === 1, 'football: field counts QB 1, OL 5, DL 4');
+        const A = FB.prospects.archetypes, ids = new Set(A.map(a => a.id));
+        check(A.length >= 12 && ids.size === A.length && FPOS.every(p => A.some(a => a.pos === p)) && FPOS.every(p => FB.prospects.posWeights[p] > 0), 'football: prospect archetypes unique, every position covered');
+        check(A.every(a => FPOS.indexOf(a.pos) >= 0 && a.title.length > 0 && a.blurb.split(/\s+/).length <= 14 && Math.abs(a.ratingBias) <= 3 && a.costMult >= 0.8 && a.costMult <= 1.3), 'football: archetype fields (blurb ≤ 14 words, bias ±3, cost ×0.8–1.3)');
+        const F = FB.formations, FN = ['iform', 'shotgun', 'punt', 'fieldGoal', 'kickoff', 'victory', 'd43', 'nickel', 'puntReturn', 'fgBlock', 'kickoffReturn'];
+        check(FN.every(k => F[k]) && Object.keys(F).length === FN.length, 'football: eleven formation templates');
+        for (const k of FN) {
+          const f = F[k] || { pos: [], xy: [] }, seen = new Set();
+          check(['off', 'def', 'kick'].indexOf(f.side) >= 0 && f.pos.length === 11 && f.xy.length === 11, 'football: formation ' + k + ' has 11 roles and 11 points');
+          check(f.xy.every(q => Array.isArray(q) && q.length === 2 && Number.isFinite(q[0]) && Number.isFinite(q[1]) && Math.abs(q[0]) <= 60 && Math.abs(q[1]) <= 26.5), 'football: formation ' + k + ' points are finite and on the field');
+          check(f.xy.every(q => { const key = q[0] + ',' + q[1]; if (seen.has(key)) return false; seen.add(key); return true; }), 'football: formation ' + k + ' stacks no two players');
+          check(f.pos.every(r => FPOS.indexOf(FB.roles[r]) >= 0), 'football: formation ' + k + ' roles map to rated positions');
+        }
+        const cnt = (k, r) => F[k].pos.filter(x => x === r).length;
+        check(['iform', 'shotgun', 'victory'].every(k => cnt(k, 'QB') === 1 && ['LT', 'LG', 'C', 'RG', 'RT'].every(r => cnt(k, r) === 1)), 'football: offensive sets have one QB and a five-man line');
+        check(cnt('punt', 'P') === 1 && cnt('punt', 'LS') === 1 && cnt('fieldGoal', 'K') === 1 && cnt('fieldGoal', 'H') === 1 && cnt('kickoff', 'K') === 1 && cnt('kickoffReturn', 'KR') === 2 && cnt('puntReturn', 'PR') === 1, 'football: special-teams sets name their kicker/holder/returners');
+        check(cnt('d43', 'DE') + cnt('d43', 'DT') === 4 && cnt('d43', 'LB') === 3 && cnt('d43', 'CB') + cnt('d43', 'S') === 4 && cnt('nickel', 'NB') === 1 && cnt('nickel', 'LB') === 2, 'football: 4-3 is 4 DL + 3 LB + 4 DB, nickel swaps a LB for a DB');
+        check(F.iform.xy[0][0] === -1 && F.iform.xy[2][0] === -7 && F.shotgun.xy[0][0] === -5 && F.fieldGoal.xy[1][0] === -9, 'football: plan depths (I-form QB −1, RB −7; shotgun QB −5; FG kicker −9)');
+        const P = FB.phrases, PK = ['run', 'runStuff', 'runBig', 'passComplete', 'passBig', 'passIncomplete', 'sack', 'punt', 'fgGood', 'fgMiss', 'interception', 'fumble', 'touchdownRun', 'touchdownPass', 'twoPointGood', 'twoPointFail'];
+        let badPhrase = '';
+        const vet = function (arr, name) {
+          if (!Array.isArray(arr) || arr.length < 4 || arr.length > 8 || new Set(arr).size !== arr.length) { badPhrase = badPhrase || name + ' (4–8 unique variants)'; return; }
+          for (const t of arr) {
+            if (typeof t !== 'string' || t.length < 8 || t.length > 100) badPhrase = badPhrase || name + ': length "' + t + '"';
+            const vars = (String(t).match(/\{[^}]*\}/g) || []);
+            for (const v of vars) if (FB.phraseVars.indexOf(v.slice(1, -1)) < 0) badPhrase = badPhrase || name + ': unknown ' + v;
+            if (/\{[^}]*$|^[^{]*\}/.test(String(t))) badPhrase = badPhrase || name + ': unbalanced braces';
+          }
+        };
+        for (const k of PK) vet(P[k], k);
+        vet(P.reaction && P.reaction.good, 'reaction.good'); vet(P.reaction && P.reaction.bad, 'reaction.bad');
+        check(PK.every(k => !!P[k]) && Object.keys(P).length === PK.length + 1 && !badPhrase, 'football: phrase tables — ' + (badPhrase || 'sixteen tables + reaction, 4–8 variants each'));
+        check(['run', 'runBig'].every(k => P[k].every(t => t.indexOf('{rb}') >= 0)) && P.passComplete.every(t => t.indexOf('{yds}') >= 0 && (t.indexOf('{wr}') >= 0)) && P.fgGood.every(t => t.indexOf('{k}') >= 0 || t.indexOf('{d}') >= 0) && P.sack.every(t => t.indexOf('{dl}') >= 0), 'football: phrases carry the placeholders their play needs');
+      }
+      for (const k of Object.keys(D.opponents)) { const o = D.opponents[k]; check(['ground', 'balanced', 'air'].indexOf(o.style) >= 0 && Number.isInteger(o.defBias) && Math.abs(o.defBias) <= 4 && o.colors.length === 2 && o.colors.every(c => /^#[0-9A-Fa-f]{6}$/.test(c)), 'opponent ' + k + ' has style, defBias ±4 and two colors'); }
+      check(D.coaches.every(c => ['ground', 'balanced', 'air'].indexOf(c.style) >= 0), 'every coach has a playbook style');
+      notes.push('ticker 62, storms 26, gators 14, milestones 26, objectives 25, keys ' + D.keys.length + ', football formations ' + Object.keys(D.football.formations).length + ', archetypes ' + D.football.prospects.archetypes.length);
     } catch (e) {
       fails.push('threw: ' + ((e && e.message) || String(e)));
     }

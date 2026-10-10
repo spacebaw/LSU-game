@@ -86,6 +86,19 @@ eq(BSU.params.storm.surge[3], 8, 'storm.surge[Cat 3] = 8 ft');
 eq(BSU.params.hydro.k, 0.35, 'hydro.k');
 eq(BSU.params.palette.purple, '#461D7C', 'palette.purple');
 ok(Object.keys(BSU.params.econ.timers).length === 22 && BSU.HAPPINESS_TIMERS.every(id => id in BSU.params.econ.timers), 'all 22 §5.6 timers have params');
+// PLAN_FOOTBALL pass A: params.sports.engine groundwork (consumed by the pass B/C engine)
+{
+  const E = BSU.params.sports.engine, sum = o => Object.values(o).reduce((a, b) => a + b, 0), near = (a, b) => Math.abs(a - b) < 1e-9;
+  ok(E && E.positions.join() === 'QB,RB,WR,OL,DL,LB,DB,K', 'sports.engine.positions lists the eight rated starters');
+  ok(['offRun', 'offPass', 'defRun', 'defPass'].every(k => near(sum(E.composite[k]), 1) && Object.keys(E.composite[k]).every(p => E.positions.includes(p))), 'sports.engine.composite weights sum to 1 over real positions');
+  ok(['ground', 'balanced', 'air'].every(k => near(E.playbook[k].runShare + E.playbook[k].passShare, 1)) && E.playbook.ground.runShare > E.playbook.balanced.runShare && E.playbook.balanced.runShare > E.playbook.air.runShare, 'sports.engine.playbook run/pass shares sum to 1 and order ground > balanced > air');
+  ok(['conservative', 'normal', 'aggressive'].every(k => E.aggression[k]) && E.aggression.aggressive.goDist > E.aggression.normal.goDist && E.aggression.normal.goDist > E.aggression.conservative.goDist, 'sports.engine.aggression levels ordered');
+  ok(E.homeField.day.length === 4 && E.homeField.night.length === 4 && E.homeField.oppPenalty.length === 4 && E.homeField.night[2] === BSU.params.sports.homeNight && E.homeField.day[0] === BSU.params.sports.homeDay && E.homeField.oppPenalty[3] === BSU.params.sports.stadium3Opp, 'sports.engine.homeField tiers mirror homeDay/homeNight/stadium3Opp');
+  ok(E.spring.unlockStudents === 200 && E.spring.offsetDays === 3 && E.spring.ticks === 300 && BSU.SET_PIECES.spring === E.spring.ticks, 'spring game: unlock 200 students, +3 days, SET_PIECES.spring 300');
+  ok(E.highlights.slots === 24 && E.highlights.firstSlotTick + E.highlights.slots * E.highlights.slotTicks <= BSU.params.sports.finalTick, 'highlights slots fit between kickoff and the final whistle');
+  ok(E.recruit.boardSizes.length === 3 && E.recruit.boardCoachingTiers.length === 2 && E.recruit.costMin < E.recruit.costMax && E.tickets.tiers.join() === Object.keys(BSU.params.sports.tickets).join() && E.bowl.minWins === BSU.params.sports.bowlWins, 'recruit board, ticket tiers and bowl eligibility mirror the existing params');
+  ok(E.clock.quarterSec === 900 && E.clock.quarters === 4 && E.montage.montageTicks === 60, 'clock quarters 15:00 x 4; montage 60 ticks');
+}
 
 // --- newState --------------------------------------------------------------
 const st = BSU.newState(42);

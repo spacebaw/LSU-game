@@ -242,5 +242,21 @@ ok(merged.length && /want paths in \d+ places/.test(merged[0].args[0].text), 'me
 ok(merged.length && merged[0].args[0].action && merged[0].args[0].action.tiles.length >= 3 && merged[0].args[0].action.label === 'Build them', 'merged action builds every held run');
 eq(progressErrors().length, 0, 'no progress BSU.error through the desire-line throttle');
 
+// --- PLAN_FOOTBALL pass A hotfix: setPiecesSeen.game ----------------------------------------------------
+// The first home-game set piece to END marks 'game' seen, so Skip ▸ appears for later games and the Auto-sim montage works.
+s = BSU.session.newGame({ seed: 7, skipTutorial: true }) || BSU.state;
+eq(s.progress.setPiecesSeen.game, false, 'game set piece not seen on a new game');
+eq(PR.setPieceSeen(s, 'game'), false, 'setPieceSeen("game") false before any game');
+BSU.events.emit('setpiece:end', { kind: 'game', len: 750 }); H.tick(1);
+eq(s.progress.setPiecesSeen.game, true, 'setpiece:end{game} marks the game set piece seen');
+eq(PR.setPieceSeen(s, 'game'), true, 'setPieceSeen("game") true after a game ended');
+s.progress.setPiecesSeen.game = false;
+BSU.events.emit('setpiece:end', { kind: 'montage', len: 50 }); H.tick(1);
+eq(s.progress.setPiecesSeen.game, true, 'setpiece:end{montage} also marks it seen');
+s.progress.setPiecesSeen.game = false;
+BSU.events.emit('setpiece:end', { kind: 'parade', len: 250 }); H.tick(1);
+eq(s.progress.setPiecesSeen.game, false, 'a parade ending does not mark the game seen');
+eq(progressErrors().length, 0, 'no progress BSU.error through the set-piece flag checks');
+
 console.log(`\n${passes} passed, ${failures} failed`);
 process.exit(failures ? 1 : 0);

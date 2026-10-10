@@ -18,7 +18,7 @@ const eq = (a, b, msg) => ok(a === b, `${msg} (got ${JSON.stringify(a)}, want ${
 const src = readFileSync(join(root, 'src', 'js', 'data.js'), 'utf8');
 ok(!/<\/script/i.test(src), 'no "</script" in source');
 ok(!/Math\.random/.test(src), 'no Math.random in source');
-ok(src.length <= 100 * 1024, `file size ${(src.length / 1024).toFixed(1)} KB ≤ 100 KB`);   // UX pass: blurbs + guide/needs/requirements/coach tables (was 80 KB)
+ok(src.length <= 130 * 1024, `file size ${(src.length / 1024).toFixed(1)} KB ≤ 130 KB`);   // UX pass: blurbs + guide/needs/requirements/coach tables (was 80 KB, then 100 KB); football pass A: roster/prospect/formation/phrase tables (130 KB)
 
 const win = makeWindow();
 win.BSU_FORCE_HEADLESS = true;
@@ -170,6 +170,28 @@ ok(D.catalog.pump.effects.pumpTileFt === BSU.params.hydro.pumpTileFtPerDay && D.
 ok(D.catalog.engineering.effects.research.base === BSU.params.econ.research.engineering && D.catalog.coastal_institute.effects.research.base === BSU.params.econ.research.coastal, 'research bases agree with params');
 ok(D.rainKinds.shower.total === BSU.params.hydro.rain.shower && D.rainKinds.band.total === BSU.params.hydro.rain.band && D.rainKinds.hurricane.steps === BSU.params.hydro.rain.hurricaneSteps, 'rainKinds agree with params.hydro.rain');
 ok(D.catalog.substation.effects.power.radius === 10 && D.catalog.tiger_habitat.effects.gatorAvoidRadius === BSU.params.wildlife.gator.habitatRadius, 'radii agree with params');
+
+// --- scenario 9: football tables (PLAN_FOOTBALL pass A) ----------------------------------------------------
+{
+  const FB = D.football, POS = ['QB', 'RB', 'WR', 'OL', 'DL', 'LB', 'DB', 'K'];
+  ok(FB && FB.positions.join() === POS.join(), 'football.positions are the eight rated starters in slot order');
+  ok(Object.keys(FB.roster.template).join() === POS.join() && POS.every(p => FB.roster.template[p].jersey.length === 2), 'football.roster.template has all eight positions with jersey ranges');
+  ok(FB.roster.names.first.length >= 20 && FB.roster.names.first.every(n => D.students.firstCajun.includes(n)) && !FB.roster.names.first.includes('Cécile'), 'football first names are the men of the existing Cajun pool');
+  ok(FB.roster.names.last === D.students.last && FB.roster.names.hometowns === D.students.hometowns, 'football surnames and hometowns reuse the student tables');
+  ok(FB.prospects.archetypes.length >= 12 && POS.every(p => FB.prospects.archetypes.some(a => a.pos === p)), 'prospect archetypes cover every position');
+  const FN = Object.keys(FB.formations);
+  eq(FN.join(), 'iform,shotgun,punt,fieldGoal,kickoff,victory,d43,nickel,puntReturn,fgBlock,kickoffReturn', 'eleven formation templates in plan order');
+  ok(FN.every(k => FB.formations[k].xy.length === 11 && FB.formations[k].pos.length === 11), 'every formation has 11 players');
+  ok(FB.formations.iform.xy.slice(3, 8).map(q => q[1]).join() === '-4,-2,0,2,4' && FB.formations.d43.xy.slice(0, 4).map(q => q[1]).join() === '-3,-1,1,3', 'I-form line (0, −4…+4 step 2) and 4-3 front (+1, −3…+3) match the plan');
+  const PK = Object.keys(FB.phrases).filter(k => k !== 'reaction');
+  eq(PK.length, 16, 'sixteen play-by-play phrase tables (+ reaction)');
+  ok(PK.every(k => FB.phrases[k].length >= 4 && FB.phrases[k].length <= 8) && FB.phrases.reaction.good.length >= 4 && FB.phrases.reaction.bad.length >= 4, 'each phrase table has 4–8 variants');
+  ok(['run', 'passComplete', 'passIncomplete', 'sack', 'punt', 'fgGood', 'fgMiss', 'interception', 'fumble', 'touchdownRun', 'touchdownPass', 'twoPointGood', 'twoPointFail'].every(k => !!FB.phrases[k]), 'run/pass complete/incomplete/sack/punt/FG good+miss/turnover/touchdown/two-point all present');
+  const used = new Set(); for (const k of PK) for (const t of FB.phrases[k]) for (const v of (t.match(/\{[^}]*\}/g) || [])) used.add(v.slice(1, -1));
+  ok([...used].every(v => FB.phraseVars.includes(v)) && FB.phraseVars.every(v => used.has(v)), 'phrase placeholders are exactly the declared phraseVars');
+  ok(Object.keys(D.opponents).length === 9 && Object.values(D.opponents).every(o => ['ground', 'balanced', 'air'].includes(o.style) && o.colors.length === 2) && D.opponents.magnolia.style === 'air' && D.opponents.delta.style === 'ground', 'opponents carry style/defBias and two colors (Magnolia air, Delta ground)');
+  ok(D.coaches.length === 10 && D.coaches.every(c => ['ground', 'balanced', 'air'].includes(c.style)), 'every coach carries a playbook style');
+}
 
 console.log(`\n${passes} passed, ${failures} failed`);
 process.exit(failures ? 1 : 0);

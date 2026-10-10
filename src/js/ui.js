@@ -52,9 +52,11 @@
 //   PLACING + move                          → buildings.canPlace → render.ghost + #ghost-label
 //   PLACING(footprint) + up ≤ 4 px          → buildings.place (ok → IDLE unless Shift; !ok → invalid + shake)
 //   PLACING(drag row) + down(left)          → DRAGGING (run starts; Shift = straight line)
-//   DRAGGING + move                         → run grows 4-connected (x then y staircase)
+//   DRAGGING + move                         → the run is an ORDERED trail: it grows 4-connected (x then y staircase); moving back
+//                                             onto a tile already in the trail truncates it to that tile (the start tile too)
 //   DRAGGING + up                           → buildings.placeRun → PLACING (tool kept)
-//   PLACING/DRAGGING + Esc/right-click      → IDLE;  R → rotate in place
+//   DRAGGING + Esc/right-click              → the whole pending run is dropped (nothing placed) → PLACING, tool kept
+//   PLACING + Esc/right-click               → IDLE;  R → rotate in place
 //   any + wheel                             → render.panBy;  ctrl+wheel / pinch → render.setZoom at the cursor
 //   any + cancel (pointercancel/blur)       → drop drag/pan without placing
 // ============================================================================
@@ -129,7 +131,7 @@
   M.fmt = { money: function (n) { return BSU.formatMoney(n); }, date: function (d) { return BSU.formatDate(d); } };
   const panels = {};                       // name → {build, refresh, events, el, built, lastRefresh}
   let root = null, inited = false, dry = false, clock = 0, titleOn = false, focusedInput = null;
-  let toolLocked = false, undoAtMs = -1e9, lastGhost = null, lastRingMs = -1e9, shakeUntil = 0, ghostCache = null;
+  let toolLocked = false, undoAtMs = -1e9, lastRunLen = 0, lastGhost = null, lastRingMs = -1e9, shakeUntil = 0, ghostCache = null;
   let heldShift = false;   // design pass: Shift held → the footprint ghost places flush (no setback snap)
   let hoverKey = '', hoverSince = 0, hoverPx = 0, hoverPy = 0, tipShown = '', lastPx = 0, lastPy = 0;
   const notifs = [];                       // {spec, el, born, bornTick, closed}
@@ -339,7 +341,11 @@
     const perf = el('div', 'chip hidden', ''); perf.id = 'perf-chip'; const pm = el('div', 'chip hidden', 'Performance mode'); pm.id = 'perfmode-chip';
     const h = el('div', 'hidden'); h.id = 'hint'; const ht = el('span', null, ''); const ha = btn('btn-hint-action', '', 'small hidden', function () { if (hint && hint.action && typeof hint.action.fn === 'function') { hint.action.fn(stateOf()); } hideHint(); }); h.appendChild(ht); h.appendChild(ha);
     const skip = btn('btn-skip', 'Skip ▸', 'hidden', function () { const s = stateOf(); if (s && s.setPiece) call('session', 'skipSetPiece', s); });
-    E['perf-chip'] = perf; E['perfmode-chip'] = pm; E.hint = h; E['hint-text'] = ht; E['btn-hint-action'] = ha; E['btn-skip'] = skip; return [perf, pm, h, skip];
+    // undo pass: the Undo chip (above the palette, bottom-left) — shown for the undo window after any placement or drag run; click = Ctrl+Z
+    const uc = btn('undo-chip', '', 'hidden', function () { doUndo(stateOf()); }); const ucMain = el('span', 'uc-main', ''); const ucBar = el('span', 'uc-bar'); const ucFill = el('span', 'uc-fill'); ucBar.appendChild(ucFill);
+    uc.appendChild(el('span', 'uc-glyph', '↶')); uc.appendChild(ucMain); uc.appendChild(el('span', 'key', 'Ctrl+Z')); uc.appendChild(ucBar);
+    E['undo-chip'] = uc; E['undo-main'] = ucMain; E['undo-fill'] = ucFill;
+    E['perf-chip'] = perf; E['perfmode-chip'] = pm; E.hint = h; E['hint-text'] = ht; E['btn-hint-action'] = ha; E['btn-skip'] = skip; return [perf, pm, h, skip, uc];
   }
   function buildCards() { const c = el('div', 'hidden'); c.id = 'cards'; E.cards = c; return c; }
   function buildLabels() {
@@ -491,12 +497,25 @@
     while (ay !== by) { ay += by > ay ? 1 : -1; out.push(ay * W + ax); }
     return out;
   }
+  /** the pending run is an ordered trail of 4-connected tiles; trail[last] === mc.runTile is where the cursor is.
+   *  A tile already in the trail is a BACKTRACK: the trail is cut back to it (everything laid after it disappears).
+   *  Anything else extends by the x-then-y staircase from the last tile (a jump of the cursor is filled in). Shift = straight line. */
   function extendRun(mc, ev) {
-    const j = mc.cb.tileAt(ev.px, ev.py); if (j < 0 || j === mc.runTile) return;
+    const j = mc.cb.tileAt(ev.px, ev.py); if (j < 0 || j === mc.runTile) return false;
     if (ev.mods && ev.mods.shift) mc.run = lineRun(mc.runStart, j);
-    else { const path = stairRun(mc.runTile < 0 ? mc.runStart : mc.runTile, j); for (const i of path) if (mc.run.indexOf(i) < 0) mc.run.push(i); }
-    mc.runTile = j;
+    else {
+      const at = mc.run.indexOf(j);
+      if (at >= 0) mc.run.length = at + 1;   // backtrack straight to the tile under the cursor
+      else {
+        const path = stairRun(mc.run.length ? mc.run[mc.run.length - 1] : mc.runStart, j);
+        for (const i of path) { const k = mc.run.indexOf(i); if (k >= 0) mc.run.length = k + 1; else mc.run.push(i); }
+      }
+    }
+    mc.runTile = mc.run.length ? mc.run[mc.run.length - 1] : j;
+    return true;
   }
+  /** drop the pending run: nothing was placed while dragging, so everything that already exists stays; the tool stays selected */
+  function cancelRun(mc, px, py) { mc.run = []; mc.runTile = -1; mc.runStart = -1; mc.down = null; mcSet(mc, 'PLACING'); if (px == null) mc.cb.ghost(null); else mc.cb.ghost(px, py); }
   function mcRightClick(mc) { const cb = mc.cb; if (cb.getTool() && !cb.locked()) { mcStep(mc, { type: 'tool', id: null }); return; } if (cb.inspecting()) { cb.closeInspect(); mcSet(mc, 'IDLE'); } }
   /** one transition; ev = {type:'down'|'move'|'up'|'cancel'|'tool'|'key', px, py, button, mods, id, key} */
   function mcStep(mc, ev) {
@@ -508,6 +527,7 @@
         cb.setTool({ id: ev.id, rot: 0, shift: false }); mc.run = []; mc.down = null; mcSet(mc, 'PLACING'); cb.ghost(ev.px, ev.py); return true;
       }
       case 'down': {
+        if (mc.state === 'DRAGGING' && ev.button !== 0) { if (ev.button === 2) cancelRun(mc, ev.px, ev.py); return true; }   // right-click mid-drag = cancel the whole run (kept tool); the stray release does nothing
         if (ev.button === 1 || ev.button === 2) { mc.down = { px: ev.px, py: ev.py, lx: ev.px, ly: ev.py, button: ev.button, moved: false, pan: true, prev: mc.state }; return true; }
         if (ev.button !== 0) return false;
         if (mc.state === 'PLACING' && isDrag) { const i = cb.tileAt(ev.px, ev.py); if (i < 0) return false; mc.run = [i]; mc.runStart = i; mc.runTile = i; mcSet(mc, 'DRAGGING'); cb.ghost(ev.px, ev.py); return true; }
@@ -525,7 +545,7 @@
         cb.hover(ev.px, ev.py); return true;
       }
       case 'up': {
-        if (mc.state === 'DRAGGING') { const r = mc.run; mc.run = []; mc.runTile = -1; mcSet(mc, 'PLACING'); cb.placeRun(r); cb.ghost(ev.px, ev.py); return true; }
+        if (mc.state === 'DRAGGING') { if (ev.button != null && ev.button !== 0) return true; const r = mc.run; mc.run = []; mc.runTile = -1; mcSet(mc, 'PLACING'); cb.placeRun(r); cb.ghost(ev.px, ev.py); return true; }
         const d = mc.down; if (!d) return false; mc.down = null;
         if (mc.state === 'PANNING') mcSet(mc, d.prev === 'PANNING' ? 'IDLE' : d.prev);
         if (d.pan) { if (d.button === 2 && !d.moved) mcRightClick(mc); return true; }
@@ -539,9 +559,10 @@
         if (cb.inspectAt(ev.px, ev.py)) mcSet(mc, 'INSPECTING'); else { cb.closeInspect(); mcSet(mc, 'IDLE'); }
         return true;
       }
-      case 'cancel': { mc.down = null; if (mc.state === 'DRAGGING') { mc.run = []; mc.runTile = -1; mcSet(mc, 'PLACING'); cb.ghost(null); } else if (mc.state === 'PANNING') mcSet(mc, mc.prev === 'PANNING' ? 'IDLE' : mc.prev); return true; }
+      case 'cancel': { mc.down = null; if (mc.state === 'DRAGGING') cancelRun(mc, null); else if (mc.state === 'PANNING') mcSet(mc, mc.prev === 'PANNING' ? 'IDLE' : mc.prev); return true; }
       case 'key': {
         if (ev.key === 'Escape') {
+          if (mc.state === 'DRAGGING') { cancelRun(mc, ev.px, ev.py); return true; }   // first Esc drops the pending run, the next one drops the tool
           if (cb.getTool()) { if (cb.locked()) return true; mcStep(mc, { type: 'tool', id: null }); return true; }
           if (cb.inspecting()) { cb.closeInspect(); if (mc.state === 'INSPECTING') mcSet(mc, 'IDLE'); return true; }
           return false;
@@ -706,7 +727,7 @@
       case 'follow': { const cam = s.ui.camera; if (cam && cam.follow >= 0) { call('render', 'follow', -1); } else { const a = call('agents', 'follow', s); if (a && Number.isFinite(a.id)) call('render', 'follow', a.id); } return true; }
       case 'escape': return mcStep(live, { type: 'key', key: 'Escape', px: lastPx, py: lastPy });
       case 'save': call('session', 'save', 'manual.0'); return true;
-      case 'undo': { const r = call('buildings', 'undo', s); if (r && !r.ok && r.reason) M.notify(s, { kind: 'info', text: r.reason, ttl: 3000 }); else if (r && r.ok) { call('audio', 'play', 'tick'); } return true; }
+      case 'undo': doUndo(s); return true;
       case 'postcard': postcard(s); return true;
       case 'mute': toggleMute(); return true;
       case 'toastYes': return false;
@@ -793,7 +814,8 @@
     const g = ghostTarget(s, tool, px, py); if (!g) return;
     const dragging = live.state === 'DRAGGING';
     const isRing = row.id === 'levee' || row.id === 'floodwall';
-    if (dragging && isRing && clock - lastRingMs < L.ringThrottleMs && lastGhost) { drawGhost(s, tool, row, lastGhost.r, g, px, py, dragging); return; }
+    const shrank = dragging && live.run.length < lastRunLen; lastRunLen = dragging ? live.run.length : 0;   // a backtrack changes the ring maths at once: never serve the throttled copy
+    if (dragging && isRing && !shrank && clock - lastRingMs < L.ringThrottleMs && lastGhost) { drawGhost(s, tool, row, lastGhost.r, g, px, py, dragging); return; }
     const opts = { rot: tool.rot }; if (dragging) opts.tiles = live.run;
     const r = call('buildings', 'canPlace', s, tool.id, g.tx, g.ty, opts); if (!r) return;
     if (dragging && isRing) lastRingMs = clock;
@@ -814,7 +836,7 @@
     call('render', 'ghost', spec);
     if (!dom()) return;
     let l1, l2 = '';
-    if (dragging) { const n = live.run.length; const per = fin(r.cost, row.cost) || row.cost; l1 = n + (n === 1 ? ' tile' : ' tiles') + ' · ' + money(per * n); if (r.ring && r.ring.text) l2 = r.ring.text; else if (r.ring && typeof r.ring.closed === 'boolean') l2 = r.ring.closed ? 'closes the ring' : (r.ring.shortText || ('still ' + fin(r.ring.short, 0) + ' tiles short')); }
+    if (dragging) { const n = live.run.length; const per = fin(r.cost, row.cost) || row.cost; l1 = n + (n === 1 ? ' tile' : ' tiles') + ' · ' + money(per * n); if (r.ring && r.ring.text) l2 = r.ring.text; else if (r.ring && typeof r.ring.closed === 'boolean') l2 = r.ring.closed ? 'closes the ring' : (r.ring.shortText || ('still ' + fin(r.ring.short, 0) + ' tiles short')); if (!l2 && n > 1) l2 = 'Drag back to shorten · Esc cancels'; }
     else if (g.cove) { l1 = 'Not here'; l2 = 'The cove floods every rain. Build on the ridge.'; }
     else if (!r.ok) { l1 = r.reason || 'Cannot build here'; l2 = ridgeText(r.ridgeFull) || sinkText(r.sink) || ''; }
     else {
@@ -827,6 +849,43 @@
     }
     ghostLabel(px, py, l1, l2, color);
   }
+  // ---------------------------------------------------------------------------
+  // Undo (undo pass): Ctrl/Cmd+Z and the chip both land here. buildings.undo restores the last placement / drag run exactly
+  // (or says why not); the ui adds the 5 s wall-clock half of the window (D16) and tells the player what happened.
+  // ---------------------------------------------------------------------------
+  function undoWallOpen() { return !!BSU.headlessMode || clock - undoAtMs <= fin(PU.undoSeconds, 5) * 1000 + 250; }
+  function undoLabel(info) { return info ? (info.n > 1 ? info.n + ' × ' + info.name : info.name) : ''; }
+  function doUndo(s) {
+    if (!s) return false;
+    const info = call('buildings', 'undoInfo', s);
+    let r;
+    if (!undoWallOpen()) r = { ok: false, reason: info ? 'Too late to undo ' + undoLabel(info) + ' (' + fin(PU.undoSeconds, 5) + ' s window)' : 'Nothing to undo' };   // the ui half of the window (5 s wall-clock, D16) closed while the sim was paused
+    else r = call('buildings', 'undo', s);
+    if (r && r.ok) {
+      call('audio', 'play', 'tick');
+      const what = undoLabel(info) || (r.name ? (r.n > 1 ? r.n + ' × ' + r.name : r.name) : 'placement');
+      M.notify(s, { kind: 'info', text: 'Undid ' + what + (r.refund > 0 ? ' · refunded ' + money(r.refund) : ''), ttl: 3500 });
+      undoAtMs = -1e9; paletteDirty = true;
+      if (live.state === 'PLACING') updateGhostQuiet();
+    } else {
+      call('audio', 'play', 'invalid');
+      M.notify(s, { kind: 'info', text: (r && r.reason) || 'Nothing to undo', ttl: 3500 });
+      undoAtMs = -1e9;
+    }
+    updateUndoChip(s);
+    return !!(r && r.ok);
+  }
+  let undoChipKey = '';
+  function updateUndoChip(s) {
+    if (!dom() || !E['undo-chip']) return;
+    const info = s && s.ui ? call('buildings', 'undoInfo', s) : null;
+    const open = !!info && undoWallOpen() && !BSU.headlessMode;
+    show(E['undo-chip'], open);
+    if (!open) { undoChipKey = ''; return; }
+    const key = info.id + '|' + info.n + '|' + info.refund; if (key !== undoChipKey) { undoChipKey = key; setText(E['undo-main'], 'Undo ' + undoLabel(info) + (info.refund > 0 ? ' · refund ' + money(info.refund) : '')); E['undo-chip'].title = 'Take back ' + undoLabel(info) + (info.refund > 0 ? ' and refund ' + money(info.refund) : '') + ' (Ctrl+Z)'; }
+    const left = clamp(1 - (clock - undoAtMs) / (fin(PU.undoSeconds, 5) * 1000), 0, 1);
+    const f = E['undo-fill']; if (f && f.style) f.style.width = Math.round(left * 100) + '%';
+  }
   function clickPlace(s, px, py, mods) {
     if (!s || !s.ui.tool) return false;
     heldShift = !!(mods && mods.shift);
@@ -835,7 +894,7 @@
       const i = tileIndexAt(px, py); if (i < 0) return false;
       const b = call('buildings', 'at', s, i % W, (i / W) | 0);
       const r = b ? call('buildings', 'remove', s, b.id, 'demolish') : call('buildings', 'remove', s, { tile: i }, 'demolish');
-      if (r && r.ok) { call('audio', 'play', 'tick'); undoAtMs = clock; if (dom()) ghostLabel(px, py, 'Removed' + (r.refund ? ' · refund ' + money(r.refund) : ''), '', 'green'); }   // undo covers the last placement only (GDD §11.2 / D16) — do not promise it here
+      if (r && r.ok) { call('audio', 'play', 'tick'); if (dom()) ghostLabel(px, py, 'Removed' + (r.refund ? ' · refund ' + money(r.refund) : ''), '', 'green'); }   // undo covers the last placement only (GDD §11.2 / D16) — do not promise it here
       else { call('audio', 'play', 'invalid'); if (dom()) { ghostLabel(px, py, r && r.reason ? r.reason : 'Nothing here', '', 'red'); shakeLabel(); } }
       return false;   // the bulldozer stays selected
     }
@@ -936,7 +995,7 @@
       if (b.type === 'wildlife_post') acts.appendChild(action((b.data && b.data.nutriaBounty ? '✓ ' : '') + 'Nutria bounty', function (st) { return call('buildings', 'setPolicy', st, b.id, 'nutriaBounty', !(b.data && b.data.nutriaBounty)); }));
       if (b.type === 'abatement') acts.appendChild(action(b.data && b.data.active === false ? 'Abatement off → on' : 'Abatement on → off', function (st) { return call('buildings', 'setPolicy', st, b.id, 'active', !(b.data && b.data.active !== false)); }));
       if ((tl.type[i0] === T.WET || tl.type[i0] === T.DRAINED) && r.kind === 'footprint') acts.appendChild(action('Re-grade', function (st) { return call('buildings', 'regrade', st, b.id); }));
-      if (r.demolishable !== false) acts.appendChild(action('Demolish', function (st) { const rr = call('buildings', 'remove', st, b.id, 'demolish'); if (rr && rr.ok) { undoAtMs = clock; closeInspectDom(); } return rr; }, 'danger'));
+      if (r.demolishable !== false) acts.appendChild(action('Demolish', function (st) { const rr = call('buildings', 'remove', st, b.id, 'demolish'); if (rr && rr.ok) { closeInspectDom(); } return rr; }, 'danger'));
     } else if (kind === 'tile' || kind === 'levee') {
       const i = insp.i; if (i < 0 || i >= N) { closeInspectDom(); return; }
       const t = call('terrain', 'tileAt', s, i % W, (i / W) | 0) || { type: s.tiles.type[i], elev: s.tiles.elev[i], depth: s.tiles.depth[i], sat: s.tiles.sat[i], stand: s.tiles.stand[i], mosq: s.tiles.mosq[i], subs: s.tiles.subs[i], flags: s.tiles.flags[i], drainsTo: 'ground', crest: s.tiles.crest[i], integrity: s.tiles.integrity[i], sandbag: s.tiles.sandbag[i] };
@@ -2021,6 +2080,7 @@
     sec('panels', updatePanels, state, dtMs);
     sec('tooltip', updateTooltip, state, dtMs);
     sec('ghost', updateGhostCosmetics, state, dtMs);
+    sec('undochip', updateUndoChip, state, dtMs);
     sec('perf', updatePerf, state, dtMs);
     sec('legend', function (s) { const ov = fin(s.ui.overlay, 0); const list = (BSU.data && BSU.data.overlays) || []; for (const o of list) cls(E.ovBtns[o.ov], 'active', o.ov === ov); const o = list.find(function (x) { return x.ov === ov; }); show(E.legend, !!o); if (o) setText(E.legend, o.name + ' · ' + o.legend.join(' → ')); }, state, dtMs);
   };
@@ -2122,7 +2182,7 @@
       A(tabVisible('housing', true, 0) === false && tabVisible('housing', true, 2) === true && tabVisible('essentials', true, 0) === true && tabVisible('paths', false, 3) === false, 'tab visibility rule');
       // 9. skeleton through M.el
       if (inited) {
-        const ids = ['hud', 'topbar', 'brand', 'stat-cash', 'stat-students', 'chip-capacity', 'stat-prestige', 'stat-happiness', 'stat-ecology', 'stat-date', 'sky-glyph', 'chip-weather', 'speed', 'btn-budget', 'btn-season', 'btn-storm', 'btn-almanac', 'btn-menu', 'btn-mute', 'chip-endowed', 'alert-strip', 'alert-icon', 'alert-text', 'alert-action', 'alert-gator', 'minimap-wrap', 'minimap', 'minimap-viewport', 'overlay-buttons', 'legend', 'objective-card', 'obj-portrait', 'obj-title', 'obj-text', 'obj-progress', 'obj-count', 'btn-showme', 'btn-obj-dismiss', 'obj-background', 'speech-bubble', 'voice-card', 'milestones-card', 'notifications', 'decision-toast', 'dt-text', 'dt-countdown', 'btn-dt-yes', 'btn-dt-no', 'inspect', 'insp-title', 'insp-sub', 'btn-insp-close', 'insp-sprite', 'insp-body', 'insp-actions', 'ghost-label', 'tooltip', 'popover', 'pop-title', 'pop-next', 'ticker', 'ticker-track', 'btn-ticker-log', 'ticker-log', 'palette', 'palette-tabs', 'palette-items', 'btn-bulldoze', 'btn-palette-info', 'cards', 'perf-chip', 'perfmode-chip', 'hint', 'panels', 'title', 'title-name', 'title-tag', 'btn-charter', 'btn-continue', 'title-seed', 'btn-title-settings', 'btn-title-mute', 'title-campus'];
+        const ids = ['hud', 'topbar', 'brand', 'stat-cash', 'stat-students', 'chip-capacity', 'stat-prestige', 'stat-happiness', 'stat-ecology', 'stat-date', 'sky-glyph', 'chip-weather', 'speed', 'btn-budget', 'btn-season', 'btn-storm', 'btn-almanac', 'btn-menu', 'btn-mute', 'chip-endowed', 'alert-strip', 'alert-icon', 'alert-text', 'alert-action', 'alert-gator', 'minimap-wrap', 'minimap', 'minimap-viewport', 'overlay-buttons', 'legend', 'objective-card', 'obj-portrait', 'obj-title', 'obj-text', 'obj-progress', 'obj-count', 'btn-showme', 'btn-obj-dismiss', 'obj-background', 'speech-bubble', 'voice-card', 'milestones-card', 'notifications', 'decision-toast', 'dt-text', 'dt-countdown', 'btn-dt-yes', 'btn-dt-no', 'inspect', 'insp-title', 'insp-sub', 'btn-insp-close', 'insp-sprite', 'insp-body', 'insp-actions', 'ghost-label', 'undo-chip', 'tooltip', 'popover', 'pop-title', 'pop-next', 'ticker', 'ticker-track', 'btn-ticker-log', 'ticker-log', 'palette', 'palette-tabs', 'palette-items', 'btn-bulldoze', 'btn-palette-info', 'cards', 'perf-chip', 'perfmode-chip', 'hint', 'panels', 'title', 'title-name', 'title-tag', 'btn-charter', 'btn-continue', 'title-seed', 'btn-title-settings', 'btn-title-mute', 'title-campus'];
         for (const id of ids) A(isEl(E[id]) && E[id].id === id, 'skeleton id through M.el: ' + id);
         A(E.msRows.length === 3 && E.popLines.length === L.popLines && Object.keys(E.speedBtns).length === 5 && Object.keys(E.ovBtns).length === 6, 'ms-rows, pop-lines, speed and overlay buttons exist');
       } else notes.push('skeleton check skipped (init not run)');
