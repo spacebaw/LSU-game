@@ -45,7 +45,7 @@ background:var(--panel-bg);border:1px solid var(--line);color:var(--text);border
 .row.quote .v{font-style:italic;color:var(--gold-hi);text-align:left}
 .card-kicker,.panel-title{font:600 10px/1 var(--font-ui);letter-spacing:.12em;text-transform:uppercase;color:var(--gold);margin-bottom:6px}
 .panel-title{font-size:16px;letter-spacing:.02em;text-transform:none;font-family:var(--font-title);color:var(--gold-hi);margin:0 0 10px}
-#hud{position:absolute;inset:0;pointer-events:none;z-index:2}
+#hud{position:absolute;inset:0;pointer-events:none}
 #hud>*{pointer-events:auto}
 #hud.no-palette{--palette-h:0px}
 #hud.setpiece #milestones-card,#hud.setpiece #voice-card,#hud.setpiece #overlay-buttons,#hud.setpiece #notifications{opacity:0;pointer-events:none}

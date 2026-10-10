@@ -390,10 +390,17 @@
     const game = state.sports && state.sports.game; if (!game || !game.home) return;
     const list = R.drawList; if (!Array.isArray(list)) return;
     const S = mod('sprites'), cat = (BSU.data && BSU.data.catalog) || {};
+    // the venue the game is played at (sports.venue; the scheduled game's own venue as the fallback), never just the first field in the draw list
+    const venue = String((state.sports && state.sports.venue) || game.venue || ''); const wantType = venue.indexOf('stadium') === 0 ? 'stadium' : 'practice_field';
+    let pick = null;
     for (let k = 0; k < list.length; k++) {
       const e = list[k]; if (!e || e.kind !== 'building' || !e.b) continue;
-      const b = e.b; if (b.type !== 'stadium' && !(b.type === 'practice_field' && b.tier >= 1)) continue;
-      if (!(b.built >= 1) || b.ruin) continue;
+      const b = e.b; if (b.type !== wantType || !(b.built >= 1) || b.ruin || !(b.tier >= 1)) continue;
+      if (!pick || fin(b.tier, 0) > fin(pick.b.tier, 0)) pick = e;
+    }
+    for (let k = 0; k < list.length; k++) {
+      const e = list[k]; if (e !== pick) continue;
+      const b = e.b;
       const row = cat[b.type]; let box = null;
       try { box = S && typeof S.buildingBox === 'function' ? S.buildingBox(row, e.variant, cam.zoom, b.rot) : null; } catch (err) { box = null; }
       const br = box && box.bowlRect;

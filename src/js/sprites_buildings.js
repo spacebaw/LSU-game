@@ -368,7 +368,10 @@
       P.rect(x, yb, 3, g.lift + 2, PAL.bark); P.vline(x, yb, g.lift + 2, light(PAL.bark)); P.vline(x + 2, yb, g.lift + 2, dark(PAL.bark));
       P.hline(x - 1, yb + g.lift + 2, 5, shade(PAL.waterNight, 0.8));
     }
-    // a row of posts along the back edges too (visible between the front posts)
+  }
+  /** the back-row posts, painted BEFORE the box so the walls hide all but what shows between the front posts (after the box they overdrew the SW wall base) */
+  function drawStiltsBack(P, g) {
+    const k = g.bk | 0, bx0 = g.bcx - (g.bw >> 1) + 2, bx1 = g.bcx + (g.bw >> 1) - 3;
     for (let x = bx0 + 6; x <= bx1; x += STILT_PITCH * 2) { const yt = topY(g.bcx, g.bcy, g.bw, g.bh, x, k) + (g.bh >> 2); P.rect(x, yt, 2, g.lift, shade(PAL.bark, 0.7)); }
   }
   /** a clipped low hedge along an iso edge from (x0, y0) running 'len' px in direction dir (+1 = down-right, −1 = down-left); columns where skip(x) is true are left open */
@@ -1226,6 +1229,7 @@
     const P = tonePen(pen(ctx, g.zoom), g.tone);
     if (variant & SPR.RUIN) { drawGrounds(P, g, row, SPR.SCAFFOLD, g.seed); drawRuinShape(P, g, g.seed); return { w: g.w, h: g.h, ox: g.ox, oy: g.oy }; }
     if (variant & SPR.PILINGS) drawPilingsGround(P, g, g.seed); else drawGrounds(P, g, row, variant, g.seed);
+    if ((variant & SPR.PILINGS) && !(variant & SPR.SCAFFOLD)) drawStiltsBack(P, g);
     if (variant & SPR.SCAFFOLD) {
       drawScaffoldStage(P, g, row, frame);
     } else {

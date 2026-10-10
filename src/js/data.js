@@ -184,7 +184,7 @@
       desc: 'Power radius 10 for 40 buildings; summer draw ×1.5; blackout at 0.3 ft of water.' }),
     row({ n: 5, name: 'Water Tower', w: 2, h: 2, cost: 220000, upkeep: 2000, wr: 2,
       effects: { water: { radius: 12, capacity: 50 } },
-      paint: P({ wall: ['#5E2CA5', PURPLE], roof: 'dome', roofColor: PURPLE, floors: 0, decals: ['letters', 'beacon'], special: 'water_tower' }),
+      paint: P({ wall: ['#5E2CA5', PURPLE], roof: 'dome', roofColor: PURPLE, floors: 0, decals: ['beacon'], special: 'water_tower' }),   // the special painter letters the tank itself; DECALS.letters spells the stadium's CAULDRON
       why: 'No water, no showers, no students. Brace it before a Cat 4.',
       desc: 'Water radius 12 for 50 buildings; flooded or unpowered → Boil-Water Advisory.' }),
     row({ n: 6, name: 'Backup Generator', cost: 60000, upkeep: 500, wr: 3,

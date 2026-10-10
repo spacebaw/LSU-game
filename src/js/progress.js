@@ -917,7 +917,7 @@
     switch (stage) {
       case 1: {
         const f = state.plot && state.plot.founders;
-        const swoopTicks = BSU.headlessMode ? 0 : Math.round(fin(PT.charterSwoopMs, 4000) / 100);
+        const swoopTicks = BSU.headlessMode ? 0 : Math.round(fin(PT.charterSwoopMs, 4000) / 1000 * fin(PT.baseTps, 5));   // sim ticks at 1× (was ms/100: 8 s once the base clock halved)
         if (f) { call('render', 'panToTile', f.tx, HGT - 1, false); call('render', 'panToTile', f.tx, f.ty, true); }
         c.swoop = { until: fin(state.tick, 0) + swoopTicks };
         c.charterShown = false;
@@ -931,7 +931,7 @@
         if (p.firsts.cellDay >= 0) { c.cellTick = NONE; c.cellQueuedTick = fin(state.tick, 0); }   // loaded after the cell was queued: never queue a second one
         else c.cellTick = (fin(state.playSeconds, 0) >= fin(PP.tutorial && PP.tutorial.cellPlaySeconds, 75)) ? fin(state.tick, 0) : fin(state.tick, 0) + 30;
         break;
-      case 6: if (!p.hints.freePlay) { p.hints.freePlay = true; introduceAllTabs(state); } break;
+      case 6: if (!p.hints.freePlay) { p.hints.freePlay = true; introduceAllTabs(state); } if (c.boardDeferred) { c.boardDeferred = false; M.offerBoard(state); } break;
       default: break;
     }
   }
@@ -970,7 +970,7 @@
         if (pooled.length || timeout) {
           c.pooledNotified = true;
           const at = pooled.length ? pooled[0] : coveLowest(state);
-          notify(state, { text: 'Students are wading to class.', kind: 'water', showMe: { tx: at % W, ty: (at / W) | 0, tiles: pooled }, action: { label: 'Show me', overlay: OV.FLOOD } });
+          notify(state, { text: 'Students are wading to class.', kind: 'water', showMe: { tx: at % W, ty: (at / W) | 0, tiles: pooled }, action: { label: 'Flood map', overlay: OV.FLOOD } });   // the showMe button already reads 'Show me'
           ui(state, 'introduceTab', 'swamp');
           offerObjective(state, '4');
         }
@@ -1101,6 +1101,7 @@
       const cards = [];
       if (!M.timer(state, 'insurance')) cards.push('insurance');
       if (!cards.length) return;
+      if (p.tutorialStage < 6) { ctx(state).boardDeferred = true; return; }   // the Jan 10 lock lands mid-tutorial at 1×: the Board waits for free play (offered again at stage 6)
       p.boardCards.push({ offeredDay: today(state), cards: cards, chosen: null, pending: true });
       emit(EV.BOARD_OFFERED, { cards: cards });
       if (M.receiverActive(state)) { M.answerBoard(state, null); return; }   // receiver autopilot: every card answered by default

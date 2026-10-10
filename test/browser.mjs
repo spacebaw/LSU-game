@@ -76,6 +76,14 @@ export async function launch({ width = 1280, height = 800, port } = {}) {
       for (let i = 1; i <= steps; i++) await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: x1 + (x2 - x1) * i / steps, y: y1 + (y2 - y1) * i / steps, button: 'left' });
       await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: x2, y: y2, button: 'left', clickCount: 1 });
     },
+    async dragPath(points, steps = 6) {   // [[x,y],...]: press at the first point, glide through the rest, release at the last
+      const [x0, y0] = points[0];
+      await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: x0, y: y0 });
+      await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: x0, y: y0, button: 'left', clickCount: 1 });
+      for (let k = 1; k < points.length; k++) { const [ax, ay] = points[k - 1], [bx, by] = points[k]; for (let i = 1; i <= steps; i++) await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: ax + (bx - ax) * i / steps, y: ay + (by - ay) * i / steps, button: 'left' }); }
+      const [xe, ye] = points[points.length - 1];
+      await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: xe, y: ye, button: 'left', clickCount: 1 });
+    },
     async wheel(x, y, deltaY) { await send('Input.dispatchMouseEvent', { type: 'mouseWheel', x, y, deltaX: 0, deltaY }); },
     async key(key, { code, text } = {}) {
       const named = { Escape: 27, Enter: 13, ' ': 32, ArrowLeft: 37, ArrowUp: 38, ArrowRight: 39, ArrowDown: 40, Tab: 9, Backspace: 8, Delete: 46 };

@@ -594,7 +594,7 @@
       px = fin(px, 0); py = fin(py, 0); lastPx = px; lastPy = py; mods = mods || M0;
       heldShift = !!mods.shift;
       if (titleOn) return;
-      if (type === 'down') { if (call('progress', 'tutorialStage', s) === 1) { call('progress', 'skipSwoop', s); return; } if (s.setPiece) call('render', 'captureCameraTouch', s); show(E.popover, false); }   // the swoop-skipping click must not also open the tile inspector behind the charter card
+      if (type === 'down') { if (call('progress', 'tutorialStage', s) === 1) { call('progress', 'skipSwoop', s); return; } if (s.setPiece) call('render', 'captureCameraTouch', s); show(E.popover, false); if (bm.open) M.closeBuildMenu(); }   // a press on the map while the menu is up (Build it keeps it open) is the player's answer: close it and place   // the swoop-skipping click must not also open the tile inspector behind the charter card
       if (type === 'move' || type === 'down') { const i = tileIndexAt(px, py); M.hoverTile = i; if (BSU.render) BSU.render.hoverTile = i; }
       mcStep(live, { type: type, px: px, py: py, button: fin(button, 0) | 0, mods: mods });
     } catch (e) { uerr('pointer:' + type, e); }
@@ -1040,7 +1040,11 @@
     if (at && Number.isFinite(at.x)) showTooltipAt(text, at.x - 40, at.y - 44); else showTooltipAt(text, hoverPx + 14, hoverPy - 28);
   }
   function taggedGator(s) {
-    for (const g of gatorsOf(s)) { if (g && fin(g.tag, 0) > 0) { const at = call('render', 'entityScreen', g); if (at && Number.isFinite(at.x)) { E.tooltip.dataset.kind = 'gator'; showTooltipAt('🐊 ' + (g.name || 'Gator'), at.x - 40, at.y - 44); return true; } } }
+    for (const g of gatorsOf(s)) { if (g && fin(g.tag, 0) > 0) { const at = call('render', 'entityScreen', g); if (at && Number.isFinite(at.x)) {
+      // only while the gator is in the map strip between the topbar and the palette: the tag is a world label, not HUD chrome (it floated over the palette icons)
+      const top = fin(E.topbar && E.topbar.offsetHeight, 44) + 8, bot = (E.palette && !E.palette.classList.contains('hidden') ? fin(E.palette.getBoundingClientRect().top, 1e9) : fin(window.innerHeight, 800)) - 8;
+      if (at.y < top || at.y > bot) return false;
+      E.tooltip.dataset.kind = 'gator'; showTooltipAt('🐊 ' + (g.name || 'Gator'), at.x - 40, at.y - 44); return true; } } }
     return false;
   }
 
@@ -1369,7 +1373,7 @@
     const rq = requirementsOf(r); if (rq.length) { d.appendChild(el('div', 'card-kicker', 'Needs')); const ul = el('div', 'bm-list'); for (const q of rq) ul.appendChild(el('div', 'bm-li', q.glyph + ' ' + q.text)); d.appendChild(ul); }
     if (r.desc) d.appendChild(el('div', 'bm-ddesc', r.desc));
     if (!u.ok) d.appendChild(el('div', 'bm-dlock', '🔒 Unlocks: ' + (u.reason || 'later')));
-    else { const go = btn(null, s.ui.tool && s.ui.tool.id === id ? 'Selected — click the map to place' : 'Build this', 'primary', function () { const st = stateOf(); if (!st) return; bm.selected = id; M.selectTool(st, id); M.closeBuildMenu(); }); go.disabled = !!(s.ui.tool && s.ui.tool.id === id); d.appendChild(go); }
+    else { const sel = !!(s.ui.tool && s.ui.tool.id === id); const go = btn(null, sel ? 'Place it on the map ▸' : 'Build this', 'primary', function () { const st = stateOf(); if (!st) return; bm.selected = id; if (!sel) M.selectTool(st, id); M.closeBuildMenu(); }); d.appendChild(go); }   // an already-selected tool (Build it) still needs the menu out of the way: the button closes it instead of going dead
   }
   function updateBuildMenu(s) {
     if (!dom()) return;
@@ -1397,7 +1401,13 @@
     const stage = fin(call('progress', 'tutorialStage', s), 6);
     if (stage < 4) { coach.armedAt = 0; return false; }
     if (!coach.armedAt) coach.armedAt = clock;
-    return fin(s.economy && s.economy.students, 0) >= 100 || clock - coach.armedAt > 8000;
+    return fin(s.economy && s.economy.students, 0) >= 100 || clock - coach.armedAt > 8000 * 10 / fin(PT.baseTps, 5);   // the founders' count-up runs on sim ticks: the fallback stretches with the base clock
+  }
+  /** the element a step spotlights: the 'menu' step rings the objective's Goal card when the open menu holds it (else the whole menu) */
+  function coachTarget(s, st) {
+    if (!st.target) return null;
+    if (st.id === 'menu' && bm.open) { const o = call('progress', 'objective', s); const t = o ? objTarget(s, o) : null; const c = t && E.bmCards ? E.bmCards[t] : null; if (c) { scrollCardIntoView(t); return c; } }
+    return E[st.target];
   }
   function updateCoach(s) {
     if (coach.step < 0) { if (coachEligible(s)) coachStart(s); return; }
@@ -1428,7 +1438,7 @@
   function layoutCoach(s) {
     coach.layoutAt = clock; const st = coachSteps()[coach.step]; if (!st || !dom()) return;
     const vw = fin(window.innerWidth, 1280), vh = fin(window.innerHeight, 800);
-    let r = null; const tgt = st.target ? E[st.target] : null;
+    let r = null; const tgt = coachTarget(s, st);
     try { if (tgt && typeof tgt.getBoundingClientRect === 'function' && !tgt.classList.contains('hidden')) { const b = tgt.getBoundingClientRect(); if (b && b.width > 0 && b.height > 0) r = { x: Math.max(0, b.left - 8), y: Math.max(0, b.top - 8), w: b.width + 16, h: b.height + 16 }; } } catch (e) { r = null; }
     const P4 = E.coachPanes; const put = function (p, x, y, w, h) { p.style.left = Math.round(x) + 'px'; p.style.top = Math.round(y) + 'px'; p.style.width = Math.round(Math.max(0, w)) + 'px'; p.style.height = Math.round(Math.max(0, h)) + 'px'; };
     if (r) { put(P4[0], 0, 0, vw, r.y); put(P4[1], 0, r.y, r.x, r.h); put(P4[2], r.x + r.w, r.y, vw - r.x - r.w, r.h); put(P4[3], 0, r.y + r.h, vw, vh - r.y - r.h); put(E['coach-ring'], r.x, r.y, r.w, r.h); show(E['coach-ring'], true); }
