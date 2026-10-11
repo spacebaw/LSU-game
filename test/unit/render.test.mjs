@@ -248,6 +248,52 @@ s.setPiece = { kind: 'x', cameraTouched: false }; R.panBy(1, 0, true); ok(s.setP
   ok(Number.isNaN(CV.deckOf(-1)) && typeof CV.decksDrawn() === 'number' && CV.overtopped(0) === false, 'deckOf / decksDrawn / overtopped are exposed');
 }
 
+// --- movement pass: students drawn on the smoothed curve, lateral offset to the right of the heading, heading and stride eased ----------
+{
+  const H = BSU.headless, st = BSU.state, W = 64, t = st.tiles;
+  // a straight path row (y = row, x 20..30) then a turn south (x = 30, y row..row+6) on a patch of flat dry ground carved in the south of the map
+  const row = 40;
+  for (let y = row - 3; y <= row + 9; y++) for (let x = 16; x <= 34; x++) { const i = y * W + x; t.type[i] = BSU.T.DRY; t.elev[i] = 1; t.depth[i] = 0; t.walk[i] = 2; t.owner[i] = -1; t.flags[i] = 0; t.surface[i] = 0; }
+  ok(t.walk[row * W + 25] === 2, 'a flat patch carved for the movement pose test');
+  if (row > 0) {
+    for (let x = 20; x <= 30; x++) BSU.terrain.setSurface(st, row * W + x, BSU.SURF.PATH);
+    for (let y = row + 1; y <= row + 6; y++) BSU.terrain.setSurface(st, y * W + 30, BSU.SURF.PATH);
+    R.setZoom(1); R.panToTile(26, row + 1, false); H.render(); H.render();
+    const cvs = R.curves.current();
+    ok(cvs && cvs.buckets.has(row * W + 25), 'the curves are built over the L (bucketed tiles)');
+    const mkA = (x, y, lat) => ({ id: 3, px: x, py: y, tx: x, ty: y, sd: 0, psd: 0, lat: lat, state: 'WALK', rhSet: false, rh: 0, ox: 0, oy: 0, pw: 0, rs: 0, hd: 0, dir: 0 });
+    // (a) walking east along the straight run: drawn to the right of the heading (+y side) by lat × the path scale, on the curve's line
+    const a = mkA(24.5, row + 0.5, 0.3); let P = null;
+    for (let k = 0; k < 60; k++) { a.px = a.tx; a.tx += 0.04; a.psd = a.sd; a.sd += 0.04; P = R.agentPose(a, st); }
+    const want = 0.3 * BSU.agents.latScale(BSU.SURF.PATH);
+    ok(Math.abs(P.y - (row + 0.5 + want)) < 0.02 && Math.abs(P.rh) < 0.01, `walking east: drawn ${(P.y - row - 0.5).toFixed(3)} tile to the right of the centre line (want ${want.toFixed(3)}), heading ${P.rh.toFixed(2)}`);
+    // (b) standing: the offset eases back to nothing and the position is the sim's
+    for (let k = 0; k < 60; k++) { a.px = a.tx; P = R.agentPose(a, st); }
+    ok(Math.abs(P.y - a.ty) < 0.01 && Math.abs(P.x - a.tx) < 0.01, 'standing: drawn exactly where it stands');
+    // (c) the corner: walk the Manhattan route (east, then south) in small steps; the drawn position stays within a quarter tile of the sim's
+    //     route and the heading turns through the diagonal in steps no bigger than the turn rate allows, never flipping
+    const b = mkA(27.5, row + 0.5, -0.25); const heads = []; let maxOff = 0, maxJump = 0, last = null;
+    const dt = 1 / 60, w = (Math.PI / 2) / BSU.params.agents.move.turnSecs;
+    for (let k = 0; k < 120; k++) {
+      b.px = b.tx; b.py = b.ty;
+      if (b.tx < 30.5 - 1e-9) b.tx = Math.min(30.5, b.tx + 0.036); else b.ty += 0.036;
+      b.psd = b.sd; b.sd += 0.036;
+      const q = R.agentPose(b, st); heads.push(q.rh);
+      maxOff = Math.max(maxOff, Math.hypot(q.x - b.tx, q.y - b.ty));
+      if (last) maxJump = Math.max(maxJump, Math.hypot(q.x - last.x, q.y - last.y)); last = q;
+    }
+    let maxTurn = 0; for (let k = 1; k < heads.length; k++) maxTurn = Math.max(maxTurn, Math.abs(heads[k] - heads[k - 1]));
+    const mid = heads.filter((h) => h > 0.2 && h < Math.PI / 2 - 0.2).length;
+    ok(maxOff < 0.45 && maxJump < 0.06 && maxTurn <= w * dt * 1.01 && mid >= 5 && Math.abs(heads[heads.length - 1] - Math.PI / 2) < 0.05, `corner: drawn ≤ ${maxOff.toFixed(2)} tile from the route, largest frame jump ${maxJump.toFixed(3)} tile, largest turn ${maxTurn.toFixed(3)} rad/frame (≤ ${(w * dt).toFixed(3)}), ${mid} frames between the facings, ends south`);
+    { const rs = R.agentPose(b, st).rs; ok(Math.abs(b.sd - 120 * 0.036) < 1e-6 && rs >= b.psd - 1e-9 && rs <= b.sd + 1e-9, 'the stride (distance walked) is interpolated between the last two ticks for the walk cycle'); }
+    // (d) the sprite's walk frame follows the distance walked, not the clock (no moonwalking): same distance → same frame at any tick; moving on → the frame moves on
+    const Sp = BSU.sprites, f1 = Sp.agentFrame('walk', 0, 0, b, 1, 100), f2 = Sp.agentFrame('walk', 0, 0, b, 1, 4000);
+    const b2 = Object.assign({}, b, { rs: b.rs + BSU.params.agents.move.strideTiles / 8 * 2 }), f3 = Sp.agentFrame('walk', 0, 0, b2, 1, 100);
+    ok(f1 === f2 && ((f3 % 8) - (f1 % 8) + 8) % 8 === 2 && (f1 >> 3) === (f3 >> 3), `walk frame ${f1} at any tick; two eighths of a stride on: frame ${f3}`);
+    R.curves.invalidate();
+  }
+}
+
 // --- football pass F: field mapping, venue pick, players on the field, camera ----------------
 {
   const H = BSU.headless;

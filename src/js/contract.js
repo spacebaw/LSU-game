@@ -569,8 +569,30 @@
     },
     agents: {                                // GDD §7
       cap: 300, base: 40, perStudents: 25,   // visible agents = min(300, 40 + students/25)
-      speed: { path: 4, dry: 2.4, wet: 1.6, wading: 1.2 },   // tiles/s at 1× (§0.1)
-      vehicleSpeed: { officer: 3, fogger: 3, bus: 5, pirogue: 5 },   // tiles/s (§7)
+      // movement pass: Josh, "the NPCs keep walking around too quickly and sporadically". These are tiles per 10 ticks (agents.js divides by 10 per tick),
+      // and 1× runs 5 ticks/s (time.baseTps), so the real rate at 1× is HALF the number: path 2.2 → 1.1 tiles/s (was 4 → 2.0), grass 1.3 → 0.65 (was 2.4 → 1.2),
+      // wet 0.9 → 0.45, wading 0.7 → 0.35. Same 0.55× on every surface so the ratios (and 2×/4×/8×, which just run more ticks) are unchanged.
+      speed: { path: 2.2, dry: 1.3, wet: 0.9, wading: 0.7 },
+      // vehicles slow by 20 % (the brief's cap is 25 %): same tiles-per-10-ticks unit; bus 4 → 2 tiles/s at 1×
+      vehicleSpeed: { officer: 2.4, fogger: 2.4, bus: 4, pirogue: 4 },
+      move: {                                // movement pass: smooth, spaced-out walking (agents.js "Movement feel"; render.js mover pose)
+        paceVar: 0.08,                       // each agent's stable pace is 1 ± this of the table speed (mean unchanged: a path walker stays 1.0–1.2 tiles/s)
+        latPathScale: 0.62, latBoardScale: 0.75,   // …scaled on the narrow surfaces so walkers stay on them: a path is 0.42 tile wide (±0.19), a boardwalk 0.5 (±0.23); roads (0.72) and open ground take the full ±latMax
+        latMax: 0.3,                         // each agent's stable lateral offset across the path width, ± tiles (derived from the id: nothing to save)
+        accelTicks: 4,                       // ease-in: ticks from rest to full speed (0.8 s at 1×)
+        brakeTiles: 0.7, brakeFloor: 0.25,   // ease-out: inside this distance of the final spot speed falls linearly to this fraction
+        yieldDist: 0.35, yieldWidth: 0.26, yieldMult: 0.7, yieldSlower: 0.004,   // local avoidance: an agent this far straight ahead (within this lateral width) that is standing or slower by at least yieldSlower tiles/tick → ease down 30 %
+        dwellTicks: [40, 125],               // standing at a destination: 8–25 s at 1× (5 ticks/s), a stable per-agent value inside the range
+        lingerShare: 0.6,                    // share of class / dining arrivals that stand (or sit) outside the door for a dwell before going in
+        sitShare: 0.3,                       // share of idle dwellers on bare ground that sit (the 'sit' pose) instead of standing
+        spotPitch: 0.5, spotRings: 8,        // standing spots: a 0.5-tile grid around the target, searched this many cells out (4 tiles)
+        departSpread: 30,                    // leave-earlier: the morning exodus starts in the last leadMax ticks of the Night, each agent leaving at a stable hash of its id over this many ticks (6 s at 1×), so a dorm drains over seconds instead of all at Dawn
+        reactTicks: 20,                      // Golden / Dusk / Night reach each agent over this many ticks (4 s at 1×) instead of all at the phase tick
+        unloadSpread: 12,                    // students stepping ashore from a pirogue / bus set off this many ticks apart at most
+        leadMax: 50, leadAllow: 100,         // …plus, for a walk estimated longer than leadAllow ticks (Dawn + Day is 155), the excess, up to leadMax ticks (10 s) before Dawn
+        strideTiles: 0.55,                   // walk cycle: tiles travelled per full 8-frame gait cycle (frames advance with distance, not time)
+        turnSecs: 0.3                        // facing: a 90° turn takes this many real seconds (render eases the heading, 8 facings pass through the diagonals)
+      },
       offscreenRate: 4, offscreenMargin: 4,  // §7
       maxAstarPerTick: 8,                    // §7
       summerShare: 0.35, poboyShare: 0.3, nightOwlShare: 0.15, zydecoEvery: 5,   // §7 schedule

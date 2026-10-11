@@ -981,8 +981,30 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     },
     agents: {                                // GDD §7
       cap: 300, base: 40, perStudents: 25,   // visible agents = min(300, 40 + students/25)
-      speed: { path: 4, dry: 2.4, wet: 1.6, wading: 1.2 },   // tiles/s at 1× (§0.1)
-      vehicleSpeed: { officer: 3, fogger: 3, bus: 5, pirogue: 5 },   // tiles/s (§7)
+      // movement pass: Josh, "the NPCs keep walking around too quickly and sporadically". These are tiles per 10 ticks (agents.js divides by 10 per tick),
+      // and 1× runs 5 ticks/s (time.baseTps), so the real rate at 1× is HALF the number: path 2.2 → 1.1 tiles/s (was 4 → 2.0), grass 1.3 → 0.65 (was 2.4 → 1.2),
+      // wet 0.9 → 0.45, wading 0.7 → 0.35. Same 0.55× on every surface so the ratios (and 2×/4×/8×, which just run more ticks) are unchanged.
+      speed: { path: 2.2, dry: 1.3, wet: 0.9, wading: 0.7 },
+      // vehicles slow by 20 % (the brief's cap is 25 %): same tiles-per-10-ticks unit; bus 4 → 2 tiles/s at 1×
+      vehicleSpeed: { officer: 2.4, fogger: 2.4, bus: 4, pirogue: 4 },
+      move: {                                // movement pass: smooth, spaced-out walking (agents.js "Movement feel"; render.js mover pose)
+        paceVar: 0.08,                       // each agent's stable pace is 1 ± this of the table speed (mean unchanged: a path walker stays 1.0–1.2 tiles/s)
+        latPathScale: 0.62, latBoardScale: 0.75,   // …scaled on the narrow surfaces so walkers stay on them: a path is 0.42 tile wide (±0.19), a boardwalk 0.5 (±0.23); roads (0.72) and open ground take the full ±latMax
+        latMax: 0.3,                         // each agent's stable lateral offset across the path width, ± tiles (derived from the id: nothing to save)
+        accelTicks: 4,                       // ease-in: ticks from rest to full speed (0.8 s at 1×)
+        brakeTiles: 0.7, brakeFloor: 0.25,   // ease-out: inside this distance of the final spot speed falls linearly to this fraction
+        yieldDist: 0.35, yieldWidth: 0.26, yieldMult: 0.7, yieldSlower: 0.004,   // local avoidance: an agent this far straight ahead (within this lateral width) that is standing or slower by at least yieldSlower tiles/tick → ease down 30 %
+        dwellTicks: [40, 125],               // standing at a destination: 8–25 s at 1× (5 ticks/s), a stable per-agent value inside the range
+        lingerShare: 0.6,                    // share of class / dining arrivals that stand (or sit) outside the door for a dwell before going in
+        sitShare: 0.3,                       // share of idle dwellers on bare ground that sit (the 'sit' pose) instead of standing
+        spotPitch: 0.5, spotRings: 8,        // standing spots: a 0.5-tile grid around the target, searched this many cells out (4 tiles)
+        departSpread: 30,                    // leave-earlier: the morning exodus starts in the last leadMax ticks of the Night, each agent leaving at a stable hash of its id over this many ticks (6 s at 1×), so a dorm drains over seconds instead of all at Dawn
+        reactTicks: 20,                      // Golden / Dusk / Night reach each agent over this many ticks (4 s at 1×) instead of all at the phase tick
+        unloadSpread: 12,                    // students stepping ashore from a pirogue / bus set off this many ticks apart at most
+        leadMax: 50, leadAllow: 100,         // …plus, for a walk estimated longer than leadAllow ticks (Dawn + Day is 155), the excess, up to leadMax ticks (10 s) before Dawn
+        strideTiles: 0.55,                   // walk cycle: tiles travelled per full 8-frame gait cycle (frames advance with distance, not time)
+        turnSecs: 0.3                        // facing: a 90° turn takes this many real seconds (render eases the heading, 8 facings pass through the diagonals)
+      },
       offscreenRate: 4, offscreenMargin: 4,  // §7
       maxAstarPerTick: 8,                    // §7
       summerShare: 0.35, poboyShare: 0.3, nightOwlShare: 0.15, zydecoEvery: 5,   // §7 schedule
@@ -14073,6 +14095,19 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
   const HOUSING = ['dorm', 'res_tower', 'greek_house'];
   const DINING = ['dining_hall', 'union', 'poboy'];
   const SPEED_BY_CLASS = [0, P.speed.path / 10, P.speed.dry / 10, P.speed.wet / 10, P.speed.wading / 10];
+  const PM = P.move;                                  // movement pass (params.agents.move)
+  const DIRV = [[1, 0], [0, 1], [-1, 0], [0, -1]];    // dir 0..3 → unit step in (tx, ty)
+  const TWO_PI = Math.PI * 2;
+  /** per-ring offsets (in cells) of the standing-spot search around a target tile centre: ring k is the square annulus [−k−1, k]² (the centre sits on a cell corner, so ring 0 is the 4 nearest cells) */
+  const SPOT_RINGS = (function () {
+    const out = [];
+    for (let k = 0; k <= PM.spotRings; k++) {
+      const ring = [];
+      for (let oy = -k - 1; oy <= k; oy++) for (let ox = -k - 1; ox <= k; ox++) if (ox === -k - 1 || ox === k || oy === -k - 1 || oy === k) ring.push(ox, oy);
+      out.push(ring);
+    }
+    return out;
+  })();
   const GOAL_TEXT = { class: 'Walking to class', dining: 'Heading to lunch', idle: 'Hanging out', home: 'Heading home', shelter: 'Heading to shelter', event: 'Going to the game', poboy: "Po'boy run", library: 'Studying late', parade: 'Watching the parade', graduation: 'Graduating' };
 
   // ---------------------------------------------------------------------------
@@ -14112,7 +14147,13 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
       // building-derived caches (rebuilt when homesDirty)
       doorCache: new Map(), homes: null, idleSpots: null, shadeSpots: null,
       arrivals: new Map(), nextArrival: 1,
-      visible: { x0: 0, y0: 0, x1: W - 1, y1: H - 1 }
+      visible: { x0: 0, y0: 0, x1: W - 1, y1: H - 1 },
+      // movement pass: per-tick spatial hash (tile → linked list of agent indices + 1) for local avoidance, and the standing-spot occupancy
+      // map (a 0.5-tile cell grid; a cell is taken when occ[cell] === occGen, so "clearing" it is one increment)
+      jit: new Float32Array(Math.ceil(W / PM.spotPitch) * Math.ceil(H / PM.spotPitch) * 2).fill(9),
+      gX: new Float64Array(64), gY: new Float64Array(64), gI: new Int32Array(64),   // gator positions for the flee test
+      cellHead: new Int32Array(N), cellNext: new Int32Array(512),
+      occW: Math.ceil(W / PM.spotPitch), occ: new Uint32Array(Math.ceil(W / PM.spotPitch) * Math.ceil(H / PM.spotPitch)), occGen: 1
     };
   }
   let X = newCtx();
@@ -14129,6 +14170,13 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
   function fin(v, d) { return (typeof v === 'number' && Number.isFinite(v)) ? v : d; }
   function clamp01(v) { return v < 0 ? 0 : (v > 1 ? 1 : v); }
   function cheb(ax, ay, bx, by) { return Math.max(Math.abs(ax - bx), Math.abs(ay - by)); }
+  function hashFrac(id, salt) { return BSU.rng.hash(id | 0, salt | 0) / 4294967296; }
+  /** the stable lateral offset of an agent id, uniform in ±latMax (a hash of the id: no rng draw, nothing to save) */
+  function latOf(id) { return (hashFrac(id, 0x4c41) * 2 - 1) * PM.latMax; }
+  const LAT_SCALE = [1, PM.latPathScale, 1, PM.latBoardScale];   // by surface kind: none, path, road, boardwalk
+  /** the factor on the lateral offset on a surface kind (a path is narrower than ±latMax) */
+  M.latScale = function (surface) { return surface >= 1 && surface <= 3 ? LAT_SCALE[surface] : 1; };
+  function effLat(state, a) { return a.lat * M.latScale(state.tiles.surface[agentTile(a)]); }
   function catalogRow(type) { const D = dep('data'); return D && D.catalog ? D.catalog[type] : null; }
   function effectOf(type, key) { const r = catalogRow(type); return (r && r.effects && typeof r.effects[key] === 'number') ? r.effects[key] : 0; }
   function isComplete(b) { return b && !b.ruin && fin(b.built, 0) >= 1; }
@@ -14532,7 +14580,14 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
       // private (never saved): arrival id, inside a building, timers, bookkeeping
       arrival: 0, aboard: false, inside: false, lastTile: tile, fleeUntil: -1, fleeCooldown: -1, fleeGator: -1, slapUntil: -1, slapCooldown: -1,
       cheerUntil: -1, splashTick: -1, waveUntil: -1, sitUntil: -1, tube: false, wading: false, next: null, assignedCycle: false,
-      routeFails: 0, evacUntil: -1, skipClass: false
+      routeFails: 0, evacUntil: -1, skipClass: false,
+      // movement pass (derived from the id or rebuilt each tick: agents are never saved)
+      pace: 1 - PM.paceVar + 2 * PM.paceVar * hashFrac(id, 0x7a63),   // a stable walking pace, 1 ± paceVar of the table speed: a group that sets off together drifts apart
+      lat: latOf(id),                      // stable lateral offset across the path width, ± params.agents.move.latMax tiles (relative to the walking direction)
+      spd: 0, step: 0,                     // eased speed fraction 0..1 and the distance moved last tick (the "slower than me" test of local avoidance)
+      hd: 0, sd: 0, psd: 0,                // heading of the last move (radians, tx → ty), distance walked and its value one tick ago (render drives the walk cycle with it)
+      early: false, react: 0, reactPhase: 0, leaveAt: 0, leavePb: -1, spotX: -1, spotY: -1, approach: false, enter: false, linger: false, sitPlan: false, hold: 0, holdIn: false,
+      rh: 0, rhSet: false, ox: 0, oy: 0, pw: 0, rdx: 0, rdy: 0, rs: 0   // render-only (poseAgent): eased heading, eased lateral offset, curve weight, last drawn position, interpolated stride
     };
   }
   /** re-home / re-class an agent whose buildings changed; the agent keeps its position */
@@ -14595,14 +14650,22 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
   // ---------------------------------------------------------------------------
   // Goals and the sky-phase schedule (GDD §7 Schedule)
   // ---------------------------------------------------------------------------
-  function agentTile(a) { return BSU.idx(BSU.clamp(Math.floor(a.tx), 0, W - 1), BSU.clamp(Math.floor(a.ty), 0, H - 1)); }
+  function agentTile(a) {   // hot (every agent, several times a tick): plain arithmetic, no helper calls (positions are ≥ 0.5, so |0 is floor)
+    let x = a.tx | 0, y = a.ty | 0;
+    if (x < 0) x = 0; else if (x > W - 1) x = W - 1;
+    if (y < 0) y = 0; else if (y > H - 1) y = H - 1;
+    return y * W + x;
+  }
   /** send an agent toward a building (by id) or a tile; the route is requested lazily in tick */
   function setGoal(state, a, goal, target, next) {
     a.goal = goal; a.target = isInt(target) ? target : -1; a.next = next || null;
     a.route = []; a.routeIdx = 0; a.waitTicks = 0; a.routeFails = 0;
     if (a.state !== 'FLEE' && a.state !== 'SHELTER' && a.state !== 'BUS') a.state = 'WALK';
     a.inside = false;
+    clearStand(a);
   }
+  /** drop everything about standing around (spot, approach, linger, held start): a new goal, a flee or an evacuation */
+  function clearStand(a) { a.spotX = -1; a.spotY = -1; a.approach = false; a.enter = false; a.linger = false; a.sitPlan = false; a.hold = 0; a.holdIn = false; }
   function goalTile(state, a) {
     if (a.target < 0) return -1;
     if (a.goal === 'idle' || a.goal === 'parade' || a.goal === 'graduation' || a.goal === 'flee' || a.goal === 'tile') return validTile(a.target) ? a.target : -1;
@@ -14670,9 +14733,11 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     if (ctx.graduationDay) a.prop = 'cap';   // May 5: caps all day (§9.2)
     switch (phase) {
       case SKY.DAWN: {
-        a.assignedCycle = false; a.reachedClass = false;
+        a.assignedCycle = false; a.reachedClass = false; a.leaveAt = 0;
         a.skipClass = ctx.sickShare > 0 && ((a.id * 37) % 100) < ctx.sickShare * 100;
-        if (a.skipClass) { homeGoal(state, a); a.state = 'IDLE'; return; }
+        if (a.skipClass) { a.early = false; homeGoal(state, a); a.state = 'IDLE'; return; }
+        if (a.early && (a.goal === 'class' || a.goal === 'poboy') && a.state === 'WALK') { a.early = false; if (a.goal === 'class') { a.assignedCycle = true; X.assigned++; } return; }   // set off before Dawn (leave-earlier): counted now, route kept
+        a.early = false;
         if (Hc.poboys.length && r.chance(P.poboyShare)) {
           const pb = nearestOf(state, Hc.poboys, Math.floor(a.tx), Math.floor(a.ty), true);
           if (pb) { setGoal(state, a, 'poboy', pb.id, 'class'); return; }
@@ -14747,43 +14812,59 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     a.waveUntil = -1;
     switch (a.goal) {
       case 'class':
-        if (!a.reachedClass) { a.reachedClass = true; if (a.assignedCycle) X.reached++; }
-        a.inside = true; a.state = 'IDLE';
-        a.waitTicks = 20 + (a.id % 10);
+        if (!a.reachedClass) { a.reachedClass = true; if (a.assignedCycle) X.reached++; }   // counted on arrival at the door, before any dwell outside
         a.next = 'dining';
+        if (!startLinger(state, a, ctx)) { a.inside = true; a.state = 'IDLE'; a.waitTicks = 20 + (a.id % 10); }
         break;
       case 'poboy':
         a.energy = Math.min(1, a.energy + C.energyPoboy);
         a.waitTicks = 5;
         a.next = a.next || 'class';
         a.state = 'IDLE';
+        settle(state, a, ctx, false);
         break;
       case 'dining':
-        a.inside = true; a.state = 'IDLE';
         a.energy = Math.min(1, a.energy + 0.2);
-        a.waitTicks = 20 + (a.id % 10);
         a.next = 'class';
+        if (!startLinger(state, a, ctx)) { a.inside = true; a.state = 'IDLE'; a.waitTicks = 20 + (a.id % 10); }
         break;
       case 'home': case 'library': case 'shelter':
         a.inside = true; a.state = a.goal === 'shelter' ? 'SHELTER' : 'IDLE'; a.next = null;
         break;
       case 'event':
-        if (a.next === 'inside') { a.next = null; a.waitTicks = 30; a.state = 'IDLE'; }
+        if (a.next === 'inside') { a.next = null; a.waitTicks = 30; a.state = 'IDLE'; settle(state, a, ctx, false); }   // the tailgate: spread over the lot
         else { a.inside = true; a.state = 'IDLE'; }
         break;
       case 'idle':
         a.state = (ctx && ctx.advisory && a.sitUntil > 0) ? 'SIT' : 'IDLE';
         a.next = null;
+        settle(state, a, ctx, a.state === 'IDLE');
+        if (a.state === 'IDLE') { a.waitTicks = dwellTicks(a); a.next = 'mingle'; }   // stand a while (8–25 s), then shuffle over or stroll to another spot
         break;
       default:
         a.state = 'IDLE'; a.next = null;
+        settle(state, a, ctx, false);   // parade, graduation, anything else that stops outdoors
     }
-    if (wasArrival && a.goal === 'home' && a.home < 0) { a.inside = false; a.state = 'IDLE'; }
+    if (wasArrival && a.goal === 'home' && a.home < 0) { a.inside = false; a.state = 'IDLE'; settle(state, a, ctx, false); }
+  }
+  /** at a class / dining door: some students stand (or sit) outside for a dwell before going in, rather than vanishing at once. Not in rain, heat, a storm watch or an evacuation */
+  function startLinger(state, a, ctx) {
+    if (!ctx || ctx.rain || ctx.advisory || ctx.watch || X.evacuating || X.sheltering) return false;
+    if (!BSU.rng.sim.chance(PM.lingerShare)) return false;
+    a.linger = true; a.inside = false; a.state = 'IDLE'; a.waitTicks = dwellTicks(a);
+    settle(state, a, ctx, true);
+    return true;
   }
   /** the chained leg after a wait (class → dining → class) */
-  function nextLeg(state, a) {
+  function nextLeg(state, a, ctx) {
     const n = a.next; a.next = null;
     if (!n) return;
+    if (n === 'mingle') {   // an idle dweller whose dwell is up: half shuffle to a free spot nearby, half stroll to another idle place; nothing at night, in heat, a storm, a game or a set piece
+      if (a.state !== 'IDLE' || a.inside || !ctx || ctx.phase === SKY.NIGHT || ctx.advisory || ctx.watch || state.setPiece || (state.sports && state.sports.game) || X.sheltering || X.evacuating) return;
+      if (BSU.rng.sim.chance(0.5)) setGoal(state, a, 'idle', agentTile(a), null);
+      else setGoal(state, a, 'idle', idleSpot(state, a, BSU.rng.sim, false), null);
+      return;
+    }
     if (n === 'dining') {
       refreshBuildingCaches(state);
       const d = nearestOf(state, X.homes.dining, Math.floor(a.tx), Math.floor(a.ty), true);
@@ -14793,6 +14874,185 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     if (n === 'class') { assignClass(state, a); return; }
     if (n === 'inside') { const v = getBuilding(state, a.target); if (v) setGoal(state, a, 'event', v.id, null); return; }
   }
+
+  // ---------------------------------------------------------------------------
+  // Movement feel (movement pass): spacing, standing spots, eased speed, dwell
+  // ---------------------------------------------------------------------------
+  /** rebuild the per-tick spatial hash (agents outside a building, by tile) and the standing-spot occupancy (standers and agents heading for a spot) */
+  function buildGrids(state) {
+    const A = state.agents;
+    if (X.cellNext.length < A.length + 1) X.cellNext = new Int32Array(A.length * 2 + 16);
+    X.cellHead.fill(0);
+    X.occGen = (X.occGen + 1) >>> 0; if (X.occGen === 0) { X.occ.fill(0); X.occGen = 1; }
+    const inv = 1 / PM.spotPitch;
+    for (let k = 0; k < A.length; k++) {
+      const a = A[k];
+      if (!a || a.state === 'GONE' || a.aboard || a.inside) continue;
+      const t = agentTile(a);
+      X.cellNext[k] = X.cellHead[t]; X.cellHead[t] = k + 1;
+      if (a.approach && a.spotX >= 0) X.occ[Math.floor(a.spotY * inv) * X.occW + Math.floor(a.spotX * inv)] = X.occGen;
+      else if (a.state === 'IDLE' || a.state === 'SIT' || a.state === 'CHEER') X.occ[Math.floor(a.ty * inv) * X.occW + Math.floor(a.tx * inv)] = X.occGen;
+    }
+  }
+  /** a tile a person may stand on: path or dry ground (not wet, not wading) */
+  const WADING_FT = BSU.params.hydro.thresholds.wading;
+  function standable(state, i) {
+    if (i < 0 || i >= N) return false;
+    const w = state.tiles.walk[i];
+    return w >= 1 && w <= 2 && !(state.tiles.depth[i] >= WADING_FT);
+  }
+  /**
+   * Claim a standing spot near tile `ti`: the cells of a 0.5-tile grid in rings around the tile centre (4 nearest cells first, then outward), each ring
+   * entered at an offset that depends on the agent id so a crowd spreads around the target instead of filling one corner; the first standable, free cell
+   * wins. The straight walk to it must stay on standable ground (a corner of a building is never cut). Writes a.spotX/spotY and marks the cell taken;
+   * false when nothing is free within spotRings cells (the agent then stands where it is). No rng: determined by the occupancy and the id.
+   */
+  function claimSpot(state, a, ti) {
+    const pitch = PM.spotPitch, inv = 1 / pitch, occW = X.occW, occH = Math.ceil(H / pitch);
+    const cx = (ti & 63) + 0.5, cy = (ti >> 6) + 0.5, c0x = Math.floor(cx * inv), c0y = Math.floor(cy * inv);
+    const fromX = fin(a.tx, cx), fromY = fin(a.ty, cy);
+    for (let k = 0; k <= PM.spotRings; k++) {
+      const ring = SPOT_RINGS[k], n = ring.length >> 1, s0 = (Math.imul(a.id + 1 + k * 977, 0x9E3779B1) >>> 12) % n;
+      for (let j = 0; j < n; j++) {
+        const q = ((s0 + j) % n) * 2, gx = c0x + ring[q], gy = c0y + ring[q + 1];
+        if (gx < 0 || gy < 0 || gx >= occW || gy >= occH) continue;
+        const cell = gy * occW + gx;
+        if (X.occ[cell] === X.occGen) continue;
+        let jit = X.jit[cell * 2];
+        if (jit > 1) { X.jit[cell * 2] = jit = (hashFrac(cell, 0x6a17) - 0.5) * 0.08; X.jit[cell * 2 + 1] = (hashFrac(cell, 0x6a18) - 0.5) * 0.08; }   // a per-cell jitter, hashed once
+        const x = (gx + 0.5) * pitch + jit, y = (gy + 0.5) * pitch + X.jit[cell * 2 + 1];
+        const t = Math.floor(y) * W + Math.floor(x);
+        if (!standable(state, t)) continue;
+        if (k > 0) {   // the walk there: its midpoint and a third of the way must be standable too
+          if (!standable(state, Math.floor((fromY + y) / 2) * W + Math.floor((fromX + x) / 2))) continue;
+          if (k > 2 && !standable(state, Math.floor(fromY + (y - fromY) * 0.8) * W + Math.floor(fromX + (x - fromX) * 0.8))) continue;
+        }
+        X.occ[cell] = X.occGen;
+        a.spotX = x; a.spotY = y;
+        return true;
+      }
+    }
+    return false;
+  }
+  /** a stable per-agent dwell in the params range (hash of the id) with ±20 % per visit from rng.sim; ticks */
+  function dwellTicks(a) {
+    const lo = PM.dwellTicks[0], hi = PM.dwellTicks[1];
+    const base = lo + (hi - lo) * hashFrac(a.id, 0x6477);
+    return Math.round(BSU.clamp(base * (0.8 + 0.4 * BSU.rng.sim.float()), lo, hi));
+  }
+  /** the agent stops here for a while: claim a spot (and walk to it), maybe sit on bare ground; the dwell counts from the moment it gets there */
+  function settle(state, a, ctx, canSit) {
+    if (a.inside) return;
+    const i = agentTile(a);
+    a.approach = false; a.spotX = -1; a.spotY = -1;
+    if (claimSpot(state, a, i)) a.approach = Math.abs(a.spotX - a.tx) + Math.abs(a.spotY - a.ty) > 0.02;
+    a.sitPlan = false;
+    if (canSit && a.state === 'IDLE' && !(ctx && (ctx.rain || ctx.advisory)) && state.tiles.surface[i] === BSU.SURF.NONE && depthAt(state, i) < 0.05 && BSU.rng.sim.chance(PM.sitShare)) a.sitPlan = true;
+  }
+  /** walk the last stretch to the claimed spot (a straight line, eased in and out); true while moving */
+  function approachStep(state, a, ctx, mult) {
+    const dx = a.spotX - a.tx, dy = a.spotY - a.ty, len = Math.sqrt(dx * dx + dy * dy);
+    if (!(len > 0.012)) { finishApproach(state, a, ctx); return false; }
+    const i = agentTile(a);
+    const cls = state.tiles.walk[i] || 2;
+    const base = M.stepSpeed(cls, { advisory: ctx.advisory, watch: ctx.watch, debris: (state.tiles.flags[i] & FLAG.DEBRIS) !== 0 }) * mult;
+    let want = len < PM.brakeTiles ? Math.max(PM.brakeFloor, len / PM.brakeTiles) : 1;
+    if (a.state !== 'FLEE') easeSpeed(a, want, mult); else a.spd = 1;
+    let dist = base * a.spd * a.pace;
+    if (dist >= len) { dist = len; }
+    a.hd = Math.atan2(dy, dx); a.dir = M.dirOf(dx, dy);
+    a.tx += dx / len * dist; a.ty += dy / len * dist; a.sd += dist;
+    const here = agentTile(a);
+    if (here !== a.lastTile) enterTile(state, a, here);
+    if (dist >= len) { a.tx = a.spotX; a.ty = a.spotY; finishApproach(state, a, ctx); }
+    return true;
+  }
+  function finishApproach(state, a, ctx) {
+    a.approach = false;
+    if (a.enter) { a.enter = false; a.inside = true; a.waitTicks = 20 + (a.id % 10); a.spotX = -1; a.spotY = -1; return; }
+    if (a.sitPlan) { a.sitPlan = false; if (a.state === 'IDLE') a.state = 'SIT'; }
+  }
+  /** ease the speed fraction toward `want`: up over accelTicks, down 1.5× faster */
+  function easeSpeed(a, want, mult) {
+    const up = mult / PM.accelTicks;
+    if (a.spd < want) a.spd = Math.min(want, a.spd + up); else a.spd = Math.max(want, a.spd - up * 1.5);
+  }
+  /** distance still to walk on the route when it is near its end (9 when further); standing goals brake on the approach instead */
+  function remainingOnRoute(a) {
+    const n = a.route.length - a.routeIdx;
+    if (n > 3 || n <= 0) return 9;
+    let x = a.tx, y = a.ty, r = 0;
+    for (let k = a.routeIdx; k < a.route.length; k++) { const nx = (a.route[k] & 63) + 0.5, ny = (a.route[k] >> 6) + 0.5; const ex = nx - x, ey = ny - y; r += Math.sqrt(ex * ex + ey * ey); x = nx; y = ny; }
+    return r;
+  }
+  function standsOutdoors(a) { return a.goal === 'idle' || a.goal === 'parade' || a.goal === 'graduation' || a.goal === 'tile' || (a.goal === 'event' && a.next === 'inside') || a.goal === 'poboy'; }
+  /** local avoidance: is a slower agent straight ahead (own tile or the next one along the heading), within yieldDist and the agent's width? lateral offsets count */
+  function blockedAhead(state, a) {
+    const A = state.agents, d = a.dir & 3, hx = DIRV[d][0], hy = DIRV[d][1], surf = state.tiles.surface;
+    const ti = agentTile(a), tx0 = ti & 63, ty0 = ti >> 6;
+    const la = a.lat * M.latScale(surf[ti]), ax = a.tx - hy * la, ay = a.ty + hx * la;
+    for (let s = 0; s < 2; s++) {
+      const x = tx0 + s * hx, y = ty0 + s * hy;
+      if (x < 0 || y < 0 || x >= W || y >= H) continue;
+      const tl = y * W + x, ls = M.latScale(surf[tl]);   // the scanned tile's surface sets the others' offset scale
+      let left = 8;                                       // a packed tile is not scanned in full: eight neighbours is plenty to find the one in the way
+      for (let q = X.cellHead[tl]; q && left-- > 0; q = X.cellNext[q - 1]) {
+        const o = A[q - 1];
+        if (o === a || !o) continue;
+        let ox = o.tx, oy = o.ty;
+        if (o.step > 0.001) { const od = o.dir & 3, lo = o.lat * ls; ox -= DIRV[od][1] * lo; oy += DIRV[od][0] * lo; }
+        const rx = ox - ax, ry = oy - ay, along = rx * hx + ry * hy, across = -rx * hy + ry * hx;
+        if (along > 0.02 && along < PM.yieldDist && across < PM.yieldWidth && across > -PM.yieldWidth && o.step < a.step - PM.yieldSlower) return true;   // standing or slower
+      }
+    }
+    return false;
+  }
+  /** estimated ticks of walking from the agent to a door tile (mixed path / grass pace plus a detour allowance) */
+  function walkNeed(state, a, door) {
+    const manh = Math.abs((door & 63) + 0.5 - a.tx) + Math.abs((door >> 6) + 0.5 - a.ty);
+    return manh * 1.35 / ((SPEED_BY_CLASS[1] + SPEED_BY_CLASS[2]) * 0.5);
+  }
+  /**
+   * Leave-earlier. Slower walking (and the stand-and-chat dwell) would make a long walk to class miss the Dawn + Day window, so the morning
+   * exodus starts before Dawn: in the last leadMax ticks of the Night each agent still inside its home picks a departure lead once (a stable
+   * hash of its id spread over departSpread ticks, plus the excess of its estimated walk over leadAllow ticks, capped at leadMax) and sets
+   * off when the Night has that long left. The Po'boy roll that Dawn used to make is made here, so the detour is part of the estimate. The
+   * departures are staggered over seconds rather than all at the Dawn tick, which is also what stops a dorm emptying onto one tile.
+   */
+  function earlyDeparture(state, a, ctx) {
+    if (a.leaveAt === 0) {
+      a.leaveAt = -1;   // decided: no early start this cycle (until the roll below says otherwise)
+      const cb = getBuilding(state, a.cls);
+      if (!cb || effective(state, cb) <= 0 || a.skipClass) return;
+      refreshBuildingCaches(state);
+      let need = walkNeed(state, a, doorTile(state, cb)), pb = null;
+      if (X.homes.poboys.length && BSU.rng.sim.chance(P.poboyShare)) {
+        pb = nearestOf(state, X.homes.poboys, Math.floor(a.tx), Math.floor(a.ty), true);
+        if (pb) { const pd = doorTile(state, pb); need = walkNeed(state, a, pd) + (Math.abs((pd & 63) - (doorTile(state, cb) & 63)) + Math.abs((pd >> 6) - (doorTile(state, cb) >> 6))) * 1.35 / ((SPEED_BY_CLASS[1] + SPEED_BY_CLASS[2]) * 0.5); }
+      }
+      a.leavePb = pb ? pb.id : -1;
+      a.leaveAt = Math.max(1, Math.min(PM.leadMax, Math.round(hashFrac(a.id, 0x4f31) * PM.departSpread + Math.max(0, need - PM.leadAllow))));
+    }
+    if (a.leaveAt > 0 && ctx.nightLeft <= a.leaveAt) {
+      if (a.leavePb >= 0) setGoal(state, a, 'poboy', a.leavePb, 'class'); else setGoal(state, a, 'class', a.cls, 'dining');
+      a.early = true; a.leaveAt = -1;
+    }
+  }
+  /** pure helper, the heading smoother: move angle `cur` toward `target` along the shorter arc by at most `maxStep` radians (render passes turnRate × frame time) */
+  M.turnStep = function (cur, target, maxStep) {
+    if (!Number.isFinite(cur)) return Number.isFinite(target) ? target : 0;
+    if (!Number.isFinite(target)) return cur;
+    let d = (target - cur) % TWO_PI;
+    if (d > Math.PI) d -= TWO_PI; else if (d < -Math.PI) d += TWO_PI;
+    const m = Math.abs(fin(maxStep, 0));
+    return Math.abs(d) <= m ? target : cur + (d > 0 ? m : -m);
+  };
+  /** the lateral offset (tiles, in tx / ty) of a moving agent from its centre line, to the right of its heading; zero while standing. The sim spacing (blockedAhead) and render use the same rule */
+  M.lateral = function (a, state) {
+    if (!a || !(a.step > 0.001)) return { ox: 0, oy: 0 };
+    const st = state || BSU.state, d = a.dir & 3, l = fin(a.lat, 0) * (st && st.tiles ? M.latScale(st.tiles.surface[agentTile(a)]) : 1);
+    return { ox: -DIRV[d][1] * l, oy: DIRV[d][0] * l };
+  };
 
   // ---------------------------------------------------------------------------
   // Movement (ARCHITECTURE §5.8; GDD §7 Pathfinding), reactions, stats, sampling
@@ -14838,15 +15098,22 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     while (dist > 0 && a.routeIdx < route.length && guardN++ < 16) {
       const node = route[a.routeIdx];
       if (!validTile(node) || state.tiles.walk[node] === 0) { a.route = []; a.routeIdx = 0; return false; }   // re-plan next tick
-      const nx = (node & 63) + 0.5, ny = (node >> 6) + 0.5;
+      let nx = (node & 63) + 0.5, ny = (node >> 6) + 0.5;
+      if (a.routeIdx === route.length - 1 && !standsOutdoors(a) && a.state !== 'FLEE' && a.state !== 'BUS') {
+        // the last step into a door: aim to the agent's own side of it (its lateral offset), so a crowd arriving together enters side by side, not through one point
+        let sx = 0, sy = 0;
+        if (a.routeIdx > 0) { const pn = route[a.routeIdx - 1]; sx = Math.sign(nx - ((pn & 63) + 0.5)); sy = Math.sign(ny - ((pn >> 6) + 0.5)); }
+        if (sx === 0 && sy === 0) { sx = DIRV[a.dir & 3][0]; sy = DIRV[a.dir & 3][1]; }
+        nx -= sy * a.lat; ny += sx * a.lat;
+      }
       const dx = nx - a.tx, dy = ny - a.ty;
-      const len = Math.abs(dx) + Math.abs(dy);
-      a.dir = M.dirOf(dx, dy);
+      const len = Math.sqrt(dx * dx + dy * dy);
+      if (len > 1e-6) { a.dir = M.dirOf(dx, dy); a.hd = Math.atan2(dy, dx); }
       if (len <= dist) {
-        a.tx = nx; a.ty = ny; dist -= len; a.routeIdx++;
+        a.tx = nx; a.ty = ny; dist -= len; a.sd += len; a.routeIdx++;
         if (a.lastTile !== node) enterTile(state, a, node);
       } else {
-        a.tx += dx / len * dist; a.ty += dy / len * dist; dist = 0;
+        a.tx += dx / len * dist; a.ty += dy / len * dist; a.sd += dist; dist = 0;
         const here = agentTile(a);
         if (here !== a.lastTile) enterTile(state, a, here);
       }
@@ -14857,11 +15124,14 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
   }
   function fleeCheck(state, a, ctx) {
     if (a.state === 'FLEE' || a.inside || a.state === 'SHELTER' || a.state === 'BUS') return;
-    const gs = ctx.gators;
-    for (let k = 0; k < gs.length; k++) {
-      const g = gs[k];
-      if (!g || g.state === 'WRANGLED') continue;
-      if (cheb(a.tx, a.ty, fin(g.tx, -99) + 0.5, fin(g.ty, -99) + 0.5) <= P.fleeRadius + 0.5) {
+    const gs = ctx.gators, gn = ctx.gn, R = P.fleeRadius + 0.5;
+    for (let q = 0; q < gn; q++) {   // ctx.gX / gY / gI: the live gators' positions, gathered once a tick (this loop, agents × gators, was the hottest in the module)
+      const ddx = a.tx - ctx.gX[q];
+      if (ddx > R || ddx < -R) continue;
+      const ddy = a.ty - ctx.gY[q];
+      if (ddy > R || ddy < -R) continue;
+      const g = gs[ctx.gI[q]];
+      {
         // run 3 tiles away, opposite the gator
         const ax = Math.floor(a.tx), ay = Math.floor(a.ty);
         const dx = Math.sign(ax - Math.floor(fin(g.tx, ax))), dy = Math.sign(ay - Math.floor(fin(g.ty, ay)));
@@ -14876,7 +15146,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
         }
         a.prevGoal = { goal: a.goal, target: a.target, next: a.next };
         a.state = 'FLEE'; a.fleeUntil = ctx.tick + P.gatorFleeTicks; a.fleeGator = fin(g.id, -1);
-        a.goal = 'flee'; a.target = best >= 0 ? best : agentTile(a); a.route = []; a.routeIdx = 0; a.inside = false; a.waitTicks = 0;
+        a.goal = 'flee'; a.target = best >= 0 ? best : agentTile(a); a.route = []; a.routeIdx = 0; a.inside = false; a.waitTicks = 0; clearStand(a);
         if (ctx.tick >= a.fleeCooldown) { a.fleeCooldown = ctx.tick + P.gatorFleeTicks; emit(EV.AGENT_FLEE, { id: a.id, gatorId: a.fleeGator }); }
         return;
       }
@@ -14929,7 +15199,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     else if (a.slapUntil > ctx.tick) a.anim = 'slap';
     else if (a.cheerUntil > ctx.tick || a.state === 'CHEER') a.anim = 'cheer';
     else if (a.waveUntil > ctx.tick) a.anim = 'wave';
-    else if (a.state === 'SIT') a.anim = 'sit';
+    else if (a.state === 'SIT' && !moving) a.anim = 'sit';
     else if (a.state === 'WADE' || (moving && inWater)) a.anim = 'splash';
     else if (moving) a.anim = a.prop === 'umbrella' ? 'umbrella' : (a.prop === 'foam' ? 'foam' : (a.prop === 'beads' ? 'beads' : (a.prop === 'tube' ? 'tube' : 'walk')));
     else a.anim = 'idle';
@@ -14966,10 +15236,27 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     else fleeCheck(state, a, ctx);
     if (a.cheerUntil > tick && a.state === 'IDLE') a.state = 'CHEER';
     if (a.state === 'CHEER' && a.cheerUntil <= tick) a.state = 'IDLE';
+    if (a.react > 0) { a.react -= mult; if (a.react <= 0) { a.react = 0; schedule(state, a, a.reactPhase, ctx); } }
+    if (ctx.nightLeft > 0 && ctx.nightLeft <= PM.leadMax && a.inside && a.goal === 'home' && a.state === 'IDLE' && a.leaveAt >= 0) earlyDeparture(state, a, ctx);
     let moving = false;
-    if (a.waitTicks > 0) {
+    const bx = a.tx, by = a.ty;
+    if (a.hold > 0) {   // a held start (leave-earlier stagger): stand where it is (still inside a building for a scheduled departure)
+      a.hold -= mult;
+      if (a.hold <= 0) { a.hold = 0; if (a.holdIn) { a.holdIn = false; a.inside = false; } }
+    } else if (a.approach) {   // the last stretch to a claimed standing spot, or back to the door when a linger ends
+      moving = approachStep(state, a, ctx, mult);
+    } else if (a.waitTicks > 0) {
       a.waitTicks -= mult;
-      if (a.waitTicks <= 0) { a.waitTicks = 0; if (a.next && a.state !== 'FLEE') nextLeg(state, a); else if (a.goal !== 'idle' && a.target >= 0 && a.state === 'WALK') { /* retry the route */ } }
+      if (a.waitTicks <= 0) {
+        a.waitTicks = 0;
+        if (a.linger) {   // the dwell outside is up: stand up, walk back to the door, go in for the usual short while
+          a.linger = false; a.sitPlan = false; if (a.state === 'SIT') a.state = 'IDLE';
+          const door = goalTile(state, a);
+          if (door >= 0) { a.spotX = (door & 63) + 0.5; a.spotY = (door >> 6) + 0.5; a.approach = true; a.enter = true; }
+          else { a.inside = true; a.waitTicks = 20 + (a.id % 10); }
+        } else if (a.next && a.state !== 'FLEE') nextLeg(state, a, ctx);
+        else if (a.goal !== 'idle' && a.target >= 0 && a.state === 'WALK') { /* retry the route */ }
+      }
     } else if (a.state === 'WALK' || a.state === 'WADE' || a.state === 'FLEE' || a.state === 'BUS') {
       if (!a.route.length || a.routeIdx >= a.route.length) {
         if (a.route.length && a.routeIdx >= a.route.length) {
@@ -14987,9 +15274,20 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
         else if (a.state === 'WADE') a.state = 'WALK';
         if (!cls) cls = 2;
         const mods = { advisory: ctx.advisory, watch: ctx.watch, debris: (state.tiles.flags[i] & FLAG.DEBRIS) !== 0 };
-        let speed = M.stepSpeed(cls, mods) * mult;
-        if (a.state === 'FLEE') speed = Math.max(speed, SPEED_BY_CLASS[2] * mult);
-        if (a.state === 'BUS') speed = Math.max(speed, SPEED_BY_CLASS[1] * mult);
+        const base = M.stepSpeed(cls, mods) * mult;
+        let speed;
+        if (a.state === 'FLEE') { speed = Math.max(base, SPEED_BY_CLASS[1] * mult); a.spd = 1; }   // urgency: a flee runs at path pace on any ground, no easing, no yielding
+        else if (a.state === 'BUS') { speed = Math.max(base, SPEED_BY_CLASS[1] * mult); a.spd = 1; }
+        else {
+          let want = 1;
+          if (a.goal === 'shelter') a.spd = 1;   // a storm shelter run is not eased either
+          else {
+            if (mult === 1 && a.step > 0 && blockedAhead(state, a)) want = PM.yieldMult;   // ease down 30 % rather than overlap a slower agent straight ahead
+            if (!standsOutdoors(a)) { const rem = remainingOnRoute(a); if (rem < PM.brakeTiles) want = Math.min(want, Math.max(0.55, rem / PM.brakeTiles)); }   // ease into a door
+            easeSpeed(a, want, mult);
+          }
+          speed = base * a.spd * a.pace;
+        }
         moving = true;
         const done = advance(state, a, speed, ctx);
         if (a.state === 'WADE') splash(state, a, ctx);
@@ -15002,6 +15300,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     } else if (a.state === 'IDLE' && a.goal === 'idle' && !a.inside && a.target < 0 && ctx.phase === SKY.GOLDEN && !state.setPiece && BSU.rng.sim.chance(C.idleWanderP)) {
       setGoal(state, a, 'idle', idleSpot(state, a, BSU.rng.sim, ctx.advisory), null);
     }
+    if (a.tx === bx && a.ty === by) { a.step = 0; if (!moving) a.spd = 0; } else { const sx = a.tx - bx, sy = a.ty - by; a.step = Math.sqrt(sx * sx + sy * sy) / mult; }
     updateStats(state, a, ctx, moving);
   }
 
@@ -15059,7 +15358,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
         let best = -1, bd = 1e9;
         for (let q = 0; q < roads.length; q++) { const d = cheb(tx, ty, roads[q] & 63, roads[q] >> 6); if (d < bd) { bd = d; best = roads[q]; } }
         if (a.state === 'FLEE') endFlee(state, a);
-        a.state = 'BUS'; a.goal = 'tile'; a.target = best >= 0 ? best : agentTile(a); a.route = []; a.routeIdx = 0; a.inside = false; a.waitTicks = 0; a.next = null;
+        a.state = 'BUS'; a.goal = 'tile'; a.target = best >= 0 ? best : agentTile(a); a.route = []; a.routeIdx = 0; a.inside = false; a.waitTicks = 0; a.next = null; clearStand(a);
         a.evacUntil = fin(state.tick, 0) + C.evacuateTicks + (a.id % 20);
         if (best < 0) a.evacUntil = fin(state.tick, 0) + 1;
       }
@@ -15170,9 +15469,11 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
       if (!a) continue;
       a.tx = (at & 63) + 0.5; a.ty = (at >> 6) + 0.5; a.px = a.tx; a.py = a.ty; a.lastTile = at;
       a.inside = false; a.aboard = false;
+      if (claimSpot(state, a, at)) { a.tx = a.spotX; a.ty = a.spotY; a.px = a.tx; a.py = a.ty; a.lastTile = agentTile(a); a.spotX = -1; a.spotY = -1; }   // step ashore over the landing, not onto one tile
       a.waveUntil = fin(state.tick, 0) + C.waveTicks;
       rehome(state, a);
       homeGoal(state, a);
+      if (a.goal === 'home') { a.hold = z % PM.unloadSpread; a.holdIn = false; }   // and set off a few ticks apart
     }
     if (!v.ids.length && g && !g.announced) { g.announced = true; emit(EV.AGENT_ARRIVE, { count: g.count, kind: g.kind }); }
     v.ids = []; v.payload = 0;
@@ -15407,11 +15708,14 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
         watch: stormPhase(state) === STORM.WATCH, gators: gators(state), auras: auras,
         summerSession: timerActive(state, 'summerSession'),
         sickShare: fin(state.economy.students, 0) > 0 ? BSU.clamp(fin(state.wildlife && state.wildlife.sick, 0) / Math.max(1, fin(state.economy.students, 0)), 0, 1) : 0,
-        graduationDay: dp.date === BSU.params.econ.graduationDate
+        graduationDay: dp.date === BSU.params.econ.graduationDate, nightLeft: 0, gn: 0, gX: X.gX, gY: X.gY, gI: X.gI
       };
+      for (let k = 0; k < ctx.gators.length && ctx.gn < 64; k++) { const g = ctx.gators[k]; if (!g || g.state === 'WRANGLED') continue; X.gX[ctx.gn] = fin(g.tx, -99) + 0.5; X.gY[ctx.gn] = fin(g.ty, -99) + 0.5; X.gI[ctx.gn] = k; ctx.gn++; }
+      if (ctx.phase === SKY.NIGHT && state.sky && !state.sky.scripted) ctx.nightLeft = Math.max(0, BSU.SKY_TICKS[SKY.NIGHT] - fin(state.sky.phaseTick, 0));
       X.visible = visibleRect();
       const vis = X.visible;
       const A = state.agents;
+      buildGrids(state);
       // phase transitions and the game / set-piece overrides
       const game = !!(state.sports && state.sports.game);
       const sp = state.setPiece ? state.setPiece.kind : null;
@@ -15422,7 +15726,14 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
         if (game && !X.lastGame) spawnBuses(state, true, 'game');
         if (!game && X.lastGame) spawnBuses(state, false, 'game');
         X.lastPhase = ctx.phase; X.lastGame = game; X.lastSetPiece = sp;
-        for (let k = 0; k < A.length; k++) { const a = A[k]; if (present(a)) schedule(state, a, ctx.phase, ctx); }
+        // a phase change used to move the whole campus at once; Golden, Dusk and Night now reach each agent over reactTicks (a stable hash of the id), so the crowd does not set off (or stop) as one block. Day is already under way from Dawn, Dawn has the early departures, and games / set pieces / storms stay immediate
+        const stagger = (ctx.phase === SKY.GOLDEN || ctx.phase === SKY.DUSK || ctx.phase === SKY.NIGHT) && !game && !sp && !X.evacuating && !X.sheltering && PM.reactTicks > 0;
+        for (let k = 0; k < A.length; k++) {
+          const a = A[k];
+          if (!present(a)) continue;
+          if (stagger) { a.react = 1 + Math.floor(hashFrac(a.id, 0x7e11 + ctx.phase) * PM.reactTicks); a.reactPhase = ctx.phase; }
+          else { a.react = 0; schedule(state, a, ctx.phase, ctx); }
+        }
       }
       // cheer on a home score
       if (X.cheerUntil === -2) { X.cheerUntil = tick + C.cheerTicks; for (let k = 0; k < A.length; k++) { const a = A[k]; if (present(a) && (a.goal === 'event' || game)) a.cheerUntil = X.cheerUntil; } }
@@ -15433,7 +15744,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
       for (let k = 0; k < A.length; k++) {
         const a = A[k];
         if (!a || a.state === 'GONE' || a.aboard) continue;
-        a.px = a.tx; a.py = a.ty;
+        a.px = a.tx; a.py = a.ty; a.psd = a.sd;
         const tx = a.tx | 0, ty = a.ty | 0;
         const onScreen = tx >= vis.x0 && tx <= vis.x1 && ty >= vis.y0 && ty <= vis.y1;
         if (onScreen) tickAgent(state, a, ctx, 1);
@@ -15581,8 +15892,9 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
         A(M.route(s, -1, 5, 'walk') === null && M.route(s, 5, 99999, 'walk') === null && M.route(s, NaN, 5) === null, 'bad tiles → null');
       }
       // 2. speed table
-      A(Math.abs(M.stepSpeed(1) - 0.4) < 1e-9 && Math.abs(M.stepSpeed(2) - 0.24) < 1e-9 && Math.abs(M.stepSpeed(3) - 0.16) < 1e-9 && Math.abs(M.stepSpeed(4) - 0.12) < 1e-9, 'walk-class speed table');
-      A(Math.abs(M.stepSpeed(1, { advisory: true }) - 0.32) < 1e-9 && M.stepSpeed(0) === 0 && M.stepSpeed(NaN) === 0, 'heat advisory ×.8');
+      A(Math.abs(M.stepSpeed(1) - P.speed.path / 10) < 1e-9 && Math.abs(M.stepSpeed(2) - P.speed.dry / 10) < 1e-9 && Math.abs(M.stepSpeed(3) - P.speed.wet / 10) < 1e-9 && Math.abs(M.stepSpeed(4) - P.speed.wading / 10) < 1e-9, 'walk-class speed table follows params.agents.speed');
+      A(Math.abs(M.stepSpeed(1) * BSU.params.time.baseTps - 1.1) < 0.11, 'a student on a path covers about 1.1 tiles per real second at 1× (movement pass)');
+      A(Math.abs(M.stepSpeed(1, { advisory: true }) - 0.8 * P.speed.path / 10) < 1e-9 && M.stepSpeed(0) === 0 && M.stepSpeed(NaN) === 0, 'heat advisory ×.8');
       // 3. count
       {
         const s = BSU.newState(1);
@@ -15682,7 +15994,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
         fixedPhase = SKY.DAY; s.tick = 30; run(s, 1, false);       // schedule once (Day, held)
         a.state = 'WALK'; a.goal = 'tile'; a.target = g; a.route = []; a.routeIdx = 0; a.next = null; a.waitTicks = 0;
         for (let k = 0; k < 40; k++) { a.route.push(o); a.route.push(g); }
-        run(s, 360, false);
+        run(s, 800, false);   // 360 before the movement pass halved the walking speed
         A(s.tiles.wear[g] >= P.wearThreshold, 'wear reached ' + s.tiles.wear[g]);
         rec.length = 0;
         run(s, 1, true);
@@ -23894,6 +24206,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
   /** cell size of an agent anim in 1× px */
   M.agentCell = function (anim) { const A = SA[typeof anim === 'string' && anim !== 'march' ? anim : 'walk'] || SA.walk, c = SC[A.c]; return { w: c.cw, h: c.ch, gy: c.gy, n: A.n }; };
   const ph8 = (id) => hash(id | 0, 0x51);
+  const STRIDE_TILES = (BSU.params && BSU.params.agents && BSU.params.agents.move && BSU.params.agents.move.strideTiles) || 0.55;   // tiles per walk-cycle (params.agents.move)
   const MOVING = { walk: 1, umbrella: 1, beads: 1, foam: 1, cap: 1, flee: 1, splash: 1, tube: 1 };
   /**
    * The frame (facing × n + f) of an agent's sheet.
@@ -23911,11 +24224,19 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     const id = a.id | 0, ph = ph8(id), t = Number.isFinite(tick) ? tick : (Number.isFinite(f) ? f * 6 : 0), far = zoom < 1;
     let d8, fr;
     if (MOVING[name]) {
-      const dx = (a.tx - a.px), dy = (a.ty - a.py), L2 = dx * dx + dy * dy;
-      d8 = L2 > 0.0004 ? M.fbDir(dx, dy) : ((dir & 3) * 2);
-      const sp = L2 > 0.0004 ? Math.sqrt(L2) : 0.12, rate = name === 'flee' ? 20 : name === 'splash' ? 9 : name === 'tube' ? 6 : Math.max(10, Math.min(19, 7 + sp * 32));
-      const k = Math.floor(t * rate / 60) + ph;
-      fr = far ? ((k >> 2) & 1) : ((k % n) + n) % n;
+      if (a.rhSet === true && Number.isFinite(a.rs) && Number.isFinite(a.rh)) {
+        // movement pass: render's poseAgent eased the heading (turns pass through the diagonal facings) and interpolated the distance walked;
+        // the gait cycle advances with that distance (strideTiles per cycle), so the feet never slide and a stopped student stops stepping
+        d8 = M.fbDir(Math.cos(a.rh), Math.sin(a.rh));
+        const cyc = a.rs / STRIDE_TILES, k = Math.floor(cyc * (far ? 2 : n)) + ph;
+        fr = far ? (k & 1) : ((k % n) + n) % n;
+      } else {
+        const dx = (a.tx - a.px), dy = (a.ty - a.py), L2 = dx * dx + dy * dy;
+        d8 = L2 > 0.0004 ? M.fbDir(dx, dy) : ((dir & 3) * 2);
+        const sp = L2 > 0.0004 ? Math.sqrt(L2) : 0.12, rate = name === 'flee' ? 20 : name === 'splash' ? 9 : name === 'tube' ? 6 : Math.max(10, Math.min(19, 7 + sp * 32));
+        const k = Math.floor(t * rate / 60) + ph;
+        fr = far ? ((k >> 2) & 1) : ((k % n) + n) % n;
+      }
     } else {
       d8 = (((dir & 3) * 2 + ([0, -1, 1, 0, 2, -2][ph % 6])) + 8) & 7;
       const k = Math.floor(t / 6);
@@ -24687,6 +25008,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
   const chunks = new Array(NCH);
   const dirtyBits = new Uint8Array(NCH);
   let frameNo = 0, alphaNow = 0, zoomNow = 1, firstFrame = true, bakesThisFrame = 0;
+  let frameDt = 1 / 60, simSpeed = 1, poseX = 0, poseY = 0;   // movement pass: last frame's real seconds, the game speed (≥ 1) and the drawn position poseAgent leaves for pushMover
   const view = { vw: 1280, vh: 720, dpr: 1, x0: 0, y0: 0, x1: 63, y1: 63 };
   let shakeUntil = 0, shakePx = 0, hitStopUntilMs = 0;
   const flashes = [];
@@ -25673,8 +25995,10 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
   /** interpolated foot point of a mover in canvas px */
   M.entityScreen = function (e) {
     if (!e) return { x: 0, y: 0 };
-    const a = alphaNow, ax = fin(e.px, e.tx) + (fin(e.tx, 0) - fin(e.px, fin(e.tx, 0))) * a, ay = fin(e.py, e.ty) + (fin(e.ty, 0) - fin(e.py, fin(e.ty, 0))) * a;
+    const a = alphaNow;
+    let ax = fin(e.px, e.tx) + (fin(e.tx, 0) - fin(e.px, fin(e.tx, 0))) * a, ay = fin(e.py, e.ty) + (fin(e.ty, 0) - fin(e.py, fin(e.ty, 0))) * a;
     const i = clamp(Math.floor(ax), 0, W - 1) + clamp(Math.floor(ay), 0, HGT - 1) * W;
+    if (e.rhSet === true && Number.isFinite(e.rdx) && Number.isFinite(e.rdy)) { ax = e.rdx; ay = e.rdy; }   // a student: where it was last drawn (curve + lateral offset)
     return worldPx((ax - ay) * 32, (ax + ay - 1) * 16 - elevAt(i & 63, i >> 6) * PXFT);
   };
   /** world px of a building's south-corner anchor at ground elevation */
@@ -26043,8 +26367,64 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
       const sax = e.ax, say = e.ay; e.ax = x - 0.5; e.ay = y - 0.5; moverScreen(e); e.ax = sax; e.ay = say;
     }
   }
-  function pushMover(kind, m, id, variant, frame, elevFn, state) {
-    const ax = fin(m.px, m.tx) + (fin(m.tx, 0) - fin(m.px, fin(m.tx, 0))) * alphaNow, ay = fin(m.py, m.ty) + (fin(m.ty, 0) - fin(m.py, fin(m.ty, 0))) * alphaNow;
+  // -- movement pass: where a student is DRAWN. The sim keeps tile-centre progress (a.px/py → a.tx/ty); this lays it on the smoothed path curve
+  //    from the smoothing pass (nearest point on the curve segments bucketed for the tile), adds the agent's stable lateral offset to the right of
+  //    its heading, eases the heading (turns take params.agents.move.turnSecs, through the diagonal facings) and interpolates the distance walked
+  //    (the walk cycle advances with it, so feet never slide). Standing agents are drawn exactly where they stand. Presentation state only: a.rh,
+  //    a.ox/oy, a.pw, a.rt, a.rs on the agent object are never saved and never read by the sim. --
+  let qx = 0, qy = 0, qtx = 1, qty = 0;
+  /** nearest point of the tile's curve segments to (cx, cy) in curve space (tile centre = integer); leaves it in qx, qy and the segment direction in qtx, qty; false when none within half a tile */
+  function nearestOnTileCurve(i, cx, cy) {
+    const list = curves.buckets.get(i); if (!list) return false;
+    let best = 0.25;
+    for (let q = 0; q < list.length; q++) {
+      const L = list[q], P = curves.polys[L.p], pts = P && P.pts; if (!pts) continue;
+      const n = pts.length >> 1;
+      for (let k = L.a; k <= L.b; k++) {
+        const j = (k + 1) % n, x0 = pts[2 * k], y0 = pts[2 * k + 1], vx = pts[2 * j] - x0, vy = pts[2 * j + 1] - y0, l2 = vx * vx + vy * vy;
+        let t = l2 > 1e-9 ? ((cx - x0) * vx + (cy - y0) * vy) / l2 : 0; t = t < 0 ? 0 : (t > 1 ? 1 : t);
+        const ex = x0 + vx * t - cx, ey = y0 + vy * t - cy, d = ex * ex + ey * ey;
+        if (d < best) { best = d; qx = x0 + vx * t; qy = y0 + vy * t; qtx = vx; qty = vy; }
+      }
+    }
+    return best < 0.25;
+  }
+  function poseAgent(a, state) {
+    const al = alphaNow, px = fin(a.px, a.tx), py = fin(a.py, a.ty), tx = fin(a.tx, 0), ty = fin(a.ty, 0);
+    let ax = px + (tx - px) * al, ay = py + (ty - py) * al;
+    const mvx = tx - px, mvy = ty - py, moving = mvx * mvx + mvy * mvy > 1e-6;
+    const dt = frameDt * simSpeed;                             // the eased quantities run on game time, so 4× / 8× agents do not trail their own pose
+    const kk = 1 - Math.exp(-dt * 12);                         // ≈ 0.08 s time constant
+    // distance walked → walk-cycle phase (interpolated like the position)
+    const sd = fin(a.sd, 0), psd = fin(a.psd, sd); a.rs = psd + (sd - psd) * al;
+    // heading target: the motion, or (on a path tile) the curve's tangent oriented along it; standing agents keep their last facing
+    let hx, hy, onCurve = false;
+    const i0 = clamp(Math.floor(ax), 0, W - 1) + clamp(Math.floor(ay), 0, HGT - 1) * W;
+    const sf = state.tiles.surface[i0];
+    if (moving && curves && !curvesDirty && curves.state === state && sf >= 1 && sf <= 3 && nearestOnTileCurve(i0, ax - 0.5, ay - 0.5)) {
+      onCurve = true;
+      const tl = Math.hypot(qtx, qty) || 1; hx = qtx / tl; hy = qty / tl;
+      if (hx * mvx + hy * mvy < 0) { hx = -hx; hy = -hy; }
+    } else if (moving) { const ml = Math.sqrt(mvx * mvx + mvy * mvy); hx = mvx / ml; hy = mvy / ml; }
+    else { const h = a.rhSet ? a.rh : fin(a.hd, 0); hx = Math.cos(h); hy = Math.sin(h); }
+    const target = Math.atan2(hy, hx);
+    const AG = BSU.agents, turn = (Math.PI / 2) / Math.max(0.05, fin(BSU.params.agents && BSU.params.agents.move && BSU.params.agents.move.turnSecs, 0.3)) * simSpeed * (a.state === 'FLEE' ? 2 : 1);
+    if (!a.rhSet) { a.rh = target; a.rhSet = true; a.ox = 0; a.oy = 0; a.pw = 0; }
+    else if (moving) a.rh = AG && typeof AG.turnStep === 'function' ? AG.turnStep(a.rh, target, turn * frameDt) : target;
+    // lateral offset: to the right of the (eased) heading while walking, nothing while standing; eased so corners and stops do not pop
+    const lat = fin(a.lat, 0) * (AG && typeof AG.latScale === 'function' ? AG.latScale(sf) : 1), want = moving ? 1 : 0;
+    const wx = -Math.sin(a.rh) * lat * want, wy = Math.cos(a.rh) * lat * want;
+    a.ox += (wx - a.ox) * kk; a.oy += (wy - a.oy) * kk;
+    // lay the position on the curve: weight eased in while walking a path tile, out when standing or off the path
+    a.pw = fin(a.pw, 0); const pwWant = onCurve ? 1 : 0; a.pw += (pwWant - a.pw) * kk;
+    if (onCurve && a.pw > 0.001) { ax += (qx + 0.5 - ax) * a.pw; ay += (qy + 0.5 - ay) * a.pw; }
+    poseX = ax + a.ox; poseY = ay + a.oy;
+    a.rdx = poseX; a.rdy = poseY;                              // the drawn world position (entityScreen reads it)
+  }
+  /** movement pass: pose a student as the entity pass would and return where it is drawn ({x, y} in tile units, tile centre = n + .5) with its eased heading and stride (tests, UI rings) */
+  M.agentPose = function (a, state) { if (!a) return null; poseAgent(a, state || root); return { x: poseX, y: poseY, rh: a.rh, rs: a.rs }; };
+  function pushMover(kind, m, id, variant, frame, elevFn, state, posed) {
+    const ax = posed ? poseX : fin(m.px, m.tx) + (fin(m.tx, 0) - fin(m.px, fin(m.tx, 0))) * alphaNow, ay = posed ? poseY : fin(m.py, m.ty) + (fin(m.ty, 0) - fin(m.py, fin(m.ty, 0))) * alphaNow;
     if (!Number.isFinite(ax) || !Number.isFinite(ay)) { reportNaN(kind); return null; }
     const tx = clamp(Math.floor(ax), 0, W - 1), ty = clamp(Math.floor(ay), 0, HGT - 1);
     if (!inView(tx, ty, 2)) return null;
@@ -26657,11 +27037,13 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
       const f = Math.floor(frameNo / C.agentAnimDiv);
       for (let k = 0; k < A.length; k++) {
         const a = A[k]; if (!a || a.state === 'GONE' || a.inside || a.aboard) continue;
+        if (!inView(clamp(Math.floor(fin(a.tx, 0)), 0, W - 1), clamp(Math.floor(fin(a.ty, 0)), 0, HGT - 1), 2)) continue;   // off screen: nothing to pose or draw
+        poseAgent(a, state);
         const anim = typeof a.anim === 'string' ? a.anim : 'idle';
         const id = typeof sp.agentId === 'function' ? sp.agentId(anim, a, zoomNow) : 'agent';
         // art pass B4: 8 facings, per-agent phase, cycle rate by speed, idle fidgets and the 0.5× two-pose rule live in sprites_entities.agentFrame (agent, zoom and frame counter passed)
         const fr = typeof sp.agentFrame === 'function' ? sp.agentFrame(anim, a.dir | 0, f, a, zoomNow, frameNo) : ((a.dir | 0) * 4 + ((zoomNow < 1 ? f & 2 : f) & 3));
-        const e = pushMover('agent', a, id, fin(a.look, 0) | 0, fr, groundElev, state);
+        const e = pushMover('agent', a, id, fin(a.look, 0) | 0, fr, groundElev, state, true);
         if (e) { e.c = a.state === 'FLEE' ? 1 : 0; e.b = a; agentsDrawn++; }
         if (a.state === 'FLEE' && a.fleeGator >= 0) fleeStamp[a.fleeGator & 63] = frameNo;
       }
@@ -27071,6 +27453,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     frameNo++; M.frameNo = frameNo;
     alphaNow = clamp(fin(alpha, 0), 0, 1); M.alpha = alphaNow;
     dtMs = fin(dtMs, 16.67);
+    frameDt = clamp(dtMs / 1000, 0.001, 0.1); simSpeed = Math.max(1, fin(state.ui.speed, 1));
     drawCalls = 0;
     try { setupPass(state, dtMs); } catch (e) { rerr('setup', e); }
     const g = ctx;

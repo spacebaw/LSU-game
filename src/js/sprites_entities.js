@@ -1606,6 +1606,7 @@
   /** cell size of an agent anim in 1× px */
   M.agentCell = function (anim) { const A = SA[typeof anim === 'string' && anim !== 'march' ? anim : 'walk'] || SA.walk, c = SC[A.c]; return { w: c.cw, h: c.ch, gy: c.gy, n: A.n }; };
   const ph8 = (id) => hash(id | 0, 0x51);
+  const STRIDE_TILES = (BSU.params && BSU.params.agents && BSU.params.agents.move && BSU.params.agents.move.strideTiles) || 0.55;   // tiles per walk-cycle (params.agents.move)
   const MOVING = { walk: 1, umbrella: 1, beads: 1, foam: 1, cap: 1, flee: 1, splash: 1, tube: 1 };
   /**
    * The frame (facing × n + f) of an agent's sheet.
@@ -1623,11 +1624,19 @@
     const id = a.id | 0, ph = ph8(id), t = Number.isFinite(tick) ? tick : (Number.isFinite(f) ? f * 6 : 0), far = zoom < 1;
     let d8, fr;
     if (MOVING[name]) {
-      const dx = (a.tx - a.px), dy = (a.ty - a.py), L2 = dx * dx + dy * dy;
-      d8 = L2 > 0.0004 ? M.fbDir(dx, dy) : ((dir & 3) * 2);
-      const sp = L2 > 0.0004 ? Math.sqrt(L2) : 0.12, rate = name === 'flee' ? 20 : name === 'splash' ? 9 : name === 'tube' ? 6 : Math.max(10, Math.min(19, 7 + sp * 32));
-      const k = Math.floor(t * rate / 60) + ph;
-      fr = far ? ((k >> 2) & 1) : ((k % n) + n) % n;
+      if (a.rhSet === true && Number.isFinite(a.rs) && Number.isFinite(a.rh)) {
+        // movement pass: render's poseAgent eased the heading (turns pass through the diagonal facings) and interpolated the distance walked;
+        // the gait cycle advances with that distance (strideTiles per cycle), so the feet never slide and a stopped student stops stepping
+        d8 = M.fbDir(Math.cos(a.rh), Math.sin(a.rh));
+        const cyc = a.rs / STRIDE_TILES, k = Math.floor(cyc * (far ? 2 : n)) + ph;
+        fr = far ? (k & 1) : ((k % n) + n) % n;
+      } else {
+        const dx = (a.tx - a.px), dy = (a.ty - a.py), L2 = dx * dx + dy * dy;
+        d8 = L2 > 0.0004 ? M.fbDir(dx, dy) : ((dir & 3) * 2);
+        const sp = L2 > 0.0004 ? Math.sqrt(L2) : 0.12, rate = name === 'flee' ? 20 : name === 'splash' ? 9 : name === 'tube' ? 6 : Math.max(10, Math.min(19, 7 + sp * 32));
+        const k = Math.floor(t * rate / 60) + ph;
+        fr = far ? ((k >> 2) & 1) : ((k % n) + n) % n;
+      }
     } else {
       d8 = (((dir & 3) * 2 + ([0, -1, 1, 0, 2, -2][ph % 6])) + 8) & 7;
       const k = Math.floor(t / 6);

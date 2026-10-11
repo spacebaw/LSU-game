@@ -67,7 +67,7 @@ vm.runInContext(`
     const D = BSU.agents._deps;
     D.buildings = { list(s, t) { return B.filter(b => !t || b.type === t); }, get(s, id) { return B[id] || null; }, footprint(s, id) { const b = B[id]; return b ? BSU.footprintTiles(b.tx, b.ty, b.w, b.h) : []; }, effective() { return 1; }, auras() { return { life, green, shade, heat, dining: new Uint8Array(N) }; }, shelterAssignments() { return {}; }, at() { return null; } };
     D.wildlife = { gators() { return window.__stubs.gators; }, onCampus() { return []; }, mosqAt() { return 0; }, gatorGridPassable() { return true; } };
-    D.weather = { sky(s) { const c = s.tick % 300; const b = [25, 155, 175, 200, 300]; let p = 0; while (c >= b[p]) p++; return { phase: p, t: 0, phaseTick: 0, scripted: false }; }, raining() { return false; }, rainAt() { return 0; }, heat() { return { index: 80, advisory: false, wave: false }; }, date(s) { const d = BSU.dayParts(s.calendar.day); return { day: d.day, month: d.month, semester: d.semester }; }, storm() { return null; } };
+    D.weather = { sky(s) { const c = (s.__lock !== undefined ? s.__lock : s.tick) % 300; const b = [25, 155, 175, 200, 300]; let p = 0; while (c >= b[p]) p++; return { phase: p, t: 0, phaseTick: 0, scripted: false }; }, raining() { return false; }, rainAt() { return 0; }, heat() { return { index: 80, advisory: false, wave: false }; }, date(s) { const d = BSU.dayParts(s.calendar.day); return { day: d.day, month: d.month, semester: d.semester }; }, storm() { return null; } };
     D.hydro = { depthAt() { return 0; } };
     D.sports = { season(s) { return s.sports; } };
     D.progress = { timer() { return null; }, timers() { return []; } };
@@ -150,6 +150,100 @@ ok(s.agents.every(a => a.state !== 'GONE'), 'all 60 agents present after 30 days
   ok(r.name === s.agents[0].name && typeof r.activity === 'string' && r.quote.length > 0, `inspect: ${r.name} — ${r.activity} — "${r.quote}"`);
   const a = s.agents.find(x => !x.inside && x.state !== 'GONE');
   ok(!a || M.nearest(s, a.tx, a.ty, 1) !== null, 'nearest finds an agent under the cursor');
+}
+
+// --- movement pass: speed, eased starts and stops, turning, dwell, spacing ---------------------------------------------
+{
+  const PMv = BSU.params.agents.move, TPS = BSU.params.time.baseTps;
+  const mk = (seed, n) => { const q = BSU.newState(seed); q.tiles.walk.fill(2); q.tiles.type.fill(BSU.T.DRY); for (let x = 4; x <= 44; x++) { q.tiles.walk[22 * 64 + x] = 1; q.tiles.surface[22 * 64 + x] = 1; } q.economy.students = n; q.plot.founders = { tx: 40, ty: 7 }; q.calendar.day = 10; q.tick = 40; q.__lock = 40; BSU.state = q; BSU.rng.sim.state = q.rng.sim; M.init(q); M.reset(q, true); return q; };
+  const put = (a, x, y) => { a.inside = false; a.aboard = false; a.tx = x; a.ty = y; a.px = x; a.py = y; a.lastTile = Math.floor(y) * 64 + Math.floor(x); a.next = null; a.waitTicks = 0; a.prop = 'none'; };
+  const walk = (a, tile) => { a.state = 'WALK'; a.goal = 'tile'; a.target = tile; a.route = []; a.routeIdx = 0; a.spd = 0; a.step = 0; };
+
+  // 1. speed: one student alone on a path covers 1.0–1.2 tiles per real second at 1× (it was 2.0 before the pass)
+  {
+    const q = mk(31, 120); M.tick(q, { newDay: false }), q.tick++;          // let the Day schedule run once, then take the agent over
+    const a = q.agents[0]; put(a, 5.5, 22.5); walk(a, 22 * 64 + 42);
+    const steps = [];
+    for (let t = 0; t < 40; t++) { const x0 = a.tx; M.tick(q, { newDay: false }), q.tick++; steps.push(a.tx - x0); }
+    const cruise = steps.slice(8, 36), mean = cruise.reduce((p, c) => p + c, 0) / cruise.length * TPS;
+    ok(mean >= 1.0 && mean <= 1.2, `a student on a path walks ${mean.toFixed(2)} tiles per real second at 1× (1.0–1.2; was 2.0)`);
+    ok(steps[0] > 0 && steps[0] < 0.6 * cruise[0] && steps[1] > steps[0] && steps[3] > steps[1] && steps[3] <= cruise[0] * 1.05, `eased start: steps ${steps.slice(0, 5).map(v => v.toFixed(3)).join(', ')} ramp to ${cruise[0].toFixed(3)}`);
+    const g = BSU.params.agents.speed;
+    ok(Math.abs(M.stepSpeed(2) / M.stepSpeed(1) - g.dry / g.path) < 1e-9 && g.path * TPS / 10 <= 1.2 && g.path * TPS / 10 >= 1.0 && g.dry < g.path && g.wet < g.dry && g.wading < g.wet, 'grass, wet ground and wading are proportionally slower than the path');
+    const vs = BSU.params.agents.vehicleSpeed;
+    ok(vs.bus >= 5 * 0.75 && vs.officer >= 3 * 0.75 && vs.fogger >= 3 * 0.75 && vs.pirogue >= 5 * 0.75 && vs.bus <= 5, 'vehicles slow by at most 25 %');
+  }
+
+  // 2. turning: a 90° turn takes about turnSecs of real frames, in steps no bigger than the rate allows, through the diagonal
+  {
+    const w = (Math.PI / 2) / PMv.turnSecs, dtF = 1 / 60; let ang = 0, frames = 0, maxStep = 0, hitDiag = false;
+    while (Math.abs(ang - Math.PI / 2) > 1e-9 && frames < 200) { const nx = M.turnStep(ang, Math.PI / 2, w * dtF); maxStep = Math.max(maxStep, Math.abs(nx - ang)); ang = nx; frames++; if (Math.abs(ang - Math.PI / 4) < w * dtF) hitDiag = true; }
+    ok(frames >= 15 && frames <= 21 && maxStep <= w * dtF + 1e-9 && hitDiag, `a 90° turn takes ${frames} frames (${(frames / 60).toFixed(2)} s at 60 fps), no step over ${(w * dtF).toFixed(3)} rad, through 45°`);
+    ok(M.turnStep(3.0, -3.0, 0.1) > 3.0 && M.turnStep(-3.0, 3.0, 0.1) < -3.0 && M.turnStep(0, Math.PI, 5) === Math.PI && M.turnStep(NaN, 1, 1) === 1 && M.turnStep(1, NaN, 1) === 1, 'turnStep takes the short way round the circle and survives bad input');
+    // 180° flips are not instant either
+    let a2 = 0, f2 = 0; while (Math.abs(a2 - Math.PI) > 1e-9 && f2 < 400) { a2 = M.turnStep(a2, Math.PI, w * dtF); f2++; }
+    ok(f2 >= 2 * frames - 3, `a 180° turn takes about twice as long (${f2} frames)`);
+  }
+
+  // 3. lateral offsets: stable per agent, within ±latMax, spread across the width, the same after a regenerate
+  {
+    const q = mk(32, 1000);
+    const lat1 = q.agents.map(a => a.lat); M.reset(q, true); const lat2 = q.agents.map(a => a.lat);
+    const mx = Math.max(...lat1), mn = Math.min(...lat1);
+    ok(lat1.every(v => Math.abs(v) <= PMv.latMax + 1e-9) && mx - mn > 1.5 * PMv.latMax && lat1.every((v, i) => v === lat2[i]), `lateral offsets span ${mn.toFixed(2)}..${mx.toFixed(2)} (±${PMv.latMax}) and are stable across a regenerate`);
+    ok(M.latScale(1) < 1 && M.latScale(0) === 1 && M.latScale(2) === 1, 'the offset is scaled down on a path (0.42 tile wide) and not on open ground or a road');
+  }
+
+  // 4. dwell and spots: 40 students sent to one idle tile spread over a 0.5-tile grid (no shared spot, ≥ 0.42 apart), then stand 8–25 s
+  {
+    const q = mk(33, 1500); M.tick(q, { newDay: false }), q.tick++;
+    const tgt = 30 * 64 + 30, A = q.agents.filter(a => a.state !== 'GONE').slice(0, 40);
+    A.forEach((a, k) => { put(a, 24.5 + (k % 8), 24.5 + ((k / 8) | 0)); walk(a, tgt); a.goal = 'idle'; });
+    const firstWait = new Map(); let best = null, bestN = 0;
+    const standing = a => (a.state === 'IDLE' || a.state === 'SIT') && !a.approach && !a.inside;
+    for (let t = 0; t < 400; t++) {
+      M.tick(q, { newDay: false }), q.tick++;
+      let n = 0;
+      for (const a of A) if (standing(a) && Math.hypot(a.tx - 30.5, a.ty - 30.5) < 4.5) { n++; if (a.waitTicks > 0 && !firstWait.has(a.id)) firstWait.set(a.id, a.waitTicks); }
+      if (n > bestN) { bestN = n; best = A.filter(a => standing(a) && Math.hypot(a.tx - 30.5, a.ty - 30.5) < 4.5).map(a => [a.tx, a.ty]); }
+    }
+    ok(bestN >= 36, `at the peak ${bestN} of the 40 stand around the target`);
+    const cells = new Set(best.map(p => Math.floor(p[0] * 2) + ',' + Math.floor(p[1] * 2)));
+    let minD = 9; for (let i = 0; i < best.length; i++) for (let j = i + 1; j < best.length; j++) minD = Math.min(minD, Math.hypot(best[i][0] - best[j][0], best[i][1] - best[j][1]));
+    ok(cells.size === best.length && minD >= 0.4, `no two idle students share a spot: ${cells.size} distinct cells for ${best.length} students, nearest pair ${minD.toFixed(2)} tiles (≥ 0.4)`);
+    const waits = [...firstWait.values()];
+    ok(waits.length >= 36 && waits.every(v => v >= PMv.dwellTicks[0] - 2 && v <= PMv.dwellTicks[1]) && new Set(waits).size >= 12, `dwell at the spot: ${Math.min(...waits)}–${Math.max(...waits)} ticks (${(Math.min(...waits) / TPS).toFixed(0)}–${(Math.max(...waits) / TPS).toFixed(0)} s at 1×), ${new Set(waits).size} distinct values`);
+  }
+  {   // a dweller stands still through the first part of the dwell and uses the idle pose
+    const q = mk(36, 1500); M.tick(q, { newDay: false }), q.tick++;
+    const a = q.agents[3]; put(a, 28.5, 30.5); walk(a, 30 * 64 + 30); a.goal = 'idle';
+    let k = 0; while (k++ < 200 && !((a.state === 'IDLE' || a.state === 'SIT') && !a.approach && a.waitTicks > 0)) M.tick(q, { newDay: false }), q.tick++;
+    const x0 = a.tx, y0 = a.ty, w0 = a.waitTicks; for (let t = 0; t < 30; t++) M.tick(q, { newDay: false }), q.tick++;
+    ok(a.tx === x0 && a.ty === y0 && a.waitTicks === w0 - 30 && (a.anim === 'idle' || a.anim === 'sit'), `a dweller stands still while its dwell runs (${w0} ticks, pose ${a.anim})`);
+    let sat = 0; for (let n = 0; n < 40; n++) { const z = mk(40 + n, 1500); M.tick(z, { newDay: false }), z.tick++; const b = z.agents[2]; put(b, 20.5, 26.5); b.goal = 'idle'; b.state = 'WALK'; b.target = 26 * 64 + 20; b.route = []; b.routeIdx = 0; for (let t = 0; t < 30; t++) M.tick(z, { newDay: false }), z.tick++; if (b.state === 'SIT' && b.anim === 'sit') sat++; }
+    ok(sat >= 5 && sat <= 22, `about ${PMv.sitShare * 100} % of idle dwellers on bare ground sit (${sat} of 40 sat)`);
+  }
+
+  // 5. local avoidance (on open ground, where the whole ±0.3 offset applies): a student 0.3 tile behind a standing one in the same lane eases down 30 %; one a lane over does not
+  {
+    const q = mk(34, 120); M.tick(q, { newDay: false }), q.tick++;
+    const [f, l, o] = q.agents;
+    put(l, 20.5, 24.5); l.lat = 0; l.state = 'IDLE'; l.goal = 'idle'; l.target = -1; l.step = 0;
+    const tile = 24 * 64 + 40;
+    put(f, 20.2, 24.5); f.lat = 0; walk(f, tile); f.route = M.routeSync(q, 24 * 64 + 20, tile, 'walk'); f.routeIdx = 1; f.dir = 0; f.spd = 1; f.step = 0.13;
+    put(o, 20.2, 24.5); o.lat = 0.3; walk(o, tile); o.route = f.route; o.routeIdx = 1; o.dir = 0; o.spd = 1; o.step = 0.13;
+    M.tick(q, { newDay: false }), q.tick++;
+    ok(Math.abs(f.spd - PMv.yieldMult) < 0.06 && o.spd > 0.9, `same lane behind a standing student: speed ×${f.spd.toFixed(2)} (want ${PMv.yieldMult}); a lane over: ×${o.spd.toFixed(2)}`);
+  }
+
+  // 6. cost: 300 agents on the open stub map stay cheap
+  {
+    const q = mk(35, 20000); const n = q.agents.length;
+    for (let t = 0; t < 120; t++) { M.tick(q, { newDay: t % 200 === 0 && t > 0 }); q.tick++; }
+    const t0 = performance.now(); const T = 300; for (let t = 0; t < T; t++) { M.tick(q, { newDay: false }), q.tick++; q.tick++; }
+    const ms = (performance.now() - t0) / T;
+    ok(n === 300 && ms < 2, `${n} agents: ${ms.toFixed(2)} ms per tick (< 2)`);
+  }
 }
 
 console.log(`${passes} passed, ${failures} failed`);

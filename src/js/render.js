@@ -54,6 +54,7 @@
   const chunks = new Array(NCH);
   const dirtyBits = new Uint8Array(NCH);
   let frameNo = 0, alphaNow = 0, zoomNow = 1, firstFrame = true, bakesThisFrame = 0;
+  let frameDt = 1 / 60, simSpeed = 1, poseX = 0, poseY = 0;   // movement pass: last frame's real seconds, the game speed (≥ 1) and the drawn position poseAgent leaves for pushMover
   const view = { vw: 1280, vh: 720, dpr: 1, x0: 0, y0: 0, x1: 63, y1: 63 };
   let shakeUntil = 0, shakePx = 0, hitStopUntilMs = 0;
   const flashes = [];
@@ -1040,8 +1041,10 @@
   /** interpolated foot point of a mover in canvas px */
   M.entityScreen = function (e) {
     if (!e) return { x: 0, y: 0 };
-    const a = alphaNow, ax = fin(e.px, e.tx) + (fin(e.tx, 0) - fin(e.px, fin(e.tx, 0))) * a, ay = fin(e.py, e.ty) + (fin(e.ty, 0) - fin(e.py, fin(e.ty, 0))) * a;
+    const a = alphaNow;
+    let ax = fin(e.px, e.tx) + (fin(e.tx, 0) - fin(e.px, fin(e.tx, 0))) * a, ay = fin(e.py, e.ty) + (fin(e.ty, 0) - fin(e.py, fin(e.ty, 0))) * a;
     const i = clamp(Math.floor(ax), 0, W - 1) + clamp(Math.floor(ay), 0, HGT - 1) * W;
+    if (e.rhSet === true && Number.isFinite(e.rdx) && Number.isFinite(e.rdy)) { ax = e.rdx; ay = e.rdy; }   // a student: where it was last drawn (curve + lateral offset)
     return worldPx((ax - ay) * 32, (ax + ay - 1) * 16 - elevAt(i & 63, i >> 6) * PXFT);
   };
   /** world px of a building's south-corner anchor at ground elevation */
@@ -1410,8 +1413,64 @@
       const sax = e.ax, say = e.ay; e.ax = x - 0.5; e.ay = y - 0.5; moverScreen(e); e.ax = sax; e.ay = say;
     }
   }
-  function pushMover(kind, m, id, variant, frame, elevFn, state) {
-    const ax = fin(m.px, m.tx) + (fin(m.tx, 0) - fin(m.px, fin(m.tx, 0))) * alphaNow, ay = fin(m.py, m.ty) + (fin(m.ty, 0) - fin(m.py, fin(m.ty, 0))) * alphaNow;
+  // -- movement pass: where a student is DRAWN. The sim keeps tile-centre progress (a.px/py → a.tx/ty); this lays it on the smoothed path curve
+  //    from the smoothing pass (nearest point on the curve segments bucketed for the tile), adds the agent's stable lateral offset to the right of
+  //    its heading, eases the heading (turns take params.agents.move.turnSecs, through the diagonal facings) and interpolates the distance walked
+  //    (the walk cycle advances with it, so feet never slide). Standing agents are drawn exactly where they stand. Presentation state only: a.rh,
+  //    a.ox/oy, a.pw, a.rt, a.rs on the agent object are never saved and never read by the sim. --
+  let qx = 0, qy = 0, qtx = 1, qty = 0;
+  /** nearest point of the tile's curve segments to (cx, cy) in curve space (tile centre = integer); leaves it in qx, qy and the segment direction in qtx, qty; false when none within half a tile */
+  function nearestOnTileCurve(i, cx, cy) {
+    const list = curves.buckets.get(i); if (!list) return false;
+    let best = 0.25;
+    for (let q = 0; q < list.length; q++) {
+      const L = list[q], P = curves.polys[L.p], pts = P && P.pts; if (!pts) continue;
+      const n = pts.length >> 1;
+      for (let k = L.a; k <= L.b; k++) {
+        const j = (k + 1) % n, x0 = pts[2 * k], y0 = pts[2 * k + 1], vx = pts[2 * j] - x0, vy = pts[2 * j + 1] - y0, l2 = vx * vx + vy * vy;
+        let t = l2 > 1e-9 ? ((cx - x0) * vx + (cy - y0) * vy) / l2 : 0; t = t < 0 ? 0 : (t > 1 ? 1 : t);
+        const ex = x0 + vx * t - cx, ey = y0 + vy * t - cy, d = ex * ex + ey * ey;
+        if (d < best) { best = d; qx = x0 + vx * t; qy = y0 + vy * t; qtx = vx; qty = vy; }
+      }
+    }
+    return best < 0.25;
+  }
+  function poseAgent(a, state) {
+    const al = alphaNow, px = fin(a.px, a.tx), py = fin(a.py, a.ty), tx = fin(a.tx, 0), ty = fin(a.ty, 0);
+    let ax = px + (tx - px) * al, ay = py + (ty - py) * al;
+    const mvx = tx - px, mvy = ty - py, moving = mvx * mvx + mvy * mvy > 1e-6;
+    const dt = frameDt * simSpeed;                             // the eased quantities run on game time, so 4× / 8× agents do not trail their own pose
+    const kk = 1 - Math.exp(-dt * 12);                         // ≈ 0.08 s time constant
+    // distance walked → walk-cycle phase (interpolated like the position)
+    const sd = fin(a.sd, 0), psd = fin(a.psd, sd); a.rs = psd + (sd - psd) * al;
+    // heading target: the motion, or (on a path tile) the curve's tangent oriented along it; standing agents keep their last facing
+    let hx, hy, onCurve = false;
+    const i0 = clamp(Math.floor(ax), 0, W - 1) + clamp(Math.floor(ay), 0, HGT - 1) * W;
+    const sf = state.tiles.surface[i0];
+    if (moving && curves && !curvesDirty && curves.state === state && sf >= 1 && sf <= 3 && nearestOnTileCurve(i0, ax - 0.5, ay - 0.5)) {
+      onCurve = true;
+      const tl = Math.hypot(qtx, qty) || 1; hx = qtx / tl; hy = qty / tl;
+      if (hx * mvx + hy * mvy < 0) { hx = -hx; hy = -hy; }
+    } else if (moving) { const ml = Math.sqrt(mvx * mvx + mvy * mvy); hx = mvx / ml; hy = mvy / ml; }
+    else { const h = a.rhSet ? a.rh : fin(a.hd, 0); hx = Math.cos(h); hy = Math.sin(h); }
+    const target = Math.atan2(hy, hx);
+    const AG = BSU.agents, turn = (Math.PI / 2) / Math.max(0.05, fin(BSU.params.agents && BSU.params.agents.move && BSU.params.agents.move.turnSecs, 0.3)) * simSpeed * (a.state === 'FLEE' ? 2 : 1);
+    if (!a.rhSet) { a.rh = target; a.rhSet = true; a.ox = 0; a.oy = 0; a.pw = 0; }
+    else if (moving) a.rh = AG && typeof AG.turnStep === 'function' ? AG.turnStep(a.rh, target, turn * frameDt) : target;
+    // lateral offset: to the right of the (eased) heading while walking, nothing while standing; eased so corners and stops do not pop
+    const lat = fin(a.lat, 0) * (AG && typeof AG.latScale === 'function' ? AG.latScale(sf) : 1), want = moving ? 1 : 0;
+    const wx = -Math.sin(a.rh) * lat * want, wy = Math.cos(a.rh) * lat * want;
+    a.ox += (wx - a.ox) * kk; a.oy += (wy - a.oy) * kk;
+    // lay the position on the curve: weight eased in while walking a path tile, out when standing or off the path
+    a.pw = fin(a.pw, 0); const pwWant = onCurve ? 1 : 0; a.pw += (pwWant - a.pw) * kk;
+    if (onCurve && a.pw > 0.001) { ax += (qx + 0.5 - ax) * a.pw; ay += (qy + 0.5 - ay) * a.pw; }
+    poseX = ax + a.ox; poseY = ay + a.oy;
+    a.rdx = poseX; a.rdy = poseY;                              // the drawn world position (entityScreen reads it)
+  }
+  /** movement pass: pose a student as the entity pass would and return where it is drawn ({x, y} in tile units, tile centre = n + .5) with its eased heading and stride (tests, UI rings) */
+  M.agentPose = function (a, state) { if (!a) return null; poseAgent(a, state || root); return { x: poseX, y: poseY, rh: a.rh, rs: a.rs }; };
+  function pushMover(kind, m, id, variant, frame, elevFn, state, posed) {
+    const ax = posed ? poseX : fin(m.px, m.tx) + (fin(m.tx, 0) - fin(m.px, fin(m.tx, 0))) * alphaNow, ay = posed ? poseY : fin(m.py, m.ty) + (fin(m.ty, 0) - fin(m.py, fin(m.ty, 0))) * alphaNow;
     if (!Number.isFinite(ax) || !Number.isFinite(ay)) { reportNaN(kind); return null; }
     const tx = clamp(Math.floor(ax), 0, W - 1), ty = clamp(Math.floor(ay), 0, HGT - 1);
     if (!inView(tx, ty, 2)) return null;
@@ -2024,11 +2083,13 @@
       const f = Math.floor(frameNo / C.agentAnimDiv);
       for (let k = 0; k < A.length; k++) {
         const a = A[k]; if (!a || a.state === 'GONE' || a.inside || a.aboard) continue;
+        if (!inView(clamp(Math.floor(fin(a.tx, 0)), 0, W - 1), clamp(Math.floor(fin(a.ty, 0)), 0, HGT - 1), 2)) continue;   // off screen: nothing to pose or draw
+        poseAgent(a, state);
         const anim = typeof a.anim === 'string' ? a.anim : 'idle';
         const id = typeof sp.agentId === 'function' ? sp.agentId(anim, a, zoomNow) : 'agent';
         // art pass B4: 8 facings, per-agent phase, cycle rate by speed, idle fidgets and the 0.5× two-pose rule live in sprites_entities.agentFrame (agent, zoom and frame counter passed)
         const fr = typeof sp.agentFrame === 'function' ? sp.agentFrame(anim, a.dir | 0, f, a, zoomNow, frameNo) : ((a.dir | 0) * 4 + ((zoomNow < 1 ? f & 2 : f) & 3));
-        const e = pushMover('agent', a, id, fin(a.look, 0) | 0, fr, groundElev, state);
+        const e = pushMover('agent', a, id, fin(a.look, 0) | 0, fr, groundElev, state, true);
         if (e) { e.c = a.state === 'FLEE' ? 1 : 0; e.b = a; agentsDrawn++; }
         if (a.state === 'FLEE' && a.fleeGator >= 0) fleeStamp[a.fleeGator & 63] = frameNo;
       }
@@ -2438,6 +2499,7 @@
     frameNo++; M.frameNo = frameNo;
     alphaNow = clamp(fin(alpha, 0), 0, 1); M.alpha = alphaNow;
     dtMs = fin(dtMs, 16.67);
+    frameDt = clamp(dtMs / 1000, 0.001, 0.1); simSpeed = Math.max(1, fin(state.ui.speed, 1));
     drawCalls = 0;
     try { setupPass(state, dtMs); } catch (e) { rerr('setup', e); }
     const g = ctx;

@@ -104,6 +104,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 
 ## BSU.agents
 - values: _deps:object, _debug:object
+- agents.latScale(surface)
 - agents.stepSpeed(cls, mods)
 - agents.dirOf(dx, dy)
 - agents.route(state, fromI, toI, grid, gator)
@@ -111,6 +112,8 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - agents.invalidateRoutes(state, i)
 - agents.count(state)
 - agents.regenerate(state)
+- agents.turnStep(cur, target, maxStep)
+- agents.lateral(a, state)
 - agents.shelter(state, capacities)
 - agents.evacuate(state)
 - agents.spawnArrival(state, count, kind)
@@ -458,6 +461,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - render.registerPass(name, fn, order_, builtin)
 - render.passes()
 - render.attachMinimap(el)
+- render.agentPose(a, state)
 - render.teesOf(state, b, frontLeft)
 - render.teeStats()
 - render.fieldQuad(b)
@@ -855,7 +859,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 
 - BSU.worldToScreen(tx, ty, elev, cam, vw, vh)
 
-## BSU.params groups (17): time[30], terrain[59], hydro[47], storm[116], wildlife[4], subsidence[17], heat[21], weather[18], econ[62], sports[78], agents[29], build[34], render[59], ui[16], audio[6], palette[34], progress[16]
+## BSU.params groups (17): time[30], terrain[59], hydro[47], storm[116], wildlife[4], subsidence[17], heat[21], weather[18], econ[62], sports[78], agents[30], build[34], render[59], ui[16], audio[6], palette[34], progress[16]
 
 ## BSU.newState(seed) tree
 - v:number
