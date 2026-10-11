@@ -371,7 +371,7 @@
   // The SE face (east neighbours, the default door of the design pass) is tried first, then the SW face.
   // ---------------------------------------------------------------------------
   function connectorMax() { return Math.max(0, Math.floor(fin(PB.connectorMax, 4))); }
-  function connectorInner(state, row, tx, ty, rot) {
+  function connectorInner(state, row, tx, ty, rot, anySurface) {
     const pathRow = rowOf('path');
     if (!pathRow || !row || row.kind !== 'footprint' || row.id === 'founders_hall') return null;
     const max = connectorMax(); if (max <= 0) return null;
@@ -387,7 +387,7 @@
     };
     const goal = function (i) {
       if (ring[i]) return true;
-      for (const n of BSU.nbr4(i)) if (conn[n] && foot.indexOf(n) < 0) return true;
+      for (const n of BSU.nbr4(i)) if ((conn[n] || (anySurface && isAccessSurface(surf[n]))) && foot.indexOf(n) < 0) return true;
       return false;
     };
     const side = function (i) { const x = i & 63, y = i >> 6; return x >= tx + d.w ? 0 : (y >= ty + d.h ? 1 : 2); };
@@ -689,15 +689,20 @@
     // 8. access
     if (isFoot && row.pathAdjacency && row.id !== 'founders_hall') {
       const conn = connectedMask(state), ring = cache(state).founderRing;
-      let ok = false;
-      // a connected surface 1–3 edge tile, or an edge tile on Founders' own ring (the network root: the hall's front door)
-      for (const e of BSU.edgeTiles(tx, ty, d.w, d.h)) if ((isAccessSurface(state.tiles.surface[e]) && conn[e]) || ring[e]) { ok = true; break; }
+      let ok = false, adjacentAny = false;
+      // a connected surface edge tile, or an edge tile on Founders' own ring (the network root: the hall's front door)
+      for (const e of BSU.edgeTiles(tx, ty, d.w, d.h)) { const sf = state.tiles.surface[e]; if (isAccessSurface(sf)) { adjacentAny = true; if (conn[e]) { ok = true; break; } } if (ring[e]) { ok = true; break; } }
       r.access = ok;
       if (!ok) {
-        // connector pass: no edge on the network → the building brings its own tie, or says how far the nearest path is
+        // connector pass: no edge on the network → the building brings its own tie to a LINKED path when one is near
         const cn = connectorInner(state, row, tx, ty, opts.rot);
-        if (!cn) return fail(r, 'No path within ' + connectorMax() + ' tiles');
-        r.connector = cn; r.access = true;
+        if (cn) { r.connector = cn; r.access = true; }
+        else if (adjacentAny) { r.unlinked = true; }   // beside a path that does not reach campus yet: allowed, warned (playtest: 'No path within 4 tiles' while touching a path)
+        else {
+          const cn2 = connectorInner(state, row, tx, ty, opts.rot, true);   // any path nearby, linked or not
+          if (cn2) { r.connector = cn2; r.unlinked = true; }
+          else return fail(r, 'No path within ' + connectorMax() + ' tiles');
+        }
       }
     }
     // 9. road within N

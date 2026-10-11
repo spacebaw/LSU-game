@@ -112,7 +112,7 @@ s.economy.cash = 4000000;
 // preserve refused for a dorm; marsh gives pilings
 for (let x = 20; x <= 25; x++) for (let y = 20; y <= 25; y++) { const i = BSU.idx(x, y); s.tiles.elev[i] = 1; s.tiles.type[i] = BSU.T.MARSH; }
 for (let x = 26; x <= 40; x++) lay(x, 22);   // a path (unconnected)
-eq(B.canPlace(s, 'dorm', 23, 21, {}).reason, 'No path within 4 tiles', 'unconnected path does not count (not even as a connector target)');
+{ const ru = B.canPlace(s, 'dorm', 23, 21, {}); ok(ru.ok === true && ru.unlinked === true, 'unlinked path counts as adjacency but is flagged unlinked (playtest fix; was a refusal)'); }
 for (let y = 8; y <= 22; y++) lay(40, y);    // connect it to the Founders' ring
 for (let x = 40; x <= 49; x++) lay(x, 8);    // (49,8) is a Founders' west edge tile
 B.tick(s, {});
