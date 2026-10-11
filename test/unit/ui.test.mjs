@@ -66,7 +66,7 @@ ok(U.setUiScale(130) === 1.3 && U.setUiScale(0.9) === 0.9 && U.setUiScale('junk'
 ok(U.el.minimap.width === 200, 'back at 100 % the minimap canvas is 200 px');
 const cssScale = css.replace(/\/\*[\s\S]*?\*\//g, '');
 ok(/html\{font-size:calc\(1rem \* var\(--ui-scale|html\{font-size:calc\(10px \* var\(--ui-scale/.test(cssScale), 'html font-size follows --ui-scale (all lengths are rem)');
-ok(!/--topbar-h:\s*\d+px/.test(cssScale) && /--topbar-h:\s*5\.6rem/.test(cssScale) && /--palette-h:\s*14rem/.test(cssScale), 'layout tokens are rem: topbar 56 px, palette 140 px at 100 %');
+ok(!/--topbar-h:\s*\d+px/.test(cssScale) && /--topbar-h:\s*5\.6rem/.test(cssScale) && /--palette-h:\s*18rem/.test(cssScale), 'layout tokens are rem: topbar 56 px, palette 180 px at 100 % (palette pass)');
 ok(U.el['title-name'].textContent === 'BAYOU STATE', '#title-name text');
 ok(U.el.title.classList.contains('hidden') === !!BSU.headlessMode, 'title hidden headless (session shows it only in a browser)');
 
@@ -80,6 +80,12 @@ ok(U.el.title.classList.contains('hidden') && !U.el.hud.classList.contains('hidd
 ok(U.state === 'IDLE' && s.ui.tool === null, 'reset: IDLE, no tool');
 ok(Object.keys(U.el.tabEls).length >= 2 && Object.keys(U.el.itemEls).length >= 3, `palette built: ${Object.keys(U.el.tabEls).length} tabs, ${Object.keys(U.el.itemEls).length} items`);
 ok(!('founders_hall' in U.el.itemEls), "founders_hall never appears in the palette");
+// palette pass: every tile is a vertical stack (framed icon, name, price), nothing positioned over the art
+{ const t = U.el.itemEls.dorm, kids = (t && t.children) || [], cl = kids.map(c => String(c.className)), nm = kids[cl.indexOf('name')], co = kids[cl.indexOf('cost')];
+  ok(cl.slice(0, 3).join(',') === 'icon,name,cost', 'palette tile stack: icon, name, cost: ' + cl.join(','));
+  ok(nm && nm.children[0] && nm.children[0].textContent === BSU.data.catalogList.find(r => r.id === 'dorm').name && co && /^\$/.test(co.textContent) && !/\/tile/.test(co.textContent), 'tile name is the full name, price is plain money');
+  const dr = U.el.itemEls.path, dk = (dr && dr.children) || []; ok(dk.some(c => String(c.className) === 'cost' && (c.children || []).some(k => String(k.className) === 'per' && k.textContent === '/tile')), 'drag rows show "/tile" on the price line');
+  ok(/#palette-items\{[^}]*overflow-x:auto/.test(cssScale) && /#palette-items\.fade-r/.test(cssScale) && /--pal-tile-w:\s*11\.2rem/.test(cssScale) && /--pal-icon:\s*6\.4rem/.test(cssScale), 'quick-bar scrolls sideways with edge fades; 112-px tiles, 64-px icons'); }
 
 ok(U.el['stat-cash-value'].textContent === BSU.formatMoney(s.economy.cash) || /^\$/.test(U.el['stat-cash-value'].textContent), 'cash odometer renders money: ' + U.el['stat-cash-value'].textContent);
 ok(/Y1/.test(U.el['stat-date-text'].textContent), 'date text: ' + U.el['stat-date-text'].textContent);

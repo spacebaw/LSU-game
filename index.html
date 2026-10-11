@@ -13,7 +13,7 @@
 --ui-scale:1;
 --sp-1:.4rem;--sp-2:.8rem;--sp-3:1.2rem;--sp-4:1.6rem;--sp-5:2rem;--sp-6:2.4rem;--sp-7:3.2rem;--gutter:2rem;
 --fs-body:1.5rem;--fs-small:1.3rem;--fs-label:1.1rem;--fs-title:2.2rem;
---panel-alpha:.92;--radius:1.2rem;--radius-sm:.8rem;--topbar-h:5.6rem;--ticker-h:2.8rem;--palette-h:14rem;--inspect-w:34rem;--bot:calc(var(--palette-h) + var(--ticker-h) + var(--gutter));
+--panel-alpha:.92;--radius:1.2rem;--radius-sm:.8rem;--topbar-h:5.6rem;--ticker-h:2.8rem;--palette-h:18rem;--pal-tabs-h:3.4rem;--pal-gap:1.2rem;--pal-pad-b:.8rem;--pal-tile-w:11.2rem;--pal-icon:6.4rem;--inspect-w:34rem;--bot:calc(var(--palette-h) + var(--ticker-h) + var(--gutter));
 --font-ui:system-ui,-apple-system,"Segoe UI",sans-serif;--font-title:Georgia,"Times New Roman",serif;
 --panel-bg:rgba(26,18,48,var(--panel-alpha));--g-purple:linear-gradient(180deg,var(--purple-2),var(--purple));--g-gold:linear-gradient(180deg,var(--gold-hi),var(--gold));--line:rgba(253,208,35,.35);--shadow:0 .6rem 2.4rem rgba(0,0,0,.45);
 }
@@ -235,28 +235,38 @@ input.rename{width:100%;font:700 1.6rem/1.2 var(--font-title);color:var(--text);
 .log-line{display:flex;gap:1.2rem;padding:.6rem 0;border-bottom:1px solid rgba(255,255,255,.06);cursor:pointer}
 .log-line:hover{color:var(--gold-hi)}
 .log-day{flex:0 0 8.8rem;color:var(--text-dim);font-variant-numeric:tabular-nums}
-#palette{position:absolute;left:0;right:0;bottom:0;height:var(--palette-h);background:linear-gradient(180deg,rgba(26,18,48,.96),rgba(43,18,70,.98));border-top:1px solid var(--line);display:grid;grid-template-columns:auto 1fr auto;grid-template-rows:3.2rem 1fr;box-shadow:var(--shadow)}
-#btn-build-menu{grid-column:1;grid-row:1 / span 2;align-self:center;margin:0 .8rem 0 var(--gutter);width:9.6rem;height:11.2rem;padding:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.4rem;font-size:1.5rem;line-height:1;box-shadow:0 0 0 3px rgba(253,208,35,.18),0 .4rem 1.4rem rgba(0,0,0,.4)}
+/* palette pass: a 180-px bar = 34-px tabs + 12-px breathing room + a 126-px tile row + 8 px below; every tile is a vertical stack (icon, name, price) and nothing overlaps */
+#palette{position:absolute;left:0;right:0;bottom:0;height:var(--palette-h);background:linear-gradient(180deg,rgba(26,18,48,.96),rgba(43,18,70,.98));border-top:1px solid var(--line);display:grid;grid-template-columns:auto 1fr auto;grid-template-rows:var(--pal-tabs-h) 1fr;box-shadow:var(--shadow)}
+#btn-build-menu{grid-column:1;grid-row:1 / span 2;align-self:stretch;margin:calc(var(--pal-tabs-h) + var(--pal-gap)) .8rem var(--pal-pad-b) var(--gutter);width:10.4rem;height:auto;padding:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.6rem;font-size:1.5rem;line-height:1;box-shadow:0 0 0 3px rgba(253,208,35,.18),0 .4rem 1.4rem rgba(0,0,0,.4)}
 #btn-build-menu .glyph{font-size:3.2rem;line-height:1} #btn-build-menu .key{margin:0}
 #palette-tabs{grid-column:2;display:flex;align-items:flex-end;gap:.4rem;padding:0 1.2rem;border-bottom:1px solid rgba(255,255,255,.08);overflow:hidden}
-.tab{position:relative;font:600 1.5rem/1 var(--font-ui);letter-spacing:.02em;color:var(--text-dim);background:transparent;border:0;border-bottom:3px solid transparent;padding:.9rem 1.4rem .8rem;cursor:pointer;transition:color .15s,border-color .15s;white-space:nowrap}
+.tab{position:relative;font:600 1.5rem/1 var(--font-ui);letter-spacing:.02em;color:var(--text-dim);background:transparent;border:0;border-bottom:3px solid transparent;padding:.8rem 1.4rem .7rem;cursor:pointer;transition:color .15s,border-color .15s;white-space:nowrap}
 .tab:hover{color:var(--text)} .tab.active{color:var(--gold);border-bottom-color:var(--gold)}
-.tab .pip{position:absolute;right:.4rem;top:.6rem;width:.9rem;height:.9rem;border-radius:50%;background:var(--gold);box-shadow:0 0 .6rem var(--gold)}
-#palette-items{grid-column:2;display:flex;align-items:stretch;gap:.8rem;padding:.4rem 1.2rem 2px;overflow-x:auto;overflow-y:hidden;scrollbar-width:thin}
-.item{position:relative;flex:0 0 auto;width:9.6rem;display:flex;flex-direction:column;align-items:center;gap:2px;padding:0 .4rem;border-radius:var(--radius);border:1px solid transparent;cursor:pointer;transition:background .15s,border-color .15s,transform .1s;outline:none}
-.item:hover,.item:focus{background:rgba(255,255,255,.07);border-color:rgba(253,208,35,.35)}
-.item.active{background:rgba(253,208,35,.14);border-color:var(--gold);box-shadow:inset 0 0 0 1px rgba(253,208,35,.4)}
-.item .icon{width:6.4rem;height:6.4rem;image-rendering:pixelated;border-radius:.8rem;background:rgba(0,0,0,.2)}
-.item .name{font:600 1.3rem/1.12 var(--font-ui);color:var(--text);text-align:center;max-width:9rem;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;min-height:2.9rem}
-.item .cost{position:absolute;left:50%;top:5rem;transform:translateX(-50%);padding:2px .8rem;border-radius:99.9rem;background:rgba(14,18,48,.92);border:1px solid rgba(253,208,35,.45);font:700 1.2rem/1.2 var(--font-ui);color:var(--gold-hi);font-variant-numeric:tabular-nums;white-space:nowrap}
-.item.locked{opacity:.55;filter:grayscale(.8)}
-.item.locked .cost{color:var(--text-dim)}
-.item .cond{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:.6rem;font:600 1.2rem/1.2 var(--font-ui);color:var(--gold-hi);background:rgba(14,18,48,.88);border-radius:var(--radius);opacity:0;transition:opacity .15s}
-.item.locked:hover .cond{opacity:1}
-.palette-side{grid-column:3;grid-row:1 / span 2;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:.8rem;padding:0 var(--gutter) 0 1.2rem;border-left:1px solid rgba(255,255,255,.08)}
+.tab .pip{position:absolute;right:.2rem;top:.5rem;width:.9rem;height:.9rem;border-radius:50%;background:var(--gold);box-shadow:0 0 .6rem var(--gold)}
+#palette-items{grid-column:2;min-width:0;display:flex;align-items:stretch;gap:.8rem;padding:var(--pal-gap) 1.2rem var(--pal-pad-b);overflow-x:auto;overflow-y:hidden;scrollbar-width:none;--fade-l:0px;--fade-r:0px;-webkit-mask-image:linear-gradient(90deg,transparent 0,#000 var(--fade-l),#000 calc(100% - var(--fade-r)),transparent 100%);mask-image:linear-gradient(90deg,transparent 0,#000 var(--fade-l),#000 calc(100% - var(--fade-r)),transparent 100%)}
+#palette-items::-webkit-scrollbar{display:none}
+#palette-items.fade-l{--fade-l:4.8rem} #palette-items.fade-r{--fade-r:4.8rem}
+.item{position:relative;flex:0 0 var(--pal-tile-w);width:var(--pal-tile-w);display:flex;flex-direction:column;align-items:center;padding:0 .4rem;border-radius:var(--radius);cursor:pointer;outline:none}
+.item .icon{flex:0 0 auto;width:var(--pal-icon);height:var(--pal-icon);image-rendering:pixelated;border-radius:12.5%;transition:box-shadow .15s}
+.item .name{flex:0 0 auto;width:100%;height:3.4rem;margin-top:.8rem;display:flex;align-items:center;justify-content:center;text-align:center;font:600 var(--fs-body)/1.12 var(--font-ui);color:var(--text);text-wrap:balance;transition:color .15s}
+.item .name span{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.item .cost{flex:0 0 auto;margin-top:.4rem;font:600 var(--fs-small)/1.2 var(--font-ui);color:rgba(253,208,35,.74);font-variant-numeric:tabular-nums;white-space:nowrap}
+.item .cost .per{font-weight:500}
+.item:hover .icon,.item:focus-visible .icon{box-shadow:0 0 0 2px rgba(253,208,35,.5)}
+.item:hover .name,.item:focus-visible .name{color:var(--gold-hi)}
+.item.active .icon{box-shadow:0 0 0 2px var(--gold),0 0 1.4rem rgba(253,208,35,.38)}
+.item.active .name{color:var(--gold)}
+.item.locked .icon{opacity:.85}
+.item.locked .name,.item.locked .cost{color:var(--text-dim)}
+.item.locked .cost{opacity:.75}
+.item.locked:hover .icon,.item.locked:focus-visible .icon{box-shadow:0 0 0 2px rgba(185,175,201,.45)}
+.item .cond{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.4rem;text-align:center;padding:.4rem .6rem;font:600 1.2rem/1.25 var(--font-ui);color:var(--gold-hi);background:#17112e;border:1px solid rgba(253,208,35,.35);border-radius:var(--radius);opacity:0;pointer-events:none;transition:opacity .15s}
+.item .cond .k{font:700 var(--fs-label)/1 var(--font-ui);letter-spacing:.1em;text-transform:uppercase;color:var(--text-dim)}
+.item.locked:hover .cond,.item.locked:focus-visible .cond{opacity:1}
+.palette-side{grid-column:3;grid-row:1 / span 2;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:.8rem;padding:calc(var(--pal-tabs-h) + var(--pal-gap)) var(--gutter) var(--pal-pad-b) 1.2rem;border-left:1px solid rgba(255,255,255,.08)}
 .palette-side .btn{width:4.8rem;height:4.8rem;padding:0;line-height:4.6rem;text-align:center}
 #btn-bulldoze{font-size:2.2rem} #btn-palette-info{font-size:2rem}
-#palette.compact .item{width:8rem} #palette.compact .item .name,#palette.compact .item .cost{display:none}
+#palette.compact .item{width:8rem;flex-basis:8rem} #palette.compact .item .name,#palette.compact .item .cost,#palette.compact .item .cond{display:none}
 #palette.compact .tab .tab-name{font-size:1.4rem}
 @media (max-width:1180px){.tb .label{display:none} .stat{min-width:7.2rem;padding:0 .8rem} #chip-weather{display:none} }
 #cards{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(14,18,48,.45);z-index:8}
@@ -28938,7 +28948,9 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     const p = el('div'); p.id = 'palette'; const tabs = el('div'); tabs.id = 'palette-tabs'; const items = el('div'); items.id = 'palette-items';
     const side = el('div', 'palette-side');
     const bull = btn('btn-bulldoze', '🔨', '', function () { const s = stateOf(); const t = s && s.ui.tool; M.selectTool(s, t && t.id === 'bulldoze' ? null : 'bulldoze'); }); bull.title = 'Bulldoze (X)';
-    const info = btn('btn-palette-info', '⋯', '', function () { cls(E.palette, 'compact', !E.palette.classList.contains('compact')); }); info.title = 'Compact palette';
+    const info = btn('btn-palette-info', '⋯', '', function () { cls(E.palette, 'compact', !E.palette.classList.contains('compact')); paletteFade(); }); info.title = 'Compact palette';
+    // palette pass: the quick-bar scrolls sideways (no scrollbar; a mouse wheel scrolls it, the edges fade while there is more to see)
+    try { items.addEventListener('scroll', function () { paletteFade(); }); items.addEventListener('wheel', function (ev) { if (items.scrollWidth <= items.clientWidth + 1 || Math.abs(fin(ev.deltaX, 0)) >= Math.abs(fin(ev.deltaY, 0))) return; items.scrollLeft += ev.deltaY; ev.preventDefault(); }, { passive: false }); } catch (e) { /* stub */ }
     side.appendChild(bull); side.appendChild(info);
     const bmBtn = btn('btn-build-menu', '', 'primary', function () { const s = stateOf(); if (!s) return; if (bm.open) M.closeBuildMenu(); else M.openBuildMenu(s, {}); }); bmBtn.title = 'Build menu (G)';
     bmBtn.appendChild(el('span', 'glyph', '🏗')); bmBtn.appendChild(el('span', 'label', 'Build')); bmBtn.appendChild(el('span', 'key', 'G'));
@@ -29080,7 +29092,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
         window.addEventListener('keyup', function (e) { try { keyup(e.key); } catch (err) { uerr('keyup', err); } });
         window.addEventListener('blur', function () { try { for (const k in held) held[k] = false; if (live.down || live.state === 'DRAGGING') M.pointer('cancel', lastPx, lastPy, 0, M0); } catch (err) { uerr('blur', err); } });
         window.addEventListener('pointerup', function (e) { try { if (live.down && e.target !== world) M.pointer('up', lastPx, lastPy, fin(e.button, 0), modsOf(e)); } catch (err) { uerr('pointerup:window', err); } });
-        window.addEventListener('resize', function () { try { const w = fin(window.innerWidth, 1280); cls(E.palette, 'compact', w < L.compactWidth); } catch (err) { /* stub */ } try { applyScale(appliedScale); } catch (err) { /* stub */ } fitTopbar(); });
+        window.addEventListener('resize', function () { try { const w = fin(window.innerWidth, 1280); cls(E.palette, 'compact', w < L.compactWidth); } catch (err) { /* stub */ } try { applyScale(appliedScale); } catch (err) { /* stub */ } fitTopbar(); paletteFade(); });
       }
     } catch (e) { /* stub window */ }
   }
@@ -29747,15 +29759,17 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     if (key !== hoverKey) { hoverKey = key; hoverSince = clock; if (!key) hideTooltip(); }
   }
   function hideTooltip() { if (tipShown) { tipShown = ''; show(E.tooltip, false); } }
-  function showTooltipAt(text, px, py) {
+  /** (px, py) is the tooltip's top-left corner; `above` = (px, py) is the bottom-centre anchor instead (palette tiles: the card sits above the tile, never over its neighbours) */
+  function showTooltipAt(text, px, py, above) {
     const t = E.tooltip; if (!t) return; if (tipShown !== text) { setText(t, text); tipShown = text; }
     const vw = fin(window.innerWidth, 1280), vh = fin(window.innerHeight, 800); const w = fin(t.offsetWidth, 160) || 160, h = fin(t.offsetHeight, 24) || 24;
-    t.style.left = Math.round(clamp(px, 4, vw - w - 4)) + 'px'; t.style.top = Math.round(clamp(py, 4, vh - h - 4)) + 'px'; show(t, true);
+    const x = above ? px - w / 2 : px, y = above ? py - h : py;
+    t.style.left = Math.round(clamp(x, 4, vw - w - 4)) + 'px'; t.style.top = Math.round(clamp(y, 4, vh - h - 4)) + 'px'; show(t, true);
   }
   function updateTooltip(s) {
     if (!dom()) return;
     if (itemHover && itemHover.key) {
-      if (clock - itemHover.since >= L.tooltipMs) { const txt = itemTooltip(s, itemHover.id); showTooltipAt(txt, itemHover.px, itemHover.py - 8); E.tooltip.dataset.kind = 'item'; }
+      if (clock - itemHover.since >= L.tooltipMs) { const txt = itemTooltip(s, itemHover.id); if (itemHover.ax != null) showTooltipAt(txt, itemHover.ax, itemHover.ay, true); else showTooltipAt(txt, itemHover.px, itemHover.py - 8); E.tooltip.dataset.kind = 'item'; }
       return;
     }
     if (!hoverKey || card || s.ui.panel || live.state === 'PLACING' || live.state === 'DRAGGING' || live.state === 'PANNING') { if (!taggedGator(s)) hideTooltip(); return; }
@@ -29796,6 +29810,17 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
   function pickItem(s, n) { const tab = currentTab(s); if (!tab) return; const rows = tab.rows.filter(function (id) { return id !== 'founders_hall'; }); const id = rows[n]; if (id) M.selectTool(s, id); }
   /** progress: a tab becomes available (+ pip) — introduceTab(state, tab) */
   M.introduceTab = function (state, tab) { try { const s = state || stateOf(); if (!s || !s.ui || !tab) return; if (!s.ui.tabsIntroduced[tab]) { s.ui.tabsIntroduced[tab] = true; if (s.ui.paletteTab !== tab) s.ui.newPips[tab] = true; } paletteDirty = true; } catch (e) { uerr('introduceTab', e); } };
+  /** palette pass: the label a tile shows when the full name will not fit two 15-px lines (the tooltip and the build menu keep the full name) */
+  const PAL_SHORT = { 'Mosquito Abatement Station': 'Mosquito Abatement', 'Bat House / Purple Martin Tower': 'Bat House', 'Marsh Restoration Program': 'Marsh Restoration', 'Coastal Studies Institute': 'Coastal Institute' };
+  let palShownTab = '';
+  /** palette pass: fade the quick-bar's left / right edge only while there is more to scroll to that side */
+  function paletteFade() {
+    try {
+      const it = E['palette-items']; if (!it || !dom()) return;
+      const sl = fin(it.scrollLeft, 0), over = fin(it.scrollWidth, 0) - fin(it.clientWidth, 0);
+      cls(it, 'fade-l', over > 1 && sl > 1); cls(it, 'fade-r', over > 1 && sl < over - 1);
+    } catch (e) { /* stub */ }
+  }
   /** rebuild tabs + items (on unlock:changed / tab change / reset) */
   M.refreshPalette = function (state) {
     try {
@@ -29805,6 +29830,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
       if (cur && s.ui.paletteTab !== cur.id) s.ui.paletteTab = cur.id;
       const key = vis.map(function (t) { return t.id; }).join(',') + '|' + (cur ? cur.id : '') + '|' + (cur ? cur.rows.map(function (id) { const u = unlockOf(s, id); return id + (u.ok ? '+' : '-' + u.reason); }).join(',') : '');
       if (key === paletteKey) { refreshPips(s); return; }
+      const tabChanged = !!cur && cur.id !== palShownTab; palShownTab = cur ? cur.id : '';
       paletteKey = key; bm.dirty = true;
       const tabs = E['palette-tabs']; clear(tabs); E.tabEls = {};
       for (const t of vis) {
@@ -29818,17 +29844,19 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
         if (id === 'founders_hall') continue;
         const r = rowOf(id); if (!r) continue; const u = unlockOf(s, id);
         const it = el('div', 'item' + (u.ok ? '' : ' locked')); it.dataset.id = id; it.setAttribute('tabindex', '0'); it.setAttribute('role', 'button');
+        // palette pass: a vertical stack, nothing overlaps: framed icon -> name (two lines reserved, centred) -> price in plain dim gold (drag rows: '$2,000/tile')
         const ic = el('canvas', 'icon'); ic.width = 64; ic.height = 64; it.appendChild(ic); call('render', 'drawIcon', ic, id);
-        it.appendChild(el('div', 'name', r.name));
-        it.appendChild(el('div', 'cost', money(r.cost) + (r.kind === 'drag' ? '/tile' : '')));
-        if (!u.ok) it.appendChild(el('div', 'cond', u.reason || 'Locked'));
+        const nm = el('div', 'name'); nm.appendChild(el('span', '', PAL_SHORT[r.name] || r.name)); it.appendChild(nm);
+        const cost = el('div', 'cost', money(r.cost)); if (r.kind === 'drag') cost.appendChild(el('span', 'per', '/tile')); it.appendChild(cost);
+        if (!u.ok) { const cd = el('div', 'cond'); cd.appendChild(el('span', 'k', 'Unlocks')); cd.appendChild(el('span', 'why', u.reason || 'Locked')); it.appendChild(cd); }
         it.addEventListener('click', function () { const st = stateOf(); if (!u.ok) { call('audio', 'play', 'invalid'); if (u.reason) M.notify(st, { kind: 'info', text: u.reason, ttl: 4000 }); return; } const t = st.ui.tool; M.selectTool(st, t && t.id === id ? null : id); });
-        it.addEventListener('pointerenter', function (ev) { itemHover = { key: 'item:' + id, id: id, since: clock, px: fin(ev.clientX, 0), py: fin(ev.clientY, 0) }; });
+        it.addEventListener('pointerenter', function (ev) { itemHover = { key: 'item:' + id, id: id, since: clock, px: fin(ev.clientX, 0), py: fin(ev.clientY, 0) }; try { const q = it.getBoundingClientRect(); itemHover.ax = q.left + q.width / 2; itemHover.ay = q.top - 8; } catch (e) { /* stub */ } });
         it.addEventListener('pointermove', function (ev) { if (itemHover && itemHover.id === id) { itemHover.px = fin(ev.clientX, itemHover.px); itemHover.py = fin(ev.clientY, itemHover.py); } });
         it.addEventListener('pointerleave', function () { if (itemHover && itemHover.id === id) { itemHover = null; hideTooltip(); } });
         items.appendChild(it); E.itemEls[id] = it;
       }
-      refreshPips(s); markToolDom(s);
+      if (tabChanged) { try { items.scrollLeft = 0; } catch (e) { /* stub */ } }
+      refreshPips(s); markToolDom(s); paletteFade();
     } catch (e) { uerr('refreshPalette', e); }
   };
   function refreshPips(s) { const pk = JSON.stringify(s.ui.newPips || {}) + '|' + s.ui.paletteTab; if (pk === pipKey) return; pipKey = pk; for (const id in E.tabEls) { show(E.tabEls[id].pip, !!s.ui.newPips[id]); cls(E.tabEls[id].el, 'active', id === s.ui.paletteTab); } }
@@ -30834,7 +30862,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
       for (let k = notifs.length - 1; k >= 0; k--) { notifs[k].closed = true; } notifs.length = 0;
       odo.cash = NaN; odo.students = NaN; odo.lastStudents = NaN; odo.holdUntil = -1; odo.deltaUntil = 0;
       tk = { x: 0, line: null, seen: Math.max(0, ((state && state.ticker) || []).length - 1), w: 0, lastLen: -1, logOpen: false, cycle: 0 };
-      bubble = { since: clock, until: 0, key: '' }; objKey = ''; alertKey = ''; alertAt = -1e9; msAt = -1e9; speedKey = ''; paletteKey = ''; pipKey = ''; paletteDirty = true; capacityShown = false; skipShown = false; paletteHidden = null; hudFade = false;   // null: the first updateSetPiece re-syncs #palette and #hud.no-palette (a stale no-palette from the title / tutorial left a 0-height palette after newGame/load)
+      bubble = { since: clock, until: 0, key: '' }; objKey = ''; alertKey = ''; alertAt = -1e9; msAt = -1e9; speedKey = ''; paletteKey = ''; palShownTab = ''; pipKey = ''; paletteDirty = true; capacityShown = false; skipShown = false; paletteHidden = null; hudFade = false;   // null: the first updateSetPiece re-syncs #palette and #hud.no-palette (a stale no-palette from the title / tutorial left a 0-height palette after newGame/load)
       M.debug.open = false; M.hoverTile = -1; lastGhost = null;
       bm.open = false; bm.hover = null; bm.selected = null; bm.pulseId = null; bm.key = ''; bm.detailKey = ''; bm.dirty = true; needsCache = null; needsAt = -1e9; needsKey = ''; coach.step = -1; coach.armedAt = 0; coach.paused = false;
       for (const k in held) held[k] = false;

@@ -833,3 +833,31 @@ Track C of `docs/PLAN_FIDELITY.md` (Josh: "the UI elements feel too small and to
   1024 x 700 and smaller windows are below the design floor (columns collide when many transient boxes are up); a 1280-wide window cannot show panel labels (icons only, tooltips
   carry the names) because the stats + date + speed + panel buttons need ~1330 px at these sizes; the open inspector still pushes the minimap column left (it can sit under a storm
   alert strip); `.hud-fade` only considers the five docked cards, not the alert strip.
+
+## palette pass
+
+Josh: "the text down here is very crowded; can we redesign this area?" (the gold price pill sat on the icon's foot and on the name, two-word names were squeezed). Files:
+`src/style.css` (palette rules + tokens), `src/js/ui.js` (palette build / refresh only), `test/unit/ui.test.mjs`. Scratchpad: `pal_shots.mjs` (before / after, 1280x800 and 1440x900,
+Essentials / Paths / Swamp, one tile selected, one locked) -> `palette-NN-before|after-name-WIDTH.png`; `pal_extra.mjs` (scrolled fades, locked hover + tooltip, focus ring) ->
+`palette-04..06`; `pal_compact.mjs` -> `palette-07`; `ui_check.mjs` (every transient HUD box forced on) at 1280x800 and 1440x900: no overlaps, nothing off-screen, panels fit above the palette.
+
+- **Tokens (`:root`)**: `--palette-h` 140 -> **180 px** (18rem; every `--bot` / ticker / hint / undo-chip / panel / build-menu / notification / voice-card rule reads it, so the map-side math follows),
+  new `--pal-tabs-h` 34, `--pal-gap` 12 (tabs row -> tiles), `--pal-pad-b` 8, `--pal-tile-w` 112, `--pal-icon` 64. Bar = 34 tabs + 12 gap + 126 tile row + 8 below.
+- **Tile = vertical stack, nothing overlaps** (`ui.js` `refreshPalette`, `style.css` `.item`): framed 2x icon (64 px; the master already carries its rounded frame, so the canvas
+  background is gone) -> `.name` (15 px, a fixed 34-px box that holds two lines, text centred in it so one-line and two-line names keep the price on one baseline; inner `<span>` carries the
+  2-line clamp, `text-wrap:balance`) -> `.cost` (13 px, dim gold `rgba(253,208,35,.74)`, plain text, `/tile` is a `.per` span on the same line). No more `position:absolute` pill. Tile 112 px, 8-px gaps.
+- **Selected**: no filled box; `.item.active .icon` gets a 2-px gold ring + soft glow and `.name` turns gold. Hover / keyboard focus: 50 % gold ring on the frame, gold-hi name.
+- **Locked**: `.locked` still re-draws the padlock master (render.js observer); name and price go `--text-dim`. `.cond` is now an opaque tile-sized panel on hover / focus ("UNLOCKS" kicker +
+  the reason, 12 px); the delayed tooltip is unchanged except that a palette tile's tooltip now sits **above the tile** (`showTooltipAt(text, x, y, above)`, `itemHover.ax/ay`) instead of
+  covering its neighbours. The ★ Goal / Needed-now badges are build-menu only; the quick-bar never showed them, so none were added.
+- **Quick-bar scroll**: `#palette-items` scrolls sideways with no scrollbar; a mouse wheel scrolls it (`wheel` listener, only while it overflows), the edges fade (`.fade-l` / `.fade-r`, 48 px mask,
+  toggled by `paletteFade()` on scroll, resize, the compact toggle and every rebuild); `scrollLeft` resets on a tab change (`palShownTab`). Touch / trackpad scroll natively.
+- **Long names**: `PAL_SHORT` maps four names that cannot fit two 15-px lines to a shorter palette label (Mosquito Abatement, Bat House, Marsh Restoration, Coastal Institute); the tooltip and
+  the build menu keep the full name.
+- **Alignment**: the Build button (104 px wide) and the hammer / "..." column are inset by tabs + gap on top and `--pal-pad-b` below, so their tops and bottoms line up with the tile frames and
+  price line. Tab pips moved 2 px right so they no longer touch the label. Tabs row: 34 px, 12 px of air under it. Compact mode (`...`, or < 1180 px) is unchanged: 80-px icon-only tiles.
+- **Kept**: `#palette`, `#palette-tabs`, `#palette-items`, `.item[data-id]`, `.active`, `.locked`, `.icon/.name/.cost/.cond`, `#btn-bulldoze`, `#btn-palette-info`, `#btn-build-menu`, tab `.pip`;
+  Shift+1..9 (`pickItem`) verified in Chrome; `ui.test` palette-h expectation 14 -> 18 rem, +4 tests (stack order, name / price text, `/tile` span, scroll + fade + size tokens).
+- **Map room**: the map area loses 40 px of height (palette 140 -> 180); at 1280x800 the objective card ends at y 503, notifications / voice card at 572, the ticker starts at 592; the minimap
+  column (72-328) and the decision toast are unchanged; Storm / Season / Budget / Almanac / Settings panels and the build menu still end above the ticker.
+- **Not done, noted**: compact mode leaves empty space under its icon-only tiles; a tile's `.cond` shows the reason without the word "Unlocks:" in front of it (the "UNLOCKS" kicker carries it).

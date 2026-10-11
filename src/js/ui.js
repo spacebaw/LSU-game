@@ -313,7 +313,9 @@
     const p = el('div'); p.id = 'palette'; const tabs = el('div'); tabs.id = 'palette-tabs'; const items = el('div'); items.id = 'palette-items';
     const side = el('div', 'palette-side');
     const bull = btn('btn-bulldoze', '🔨', '', function () { const s = stateOf(); const t = s && s.ui.tool; M.selectTool(s, t && t.id === 'bulldoze' ? null : 'bulldoze'); }); bull.title = 'Bulldoze (X)';
-    const info = btn('btn-palette-info', '⋯', '', function () { cls(E.palette, 'compact', !E.palette.classList.contains('compact')); }); info.title = 'Compact palette';
+    const info = btn('btn-palette-info', '⋯', '', function () { cls(E.palette, 'compact', !E.palette.classList.contains('compact')); paletteFade(); }); info.title = 'Compact palette';
+    // palette pass: the quick-bar scrolls sideways (no scrollbar; a mouse wheel scrolls it, the edges fade while there is more to see)
+    try { items.addEventListener('scroll', function () { paletteFade(); }); items.addEventListener('wheel', function (ev) { if (items.scrollWidth <= items.clientWidth + 1 || Math.abs(fin(ev.deltaX, 0)) >= Math.abs(fin(ev.deltaY, 0))) return; items.scrollLeft += ev.deltaY; ev.preventDefault(); }, { passive: false }); } catch (e) { /* stub */ }
     side.appendChild(bull); side.appendChild(info);
     const bmBtn = btn('btn-build-menu', '', 'primary', function () { const s = stateOf(); if (!s) return; if (bm.open) M.closeBuildMenu(); else M.openBuildMenu(s, {}); }); bmBtn.title = 'Build menu (G)';
     bmBtn.appendChild(el('span', 'glyph', '🏗')); bmBtn.appendChild(el('span', 'label', 'Build')); bmBtn.appendChild(el('span', 'key', 'G'));
@@ -455,7 +457,7 @@
         window.addEventListener('keyup', function (e) { try { keyup(e.key); } catch (err) { uerr('keyup', err); } });
         window.addEventListener('blur', function () { try { for (const k in held) held[k] = false; if (live.down || live.state === 'DRAGGING') M.pointer('cancel', lastPx, lastPy, 0, M0); } catch (err) { uerr('blur', err); } });
         window.addEventListener('pointerup', function (e) { try { if (live.down && e.target !== world) M.pointer('up', lastPx, lastPy, fin(e.button, 0), modsOf(e)); } catch (err) { uerr('pointerup:window', err); } });
-        window.addEventListener('resize', function () { try { const w = fin(window.innerWidth, 1280); cls(E.palette, 'compact', w < L.compactWidth); } catch (err) { /* stub */ } try { applyScale(appliedScale); } catch (err) { /* stub */ } fitTopbar(); });
+        window.addEventListener('resize', function () { try { const w = fin(window.innerWidth, 1280); cls(E.palette, 'compact', w < L.compactWidth); } catch (err) { /* stub */ } try { applyScale(appliedScale); } catch (err) { /* stub */ } fitTopbar(); paletteFade(); });
       }
     } catch (e) { /* stub window */ }
   }
@@ -1122,15 +1124,17 @@
     if (key !== hoverKey) { hoverKey = key; hoverSince = clock; if (!key) hideTooltip(); }
   }
   function hideTooltip() { if (tipShown) { tipShown = ''; show(E.tooltip, false); } }
-  function showTooltipAt(text, px, py) {
+  /** (px, py) is the tooltip's top-left corner; `above` = (px, py) is the bottom-centre anchor instead (palette tiles: the card sits above the tile, never over its neighbours) */
+  function showTooltipAt(text, px, py, above) {
     const t = E.tooltip; if (!t) return; if (tipShown !== text) { setText(t, text); tipShown = text; }
     const vw = fin(window.innerWidth, 1280), vh = fin(window.innerHeight, 800); const w = fin(t.offsetWidth, 160) || 160, h = fin(t.offsetHeight, 24) || 24;
-    t.style.left = Math.round(clamp(px, 4, vw - w - 4)) + 'px'; t.style.top = Math.round(clamp(py, 4, vh - h - 4)) + 'px'; show(t, true);
+    const x = above ? px - w / 2 : px, y = above ? py - h : py;
+    t.style.left = Math.round(clamp(x, 4, vw - w - 4)) + 'px'; t.style.top = Math.round(clamp(y, 4, vh - h - 4)) + 'px'; show(t, true);
   }
   function updateTooltip(s) {
     if (!dom()) return;
     if (itemHover && itemHover.key) {
-      if (clock - itemHover.since >= L.tooltipMs) { const txt = itemTooltip(s, itemHover.id); showTooltipAt(txt, itemHover.px, itemHover.py - 8); E.tooltip.dataset.kind = 'item'; }
+      if (clock - itemHover.since >= L.tooltipMs) { const txt = itemTooltip(s, itemHover.id); if (itemHover.ax != null) showTooltipAt(txt, itemHover.ax, itemHover.ay, true); else showTooltipAt(txt, itemHover.px, itemHover.py - 8); E.tooltip.dataset.kind = 'item'; }
       return;
     }
     if (!hoverKey || card || s.ui.panel || live.state === 'PLACING' || live.state === 'DRAGGING' || live.state === 'PANNING') { if (!taggedGator(s)) hideTooltip(); return; }
@@ -1171,6 +1175,17 @@
   function pickItem(s, n) { const tab = currentTab(s); if (!tab) return; const rows = tab.rows.filter(function (id) { return id !== 'founders_hall'; }); const id = rows[n]; if (id) M.selectTool(s, id); }
   /** progress: a tab becomes available (+ pip) — introduceTab(state, tab) */
   M.introduceTab = function (state, tab) { try { const s = state || stateOf(); if (!s || !s.ui || !tab) return; if (!s.ui.tabsIntroduced[tab]) { s.ui.tabsIntroduced[tab] = true; if (s.ui.paletteTab !== tab) s.ui.newPips[tab] = true; } paletteDirty = true; } catch (e) { uerr('introduceTab', e); } };
+  /** palette pass: the label a tile shows when the full name will not fit two 15-px lines (the tooltip and the build menu keep the full name) */
+  const PAL_SHORT = { 'Mosquito Abatement Station': 'Mosquito Abatement', 'Bat House / Purple Martin Tower': 'Bat House', 'Marsh Restoration Program': 'Marsh Restoration', 'Coastal Studies Institute': 'Coastal Institute' };
+  let palShownTab = '';
+  /** palette pass: fade the quick-bar's left / right edge only while there is more to scroll to that side */
+  function paletteFade() {
+    try {
+      const it = E['palette-items']; if (!it || !dom()) return;
+      const sl = fin(it.scrollLeft, 0), over = fin(it.scrollWidth, 0) - fin(it.clientWidth, 0);
+      cls(it, 'fade-l', over > 1 && sl > 1); cls(it, 'fade-r', over > 1 && sl < over - 1);
+    } catch (e) { /* stub */ }
+  }
   /** rebuild tabs + items (on unlock:changed / tab change / reset) */
   M.refreshPalette = function (state) {
     try {
@@ -1180,6 +1195,7 @@
       if (cur && s.ui.paletteTab !== cur.id) s.ui.paletteTab = cur.id;
       const key = vis.map(function (t) { return t.id; }).join(',') + '|' + (cur ? cur.id : '') + '|' + (cur ? cur.rows.map(function (id) { const u = unlockOf(s, id); return id + (u.ok ? '+' : '-' + u.reason); }).join(',') : '');
       if (key === paletteKey) { refreshPips(s); return; }
+      const tabChanged = !!cur && cur.id !== palShownTab; palShownTab = cur ? cur.id : '';
       paletteKey = key; bm.dirty = true;
       const tabs = E['palette-tabs']; clear(tabs); E.tabEls = {};
       for (const t of vis) {
@@ -1193,17 +1209,19 @@
         if (id === 'founders_hall') continue;
         const r = rowOf(id); if (!r) continue; const u = unlockOf(s, id);
         const it = el('div', 'item' + (u.ok ? '' : ' locked')); it.dataset.id = id; it.setAttribute('tabindex', '0'); it.setAttribute('role', 'button');
+        // palette pass: a vertical stack, nothing overlaps: framed icon -> name (two lines reserved, centred) -> price in plain dim gold (drag rows: '$2,000/tile')
         const ic = el('canvas', 'icon'); ic.width = 64; ic.height = 64; it.appendChild(ic); call('render', 'drawIcon', ic, id);
-        it.appendChild(el('div', 'name', r.name));
-        it.appendChild(el('div', 'cost', money(r.cost) + (r.kind === 'drag' ? '/tile' : '')));
-        if (!u.ok) it.appendChild(el('div', 'cond', u.reason || 'Locked'));
+        const nm = el('div', 'name'); nm.appendChild(el('span', '', PAL_SHORT[r.name] || r.name)); it.appendChild(nm);
+        const cost = el('div', 'cost', money(r.cost)); if (r.kind === 'drag') cost.appendChild(el('span', 'per', '/tile')); it.appendChild(cost);
+        if (!u.ok) { const cd = el('div', 'cond'); cd.appendChild(el('span', 'k', 'Unlocks')); cd.appendChild(el('span', 'why', u.reason || 'Locked')); it.appendChild(cd); }
         it.addEventListener('click', function () { const st = stateOf(); if (!u.ok) { call('audio', 'play', 'invalid'); if (u.reason) M.notify(st, { kind: 'info', text: u.reason, ttl: 4000 }); return; } const t = st.ui.tool; M.selectTool(st, t && t.id === id ? null : id); });
-        it.addEventListener('pointerenter', function (ev) { itemHover = { key: 'item:' + id, id: id, since: clock, px: fin(ev.clientX, 0), py: fin(ev.clientY, 0) }; });
+        it.addEventListener('pointerenter', function (ev) { itemHover = { key: 'item:' + id, id: id, since: clock, px: fin(ev.clientX, 0), py: fin(ev.clientY, 0) }; try { const q = it.getBoundingClientRect(); itemHover.ax = q.left + q.width / 2; itemHover.ay = q.top - 8; } catch (e) { /* stub */ } });
         it.addEventListener('pointermove', function (ev) { if (itemHover && itemHover.id === id) { itemHover.px = fin(ev.clientX, itemHover.px); itemHover.py = fin(ev.clientY, itemHover.py); } });
         it.addEventListener('pointerleave', function () { if (itemHover && itemHover.id === id) { itemHover = null; hideTooltip(); } });
         items.appendChild(it); E.itemEls[id] = it;
       }
-      refreshPips(s); markToolDom(s);
+      if (tabChanged) { try { items.scrollLeft = 0; } catch (e) { /* stub */ } }
+      refreshPips(s); markToolDom(s); paletteFade();
     } catch (e) { uerr('refreshPalette', e); }
   };
   function refreshPips(s) { const pk = JSON.stringify(s.ui.newPips || {}) + '|' + s.ui.paletteTab; if (pk === pipKey) return; pipKey = pk; for (const id in E.tabEls) { show(E.tabEls[id].pip, !!s.ui.newPips[id]); cls(E.tabEls[id].el, 'active', id === s.ui.paletteTab); } }
@@ -2209,7 +2227,7 @@
       for (let k = notifs.length - 1; k >= 0; k--) { notifs[k].closed = true; } notifs.length = 0;
       odo.cash = NaN; odo.students = NaN; odo.lastStudents = NaN; odo.holdUntil = -1; odo.deltaUntil = 0;
       tk = { x: 0, line: null, seen: Math.max(0, ((state && state.ticker) || []).length - 1), w: 0, lastLen: -1, logOpen: false, cycle: 0 };
-      bubble = { since: clock, until: 0, key: '' }; objKey = ''; alertKey = ''; alertAt = -1e9; msAt = -1e9; speedKey = ''; paletteKey = ''; pipKey = ''; paletteDirty = true; capacityShown = false; skipShown = false; paletteHidden = null; hudFade = false;   // null: the first updateSetPiece re-syncs #palette and #hud.no-palette (a stale no-palette from the title / tutorial left a 0-height palette after newGame/load)
+      bubble = { since: clock, until: 0, key: '' }; objKey = ''; alertKey = ''; alertAt = -1e9; msAt = -1e9; speedKey = ''; paletteKey = ''; palShownTab = ''; pipKey = ''; paletteDirty = true; capacityShown = false; skipShown = false; paletteHidden = null; hudFade = false;   // null: the first updateSetPiece re-syncs #palette and #hud.no-palette (a stale no-palette from the title / tutorial left a 0-height palette after newGame/load)
       M.debug.open = false; M.hoverTile = -1; lastGhost = null;
       bm.open = false; bm.hover = null; bm.selected = null; bm.pulseId = null; bm.key = ''; bm.detailKey = ''; bm.dirty = true; needsCache = null; needsAt = -1e9; needsKey = ''; coach.step = -1; coach.armedAt = 0; coach.paused = false;
       for (const k in held) held[k] = false;
