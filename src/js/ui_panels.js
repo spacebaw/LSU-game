@@ -289,16 +289,24 @@
     const unboardedLowWr = list.filter(function (r) { return r.wr <= 2; }).length;
     const wt = list.find(function (r) { return r.type === 'water_tower'; });
     setText(host._windSummary, unboardedLowWr + ' unboarded buildings WR ≤ 2' + (wt ? ' · Water Tower ' + ((s.plot && true) ? 'unbraced' : 'unbraced') : ''));
-    clear(host._windList);
-    list.forEach(function (r) {
-      const row = el('div', 'row'); const cb = el('input'); cb.type = 'checkbox';
-      row._checked = function () { return !!cb.checked; }; row._id = r.id;
-      const lab = el('span', 'k', r.name + ' (WR ' + r.wr + ')');
-      row.appendChild(cb); row.appendChild(lab); host._windList.appendChild(row);
-    });
-    const queued = call('buildings', 'get', s, -1); void queued;
+    // Rebuild the checklist only when its content changes; a 500 ms refresh must never eat a checked box (playtest bug).
+    host._windSel = host._windSel || new Set();
     const boardedCount = windPickList(s).filter(function (r) { return r.boarded; }).length;
-    if (boardedCount) { const d = el('div', 'row'); d.appendChild(el('span', 'k', boardedCount + ' boarded ✓')); host._windList.appendChild(d); }
+    const key = list.map(function (r) { return r.id + ':' + r.wr; }).join('|') + '#' + boardedCount;
+    if (host._windKey !== key) {
+      host._windKey = key;
+      clear(host._windList);
+      const live = new Set(list.map(function (r) { return r.id; }));
+      for (const id of Array.from(host._windSel)) if (!live.has(id)) host._windSel.delete(id);
+      list.forEach(function (r) {
+        const row = el('label', 'row pick'); const cb = el('input'); cb.type = 'checkbox'; cb.checked = host._windSel.has(r.id);
+        cb.addEventListener('change', function () { if (cb.checked) host._windSel.add(r.id); else host._windSel.delete(r.id); });
+        row._checked = function () { return host._windSel.has(r.id); }; row._id = r.id;
+        const lab = el('span', 'k', r.name + ' (WR ' + r.wr + ')');
+        row.appendChild(cb); row.appendChild(lab); host._windList.appendChild(row);
+      });
+      if (boardedCount) { const d = el('div', 'row'); d.appendChild(el('span', 'k', boardedCount + ' boarded ✓')); host._windList.appendChild(d); }
+    }
 
     const shelter = call('buildings', 'shelter', s) || { capacity: 0, students: 0, ok: false, lines: [] };
     setText(host._shelter, 'Shelter ' + shelter.capacity.toLocaleString('en-US') + ' / ' + shelter.students.toLocaleString('en-US') + ' students ' + (shelter.ok ? '✓' : '✗') + (shelter.lines.length ? ' (' + shelter.lines.join(', ') + ')' : ''));

@@ -309,7 +309,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
 .bud-col{flex:1 1 0;min-width:0}
 .bud-apps{font-size:1.3rem;color:var(--text-dim);margin:.4rem 0 1.2rem}
 .pick-list{display:flex;flex-direction:column;gap:.4rem;max-height:20rem;overflow-y:auto;margin:.8rem 0}
-.pick-list .row{padding:.4rem 0;gap:.8rem}
+.pick-list .row{padding:.4rem 0;gap:.8rem} .pick-list .row.pick{justify-content:flex-start;cursor:pointer} .pick-list .row.pick input{width:1.8rem;height:1.8rem;accent-color:var(--gold);margin:0;flex:0 0 auto} .pick-list .row.pick .k{color:var(--text)}
 #alm-achievements.bud-grid{flex-wrap:wrap}
 #alm-achievements .bud-col{flex:1 1 16rem;padding:1rem 1.2rem;border:1px solid rgba(253,208,35,.25);border-radius:var(--radius-sm);background:rgba(255,255,255,.03)}
 #alm-achievements .bud-col.locked{opacity:.5;border-color:rgba(255,255,255,.12)}
