@@ -199,3 +199,16 @@ not done in B1 because the deck windows, clip hexes and curve transforms are all
 - **Bake budget.** Compose is cheap (≈ 0.06 ms a frame in Chrome) but a whole crowd of new looks is not: over a 3.2 ms per-frame budget
   `stuSheet` hands out the default student's sheet of that pose and queues the real one (`M.pumpBakes`), so there is no hitch; a sheet
   is updated in place, the SpriteRef stays valid.
+
+## 11. Icon conventions (written in pass B6)
+
+- **One frame, one ground.** `icon:<id>` is composed in a 64-unit frame (zoom 1 = 64×64, zoom 2 = 128×128 master, variant 1 = locked): a rounded Bayer-dithered purple backdrop lit from the
+  upper left, a 1-px gold-tinted rim, a slab under everything (purple under buildings, grass / marsh / water under runs, plants and stilts) with the SW side lit and a lit rim on the upper edges.
+  Do not add a new icon style: add a row to `buildIconPlan` (items in world px around the slab centre, a polygon, a ground, an optional target size).
+- **What each kind shows.** Footprint rows: the building with `FRONT_L` (entrance, sign, arcade on the lit SW face), painted on a scratch canvas and freed (never cache extra atlas variants for
+  an icon). Drag rows: a three-tile run along the SE axis (mask 10) so the lit SW side faces the viewer; decks (boardwalk, bridge) are drawn by `iconDeck` from the same materials as the map's
+  decks. Plants: the mature tree. Paint rows: the patch they paint.
+- **Scale.** Drawn size follows extent^0.22 between 42 and 60 px so a po'boy never vanishes beside the stadium; rows drawn ≥ 2.6× their true size carry a footprint badge ("1×1"). Sprites are
+  scaled with smoothing; frame, slab, deck and padlock are integer pixel art on the pen.
+- **Delivery.** `render.drawIcon(el, id, locked)` draws the 128 master at the element's device pixels (CSS size × dpr) so thumbnails stay 1:1 under `image-rendering: pixelated`; locked rows grey out
+  with a padlock (`.locked` ancestor detected after attach, or the `locked` argument).

@@ -164,6 +164,19 @@ ok(R.ghostSpec === null, 'ghost(null) clears');
 const pc = R.postcard(s, 'Test'); ok(typeof pc === 'string' && pc.indexOf('data:image/png') === 0, 'postcard returns a data: URL');
 const mm = win.document.createElement('canvas'); mm.width = 160; mm.height = 160; R.attachMinimap(mm); R.minimap(s);
 ok(true, 'minimap draws into an attached canvas without throwing');
+// art pass B6: drawIcon sizes the element to its device pixels (96 while it has no layout yet), locks follow the argument and the element is re-drawn on change
+{
+  const ic = win.document.createElement('canvas'); ic.width = 64; ic.height = 64;
+  Object.defineProperty(ic, 'clientWidth', { value: 0, configurable: true });
+  R.drawIcon(ic, 'dorm');
+  ok(ic.width === 96 && ic.height === 96, 'drawIcon: an element with no layout gets a 96-px canvas (got ' + ic.width + ')');
+  Object.defineProperty(ic, 'clientWidth', { value: 48, configurable: true }); R.drawIcon(ic, 'dorm');
+  ok(ic.width === 48, 'drawIcon: a laid-out 48-px element gets 48 device px at dpr 1 (got ' + ic.width + ')');
+  Object.defineProperty(ic, 'clientWidth', { value: 64, configurable: true }); R.drawIcon(ic, 'poboy', true);
+  ok(ic.width === 64 && ic._icK === true && ic._icShown === 'poboy', 'drawIcon: a 64-px element, locked look on request');
+  const eb2 = BSU.errors.size; R.drawIcon(null, 'dorm'); R.drawIcon({ width: 10, height: 10 }, 'dorm');
+  ok(BSU.errors.size === eb2, 'drawIcon tolerates a missing element and a bare object');
+}
 let passNames = R.passes().map((p) => p.name);
 ok(passNames.includes('tint') && passNames.includes('overlays') && passNames.includes('hud'), 'built-in passes registered: ' + passNames.join(','));
 let called = 0; R.registerPass('tint', () => { called++; }, 6); BSU.headless.render();

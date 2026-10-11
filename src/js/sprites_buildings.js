@@ -1748,39 +1748,276 @@
   }
 
   // ---------------------------------------------------------------------------
-  // `icon:<catalogId>` — the 64×64 palette icon: the base sprite scaled to fit 60×60, centred.
-  // Drag/paint rows show their terrain tile (mask 5, N+S straight); Pilings shows a dorm on stilts
-  // at half scale; everything else is the row's own variant-0 building sprite.
+  // `icon:<catalogId>` — art pass B6, the catalog icon (build-menu cards, quick-bar, inspector head, ghost fallback).
+  // One composition for all 44 rows in a 64-unit frame, painted natively at zoom 1 (64×64) and zoom 2 (128×128, what the
+  // UI uses: render.drawIcon downsizes it with smoothing to the element's device pixels). Variant bit 1 = the locked look
+  // (greyscale + dim + a padlock). Every icon shares the camera (the game's 2:1 iso, SW face lit, entrance on it) and the
+  // ground plane: a slab plate under the footprint (footprint rows) or a ground swatch (drag, paint and plant rows).
+  //   · footprint rows  — the row's own sprite (FRONT_L: door/sign/arcade on the lit SW face) on a purple slab the size of
+  //     its footprint + a margin; pilings stand on a water slab; stadium shows tier I.
+  //   · drag rows       — a three-tile run (mask E+W: its SW side faces the viewer) of the very stamps the map's decks and
+  //     paths are tuned against (`surf:1..5`, levee, floodwall, canal; the surge barrier is a gate between two wall tiles),
+  //     on grass / marsh / water.
+  //   · plant rows      — the mature tree (stage 2, silhouette 0; azalea in bloom) on a lawn disc.
+  //   · preserve        — a 2×2 marsh patch with its gold boundary posts.
+  // Scale: the true size would make a po'boy vanish beside the stadium, so the drawn extent follows extent^ICON_EXP
+  // (0.22) between ICON_MIN and ICON_BOX, with plants and runs given their own target; the slab keeps the real tile
+  // grid (a 1×1 row stands on one tile of slab, a dorm on 3×2), which is the scale badge. Sprites are blitted with
+  // smoothing (they are scaled by a fraction); the frame, slab and padlock are integer pixel art on the pen.
   // ---------------------------------------------------------------------------
-  const ICON_SURF = { path: 'surf:1', road: 'surf:2', boardwalk: 'surf:3', gator_fence: 'surf:4', bridge: 'surf:5' };
-  function paintIcon(ctx, spec) {
-    const id = spec.sub;
-    const dims = begin(ctx, ICON, ICON, spec.zoom);
-    let src = null, scale = null;
-    if (ICON_SURF[id]) src = M.get(ICON_SURF[id], 5, 0, 1);
-    else if (id === 'levee') src = M.get('levee', 5, 0, 1);
-    else if (id === 'canal') src = M.get('canal', 5, 0, 1);
-    else if (id === 'floodwall') src = M.get('floodwall', 5, 0, 1);
-    else if (id === 'preserve') src = M.get('preservePost', 5, 0, 1);
-    else if (id === 'live_oak') src = M.get('oak', 2, 0, 1);
-    else if (id === 'pilings') { src = M.get('dorm', SPR.PILINGS, 0, 1); scale = 0.5; }
-    else if (id === 'stadium') src = M.get('stadium', 1 << SPR.TIER_SHIFT, 0, 1);   // tier 0 is the construction site; the palette shows tier I
-    else src = M.get(id, 0, 0, 1);
-    if (src && src.canvas) {
-      const S = dims.S;
-      // crop a footprint building to its structure (the apron margin would shrink the thumbnail)
-      let sx = src.sx, sy = src.sy, sw = src.sw, sh = src.sh;
-      const row = BSU.data && BSU.data.catalog ? BSU.data.catalog[id] : null;
-      if (row && row.kind === 'footprint' && !OWN_GROUND[specialOf(row)] && id !== 'stadium') {
-        const g = M.buildingBox(row, 0, 1, 0);
-        const x0 = Math.max(0, g.bcx - (g.bw >> 1) - 6), x1 = Math.min(src.sw, g.bcx + (g.bw >> 1) + 6), y1 = Math.min(src.sh, g.by + 8);
-        if (x1 - x0 >= 16 && y1 >= 16) { sx += x0; sw = x1 - x0; sh = y1; }
-      }
-      if (scale === null) scale = Math.min(1, 60 / Math.max(sw, sh));
-      const dw = Math.max(1, Math.round(sw * scale)), dh = Math.max(1, Math.round(sh * scale));
-      const dx = Math.round((dims.w * S - dw) / 2), dy = Math.round((dims.h * S - dh) / 2);
-      try { ctx.imageSmoothingEnabled = false; ctx.drawImage(src.canvas, sx, sy, sw, sh, dx, dy, dw, dh); } catch (e) { /* headless stub */ }
+  const ICON_BOX = 60, ICON_MIN = 42, ICON_REF = 400, ICON_EXP = 0.22;
+  const ICON_RUN = {
+    path: { stamps: ['surf:1'], ground: 'grass' }, road: { stamps: ['surf:2'], ground: 'grass' },
+    boardwalk: { deck: 'boardwalk', ground: 'marsh' }, bridge: { deck: 'bridge', ground: 'water' },
+    gator_fence: { stamps: ['surf:4'], ground: 'grass' }, levee: { stamps: ['levee'], ground: 'grass' },
+    floodwall: { stamps: ['floodwall'], ground: 'grass' }, canal: { stamps: ['canal'], ground: 'grass' },
+    surge_barrier: { stamps: ['floodwall', 'surge_barrier', 'floodwall'], ground: 'grass' }
+  };
+  // slab tones: top [base, light, shadow], lit SW face, shadow SE face, lit rim
+  const ICON_GROUND = {
+    slab: { top: ['#4C3C73', '#5A4A83', '#42345F'], left: '#33264F', right: '#241A3A', rim: '#7C69AC' },
+    grass: { top: ['#6E8F3C', '#8EAC50', '#4B5E32'], left: '#7A5A38', right: '#523D2F', rim: '#B1C866' },
+    marsh: { top: ['#5A6B3A', '#7A884E', '#3E4830'], left: '#4C4530', right: '#36312A', rim: '#9EA664' },
+    water: { top: ['#5A8A82', '#7FBBA3', '#44686A'], left: '#34595B', right: '#1F3A3E', rim: '#C4EBCB' }
+  };
+  const ICON_BG = ['#3E2F63', '#35285A', '#2C2150', '#241A45', '#1D1438'];     // frame backdrop, lit upper-left → shadow lower-right
+  const ICON_RIM = ['#9A8038', '#7C6830', '#61522C'];                              // 1-px gold-tinted rim (upper-left lit → lower-right)
+  const ICON_R = 8;                                                                // frame corner radius
+  let iconRows = null;                                                             // frame inset per row (rounded corners)
+  function iconFrameRows() {
+    if (iconRows) return iconRows;
+    iconRows = new Array(ICON);
+    for (let y = 0; y < ICON; y++) {
+      const d = y < ICON_R ? ICON_R - y - 0.5 : y >= ICON - ICON_R ? y - (ICON - ICON_R) + 0.5 : -1;
+      iconRows[y] = d < 0 ? 0 : ICON_R - Math.round(Math.sqrt(Math.max(0, ICON_R * ICON_R - d * d)));
     }
+    return iconRows;
+  }
+  function iconInside(x, y) { if (x < 0 || y < 0 || x >= ICON || y >= ICON) return false; const k = iconFrameRows()[y]; return x >= k && x < ICON - k; }
+  /** the rounded backdrop: a Bayer-dithered 5-tone gradient lit from the upper left (frame rows are 1× px; the pen scales) */
+  function iconBackdrop(P) {
+    const rows = iconFrameRows();
+    for (let y = 0; y < ICON; y++) {
+      let x = rows[y], run = x, cur = -1;
+      const end = ICON - rows[y];
+      for (; x <= end; x++) {
+        let k = -2;
+        if (x < end) { const t = (y * 0.74 + x * 0.26) / 63; k = Math.max(0, Math.min(4, Math.floor(t * 4 + 0.5 + M.bayer(x, y) * 0.6))); }
+        if (k !== cur) { if (cur >= 0 && x > run) P.rect(run, y, x - run, 1, ICON_BG[cur]); cur = k; run = x; }
+      }
+    }
+  }
+  function iconRim(P, locked) {
+    for (let y = 0; y < ICON; y++) for (let x = 0; x < ICON; x++) {
+      if (!iconInside(x, y)) continue;
+      if (iconInside(x - 1, y) && iconInside(x + 1, y) && iconInside(x, y - 1) && iconInside(x, y + 1)) continue;
+      const t = (x + y) / 126;
+      P.px(x, y, locked ? (t < 0.5 ? '#6B6280' : '#4A4260') : ICON_RIM[t < 0.34 ? 0 : t < 0.66 ? 1 : 2]);
+    }
+  }
+  /** convex polygon (float vertices, 1× px) → flat [y, x0, x1, …] integer row spans */
+  function iconSpans(pts, dy) {
+    let y0 = Infinity, y1 = -Infinity;
+    for (const p of pts) { if (p[1] < y0) y0 = p[1]; if (p[1] > y1) y1 = p[1]; }
+    const out = [];
+    for (let y = Math.round(y0 + dy); y < Math.round(y1 + dy); y++) {
+      const yc = y + 0.5 - dy; let l = Infinity, r = -Infinity;
+      for (let i = 0; i < pts.length; i++) {
+        const a = pts[i], b = pts[(i + 1) % pts.length];
+        if ((a[1] <= yc && b[1] > yc) || (b[1] <= yc && a[1] > yc)) { const x = a[0] + (yc - a[1]) / (b[1] - a[1]) * (b[0] - a[0]); if (x < l) l = x; if (x > r) r = x; }
+      }
+      if (r > l) out.push(y, Math.round(l), Math.round(r));
+    }
+    return out;
+  }
+  /** a slab: the polygon's top face with a th-px thick side (SW face lit, SE face shadow), a lit rim on the upper-left edges and a speckled top */
+  function iconSlab(P, pts, th, G, seed) {
+    let bx = 0, by = -Infinity;
+    for (const p of pts) if (p[1] > by) { by = p[1]; bx = p[0]; }
+    const side = iconSpans(pts, th), cut = Math.round(bx);
+    for (let i = 0; i < side.length; i += 3) {
+      const y = side[i], a = side[i + 1], b = side[i + 2];
+      if (a < cut) P.rect(a, y, Math.min(b, cut) - a, 1, G.left);
+      if (b > cut) P.rect(Math.max(a, cut), y, b - Math.max(a, cut), 1, G.right);
+    }
+    const top = iconSpans(pts, 0);
+    for (let i = 0; i < top.length; i += 3) {
+      const y = top[i], a = top[i + 1], b = top[i + 2];
+      P.rect(a, y, b - a, 1, G.top[0]);
+      for (let x = a; x < b; x++) { const h = hash(seed, x * 131 + y * 7) % 100; if (h < 7) P.px(x, y, G.top[1]); else if (h > 95) P.px(x, y, G.top[2]); }
+    }
+    let cx = 0, cy = 0; for (const p of pts) { cx += p[0] / pts.length; cy += p[1] / pts.length; }
+    for (let i = 0; i < pts.length; i++) {   // lit rim along the upper edges: the upper-left one bright, the upper-right one in the base tone
+      const a = pts[i], b = pts[(i + 1) % pts.length];
+      if ((a[1] + b[1]) / 2 >= cy - 0.5) continue;
+      P.line(a[0], a[1], b[0], b[1], (a[0] + b[0]) / 2 < cx ? G.rim : G.top[1]);
+    }
+  }
+  /** the footprint badge ("1×1") for rows drawn much larger than their true size: a dark chip with gold 3×5 digits, lower left */
+  function iconBadge(P, str, x, y) {
+    const w = str.length * 4 + 2;
+    P.rect(x + 1, y, w - 2, 9, '#1A1230'); P.rect(x, y + 1, w, 7, '#1A1230');
+    P.hline(x + 1, y, w - 2, '#6E5A2C'); P.hline(x + 1, y + 8, w - 2, '#6E5A2C'); P.vline(x, y + 1, 7, '#6E5A2C'); P.vline(x + w - 1, y + 1, 7, '#6E5A2C');
+    P.text(str, x + 2, y + 2, '#FDD023');
+  }
+  function iconPadlock(P, x, y) {
+    const g = ['..###..', '.#...#.', '.#...#.', '#######', '#######', '###.###', '#######', '#######'];
+    for (let r = 0; r < g.length; r++) for (let c = 0; c < 7; c++) {
+      if (g[r][c] !== '#') continue;
+      P.px(x + c, y + r, r < 3 ? '#D8D2E8' : (r === 3 ? '#FFE680' : (r === 5 && c === 3 ? '#2B1246' : (c === 0 || r === 7 ? '#B58500' : '#F5B700'))));
+    }
+  }
+
+  /** the boardwalk and the Pedestrian Bridge as the map draws them, three tiles on the plate (u along the run, v across it, tile units):
+   *  stilts / piers, the deck slab with its lit SW side, plank courses or expansion joints, then the rails (cypress rail with posts; purple
+   *  truss with gold caps and braces). Heights are logical px above the plate. */
+  function iconDeck(P, kind, s, ox, oy) {
+    const br = kind === 'bridge', hw = 0.36, rise = br ? 5 : 4, dth = 2, U = 1.5;
+    const pt = (u, v, h) => { const w = uv(u, v); return [w[0] * s + ox, w[1] * s + oy - (h || 0)]; };
+    const fill = (pts, c) => { const sp = iconSpans(pts, 0); for (let i = 0; i < sp.length; i += 3) P.rect(sp[i + 1], sp[i], sp[i + 2] - sp[i + 1], 1, c); };
+    const quad = (u0, u1, v0, v1, h) => [pt(u0, v0, h), pt(u1, v0, h), pt(u1, v1, h), pt(u0, v1, h)];
+    const seg = (u0, v0, h0, u1, v1, h1, c) => { const a = pt(u0, v0, h0), b = pt(u1, v1, h1); P.line(a[0], a[1], b[0], b[1], c); };
+    const post = (u, v, h0, h1, c) => { const a = pt(u, v, h0), b = pt(u, v, h1); P.vline(a[0], Math.round(b[1]), Math.max(1, Math.round(a[1] - b[1]) + 1), c); };
+    // shadow on the plate, then the supports under the near (SW) edge and the far one
+    fill(quad(-U, U, -hw + 0.1, hw + 0.1, 0).map((p) => [p[0] + 1.5, p[1] + 0.5]), br ? '#2C4D4D' : '#3A3322');
+    for (let u = -U + 0.25; u < U; u += br ? 1 : 0.5) {
+      if (br) { const a = pt(u, hw - 0.04, rise - dth), b = pt(u, hw - 0.04, 0); P.rect(Math.round(a[0]) - 1, Math.round(a[1]), 3, Math.max(1, Math.round(b[1] - a[1]) + 1), '#8E8E94'); P.vline(Math.round(a[0]) - 1, Math.round(a[1]), Math.max(1, Math.round(b[1] - a[1]) + 1), '#B8B8BC'); }
+      else post(u, hw - 0.04, rise - dth, 0, '#2A201F');
+    }
+    // deck: side, top, courses
+    fill(quad(-U, U, -hw, hw, rise - dth), br ? '#6E6E76' : '#523D2F');
+    fill(quad(-U, U, -hw, hw, rise), br ? '#B8B8BC' : '#9B6A48');
+    if (br) {
+      seg(-U, -hw, rise, U, -hw, rise, '#8E8E94'); seg(-U, hw, rise, U, hw, rise, '#8E8E94');
+      for (let u = -U + 0.5; u < U; u += 0.5) seg(u, -hw, rise, u, hw, rise, '#9A9AA2');
+      seg(-U, 0, rise, U, 0, rise, '#E6E6EA');
+    } else {
+      for (let u = -U + 0.12, k = 0; u < U; u += 0.12, k++) seg(u, -hw + 0.02, rise, u, hw - 0.02, rise, k % 3 === 2 ? '#C58D62' : '#7C5236');
+      seg(-U, -hw, rise, U, -hw, rise, '#5A3A28'); seg(-U, hw, rise, U, hw, rise, '#5A3A28');
+    }
+    // rails: far one first (it sits behind the deck surface), the near one over it
+    for (const side of [-1, 1]) {
+      const v = side * hw, rh = br ? 5 : 3;
+      for (let u = -U; u <= U + 0.01; u += br ? 0.25 : 0.5) {
+        if (br) { post(u, v, rise, rise + rh, '#5E2CA5'); if (Math.round((u + U) / 0.25) % 4 === 0) { const a = pt(u, v, rise + rh); P.px(a[0], a[1] - 1, '#FDD023'); } }
+        else post(u, v, rise, rise + rh, side > 0 ? '#5A4531' : '#3A2A1E');
+      }
+      if (br) { seg(-U, v, rise + rh, U, v, rise + rh, side > 0 ? '#7F5BC5' : '#461D7C'); seg(-U, v, rise + 1, U, v, rise + 1, '#461D7C'); }
+      else seg(-U, v, rise + rh, U, v, rise + rh, side > 0 ? '#7F674A' : '#3A2A1E');
+    }
+  }
+
+  // --- the plan: what stands on what, in world px (1× atlas px; origin = the centre of the ground plate) ---------------
+  const ICON_PLANS = new Map();
+  const uv = (u, v) => [32 * (u - v), 16 * (u + v)];
+  function itemBox(box, it) {
+    let g = it.geo;
+    if (!g) { const r = M.get(it.id, it.v, 0, 1); if (!r) return false; g = { ox: r.ox, oy: r.oy, w: r.sw, h: r.sh }; }
+    const x0 = it.ax + g.ox, y0 = it.ay + g.oy, x1 = x0 + g.w, y1 = y0 + g.h;
+    if (x0 < box.x0) box.x0 = x0; if (y0 < box.y0) box.y0 = y0; if (x1 > box.x1) box.x1 = x1; if (y1 > box.y1) box.y1 = y1;
+    return true;
+  }
+  /** the sprite an icon item stands for: an atlas entry, or (footprint rows) the building painted for this icon alone with the entrance on the lit
+   *  SW face — `tmp` canvases are freed right after the blit so the atlas never holds the extra variant */
+  function iconSource(it, z) {
+    if (!it.bld) return M.get(it.id, it.v, 0, z);
+    const c = M.newCanvas(1, 1), g = M.ctx2d(c), geo = M.paintBuilding(g, it.bld, it.v, 0, z, hash(strHash(it.id), it.v), 0);
+    return { canvas: c, sx: 0, sy: 0, sw: c.width, sh: c.height, ox: geo.ox * z, oy: geo.oy * z, tmp: true };
+  }
+  function polyBox(box, pts, th) { for (const p of pts) { if (p[0] < box.x0) box.x0 = p[0]; if (p[1] < box.y0) box.y0 = p[1]; if (p[0] > box.x1) box.x1 = p[0]; if (p[1] + th > box.y1) box.y1 = p[1] + th; } }
+  function diamondPts(hw, hh) { return [[-hw, 0], [0, -hh], [hw, 0], [0, hh]]; }
+  function buildIconPlan(id) {
+    const cat = BSU.data && BSU.data.catalog, row = cat ? cat[id] : null;
+    const pl = { id: id, items: [], poly: null, ground: 'slab', T: 0, run: false, th: 4 };
+    if (ICON_RUN[id]) {
+      const R = ICON_RUN[id]; pl.run = true; pl.ground = R.ground; pl.T = ICON_BOX; pl.deck = R.deck || '';
+      const n = !R.stamps ? 0 : R.stamps.length === 1 ? 3 : R.stamps.length;
+      for (let i = 0; i < n; i++) { const sid = R.stamps.length === 1 ? R.stamps[0] : R.stamps[i]; pl.items.push({ id: sid, v: sid === 'surge_barrier' ? 0 : 10, ax: (i - (n - 1) / 2) * 32, ay: (i - (n - 1) / 2) * 16 }); }
+      const m = n || 3;
+      pl.poly = [uv(-m / 2 - 0.08, -0.58), uv(m / 2 + 0.08, -0.58), uv(m / 2 + 0.08, 0.58), uv(-m / 2 - 0.08, 0.58)];
+    } else if (id === 'preserve') {
+      pl.ground = 'marsh'; pl.T = 58;
+      pl.poly = [uv(-0.6, -0.6), uv(0.6, -0.6), uv(0.6, 0.6), uv(-0.6, 0.6)];
+      pl.items.push({ id: 'preservePost', v: 9, ax: 0, ay: 0 });
+      for (const r of [[-7, -1, 0], [6, 1, 1], [-1, 7, 2]]) pl.items.push({ id: 'reeds', v: r[2], ax: r[0], ay: r[1] });
+      pl.items.push({ id: 'preservePost', v: 6, ax: 0, ay: 0 });
+    } else if (id === 'live_oak' || id === 'cypress' || id === 'azalea') {
+      pl.ground = 'grass';
+      if (id === 'live_oak') { pl.items.push({ id: 'oak', v: M.treeVariant(2, false, false, 0), ax: 0, ay: 0 }); pl.poly = diamondPts(56, 28); pl.T = ICON_BOX; }
+      else if (id === 'cypress') { pl.items.push({ id: 'cypress', v: M.treeVariant(2, false, false, 0), ax: 0, ay: 0 }); pl.poly = diamondPts(34, 17); pl.T = 58; }
+      else { for (const p of [[-11, -2, 0], [11, -1, 1], [0, 7, 2]]) pl.items.push({ id: 'azalea', v: M.treeVariant(2, false, true, p[2]), ax: p[0], ay: p[1] }); pl.poly = diamondPts(32, 16); pl.T = 50; }
+    } else if (row && row.kind === 'footprint' || id === 'pilings') {
+      const rid = id === 'pilings' ? 'dorm' : id, rr = cat[rid] || row;
+      const v = id === 'pilings' ? SPR.PILINGS | SPR.FRONT_L : id === 'stadium' ? (1 << SPR.TIER_SHIFT) | SPR.FRONT_L : SPR.FRONT_L;
+      const bb = M.buildingBox(rr, v, 1, 0);
+      pl.items.push({ id: rid, v: v, ax: bb.ax - bb.gcx, ay: bb.ay - bb.gcy, bld: rr, geo: { ox: bb.ox, oy: bb.oy, w: bb.w, h: bb.h } });
+      pl.poly = diamondPts(bb.gw / 2 + 6, bb.gh / 2 + 3);
+      pl.foot = bb.fw + '×' + bb.fh;
+      pl.ground = id === 'pilings' ? 'water' : 'slab';
+    } else {   // anything else the catalog may grow: its own sprite on a slab
+      pl.items.push({ id: id, v: 0, ax: 0, ay: 0 }); pl.poly = diamondPts(40, 20);
+    }
+    const box = { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity };
+    polyBox(box, pl.poly, pl.th);
+    pl.items = pl.items.filter((it) => itemBox(box, it));
+    pl.box = box; pl.ext = Math.max(box.x1 - box.x0, box.y1 - box.y0);
+    return pl;
+  }
+  function iconPlan(id) { let pl = ICON_PLANS.get(id); if (pl === undefined) { pl = buildIconPlan(id); ICON_PLANS.set(id, pl); } return pl; }
+  M.iconPlan = iconPlan;
+
+  /** the scale (logical px per world px) and offset of a plan's world origin in the 64-px frame */
+  function iconFit(pl) {
+    const bw = pl.box.x1 - pl.box.x0, bh = pl.box.y1 - pl.box.y0;
+    const T = pl.T || Math.max(ICON_MIN, Math.min(ICON_BOX, ICON_BOX * Math.pow(pl.ext / ICON_REF, ICON_EXP)));
+    const s = Math.min(T / pl.ext, ICON_BOX / bw, ICON_BOX / bh);
+    return { s: s, T: T, ox: ICON / 2 - (pl.box.x0 + bw / 2) * s, oy: ICON / 2 - 1 - (pl.box.y0 + bh / 2) * s, w: bw * s, h: bh * s, badge: !!pl.foot && s >= 2.6 * ICON_BOX / ICON_REF };
+  }
+  M.iconFit = function (id) { const pl = iconPlan(id); return pl ? iconFit(pl) : null; };
+
+  /** the backdrop and the two rims are the same for every icon: painted once per zoom on a scratch canvas, then blitted */
+  const ICON_TPL = {};
+  function iconTemplate(kind, zoom) {
+    const k = kind + zoom; let c = ICON_TPL[k];
+    if (!c) {
+      c = M.newCanvas(ICON * zoom, ICON * zoom); const P = pen(M.ctx2d(c), zoom);
+      if (kind === 'bg') iconBackdrop(P); else iconRim(P, kind === 'rimLocked');
+      ICON_TPL[k] = c;
+    }
+    return c;
+  }
+  function paintIcon(ctx, spec) {
+    const id = spec.sub, locked = (spec.variant & 1) === 1;
+    const dims = begin(ctx, ICON, ICON, spec.zoom), S = dims.S, P = pen(ctx, spec.zoom);
+    try { ctx.drawImage(iconTemplate('bg', S), 0, 0); } catch (e) { /* headless stub */ }
+    const pl = iconPlan(id);
+    if (pl) {
+      const f = iconFit(pl), s = f.s, ox = f.ox, oy = f.oy;
+      const pts = pl.poly.map((p) => [p[0] * s + ox, p[1] * s + oy]);
+      iconSlab(P, pts, Math.max(2, Math.round(pl.th * s * 1.4)), ICON_GROUND[pl.ground] || ICON_GROUND.slab, hash(strHash(id), 0x1c0));
+      if (pl.deck) iconDeck(P, pl.deck, s, ox, oy);
+      const src2 = s * S > 0.75;
+      try { ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high'; } catch (e) { /* stub */ }
+      for (const it of pl.items) {
+        const z = src2 ? 2 : 1, r = iconSource(it, z); if (!r || !r.canvas) continue;
+        const dx = (it.ax * s + ox) * S + (r.ox / z) * s * S, dy = (it.ay * s + oy) * S + (r.oy / z) * s * S;
+        try { ctx.drawImage(r.canvas, r.sx, r.sy, r.sw, r.sh, dx, dy, (r.sw / z) * s * S, (r.sh / z) * s * S); } catch (e) { /* headless stub */ }
+        if (r.tmp) { try { r.canvas.width = 1; r.canvas.height = 1; } catch (e) { /* stub */ } }
+      }
+      try { ctx.imageSmoothingEnabled = false; } catch (e) { /* stub */ }
+      if (f.badge) iconBadge(P, pl.foot, 4, 5);
+    }
+    if (locked) {
+      const rows = iconFrameRows();
+      try {
+        ctx.globalCompositeOperation = 'saturation'; for (let y = 0; y < ICON; y++) P.rect(rows[y], y, ICON - 2 * rows[y], 1, '#808080');
+        ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 0.1;
+        for (let y = 0; y < ICON; y++) P.rect(rows[y], y, ICON - 2 * rows[y], 1, '#1A1230');
+        ctx.globalAlpha = 1;
+      } catch (e) { /* stub */ }
+    }
+    try { ctx.drawImage(iconTemplate(locked ? 'rimLocked' : 'rim', S), 0, 0); } catch (e) { /* headless stub */ }
+    if (locked) iconPadlock(P, 51, 5);
     return { w: dims.w, h: dims.h, ox: -(dims.w >> 1), oy: -(dims.h >> 1) };
   }
 

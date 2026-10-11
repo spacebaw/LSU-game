@@ -2317,7 +2317,31 @@
   };
   /** 48×48 portrait / palette icon helpers for ui (draw the atlas entry centred in the canvas) */
   M.drawPortrait = function (el, frame) { drawCentered(el, 'thibodeaux', 0, frame | 0); };
-  M.drawIcon = function (el, id) { drawCentered(el, 'icon:' + id, 0, 0); };
+  /** catalog icon (art pass B6): the 2× master of `icon:<id>` (variant 1 = locked) smoothed to the element's device pixels (CSS size × dpr), so the 48-px
+   *  cards / quick-bar and the 64-px detail heads are both 1:1 crisp under `image-rendering: pixelated`. An element that is not laid out yet (a card is built
+   *  before it is attached) gets 96 px now and is re-drawn by one ResizeObserver once it has a size and a `.locked` ancestor (or by `locked` when given). */
+  let iconRO = null;
+  function paintIconEl(el) {
+    const dpr = Math.min(3, Math.max(1, (typeof window !== 'undefined' && window.devicePixelRatio) || 1)), css = el.clientWidth | 0;
+    const px = css > 0 ? Math.max(24, Math.min(192, Math.round(css * dpr))) : 96;
+    const lk = el._icLock !== undefined ? el._icLock : !!(el.closest && el.closest('.locked'));
+    if (el._icDone && el._icPx === px && el._icK === lk && el._icId === el._icShown) return;
+    if (el.width !== px || el.height !== px) { el.width = px; el.height = px; }
+    const g = ctx2d(el); g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, px, px);
+    const ref = S().get('icon:' + el._icId, lk ? 1 : 0, 0, 2); if (!ref) return;
+    try { g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high'; } catch (e) { /* stub */ }
+    g.drawImage(ref.canvas, ref.sx, ref.sy, ref.sw, ref.sh, 0, 0, px, px);
+    el._icDone = 1; el._icPx = px; el._icK = lk; el._icShown = el._icId;
+  }
+  M.drawIcon = function (el, id, locked) {
+    if (!el) return;
+    try {
+      el._icId = id; el._icLock = locked === undefined ? undefined : !!locked;
+      paintIconEl(el);
+      if (!iconRO && typeof ResizeObserver === 'function') iconRO = new ResizeObserver(function (list) { for (const en of list) { const t = en.target; if (!t.isConnected) { iconRO.unobserve(t); t._icObs = 0; } else { try { paintIconEl(t); } catch (e) { rerr('drawIcon', e); } } } });
+      if (iconRO && !el._icObs) { el._icObs = 1; iconRO.observe(el); }
+    } catch (e) { rerr('drawIcon', e); }
+  };
   function drawCentered(el, id, variant, frame) {
     if (!el) return;
     try {

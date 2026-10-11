@@ -739,3 +739,97 @@ Josh after playing: "the default speed of the time movement is still too high." 
 **Saves.** No schema change and no migration: old saves have `dayTick < 100` (now just a short day), calendar days and `untilDay` are days, in-flight rain events carry their own `steps`.
 
 **Tests updated to derive from params (not literals):** `contract.test.mjs` (ticksPerDay 200 + derivations), `smoke.mjs` (year = `ticksPerYear`), `hydro.test.mjs` (`dt` / `SPD`), `weather.test.mjs` (`TPD`, `YEAR`, `CONE`; the year-1 freeze gives day 115, 400 sky phases), `session.test.mjs`, `terrain.test.mjs`, `render.test.mjs` (construction in days; watched-game length is rng-driven so the skip waits for the end), `progress.test.mjs` (a year, 3 days).
+
+## art pass B6
+
+Catalog icons (PLAN_FIDELITY B6), following docs/ART_STYLE.md §11. All 44 rows (incl. the Pedestrian Bridge), every drag tool, the paint row, the pilings upgrade
+and the plants are re-composed from the upgraded painters into one frame. Scratchpad: `a6_sheet.mjs` (contact sheet, 2×) → `art6-00-before/after-icons.png`,
+`a6_menu.mjs` (build menu 1440×1100, seed 42 skipTutorial, `closeBuildMenu` + `paletteTab` + `openBuildMenu`) → `art6-01*-before/after-menu*.png` and
+`art6-02*-before/after-palette*.png`, `a6_game.mjs` (every icon as the UI draws it, 48 / 64 css px at dpr 1 and 2) → `art6-03-after*-ingame.png`. Zero console errors.
+
+- **sprites_buildings.js `paintIcon` (+ `iconPlan`, `iconFit`, `iconSlab`, `iconDeck`, `iconBackdrop`, `iconBadge`, `iconPadlock`)** — `icon:<id>` is painted natively at
+  zoom 1 (64×64) and zoom 2 (128×128, the master the UI uses); variant 1 = locked. Frame: a rounded 64-unit backdrop (radius 8) from a Bayer-dithered 5-tone purple
+  gradient lit from the upper left, a 1-px gold-tinted rim (`#9A8038 → #61522C`); backdrop and rims are painted once per zoom on scratch canvases and blitted.
+  Every icon stands on the same ground plane: a slab (top face + 2-px SW-lit / SE-shadow side, lit rim on the upper edges) — purple under footprint rows (the
+  footprint diamond + 6 px), grass / marsh / water under runs, plants and the pilings. **Footprint rows** draw the row's own building with `SPR.FRONT_L` (entrance, sign,
+  arcade on the lit SW face) painted on a scratch canvas through `M.paintBuilding` and freed right after the blit, so the atlas never holds the extra variant (the
+  first draft cached 33 `FRONT_L` entries: +5.6 MB; now one 64-KB master per icon); pilings = the dorm on stilts over a water slab, stadium = tier I. **Drag rows**
+  = a three-tile run along the SE axis (mask E+W = 10, so the lit SW side faces the viewer): path / road / gator fence / levee / floodwall / canal are the tile stamps
+  (`surf:1/2/4`, `levee`, `floodwall`, `canal`) on a grass strip; the surge barrier is the gate between two floodwall tiles; the boardwalk and the Pedestrian Bridge
+  are drawn by `iconDeck` as the map draws them (stilts / piers, lit deck side, rust planks with gaps or concrete with joints and a light centre line, cypress rails with
+  posts / purple truss with gold caps) because the `surf:3/5` stamps are only the ghost fallback. **Plants**: mature oak (stage 2, silhouette 0), mature cypress, three
+  blooming azaleas, each on a lawn disc; **preserve**: a marsh tile with reeds and its gold boundary posts (back edges behind the reeds, front edges over them).
+- **Scale policy** (`iconFit`): drawn extent = `60 · (extent / 400)^0.22` clamped to 42..60 (stadium 60, library 54, dorm 51, po'boy 42), runs and plants have their own
+  target; the sprite is scaled by a fraction with smoothing, the frame / slab / deck stay integer pixel art on the pen. The scale badge is a chip with the footprint ("1×1",
+  3×5 gold digits, top left) on the rows drawn ≥ 2.6× their true size (the six 1×1 rows). Locked: `saturation` blend to grey + 10 % dark + a padlock top right.
+- **render.js `drawIcon(el, id, locked)`** — the only edit outside sprites_buildings.js: instead of `drawCentered` at 1× it sizes the canvas to its device pixels
+  (`clientWidth × devicePixelRatio`, 24..192) and draws the 128 master with `imageSmoothingQuality = 'high'`, so the 48-px cards / quick-bar and the 64-px detail heads
+  are both 1:1 under `image-rendering: pixelated` (checked at dpr 1 and 2). An element with no layout yet (a card is built before it is attached) gets 96 px and one
+  `ResizeObserver` re-draws it when it has a size and again when it sits under a `.locked` ancestor (`locked` can also be passed; ui.js does not need to change). Re-draws
+  are skipped when size, lock and id are unchanged; the observer drops disconnected elements.
+- **Overlay / tool glyphs are not canvas-drawn** — bulldozer `🔨`, undo `↶`, Build `🏗`, the sky glyph and the overlay buttons (letters F W K P C E) are emoji / unicode /
+  text in `ui.js`, so they were left alone.
+- **Before / after (same game, same UI):** contact sheet (`art6-00`) — 44 cropped sprites of mixed scale on nothing (a lone grass slab for the levee, a floodwall chip,
+  a dark canal sliver, tiny cypress / azalea saplings, gold dots for the preserve) → one frame, three-tile runs, mature plants, the boardwalk / bridge with their decks,
+  a size order that holds (po'boy < dorm < library < stadium); build menu (`art6-01`, swamp) — the levee / canal / floodwall cards show runs, the locked floodwall a grey icon
+  with a padlock, the 64-px detail head is crisp; `-01b` essentials, `-01c` academic: framed lecture hall / library / engineering with padlocks on the locked ones; palette
+  (`art6-02`, paths) — path / road / boardwalk / bridge as runs (before: a lone plank, a black chip), swamp (`-02c`) — pump, pond, pilings, fence, mosquito abatement, bat
+  house, wildlife post, preserve, surge barrier read at 48 px; `art6-03` — every icon at 48 css px dpr 1 and dpr 2, locked every fifth.
+- **Numbers (Chrome, machine at load 150, so fps is not meaningful):** all 44 masters bake in 83 ms (1.9 ms avg, union 5.8 ms the slowest); first open of the swamp tab
+  (13 icons) 55 ms before the backdrop/rim templates, 34 ms after (before B6: 9 ms); atlas `memoryMB` 25.1 → 27.0 after visiting three tabs (44 masters = 2.9 MB when all
+  are baked), `render.perf().memMB` 59.9 → 61.8 (budget 64).
+- **Tests** — `sprites_buildings.test` +20 (44 rows have 64 / 128 / locked-128 icons, anchors, run / deck / ground per kind, FRONT_L / PILINGS / tier I / mature plants,
+  footprint labels, size order and the 38-px minimum, the badge only on 1×1 rows, every icon inside the frame, a footprint icon adds exactly one atlas entry, cached
+  once); `render.test` +4 (`drawIcon` 96 px without layout, 48 / 64 device px, locked on request, no error on a bare object).
+- **Not done, noted:** the first open of a tab bakes its icons on the spot (≈ 15–35 ms; a warm-up in idle time would hide it); `drawIcon` re-draws only when the element's CSS
+  size changes, so a browser page-zoom change keeps the old device size until the menu rebuilds; the quick-bar cost chip still overlaps the lower 25 % of a thumbnail (content
+  is nudged up 2 px for it); preserve keeps the map's fat gold posts and reads busier than the rest.
+
+## ui scale pass
+
+Track C of `docs/PLAN_FIDELITY.md` (Josh: "the UI elements feel too small and too squished in their boxes or in corners"). Files: `src/style.css`, `src/js/ui.js`,
+`test/unit/ui.test.mjs`. `ui_panels.js` needed no change (its panels inherit the new `.row/.bar/.seg/.btn/.fb-*` sizes; the Storm cone canvas is now capped, see below).
+
+- **Every length is `rem`** (1 rem = 10 px at 100 %): `html{font-size:calc(10px * var(--ui-scale))}`, so the four sizes (90 / 100 / 115 / 130 %) scale the whole HUD
+  with no `zoom`, no transforms, and every `getBoundingClientRect()` (coach spotlights, ghost label, tooltips, stat popover) stays in real viewport pixels.
+  Only hairlines (1-3 px borders, 1 px rules) stay `px`. Author new rules in rem (`6.4rem` = 64 px). The pointer path is untouched (`#world` is not scaled).
+- **Tokens** (`:root`): `--ui-scale`, spacing `--sp-1..7` (4 / 8 / 12 / 16 / 20 / 24 / 32), `--gutter` 20, `--fs-body` 15 / `--fs-small` 13 / `--fs-label` 11 / `--fs-title` 22,
+  `--radius` 12 / `--radius-sm` 8, `--topbar-h` 56, `--ticker-h` 28, `--palette-h` 140, `--inspect-w` 340, `--bot` = palette + ticker + gutter, one `--shadow` (bars use it too).
+  Base font 15 px / 1.45; the smallest text anywhere is 11 px (labels), body 14-15, titles 20-24; panels 20 px padding, 12 px between rows (`.row` 6 px top + bottom),
+  buttons 36 px (`.btn`; `.small` 32 px except inside panels / cards / toasts / tracker / coach where it is 36), `.big` 48.
+- **C1 top bar 56 px:** stat tiles 20-px numbers over 11-px caps labels (min 88 px), date over weather in one two-line `#date-chip` (new wrapper, ids unchanged), 36-px speed
+  buttons, 36-px panel buttons with glyph + label. `#brand` is now `.brand-mark` + `.brand-name` spans. `fitTopbar` (ui.js) no longer hysteresis-flaps: it re-measures from
+  scratch on resize / scale change and sheds content in six steps until `scrollWidth <= clientWidth` (1 `tight` brand name off, 2 `cap` captions stacked under the icons,
+  3 `compact` icons only, 4 `tighter` weather chip off + tighter tiles, 5 `tightest` capacity chip off, 6 `bare` date off); a 1 s check only escalates. At 100 %: 1920 shows
+  everything, 1440 stops at `tight cap` (icon over caption), 1280 at `tight compact`, 1366 `tight compact`.
+- **C2 tracker / needs:** `#objective-card` 360 px, 16 px padding, 64-px portrait (canvas now 64), 8-px bar, 36-px buttons, gauges 8 px bars with 12-px values (compact
+  numbers kept, 5 columns still fit at 360), binding line 14 px. Collapsed (set piece) keeps the one-line form; `#hud.scorebug` offsets re-based (collapsed card at topbar + 112 px, under the 78-px score bug).
+- **C3 palette 140 px:** 96-px tiles, 64-px icons (canvas 64, `drawIcon` redraws through its ResizeObserver at any scale), names on two lines (13 px, 2-line clamp), the cost
+  is a pill overlapping the icon's foot, tabs 15 px, 96 x 112 Build button, 48-px bulldoze / compact buttons stacked at the right, 20 px gutters.
+- **C4 build menu:** up to 1380 x 680, 180-px category column, cards >= 320 px with 64-px icons, 360-px detail column (96-px icon), body 15 px / 1.45, requirement chips carry
+  an 18-px glyph plus a word (`REQ_LABEL` in ui.js: Power / Water / Path / Road / Pilings / Drag), "Needed now" badge clears the name.
+- **C5 cards / toasts / panels:** cards 540 px / 20-24 px padding / 24-px titles; panels 640 px (Season 960) with 20 px padding, close button 36 px; notifications 380 px
+  bottom-right at a 20 px gutter, action buttons wrap under the text (`.notif-text` takes the row, `order` puts ✕ beside it), the stack is bounded below the overlay keys
+  (`top: topbar + 32 rem`, `justify-content:flex-end`, `pointer-events:none` on the container so it never eats map clicks). Decision toast 480-600 px (`clamp(320px, 100vw - 800px,
+  600px)` so it never touches the tracker or minimap), 44-px option buttons, 24-px key caps. Centred elements use a new `rise-x` keyframe (the old `rise` replaced their
+  `translateX(-50%)` for 200 ms, so panels slid in from the right). `#storm-cone` is capped at 260 px (it was `width:100%` = a 600 px square). The voice card moved to bottom centre
+  (it collided with the taller tracker). `syncPanelFade` (ui.js): a panel wide enough to reach the tracker / minimap / overlay keys / notifications / voice card fades just those (`.hud-fade`).
+- **C6 minimap 200 px:** canvas 200 x scale (render reads `el.width`), 4 px padding, 20 px gutter, click mapping uses `clientWidth`; overlay keys are one row of six, 36 px tall
+  (~32 wide, so the row matches the minimap width), tooltips are the existing `title`s; the legend chip spans the row.
+- **C7 UI scale:** Settings → "UI size" 90 / 100 / 115 / 130 % (`M.setUiScale(v)` snaps percent or fraction, stores `settings().uiScale` as a fraction in `state.ui.settings` +
+  `localStorage['bsu.settings']`; `M.uiScale()` = chosen, `M.uiScaleEffective()` = applied). A size above 100 % is capped to what the window holds
+  (`min(innerWidth / 1100, innerHeight / 700)`, never below 100 %): 1280 x 800 tops out at ~114 %, 1440 x 900 at ~129 %, 1920 x 1080 gives the full 130 %; Settings shows
+  "Limited to N% by this window size." The stored value is read at `init` (title screen is scaled too) and re-applied on resize and when a game loads.
+  Coach step layout now keeps its box above the palette and goes beside a tall docked target (the tracker); verified at 115 %: ring vs target delta 0,0,0,0; ghost label
+  +18,+18 from the pointer; palette tooltip and stat popover on screen.
+- **C8 verified** (`scratchpad/ui_check.mjs`, every transient HUD element forced on at once, plus the three tours): 1280 x 800, 1366 x 768, 1440 x 900, 1920 x 1080 at 100 %:
+  no pair of HUD boxes overlaps, nothing covers the screen centre, nothing is off-screen; the football set piece (score bug + collapsed goal + game strip + play-by-play) fits at
+  all three; Storm / Season / Almanac / Settings / Budget panels never pass the viewport or the palette and scroll inside (`overflow:auto`), as do the build menu's card and detail columns.
+  Screenshots: `scratchpad/uiscale-NN-before|after-name-WIDTH.png`, NN = 01 hud, 02 build menu, 03 Season, 04 decision toast, 05 coach step 2, 06 football, 07 Storm (with a storm),
+  08 Settings, 09 ghost label, 10 inspector.
+- **Tests:** `ui.test` +8 (date chip, scale snapping / persistence / effective scale / minimap canvas, rem tokens, html font-size var), minimap and portrait sizes (200 / 64), style.css
+  cap 48 -> 64 KB (now ~49 KB).
+- **Not enlarged / noted:** the overlay keys are 36 tall but ~32 wide (six in one row under a 200-px minimap; three rows would collide with the notification stack at 800 px high);
+  1024 x 700 and smaller windows are below the design floor (columns collide when many transient boxes are up); a 1280-wide window cannot show panel labels (icons only, tooltips
+  carry the names) because the stats + date + speed + panel buttons need ~1330 px at these sizes; the open inspector still pushes the minimap column left (it can sit under a storm
+  alert strip); `.hud-fade` only considers the five docked cards, not the alert strip.

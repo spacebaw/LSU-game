@@ -167,5 +167,49 @@ const bad = [];
 for (const row of BSU.data.catalogList) for (const v of combos) { if (!S.get(row.id, v, 0, 1)) bad.push(row.id + ' v' + v); }
 eq(bad.join(','), '', 'every row x every variant combo renders');
 
+// --- art pass B6: catalog icons ---------------------------------------------
+{
+  const ids = BSU.data.catalogList.map((r) => r.id);
+  // memory: an icon is the only atlas entry a footprint row adds (the FRONT_L building is painted on a scratch canvas and freed)
+  const n0 = S.count(); S.get('icon:greek_house', 0, 0, 2);
+  eq(S.count() - n0, 1, 'a footprint icon adds exactly one atlas entry');
+  const bad = [], badLock = [];
+  for (const id of ids) {
+    const a = S.get('icon:' + id, 0, 0, 1), b = S.get('icon:' + id, 0, 0, 2), c = S.get('icon:' + id, 1, 0, 2);
+    if (!(a && a.sw === 64 && a.sh === 64 && b && b.sw === 128 && b.sh === 128 && b.ox === -64 && b.oy === -64)) bad.push(id);
+    if (!(c && c.sw === 128 && c.sh === 128)) badLock.push(id);
+  }
+  eq(ids.length, 44, 'the catalog has 44 rows (every one needs an icon)');
+  eq(bad.join(','), '', 'every catalog row has a 64x64 icon and a 128x128 master (anchor at the centre)');
+  eq(badLock.join(','), '', 'every catalog row has a locked 128x128 icon variant');
+  // plans: what each kind of row shows
+  const P = (id) => S.iconPlan(id);
+  eq(P('path').items.length, 3, 'a drag row shows a three-tile run (3 stamps)');
+  eq(P('path').items[0].v, 10, 'runs use the E+W mask (the lit SW side faces the viewer)');
+  eq(P('boardwalk').deck, 'boardwalk', 'the boardwalk icon is drawn as a deck');
+  eq(P('bridge').deck, 'bridge', 'the Pedestrian Bridge icon is drawn as a deck');
+  ok(P('bridge').ground === 'water' && P('boardwalk').ground === 'marsh' && P('levee').ground === 'grass', 'drag rows stand on their own ground (water / marsh / grass)');
+  eq(P('surge_barrier').items.map((i) => i.id).join(','), 'floodwall,surge_barrier,floodwall', 'the surge barrier is a gate between two wall tiles');
+  eq(P('pilings').ground, 'water', 'pilings stand on a water slab');
+  ok(P('pilings').items[0].v & SPR.PILINGS, 'pilings show the pilings variant');
+  ok(P('dorm').items[0].v & SPR.FRONT_L, 'footprint rows face the entrance to the lit SW side (FRONT_L)');
+  eq(P('stadium').items[0].v >> SPR.TIER_SHIFT & 3, 1, 'the stadium shows tier I');
+  eq(P('live_oak').items[0].v, S.treeVariant(2, false, false, 0), 'the live oak icon is the mature full-crown tree');
+  eq(P('cypress').items[0].v & 3, 2, 'the cypress icon is the mature tree (not the sapling)');
+  ok(P('azalea').items.length >= 3 && (P('azalea').items[0].v & 8) && (P('azalea').items[0].v & 3) === 2, 'azaleas show three mature blooming bushes');
+  ok(P('preserve').items.some((i) => i.id === 'preservePost') && P('preserve').ground === 'marsh', 'preserve is a marsh patch with its gold boundary posts');
+  eq(P('poboy').foot, '1×1', 'footprint rows carry their size for the badge');
+  eq(P('dorm').foot, '3×2', 'dorm is 3x2');
+  // scale: ordered by size, small rows never vanish, only the exaggerated 1x1 rows wear the badge
+  const ext = (id) => { const f = S.iconFit(id); return f.w; };
+  ok(ext('poboy') >= 38, 'a po\'boy shack keeps a minimum drawn size (' + ext('poboy').toFixed(1) + ' px of 64)');
+  ok(ext('poboy') < ext('dorm') && ext('dorm') < ext('library') && ext('library') <= ext('stadium') + 0.01, 'drawn width follows true size: poboy < dorm < library <= stadium');
+  const badged = ids.filter((id) => S.iconFit(id).badge);
+  ok(badged.length >= 3 && badged.every((id) => P(id).foot === '1×1'), 'the footprint badge appears only on 1x1 rows (' + badged.join(',') + ')');
+  const over = ids.filter((id) => { const f = S.iconFit(id); return f.w > 60.01 || f.h > 60.01; });
+  eq(over.join(','), '', 'every icon fits the 64-px frame');
+  ok(S.get('icon:dorm', 0, 0, 2) === S.get('icon:dorm', 0, 0, 2), 'icons are cached once');
+}
+
 console.log(`\n${passes} passed, ${failures} failed`);
 process.exit(failures ? 1 : 0);

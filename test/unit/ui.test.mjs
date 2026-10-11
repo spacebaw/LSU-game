@@ -23,7 +23,7 @@ ok(!/innerHTML/.test(src), 'no innerHTML (every node is created and kept in M.el
 ok(!/querySelector|closest\(|matches\(|instanceof\s+(Node|HTMLInputElement|HTMLCanvasElement|Text)/.test(src), 'no querySelector/closest/matches/instanceof Node');
 ok(!/setTimeout|setInterval/.test(src.replace(/\/\/.*$/gm, '')), 'no timers for game logic');
 const css = readFileSync(join(root, 'src', 'style.css'), 'utf8');
-ok(Buffer.byteLength(css) <= 48 * 1024, `style.css ≤ 48 KB (${(Buffer.byteLength(css) / 1024).toFixed(1)} KB)`);   // UX pass: build menu + tracker + coach marks (was 25 KB); football pass D: Season panel, game HUD, summary card (was 40 KB)
+ok(Buffer.byteLength(css) <= 64 * 1024, `style.css ≤ 64 KB (${(Buffer.byteLength(css) / 1024).toFixed(1)} KB)`);   // UX pass: build menu + tracker + coach marks (was 25 KB); football pass D: Season panel, game HUD, summary card (was 40 KB); UI scale pass: every length in rem + scale tokens (was 48 KB)
 const cssNoComments = css.replace(/\/\*[\s\S]*?\*\//g, '');
 ok(!/@import|url\(/.test(cssNoComments) && /--purple:\s*#461D7C/.test(css) && /--gold:\s*#FDD023/.test(css), 'css tokens present, no @import/url()');
 
@@ -56,7 +56,17 @@ const ids = ['topbar', 'brand', 'stat-cash', 'stat-students', 'chip-capacity', '
 let missing = ids.filter((id) => !U.el[id] || U.el[id].id !== id);
 ok(missing.length === 0, 'every §7.1 id resolves through M.el' + (missing.length ? ' (missing: ' + missing.join(',') + ')' : ''));
 ok(win.document.getElementById('hud') === hud && win.document.getElementById('btn-charter') === U.el['btn-charter'], 'ids are also assigned on the elements (stub byId)');
-ok(U.el.minimap.width === 160 && U.el.minimap.height === 160 && U.el['obj-portrait'].width === 48, 'minimap 160×160, portrait 48×48');
+ok(U.el.minimap.width === 200 && U.el.minimap.height === 200 && U.el['obj-portrait'].width === 64, 'minimap 200×200 (UI scale 100%), portrait 64×64');
+// --- UI scale pass: the scale setting snaps to 90/100/115/130 %, is remembered in settings and resizes the minimap canvas; the date chip wraps date + weather
+ok(U.el['date-chip'] && U.el['date-chip'].id === 'date-chip' && U.el['stat-date'].parentNode === U.el['date-chip'] && U.el['chip-weather'].parentNode === U.el['date-chip'], 'date + weather share the #date-chip');
+ok(U.uiScale() === 1, 'UI scale starts at 100 %');
+ok(U.setUiScale(1.15) === 1.15 && U.uiScale() === 1.15 && U.settings().uiScale === 1.15, 'setUiScale(1.15) applies and is remembered in settings');
+ok(U.uiScaleEffective() >= 1 && U.uiScaleEffective() < 1.15 && U.el.minimap.width === Math.round(200 * U.uiScaleEffective()) && U.el.minimap.height === U.el.minimap.width, 'the minimap canvas grows with the effective scale (the 1280×720 stub window caps the 115 % setting at ~103 %, never below 100 %)');
+ok(U.setUiScale(130) === 1.3 && U.setUiScale(0.9) === 0.9 && U.setUiScale('junk') === 1 && U.setUiScale(1.04) === 1, 'setUiScale snaps percent / fraction / junk to an offered size');
+ok(U.el.minimap.width === 200, 'back at 100 % the minimap canvas is 200 px');
+const cssScale = css.replace(/\/\*[\s\S]*?\*\//g, '');
+ok(/html\{font-size:calc\(1rem \* var\(--ui-scale|html\{font-size:calc\(10px \* var\(--ui-scale/.test(cssScale), 'html font-size follows --ui-scale (all lengths are rem)');
+ok(!/--topbar-h:\s*\d+px/.test(cssScale) && /--topbar-h:\s*5\.6rem/.test(cssScale) && /--palette-h:\s*14rem/.test(cssScale), 'layout tokens are rem: topbar 56 px, palette 140 px at 100 %');
 ok(U.el['title-name'].textContent === 'BAYOU STATE', '#title-name text');
 ok(U.el.title.classList.contains('hidden') === !!BSU.headlessMode, 'title hidden headless (session shows it only in a browser)');
 

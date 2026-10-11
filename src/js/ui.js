@@ -23,7 +23,7 @@
 //   │  │   #stat-prestige · #stat-happiness · #stat-ecology · #stat-date(#sky-glyph) · #chip-weather ·
 //   │  │   #speed(.speed-btn[data-speed]) · #btn-budget #btn-season #btn-storm(.dot) #btn-almanac #btn-menu #btn-mute · #chip-endowed
 //   │  ├─ #alert-strip.hidden  #alert-icon #alert-text #alert-action #alert-gator
-//   │  ├─ #minimap-wrap  canvas#minimap(160×160) #minimap-viewport
+//   │  ├─ #minimap-wrap  canvas#minimap(200×200 × UI scale) #minimap-viewport
 //   │  ├─ #overlay-buttons  .ov-btn[data-ov=1..6] · #legend.chip
 //   │  ├─ #objective-card (the GOALS TRACKER, top-left)  canvas#obj-portrait #obj-kicker #obj-title #obj-text #obj-why #obj-progress(.fill) #obj-count
 //   │  │     #btn-obj-build #btn-showme #btn-obj-dismiss #obj-next #obj-background #needs-strip(.need×5 #needs-text) #speech-bubble
@@ -183,15 +183,16 @@
   }
   function buildTopbar() {
     const tb = el('div'); tb.id = 'topbar'; E.topbar = tb;
-    const brand = el('div', null, '▣ BAYOU STATE'); brand.id = 'brand'; E.brand = brand; tb.appendChild(brand);
+    const brand = el('div', null, ''); brand.id = 'brand'; brand.appendChild(el('span', 'brand-mark', '▣')); brand.appendChild(el('span', 'brand-name', 'BAYOU STATE')); E.brand = brand; tb.appendChild(brand);
     const stats = el('div', 'stats'); E.stats = stats; tb.appendChild(stats);
     stats.appendChild(statEl('stat-cash', 'Cash', 'cash'));
     const st = statEl('stat-students', 'Students', 'students'); const cap = el('span', 'chip hidden', ''); cap.id = 'chip-capacity'; E['chip-capacity'] = cap; st.appendChild(cap); stats.appendChild(st);
     stats.appendChild(statEl('stat-prestige', 'Prestige', 'prestige'));
     stats.appendChild(statEl('stat-happiness', 'Happiness', 'happiness'));
     stats.appendChild(statEl('stat-ecology', 'Ecology', 'ecology'));
-    const date = el('div'); date.id = 'stat-date'; const dateText = el('span', 'date-text', ''); const glyph = el('span', null, '☀'); glyph.id = 'sky-glyph'; date.appendChild(dateText); date.appendChild(glyph); E['stat-date'] = date; E['stat-date-text'] = dateText; E['sky-glyph'] = glyph; tb.appendChild(date);
-    const wx = el('div', 'chip', ''); wx.id = 'chip-weather'; E['chip-weather'] = wx; tb.appendChild(wx);
+    const date = el('div'); date.id = 'stat-date'; const dateText = el('span', 'date-text', ''); const glyph = el('span', null, '☀'); glyph.id = 'sky-glyph'; date.appendChild(dateText); date.appendChild(glyph); E['stat-date'] = date; E['stat-date-text'] = dateText; E['sky-glyph'] = glyph;
+    const wx = el('div', 'chip', ''); wx.id = 'chip-weather'; E['chip-weather'] = wx;
+    const dc = el('div'); dc.id = 'date-chip'; dc.appendChild(date); dc.appendChild(wx); E['date-chip'] = dc; tb.appendChild(dc);   // UI scale pass: date over weather, one roomy two-line chip
     const sp = el('div'); sp.id = 'speed'; E.speed = sp; E.speedBtns = {};
     [[0, '⏸', 'Pause (Space)'], [1, '1×', 'Normal speed (1)'], [2, '2×', 'Double speed (2)'], [4, '4×', 'Fast (3)'], [8, '8×', 'Fastest (4)']].forEach(function (d) {
       const b = btn(null, d[1], 'speed-btn', function () { M.setSpeed(stateOf(), d[0]); }); b.dataset.speed = String(d[0]); b.title = d[2]; b.setAttribute('aria-pressed', 'false'); sp.appendChild(b); E.speedBtns[d[0]] = b;
@@ -217,10 +218,11 @@
   }
   function buildMinimap() {
     const wrap = el('div'); wrap.id = 'minimap-wrap';
-    const c = el('canvas'); c.id = 'minimap'; c.width = L.minimapPx; c.height = L.minimapPx; const vp = el('div'); vp.id = 'minimap-viewport';
+    const c = el('canvas'); c.id = 'minimap'; c.width = Math.round(MM_BASE * effScale); c.height = c.width; const vp = el('div'); vp.id = 'minimap-viewport';
     wrap.appendChild(c); wrap.appendChild(vp);
     let mdown = false;
-    const go = function (ev) { const mx = fin(ev.offsetX, L.minimapPx / 2), my = fin(ev.offsetY, L.minimapPx / 2); call('render', 'panToTile', clamp(mx / (L.minimapPx / W), 0, W - 1), clamp(my / (L.minimapPx / HGT), 0, HGT - 1), false); const s = stateOf(); if (s && s.setPiece) call('render', 'captureCameraTouch', s); };
+    const go = function (ev) { const cw = fin(c.clientWidth, 0) || c.width || MM_BASE, ch = fin(c.clientHeight, 0) || c.height || MM_BASE; const mx = fin(ev.offsetX, cw / 2), my = fin(ev.offsetY, ch / 2); call('render', 'panToTile', clamp(mx / (cw / W), 0, W - 1), clamp(my / (ch / HGT), 0, HGT - 1), false);   // CSS px of the (scaled) element, not canvas px
+      const s = stateOf(); if (s && s.setPiece) call('render', 'captureCameraTouch', s); };
     c.addEventListener('pointerdown', function (ev) { mdown = true; go(ev); if (ev.preventDefault) ev.preventDefault(); });
     c.addEventListener('pointermove', function (ev) { if (mdown) go(ev); });
     c.addEventListener('pointerup', function () { mdown = false; }); c.addEventListener('pointerleave', function () { mdown = false; });
@@ -236,7 +238,7 @@
   function buildObjective() {
     // the GOALS TRACKER (UX pass): top-left under the topbar; the old ids are kept so progress/tests keep working
     const c = el('div', 'hidden'); c.id = 'objective-card';
-    const head = el('div', 'obj-head'); const portrait = el('canvas'); portrait.id = 'obj-portrait'; portrait.width = 48; portrait.height = 48;
+    const head = el('div', 'obj-head'); const portrait = el('canvas'); portrait.id = 'obj-portrait'; portrait.width = 64; portrait.height = 64;
     const col = el('div', 'obj-col'); const kick = el('div', 'obj-kicker', 'Goal'); kick.id = 'obj-kicker'; const title = el('div', null, ''); title.id = 'obj-title'; const text = el('div', null, ''); text.id = 'obj-text'; const why = el('div', 'hidden', ''); why.id = 'obj-why';
     col.appendChild(kick); col.appendChild(title); col.appendChild(text); col.appendChild(why);
     const openMs = function () { const s = stateOf(); if (!s || coach.step >= 0) return; M.openPanel(s.ui.panel === 'milestones' ? null : 'milestones'); };
@@ -382,20 +384,46 @@
     subscribe();
     registerBuiltins();
     try { const w = fin(window.innerWidth, 1280); cls(E.palette, 'compact', w < L.compactWidth); } catch (e) { /* stub */ }
+    try { const raw = window.localStorage.getItem('bsu.settings'); const o = raw ? JSON.parse(raw) : null; if (o && o.uiScale != null) applyScale(o.uiScale); } catch (e) { /* no storage */ }   // the title screen is scaled too
     fitTopbar();
   };
-  /** the topbar must never push its buttons off-screen: when its content overflows (1280-wide laptops with the
-   *  capacity + weather chips showing) drop the panel-button labels (glyphs keep their tooltips); undo only when the
-   *  window grows (hysteresis — hiding the labels shrinks scrollWidth, so a plain overflow test would flap) */
-  let compactAtW = 0, fitAt = 0;
+  /** the topbar must never push its buttons off-screen. UI scale pass: it now sheds content in six steps, re-measured from scratch on
+   *  every resize / scale change (so there is no flapping and no hysteresis to get stuck): 1 `tight` collapses the brand to its mark,
+   *  2 `cap` stacks each panel button's caption under its icon, 3 `compact` keeps the icons only (tooltips carry the names), 4 `tighter`
+   *  hides the weather chip and trims the stat tiles, 5 `tightest` hides the capacity chip, 6 `bare` hides the date chip.
+   *  A once-a-second check only ever escalates (cash growing a digit) */
+  let fitLevel = 0, fitAt = 0;
   function fitTopbar() {
     try {
       const tb = E.topbar; if (!tb || typeof tb.scrollWidth !== 'number' || typeof tb.clientWidth !== 'number' || !tb.clientWidth) return;
-      const w = fin(window.innerWidth, 1280);
-      if (tb.classList.contains('compact')) { if (w > compactAtW + 40) { cls(tb, 'compact', false); compactAtW = 0; } return; }
-      if (tb.scrollWidth > tb.clientWidth + 1) { cls(tb, 'compact', true); compactAtW = w; }
+      const set = function (n) { cls(tb, 'tight', n >= 1); cls(tb, 'cap', n === 2); cls(tb, 'compact', n >= 3); cls(tb, 'tighter', n >= 4); cls(tb, 'tightest', n >= 5); cls(tb, 'bare', n >= 6); fitLevel = n; };
+      set(0); let n = 0;
+      while (n < 6 && tb.scrollWidth > tb.clientWidth + 1) set(++n);
     } catch (e) { /* stub */ }
   }
+  // ---- UI scale (UI scale pass): html{font-size:calc(10px * var(--ui-scale))} and every CSS length is rem, so the layout math and every
+  // getBoundingClientRect() (coach spotlights, ghost label, tooltips) stay in real viewport pixels at 90 / 100 / 115 / 130 %
+  const UI_SCALES = [0.9, 1, 1.15, 1.3], MM_BASE = 200;
+  let appliedScale = 1, effScale = 1;   // the chosen factor / what the window can actually hold
+  function scaleOf(v) { v = Number(v); if (!Number.isFinite(v) || v <= 0) return 1; if (v > 3) v /= 100; let b = 1; for (const c of UI_SCALES) if (Math.abs(c - v) < Math.abs(b - v)) b = c; return b; }
+  /** a bigger-than-100 % UI is limited to what the window can hold (a 1280×800 laptop tops out near 114 %): the HUD columns must never collide, and never shrink below 100 % */
+  function effectiveScale(sc) {
+    if (sc <= 1) return sc;
+    const cap = Math.min(fin(window.innerWidth, 1280) / 1100, fin(window.innerHeight, 800) / 700);
+    return Math.round(Math.max(1, Math.min(sc, cap)) * 1000) / 1000;
+  }
+  function applyScale(v) {
+    const sc = scaleOf(v), eff = effectiveScale(sc); const changed = eff !== effScale || sc !== appliedScale; appliedScale = sc; effScale = eff;
+    if (!dom()) return;
+    try { const de = document.documentElement; if (de && de.style && typeof de.style.setProperty === 'function') de.style.setProperty('--ui-scale', String(eff)); } catch (e) { /* stub */ }
+    try { const c = E.minimap; if (c) { const px = Math.round(MM_BASE * eff); if (c.width !== px) { c.width = px; c.height = px; } } } catch (e) { /* stub */ }
+    if (changed) { fitTopbar(); try { coach.layoutAt = -1e9; const st = stateOf(); if (st && coach.step >= 0) layoutCoach(st); } catch (e) { /* stub */ } }
+  }
+  /** the chosen factor (1 = 100 %), snapped to the four offered sizes; M.uiScaleEffective() is what the window allows */
+  M.uiScale = function () { return appliedScale; };
+  M.uiScaleEffective = function () { return effScale; };
+  /** Settings → UI size: remember it (state.ui.settings + localStorage) and apply it now */
+  M.setUiScale = function (v) { try { const sc = scaleOf(v); M.settings().uiScale = sc; M.saveSettings(); applyScale(sc); return sc; } catch (e) { uerr('setUiScale', e); return appliedScale; } };
 
   // ---------------------------------------------------------------------------
   // DOM listeners → the machine (pointer / wheel / keys / gestures)
@@ -427,7 +455,7 @@
         window.addEventListener('keyup', function (e) { try { keyup(e.key); } catch (err) { uerr('keyup', err); } });
         window.addEventListener('blur', function () { try { for (const k in held) held[k] = false; if (live.down || live.state === 'DRAGGING') M.pointer('cancel', lastPx, lastPy, 0, M0); } catch (err) { uerr('blur', err); } });
         window.addEventListener('pointerup', function (e) { try { if (live.down && e.target !== world) M.pointer('up', lastPx, lastPy, fin(e.button, 0), modsOf(e)); } catch (err) { uerr('pointerup:window', err); } });
-        window.addEventListener('resize', function () { try { const w = fin(window.innerWidth, 1280); cls(E.palette, 'compact', w < L.compactWidth); } catch (err) { /* stub */ } fitTopbar(); });
+        window.addEventListener('resize', function () { try { const w = fin(window.innerWidth, 1280); cls(E.palette, 'compact', w < L.compactWidth); } catch (err) { /* stub */ } try { applyScale(appliedScale); } catch (err) { /* stub */ } fitTopbar(); });
       }
     } catch (e) { /* stub window */ }
   }
@@ -1344,6 +1372,7 @@
     return out;
   }
   /** requirement glyphs for a row → [{glyph, text}] */
+  const REQ_LABEL = { '⚡': 'Power', '💧': 'Water', '🚶': 'Path', '🛣': 'Road', '🪵': 'Pilings', '↔': 'Drag' };   // UI scale pass: the requirement glyphs carry a word
   function requirementsOf(row) {
     const RQ = (BSU.data && BSU.data.requirements) || {}; const out = []; if (!row) return out;
     const place = RQ.place && RQ.place[row.placeRule]; if (place && row.placeRule !== BSU.PLACE.LAND) out.push(place);
@@ -1415,7 +1444,7 @@
         const top = el('div', 'bm-top'); const ic = el('canvas', 'icon'); ic.width = 64; ic.height = 64; top.appendChild(ic); call('render', 'drawIcon', ic, id);
         const tcol = el('div', 'bm-tcol'); tcol.appendChild(el('div', 'bm-name', r.name));
         const price = el('div', 'bm-price'); price.appendChild(el('span', 'bm-cost', money(r.cost) + (r.kind === 'drag' || r.kind === 'paint' ? '/tile' : (r.kind === 'upgrade' ? ' +40% of the building' : '')))); if (r.upkeep) price.appendChild(el('span', 'bm-upkeep', money(r.upkeep) + '/mo')); tcol.appendChild(price);
-        const reqs = el('div', 'bm-reqs'); for (const q of requirementsOf(r)) { const sp = el('span', 'bm-req', q.glyph); sp.title = q.text; reqs.appendChild(sp); } if (r.w > 1 || r.h > 1) { const fp = el('span', 'bm-req fp', r.w + '×' + r.h); fp.title = 'Footprint ' + r.w + '×' + r.h + ' tiles' + (r.rotatable ? ' (R rotates)' : ''); reqs.appendChild(fp); } tcol.appendChild(reqs);
+        const reqs = el('div', 'bm-reqs'); for (const q of requirementsOf(r)) { const sp = el('span', 'bm-req'); sp.appendChild(el('span', 'rq-g', q.glyph)); if (REQ_LABEL[q.glyph]) sp.appendChild(el('span', 'rq-l', REQ_LABEL[q.glyph])); sp.title = q.text; reqs.appendChild(sp); } if (r.w > 1 || r.h > 1) { const fp = el('span', 'bm-req fp', r.w + '×' + r.h); fp.title = 'Footprint ' + r.w + '×' + r.h + ' tiles' + (r.rotatable ? ' (R rotates)' : ''); reqs.appendChild(fp); } tcol.appendChild(reqs);
         top.appendChild(tcol); c.appendChild(top);
         c.appendChild(el('div', 'bm-blurb', r.blurb || r.desc || ''));
         c.appendChild(el('div', 'bm-why', r.why || ''));
@@ -1441,7 +1470,7 @@
     for (const k in E.bmCards) { cls(E.bmCards[k], 'hover', k === id); cls(E.bmCards[k], 'active', !!(s.ui.tool && s.ui.tool.id === k)); }
     if (key === bm.detailKey) return; bm.detailKey = key;
     const d = E['bm-detail']; clear(d); if (!r) { d.appendChild(el('div', 'muted', 'Nothing to build in this category yet.')); return; }
-    const head = el('div', 'bm-dhead'); const ic = el('canvas', 'icon'); ic.width = 64; ic.height = 64; head.appendChild(ic); call('render', 'drawIcon', ic, id);
+    const head = el('div', 'bm-dhead'); const ic = el('canvas', 'icon'); ic.width = 96; ic.height = 96; head.appendChild(ic); call('render', 'drawIcon', ic, id);
     const col = el('div'); col.appendChild(el('div', 'bm-dname', r.name)); col.appendChild(el('div', 'bm-dsub', money(r.cost) + (r.kind === 'drag' || r.kind === 'paint' ? ' per tile' : '') + (r.upkeep ? ' · ' + money(r.upkeep) + '/mo upkeep' : ' · no upkeep') + (r.kind === 'footprint' ? ' · ' + r.w + '×' + r.h + ' tiles' : ''))); head.appendChild(col); d.appendChild(head);
     if (reco[id]) d.appendChild(el('div', 'bm-badge inline', badgeText(reco[id]) + (reco[id] === 'Goal' ? ' — your current objective' : ' — ' + ((needsNow(s) || {}).binding || {}).text)));
     d.appendChild(el('div', 'bm-dblurb', r.blurb || ''));
@@ -1524,8 +1553,13 @@
     let bx, by;
     if (!r) { bx = (vw - bw) / 2; by = (vh - bh) / 2 - 40; }
     else {
-      if (r.y + r.h + 14 + bh <= vh - 8) by = r.y + r.h + 14; else if (r.y - 14 - bh >= 8) by = r.y - 14 - bh; else by = vh - bh - 16;
-      bx = clamp(r.x + r.w / 2 - bw / 2, 12, vw - bw - 12);
+      const pal = E.palette; let lim = vh - 8;   // UI scale pass: the box stays above the palette unless the palette is what is being shown
+      try { if (pal && !pal.classList.contains('hidden') && tgt !== pal && !(pal.contains && tgt && pal.contains(tgt))) lim = Math.min(lim, fin(pal.getBoundingClientRect().top, vh) - 8); } catch (e) { /* stub */ }
+      let side = false;
+      if (r.y + r.h + 14 + bh <= lim) by = r.y + r.h + 14;
+      else if (r.h > bh * 0.5 && r.x + r.w + 16 + bw <= vw - 12) { side = true; bx = r.x + r.w + 16; by = clamp(r.y, 12, Math.max(12, lim - bh)); }   // a tall docked card (the goals tracker): the box goes beside it
+      else if (r.y - 14 - bh >= 8) by = r.y - 14 - bh; else by = vh - bh - 16;
+      if (!side) bx = clamp(r.x + r.w / 2 - bw / 2, 12, vw - bw - 12);
       if (r.w > vw * 0.6 && r.h > vh * 0.5) { bx = clamp(r.x + r.w - bw - 12, 12, vw - bw - 12); by = vh - bh - 16; }   // a huge target (the build menu): bottom-right over it
     }
     box.style.left = Math.round(bx) + 'px'; box.style.top = Math.round(by) + 'px';
@@ -1793,7 +1827,22 @@
   };
   M.panel = function () { const s = stateOf(); return s && s.ui ? s.ui.panel : null; };
   function refreshPanel(s, name) { const p = panels[name]; if (!p || !p.el) return; p.lastRefresh = clock; try { if (typeof p.refresh === 'function') p.refresh(s, p.el); } catch (e) { uerr('panel:refresh:' + name, e); } }
-  function updatePanels(s) { const name = s.ui.panel; if (!name) { if (E.hud && E.hud.dataset.panel) E.hud.dataset.panel = ''; return; } const p = panels[name]; if (!p) return; if (clock - p.lastRefresh >= L.refreshMs) refreshPanel(s, name); }
+  /** UI scale pass: a panel wide enough to reach the docked cards (goals tracker, minimap, overlay keys, notifications, voice card) fades just the ones it overlaps, so no half-hidden text peeks out around it */
+  const FADE_IDS = ['objective-card', 'minimap-wrap', 'overlay-buttons', 'notifications', 'voice-card'];
+  let fadeAt = -1e9;
+  function syncPanelFade(s) {
+    if (!dom() || clock - fadeAt < 250) return; fadeAt = clock;
+    try {
+      const name = s && s.ui ? s.ui.panel : null; const host = name && panels[name] ? panels[name].el : null;
+      let p = null; if (host && !host.classList.contains('hidden') && typeof host.getBoundingClientRect === 'function') p = host.getBoundingClientRect();
+      for (const id of FADE_IDS) {
+        const e = E[id]; if (!e) continue; let over = false;
+        if (p && p.width > 0 && !e.classList.contains('hidden')) { const r = e.getBoundingClientRect(); over = r.width > 0 && r.left < p.right && r.right > p.left && r.top < p.bottom && r.bottom > p.top; }
+        cls(e, 'hud-fade', over);
+      }
+    } catch (e) { /* stub */ }
+  }
+  function updatePanels(s) { syncPanelFade(s); const name = s.ui.panel; if (!name) { if (E.hud && E.hud.dataset.panel) E.hud.dataset.panel = ''; return; } const p = panels[name]; if (!p) return; if (clock - p.lastRefresh >= L.refreshMs) refreshPanel(s, name); }
   /** switch the overlay (render owns the write; the legend chip follows) */
   M.setOverlay = function (state, ov) { try { const s = state || stateOf(); if (!s) return; ov = fin(ov, OV.NONE) | 0; if (has('render', 'setOverlay')) call('render', 'setOverlay', ov); else s.ui.overlay = ov; emit('ui:overlay', { overlay: s.ui.overlay }); } catch (e) { uerr('setOverlay', e); } };
   /** user intent → session.setSpeed(state, speed, 'user') */
@@ -1834,10 +1883,10 @@
       E.popLines.forEach(function (pl, k) { const ln = lines[k]; show(pl.row, !!ln); if (ln) { setText(pl.k, ln.label || ''); const v = fin(ln.value, 0); setText(pl.v, stat === 'cash' || Math.abs(v) >= 10000 ? (v > 0 ? '+' : '') + money(v) : (v > 0 && stat !== 'students' ? '+' : '') + (Math.round(v * 10) / 10)); pl.v.dataset.sign = v < 0 ? 'neg' : v > 0 ? 'pos' : 'zero'; } });
       setText(E['pop-next'], r.next || ''); show(E['pop-next'], !!r.next);
       const anchor = E['stat-' + stat]; let left = 200; try { const rc = anchor && anchor.getBoundingClientRect ? anchor.getBoundingClientRect() : null; if (rc) left = fin(rc.left, 200); } catch (e) { left = 200; }
-      E.popover.style.left = Math.round(clamp(left, 8, fin(window.innerWidth, 1280) - 320)) + 'px';
+      const pw = fin(E.popover.offsetWidth, 0) || Math.round(340 * effScale); E.popover.style.left = Math.round(clamp(left, 8, fin(window.innerWidth, 1280) - pw - 20)) + 'px';
       // never cover an open decision toast (its buttons must stay clickable): drop below it
       let top = ''; try { const dt = E['decision-toast']; if (dt && !dt.classList.contains('hidden') && dt.getBoundingClientRect) { const rc = dt.getBoundingClientRect(); if (rc.height > 0) top = Math.round(rc.bottom + 6) + 'px'; } } catch (e) { top = ''; }
-      if (!top) { try { const oc = E['objective-card']; if (oc && !oc.classList.contains('hidden') && oc.getBoundingClientRect) { const rc = oc.getBoundingClientRect(); const pl = parseFloat(E.popover.style.left) || 0; if (rc.height > 0 && pl < rc.right + 8 && pl + 300 > rc.left) top = Math.round(rc.bottom + 6) + 'px'; } } catch (e) { top = ''; } }   // the goals tracker sits top-left: drop below it
+      if (!top) { try { const oc = E['objective-card']; if (oc && !oc.classList.contains('hidden') && oc.getBoundingClientRect) { const rc = oc.getBoundingClientRect(); const pl = parseFloat(E.popover.style.left) || 0; if (rc.height > 0 && pl < rc.right + 8 && pl + pw > rc.left) top = Math.round(rc.bottom + 6) + 'px'; } } catch (e) { top = ''; } }   // the goals tracker sits top-left: drop below it
       E.popover.style.top = top;
       show(E.popover, true);
     } catch (e) { uerr('breakdown', e); }
@@ -1855,6 +1904,8 @@
     host._shake = chk('chk-shake', 'Screen shake', function () { return M.settings().shake !== false; }, function (v) { M.settings().shake = v; });
     host._cb = chk('chk-colorblind', 'Colorblind overlays', function () { return !!M.settings().colorblind; }, function (v) { M.settings().colorblind = v; });
     const sp = el('div', 'seg'); [0, 1, 2, 4, 8].forEach(function (v) { const b = btn(null, v === 0 ? 'Pause' : v + '×', 'seg-btn', function () { M.setSpeed(stateOf(), v); refreshSettingsPanel(stateOf(), host); }); b.dataset.speed = String(v); sp.appendChild(b); }); rowEl('Speed', sp); host._speed = sp;
+    const us = el('div', 'seg'); host._uiScale = us; UI_SCALES.forEach(function (v) { const b = btn('btn-uiscale-' + Math.round(v * 100), Math.round(v * 100) + '%', 'seg-btn', function () { M.setUiScale(v); refreshSettingsPanel(stateOf(), host); }); b.dataset.scale = String(v); b.title = 'Interface size ' + Math.round(v * 100) + '%'; us.appendChild(b); });
+    const uw = el('div', 'seg-wrap'); const un = el('div', 'seg-note hidden', ''); host._uiNote = un; uw.appendChild(us); uw.appendChild(un); rowEl('UI size', uw);   // UI scale pass (C7)
     rowEl('Tour', btn('btn-coach-replay', 'Replay the 60-second tour', 'small', function () { M.startCoach(stateOf()); }));
     const leg = el('div', 'legend-table'); for (const o of ((BSU.data && BSU.data.overlays) || [])) { const r = el('div', 'legend-row'); r.appendChild(el('span', 'key', o.key)); r.appendChild(el('span', 'k', o.name)); r.appendChild(el('span', 'v', o.legend.join(' · '))); leg.appendChild(r); } rowEl('Overlays', leg);
     const keys = el('div', 'keys-table'); keys.id = 'keys'; const KEYNAMES = { ' ': 'Space' }; for (const k of ((BSU.data && BSU.data.keys) || [])) { if (/^pan|^pick[2-9]|^toast/.test(k.action)) continue; const r = el('div', 'legend-row'); r.appendChild(el('span', 'key', (k.ctrl ? 'Ctrl+' : '') + (k.shift ? 'Shift+' : '') + (KEYNAMES[k.key] || (k.key.length === 1 ? k.key.toUpperCase() : k.key)))); r.appendChild(el('span', 'k', k.action === 'pick1' ? 'pick item 1–9' : k.action.replace(/([A-Z])/g, ' $1').toLowerCase())); keys.appendChild(r); } rowEl('Keys', keys);
@@ -1870,6 +1921,8 @@
     [host._audio, host._particles, host._shake, host._cb].forEach(function (b) { if (!b || !b._get) return; const on = !!b._get(); setText(b, on ? 'On' : 'Off'); b.setAttribute('aria-pressed', on ? 'true' : 'false'); });
     if (host._speed) for (const b of host._speed.children) cls(b, 'active', String(fin(s.ui.speed, 1)) === b.dataset.speed);
     if (host._vol) host._vol.value = String(fin(M.settings().volume, 0.5));
+    if (host._uiScale) for (const b of host._uiScale.children) cls(b, 'active', Number(b.dataset.scale) === appliedScale);
+    if (host._uiNote) { const lim = effScale < appliedScale - 0.005; show(host._uiNote, lim); if (lim) setText(host._uiNote, 'Limited to ' + Math.round(effScale * 100) + '% by this window size.'); }
   }
   // Debug panel (built in; hidden; Backquote). ui_panels may re-register 'debug' with the full params tree.
   function buildDebugPanel(host) {
@@ -2121,6 +2174,7 @@
   M.update = function (state, dtMs) {
     if (!inited || !state || !state.ui) return;
     root = state; dtMs = fin(dtMs, 16.67); clock += dtMs;
+    if (dom()) { try { const want = scaleOf(M.settings().uiScale); if (want !== appliedScale) applyScale(want); if (clock - fitAt > 1000) { fitAt = clock; const tb = E.topbar; if (tb && fitLevel < 6 && tb.scrollWidth > tb.clientWidth + 1) fitTopbar(); } } catch (e) { /* stub */ } }
     if (titleOn) { sec('title', function (s) { refreshMuteButtons(); if (s.ui.panel) updatePanels(s); }, state, dtMs); return; }
     sec('queue', drainQueue, state, dtMs);
     sec('pan', heldPan, state, dtMs);
