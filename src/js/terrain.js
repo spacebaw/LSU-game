@@ -1526,7 +1526,7 @@
         v.plantedDay = 0;
         s.calendar.day = 40;
         M.tick(s, { newDay: true, newMonth: false, newYear: false, day: 40 });
-        A((s.tiles.flags[iw] & F.DESIRE_WORN) !== 0 && s.tiles.wear[iw] === 40, 'wear ≥ 40 sets DESIRE_WORN, then decays by 5');
+        A((s.tiles.flags[iw] & F.DESIRE_WORN) !== 0 && s.tiles.wear[iw] === 45 - PA.wearDecay, 'wear ≥ 40 sets DESIRE_WORN, then decays by params.agents.wearDecay');
         A(v.stage === 1, 'azalea grows to stage 1 after 30 days');
         A(M.removeVeg(s, 1, 1) === true && !s.veg.some(function (x) { return x.tx === 1 && x.ty === 1; }), 'removeVeg removes the planted azalea');
         let finiteAll = true;

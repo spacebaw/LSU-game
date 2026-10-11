@@ -1366,5 +1366,6 @@ Each line: source (C = completeness critic, F = fun critic), section, resolution
 - F1's "halo of 0.5 per neighbor": replaced by a flat ×3 per drained tile, which gives the intended ~−13 for 100 tiles without a geometry pass; the critic's own arithmetic ignored overlapping halos.
 - F6's "Spillway drag tool": made a once-a-year Storm-panel action rather than a 44th catalog row, to keep the 43-row cap and the one painter.
 - F4/F10 keyboard: toasts use `Y`/`N`, not `1`/`2`, everywhere (§6.2, §11.8), so the digits stay speeds.
+- Time pass (2026-10-10, after playtest): §0.1 clock is now `baseTps` 5 ticks/s at 1× and **`ticksPerDay` 200** (not 100): 1 day = 40 s, month = 400 s, year = 80 min at 1×; the sky cycle stays 300 ticks (60 s, 1.5 days); hydro `dtDay` = 1/80 in normal play (80 steps/day), rain events last one calendar day of steps; set pieces, tiles/s and every tick-timed animation unchanged. Table values in §0.1 are the original 10 tps design; the authoritative numbers are `BSU.params.time` and `docs/INTEGRATION_NOTES.md` '## time pass'.
 
 *Geaux Bayou.*

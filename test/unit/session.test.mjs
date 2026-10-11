@@ -76,10 +76,11 @@ eq(s0.progress.tutorialStage, 6, 'tutorialStage 6');
 H.render(); ok(true, 'headless.render() is a safe no-op without render/ui');
 
 // --- tick1 bookkeeping -------------------------------------------------------
-H.tick(250);
-eq(s0.tick, 250, 'tick counts');
-eq(s0.calendar.day, 2, 'day 2 after 250 ticks');
-eq(s0.playSeconds, 25, 'headless playSeconds = tick / 10');
+const TPD = BSU.params.time.ticksPerDay;   // time pass: 200 ticks per calendar day
+H.tick(Math.round(2.5 * TPD));
+eq(s0.tick, 2.5 * TPD, 'tick counts');
+eq(s0.calendar.day, 2, 'day 2 after 2.5 days of ticks');
+eq(s0.playSeconds, 2.5 * TPD / 10, 'headless playSeconds = tick / 10');
 eq(s0.rng.sim, BSU.rng.sim.state, 'rng.sim mirrored after the tick');
 eq(s0.economy.ecology, s0.wildlife.ecology, 'economy.ecology mirrors wildlife.ecology');
 ok(!scanNumbers(s0), 'no non-finite number in the live tree: ' + scanNumbers(s0));
@@ -174,7 +175,7 @@ ok(S.load('junk') === null, 'unparsable save → null');
   S.newGame({ seed: 5, skipTutorial: true });
   H.autosave = true;
   const s = BSU.state;
-  H.tick(1000);   // crosses Jan → Feb 1 (day 10)
+  H.tick(10 * TPD);   // crosses Jan → Feb 1 (day 10)
   H.autosave = false;
   ok(s.saveMeta.slot === 'auto.0' && win.localStorage.getItem('bsu.save.auto.0'), 'autosave wrote auto.0 on the 1st of the month');
   S.deleteSlot('auto.0');

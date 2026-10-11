@@ -473,18 +473,25 @@ input[type="range"]{width:180px;accent-color:var(--gold)}
   // "days: -1" in a timer entry means "while the source exists": progress.addTimer stores
   // untilDay -1 in the live state (never Infinity; no field of BSU.state may be non-finite — D23, §10.3).
   // ---------------------------------------------------------------------------
+  // TIME PASS (docs/INTEGRATION_NOTES.md '## time pass'): the calendar is the ONE knob. TICKS_PER_DAY (200) sets how many sim ticks
+  // make a calendar day; the world (agents, water, sky, animations) keeps its 5 ticks/s at 1×, so a day is 40 s and a year 80 min.
+  // Every per-day rate is derived from these two constants — never write a literal 100 / 40 / 1/40 for "ticks per day" or "hydro steps per day".
+  const TICKS_PER_DAY = 200;
+  const DAY_SCALE = TICKS_PER_DAY / 100;                       // how much longer a calendar day lasts than the original 100-tick day (2)
+  const HYDRO_STEPS_PER_DAY = TICKS_PER_DAY * 4 / 10;          // 4 hydro steps per 10-tick block (stepsPerBlock) → 80
   BSU.params = {
     time: {                                  // GDD §0.1 timing table
-      tps: 10,                               // sim ticks per real second at 1× (§0.1)
-      baseTps: 5,                           // sim ticks per real second at 1× (GDD §0.1 said 10; halved after playtest: 1 day = 20 s, year = 40 min). Set pieces stay at 10.
-      ticksPerDay: 100,                      // §0.1
+      tps: 10,                               // sim ticks per real second at 1× (§0.1; set pieces and tiles/s unit conversions)
+      baseTps: 5,                            // sim ticks per real second at 1× (GDD §0.1 said 10; halved after playtest). Set pieces stay at 10. 1 day = ticksPerDay / baseTps = 40 s
+      ticksPerDay: TICKS_PER_DAY,            // §0.1 (100 → 200 in the time pass: the calendar slows, the world does not)
       daysPerMonth: 10,                      // §0.1
       monthsPerYear: 12,                     // §0.1
       daysPerYear: 120,                      // §0.1
-      ticksPerYear: 12000,                   // §0.1
-      skyCycleTicks: 300,                    // §0 sky clock (30 s at 1×)
+      ticksPerYear: TICKS_PER_DAY * 120,     // §0.1 (24,000)
+      skyCycleTicks: 300,                    // §0 sky clock (60 s at 1× — unchanged by the time pass)
       skyPhaseTicks: [25, 130, 20, 25, 100], // Dawn/Day/Golden/Dusk/Night (§9.1)
-      skyCycleDays: 3,                       // one sky cycle = 3 calendar days (§9.1)
+      skyCycleDays: 300 / TICKS_PER_DAY,     // one sky cycle = 1.5 calendar days (was 3)
+      dayScale: DAY_SCALE,                   // per-day rates that act on tick-driven activity scale by this (desire-line decay, rain cell drift)
       landfallTicks: 900,                    // §0.1
       nearMissTicks: 150,                    // §0.1
       gameTicks: 750,                        // §0.1
@@ -546,7 +553,8 @@ input[type="range"]{width:180px;accent-color:var(--gold)}
     },
     hydro: {                                 // GDD §6.1
       stepsPerBlock: [0, 2, 5, 7],           // hydro steps on these ticks of each 10-tick block (§6.1.1)
-      dtDayNormal: 1 / 40, dtDayLandfall: 1 / 360, dtDayNearMiss: 1 / 60,   // §0.1, §6.1.1
+      stepsPerDay: HYDRO_STEPS_PER_DAY,      // hydro steps per calendar day at normal time (80)
+      dtDayNormal: 1 / HYDRO_STEPS_PER_DAY, dtDayLandfall: 1 / 360, dtDayNearMiss: 1 / 60,   // §0.1, §6.1.1 (landfall / near-miss are set pieces: 900 / 150 ticks = one storm day, independent of ticksPerDay)
       jacobiPasses: 2,                       // §6.1.1
       k: 0.35, kCanal: 8,                    // §6.1.4
       maxGiveFrac: 0.5,                      // a tile never gives more than half its depth per pass (§6.1.4)
@@ -567,9 +575,9 @@ input[type="range"]{width:180px;accent-color:var(--gold)}
       thresholds: { puddle: 0.05, wading: 0.3, flood: 0.5, floodPilings: 3, impassable: 0.6, surgeDmg: 2, surgeDmg2: 4, bridgeSurge: 2, pedBridgeSurge: 6 },   // §6.1.6; pedBridgeSurge: bridge pass (the Pedestrian Bridge deck is 6 ft over normal stage)
       dmgPerDay: { flood: 0.02, surge: 0.05, surge2: 0.25 },   // §6.1.6
       marshDrain: { daysToDrain: 5, drainDepth: 0.1, canalRadius: 2, revertDepth: 0.5, revertDays: 20, mudDays: 15, mudMosq: 0.3 },   // §6.1.7
-      rain: { shower: 0.04, frontal: 0.125, cellMin: 1, cellMax: 3, cellScripted: 3, cellRadius: 14, cellSteps: 60, cellTicks: 150, cellDriftTicks: 10, band: 0.33, hurricane: [6, 8, 10, 13, 16], hurricaneSteps: 360, mapWideSteps: 40 },   // §6.1.2 (hurricane in inches)
+      rain: { shower: 0.04, frontal: 0.125, cellMin: 1, cellMax: 3, cellScripted: 3, cellRadius: 14, cellSteps: HYDRO_STEPS_PER_DAY * 1.5, cellScriptedSteps: 60, cellTicks: TICKS_PER_DAY * 1.5, cellDriftTicks: 10 * DAY_SCALE, band: 0.33, hurricane: [6, 8, 10, 13, 16], hurricaneSteps: 360, mapWideSteps: HYDRO_STEPS_PER_DAY },   // §6.1.2 (hurricane in inches)
       inchesPerFoot: 12,                     // unit conversion (§6.1.2)
-      riskSteps: 40, riskInches: 2, riskCacheDays: 5,   // F overlay (§6.1.8)
+      riskSteps: HYDRO_STEPS_PER_DAY, riskInches: 2, riskCacheDays: 5,   // F overlay (§6.1.8)
       seepageRadius: 6, seepageSat: 0.8,     // Spring High Water seepage (§6.9)
       integrityWeak: 70, integrityHalf: 50,  // §0.3 row 25
       overtopDmg: 10, surgeContactDmgPerCat: 5, surgeContactStage: 1,   // §6.1.4
@@ -944,7 +952,7 @@ input[type="range"]{width:180px;accent-color:var(--gold)}
       maxAstarPerTick: 8,                    // §7
       summerShare: 0.35, poboyShare: 0.3, nightOwlShare: 0.15, zydecoEvery: 5,   // §7 schedule
       fleeRadius: 2, legTicks: 50,           // §7
-      wearThreshold: 40, wearDecay: 5,       // §7 desire lines
+      wearThreshold: 40, wearDecay: 5 * DAY_SCALE,   // §7 desire lines (agents cross at the tick rate, so the per-day decay scales with the day: 5 per 100 ticks)
       energyDrain: 1,                        // fraction of energy drained across one Day phase (§7)
       tubeP: 0.15, slapAt: 0.3, gatorFleeTicks: 30, moodFlee: -5,   // §7 reactions
       debrisCostMult: 2,                     // §3.2 bit10
@@ -1000,7 +1008,7 @@ input[type="range"]{width:180px;accent-color:var(--gold)}
       agentPx: [12, 20], gatorPx: [40, 12], leGrandPx: 56   // §12.3
     },
     ui: {                                    // GDD §11
-      undoSeconds: 10, undoTicks: 50,        // §11.2, ARCH D16 (50 ticks at baseTps 5 = 10 s wall-clock at 1×; chip drain matches)
+      undoSeconds: 10, undoTicks: 50,        // §11.2, ARCH D16 (50 ticks at baseTps 5 = 10 s wall-clock at 1×; chip drain matches; tick-based, so independent of ticksPerDay)
       minWidth: 1024, compactWidth: 1180, topbarH: 44, tickerH: 24, paletteH: 112, inspectW: 300, itemPx: 72, iconPx: 64,   // §11
       tickerMax: 30, tickerNoLineDays: 3,    // §11.1
       hoverTagMs: 300, panelRefreshMs: 500,  // §6.3, ARCH §7.7
@@ -2865,12 +2873,13 @@ input[type="range"]{width:180px;accent-color:var(--gold)}
   // `n`/`w`/`Escape` with map bindings, so they live here rather than as duplicate rows.
   const toastKeys = { yes: ['y', 'Enter'], no: ['n', 'Escape'] };
   const panKeys = { up: ['w', 'ArrowUp'], down: ['s', 'ArrowDown'], left: ['a', 'ArrowLeft'], right: ['d', 'ArrowRight'] };
+  const PRN = BSU.params.hydro.rain;   // step counts derive from params (time pass): a shower / frontal / band is 1 calendar day of hydro steps, a cell 1.5
   const rainKinds = {
-    shower: { total: 0.04, steps: 40 },
-    frontal: { total: 0.125, steps: 40 },
-    band: { total: 0.33, steps: 40 },
-    cell: { steps: 60, radius: 14 },
-    hurricane: { inches: [6, 8, 10, 13, 16], steps: 360 }
+    shower: { total: PRN.shower, steps: PRN.mapWideSteps },
+    frontal: { total: PRN.frontal, steps: PRN.mapWideSteps },
+    band: { total: PRN.band, steps: PRN.mapWideSteps },
+    cell: { steps: PRN.cellSteps, radius: PRN.cellRadius },
+    hurricane: { inches: PRN.hurricane.slice(), steps: PRN.hurricaneSteps }
   };
 
   // ---------------------------------------------------------------------------
@@ -3093,7 +3102,7 @@ input[type="range"]{width:180px;accent-color:var(--gold)}
       check(C.rookery.alwaysPilings && C.coastal_institute.alwaysPilings && !C.dorm.alwaysPilings, 'alwaysPilings');
       check(!C.founders_hall.demolishable && !C.stadium.demolishable && C.dorm.demolishable, 'demolishable');
       check(C.dorm.shelterOwn && C.res_tower.shelterOwn && !C.library.shelterOwn, 'shelterOwn');
-      check(D.rainKinds.hurricane.inches.length === 5 && D.rainKinds.cell.steps === 60 && D.rainKinds.shower.total === 0.04, 'rainKinds');
+      check(D.rainKinds.hurricane.inches.length === 5 && D.rainKinds.cell.steps === BSU.params.hydro.rain.cellSteps && D.rainKinds.shower.total === 0.04, 'rainKinds');
       // 12. football tables (PLAN_FOOTBALL pass A): roster, prospects, formations, phrases, opponent/coach styles
       const FB = D.football, FPOS = ['QB', 'RB', 'WR', 'OL', 'DL', 'LB', 'DB', 'K'];
       const strs = function (a, min) { return Array.isArray(a) && a.length >= min && a.every(x => typeof x === 'string' && x.length > 0); };
@@ -4681,7 +4690,7 @@ input[type="range"]{width:180px;accent-color:var(--gold)}
         v.plantedDay = 0;
         s.calendar.day = 40;
         M.tick(s, { newDay: true, newMonth: false, newYear: false, day: 40 });
-        A((s.tiles.flags[iw] & F.DESIRE_WORN) !== 0 && s.tiles.wear[iw] === 40, 'wear ≥ 40 sets DESIRE_WORN, then decays by 5');
+        A((s.tiles.flags[iw] & F.DESIRE_WORN) !== 0 && s.tiles.wear[iw] === 45 - PA.wearDecay, 'wear ≥ 40 sets DESIRE_WORN, then decays by params.agents.wearDecay');
         A(v.stage === 1, 'azalea grows to stage 1 after 30 days');
         A(M.removeVeg(s, 1, 1) === true && !s.veg.some(function (x) { return x.tx === 1 && x.ty === 1; }), 'removeVeg removes the planted azalea');
         let finiteAll = true;
@@ -6098,7 +6107,7 @@ input[type="range"]{width:180px;accent-color:var(--gold)}
       };
     };
     const stubT = { touch: function () {}, rewalk: function () {}, classify: function (s, i) { if (i === undefined) return; const fl = s.tiles.flags[i]; if (fl & F.DRAINED) s.tiles.type[i] = T.DRAINED; else if (s.tiles.elev[i] < 1.5 && !(fl & WATER_MASK)) s.tiles.type[i] = T.MARSH; } };
-    const dt = P.dtDayNormal;
+    const dt = P.dtDayNormal, SPD = P.stepsPerDay;   // SPD = hydro steps per calendar day (time pass: derived from params.time.ticksPerDay)
     /** flat 4-ft Dry land, a 2-wide bayou at x = 10–11, a 3×3 basin at 1.6 with a 2.2 lip inside a shallow bowl */
     function synth(seed) {
       const s = BSU.newState(seed);
@@ -6118,17 +6127,17 @@ input[type="range"]{width:180px;accent-color:var(--gold)}
     try {
       M._deps = { emit: function (name, payload) { rec.push({ name: name, p: payload }); }, buildings: stubB([]), terrain: stubT, weather: { consumeRainStep: function () { return null; } } };
 
-      // 1. T5 conservation: 40 steps of a 2-inch map-wide rain, then 160 dry steps
+      // 1. T5 conservation: one day of a 2-inch map-wide rain, then four dry days
       {
         const s = synth(1234);
         const rain = { r: P.riskInches / P.inchesPerFoot / P.rain.mapWideSteps, mapWide: true };
         let worst = 0;
-        for (let k = 0; k < 200; k++) {
-          step(s, dt, k < 40 ? rain : null, null);
+        for (let k = 0; k < 5 * SPD; k++) {
+          step(s, dt, k < P.rain.mapWideSteps ? rain : null, null);
           const c = M.conservationCheck(s);
           A(isFinite(c.leak) && c.leak <= P.conservationTol * c.moved + 1e-6, 'T5 leak ' + c.leak + ' vs moved ' + c.moved + ' at step ' + k);
           if (c.moved > 0 && c.leak / c.moved > worst) worst = c.leak / c.moved;
-          if (k === 39) { const center = s.tiles.depth[31 * W + 31]; A(center > 0.1, 'basin fills after 2 in (' + center.toFixed(3) + ')'); notes.push('basin ' + center.toFixed(2) + ' ft after 2 in'); }
+          if (k === P.rain.mapWideSteps - 1) { const center = s.tiles.depth[31 * W + 31]; A(center > 0.1, 'basin fills after 2 in (' + center.toFixed(3) + ')'); notes.push('basin ' + center.toFixed(2) + ' ft after 2 in'); }
         }
         noNaN(s, 'T5');
         A(s.tiles.depth[5 * W + 40] < 0.01, 'flat 4-ft land dry after a day');
@@ -6145,12 +6154,12 @@ input[type="range"]{width:180px;accent-color:var(--gold)}
         step(s, dt, null, null);
         A(s.tiles.depth[Aa] > 0 && s.tiles.depth[Bb] > 0 && s.tiles.depth[Aa] > s.tiles.depth[Bb], 'T6: crown water sheds to both sides, more to the 3.0 side');
         let n = 1;
-        while (n < 80 && s.tiles.depth[L] >= 0.01) { step(s, dt, null, null); n++; }
+        while (n < 2 * SPD && s.tiles.depth[L] >= 0.01) { step(s, dt, null, null); n++; }
         A(s.tiles.depth[L] < 0.01, 'T6: crown dry within 2 days (' + n + ' steps)');
         const Pp = 25 * W + 25, L2 = 25 * W + 26;
         s.tiles.depth[Pp] = 0.4; s.tiles.crest[L2] = 6; s.tiles.integrity[L2] = 100;
         M.reset(s, true);
-        for (let k = 0; k < 40; k++) { step(s, dt, null, null); A(s.tiles.depth[L2] === 0, 'T6: a 0.4-ft puddle never enters a levee tile'); }
+        for (let k = 0; k < SPD; k++) { step(s, dt, null, null); A(s.tiles.depth[L2] === 0, 'T6: a 0.4-ft puddle never enters a levee tile'); }
         A(count(EV.LEVEE_OVERTOP) === 0, 'T6: no overtop event from puddles');
       }
 
@@ -6227,13 +6236,13 @@ input[type="range"]{width:180px;accent-color:var(--gold)}
         const nets = M.networks(s);
         A(nets.length === 1 && nets[0].pumps.length === 1 && !nets[0].drainsToWater, 'pump attached to the network');
         A(M.drainsTo(s, y * W + 44) === 'Pump 1 → Bayou', 'drainsTo pump');
-        for (let k = 0; k < 40; k++) step(s, dt, null, null);
+        for (let k = 0; k < SPD; k++) step(s, dt, null, null);
         const pumped = M.sinkStats(s).pumped;
         A(Math.abs(pumped - P.pumpTileFtPerDay) <= 0.05 * P.pumpTileFtPerDay, 'pump removed ' + pumped.toFixed(2) + ' tile-ft in a day');
         A(M.pumpRunning(s, 0), 'pumpRunning true today');
         M._deps.buildings.effective = function () { return 0; };
         const before = M.sinkStats(s).pumped;
-        for (let k = 0; k < 40; k++) step(s, dt, null, null);
+        for (let k = 0; k < SPD; k++) step(s, dt, null, null);
         A(M.sinkStats(s).pumped === before, 'unpowered pump removes nothing');
         M._deps.buildings = stubB([]);
       }
@@ -6253,12 +6262,15 @@ input[type="range"]{width:180px;accent-color:var(--gold)}
         A(s.hydro.pondCap['3'] === P.pond.cap, 'pondCap 20');
         A(M.drainsTo(s, 54 * W + 53) === 'Pond', 'drainsTo Pond');
         step(s, dt, null, null);
-        for (let x = 51; x <= 55; x++) { const d = s.tiles.depth[54 * W + x]; A(d <= 0.3 + 1e-6 && d >= 0.3 - 0.02, 'pond took ≤ 0.1 from tile ' + x + ' (' + d.toFixed(3) + ')'); }
+        const take = Math.min(P.pond.cap, P.pond.rate * dt * 40);   // per step: rate × dt × 40 (= 20 tile-ft per calendar day at any steps-per-day)
+        let removed = 0;
+        for (let x = 51; x <= 55; x++) { const d = s.tiles.depth[54 * W + x]; removed += 0.4 - d; A(d <= 0.4 + 1e-6 && d >= 0.4 - P.pond.perTileStep - 0.02, 'pond took ≤ 0.1 from tile ' + x + ' (' + d.toFixed(3) + ')'); }
+        A(Math.abs(removed - take) < 0.02, 'pond took rate·dt·40 in all, plus a little ground drain (' + removed.toFixed(3) + ' vs ' + take.toFixed(3) + ')');
         const cap = s.hydro.pondCap['3'];
-        A(cap > 19.5 && cap < 19.6, 'capacity 20 − 0.5 + 2·dt (' + cap.toFixed(3) + ')');
+        A(Math.abs(cap - (P.pond.cap - P.pond.rate * dt * 40 + P.pond.recover * dt)) < 1e-6, 'capacity 20 − rate·dt·40 + 2·dt (' + cap.toFixed(3) + ')');
         s.hydro.pondCap['3'] = 10;
         for (let x = 51; x <= 55; x++) s.tiles.depth[54 * W + x] = 0;
-        for (let k = 0; k < 40; k++) step(s, dt, null, null);
+        for (let k = 0; k < SPD; k++) step(s, dt, null, null);
         A(Math.abs(s.hydro.pondCap['3'] - 12) < 1e-3, 'capacity recovers 2/day (' + s.hydro.pondCap['3'].toFixed(3) + ')');
         M._deps.buildings = stubB([]);
       }
@@ -6411,7 +6423,7 @@ input[type="range"]{width:180px;accent-color:var(--gold)}
   const PT = P.time, PW = P.weather, PS = P.storm, PH = P.heat, PR = P.hydro.rain, PHY = P.hydro;
   const SKY = BSU.SKY, SKY_TICKS = BSU.SKY_TICKS, STORM = BSU.STORM, SPH = BSU.STORM_PHASE, EV = BSU.EV;
   const R = BSU.rng.sim;
-  const TPD = PT.ticksPerDay;        // 100
+  const TPD = PT.ticksPerDay;        // 200 (time pass; every day↔tick conversion in this file derives from it)
   const DPY = PT.daysPerYear;        // 120
   const CYCLE = PT.skyCycleTicks;    // 300
   const W = BSU.MAP.W, H = BSU.MAP.H;
@@ -6608,7 +6620,7 @@ input[type="range"]{width:180px;accent-color:var(--gold)}
   function startCell(state, q) {
     const lightning = q.scripted ? true : R.chance(PW.lightningP);
     state.weather.event = {
-      kind: 'cell', total: q.total, steps: PR.cellSteps, stepsLeft: PR.cellSteps,
+      kind: 'cell', total: q.total, steps: q.scripted ? PR.cellScriptedSteps : PR.cellSteps, stepsLeft: q.scripted ? PR.cellScriptedSteps : PR.cellSteps,
       cx: clamp(Math.round(fin(q.cx, W / 2)), 0, W - 1), cy: clamp(Math.round(fin(q.cy, H / 2)), 0, H - 1),
       radius: PR.cellRadius, lightning: lightning, scripted: !!q.scripted
     };
@@ -6653,7 +6665,7 @@ input[type="range"]{width:180px;accent-color:var(--gold)}
     if (ev) {
       pv.rainedToday = true;
       if (ev.kind === 'cell') {
-        if (T % PR.cellDriftTicks === 0) { ev.cx = clamp(ev.cx + 1, 0, W - 1); ev.cy = clamp(ev.cy - 1, 0, H - 1); }   // drifts NE (+tx, −ty)
+        if (T % Math.max(1, Math.round(PR.cellDriftTicks * fin(ev.steps, PR.cellSteps) / PR.cellSteps)) === 0) { ev.cx = clamp(ev.cx + 1, 0, W - 1); ev.cy = clamp(ev.cy - 1, 0, H - 1); }   // drifts NE (+tx, −ty)
         if (ev.lightning && T % PS.lightningEveryOuter === 0) {
           const tx = clamp(ev.cx + R.int(2 * ev.radius + 1) - ev.radius, 0, W - 1);
           const ty = clamp(ev.cy + R.int(2 * ev.radius + 1) - ev.radius, 0, H - 1);
@@ -7582,8 +7594,8 @@ input[type="range"]{width:180px;accent-color:var(--gold)}
   // Public actions
   // ---------------------------------------------------------------------------
   /**
-   * The ONE storm factory. `compressed` is REQUIRED (D51): true → tick-driven lifecycle (watch at tLandfall−300,
-   * bands at −100, landfall at tLandfall); false → day-driven (landfallDay = day + ceil((landfallTick − T)/100)).
+   * The ONE storm factory. `compressed` is REQUIRED (D51): true → tick-driven lifecycle (watch at tLandfall − watchLead·ticksPerDay (−600),
+   * bands at − bandsLead·ticksPerDay (−200), landfall at tLandfall); false → day-driven (landfallDay = day + ceil((landfallTick − T)/ticksPerDay)).
    * Returns the existing storm unchanged when one is already current.
    */
   M.spawnStorm = function (state, opts) {
@@ -7878,17 +7890,17 @@ input[type="range"]{width:180px;accent-color:var(--gold)}
       notes.push('rainDays ' + rd.length);
       // 4. consumeRainStep on a shower.
       const s4 = fresh(5); M.reset(s4, true);
-      startMapWide(s4, 'shower', PR.shower, 40, false);
+      startMapWide(s4, 'shower', PR.shower, PR.mapWideSteps, false);
       let n4 = 0;
-      for (let k = 0; k < 40; k++) { const r = M.consumeRainStep(s4); A(r && Math.abs(r.r - 0.04 / 40) < 1e-12 && r.mapWide === true, 'shower step ' + k); n4++; }
-      A(n4 === 40 && s4.weather.event === null && M.consumeRainStep(s4) === null, 'shower clears after 40 steps then null');
+      for (let k = 0; k < PR.mapWideSteps; k++) { const r = M.consumeRainStep(s4); A(r && Math.abs(r.r - PR.shower / PR.mapWideSteps) < 1e-12 && r.mapWide === true, 'shower step ' + k); n4++; }
+      A(n4 === PR.mapWideSteps && s4.weather.event === null && M.consumeRainStep(s4) === null, 'shower clears after one calendar day of hydro steps then null');
       // 5. dtDay rule.
       const s5 = fresh(5); M.reset(s5, true);
-      const table = [[null, 0, 1 / 40], [null, 2, 1 / 40], [null, 5, 1 / 40], [null, 7, 1 / 40], [null, 1, 0], [null, 3, 0], [null, 9, 0], ['game', 0, 0], ['parade', 2, 0], ['graduation', 5, 0], ['montage', 7, 0], ['landfall', 1, 1 / 360], ['nearMiss', 3, 1 / 60]];
+      const dn = PHY.dtDayNormal, table = [[null, 0, dn], [null, 2, dn], [null, 5, dn], [null, 7, dn], [null, 1, 0], [null, 3, 0], [null, 9, 0], ['game', 0, 0], ['parade', 2, 0], ['graduation', 5, 0], ['montage', 7, 0], ['landfall', 1, 1 / 360], ['nearMiss', 3, 1 / 60]];
       for (let i = 0; i < table.length; i++) { s5.setPiece = table[i][0] ? { kind: table[i][0], tick: 0, len: 900, skippable: false, choices: {}, speedBefore: 1, cameraTouched: false } : null; s5.tick = 100 + table[i][1]; A(dtDayFor(s5) === table[i][2], 'dtDay ' + table[i][0] + ' T%10=' + table[i][1]); }
       s5.setPiece = null;
       // 6. Storm schedule for a Year-2 state.
-      const s6 = fresh(5); M.reset(s6, true); s6.storms.celestine.state = 'done'; s6.calendar.running = true; s6.calendar.day = 119; s6.calendar.dayTick = 99; s6.tick = 11999; deriveCalendar(s6.calendar);
+      const s6 = fresh(5); M.reset(s6, true); s6.storms.celestine.state = 'done'; s6.calendar.running = true; s6.calendar.day = 119; s6.calendar.dayTick = TPD - 1; s6.tick = DPY * TPD - 1; deriveCalendar(s6.calendar);
       step(s6, 1);
       A(s6.calendar.day === 120 && s6.calendar.year === 2, 'rolled into Year 2');
       const sched = s6.storms.scheduled;
@@ -7902,7 +7914,7 @@ input[type="range"]{width:180px;accent-color:var(--gold)}
       notes.push('Y2 storms ' + sched.map(function (e) { return e.name + ' C' + e.cat + (e.nearMiss ? '(nm)' : '') + '@' + e.day; }).join(','));
       A(s6.weather.riverStage >= 1 && s6.weather.riverStage <= 3, 'riverStage drawn 1–3: ' + s6.weather.riverStage);
       // 7. Hold rule.
-      const mk7 = function () { const s = fresh(5); M.reset(s, true); s.calendar.running = true; s.calendar.day = 80; s.calendar.dayTick = 99; s.tick = 8099; deriveCalendar(s.calendar); return s; };
+      const mk7 = function () { const s = fresh(5); M.reset(s, true); s.calendar.running = true; s.calendar.day = 80; s.calendar.dayTick = TPD - 1; s.tick = 81 * TPD - 1; deriveCalendar(s.calendar); return s; };
       const s7a = mk7(); s7a.playSeconds = 100; M.tick(s7a); A(s7a.calendar.day === 81 && s7a.storms.current === null, 'no storm with playSeconds 100');
       const s7b = mk7(); s7b.playSeconds = 600; M._deps.progress = { offered: function () { return false; }, setPieceSeen: function () { return false; }, addTimer: function () {}, ticker: function () {} }; M.tick(s7b); A(s7b.storms.current === null, 'no storm when Objective 11 not offered');
       M._deps.progress = stubs.progress;
@@ -7912,12 +7924,13 @@ input[type="range"]{width:180px;accent-color:var(--gold)}
       A(BSU.ty(c7.point) === 63 && BSU.tx(c7.point) === 41, 'Célestine point below the cove');
       // 8. spawnStorm compressed / day-driven.
       const s8 = fresh(5); M.reset(s8, true); log.length = 0;
-      const st8 = M.spawnStorm(s8, { cat: 3, coneNowTick: 0, landfallTick: 600, compressed: true });
-      A(st8.landfallDay === s8.calendar.day + 6 && st8.forecastCat >= 2 && st8.forecastCat <= 4 && st8.entry.length === 8 && st8.surge === 8 && st8.compressed === true && st8.tLandfall === 600, 'compressed spawn');
+      const cone6 = PS.coneDays * TPD;   // six calendar days of ticks
+      const st8 = M.spawnStorm(s8, { cat: 3, coneNowTick: 0, landfallTick: cone6, compressed: true });
+      A(st8.landfallDay === s8.calendar.day + 6 && st8.forecastCat >= 2 && st8.forecastCat <= 4 && st8.entry.length === 8 && st8.surge === 8 && st8.compressed === true && st8.tLandfall === cone6, 'compressed spawn');
       A(names().filter(function (n) { return n === EV.STORM_NAMED; }).length === 1, 'one storm:named');
       A(M.spawnStorm(s8, { cat: 5, compressed: true, landfallTick: 900 }) === st8, 'a second spawn returns the current storm');
       const s8b = fresh(5); M.reset(s8b, true);
-      const st8b = M.spawnStorm(s8b, { cat: 3, coneNowTick: 0, landfallTick: 600, compressed: false });
+      const st8b = M.spawnStorm(s8b, { cat: 3, coneNowTick: 0, landfallTick: cone6, compressed: false });
       A(st8b.compressed === false && st8b.tLandfall === -1 && st8b.landfallDay === 6, 'day-driven spawn');
       A(s8.storms.celestine.state === 'done', 'a forced storm marks Célestine done');
       // 9. Hook table.
@@ -7946,27 +7959,27 @@ input[type="range"]{width:180px;accent-color:var(--gold)}
       let offered = 0;
       M._deps.sports = { upcoming: function (s) { return { day: s.calendar.day, home: true, opp: 'x' }; }, season: function (s) { return s.sports; }, postpone: function () {}, offerPlayThrough: function () { offered++; } };
       const s12 = fresh(5); M.reset(s12, true);
-      const st12 = M.spawnStorm(s12, { cat: 1, compressed: true, landfallTick: 600, forecastCat: 1 });
+      const st12 = M.spawnStorm(s12, { cat: 1, compressed: true, landfallTick: PS.coneDays * TPD, forecastCat: 1 });
       doBands(s12, st12);
       A(offered === 1 && st12.phase === STORM.BANDS && s12.weather.event && s12.weather.event.kind === 'band', 'offerPlayThrough called once at forecast 1');
       const s12b = fresh(5); M.reset(s12b, true);
-      const st12b = M.spawnStorm(s12b, { cat: 2, compressed: true, landfallTick: 600, forecastCat: 2 });
+      const st12b = M.spawnStorm(s12b, { cat: 2, compressed: true, landfallTick: PS.coneDays * TPD, forecastCat: 2 });
       doBands(s12b, st12b);
       A(offered === 1, 'not offered at forecast 2');
       M._deps.sports = stubs.sports;
       // 13. A forced Cat 3 reaches every phase at the right ticks (compressed lifecycle end to end).
       const s13 = fresh(5); M.reset(s13, true); s13.calendar.running = true; log.length = 0;
       const T0 = s13.tick;
-      M.spawnStorm(s13, { cat: 3, coneNowTick: T0, landfallTick: T0 + 600, compressed: true });
+      M.spawnStorm(s13, { cat: 3, coneNowTick: T0, landfallTick: T0 + PS.coneDays * TPD, compressed: true });
       const at = {};
       const watchTick = function (name) { for (let i = 0; i < log.length; i++) if (log[i].name === name) return log[i].payload; return null; };
-      for (let k = 0; k < 1600; k++) {
+      for (let k = 0; k < PS.coneDays * TPD + 1000; k++) {
         step(s13, 1);
         if (at.watch === undefined && watchTick(EV.STORM_WATCH)) at.watch = s13.tick - 1;
         if (at.bands === undefined && watchTick(EV.STORM_BANDS)) at.bands = s13.tick - 1;
         if (at.landfall === undefined && watchTick(EV.STORM_LANDFALL)) at.landfall = s13.tick - 1;
       }
-      A(at.watch === T0 + 300 && at.bands === T0 + 500 && at.landfall === T0 + 600, 'watch/bands/landfall at +300/+500/+600 (' + at.watch + ',' + at.bands + ',' + at.landfall + ')');
+      A(at.watch === T0 + PS.coneDays * TPD - PS.watchLead * TPD && at.bands === T0 + PS.coneDays * TPD - PS.bandsLead * TPD && at.landfall === T0 + PS.coneDays * TPD, 'watch/bands/landfall at −3 / −1 / 0 days before landfall (' + at.watch + ',' + at.bands + ',' + at.landfall + ')');
       const phases = log.filter(function (e) { return e.name === EV.STORM_PHASE; }).map(function (e) { return e.payload.phase + '@' + e.payload.t; });
       A(phases.join() === ['0@0', '1@150', '2@350', '3@450', '4@500', '5@750'].join(), 'phase events 0/150/350/450/500/750: ' + phases.join());
       const pulses = log.filter(function (e) { return e.name === EV.STORM_PULSE; }).map(function (e) { return e.payload.n; });
@@ -30199,7 +30212,7 @@ input[type="range"]{width:180px;accent-color:var(--gold)}
     add('+$1M', function (s) { call('economy', 'post', s, 'misc', 1e6); });
     add('+500 students', function (s) { call('economy', 'addStudents', s, 500, 'debug'); });
     add('Skip 10 days', function (s) { if (has('session', 'skipToDate')) { const d = BSU.dayParts(dayOf(s) + 10); call('session', 'skipToDate', s, d.date, d.year - fin(s.calendar.year, 1)); } });
-    add('Cat 3 in 6 days', function (s) { call('weather', 'spawnStorm', s, { cat: 3, coneNowTick: tickOf(s), landfallTick: tickOf(s) + 600, compressed: true }); });
+    add('Cat 3 in 6 days', function (s) { call('weather', 'spawnStorm', s, { cat: 3, coneNowTick: tickOf(s), landfallTick: tickOf(s) + fin(P.storm && P.storm.coneDays, 6) * fin(PT.ticksPerDay, 200), compressed: true }); });
     add('Rain here', function (s) { const i = M.hoverTile >= 0 ? M.hoverTile : (s.plot && s.plot.founders ? BSU.idx(s.plot.founders.tx, s.plot.founders.ty) : 2080); call('hydro', 'forceRain', s, { i: i, tx: i % W, ty: (i / W) | 0, inches: 2 }); });
     add('Spawn gator', function (s) { const i = M.hoverTile >= 0 ? M.hoverTile : -1; if (i >= 0) call('wildlife', 'spawnGator', s, i); else call('wildlife', 'forceFirstGator', s); });
     add('Mosquitoes', function (s) { call('wildlife', 'forceMosquito', s, 0.8); });
@@ -35314,12 +35327,12 @@ input[type="range"]{width:180px;accent-color:var(--gold)}
       const r = call('buildings', 'place', s, id, x | 0, y | 0, { rot: 0 });
       return (r && typeof r === 'object') ? r : { ok: false, reason: 'Cannot place here' };
     },
-    /** a compressed (tick-driven) storm: cone now, watch +300, bands +500, landfall set piece at +600 (D51) */
+    /** a compressed (tick-driven) storm: cone now, watch at −watchLead days, bands at −bandsLead days, landfall set piece at +coneDays days (D51; days = params.time.ticksPerDay ticks: +600 / +1000 / +1200) */
     forceHurricane: function (cat) {
       const s = BSU.state;
       if (!s || !has('weather', 'spawnStorm')) return null;
       const c = BSU.clamp(Math.round(fin(Number(cat), 3)), 1, 5);
-      const st = call('weather', 'spawnStorm', s, { cat: c, coneNowTick: s.tick, landfallTick: s.tick + 600, compressed: true });
+      const st = call('weather', 'spawnStorm', s, { cat: c, coneNowTick: s.tick, landfallTick: s.tick + P.storm.coneDays * PT.ticksPerDay, compressed: true });
       return st || null;
     },
     /** a left click at canvas pixel coords through ui's input state machine (mods always carry all four booleans, D56) */
@@ -35432,12 +35445,12 @@ input[type="range"]{width:180px;accent-color:var(--gold)}
       A(snap.speed === 1, 'skipTutorial: speed 1');
       A(s.tiles.surface[s.plot.landingShoulder] === 1, 'the tutorial path reaches plot.landingShoulder');
       A(s.calendar.running === true && s.calendar.frozen === false, 'calendar running after skipTutorial');
-      // 2. 300 ticks: finite tree, tick/day counts
-      H.tick(300);
+      // 2. three days of ticks: finite tree, tick/day counts
+      H.tick(3 * PT.ticksPerDay);
       const bad = scanNumbers(s);
-      A(!bad, 'no non-finite number after 300 ticks: ' + bad);
-      A(s.tick === 300, 'tick === 300');
-      A(s.calendar.day === 3, 'calendar.day === 3 after 300 ticks (got ' + s.calendar.day + ')');
+      A(!bad, 'no non-finite number after three days of ticks: ' + bad);
+      A(s.tick === 3 * PT.ticksPerDay, 'tick === 3 days of ticks');
+      A(s.calendar.day === 3, 'calendar.day === 3 after 3 × ticksPerDay ticks (got ' + s.calendar.day + ')');
       // 3. save → load identity, elev bit-identical, an open-ended timer round-trips as −1
       if (has('progress', 'addTimer')) call('progress', 'addTimer', s, '__t', 1, -1);
       else s.progress.timers.push({ id: '__t', value: 1, untilDay: -1 });
@@ -35486,12 +35499,13 @@ input[type="range"]{width:180px;accent-color:var(--gold)}
       const storm = H.forceHurricane(3);
       A(storm && storm.compressed === true && storm.cat === 3, 'forceHurricane returns a compressed Cat 3 Storm');
       A(storm.landfallDay === s.calendar.day + 6, 'landfallDay = today + 6');
-      H.tick(700);
+      const cone = P.storm.coneDays * PT.ticksPerDay;   // the cone is coneDays calendar days of ticks (1200)
+      H.tick(cone + 100);
       snap = H.snapshot();
-      A(s.setPiece && s.setPiece.kind === 'landfall', 'landfall set piece running at +700');
+      A(s.setPiece && s.setPiece.kind === 'landfall', 'landfall set piece running at cone + 100');
       A(snap.storm && snap.storm.phase === BSU.STORM.LANDFALL, 'snapshot().storm.phase is LANDFALL during the set piece');
       H.tick(1000);
-      A(s.setPiece === null, 'the landfall set piece is over at +1700');
+      A(s.setPiece === null, 'the landfall set piece is over at cone + 1100');
       // 7. findSpot / place
       M.newGame({ seed: 1234, skipTutorial: true });
       const spot = H.findSpot('dorm');

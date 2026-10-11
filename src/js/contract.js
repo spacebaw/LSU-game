@@ -96,18 +96,25 @@
   // "days: -1" in a timer entry means "while the source exists": progress.addTimer stores
   // untilDay -1 in the live state (never Infinity; no field of BSU.state may be non-finite — D23, §10.3).
   // ---------------------------------------------------------------------------
+  // TIME PASS (docs/INTEGRATION_NOTES.md '## time pass'): the calendar is the ONE knob. TICKS_PER_DAY (200) sets how many sim ticks
+  // make a calendar day; the world (agents, water, sky, animations) keeps its 5 ticks/s at 1×, so a day is 40 s and a year 80 min.
+  // Every per-day rate is derived from these two constants — never write a literal 100 / 40 / 1/40 for "ticks per day" or "hydro steps per day".
+  const TICKS_PER_DAY = 200;
+  const DAY_SCALE = TICKS_PER_DAY / 100;                       // how much longer a calendar day lasts than the original 100-tick day (2)
+  const HYDRO_STEPS_PER_DAY = TICKS_PER_DAY * 4 / 10;          // 4 hydro steps per 10-tick block (stepsPerBlock) → 80
   BSU.params = {
     time: {                                  // GDD §0.1 timing table
-      tps: 10,                               // sim ticks per real second at 1× (§0.1)
-      baseTps: 5,                           // sim ticks per real second at 1× (GDD §0.1 said 10; halved after playtest: 1 day = 20 s, year = 40 min). Set pieces stay at 10.
-      ticksPerDay: 100,                      // §0.1
+      tps: 10,                               // sim ticks per real second at 1× (§0.1; set pieces and tiles/s unit conversions)
+      baseTps: 5,                            // sim ticks per real second at 1× (GDD §0.1 said 10; halved after playtest). Set pieces stay at 10. 1 day = ticksPerDay / baseTps = 40 s
+      ticksPerDay: TICKS_PER_DAY,            // §0.1 (100 → 200 in the time pass: the calendar slows, the world does not)
       daysPerMonth: 10,                      // §0.1
       monthsPerYear: 12,                     // §0.1
       daysPerYear: 120,                      // §0.1
-      ticksPerYear: 12000,                   // §0.1
-      skyCycleTicks: 300,                    // §0 sky clock (30 s at 1×)
+      ticksPerYear: TICKS_PER_DAY * 120,     // §0.1 (24,000)
+      skyCycleTicks: 300,                    // §0 sky clock (60 s at 1× — unchanged by the time pass)
       skyPhaseTicks: [25, 130, 20, 25, 100], // Dawn/Day/Golden/Dusk/Night (§9.1)
-      skyCycleDays: 3,                       // one sky cycle = 3 calendar days (§9.1)
+      skyCycleDays: 300 / TICKS_PER_DAY,     // one sky cycle = 1.5 calendar days (was 3)
+      dayScale: DAY_SCALE,                   // per-day rates that act on tick-driven activity scale by this (desire-line decay, rain cell drift)
       landfallTicks: 900,                    // §0.1
       nearMissTicks: 150,                    // §0.1
       gameTicks: 750,                        // §0.1
@@ -169,7 +176,8 @@
     },
     hydro: {                                 // GDD §6.1
       stepsPerBlock: [0, 2, 5, 7],           // hydro steps on these ticks of each 10-tick block (§6.1.1)
-      dtDayNormal: 1 / 40, dtDayLandfall: 1 / 360, dtDayNearMiss: 1 / 60,   // §0.1, §6.1.1
+      stepsPerDay: HYDRO_STEPS_PER_DAY,      // hydro steps per calendar day at normal time (80)
+      dtDayNormal: 1 / HYDRO_STEPS_PER_DAY, dtDayLandfall: 1 / 360, dtDayNearMiss: 1 / 60,   // §0.1, §6.1.1 (landfall / near-miss are set pieces: 900 / 150 ticks = one storm day, independent of ticksPerDay)
       jacobiPasses: 2,                       // §6.1.1
       k: 0.35, kCanal: 8,                    // §6.1.4
       maxGiveFrac: 0.5,                      // a tile never gives more than half its depth per pass (§6.1.4)
@@ -190,9 +198,9 @@
       thresholds: { puddle: 0.05, wading: 0.3, flood: 0.5, floodPilings: 3, impassable: 0.6, surgeDmg: 2, surgeDmg2: 4, bridgeSurge: 2, pedBridgeSurge: 6 },   // §6.1.6; pedBridgeSurge: bridge pass (the Pedestrian Bridge deck is 6 ft over normal stage)
       dmgPerDay: { flood: 0.02, surge: 0.05, surge2: 0.25 },   // §6.1.6
       marshDrain: { daysToDrain: 5, drainDepth: 0.1, canalRadius: 2, revertDepth: 0.5, revertDays: 20, mudDays: 15, mudMosq: 0.3 },   // §6.1.7
-      rain: { shower: 0.04, frontal: 0.125, cellMin: 1, cellMax: 3, cellScripted: 3, cellRadius: 14, cellSteps: 60, cellTicks: 150, cellDriftTicks: 10, band: 0.33, hurricane: [6, 8, 10, 13, 16], hurricaneSteps: 360, mapWideSteps: 40 },   // §6.1.2 (hurricane in inches)
+      rain: { shower: 0.04, frontal: 0.125, cellMin: 1, cellMax: 3, cellScripted: 3, cellRadius: 14, cellSteps: HYDRO_STEPS_PER_DAY * 1.5, cellScriptedSteps: 60, cellTicks: TICKS_PER_DAY * 1.5, cellDriftTicks: 10 * DAY_SCALE, band: 0.33, hurricane: [6, 8, 10, 13, 16], hurricaneSteps: 360, mapWideSteps: HYDRO_STEPS_PER_DAY },   // §6.1.2 (hurricane in inches)
       inchesPerFoot: 12,                     // unit conversion (§6.1.2)
-      riskSteps: 40, riskInches: 2, riskCacheDays: 5,   // F overlay (§6.1.8)
+      riskSteps: HYDRO_STEPS_PER_DAY, riskInches: 2, riskCacheDays: 5,   // F overlay (§6.1.8)
       seepageRadius: 6, seepageSat: 0.8,     // Spring High Water seepage (§6.9)
       integrityWeak: 70, integrityHalf: 50,  // §0.3 row 25
       overtopDmg: 10, surgeContactDmgPerCat: 5, surgeContactStage: 1,   // §6.1.4
@@ -567,7 +575,7 @@
       maxAstarPerTick: 8,                    // §7
       summerShare: 0.35, poboyShare: 0.3, nightOwlShare: 0.15, zydecoEvery: 5,   // §7 schedule
       fleeRadius: 2, legTicks: 50,           // §7
-      wearThreshold: 40, wearDecay: 5,       // §7 desire lines
+      wearThreshold: 40, wearDecay: 5 * DAY_SCALE,   // §7 desire lines (agents cross at the tick rate, so the per-day decay scales with the day: 5 per 100 ticks)
       energyDrain: 1,                        // fraction of energy drained across one Day phase (§7)
       tubeP: 0.15, slapAt: 0.3, gatorFleeTicks: 30, moodFlee: -5,   // §7 reactions
       debrisCostMult: 2,                     // §3.2 bit10
@@ -623,7 +631,7 @@
       agentPx: [12, 20], gatorPx: [40, 12], leGrandPx: 56   // §12.3
     },
     ui: {                                    // GDD §11
-      undoSeconds: 10, undoTicks: 50,        // §11.2, ARCH D16 (50 ticks at baseTps 5 = 10 s wall-clock at 1×; chip drain matches)
+      undoSeconds: 10, undoTicks: 50,        // §11.2, ARCH D16 (50 ticks at baseTps 5 = 10 s wall-clock at 1×; chip drain matches; tick-based, so independent of ticksPerDay)
       minWidth: 1024, compactWidth: 1180, topbarH: 44, tickerH: 24, paletteH: 112, inspectW: 300, itemPx: 72, iconPx: 64,   // §11
       tickerMax: 30, tickerNoLineDays: 3,    // §11.1
       hoverTagMs: 300, panelRefreshMs: 500,  // §6.3, ARCH §7.7

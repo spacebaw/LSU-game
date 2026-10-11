@@ -1141,12 +1141,13 @@
   // `n`/`w`/`Escape` with map bindings, so they live here rather than as duplicate rows.
   const toastKeys = { yes: ['y', 'Enter'], no: ['n', 'Escape'] };
   const panKeys = { up: ['w', 'ArrowUp'], down: ['s', 'ArrowDown'], left: ['a', 'ArrowLeft'], right: ['d', 'ArrowRight'] };
+  const PRN = BSU.params.hydro.rain;   // step counts derive from params (time pass): a shower / frontal / band is 1 calendar day of hydro steps, a cell 1.5
   const rainKinds = {
-    shower: { total: 0.04, steps: 40 },
-    frontal: { total: 0.125, steps: 40 },
-    band: { total: 0.33, steps: 40 },
-    cell: { steps: 60, radius: 14 },
-    hurricane: { inches: [6, 8, 10, 13, 16], steps: 360 }
+    shower: { total: PRN.shower, steps: PRN.mapWideSteps },
+    frontal: { total: PRN.frontal, steps: PRN.mapWideSteps },
+    band: { total: PRN.band, steps: PRN.mapWideSteps },
+    cell: { steps: PRN.cellSteps, radius: PRN.cellRadius },
+    hurricane: { inches: PRN.hurricane.slice(), steps: PRN.hurricaneSteps }
   };
 
   // ---------------------------------------------------------------------------
@@ -1369,7 +1370,7 @@
       check(C.rookery.alwaysPilings && C.coastal_institute.alwaysPilings && !C.dorm.alwaysPilings, 'alwaysPilings');
       check(!C.founders_hall.demolishable && !C.stadium.demolishable && C.dorm.demolishable, 'demolishable');
       check(C.dorm.shelterOwn && C.res_tower.shelterOwn && !C.library.shelterOwn, 'shelterOwn');
-      check(D.rainKinds.hurricane.inches.length === 5 && D.rainKinds.cell.steps === 60 && D.rainKinds.shower.total === 0.04, 'rainKinds');
+      check(D.rainKinds.hurricane.inches.length === 5 && D.rainKinds.cell.steps === BSU.params.hydro.rain.cellSteps && D.rainKinds.shower.total === 0.04, 'rainKinds');
       // 12. football tables (PLAN_FOOTBALL pass A): roster, prospects, formations, phrases, opponent/coach styles
       const FB = D.football, FPOS = ['QB', 'RB', 'WR', 'OL', 'DL', 'LB', 'DB', 'K'];
       const strs = function (a, min) { return Array.isArray(a) && a.length >= min && a.every(x => typeof x === 'string' && x.length > 0); };

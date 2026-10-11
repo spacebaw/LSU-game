@@ -4,7 +4,9 @@
 2. **Headless Node** (fast, no browser): `node test/smoke.mjs` boots `index.html` through `test/domstub.mjs`
    (fake DOM, no-op canvas, no AudioContext, in-memory localStorage), starts a game, ticks years, places
    buildings, forces a hurricane, renders frames, saves/loads, and scans the LIVE state for NaN/Infinity
-   (no field of `BSU.state` may ever be non-finite; open-ended durations are `-1`). `node test/modules.mjs`
+   (no field of `BSU.state` may ever be non-finite; open-ended durations are `-1`). Tick counts that mean "N days"
+   must be written `N * BSU.params.time.ticksPerDay` (200 since the time pass; a year is `params.time.ticksPerYear`
+   = 24,000 ticks, so smoke ticks twice as many ticks per year as it used to) — never a literal 100 / 12000 / 1/40. `node test/modules.mjs`
    runs every `BSU.<module>.selfTest()` with `BSU.SELFTEST = true` around each call (so `BSU.assert`,
    `BSU.error` and listener exceptions throw), fails a module whose `BSU.errors` count grew, and runs
    `session` last (its selfTest swaps and restores the live game). Contract: `docs/HEADLESS_API.md`.

@@ -1395,7 +1395,7 @@
       };
     };
     const stubT = { touch: function () {}, rewalk: function () {}, classify: function (s, i) { if (i === undefined) return; const fl = s.tiles.flags[i]; if (fl & F.DRAINED) s.tiles.type[i] = T.DRAINED; else if (s.tiles.elev[i] < 1.5 && !(fl & WATER_MASK)) s.tiles.type[i] = T.MARSH; } };
-    const dt = P.dtDayNormal;
+    const dt = P.dtDayNormal, SPD = P.stepsPerDay;   // SPD = hydro steps per calendar day (time pass: derived from params.time.ticksPerDay)
     /** flat 4-ft Dry land, a 2-wide bayou at x = 10–11, a 3×3 basin at 1.6 with a 2.2 lip inside a shallow bowl */
     function synth(seed) {
       const s = BSU.newState(seed);
@@ -1415,17 +1415,17 @@
     try {
       M._deps = { emit: function (name, payload) { rec.push({ name: name, p: payload }); }, buildings: stubB([]), terrain: stubT, weather: { consumeRainStep: function () { return null; } } };
 
-      // 1. T5 conservation: 40 steps of a 2-inch map-wide rain, then 160 dry steps
+      // 1. T5 conservation: one day of a 2-inch map-wide rain, then four dry days
       {
         const s = synth(1234);
         const rain = { r: P.riskInches / P.inchesPerFoot / P.rain.mapWideSteps, mapWide: true };
         let worst = 0;
-        for (let k = 0; k < 200; k++) {
-          step(s, dt, k < 40 ? rain : null, null);
+        for (let k = 0; k < 5 * SPD; k++) {
+          step(s, dt, k < P.rain.mapWideSteps ? rain : null, null);
           const c = M.conservationCheck(s);
           A(isFinite(c.leak) && c.leak <= P.conservationTol * c.moved + 1e-6, 'T5 leak ' + c.leak + ' vs moved ' + c.moved + ' at step ' + k);
           if (c.moved > 0 && c.leak / c.moved > worst) worst = c.leak / c.moved;
-          if (k === 39) { const center = s.tiles.depth[31 * W + 31]; A(center > 0.1, 'basin fills after 2 in (' + center.toFixed(3) + ')'); notes.push('basin ' + center.toFixed(2) + ' ft after 2 in'); }
+          if (k === P.rain.mapWideSteps - 1) { const center = s.tiles.depth[31 * W + 31]; A(center > 0.1, 'basin fills after 2 in (' + center.toFixed(3) + ')'); notes.push('basin ' + center.toFixed(2) + ' ft after 2 in'); }
         }
         noNaN(s, 'T5');
         A(s.tiles.depth[5 * W + 40] < 0.01, 'flat 4-ft land dry after a day');
@@ -1442,12 +1442,12 @@
         step(s, dt, null, null);
         A(s.tiles.depth[Aa] > 0 && s.tiles.depth[Bb] > 0 && s.tiles.depth[Aa] > s.tiles.depth[Bb], 'T6: crown water sheds to both sides, more to the 3.0 side');
         let n = 1;
-        while (n < 80 && s.tiles.depth[L] >= 0.01) { step(s, dt, null, null); n++; }
+        while (n < 2 * SPD && s.tiles.depth[L] >= 0.01) { step(s, dt, null, null); n++; }
         A(s.tiles.depth[L] < 0.01, 'T6: crown dry within 2 days (' + n + ' steps)');
         const Pp = 25 * W + 25, L2 = 25 * W + 26;
         s.tiles.depth[Pp] = 0.4; s.tiles.crest[L2] = 6; s.tiles.integrity[L2] = 100;
         M.reset(s, true);
-        for (let k = 0; k < 40; k++) { step(s, dt, null, null); A(s.tiles.depth[L2] === 0, 'T6: a 0.4-ft puddle never enters a levee tile'); }
+        for (let k = 0; k < SPD; k++) { step(s, dt, null, null); A(s.tiles.depth[L2] === 0, 'T6: a 0.4-ft puddle never enters a levee tile'); }
         A(count(EV.LEVEE_OVERTOP) === 0, 'T6: no overtop event from puddles');
       }
 
@@ -1524,13 +1524,13 @@
         const nets = M.networks(s);
         A(nets.length === 1 && nets[0].pumps.length === 1 && !nets[0].drainsToWater, 'pump attached to the network');
         A(M.drainsTo(s, y * W + 44) === 'Pump 1 → Bayou', 'drainsTo pump');
-        for (let k = 0; k < 40; k++) step(s, dt, null, null);
+        for (let k = 0; k < SPD; k++) step(s, dt, null, null);
         const pumped = M.sinkStats(s).pumped;
         A(Math.abs(pumped - P.pumpTileFtPerDay) <= 0.05 * P.pumpTileFtPerDay, 'pump removed ' + pumped.toFixed(2) + ' tile-ft in a day');
         A(M.pumpRunning(s, 0), 'pumpRunning true today');
         M._deps.buildings.effective = function () { return 0; };
         const before = M.sinkStats(s).pumped;
-        for (let k = 0; k < 40; k++) step(s, dt, null, null);
+        for (let k = 0; k < SPD; k++) step(s, dt, null, null);
         A(M.sinkStats(s).pumped === before, 'unpowered pump removes nothing');
         M._deps.buildings = stubB([]);
       }
@@ -1550,12 +1550,15 @@
         A(s.hydro.pondCap['3'] === P.pond.cap, 'pondCap 20');
         A(M.drainsTo(s, 54 * W + 53) === 'Pond', 'drainsTo Pond');
         step(s, dt, null, null);
-        for (let x = 51; x <= 55; x++) { const d = s.tiles.depth[54 * W + x]; A(d <= 0.3 + 1e-6 && d >= 0.3 - 0.02, 'pond took ≤ 0.1 from tile ' + x + ' (' + d.toFixed(3) + ')'); }
+        const take = Math.min(P.pond.cap, P.pond.rate * dt * 40);   // per step: rate × dt × 40 (= 20 tile-ft per calendar day at any steps-per-day)
+        let removed = 0;
+        for (let x = 51; x <= 55; x++) { const d = s.tiles.depth[54 * W + x]; removed += 0.4 - d; A(d <= 0.4 + 1e-6 && d >= 0.4 - P.pond.perTileStep - 0.02, 'pond took ≤ 0.1 from tile ' + x + ' (' + d.toFixed(3) + ')'); }
+        A(Math.abs(removed - take) < 0.02, 'pond took rate·dt·40 in all, plus a little ground drain (' + removed.toFixed(3) + ' vs ' + take.toFixed(3) + ')');
         const cap = s.hydro.pondCap['3'];
-        A(cap > 19.5 && cap < 19.6, 'capacity 20 − 0.5 + 2·dt (' + cap.toFixed(3) + ')');
+        A(Math.abs(cap - (P.pond.cap - P.pond.rate * dt * 40 + P.pond.recover * dt)) < 1e-6, 'capacity 20 − rate·dt·40 + 2·dt (' + cap.toFixed(3) + ')');
         s.hydro.pondCap['3'] = 10;
         for (let x = 51; x <= 55; x++) s.tiles.depth[54 * W + x] = 0;
-        for (let k = 0; k < 40; k++) step(s, dt, null, null);
+        for (let k = 0; k < SPD; k++) step(s, dt, null, null);
         A(Math.abs(s.hydro.pondCap['3'] - 12) < 1e-3, 'capacity recovers 2/day (' + s.hydro.pondCap['3'].toFixed(3) + ')');
         M._deps.buildings = stubB([]);
       }

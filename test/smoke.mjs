@@ -41,8 +41,8 @@ console.log('start:', JSON.stringify(snap0));
 // One frame of rendering against the stub canvas must not throw.
 try { H.render(); ok(true, 'render() one frame'); } catch (e) { ok(false, 'render() threw: ' + (e.stack || e)); }
 
-// Run 3 months (10 Hz, 10-day months, 100 ticks/day)
-try { H.tick(3000); ok(true, 'ticked 3 months'); } catch (e) { ok(false, 'tick threw: ' + (e.stack || e)); }
+// Run 3 months (10-day months, params.time.ticksPerDay ticks per day: 200 → 6000 ticks)
+try { H.tick(3 * BSU.params.time.daysPerMonth * BSU.params.time.ticksPerDay); ok(true, 'ticked 3 months'); } catch (e) { ok(false, 'tick threw: ' + (e.stack || e)); }
 ok(!scanNumbers(state), 'no NaN/Infinity after 3 months: ' + scanNumbers(state));
 
 // Placements: the headless API must offer a way to find a legal spot for a building id.
@@ -59,7 +59,7 @@ for (const id of placeOrder) {
 ok(placed >= 4, `placed at least 4 buildings (${placed})`);
 
 // Run one full year with a render every so often
-const yearTicks = 12000;
+const yearTicks = BSU.params.time.ticksPerYear;   // 24,000 (time pass: 200 ticks per calendar day)
 try { for (let i = 0; i < yearTicks; i += 500) { H.tick(500); H.render(); } ok(true, 'ticked 1 year with periodic renders'); }
 catch (e) { ok(false, 'year tick/render threw: ' + (e.stack || e)); }
 const bad = scanNumbers(state); ok(!bad, 'no NaN/Infinity after 1 year: ' + bad);
@@ -88,7 +88,7 @@ try {
 } catch (e) { ok(false, 'save/load threw: ' + (e.stack || e)); }
 
 if (LONG) {
-  try { for (let i = 0; i < 4; i++) { H.tick(12000); H.render(); console.log(`year ${i + 2}:`, JSON.stringify(H.snapshot())); } ok(true, 'ticked 4 more years'); }
+  try { for (let i = 0; i < 4; i++) { H.tick(BSU.params.time.ticksPerYear); H.render(); console.log(`year ${i + 2}:`, JSON.stringify(H.snapshot())); } ok(true, 'ticked 4 more years'); }
   catch (e) { ok(false, 'long run threw: ' + (e.stack || e)); }
   ok(!scanNumbers(state), 'no NaN/Infinity after long run');
 }

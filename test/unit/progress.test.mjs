@@ -60,7 +60,8 @@ BSU.events.on('objective:offered', p => offered.push(p.id), 'test');
 const earned = [];
 BSU.events.on('milestone:earned', p => earned.push(p.id), 'test');
 // one year in 500-tick steps
-for (let i = 0; i < 12000; i += 500) H.tick(500);
+const TPD = BSU.params.time.ticksPerDay;   // time pass: 200 ticks per calendar day (a year is 24,000 ticks)
+for (let i = 0; i < BSU.params.time.ticksPerYear; i += 500) H.tick(500);
 eq(progressErrors().length, 0, 'no progress BSU.error during the year: ' + progressErrors().join(', '));
 const apr5 = BSU.dateToDay('Apr 5', 1);
 eq(spy.cells.filter(c => c.scripted).length, 1, 'exactly one scripted cell queued in Year 1');
@@ -235,7 +236,7 @@ eq(desireLines()[0].args[0].action.tiles.length, 2, 'the first line carries only
 BSU.events.emit('agent:desireLine', { tiles: tilesA }); H.tick(1);
 eq(desireLines().length, 1, 'a line inside the 3-day window is held, not posted');
 s.progress.uiQueue.length = 0;
-H.tick(300);   // three calendar days: the daily step flushes everything held, merged into one line
+H.tick(3 * TPD);   // three calendar days: the daily step flushes everything held, merged into one line
 const merged = desireLines();
 eq(merged.length, 1, 'exactly one merged line after the window');
 ok(merged.length && /want paths in \d+ places/.test(merged[0].args[0].text), 'merged text names the number of places: ' + (merged[0] && merged[0].args[0].text));

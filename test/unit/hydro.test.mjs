@@ -67,26 +67,26 @@ function synth(seed) {
   for (let y = 24; y <= 38; y++) for (let x = 24; x <= 38; x++) { const d = BSU.chebyshev(x, y, 31, 31); if (d <= 7) { const i = y * W + x; t.elev[i] = Math.min(4, 2.6 + (d - 2) * 0.28); t.type[i] = t.elev[i] < 3.5 ? T.WET : T.DRY; } }
   for (let y = 29; y <= 33; y++) for (let x = 29; x <= 33; x++) { const i = y * W + x; t.elev[i] = 2.2; t.type[i] = T.WET; }
   for (let y = 30; y <= 32; y++) for (let x = 30; x <= 32; x++) t.elev[y * W + x] = 1.6;
-  s.calendar.month = 6; s.weather.dtDay = 1 / 40; s.wildlife.ecology = 60;
+  s.calendar.month = 6; s.weather.dtDay = BSU.params.hydro.dtDayNormal; s.wildlife.ecology = 60;
   H.seedInitial(s); H.reset(s, true);
   return s;
 }
-const dt = 1 / 40;
+const dt = BSU.params.hydro.dtDayNormal, SPD = BSU.params.hydro.stepsPerDay;   // time pass: hydro steps per calendar day derive from params.time.ticksPerDay (80), no literal 1/40
 const finite = (s) => { for (let i = 0; i < N; i++) if (!Number.isFinite(s.tiles.depth[i]) || s.tiles.depth[i] < 0 || !Number.isFinite(s.tiles.sat[i])) return false; return true; };
 
 // --- scenario 1: the isolation script — basin fills after a 2-inch rain, leak < 1% -------------
 {
   const s = synth(7);
   let worst = 0;
-  for (let k = 0; k < 40; k++) { H._step(s, dt, { r: 0.167 / 40, mapWide: true }); const c = H.conservationCheck(s); if (c.moved > 0) worst = Math.max(worst, c.leak / c.moved); }
+  for (let k = 0; k < SPD; k++) { H._step(s, dt, { r: 0.167 / SPD, mapWide: true }); const c = H.conservationCheck(s); if (c.moved > 0) worst = Math.max(worst, c.leak / c.moved); }
   const center = s.tiles.depth[31 * W + 31];
   ok(center > 0.1 && center < 1.0, `basin center ${center.toFixed(3)} ft after 2 in on sat 0.5`);
   ok(worst < 0.01, `worst conservation leak ${(worst * 100).toFixed(4)}% < 1%`);
   ok(finite(s), 'no NaN after the rain');
   ok(H.activeCount() === N, 'every tile active while raining');
-  for (let k = 0; k < 160; k++) H._step(s, dt, null);
+  for (let k = 0; k < 4 * SPD; k++) H._step(s, dt, null);
   ok(H.activeCount() < N / 2, `active set shrinks in dry weather (${H.activeCount()})`);
-  ok(H.stepCount() === 200, 'stepCount counts steps since reset');
+  ok(H.stepCount() === 5 * SPD, 'stepCount counts steps since reset');
 }
 
 // --- scenario 2: T2 — 5-ft crown never exceeds 0.1 ft from any rain; floods only at Cat 3 surge --
@@ -125,7 +125,7 @@ const finite = (s) => { for (let i = 0; i < N; i++) if (!Number.isFinite(s.tiles
     s.tiles.elev[L] = 2; s.tiles.crest[L] = 6; s.tiles.integrity[L] = 100; s.tiles.sandbag[L] = sandbag;
     s.tiles.elev[B] = 2; s.tiles.type[B] = T.WET;
     H.seedInitial(s); H.reset(s, true); H.setStages(s, 8, 0);
-    for (let k = 0; k < 40; k++) H._step(s, dt, null);
+    for (let k = 0; k < SPD; k++) H._step(s, dt, null);
     return s.tiles.depth[B];
   };
   const noBags = build(0), bags = build(15);
@@ -145,8 +145,8 @@ const finite = (s) => { for (let i = 0; i < N; i++) if (!Number.isFinite(s.tiles
   const sum = () => { let t = 0; for (let yy = 30; yy <= 32; yy++) for (let x = 30; x <= 32; x++) t += s.tiles.depth[yy * W + x]; return t; };
   const events = []; const off = BSU.events.on(BSU.EV.GATE_CLOSED, (p) => events.push(p), 'test');
   const b0 = sum();
-  for (let k = 0; k < 200; k++) H._step(s, dt, null);
-  ok(sum() < 0.05, `basin (9 tile-ft) drained by the tutorial canal in ${200 / 40} days (${b0.toFixed(1)} → ${sum().toFixed(3)})`);
+  for (let k = 0; k < 5 * SPD; k++) H._step(s, dt, null);
+  ok(sum() < 0.05, `basin (9 tile-ft) drained by the tutorial canal in ${5 * SPD / SPD} days (${b0.toFixed(1)} → ${sum().toFixed(3)})`);
   ok(H.networkAt(s, G) && H.networkAt(s, G).gates[0] === G, 'networkAt finds the gate');
   H.setStages(s, 0, 1.5); H._step(s, dt, null);
   ok(events.length === 1 && events[0].i === G, 'gate:closed on the live bus within one step');
@@ -184,8 +184,8 @@ const finite = (s) => { for (let i = 0; i < N; i++) if (!Number.isFinite(s.tiles
   const log = H.stormLog(s);
   ok(Array.isArray(log.held) && Array.isArray(log.overtopped) && Array.isArray(log.breached), 'stormLog shape');
   const after = H.floodedTiles(s);
-  s.weather.dtDay = 1 / 40;
-  for (let d = 0; d < 20; d++) { s.calendar.day++; H.tick(s, { newDay: true }); for (let k = 0; k < 40; k++) H._step(s, dt, null); }
+  s.weather.dtDay = dt;
+  for (let d = 0; d < 20; d++) { s.calendar.day++; H.tick(s, { newDay: true }); for (let k = 0; k < SPD; k++) H._step(s, dt, null); }
   ok(H.floodedTiles(s) < after, `flooded tiles fall over the following weeks (${after} → ${H.floodedTiles(s)})`);
 }
 

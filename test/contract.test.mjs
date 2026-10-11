@@ -83,7 +83,17 @@ ok(!badLeaf, 'every params leaf is a finite number, boolean, string or homogeneo
 for (const g of ['time', 'terrain', 'hydro', 'storm', 'wildlife', 'subsidence', 'heat', 'weather', 'econ', 'sports', 'agents', 'build', 'render', 'audio', 'palette', 'progress']) {
   ok(BSU.params[g] && typeof BSU.params[g] === 'object', `params.${g} group present`);
 }
-eq(BSU.params.time.ticksPerDay, 100, 'time.ticksPerDay = 100');
+eq(BSU.params.time.ticksPerDay, 200, 'time.ticksPerDay = 200 (time pass: 1× = 5 ticks/s → 40 s per calendar day)');
+{ // time pass: every per-day rate derives from ticksPerDay (never a literal 100 / 40)
+  const T = BSU.params.time, H = BSU.params.hydro;
+  eq(T.ticksPerYear, T.ticksPerDay * T.daysPerYear, 'ticksPerYear derives from ticksPerDay');
+  eq(T.skyCycleDays, T.skyCycleTicks / T.ticksPerDay, 'skyCycleDays derives (1.5)');
+  eq(H.stepsPerDay, T.ticksPerDay * H.stepsPerBlock.length / 10, 'hydro stepsPerDay = ticksPerDay × 4/10');
+  ok(Math.abs(H.dtDayNormal * H.stepsPerDay - 1) < 1e-12, 'dtDayNormal × stepsPerDay = exactly one day');
+  eq(H.rain.mapWideSteps, H.stepsPerDay, 'a shower / frontal / band lasts one calendar day of hydro steps');
+  eq(H.rain.cellSteps, H.stepsPerDay * 1.5, 'a cell lasts 1.5 calendar days of hydro steps');
+  eq(BSU.params.agents.wearDecay, 5 * T.dayScale, 'desire-line decay scales with the day');
+}
 eq(BSU.params.econ.startCash, 4000000, 'econ.startCash');
 eq(BSU.params.storm.surge[3], 8, 'storm.surge[Cat 3] = 8 ft');
 eq(BSU.params.hydro.k, 0.35, 'hydro.k');

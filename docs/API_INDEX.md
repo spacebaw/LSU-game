@@ -307,10 +307,10 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - headless.snapshot()
 - headless.findSpot(id)
 - headless.place(id, x, y)
-- headless.forceHurricane(cat)
+- headless.forceHurricane(cat)   // compressed storm: landfall set piece at storm.coneDays × time.ticksPerDay ticks (1200), watch at −3 days, bands at −1 day
 - headless.click(px, py)
 - headless.key(name)
-- headless.fastForwardDays(n)
+- headless.fastForwardDays(n)   // = tick(n × params.time.ticksPerDay)
 - headless.state()
 
 ## BSU.hydro
@@ -851,6 +851,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - BSU.worldToScreen(tx, ty, elev, cam, vw, vh)
 
 ## BSU.params groups (17): time[29], terrain[59], hydro[46], storm[116], wildlife[4], subsidence[17], heat[21], weather[18], econ[62], sports[78], agents[29], build[34], render[59], ui[16], audio[6], palette[34], progress[16]
+Time pass (docs/INTEGRATION_NOTES.md '## time pass'): params.time.ticksPerDay = 200 (was 100; 1 day = 40 s at 1× / baseTps 5), ticksPerYear = 24000, skyCycleDays = 1.5 (all derived), NEW params.time.dayScale = 2, NEW params.hydro.stepsPerDay = 80, dtDayNormal = 1/80 (derived; dtDayLandfall 1/360 and dtDayNearMiss 1/60 are set-piece constants), rain.mapWideSteps = 80, rain.cellSteps = 120, NEW rain.cellScriptedSteps = 60 (the tick-paced tutorial / Apr 5 cell), rain.cellDriftTicks = 20, riskSteps = 80, agents.wearDecay = 10. Never write a literal 100 / 40 / 1/40 for ticks-per-day or steps-per-day.
 
 ## BSU.newState(seed) tree
 - v:number

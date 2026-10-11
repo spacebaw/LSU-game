@@ -1878,7 +1878,7 @@
     add('+$1M', function (s) { call('economy', 'post', s, 'misc', 1e6); });
     add('+500 students', function (s) { call('economy', 'addStudents', s, 500, 'debug'); });
     add('Skip 10 days', function (s) { if (has('session', 'skipToDate')) { const d = BSU.dayParts(dayOf(s) + 10); call('session', 'skipToDate', s, d.date, d.year - fin(s.calendar.year, 1)); } });
-    add('Cat 3 in 6 days', function (s) { call('weather', 'spawnStorm', s, { cat: 3, coneNowTick: tickOf(s), landfallTick: tickOf(s) + 600, compressed: true }); });
+    add('Cat 3 in 6 days', function (s) { call('weather', 'spawnStorm', s, { cat: 3, coneNowTick: tickOf(s), landfallTick: tickOf(s) + fin(P.storm && P.storm.coneDays, 6) * fin(PT.ticksPerDay, 200), compressed: true }); });
     add('Rain here', function (s) { const i = M.hoverTile >= 0 ? M.hoverTile : (s.plot && s.plot.founders ? BSU.idx(s.plot.founders.tx, s.plot.founders.ty) : 2080); call('hydro', 'forceRain', s, { i: i, tx: i % W, ty: (i / W) | 0, inches: 2 }); });
     add('Spawn gator', function (s) { const i = M.hoverTile >= 0 ? M.hoverTile : -1; if (i >= 0) call('wildlife', 'spawnGator', s, i); else call('wildlife', 'forceFirstGator', s); });
     add('Mosquitoes', function (s) { call('wildlife', 'forceMosquito', s, 0.8); });

@@ -86,6 +86,8 @@ if (threw) process.exit(1);
 ok(loadMs < 50, `definition time ${loadMs.toFixed(1)} ms < 50 ms`);
 const BSU = win.BSU;
 const Wt = BSU.weather;
+// time pass: every tick count below derives from params (1 day = ticksPerDay ticks; the cone is storm.coneDays days)
+const TPD = BSU.params.time.ticksPerDay, DPY = BSU.params.time.daysPerYear, YEAR = TPD * DPY, CONE = BSU.params.storm.coneDays * TPD, WATCH = CONE - BSU.params.storm.watchLead * TPD, BANDS = CONE - BSU.params.storm.bandsLead * TPD, DTN = BSU.params.hydro.dtDayNormal;
 ok(Wt && typeof Wt.init === 'function' && typeof Wt.reset === 'function' && typeof Wt.tick === 'function' && typeof Wt.selfTest === 'function', 'init/reset/tick/selfTest exist');
 for (const fn of ['date', 'isDate', 'dayOf', 'sky', 'scriptSky', 'releaseSky', 'rainAt', 'raining', 'heat', 'wind', 'storm', 'cone', 'forecastSurge', 'spawnStorm', 'scheduleNearMiss', 'setPlayThrough', 'prepAction', 'answerToast', 'skipSetPiece', 'riverStage', 'queueCell', 'suppressRainOn', 'setRunning', 'consumeRainStep', 'closeReport', 'jamGate', '_openToast', 'tomorrowCell']) ok(typeof Wt[fn] === 'function', 'public: ' + fn);
 
@@ -109,9 +111,9 @@ eq(BSU.errors.size, errorsBefore, 'BSU.errors did not grow during selfTest');
   const log = [];
   const rec = (name) => BSU.events.on(name, (p) => log.push({ name, p }), 'test');
   ['calendar:day', 'calendar:date', 'calendar:month', 'calendar:semester', 'calendar:year', 'festival:start', 'festival:end', 'weather:heat', 'sky:phase'].forEach(rec);
-  run(BSU, s, 12000);
+  run(BSU, s, YEAR);
   BSU.events.clear('test');
-  eq(s.calendar.day, 120, 'day 120 after 12,000 ticks');
+  eq(s.calendar.day, 120, 'day 120 after one year of ticks');
   eq(Wt.date(s).str, 'Jan 1, Y2', 'date string Jan 1, Y2');
   const days = log.filter(e => e.name === 'calendar:day');
   eq(days.length, 120, '120 calendar:day events');
@@ -133,42 +135,42 @@ eq(BSU.errors.size, errorsBefore, 'BSU.errors did not grow during selfTest');
   const fest = log.filter(e => e.name.startsWith('festival')).map(e => e.name.slice(9) + ':' + e.p.id + '@' + BSU.dayParts(e.p.day).date);
   eq(fest.join(), 'start:mardiGras@Feb 6,end:mardiGras@Feb 9,start:crawfish@Mar 1,end:crawfish@May 1,start:graduation@May 5,end:graduation@May 6,start:homecoming@Oct 7,end:homecoming@Oct 9,start:bonfires@Dec 9,end:bonfires@Dec 10,start:foundersDay@Jan 1', 'festival dates and ids in order (foundersDay only from Year 2)');
   const phases = log.filter(e => e.name === 'sky:phase').length;
-  eq(phases, 200, '40 sky cycles × 5 phase changes');
+  eq(phases, 5 * YEAR / BSU.params.time.skyCycleTicks, YEAR / BSU.params.time.skyCycleTicks + ' sky cycles × 5 phase changes (a cycle is 1.5 days)');
   ok(s.weather.rainDays.length >= 30 && s.weather.rainDays.length <= 60 && s.weather.rainDays[0].day >= 120, 'Year-2 rain days redrawn on Jan 1');
   ok(s.storms.scheduled.length >= 1 && s.storms.scheduled.length <= 3 && s.storms.scheduled.every(e => e.day >= 120 + 50 && e.day <= 120 + 109), 'Year-2 schedule drawn on Jan 1 (Célestine done): ' + s.storms.scheduled.map(e => e.name + '@' + BSU.dayParts(e.day).date).join(','));
   ok(s.weather.riverStage >= 1 && s.weather.riverStage <= 3, 'riverStage drawn on Jan 1 of Year 2: ' + s.weather.riverStage);
   // Célestine pending: the same year with the real hold rule loses exactly the 9 frozen set-piece days.
   const s2 = newGame(BSU, 3);
-  run(BSU, s2, 12000);
-  eq(s2.calendar.day, 111, 'with Célestine (900-tick freeze) the year reaches day 111 after 12,000 ticks');
+  run(BSU, s2, YEAR);
+  eq(s2.calendar.day, Math.floor((YEAR - 900) / TPD), 'with Célestine (900-tick freeze) the year reaches day ' + Math.floor((YEAR - 900) / TPD) + ' after a year of ticks');
   ok(s2.storms.scheduled.length === 0, 'no Year-2 schedule while Célestine is not done');
 }
 
-// --- scenario 2: compressed Cat 3 lifecycle (watch +300, bands +500, set piece +600, phases, log) -----
+// --- scenario 2: compressed Cat 3 lifecycle (watch at −3 days, bands at −1 day, set piece at the cone's end, phases, log) -----
 {
   const s = newGame(BSU, 7);
-  run(BSU, s, 6000);
-  eq(s.calendar.day, 60, 'day 60 after 6,000 ticks');
+  run(BSU, s, 60 * TPD);
+  eq(s.calendar.day, 60, 'day 60 after 60 days of ticks');
   const log = [];
   BSU.__surge = []; BSU.__ticker = []; BSU.__shelter = null;
   ['storm:named', 'storm:watch', 'storm:bands', 'storm:landfall', 'storm:phase', 'storm:pulse', 'storm:toast', 'storm:report', 'storm:passed', 'setpiece:start', 'setpiece:end', 'weather:rain', 'weather:lightning'].forEach(name => BSU.events.on(name, (p) => log.push({ name, p, tick: s.tick }), 'test'));
   const T0 = s.tick;
-  const storm = Wt.spawnStorm(s, { cat: 3, coneNowTick: T0, landfallTick: T0 + 600, compressed: true });
+  const storm = Wt.spawnStorm(s, { cat: 3, coneNowTick: T0, landfallTick: T0 + CONE, compressed: true });
   ok(storm && storm.name && storm.cat === 3 && storm.compressed === true && storm.surge === 8, 'spawnStorm returned a Cat 3 struct: ' + (storm && storm.name));
   ok(Wt.cone(s) && Wt.cone(s).track.length === 6 && Wt.cone(s).width === 24, 'cone visible with a 6-point track at width 24');
-  run(BSU, s, 1600);
+  run(BSU, s, CONE + 1000);
   BSU.events.clear('test');
   const at = (name) => { const e = log.find(x => x.name === name); return e ? e.tick - T0 : -1; };
-  eq(at('storm:watch'), 300, 'storm:watch at +300');
-  eq(at('storm:bands'), 500, 'storm:bands at +500');
-  eq(at('storm:landfall'), 600, 'storm:landfall at +600');
-  eq(at('setpiece:start'), 600, 'set piece starts at +600');
-  eq(at('setpiece:end'), 600 + 899, 'set piece ends at +1499');
+  eq(at('storm:watch'), WATCH, 'storm:watch at the cone − 3 days');
+  eq(at('storm:bands'), BANDS, 'storm:bands at the cone − 1 day');
+  eq(at('storm:landfall'), CONE, 'storm:landfall at the cone end');
+  eq(at('setpiece:start'), CONE, 'set piece starts at the cone end');
+  eq(at('setpiece:end'), CONE + 899, 'set piece ends 899 ticks later');
   const ph = log.filter(e => e.name === 'storm:phase').map(e => e.p.phase + '@' + e.p.t);
   eq(ph.join(), '0@0,1@150,2@350,3@450,4@500,5@750', 'storm:phase at 0/150/350/450/500/750 (eye at Cat 3)');
   eq(log.filter(e => e.name === 'storm:pulse').map(e => e.p.n).join(), '1,2,3,4', 'four wind pulses');
   const toasts = log.filter(e => e.name === 'storm:toast');
-  ok(toasts.length >= 1 && toasts[0].p.id === 'shelter' && toasts[0].tick - T0 === 900, 'Year-1 shelter toast at set-piece tick 300');
+  ok(toasts.length >= 1 && toasts[0].p.id === 'shelter' && toasts[0].tick - T0 === CONE + 300, 'Year-1 shelter toast at set-piece tick 300');
   ok(log.some(e => e.name === 'storm:report') && log.some(e => e.name === 'storm:passed'), 'storm:report then storm:passed (headless closeReport)');
   eq(s.storms.log.length, 1, 'one storms.log entry');
   ok(s.storms.log[0].cat === 3 && s.storms.log[0].nearMiss === false && s.storms.log[0].damage === 4200 && s.storms.log[0].held === true, 'log entry carries the report');
@@ -188,11 +190,11 @@ eq(BSU.errors.size, errorsBefore, 'BSU.errors did not grow during selfTest');
   const named = [];
   BSU.events.on('storm:named', (p) => named.push({ p, day: s.calendar.day }), 'test');
   BSU.events.on('storm:landfall', (p) => named.push({ landfall: true, day: s.calendar.day }), 'test');
-  run(BSU, s, 8200);   // to Sep 3
+  run(BSU, s, 82 * TPD);   // to Sep 3
   ok(named.length >= 1 && named[0].p.name === 'Célestine' && BSU.dayParts(named[0].day).date === 'Sep 2', 'Célestine cone on Sep 2 with playSeconds ≥ 540');
   ok(named[0].p.cat === 2 && named[0].p.forecastCat === 2 && named[0].p.landfallDay === named[0].day + 6, 'Cat 2, forecast 2, landfall = cone + 6');
   eq(s.storms.celestine.state, 'cone', 'celestine.state = cone');
-  run(BSU, s, 600);
+  run(BSU, s, 6 * TPD);
   BSU.events.clear('test');
   const lf = named.find(e => e.landfall) || { day: -99 };
   ok(lf && BSU.dayParts(lf.day).date === 'Sep 8', 'landfall on Sep 8 (day-driven, D51)');
@@ -208,9 +210,9 @@ eq(BSU.errors.size, errorsBefore, 'BSU.errors did not grow during selfTest');
   const passedAt = [];
   BSU.events.on('storm:named', (p) => passedAt.push(BSU.dayParts(s.calendar.day).date + ' Y' + s.calendar.year + ' ' + p.name), 'test');
   // Keep playSeconds low until Nov, then let it climb.
-  for (let k = 0; k < 10100; k++) { run(BSU, s, 1); if (s.calendar.day < 101) s.playSeconds = 10; }
+  for (let k = 0; k < 101 * TPD; k++) { run(BSU, s, 1); if (s.calendar.day < 101) s.playSeconds = 10; }
   ok(s.storms.celestine.state === 'held', 'cone held past Oct 5 while playSeconds < 540 (state=' + s.storms.celestine.state + ')');
-  run(BSU, s, 200);
+  run(BSU, s, 2 * TPD);
   BSU.events.clear('test');
   ok(passedAt.length === 1 && passedAt[0].endsWith('Célestine') && s.storms.celestine.state === 'cone', 'held cone appears the next day after both conditions hold: ' + passedAt[0]);
   ok(BSU.__ticker.some(t => /did not check the calendar/.test(t)), '"the Gulf did not check the calendar" ticker');
@@ -273,7 +275,7 @@ eq(BSU.errors.size, errorsBefore, 'BSU.errors did not grow during selfTest');
   const apr5 = Wt.dayOf(s, 'Apr 5', 0);
   Wt.queueCell(s, { day: apr5, cx: 41, cy: 18, inches: 3, scripted: true });
   eq(Wt.tomorrowCell(s), null, 'tomorrowCell null far from Apr 5');
-  for (let k = 0; k < 12000; k++) {
+  for (let k = 0; k < YEAR; k++) {
     run(BSU, s, 1);
     if (s.weather.dtDay > 0) { const r = Wt.consumeRainStep(s); if (r) { steps++; if (!(Number.isFinite(r.r) && r.r >= 0)) badSteps++; } }
   }
@@ -294,7 +296,7 @@ eq(BSU.errors.size, errorsBefore, 'BSU.errors did not grow during selfTest');
   const s2 = newGame(BSU, 21);
   const rd = s2.weather.rainDays.find(r => r.kind === 'shower');
   Wt.suppressRainOn(s2, rd.day);
-  run(BSU, s2, rd.day * 100 + 50);
+  run(BSU, s2, rd.day * TPD + TPD / 2);
   ok(s2.weather.event === null && s2.weather.fog === 0, 'suppressRainOn: no event and no fog on the suppressed day');
 }
 
@@ -303,7 +305,7 @@ eq(BSU.errors.size, errorsBefore, 'BSU.errors did not grow during selfTest');
   const s = newGame(BSU, 5);
   const seen = new Set();
   for (let k = 0; k < 20; k++) { run(BSU, s, 1); seen.add(((s.tick - 1) % 10) + ':' + s.weather.dtDay); }
-  ok(seen.has('0:0.025') && seen.has('2:0.025') && seen.has('5:0.025') && seen.has('7:0.025') && seen.has('1:0') && seen.has('9:0'), 'dtDay 1/40 on ticks 0,2,5,7 else 0');
+  ok(seen.has('0:' + DTN) && seen.has('2:' + DTN) && seen.has('5:' + DTN) && seen.has('7:' + DTN) && seen.has('1:0') && seen.has('9:0'), 'dtDay = dtDayNormal (1 / steps-per-day) on ticks 0,2,5,7 else 0');
   Wt.scriptSky(s, BSU.SKY.NIGHT, 0.5);
   const before = s.sky.cycleTick;
   run(BSU, s, 50);
@@ -311,7 +313,7 @@ eq(BSU.errors.size, errorsBefore, 'BSU.errors did not grow during selfTest');
   Wt.releaseSky(s);
   ok(!s.sky.scripted && s.sky.cycleTick === before, 'releaseSky resumes from the captured cycleTick');
   eq(Wt.prepAction(s, 'boardUp', 'all').reason, 'No storm', 'prepAction refuses without a storm');
-  const st = Wt.spawnStorm(s, { cat: 2, coneNowTick: s.tick, landfallTick: s.tick + 600, compressed: true });
+  const st = Wt.spawnStorm(s, { cat: 2, coneNowTick: s.tick, landfallTick: s.tick + CONE, compressed: true });
   s.economy.students = 2500;
   const ev = Wt.prepAction(s, 'evacuate');
   ok(ev.ok && ev.cost === 60000 && st.evacuated === true, 'evacuate charges $20k per 1,000 students: ' + JSON.stringify(ev));
@@ -341,7 +343,7 @@ eq(BSU.errors.size, errorsBefore, 'BSU.errors did not grow during selfTest');
     const s = newGame(BSU, seed);
     const out = [];
     ['weather:cell', 'weather:heat', 'storm:named', 'calendar:date'].forEach(n => BSU.events.on(n, (p) => out.push(n + JSON.stringify(p)), 'test'));
-    run(BSU, s, 9000);
+    run(BSU, s, 90 * TPD);
     BSU.events.clear('test');
     return out.join('\n') + '|' + s.weather.heat + '|' + s.weather.wind + '|' + BSU.rng.sim.state;
   };
@@ -387,8 +389,8 @@ eq(BSU.errors.size, errorsBefore, 'BSU.errors did not grow during selfTest');
   const s = newGame(BSU, 31);
   s.storms.celestine.state = 'done';
   const t0 = performance.now();
-  run(BSU, s, 12000);
-  const perTick = (performance.now() - t0) / 12000;
+  run(BSU, s, YEAR);
+  const perTick = (performance.now() - t0) / YEAR;
   ok(perTick < 0.3, `weather.tick averages ${(perTick * 1000).toFixed(1)} µs per tick over a year (< 300 µs; includes the test's session emulation)`);
 }
 

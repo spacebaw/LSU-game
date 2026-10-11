@@ -270,9 +270,10 @@ s.setPiece = { kind: 'x', cameraTouched: false }; R.panBy(1, 0, true); ok(s.setP
   const spot = H.findSpot('practice_field');
   const placed = spot ? H.place('practice_field', spot.x, spot.y) : null;
   ok(placed && placed.ok !== false, 'practice field placed for the game test: ' + JSON.stringify(placed));
-  H.tick(900);
+  const TPD = BSU.params.time.ticksPerDay;   // time pass: construction is calendar days, so wait in days of ticks (9 and 8 days)
+  H.tick(9 * TPD);
   const fld = BSU.buildings.list(s, 'practice_field')[0];
-  if (fld) { BSU.buildings.upgrade(s, fld.id); H.tick(800); }
+  if (fld) { BSU.buildings.upgrade(s, fld.id); H.tick(8 * TPD); }
   const venue = BSU.sports.season(s).venue;
   ok(venue === 'bayou_field', 'Bayou Field is the venue after the upgrade: ' + venue);
   R.panToTile(fld ? fld.tx : 32, fld ? fld.ty : 32, false);
@@ -301,7 +302,7 @@ s.setPiece = { kind: 'x', cameraTouched: false }; R.panBy(1, 0, true); ok(s.setP
   ok(pl0.every((e) => e.ref && e.ref.zoom === 1 && /^fbplayer:/.test(e.id)), 'players blit from the 1x atlas with a pose id');
   R.panBy(40, 0, true); H.render();
   ok(s.setPiece.cameraTouched === true && R.fbInfo().camera === true && !s.ui.camera.hasTarget, 'a user pan sets cameraTouched and the game camera stops following');
-  BSU.session.skipSetPiece(s); H.tick(700);
+  BSU.session.skipSetPiece(s); { let g = 0; while (s.setPiece && g++ < 300) H.tick(10); }   // the watched game's length depends on the rng-driven play count
   H.render();
   ok(!s.setPiece && R.fbInfo().camera === false, 'after the skip the set piece ended and the game camera let go (zoom stays ' + s.ui.camera.zoom + ' because the player touched it)');
   void zoomBefore; void drill;

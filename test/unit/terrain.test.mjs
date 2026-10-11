@@ -214,7 +214,7 @@ const states = new Map();
     M.tick(s, { newDay: true, newMonth: false, newYear: false, day: 6 });
     ok(t.sandbag[iw] === 0 && t.sandbagDay[iw] === 0 && win.BSU.__leveeCalls === 1, 'sandbags expire on day ≥ sandbagDay and hydro.markLeveeChange is called');
     ok((t.flags[iw2] & F.DEBRIS) !== 0, 'debris stays before landfall + 5 days');
-    ok((t.flags[iw] & F.DESIRE_WORN) !== 0 && t.wear[iw] === 36 && (t.flags[iw2] & F.DESIRE_WORN) === 0 && t.wear[iw2] === 5, 'wear ≥ 40 sets DESIRE_WORN, < 20 clears it, wear decays by 5');
+    ok((t.flags[iw] & F.DESIRE_WORN) !== 0 && t.wear[iw] === 41 - win.BSU.params.agents.wearDecay && (t.flags[iw2] & F.DESIRE_WORN) === 0 && t.wear[iw2] === Math.max(0, 10 - win.BSU.params.agents.wearDecay), 'wear ≥ 40 sets DESIRE_WORN, < 20 clears it, wear decays by params.agents.wearDecay (5 per 100 ticks of day)');
     s.calendar.day = 6 + 5;
     M.tick(s, { newDay: true, newMonth: false, newYear: false, day: 11 });
     ok((t.flags[iw2] & F.DEBRIS) === 0, 'debris clears 5 days after landfall');

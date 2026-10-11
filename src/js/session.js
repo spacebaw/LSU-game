@@ -586,12 +586,12 @@
       const r = call('buildings', 'place', s, id, x | 0, y | 0, { rot: 0 });
       return (r && typeof r === 'object') ? r : { ok: false, reason: 'Cannot place here' };
     },
-    /** a compressed (tick-driven) storm: cone now, watch +300, bands +500, landfall set piece at +600 (D51) */
+    /** a compressed (tick-driven) storm: cone now, watch at −watchLead days, bands at −bandsLead days, landfall set piece at +coneDays days (D51; days = params.time.ticksPerDay ticks: +600 / +1000 / +1200) */
     forceHurricane: function (cat) {
       const s = BSU.state;
       if (!s || !has('weather', 'spawnStorm')) return null;
       const c = BSU.clamp(Math.round(fin(Number(cat), 3)), 1, 5);
-      const st = call('weather', 'spawnStorm', s, { cat: c, coneNowTick: s.tick, landfallTick: s.tick + 600, compressed: true });
+      const st = call('weather', 'spawnStorm', s, { cat: c, coneNowTick: s.tick, landfallTick: s.tick + P.storm.coneDays * PT.ticksPerDay, compressed: true });
       return st || null;
     },
     /** a left click at canvas pixel coords through ui's input state machine (mods always carry all four booleans, D56) */
@@ -704,12 +704,12 @@
       A(snap.speed === 1, 'skipTutorial: speed 1');
       A(s.tiles.surface[s.plot.landingShoulder] === 1, 'the tutorial path reaches plot.landingShoulder');
       A(s.calendar.running === true && s.calendar.frozen === false, 'calendar running after skipTutorial');
-      // 2. 300 ticks: finite tree, tick/day counts
-      H.tick(300);
+      // 2. three days of ticks: finite tree, tick/day counts
+      H.tick(3 * PT.ticksPerDay);
       const bad = scanNumbers(s);
-      A(!bad, 'no non-finite number after 300 ticks: ' + bad);
-      A(s.tick === 300, 'tick === 300');
-      A(s.calendar.day === 3, 'calendar.day === 3 after 300 ticks (got ' + s.calendar.day + ')');
+      A(!bad, 'no non-finite number after three days of ticks: ' + bad);
+      A(s.tick === 3 * PT.ticksPerDay, 'tick === 3 days of ticks');
+      A(s.calendar.day === 3, 'calendar.day === 3 after 3 × ticksPerDay ticks (got ' + s.calendar.day + ')');
       // 3. save → load identity, elev bit-identical, an open-ended timer round-trips as −1
       if (has('progress', 'addTimer')) call('progress', 'addTimer', s, '__t', 1, -1);
       else s.progress.timers.push({ id: '__t', value: 1, untilDay: -1 });
@@ -758,12 +758,13 @@
       const storm = H.forceHurricane(3);
       A(storm && storm.compressed === true && storm.cat === 3, 'forceHurricane returns a compressed Cat 3 Storm');
       A(storm.landfallDay === s.calendar.day + 6, 'landfallDay = today + 6');
-      H.tick(700);
+      const cone = P.storm.coneDays * PT.ticksPerDay;   // the cone is coneDays calendar days of ticks (1200)
+      H.tick(cone + 100);
       snap = H.snapshot();
-      A(s.setPiece && s.setPiece.kind === 'landfall', 'landfall set piece running at +700');
+      A(s.setPiece && s.setPiece.kind === 'landfall', 'landfall set piece running at cone + 100');
       A(snap.storm && snap.storm.phase === BSU.STORM.LANDFALL, 'snapshot().storm.phase is LANDFALL during the set piece');
       H.tick(1000);
-      A(s.setPiece === null, 'the landfall set piece is over at +1700');
+      A(s.setPiece === null, 'the landfall set piece is over at cone + 1100');
       // 7. findSpot / place
       M.newGame({ seed: 1234, skipTutorial: true });
       const spot = H.findSpot('dorm');
