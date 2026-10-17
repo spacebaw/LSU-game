@@ -120,6 +120,8 @@ ok(/Y1/.test(U.el['stat-date-text'].textContent), 'date text: ' + U.el['stat-dat
 ok(U.el['sky-glyph'].textContent.length > 0, 'sky glyph set');
 const M0 = { ctrl: false, shift: false, meta: false, alt: false };
 // --- UX pass: goals tracker, needs strip, build menu, coach helpers ----------------------
+for (const id of ['issues-tray', 'issues-head', 'issues-count', 'issues-spot', 'issues-list', 'issues-more', 'needs-locate']) ok(U.el[id] && U.el[id].id === id, 'issue spotlight skeleton #' + id);   // issue spotlight pass: the Issues tray under the minimap + the needs-strip Locate
+ok(/#issues-tray\{position:absolute;right:var\(--side\)/.test(css) && /\.issue-row\{display:grid/.test(css) && /#hud\.inspect-open #issues-tray/.test(css), 'tray CSS docked right, shifts with inspect');
 for (const id of ['build-menu', 'bm-cats', 'bm-cards', 'bm-detail', 'btn-build-menu', 'needs-strip', 'needs-text', 'obj-why', 'btn-obj-build', 'obj-next', 'coach', 'coach-box', 'btn-coach-next']) ok(U.el[id] && U.el[id].id === id, 'UX skeleton id: ' + id);
 ok(U.el['build-menu'].classList.contains('hidden') && !U.buildMenuOpen(), 'build menu starts closed');
 ok(U.keydown('g', M0) === true && U.buildMenuOpen() && !U.el['build-menu'].classList.contains('hidden'), 'G opens the build menu');

@@ -260,9 +260,12 @@
       const g = el('div', 'need'); g.dataset.key = k; const lab = el('div', 'need-label', (BSU.data && BSU.data.needs && BSU.data.needs[k] ? BSU.data.needs[k].label : k)); const bar = el('div', 'bar'); const f = el('div', 'fill'); bar.appendChild(f); const val = el('div', 'need-val', '—');
       g.appendChild(lab); g.appendChild(bar); g.appendChild(val); gauges.appendChild(g); E.needEls[k] = { el: g, fill: f, val: val };
       g.addEventListener('click', function () { const s = stateOf(); const b = (BSU.data.needs[k] || {}).build; if (s && b) M.openBuildMenu(s, { focus: b, pulse: true }); });
+      if (k === 'power' || k === 'water') { g.addEventListener('mouseenter', function () { const I = issuesApi(); if (I) I.pulse(k); }); g.addEventListener('mouseleave', function () { const I = issuesApi(); if (I) I.pulse(null); }); }   // issue spotlight pass: hovering the gauge pulses every unpowered / unwatered beacon
     }
     const ntext = el('button', 'needs-text'); ntext.id = 'needs-text'; ntext.type = 'button'; ntext.addEventListener('click', function () { const s = stateOf(); const b = ntext.dataset.build; if (s && b) { M.openBuildMenu(s, { focus: b, pulse: true }); } });
-    strip.appendChild(gauges); strip.appendChild(ntext);
+    const nloc = btn('needs-locate', 'Locate', 'small hidden', function () { const s = stateOf(); const fam = nloc.dataset.family; if (!s || !fam) return; const it = issueFirstOf(s, (issuesApi() && issuesApi().families()[fam]) || []); if (it) locateIssue(s, it); }); nloc.title = 'Ease the camera to the first building with this problem';
+    const nrow = el('div', 'needs-row'); nrow.appendChild(ntext); nrow.appendChild(nloc);
+    strip.appendChild(gauges); strip.appendChild(nrow); E['needs-locate'] = nloc;
     c.appendChild(bub); c.appendChild(head); c.appendChild(progRow); c.appendChild(acts); c.appendChild(next); c.appendChild(bg); c.appendChild(strip);
     E['objective-card'] = c; E['obj-portrait'] = portrait; E['obj-kicker'] = kick; E['obj-title'] = title; E['obj-text'] = text; E['obj-why'] = why; E['obj-progress'] = prog; E['obj-prog-row'] = progRow; E['obj-fill'] = fill; E['obj-count'] = count; E['obj-actions'] = acts;
     E['btn-obj-build'] = build; E['btn-showme'] = showme; E['btn-postcard-obj'] = post; E['btn-obj-dismiss'] = dis; E['obj-next'] = next; E['obj-background'] = bg; E['speech-bubble'] = bub; E['needs-strip'] = strip; E['needs-text'] = ntext;
@@ -375,7 +378,7 @@
     if (!world) { world = el('canvas', 'world'); world.id = 'world'; world.setAttribute('tabindex', '0'); app.appendChild(world); }
     E.world = world;
     const hud = el('div'); hud.id = 'hud'; E.hud = hud;
-    hud.appendChild(buildTopbar()); hud.appendChild(buildAlert()); hud.appendChild(buildMinimap()); hud.appendChild(buildOverlays());
+    hud.appendChild(buildTopbar()); hud.appendChild(buildAlert()); hud.appendChild(buildMinimap()); hud.appendChild(buildOverlays()); hud.appendChild(buildIssuesTray());
     buildObjective().forEach(function (x) { hud.appendChild(x); });
     const notes = el('div'); notes.id = 'notifications'; E.notifications = notes; hud.appendChild(notes);
     hud.appendChild(buildToast()); hud.appendChild(buildInspect());
@@ -454,7 +457,7 @@
   // ---------------------------------------------------------------------------
   // DOM listeners → the machine (pointer / wheel / keys / gestures)
   // ---------------------------------------------------------------------------
-  function modsOf(e) { return { ctrl: !!e.ctrlKey, shift: !!e.shiftKey, meta: !!e.metaKey, alt: !!e.altKey, code: e.code }; }
+  function modsOf(e) { return { ctrl: !!e.ctrlKey, shift: !!e.shiftKey, meta: !!e.metaKey, alt: !!e.altKey, code: e.code, repeat: !!e.repeat }; }
   function attachInput(world) {
     const pt = function (type) { return function (e) { try { if (type === 'down' && typeof world.focus === 'function') world.focus(); M.pointer(type, fin(e.offsetX, 0), fin(e.offsetY, 0), fin(e.button, 0), modsOf(e)); if (type === 'down' && e.preventDefault) e.preventDefault(); } catch (err) { uerr('pointer:' + type, err); } }; };
     world.addEventListener('pointerdown', pt('down'));
@@ -508,7 +511,7 @@
     on('game:decision', function (p) { if (!p || !p.id) return; if (p.closed) { delete gameDecs[p.id]; return; } gameDecs[p.id] = { id: p.id, kind: p.kind, options: Array.isArray(p.options) ? p.options : null, def: p.def, deadlineTicks: fin(p.deadlineTicks, 0) }; });   // football pass D: the engine emits this just before ui.decision, so openToast finds the options
     on('storm:toast', function (p) { const s = stateOf(); if (s) M.decision(s, { id: p.id, text: p.text, yes: p.yes, no: p.no, untilTick: p.untilTick, ticks: L.toastTicks }); });
     on('storm:named', function () { alertAt = -1e9; }); on('storm:watch', function () { alertAt = -1e9; }); on('storm:bands', function () { alertAt = -1e9; }); on('storm:landfall', function () { alertAt = -1e9; }); on('storm:passed', function () { alertAt = -1e9; });
-    on('mosquito:warning', function (p) { alertAt = -1e9; const s = stateOf(); if (s && p && p.text) M.notify(s, { kind: 'wildlife', text: p.text }); });
+    on('mosquito:warning', function (p) { alertAt = -1e9; const s = stateOf(); if (s && p && p.text) M.notify(s, { kind: 'wildlife', text: p.text, locate: 'mosquito' }); });
     on('gator:campus', function () { alertAt = -1e9; });
     on('weather:heat', function () { alertAt = -1e9; });
     on('power:blackout', function () { alertAt = -1e9; }); on('power:restored', function () { alertAt = -1e9; });
@@ -710,7 +713,7 @@
     }
     return null;
   }
-  function keyup(key) { const d = panDirOf(key); if (d) held[d] = false; if (key === 'Shift') { heldShift = false; if (live.state === 'PLACING') updateGhostQuiet(); } }
+  function keyup(key) { const d = panDirOf(key); if (d) held[d] = false; if (key === 'Shift') { heldShift = false; if (live.state === 'PLACING') updateGhostQuiet(); } if (key === 'i' || key === 'I') { if (heldI) { heldI = false; applySpotlight(); } } }   // issue spotlight pass: releasing I restores the map
   /** keydown(key, mods) → true when handled (also headless.key) */
   M.keydown = function (key, mods) {
     try {
@@ -750,7 +753,14 @@
         if (!E.popover.classList.contains('hidden')) { show(E.popover, false); return true; }
         if (s.ui.panel) { M.openPanel(null); return true; }
         if (card) { M.closeCard(); return true; }
+        if (spotToggled || (issuesApi() && issuesApi().selectedId() !== null)) { clearIssueUi(); return true; }   // issue spotlight pass: Esc #5 clears the issue selection / spotlight
         return false;
+      }
+      // issue spotlight pass: I is handled here (not in data.keys, data.js is not edited in this pass): tap = next issue, hold = spotlight, Shift+I = toggle spotlight
+      if ((key === 'i' || key === 'I') && !mods.ctrl && !mods.meta && !mods.alt) {
+        if (mods.shift) { toggleSpotlight(); return true; }
+        if (!mods.repeat) cycleIssue(s, 1);
+        heldI = true; applySpotlight(); return true;
       }
       let k = key;
       if (mods.shift && typeof mods.code === 'string' && /^Digit[1-9]$/.test(mods.code)) k = mods.code.slice(5);
@@ -1346,6 +1356,7 @@
       g.el.title = (needsData()[t.key] || {}).label + ': ' + t.used + ' ' + ((needsData()[t.key] || {}).unit || '') + ' using ' + t.cap + ' of capacity' + (t.short > 0 ? ' · ' + t.short + ' unserved' : '') + ' · click to build a ' + ((rowOf((needsData()[t.key] || {}).build) || {}).name || '');
     }
     const nt = E['needs-text']; if (n.binding) { setText(nt, n.binding.text); nt.dataset.level = n.binding.level; nt.dataset.build = n.binding.build || ''; nt.disabled = !n.binding.build; }
+    try { const fam = n.binding && n.binding.level !== 'ok' ? ({ power: 'power', water: 'water', beds: 'capacity', seats: 'capacity', dining: 'capacity' })[n.binding.key] || '' : ''; const nl = E['needs-locate']; if (nl) { const any = fam && issuesApi() && issuesApi().ofFamily(s, fam).length > 0; nl.dataset.family = fam; show(nl, !!any); } } catch (e) { uerr('needsLocate', e); }
   }
   /** utility coverage warning for the ghost's second line (none while the tutorial suppresses coverage) */
   function utilityWarning(s, row, r) {
@@ -1362,7 +1373,8 @@
       if (row.needsPower && pre.power === false) { text = row.name + ' placed with no power yet. Build a Power Substation within 10 tiles (P shows coverage).'; ov = OV.POWER; }
       else if (row.needsWater && pre.water === false) { text = row.name + ' placed with no water yet. Build a Water Tower within 12 tiles (W shows coverage).'; ov = OV.WATER; }
       if (!text) return;
-      M.notify(s, { kind: 'info', text: text, ttl: 9000, action: { label: 'Show coverage', fn: function (st) { M.setOverlay(st, ov); } } });
+      try { if (BSU.issues) BSU.issues.invalidate(); } catch (e) { /* */ }
+      M.notify(s, { kind: 'info', text: text, ttl: 9000, locate: ov === OV.POWER ? 'power' : 'water', action: { label: 'Show coverage', fn: function (st) { M.setOverlay(st, ov); } } });
     } catch (e) { uerr('placedHint', e); }
   }
   // ---- effects → plain lines (the detail card)
@@ -1613,6 +1625,114 @@
   M._ux = { needsOf: needsOf, recommend: recommend, objTarget: objTarget, effectLines: effectLines, requirementsOf: requirementsOf, utilityWarning: utilityWarning };
 
   // ---------------------------------------------------------------------------
+  // Issue spotlight pass: the Issues tray (docked under the minimap / overlay keys), Fix / Locate, keys
+  // ---------------------------------------------------------------------------
+  const tray = { key: '', ageAt: -1e9, rows: [], collapsed: false, userCollapsed: false, clearAt: -1e9, hadIssues: false, at: -1e9, lastCount: 0 };
+  let heldI = false, spotToggled = false;
+  function issuesApi() { const I = BSU.issues; return (I && typeof I.list === 'function') ? I : null; }
+  function issueList(s) { const I = issuesApi(); return I ? I.list(s) : []; }
+  function applySpotlight() { const I = issuesApi(); if (I) I.spotlight(spotToggled || heldI); if (E['issues-spot']) cls(E['issues-spot'], 'active', spotToggled); }
+  function toggleSpotlight() { spotToggled = !spotToggled; applySpotlight(); tray.key = ''; }
+  /** ease the camera to an issue, select it (the floating label) and flash its tiles */
+  function locateIssue(s, it) {
+    const I = issuesApi(); if (!I || !it) return false;
+    I.select(it.id); const a = it.anchor || { tx: 32, ty: 32 };
+    call('render', 'panToTile', fin(a.tx, 32), fin(a.ty, 32));
+    if (it.tiles && it.tiles.length) call('render', 'flashTiles', it.tiles.slice(0, 64), 900);
+    if (s && s.setPiece) call('render', 'captureCameraTouch', s);
+    tray.key = ''; return true;
+  }
+  /** run an issue's one-click fix: open the build menu on the card, pick a tool, show an overlay, or repair / relocate */
+  function fixIssue(s, it) {
+    const I = issuesApi(); if (!I || !it) return { ok: false, reason: 'No issue' };
+    const a = it.action; let r = { ok: true };
+    locateIssue(s, it);
+    if (!a) return r;
+    if (a.openMenuCard) { M.openBuildMenu(s, { focus: a.openMenuCard, pulse: true }); }
+    else if (a.tool) { M.selectTool(s, a.tool); }
+    else if (Number.isFinite(a.overlay)) { M.setOverlay(s, a.overlay); }
+    else if (Number.isFinite(a.repair)) { r = call('buildings', 'repair', s, a.repair) || r; }
+    else if (Number.isFinite(a.repairLevee)) { r = call('buildings', 'repairLevee', s, a.repairLevee) || r; }
+    else if (Number.isFinite(a.relocate)) { call('wildlife', 'relocate', s, a.relocate); r = { ok: true }; }
+    if (r && r.ok === false) { call('audio', 'play', 'invalid'); if (r.reason) M.notify(s, { kind: 'info', text: r.reason, ttl: 4000 }); }
+    else if (Number.isFinite(a.repair) || Number.isFinite(a.repairLevee) || Number.isFinite(a.relocate)) { I.select(null); M.notify(s, { kind: 'info', text: 'Fixed: ' + it.title + (r && r.cost > 0 ? ' · ' + money(r.cost) : ''), ttl: 3500 }); }
+    I.invalidate(); tray.key = '';
+    return r;
+  }
+  function cycleIssue(s, dir) { const I = issuesApi(); if (!I) return null; const it = I.cycle(s, dir); if (it) locateIssue(s, it); else { I.select(null); M.notify(s, { kind: 'info', text: 'All clear: no issues on campus', ttl: 2500 }); } return it; }
+  function clearIssueUi() { const I = issuesApi(); if (I) I.select(null); spotToggled = false; heldI = false; applySpotlight(); tray.key = ''; }
+  function issueFirstOf(s, kinds) { const I = issuesApi(); if (!I) return null; const l = I.ofKinds(s, kinds); return l.length ? l[0] : null; }
+  /** which issue kinds a notification / needs line is about (used to add a 'Locate' button) */
+  function locateKindsOf(spec) {
+    if (!spec) return null;
+    if (spec.locate) { const lc = spec.locate; if (typeof lc === 'string') return (issuesApi() && issuesApi().families()[lc]) || [lc]; if (Array.isArray(lc)) return lc; if (lc.kind) return [lc.kind]; if (lc.family) return (issuesApi() && issuesApi().families()[lc.family]) || null; return null; }
+    const t = String(spec.text || ''); const F = issuesApi() ? issuesApi().families() : null; if (!F) return null;
+    if (/gator/i.test(t)) return F.gator; if (/flood/i.test(t)) return F.flood; if (/levee/i.test(t)) return F.levee; if (/mosquito/i.test(t)) return F.mosquito;
+    if (/blackout|brownout|no power|unpowered/i.test(t)) return F.power; if (/boil|no water/i.test(t)) return F.water; if (/damage|ruin/i.test(t)) return F.damage;
+    return null;
+  }
+  function buildIssuesTray() {
+    const wrap = el('div', 'hidden'); wrap.id = 'issues-tray';
+    const head = el('div'); head.id = 'issues-head';
+    const n = el('span', 'n', ''); n.id = 'issues-count'; const sub = el('span', 'sub', ''); sub.id = 'issues-sub';
+    const spot = btn('issues-spot', 'Spotlight', 'small', function () { toggleSpotlight(); }); spot.title = 'Dim the map except the issues (Shift+I; hold I)';
+    const car = btn('issues-toggle', '▾', 'icon small', function () { tray.userCollapsed = !tray.userCollapsed; tray.key = ''; }); car.title = 'Collapse / expand';
+    head.appendChild(n); head.appendChild(sub); head.appendChild(spot); head.appendChild(car);
+    head.addEventListener('click', function (ev) { if (ev && ev.target && (ev.target === spot || ev.target === car)) return; if (tray.userCollapsed) { tray.userCollapsed = false; tray.key = ''; } else { const s = stateOf(); if (s) cycleIssue(s, 1); } });
+    const list = el('div'); list.id = 'issues-list'; const more = el('div', 'hidden', ''); more.id = 'issues-more';
+    wrap.appendChild(head); wrap.appendChild(list); wrap.appendChild(more);
+    E['issues-tray'] = wrap; E['issues-head'] = head; E['issues-count'] = n; E['issues-sub'] = sub; E['issues-spot'] = spot; E['issues-toggle'] = car; E['issues-list'] = list; E['issues-more'] = more;
+    return wrap;
+  }
+  function issueRow(s, it, sel) {
+    const row = el('div', 'issue-row' + (sel ? ' sel' : '')); row.dataset.id = it.id; row.dataset.kind = it.kind; try { row.style.borderLeftColor = it.color || '#FDD023'; if (sel) row.style.boxShadow = '0 0 0 .2rem ' + (it.color || '#FDD023'); } catch (e) { /* stub */ } row.title = it.fix || it.title;
+    const ic = el('canvas'); ic.width = 18; ic.height = 18; try { const g = ic.getContext('2d'); if (g && has('render', 'drawIssueGlyph')) call('render', 'drawIssueGlyph', g, it.glyph, 9, 9, 7, it.color || '#FDD023'); } catch (e) { /* stub */ }
+    const col = el('div', 't', it.title); const age = el('span', 'a', ' · ' + (issuesApi() ? issuesApi().ageText(s, it) : '')); col.appendChild(age);
+    const fix = btn(null, 'Fix', 'small fix', function () { const st = stateOf(); if (st) fixIssue(st, issuesApi().byId(st, it.id) || it); }); fix.title = it.fix || 'Fix it';
+    const loc = btn(null, 'Locate', 'small', function () { const st = stateOf(); if (st) locateIssue(st, issuesApi().byId(st, it.id) || it); }); loc.title = 'Ease the camera there (I cycles)';
+    row.appendChild(ic); row.appendChild(col); row.appendChild(fix); row.appendChild(loc);
+    row.addEventListener('click', function (ev) { if (ev && ev.target && (ev.target === fix || ev.target === loc)) return; const st = stateOf(); if (st) locateIssue(st, issuesApi().byId(st, it.id) || it); });
+    return { el: row, age: age, id: it.id };
+  }
+  /** rows that fit between the overlay keys and the palette; < 2 → chip only ("space is tight") */
+  function trayRowsFit() {
+    try {
+      const sc = effScale || 1, px = 10 * sc, top = (5.6 + 28.4) * px, bot = (18 + 2.8 + 2 + 1) * px, head = 3.4 * px, row = 3.9 * px;
+      const h = fin(window.innerHeight, 800) - top - bot - head; return clamp(Math.floor(h / row), 0, 6);
+    } catch (e) { return 4; }
+  }
+  function updateIssues(s) {
+    if (!dom() || !E['issues-tray']) return;
+    const I = issuesApi(); if (!I) return;
+    if (clock - tray.at < 250) return; tray.at = clock;
+    if (titleOn || coach.step >= 0) { show(E['issues-tray'], false); tray.key = ''; return; }
+    const list = I.list(s), sel = I.selectedId(), fit = trayRowsFit();
+    const collapsed = tray.userCollapsed || fit < 2;
+    if (list.length === 0) {
+      if (tray.hadIssues) { tray.hadIssues = false; tray.clearAt = clock; }
+      const showClear = clock - tray.clearAt < 3000;
+      show(E['issues-tray'], showClear); if (!showClear) { tray.key = ''; return; }
+      const k = 'clear'; if (tray.key !== k) { tray.key = k; setText(E['issues-count'], 'All clear ✓'); setText(E['issues-sub'], ''); cls(E['issues-head'], 'clear', true); cls(E['issues-tray'], 'collapsed', true); clear(E['issues-list']); tray.rows = []; show(E['issues-more'], false); }
+      return;
+    }
+    tray.hadIssues = true; show(E['issues-tray'], true);
+    const shown = collapsed ? 0 : Math.min(fit, list.length);
+    const key = list.length + '|' + shown + '|' + (sel || '') + '|' + list.slice(0, shown).map(function (it) { return it.id + it.title + it.severity; }).join(';');
+    if (key !== tray.key) {
+      tray.key = key; tray.ageAt = clock;
+      setText(E['issues-count'], list.length + (list.length === 1 ? ' issue' : ' issues'));
+      const w3 = list.filter(function (it) { return it.severity >= 3; }).length; setText(E['issues-sub'], w3 ? w3 + ' urgent' : (collapsed ? 'click to cycle' : ''));
+      cls(E['issues-head'], 'clear', false); cls(E['issues-tray'], 'collapsed', collapsed); setText(E['issues-toggle'], collapsed ? '▸' : '▾');
+      clear(E['issues-list']); tray.rows = [];
+      for (let k = 0; k < shown; k++) { const r = issueRow(s, list[k], list[k].id === sel); E['issues-list'].appendChild(r.el); tray.rows.push(r); }
+      const rest = list.length - shown; setText(E['issues-more'], rest > 0 ? '+' + rest + ' more · I cycles through all' : ''); show(E['issues-more'], rest > 0 && !collapsed);
+    } else if (clock - tray.ageAt >= 1000) {
+      tray.ageAt = clock; for (const r of tray.rows) { const it = I.byId(s, r.id); if (it) setText(r.age, ' · ' + I.ageText(s, it)); }
+    }
+  }
+  M.issues = { locate: function (s, idOrIt) { const I = issuesApi(); const it = typeof idOrIt === 'string' ? (I && I.byId(s || stateOf(), idOrIt)) : idOrIt; return locateIssue(s || stateOf(), it); }, fix: function (s, idOrIt) { const I = issuesApi(); const it = typeof idOrIt === 'string' ? (I && I.byId(s || stateOf(), idOrIt)) : idOrIt; return fixIssue(s || stateOf(), it); }, cycle: function (s, dir) { return cycleIssue(s || stateOf(), dir); }, spotlight: function (on) { if (on !== undefined) { spotToggled = !!on; applySpotlight(); } return spotToggled; }, clear: clearIssueUi, rowsFit: trayRowsFit, kindsOf: locateKindsOf, held: function () { return heldI; } };
+
+  // ---------------------------------------------------------------------------
   // Notifications, hints
   // ---------------------------------------------------------------------------
   function mapAction(s, a) {
@@ -1647,6 +1767,7 @@
         d.appendChild(el('span', 'notif-text', spec.text));
         if (act) { const b = btn(null, act.label || 'Do it', 'notif-action small', function () { try { act.fn(stateOf()); } catch (e) { uerr('notif:action', e); } closeNotif(n, 'action'); }); d.appendChild(b); }
         if (spec.showMe != null) { const b = btn(null, 'Show me', 'notif-action small', function () { showMe(stateOf(), spec.showMe); }); d.appendChild(b); }
+        const lk = locateKindsOf(spec); if (lk && lk.length && issuesApi() && issuesApi().ofKinds(s, lk).length) { const b = btn(null, 'Locate', 'notif-action small locate', function () { const st = stateOf(); const it = issueFirstOf(st, lk); if (it) locateIssue(st, it); else M.notify(st, { kind: 'info', text: 'Already resolved', ttl: 2500 }); closeNotif(n, 'action'); }); d.appendChild(b); }   // issue spotlight pass
         const x = btn(null, '✕', 'notif-close icon', function () { closeNotif(n, 'close'); }); d.appendChild(x);
         E.notifications.appendChild(d); n.el = d;
       }
@@ -2240,6 +2361,7 @@
     sec('ghost', updateGhostCosmetics, state, dtMs);
     sec('undochip', updateUndoChip, state, dtMs);
     sec('perf', updatePerf, state, dtMs);
+    sec('issues', updateIssues, state, dtMs);
     sec('legend', function (s) { const ov = fin(s.ui.overlay, 0); const list = (BSU.data && BSU.data.overlays) || []; for (const o of list) cls(E.ovBtns[o.ov], 'active', o.ov === ov); const o = list.find(function (x) { return x.ov === ov; }); show(E.legend, !!o); if (o) setText(E.legend, o.name + ' · ' + o.legend.join(' → ')); }, state, dtMs);
   };
   /** every newGame (fresh) and load: close everything, tool null, palette refresh from the new root */
@@ -2254,6 +2376,7 @@
       tk = { x: 0, line: null, seen: Math.max(0, ((state && state.ticker) || []).length - 1), w: 0, lastLen: -1, logOpen: false, cycle: 0 };
       bubble = { since: clock, until: 0, key: '' }; objKey = ''; alertKey = ''; alertAt = -1e9; msAt = -1e9; speedKey = ''; paletteKey = ''; palShownTab = ''; pipKey = ''; paletteDirty = true; capacityShown = false; skipShown = false; paletteHidden = null; hudFade = false;   // null: the first updateSetPiece re-syncs #palette and #hud.no-palette (a stale no-palette from the title / tutorial left a 0-height palette after newGame/load)
       M.debug.open = false; M.hoverTile = -1; lastGhost = null;
+      tray.key = ''; tray.rows = []; tray.hadIssues = false; tray.clearAt = -1e9; tray.userCollapsed = false; heldI = false; spotToggled = false; try { if (BSU.issues) { BSU.issues.select(null); BSU.issues.spotlight(false); BSU.issues.pulse(null); } } catch (e) { /* */ }
       bm.open = false; bm.hover = null; bm.selected = null; bm.pulseId = null; bm.key = ''; bm.detailKey = ''; bm.dirty = true; needsCache = null; needsAt = -1e9; needsKey = ''; coach.step = -1; coach.armedAt = 0; coach.paused = false;
       for (const k in held) held[k] = false;
       if (dom()) {
@@ -2356,6 +2479,21 @@
       A(M.keydown('Dead', { ctrl: false, shift: false, meta: false, alt: false, code: 'Backquote' }) === true && M.debug.open === d0, 'Dead + code Backquote toggles back');
       A(M.keydown('Backquote', { ctrl: false, shift: false, meta: false, alt: false, code: 'Backquote' }) === true && M.debug.open === !d0, 'Backquote name toggles');
       M.debug.open = d0;
+      // 12. issue spotlight pass: I / Shift+I / Esc and the Fix action on a synthetic unpowered dorm
+      if (BSU.issues) {
+        const I = BSU.issues; I.reset(); s.economy.suppressCoverage = false; s.buildings = []; const dr = rowOf('dorm');
+        s.buildings[0] = { id: 0, type: 'dorm', tx: 20, ty: 20, w: dr ? dr.w : 3, h: dr ? dr.h : 2, rot: 0, name: 'Test Hall', hp: 1, built: 1, builtDay: 0, pilings: false, sunk: 0, powered: false, watered: true, provider: { power: -1, water: -1 }, flooded: false, floodedSince: -1, closedUntil: -1, blackout: false, tier: 0, upgradeDoneDay: -1, ruin: false, tarp: false };
+        s.plot = s.plot || {}; s.plot.founders = { tx: 20, ty: 26 }; for (let y = 22; y < 26; y++) s.tiles.surface[BSU.idx(20, y)] = BSU.SURF.PATH;
+        I.invalidate(); const li = I.list(s); A(li.length >= 1 && li[0].kind === 'unpowered', 'synthetic dorm → unpowered issue');
+        A(M.keydown('i', M0) === true && I.selectedId() === li[0].id && heldI === true && I.spotlight() === true, 'I selects the first issue and spotlights while held');
+        keyup('i'); A(heldI === false && I.spotlight() === false, 'releasing I restores the map');
+        A(M.keydown('i', { ctrl: false, shift: false, meta: false, alt: false, repeat: true }) === true && I.selectedId() === li[0].id, 'key repeat does not cycle'); keyup('i');
+        A(M.keydown('I', { ctrl: false, shift: true, meta: false, alt: false }) === true && I.spotlight() === true && spotToggled, 'Shift+I toggles spotlight on');
+        s.ui.tool = null; s.ui.panel = null; A(M.keydown('Escape', M0) === true && I.spotlight() === false && I.selectedId() === null, 'Esc clears the selection and the spotlight');
+        A(locateKindsOf({ text: 'A gator is on the quad' })[0] === 'gatorOnCampus' && locateKindsOf({ locate: 'power' }).length === 3 && locateKindsOf({ text: 'Saved' }) === null, 'locate kinds from a notification');
+        const r = fixIssue(s, li[0]); A(r && r.ok !== false && bm.open === true && I.selectedId() === li[0].id, 'Fix opens the build menu on the Substation card'); M.closeBuildMenu();
+        s.buildings = []; I.invalidate(); A(I.list(s).length === 0 && I.selectedId() === null, 'issue gone → selection gone'); I.reset();
+      }
       for (const t of M._tests) { try { t(s, A); } catch (e) { throw e; } }
       return { ok: true, notes: notes.join('; ') };
     } catch (e) {

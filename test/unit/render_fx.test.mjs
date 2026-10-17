@@ -41,6 +41,9 @@ const BSU = win.BSU, R = BSU.render, SKY = BSU.SKY;
 
 // --- passes -------------------------------------------------------------------
 const passes_ = R.passes();
+// issue spotlight pass: beacons (7.5, above lights) and spotlight (9.5, above overlays, below hud) + caps
+ok(passes_.some((p) => p.name === 'beacons' && p.order === 7.5) && passes_.some((p) => p.name === 'spotlight' && p.order === 9.5), 'beacons@7.5 and spotlight@9.5 registered');
+ok(typeof R.issueStats === 'function' && R.issueStats().max === 40 && R.issueStats().arrowsMax === 12 && typeof R.drawIssueGlyph === 'function', 'issueStats caps: ≤ 40 beacons, ≤ 12 arrows; drawIssueGlyph exported');
 const byName = Object.fromEntries(passes_.map((p) => [p.name, p]));
 ok(byName.weather && byName.weather.order === 5 && !byName.weather.builtin, "'weather' registered at 5");
 ok(byName.tint && byName.tint.order === 6 && !byName.tint.builtin, "'tint' replaced render's fallback at 6");

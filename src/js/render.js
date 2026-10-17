@@ -2434,6 +2434,21 @@
         }
         g.closePath(); g.stroke();
       }
+      // issue spotlight pass: a blinking pip per issue in its kind colour (selected: a white ring), ≤ 40
+      try {
+        const IS = mod('issues'); const li = IS && typeof IS.list === 'function' ? IS.list(state) : null;
+        if (li && li.length) {
+          const sel = typeof IS.selectedId === 'function' ? IS.selectedId() : null, blink = ((frameNo / 12) | 0) & 1;
+          for (let k = 0; k < li.length && k < 40; k++) {
+            const it = li[k], a = it.anchor || { tx: 32, ty: 32 };
+            const mx = mw / 2 + (fin(a.tx, 32) - fin(a.ty, 32)) * s, my = mh / 2 - (HGT * s) / 2 + (fin(a.tx, 32) + fin(a.ty, 32)) * s / 2;
+            g.globalAlpha = 0.9; g.fillStyle = 'rgba(12,8,28,.9)'; g.fillRect(mx - 3, my - 3, 6, 6);
+            g.globalAlpha = blink ? 1 : 0.45; g.fillStyle = it.color || GOLD; g.fillRect(mx - 2, my - 2, 4, 4);
+            if (sel !== null && it.id === sel) { g.globalAlpha = 1; g.strokeStyle = '#FFFFFF'; g.lineWidth = 1; g.strokeRect(mx - 4.5, my - 4.5, 9, 9); }
+          }
+          g.globalAlpha = 1;
+        }
+      } catch (e) { rerr('minimap:issues', e); }
       if (state.storms && state.storms.current && state.storms.current.phase >= 1 && state.storms.current.phase < 4) {   // the cone, roughly: a gold mark at the forecast landfall side
         g.fillStyle = PAL.danger || '#E0443E'; g.globalAlpha = 0.6 + 0.3 * Math.sin(frameNo / 8); g.fillRect(mw / 2 - 2, mh - 6, 4, 4); g.globalAlpha = 1;
       }

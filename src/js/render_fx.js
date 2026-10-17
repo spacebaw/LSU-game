@@ -1343,10 +1343,215 @@
   R.mistFor = mistFor;
   R.addShell = function (wx, wy, z0, z1, scale) { addShell(wx, wy, z0, z1, fin(scale, 1)); };
 
+  // ---------------------------------------------------------------------------
+  // Issue spotlight (issue spotlight pass): beacons (7.5, above the lights so they stay bright at night)
+  // and the spotlight layer (9.5, above the overlays: the dim, the selected label, the edge arrows).
+  // Every ring breathes on a 1.2 s cycle in the kind's colour (BSU.issues.kinds(), used nowhere else);
+  // a 40-px light column rises from the anchor to a glyph disc; off-screen issues get a border arrow.
+  // Caps: ≤ ISS_MAX beacons, ≤ ISS_ARROWS arrows, the pass stops early past ISS_BUDGET_MS (perf guard).
+  // ---------------------------------------------------------------------------
+  const ISS_MAX = 40, ISS_ARROWS = 12, ISS_BUDGET_MS = 1.0, ISS_BREATH_MS = 1200, ISS_PULSE_MS = 420, ISS_COL_PX = 40, ISS_DIM = 0.55;
+  const issStats = { drawn: 0, arrows: 0, ms: 0, capped: false, labels: 0, frames: 0 };
+  const issPt = { x: 0, y: 0 }, issCorners = [{ x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 }];
+  function issuesApi() { const I = BSU.issues; return (I && typeof I.list === 'function') ? I : null; }
+  function issRgba(hex, a) { const c = parseInt(String(hex).slice(1), 16); if (!Number.isFinite(c)) return 'rgba(253,208,35,' + a + ')'; return 'rgba(' + ((c >> 16) & 255) + ',' + ((c >> 8) & 255) + ',' + (c & 255) + ',' + a + ')'; }
+  /** the iso outline of a tile rect: top / right / bottom / left vertices in screen px (each corner at its own tile's elevation) */
+  function issRectCorners(rect, z, pad, out) {
+    const x1 = rect.tx + rect.w - 1, y1 = rect.ty + rect.h - 1, hw = 32 * z, hh = 16 * z;
+    let p = R.tileToScreen(rect.tx, rect.ty); out[0].x = p.x; out[0].y = p.y - hh - pad * 0.5;
+    p = R.tileToScreen(x1, rect.ty); out[1].x = p.x + hw + pad; out[1].y = p.y;
+    p = R.tileToScreen(x1, y1); out[2].x = p.x; out[2].y = p.y + hh + pad * 0.5;
+    p = R.tileToScreen(rect.tx, y1); out[3].x = p.x - hw - pad; out[3].y = p.y;
+    return out;
+  }
+  function issDiamondPath(g, c) { g.moveTo(c[0].x, c[0].y); g.lineTo(c[1].x, c[1].y); g.lineTo(c[2].x, c[2].y); g.lineTo(c[3].x, c[3].y); g.closePath(); }
+  function issTilePath(g, i, z, pad) { const p = R.tilePx(i); const hw = 32 * z + pad, hh = 16 * z + pad * 0.5; g.moveTo(p.x, p.y - hh); g.lineTo(p.x + hw, p.y); g.lineTo(p.x, p.y + hh); g.lineTo(p.x - hw, p.y); g.closePath(); }
+  /** add every outline of an issue to the current path (rect → one diamond, else per-tile diamonds, ≤ 16 then the bounding diamond) */
+  function issOutlinePath(g, it, z, pad) {
+    if (it.rect) { issDiamondPath(g, issRectCorners(it.rect, z, pad, issCorners)); return; }
+    const tl = it.tiles || [];
+    if (tl.length <= 16) { for (let k = 0; k < tl.length; k++) issTilePath(g, tl[k] | 0, z, pad); return; }
+    let x0 = W, y0 = HGT, x1 = 0, y1 = 0; for (let k = 0; k < tl.length; k++) { const i = tl[k] | 0, tx = i % W, ty = (i / W) | 0; if (tx < x0) x0 = tx; if (tx > x1) x1 = tx; if (ty < y0) y0 = ty; if (ty > y1) y1 = ty; }
+    issDiamondPath(g, issRectCorners({ tx: x0, ty: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 }, z, pad, issCorners));
+  }
+  /** the anchor's screen point (and whether it is inside the viewport with a margin) */
+  function issAnchorScreen(it, view, margin, out) {
+    const a = it.anchor || { tx: 32, ty: 32 }; const p = R.tileToScreen(fin(a.tx, 32), fin(a.ty, 32)); out.x = p.x; out.y = p.y;
+    return p.x >= -margin && p.x <= view.vw + margin && p.y >= -margin && p.y <= view.vh + margin;
+  }
+  /** the HUD-free frame of the viewport (top bar, palette + ticker, the right column: minimap / keys / tray, the left goals tracker) in CSS px */
+  const issFrameO = { L: 26, R: 1254, T: 70, B: 564, ui: 1, rightCol: 250, rightColH: 600, leftCol: 390, leftColH: 520 };
+  function issFrame(view) {
+    let ui = 1; try { const U = mod('ui'); if (U && typeof U.uiScaleEffective === 'function') ui = fin(U.uiScaleEffective(), 1) || 1; } catch (e) { ui = 1; }
+    issFrameO.ui = ui; issFrameO.L = 26; issFrameO.R = view.vw - 26; issFrameO.T = 70 * ui; issFrameO.B = view.vh - 236 * ui;
+    issFrameO.rightCol = view.vw - 250 * ui; issFrameO.rightColH = 600 * ui; issFrameO.leftCol = 390 * ui; issFrameO.leftColH = 520 * ui;
+    return issFrameO;
+  }
+  function issInFrame(x, y, f) { return x >= f.L && x <= f.R && y >= f.T && y <= f.B && !(x > f.rightCol && y < f.rightColH) && !(x < f.leftCol && y < f.leftColH); }
+  const issGroups = {};
+  /** simple glyphs, r = half size in px: bolt, drop, wave, crack, gator (eye), link, mosquito, sandbag, crowd */
+  function drawIssueGlyph(g, kind, cx, cy, r, color) {
+    g.save(); g.translate(cx, cy); g.scale(r, r); g.lineCap = 'round'; g.lineJoin = 'round'; g.fillStyle = color; g.strokeStyle = color; g.lineWidth = 0.22;
+    switch (kind) {
+      case 'bolt': g.beginPath(); g.moveTo(0.15, -1); g.lineTo(-0.55, 0.12); g.lineTo(-0.02, 0.12); g.lineTo(-0.2, 1); g.lineTo(0.55, -0.18); g.lineTo(0.02, -0.18); g.closePath(); g.fill(); break;
+      case 'drop': g.beginPath(); g.moveTo(0, -1); g.bezierCurveTo(0.75, -0.05, 0.72, 0.95, 0, 0.95); g.bezierCurveTo(-0.72, 0.95, -0.75, -0.05, 0, -1); g.closePath(); g.fill(); break;
+      case 'wave': g.beginPath(); for (let w = 0; w < 2; w++) { const oy = w === 0 ? -0.35 : 0.4; g.moveTo(-0.95, oy); for (let x = -0.95; x <= 0.96; x += 0.16) g.lineTo(x, oy + 0.25 * Math.sin((x + 0.95) * 3.3)); } g.stroke(); break;
+      case 'crack': g.beginPath(); g.moveTo(-0.15, -1); g.lineTo(0.2, -0.45); g.lineTo(-0.3, -0.05); g.lineTo(0.25, 0.4); g.lineTo(-0.1, 1); g.moveTo(-0.3, -0.05); g.lineTo(-0.85, -0.3); g.moveTo(0.25, 0.4); g.lineTo(0.8, 0.6); g.stroke(); break;
+      case 'gator': g.save(); g.scale(1, 0.55); g.beginPath(); g.arc(0, 0, 1, 0, Math.PI * 2); g.fill(); g.restore(); g.fillStyle = 'rgba(10,8,24,.95)'; g.beginPath(); g.moveTo(0, -0.62); g.lineTo(0.17, 0); g.lineTo(0, 0.62); g.lineTo(-0.17, 0); g.closePath(); g.fill(); break;
+      case 'link': g.beginPath(); g.arc(-0.38, 0, 0.5, 0, Math.PI * 2); g.moveTo(0.88, 0); g.arc(0.38, 0, 0.5, 0, Math.PI * 2); g.stroke(); g.beginPath(); g.moveTo(-0.3, 0); g.lineTo(0.3, 0); g.stroke(); break;
+      case 'mosquito': g.beginPath(); g.moveTo(0, -0.25); g.lineTo(0, 0.95); g.stroke(); g.beginPath(); g.arc(0, 0.05, 0.3, 0, Math.PI * 2); g.fill(); g.save(); g.globalAlpha *= 0.75; g.beginPath(); g.scale(1, 0.45); g.arc(-0.5, -0.75, 0.48, 0, Math.PI * 2); g.moveTo(0.98, -0.75); g.arc(0.5, -0.75, 0.48, 0, Math.PI * 2); g.fill(); g.restore(); break;
+      case 'sandbag': g.fillRect(-0.95, 0.2, 0.85, 0.55); g.fillRect(0.1, 0.2, 0.85, 0.55); g.fillRect(-0.42, -0.45, 0.85, 0.55); break;
+      case 'crowd': g.beginPath(); g.arc(-0.38, -0.45, 0.3, 0, Math.PI * 2); g.moveTo(0.68, -0.45); g.arc(0.38, -0.45, 0.3, 0, Math.PI * 2); g.fill(); g.beginPath(); g.arc(-0.38, 0.75, 0.55, Math.PI, 0); g.moveTo(0.93, 0.75); g.arc(0.38, 0.75, 0.55, Math.PI, 0); g.fill(); break;
+      default: g.beginPath(); g.arc(0, 0, 0.6, 0, Math.PI * 2); g.fill();
+    }
+    g.restore();
+  }
+  R.drawIssueGlyph = drawIssueGlyph;
+  function issIconDisc(g, kind, color, x, y, r, a) {
+    g.globalAlpha = a; g.fillStyle = 'rgba(12,8,28,.88)'; g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill();
+    g.strokeStyle = color; g.lineWidth = 1.5; g.stroke();
+    drawIssueGlyph(g, kind, x, y, r * 0.58, color);
+  }
+  /** rings + columns + icons for every on-screen issue; returns the number drawn. selOnly: just the selected one's extras */
+  function drawBeacons(state, g, view, issues, sel, t0) {
+    const z = (camOf(state).zoom) || 1, perf = !!(state.ui && state.ui.perfMode), now = nowMs(), I = issuesApi();
+    const brA = 0.5 - 0.5 * Math.cos((now % ISS_BREATH_MS) / ISS_BREATH_MS * Math.PI * 2), brP = 0.5 - 0.5 * Math.cos((now % ISS_PULSE_MS) / ISS_PULSE_MS * Math.PI * 2);
+    let drawn = 0; issStats.capped = false;
+    // issues that share a footprint (no power + no water + full …): concentric rings, icons side by side
+    for (const k in issGroups) delete issGroups[k];
+    for (let k = 0; k < issues.length; k++) { const it = issues[k]; const key = it.rect ? ('r' + it.rect.tx + ',' + it.rect.ty + ',' + it.rect.w + ',' + it.rect.h) : ('t' + (it.tiles && it.tiles[0])); it._gk = key; issGroups[key] = (issGroups[key] | 0) + 1; }
+    const seenG = {}, anyPulse = !!(I && I.pulsing());
+    for (let pass = 0; pass < (anyPulse ? 2 : 1); pass++) for (let k = 0; k < issues.length; k++) {   // pulsing beacons (gauge hover) are drawn last, on top
+      if (drawn >= ISS_MAX) { issStats.capped = true; break; }
+      if (drawn > 4 && nowMs() - t0 > ISS_BUDGET_MS) { issStats.capped = true; break; }
+      const it = issues[k]; const pulsing = anyPulse && I.isPulsing(it.kind); if (anyPulse && (pass === 0) === pulsing) continue;
+      if (!issAnchorScreen(it, view, 160 * z, issPt)) continue;
+      const gi = seenG[it._gk] | 0, gn = issGroups[it._gk] | 0; seenG[it._gk] = gi + 1;
+      const isSel = sel && sel.id === it.id, br = pulsing ? brP : brA, single = !it.rect && it.tiles && it.tiles.length <= 1;
+      const col = it.color || '#FDD023', pad = (2 + 3 * br) * z + (pulsing ? 6 + 4 * br : 0) + (isSel ? 2 : 0) + (single ? 3 * z : 0) + gi * 3.5 * Math.max(0.75, z);
+      // ring: a soft outer glow (skipped in perf mode) and the crisp outline; a faint wash inside the first ring of a footprint
+      g.beginPath(); issOutlinePath(g, it, z, pad);
+      if (!perf && (gi === 0 || isSel)) { g.globalAlpha = (pulsing ? 0.5 : 0.22) + 0.25 * br; g.strokeStyle = col; g.lineWidth = (pulsing ? 12 : 9) * Math.max(0.75, z); g.stroke(); }
+      g.globalAlpha = 0.75 + 0.25 * br; g.strokeStyle = col; g.lineWidth = isSel || pulsing ? 3 : 2; g.stroke();
+      if (gi === 0 || pulsing) { g.globalAlpha = (isSel || pulsing ? 0.14 : 0.07) + 0.08 * br; g.fillStyle = col; g.fill(); }
+      // light column from the anchor up to the glyph disc (stacked issues fan out left / right)
+      const ax = issPt.x + (gi - (gn - 1) / 2) * 24 * Math.max(0.75, z), ay = issPt.y, hc = Math.max(28, ISS_COL_PX * Math.max(0.75, z)), top = ay - hc;
+      let grad = null; try { grad = g.createLinearGradient(ax, ay, ax, top); grad.addColorStop(0, issRgba(col, 0.9)); grad.addColorStop(1, issRgba(col, 0.12)); } catch (e) { grad = null; }
+      g.strokeStyle = grad || col; g.globalAlpha = 0.9;
+      if (!perf) { g.lineWidth = 6; g.globalAlpha = 0.18 + 0.12 * br; g.beginPath(); g.moveTo(ax, ay); g.lineTo(ax, top); g.stroke(); }
+      g.lineWidth = 2.5; g.globalAlpha = 0.9; g.beginPath(); g.moveTo(ax, ay); g.lineTo(ax, top); g.stroke();
+      g.globalAlpha = 0.9; g.fillStyle = col; g.beginPath(); g.arc(ax, ay, 2.5, 0, Math.PI * 2); g.fill();   // the foot
+      const ir = isSel ? 13 : 11;
+      issIconDisc(g, it.glyph || 'link', col, ax, top - ir - 2 - 3 * br, ir, 0.92 + 0.08 * br);
+      if (it.severity >= 3 && !isSel) { g.globalAlpha = 0.9; g.fillStyle = PAL.danger || '#E0443E'; g.beginPath(); g.arc(ax + ir * 0.8, top - ir * 1.8, 3, 0, Math.PI * 2); g.fill(); g.strokeStyle = 'rgba(12,8,28,.9)'; g.lineWidth = 1; g.stroke(); }   // red dot: severity 3
+      drawn++;
+    }
+    g.globalAlpha = 1;
+    return drawn;
+  }
+  function issWrap(g, text, maxW) {
+    const words = String(text).split(' '), lines = []; let line = '';
+    for (const w of words) { const t = line ? line + ' ' + w : w; if (g.measureText(t).width > maxW && line) { lines.push(line); line = w; } else line = t; }
+    if (line) lines.push(line); return lines.slice(0, 4);
+  }
+  /** the floating label beside the selected issue's icon: title + fix (+ the key hint) */
+  function drawIssueLabel(state, g, view, sel) {
+    if (!sel || !issAnchorScreen(sel, view, 0, issPt)) return false;
+    const f = issFrame(view); if (!issInFrame(issPt.x, issPt.y, f)) return false;   // off-screen or under the HUD: the edge arrow carries the title instead
+    const z = (camOf(state).zoom) || 1, hc = Math.max(28, ISS_COL_PX * Math.max(0.75, z)), col = sel.color || '#FDD023';
+    let gi = 0, gn = 1; if (sel._gk) { gn = issGroups[sel._gk] | 0 || 1; const li = issuesApi() ? issuesApi().list(state) : []; for (let k = 0; k < li.length; k++) { if (li[k] === sel) break; if (li[k]._gk === sel._gk) gi++; } }
+    const ax = issPt.x + (gi - (gn - 1) / 2) * 24 * Math.max(0.75, z), iy = issPt.y - hc - 16;
+    g.font = 'bold 13px system-ui, -apple-system, "Segoe UI", sans-serif';
+    const title = issWrap(g, sel.title, 230); g.font = '12px system-ui, -apple-system, "Segoe UI", sans-serif'; const fix = issWrap(g, sel.fix || '', 230);
+    const hint = 'Fix / Locate in the Issues tray · I next · Esc';
+    let bw = 0; g.font = 'bold 13px system-ui, -apple-system, "Segoe UI", sans-serif'; for (const l of title) bw = Math.max(bw, g.measureText(l).width);
+    g.font = '12px system-ui, -apple-system, "Segoe UI", sans-serif'; for (const l of fix) bw = Math.max(bw, g.measureText(l).width); g.font = '11px system-ui, -apple-system, "Segoe UI", sans-serif'; bw = Math.max(bw, g.measureText(hint).width);
+    bw = Math.min(260, bw + 26); const bh = 10 + title.length * 17 + fix.length * 15 + 16;
+    let bx = ax + 24, by = iy - bh / 2; if (bx + bw > f.rightCol - 8 && iy < f.rightColH) bx = ax - 24 - bw; else if (bx + bw > view.vw - 8) bx = ax - 24 - bw; by = clamp(by, f.T, Math.max(f.T, f.B - bh));
+    g.globalAlpha = 0.96; g.fillStyle = 'rgba(26,18,48,.95)'; g.fillRect(bx, by, bw, bh); g.strokeStyle = issRgba(col, 0.9); g.lineWidth = 1; g.strokeRect(bx + 0.5, by + 0.5, bw - 1, bh - 1);
+    g.fillStyle = col; g.fillRect(bx, by, 4, bh);
+    // a connector from the box to the icon
+    g.strokeStyle = issRgba(col, 0.7); g.lineWidth = 1.5; g.beginPath(); g.moveTo(bx > ax ? bx : bx + bw, by + Math.min(bh - 6, 18)); g.lineTo(ax + (bx > ax ? 14 : -14), iy); g.stroke();
+    g.textBaseline = 'top'; g.textAlign = 'left'; let ty = by + 8; const tx = bx + 14;
+    g.fillStyle = '#F4EEE2'; g.font = 'bold 13px system-ui, -apple-system, "Segoe UI", sans-serif'; for (const l of title) { g.fillText(l, tx, ty); ty += 17; }
+    g.fillStyle = col; g.font = '12px system-ui, -apple-system, "Segoe UI", sans-serif'; for (const l of fix) { g.fillText(l, tx, ty); ty += 15; }
+    g.fillStyle = 'rgba(185,175,201,.95)'; g.font = '11px system-ui, -apple-system, "Segoe UI", sans-serif'; g.fillText(hint, tx, ty + 1);
+    g.globalAlpha = 1; g.textBaseline = 'alphabetic';
+    return true;
+  }
+  const issArrowPts = []; for (let k = 0; k < ISS_ARROWS; k++) issArrowPts.push({ x: 0, y: 0 });
+  /** border arrows for issues outside the viewport (inset past the top bar and the palette), with the glyph and the distance in tiles */
+  function drawEdgeArrows(state, g, view, issues, sel) {
+    const f = issFrame(view); const L = f.L, T = f.T, B = f.B, cx = view.vw / 2, cy = (T + B) / 2;
+    const now = nowMs(), br = 0.5 - 0.5 * Math.cos((now % ISS_BREATH_MS) / ISS_BREATH_MS * Math.PI * 2);
+    const cam = camOf(state); const camT = (cam.x / 32 + cam.y / 16) / 2, camU = (cam.y / 16 - cam.x / 32) / 2;
+    let n = 0;
+    for (let k = 0; k < issues.length && n < ISS_ARROWS; k++) {
+      const it = issues[k]; issAnchorScreen(it, view, 0, issPt);
+      const px = issPt.x, py = issPt.y;
+      if (issInFrame(px, py, f)) continue;   // visible (inside the HUD-free frame): no arrow
+      let dx = px - cx, dy = py - cy; const len = Math.hypot(dx, dy) || 1; dx /= len; dy /= len;
+      // ray from the centre to the inset rect; a hit in the right column (minimap / keys / tray) or the left tracker is re-cast against that column's edge
+      let Rr = f.R, Lx = L, t = 1e9; if (dx > 1e-6) t = Math.min(t, (Rr - cx) / dx); if (dx < -1e-6) t = Math.min(t, (Lx - cx) / dx); if (dy > 1e-6) t = Math.min(t, (B - cy) / dy); if (dy < -1e-6) t = Math.min(t, (T - cy) / dy);
+      let ex = cx + dx * t, ey = cy + dy * t;
+      if (ex > f.rightCol && ey < f.rightColH) { Rr = f.rightCol; t = 1e9; if (dx > 1e-6) t = Math.min(t, (Rr - cx) / dx); if (dx < -1e-6) t = Math.min(t, (Lx - cx) / dx); if (dy > 1e-6) t = Math.min(t, (B - cy) / dy); if (dy < -1e-6) t = Math.min(t, (T - cy) / dy); ex = cx + dx * t; ey = cy + dy * t; }
+      if (ex < f.leftCol && ey < f.leftColH) { Lx = f.leftCol; t = 1e9; if (dx > 1e-6) t = Math.min(t, (Rr - cx) / dx); if (dx < -1e-6) t = Math.min(t, (Lx - cx) / dx); if (dy > 1e-6) t = Math.min(t, (B - cy) / dy); if (dy < -1e-6) t = Math.min(t, (T - cy) / dy); ex = cx + dx * t; ey = cy + dy * t; }
+      let near = false; for (let j = 0; j < n; j++) if (Math.hypot(issArrowPts[j].x - ex, issArrowPts[j].y - ey) < 26) { near = true; break; }
+      if (near) continue;
+      issArrowPts[n].x = ex; issArrowPts[n].y = ey; n++;
+      const col = it.color || '#FDD023', isSel = sel && sel.id === it.id, a = it.anchor || { tx: 32, ty: 32 };
+      const dist = Math.round(BSU.chebyshev(fin(a.tx, 32), fin(a.ty, 32), camT, camU));
+      // triangle pointing outward
+      g.globalAlpha = 0.75 + 0.25 * br; g.fillStyle = col; g.beginPath(); g.moveTo(ex + dx * 10, ey + dy * 10); g.lineTo(ex - dy * 7, ey + dx * 7); g.lineTo(ex + dy * 7, ey - dx * 7); g.closePath(); g.fill();
+      g.strokeStyle = 'rgba(12,8,28,.9)'; g.lineWidth = 1; g.stroke();
+      issIconDisc(g, it.glyph || 'link', col, ex - dx * 16, ey - dy * 16, isSel ? 12 : 10, 0.95);
+      if (dist > 0 && !isSel) { g.globalAlpha = 0.95; g.font = 'bold 10px system-ui, -apple-system, "Segoe UI", sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; const lx = ex - dx * 36, ly = ey - dy * 36; const tw = g.measureText(dist + 't').width + 8; g.fillStyle = 'rgba(12,8,28,.85)'; g.fillRect(lx - tw / 2, ly - 7, tw, 14); g.fillStyle = col; g.fillText(dist + 't', lx, ly); g.textAlign = 'left'; g.textBaseline = 'alphabetic'; }
+      if (isSel) {   // the selected issue is off-screen: its title rides with the arrow
+        g.font = 'bold 12px system-ui, -apple-system, "Segoe UI", sans-serif'; const tt = String(it.title) + (dist > 0 ? ' · ' + dist + ' tiles' : ''), tw = g.measureText(tt).width + 14;
+        let lx = ex - dx * 34 - tw / 2, ly = ey - dy * 34 - 9; if (Math.abs(dy) < 0.7) { lx = dx > 0 ? ex - 48 - tw : ex + 48; }   // side arrows: the box sits beside the disc; top / bottom arrows: inward of it
+        lx = clamp(lx, f.L, view.vw - tw - 8); ly = clamp(ly, f.T, f.B - 18);
+        g.globalAlpha = 0.95; g.fillStyle = 'rgba(26,18,48,.95)'; g.fillRect(lx, ly, tw, 18); g.strokeStyle = issRgba(col, 0.9); g.lineWidth = 1; g.strokeRect(lx + 0.5, ly + 0.5, tw - 1, 17); g.fillStyle = '#F4EEE2'; g.textBaseline = 'middle'; g.fillText(tt, lx + 7, ly + 9); g.textBaseline = 'alphabetic';
+      }
+    }
+    g.globalAlpha = 1;
+    return n;
+  }
+  function passBeacons(state, g, view) {
+    const I = issuesApi(); if (!I || !state || !state.tiles) return;
+    if (I.spotlight()) return;   // the spotlight pass draws them above the dim
+    const t0 = nowMs(); const issues = I.list(state), sel = I.selected(state);
+    issStats.drawn = drawBeacons(state, g, view, issues, sel, t0); issStats.ms = nowMs() - t0; issStats.frames++;
+  }
+  function passSpotlight(state, g, view) {
+    const I = issuesApi(); if (!I || !state || !state.tiles) return;
+    const t0 = nowMs(); const issues = I.list(state), sel = I.selected(state), z = (camOf(state).zoom) || 1;
+    if (I.spotlight()) {
+      // dim everything except the issue tiles (even-odd: the viewport minus every outline; rects deduped so stacked issues do not cancel)
+      g.globalAlpha = ISS_DIM; g.fillStyle = 'rgb(6,4,18)'; g.beginPath(); g.rect(0, 0, view.vw, view.vh);
+      const seen = new Set(); let holes = 0;
+      for (let k = 0; k < issues.length && holes < ISS_MAX; k++) {
+        const it = issues[k]; const key = it.rect ? ('r' + it.rect.tx + ',' + it.rect.ty + ',' + it.rect.w + ',' + it.rect.h) : ('t' + (it.tiles && it.tiles[0]));
+        if (seen.has(key)) continue; seen.add(key);
+        if (!issAnchorScreen(it, view, 200 * z, issPt)) continue;
+        issOutlinePath(g, it, z, 3 * z); holes++;
+      }
+      g.fill('evenodd'); g.globalAlpha = 1;
+      issStats.drawn = drawBeacons(state, g, view, issues, sel, t0);
+    }
+    issStats.arrows = drawEdgeArrows(state, g, view, issues, sel);
+    issStats.labels = drawIssueLabel(state, g, view, sel) ? 1 : 0;
+    issStats.ms = Math.max(issStats.ms, nowMs() - t0);
+  }
+  /** last frame's beacon numbers: {drawn, arrows, labels, ms, capped} */
+  R.issueStats = function () { return { drawn: issStats.drawn, arrows: issStats.arrows, labels: issStats.labels, ms: issStats.ms, capped: issStats.capped, frames: issStats.frames, max: ISS_MAX, arrowsMax: ISS_ARROWS }; };
+  R._issueDraw = { beacons: drawBeacons, label: drawIssueLabel, arrows: drawEdgeArrows, glyph: drawIssueGlyph };
+
   // Passes (same-name registrations replace render's fallbacks for 'tint'; overlays/hud stay render's)
   R.registerPass('weather', function (s, g, v, a, dt) { try { passWeather(s, g, v, a, dt); } finally { g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; } }, 5);
   R.registerPass('tint', function (s, g, v) { try { passTint(s, g, v); } finally { g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; } }, 6);
   R.registerPass('lights', function (s, g, v) { try { passLights(s, g, v); } finally { g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; } }, 7);
+  R.registerPass('beacons', function (s, g, v) { try { passBeacons(s, g, v); } finally { g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; g.lineWidth = 1; } }, 7.5);   // issue spotlight pass
+  R.registerPass('spotlight', function (s, g, v) { try { passSpotlight(s, g, v); } finally { g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; g.lineWidth = 1; } }, 9.5);
   R.registerPass('fog', function (s, g, v, a, dt) { try { passFog(s, g, v, a, dt); } finally { g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; } }, 8);
   R.registerPass('fireworks', function (s, g, v) { try { passFireworks(s, g, v); } finally { g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; } }, 8.2);
   R.registerPass('storm', function (s, g, v, a, dt) { try { passStorm(s, g, v, a, dt); } finally { g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; } }, 8.5);

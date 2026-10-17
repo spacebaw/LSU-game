@@ -393,7 +393,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
 .fb-cols{display:grid;grid-template-columns:1fr 1fr;gap:1.2rem 2.4rem} .fb-col{min-width:0} .fb-col>.card-kicker{margin-top:1.6rem} .fb-col>.card-kicker:first-child{margin-top:0}
 .fb-ctl{padding:.6rem 0 .8rem;border-bottom:1px solid rgba(255,255,255,.06)} .fb-ctl .row{border-bottom:0;align-items:center;padding:.4rem 0}
 .fb-fx{font-size:1.3rem;line-height:1.4;color:var(--text-dim);min-height:1.8rem}
-.fb-next{padding:1.2rem 1.4rem;border-radius:var(--radius-sm);background:rgba(255,255,255,.04);border:1px solid rgba(253,208,35,.2)} .fb-next-line{font:600 1.4rem/1.35 var(--font-ui);margin-bottom:.8rem} .fb-next .bar{height:.8rem;margin-bottom:.8rem}
+.fb-next{padding:1rem 1.4rem;border-radius:var(--radius-sm);background:rgba(255,255,255,.04);border:1px solid rgba(253,208,35,.2)} .fb-next-line{font:600 1.4rem/1.35 var(--font-ui);margin-bottom:.8rem} .fb-next .bar{height:.8rem;margin-bottom:.8rem}
 .fb-slw{display:inline-flex;align-items:center;gap:1.2rem} .fb-slider{width:15rem;accent-color:var(--gold)} .fb-sl-val{min-width:7.2rem;text-align:right;font-variant-numeric:tabular-nums;color:var(--gold-hi)}
 .fb-ratingline{font:700 1.4rem/1.3 var(--font-ui);color:var(--gold-hi);margin:.4rem 0 .8rem}
 .fb-chips{display:flex;flex-wrap:wrap;gap:.6rem;margin-bottom:.8rem} .fb-chip{display:inline-flex;gap:.6rem;padding:3px 1rem;border-radius:99.9rem;background:rgba(255,255,255,.07);font-size:1.2rem} .fb-chip .k{color:var(--text-dim)} .fb-chip .v{font-weight:700;color:var(--gold-hi)} .fb-chip.neg .v{color:#FF8A84}
@@ -405,8 +405,43 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
 .fb-pr{grid-template-columns:3.6rem 1fr 3.2rem 6rem auto}
 .fb-sc{grid-template-columns:6.8rem 1fr 6rem 2rem 6.4rem} .fb-sc .dt,.fb-sc .rs{white-space:nowrap} .fb-sc .rs{color:var(--text-dim);font-size:1.2rem} .fb-sc .res{text-align:right;font-weight:700;white-space:nowrap} .fb-sc .res.win{color:var(--good)} .fb-sc .res.loss{color:#FF8A84} .fb-sc .ha{color:var(--text-dim)} .fb-sc.next{background:rgba(253,208,35,.1);box-shadow:inset 3px 0 0 var(--gold);padding-left:.6rem}
 .fb-acts{display:inline-flex;gap:.6rem;justify-content:flex-end} .fb-tag{font-size:1.2rem;color:var(--good)} .fb-empty{font-size:1.4rem;color:var(--text-dim);padding:.6rem 0}
-.fb-coach{font-weight:600}
-@media (max-width:900px){#panels #panel-season{width:72rem} .fb-cols{grid-template-columns:1fr}}
+.fb-coach{font-weight:600;font-size:1.5rem;margin-bottom:.4rem}
+/* PLAN_V2 P3: the tabbed Season panel — tabs, the Overview budget bar + control row, the Staff grid (P1 slots), the two-table Roster (P2), Schedule and Records columns; stacks under 1366 */
+.fb-tabs{display:flex;flex-wrap:wrap;gap:.4rem;margin:0 0 1.2rem;padding-bottom:.6rem;border-bottom:1px solid rgba(255,255,255,.1)}
+#panels #panel-season .card-kicker{margin-top:1.2rem} #panels #panel-season .fb-record{margin-bottom:1rem}
+.fb-tab{padding:.7rem 1.6rem;font-size:1.4rem;border-radius:var(--radius-sm);background:transparent;border-color:transparent;color:var(--text-dim);min-width:0}
+.fb-tab.active{background:rgba(253,208,35,.14);color:var(--gold-hi);border-color:rgba(253,208,35,.35)}
+.fb-pages{min-height:28rem} .fb-page>.card-kicker:first-child{margin-top:0!important}
+.fb-ov,.fb-sched,.fb-rec,.fb-roster-cols{display:grid;grid-template-columns:1fr 1fr;gap:1.2rem 3.2rem;align-items:start}
+.fb-staff{display:grid;grid-template-columns:1.5fr 1fr 1fr;gap:2rem;align-items:start}
+.fb-staff-card{padding:1.4rem 1.6rem;border-radius:var(--radius-sm);background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);min-width:0}
+.fb-staff-card.hc{border-color:rgba(253,208,35,.3)} .fb-staff-card.empty{color:var(--text-dim);min-height:16rem}
+#panels .panel .fb-staff-card>.card-kicker{margin-top:0} #panels .panel .fb-staff-card>.card-kicker+.card-kicker,#panels .panel .fb-staff-card .fb-fx+.card-kicker{margin-top:1.6rem}
+.fb-staff-meta .row{padding:.4rem 0;font-size:1.3rem} .fb-coach-rep{font:italic 1.3rem/1.4 var(--font-title);color:var(--text-dim);margin-bottom:.6rem}
+#panels .panel .fb-roster>.card-kicker{margin-top:0}
+.fb-ctl-row{display:flex;flex-wrap:wrap;gap:1rem 2.8rem;align-items:flex-end;padding:.2rem 0 .8rem;border-bottom:1px solid rgba(255,255,255,.06)} .fb-ctl-row+.fb-fxs{margin:.6rem 0 .4rem;min-height:1.8rem}
+.fb-ctlb{display:flex;flex-direction:column;gap:.6rem} .fb-ctlb-k{font:600 1.1rem/1 var(--font-ui);letter-spacing:.08em;text-transform:uppercase;color:var(--text-dim)}
+.fb-fxs{min-height:2rem;margin-top:.8rem} .fb-fxs .fb-fx{display:none} .fb-fxs .fb-fx.on{display:block}
+.fb-budget{padding:1rem 1.4rem 1.2rem;border-radius:var(--radius-sm);background:rgba(255,255,255,.04);border:1px solid rgba(253,208,35,.2)} .fb-budget.over{border-color:rgba(224,68,62,.6)}
+.fb-bud-head{display:flex;justify-content:space-between;align-items:baseline;gap:1.2rem;flex-wrap:wrap;margin-bottom:.6rem}
+.fb-bud-total{font:700 1.5rem/1.3 var(--font-ui);color:var(--gold-hi);white-space:nowrap} .fb-bud-sub{font-size:1.2rem;color:var(--text-dim);white-space:nowrap}
+.fb-bud-bar{height:1rem;margin-bottom:.8rem}
+.fb-bud-topup{display:flex;align-items:center;gap:1.2rem;padding:.2rem 0 .8rem;margin-bottom:.6rem;border-bottom:1px solid rgba(255,255,255,.08);font-size:1.3rem} .fb-bud-topup .k{color:var(--text-dim);flex:0 0 auto} .fb-bud-topup .fb-slider{flex:1 1 auto;width:auto;min-width:10rem} .fb-bud-topup .fb-sl-val{min-width:9.6rem} .fb-bud-bar.over .fill{background:linear-gradient(90deg,#B8302B,#FF8A84)}
+.fb-bud-legend{font-size:1.2rem;line-height:1.4;color:#FF8A84;margin-bottom:.8rem}
+.fb-bud-grid{display:grid;grid-template-columns:1fr 1fr;gap:0 2.4rem;margin-bottom:.4rem} .fb-bud-col{min-width:0}
+.fb-bud-k{font:600 1.1rem/1 var(--font-ui);letter-spacing:.08em;text-transform:uppercase;color:var(--text-dim);margin-bottom:.4rem}
+.fb-bud-row{padding:.2rem 0;font-size:1.3rem} .fb-bud-row .k{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap} .fb-bud-row .dim{color:var(--text-dim);font-size:1.2rem}
+.fb-bud-row .v{white-space:nowrap} .fb-bud-row .v.zero{color:var(--text-dim)} .fb-bud-row.total{font-weight:700;color:var(--gold-hi)} .fb-bud-row.total.bad .v{color:#FF8A84}
+.fb-budget .fb-ctl{border-bottom:0;padding-bottom:0}
+.fb-rec-head{font-size:1.3rem;color:var(--text-dim);margin:-.4rem 0 .8rem} .fb-note{font-size:1.3rem;line-height:1.4;color:#FF8A84;margin:0 0 .8rem;padding:.6rem 1rem;border-radius:var(--radius-sm);background:rgba(224,68,62,.12);border:1px solid rgba(224,68,62,.35)} .fb-tr .cost.over{color:#FF8A84}
+.fb-tr.sched-head{grid-template-columns:6.8rem 1fr 6rem 2rem 6.4rem} .fb-tr.sched-head span:last-child{text-align:right}
+.fb-ro .ht{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fb-rh{grid-template-columns:4rem 3.6rem 1fr 3.4rem 6.4rem} .fb-rh .dt{color:var(--text-dim)} .fb-rh .cost{text-align:right}
+.fb-cand .k{flex:1 1 auto;min-width:0} .fb-cand .dim{color:var(--text-dim);font-weight:400;font-size:1.2rem}
+#panel-season:focus{outline:none}
+@media (max-width:1365px){.fb-ov,.fb-sched,.fb-rec,.fb-roster-cols{grid-template-columns:1fr} .fb-staff{grid-template-columns:1.4fr 1fr 1fr}}
+@media (max-width:1000px){.fb-staff{grid-template-columns:1fr}}
+@media (max-width:900px){#panels #panel-season{width:72rem} .fb-bud-grid{grid-template-columns:1fr}}
 #card-gamesummary{width:60rem}
 .sum-banner{display:flex;align-items:center;justify-content:center;gap:1.6rem;padding:1.2rem 1.6rem;border-radius:var(--radius);background:rgba(255,255,255,.05);border:1px solid var(--line)}
 .sum-banner.win{border-color:var(--good)} .sum-banner.loss{border-color:rgba(224,68,62,.7)}
@@ -437,6 +472,29 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
 .sp-dim{color:var(--text-dim);font-size:1.2rem} .pick-list .row.pick .k,.pick-list .row.sp-boarded .k{flex:1 1 auto;min-width:0}
 .pick-list .row.sp-boarded{color:var(--good)} .pick-list .row.sp-boarded .v{color:var(--good)}
 .btn.done{opacity:1;color:var(--good);border-color:rgba(63,191,127,.6);background:rgba(63,191,127,.12)}
+/* issue spotlight */
+#issues-tray{position:absolute;right:var(--side);top:calc(var(--topbar-h) + 28.4rem);width:27rem;display:flex;flex-direction:column;gap:.4rem;pointer-events:auto;transition:transform .2s;z-index:3}
+#hud:has(#legend:not(.hidden)) #issues-tray{top:calc(var(--topbar-h) + 31.4rem)}
+#hud.inspect-open #issues-tray{transform:translateX(calc(-1 * var(--inspect-w) - var(--gutter)))}
+#hud.setpiece #issues-tray{opacity:0;pointer-events:none}
+#issues-head{display:flex;align-items:center;gap:.6rem;padding:.5rem .6rem .5rem 1rem;border-radius:var(--radius-sm);background:var(--panel-bg);border:1px solid var(--line);box-shadow:var(--shadow);font-size:1.3rem;line-height:1.3;cursor:pointer;min-height:3.4rem}
+#issues-head .n{font-weight:700;color:var(--gold-hi);white-space:nowrap} #issues-head.clear .n{color:var(--good)}
+#issues-head .sub{font-size:1.1rem;color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;flex:1 1 auto}
+#issues-head .btn{padding:0 .7rem;min-height:2.4rem;height:2.4rem;line-height:2.2rem;font-size:1.15rem;flex:0 0 auto}
+#issues-head .btn.active{background:var(--purple-hi);color:#fff;border-color:var(--gold);box-shadow:0 0 0 .2rem rgba(253,208,35,.55)}
+#issues-head #issues-toggle{width:2.4rem;min-width:2.4rem;padding:0}
+#issues-list{display:flex;flex-direction:column;gap:.3rem;overflow:hidden}
+#issues-tray.collapsed #issues-list,#issues-tray.collapsed #issues-more{display:none}
+.issue-row{display:grid;grid-template-columns:1.8rem minmax(0,1fr) auto auto;align-items:center;gap:.5rem;padding:.5rem .5rem .5rem .7rem;border-radius:var(--radius-sm);background:var(--panel-bg);border:1px solid var(--line);border-left:.4rem solid var(--gold);box-shadow:var(--shadow);font-size:1.2rem;line-height:1.25;cursor:pointer;transition:background .15s}
+.issue-row:hover{background:rgba(70,29,124,.96)} .issue-row.sel{background:rgba(70,29,124,.96)}
+.issue-row canvas{width:1.8rem;height:1.8rem;display:block}
+.issue-row .t{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600;color:var(--text)} .issue-row .a{font-size:1.05rem;color:var(--text-dim);font-weight:400}
+.issue-row .btn{padding:0 .6rem;min-height:2.2rem;height:2.2rem;line-height:2rem;font-size:1.1rem;min-width:0}
+.issue-row .btn.fix{background:var(--g-gold);color:var(--purple-shadow);border-color:var(--gold-shadow);font-weight:700}
+#issues-more{font-size:1.1rem;color:var(--text-dim);text-align:center;padding:.1rem 0}
+.needs-row{display:flex;align-items:center;gap:.6rem} .needs-row #needs-text{flex:1 1 auto;min-width:0}
+#needs-locate{flex:0 0 auto;padding:0 .8rem;min-height:2.4rem;height:2.4rem;line-height:2.2rem;font-size:1.15rem;border-color:var(--gold)}
+.notif .locate{border-color:var(--gold);color:var(--gold-hi)}
 
 </style>
 </head>
@@ -530,7 +588,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
   BSU.HAPPINESS_TIMERS = freeze(['bellTower', 'wastewater', 'brownout', 'floodwallView', 'evacuation', 'unsheltered', 'boilWater', 'playThroughIt', 'austerity', 'sunbather', 'tuitionFreeze', 'homecomingBudget', 'bigBoil', 'noParking', 'nutriaBounty', 'freePermits', 'surgeBarrier', 'gatorPool', 'beads', 'hurricaneParty', 'goForIt', 'studentVoice']);
   // Ledger keys in Budget-panel print order (ARCHITECTURE §2.7).
   BSU.LEDGER_INCOME_KEYS = freeze(['tuition', 'state', 'donations', 'research', 'athletics', 'tailgate', 'parking', 'festivals', 'pelts', 'grants', 'endowment', 'disaster', 'insurance', 'misc']);
-  BSU.LEDGER_EXPENSE_KEYS = freeze(['salaries', 'upkeep', 'utilities', 'coaching', 'interest', 'repair', 'prep', 'construction', 'demolition', 'boardCards', 'misc']);
+  BSU.LEDGER_EXPENSE_KEYS = freeze(['salaries', 'upkeep', 'utilities', 'coaching', 'athletics', 'interest', 'repair', 'prep', 'construction', 'demolition', 'boardCards', 'misc']);
   BSU.MONTHS = freeze(['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']);
   BSU.SEASONS = freeze(['spring', 'summer', 'fall', 'winter']);
   BSU.SEMESTERS = freeze(['spring', 'summer', 'fall', 'break']);
@@ -895,6 +953,8 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
       oppNoise: 8, oppPerYear: 7, oppScaleFromFlagship: 3,
       coachSign: 300000, coachFee: 100000, buyout: 500000, candidates: 3, candidateStarDiv: 20, candidateStarAdd: 1,
       starDriftLosing: 2, starMax: 5, starMin: 1,
+      // PLAN_V2 P3: the athletics budget (a salary cap that grows with success; sports.budget / canAfford / setTopUp)
+      budget: { base: 2000000, revenueShare: 0.35, prestigePer10: 50000, boosters: 500000, boosterWins: 7, topUpMax: 1.5, topUpStep: 0.1, salaryPerStar2: 150000, coordinatorShare: 0.55, upkeepShare: 0.1, transferDate: 'Jan 1', recruitsMax: 40 },
       starterGrad: 0.4, starterRating: { min: 60, max: 99, base: 55, prestigeDiv: 2, perStar: 5 }, recruitRating: 95, seniorLeaveP: 0.4,
       playThroughHappiness: 10, playThroughPrestige: 3, playThroughMaxCat: 1,
       resiliencePrestige: 4, rivalryPrestige: 3, rivalryDonation: 1.3, rivalryLossFire: 3, undefeatedDonation: 1.5, undefeatedWins: 7,
@@ -1218,6 +1278,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     'game:scheduled', 'game:kickoff', 'game:score', 'game:halftime', 'game:final', 'season:end', 'coach:changed',
     'game:play', 'game:drive', 'game:decision',   // PLAN_FOOTBALL pass B: the drive/play engine (sports.js)
     'game:spring',                                 // PLAN_FOOTBALL pass C: the Purple & Gold Spring Game final (sports.js)
+    'budget:changed',                              // PLAN_V2 P3: the athletics budget was recomputed, topped up or re-committed (sports.js)
     'econ:income', 'econ:expense', 'econ:month', 'econ:stat', 'econ:card',
     'enroll:round', 'enroll:lock', 'enroll:attrition', 'enroll:graduation',
     'board:offered', 'board:resolved', 'voice:offered', 'voice:resolved',
@@ -1628,7 +1689,8 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
         game: null, firstHomeGameDay: -1, firstNightGameDay: -1, scriptedNightDay: -1,
         playbook: 'balanced', aggression: 'normal', watchFull: false, lastSummary: null,   // PLAN_FOOTBALL pass B (sports.ensureKeys fills records)
         records: { allTime: { wins: 0, losses: 0 }, bestWin: null, longestPlay: null, seasonBests: {}, book: {}, seasons: [], hof: [] },
-        springDay: -1, springYear: 0, lastSpring: null, prospects: null, seasonLog: [], seasonLines: null   // PLAN_FOOTBALL pass C: spring game, prospect board, the season's game log and stat lines
+        springDay: -1, springYear: 0, lastSpring: null, prospects: null, seasonLog: [], seasonLines: null,   // PLAN_FOOTBALL pass C: spring game, prospect board, the season's game log and stat lines
+        budget: null   // PLAN_V2 P3: the athletics budget {year, base, fromRevenue, fromPrestige, boosters, topUpShare, topUp, total, committed, lines, fund, ...} (sports.ensureKeys builds it lazily)
       },
       progress: {
         tutorialStage: 0, objectives: objectives, card: null, background: null, interruptQueue: [], backgroundQueue: [],
@@ -2655,6 +2717,19 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
           'The Marsh Mob mutters in two languages.'
         ]
       }
+    },
+    // PLAN_V2 P3: the athletics budget and the tabbed Season panel (ui_panels.js reads these; numbers live in params.sports.budget)
+    budget: {
+      tabs: [['overview', 'Overview'], ['staff', 'Staff'], ['roster', 'Roster'], ['recruiting', 'Recruiting'], ['schedule', 'Schedule'], ['records', 'Records']],
+      title: 'Athletics budget',
+      sources: { base: 'Base allocation', revenue: 'Share of last season\'s gate', prestige: 'Prestige', boosters: 'Booster donations', topUp: 'University top-up' },
+      lines: { coach: 'Head coach salary', coaching: 'Coaching spend', signings: 'Signed prospects', upkeep: 'Venue upkeep share', homecoming: 'Homecoming' },
+      topUpFx: 'Moves university cash to athletics each Jan 1 (raising it mid-year moves the difference now). Athletics spends draw on that fund first.',
+      boostersFx: 'Boosters give after a season of 7 wins or more.',
+      overBudget: 'Over budget: cut the coaching spend or raise the top-up.',
+      comingSoon: 'Coordinators coming soon',
+      ocLabel: 'Offensive coordinator', dcLabel: 'Defensive coordinator', hcLabel: 'Head coach',
+      ledgerLabel: 'Athletics top-up'
     }
   };
 
@@ -12667,6 +12742,356 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
 })();
 
 ;
+;// ===== issues.js =====
+'use strict';
+// issues.js — the ISSUE SPOTLIGHT registry (issue spotlight pass). One place that answers "what is
+// wrong on campus right now, where exactly, and what fixes it": buildings without power or water, flooded,
+// damaged or ruined buildings, buildings whose path never reached campus, weak levees, full beds / seats /
+// dining, gators on campus, mosquito hotspots, the boil-water notice, a brownout and unpowered pumps in the
+// rain. The list is recomputed at most every `refreshTicks` (25) ticks and at once after a building / hydro /
+// wildlife event. Deterministic (state in, plain objects out), no DOM, no timers; render_fx draws the beacons,
+// ui.js the tray. Selection, spotlight mode and the gauge hover pulse live here so render_fx and ui share
+// them without events (BSU.EV is a closed registry and contract.js is not edited in this pass).
+// Owner branch: none (writes nothing in state). Loads right after buildings.js; every lookup is lazy.
+(function () {
+  const BSU = window.BSU;
+  if (!BSU) return;
+  const MAP = BSU.MAP, W = MAP.W, H = MAP.H, N = MAP.N, SURF = BSU.SURF, EV = BSU.EV;
+  const fin = (v, d) => (Number.isFinite(v) ? v : d);
+  const clamp = (v, lo, hi) => (v < lo ? lo : (v > hi ? hi : v));
+  const M = BSU.issues = {};
+  function ierr(where, e) { BSU.error('issues', where, e); }
+  function mod(n) { return BSU[n] || null; }
+  function has(n, f) { const m = mod(n); return !!(m && typeof m[f] === 'function'); }
+  function call(n, f) { const m = mod(n); if (!m || typeof m[f] !== 'function') return undefined; return m[f].apply(m, Array.prototype.slice.call(arguments, 2)); }
+  function rowOf(id) { const c = BSU.data && BSU.data.catalog; return (c && id) ? c[id] || null : null; }
+  function nameOf(id) { const r = rowOf(id); return r ? r.name : id; }
+
+  // ---------------------------------------------------------------------------
+  // Kinds: colour (unique per family, used nowhere else in the game), glyph, default severity
+  // ---------------------------------------------------------------------------
+  const KINDS = Object.freeze({
+    unpowered:       Object.freeze({ color: '#FFB03B', glyph: 'bolt',     severity: 2, family: 'power',    label: 'No power' }),
+    brownout:        Object.freeze({ color: '#FFB03B', glyph: 'bolt',     severity: 2, family: 'power',    label: 'Brownout' }),
+    pumpOff:         Object.freeze({ color: '#FFB03B', glyph: 'bolt',     severity: 3, family: 'power',    label: 'Pump off' }),
+    unwatered:       Object.freeze({ color: '#4FC3F7', glyph: 'drop',     severity: 2, family: 'water',    label: 'No water' }),
+    boilWater:       Object.freeze({ color: '#4FC3F7', glyph: 'drop',     severity: 2, family: 'water',    label: 'Boil water' }),
+    flooded:         Object.freeze({ color: '#2BD4C0', glyph: 'wave',     severity: 3, family: 'flood',    label: 'Flooded' }),
+    damaged:         Object.freeze({ color: '#FF5A4F', glyph: 'crack',    severity: 2, family: 'damage',   label: 'Damaged' }),
+    unlinkedPath:    Object.freeze({ color: '#FDD023', glyph: 'link',     severity: 1, family: 'path',     label: 'Not linked' }),
+    weakLevee:       Object.freeze({ color: '#FF8C42', glyph: 'sandbag',  severity: 2, family: 'levee',    label: 'Weak levee' }),
+    overCapacity:    Object.freeze({ color: '#FF7AD9', glyph: 'crowd',    severity: 2, family: 'capacity', label: 'Full' }),
+    gatorOnCampus:   Object.freeze({ color: '#7CFF6B', glyph: 'gator',    severity: 3, family: 'gator',    label: 'Gator' }),
+    mosquitoHotspot: Object.freeze({ color: '#C77DFF', glyph: 'mosquito', severity: 1, family: 'mosquito', label: 'Mosquitoes' })
+  });
+  const FAMILY_KINDS = Object.freeze({
+    power: ['unpowered', 'brownout', 'pumpOff'], water: ['unwatered', 'boilWater'], flood: ['flooded'], damage: ['damaged'], path: ['unlinkedPath'],
+    levee: ['weakLevee'], capacity: ['overCapacity'], gator: ['gatorOnCampus'], mosquito: ['mosquitoHotspot']
+  });
+  const REFRESH_TICKS = 25, MOSQ_HOT = 0.6, MOSQ_SEVERE = 0.8, MOSQ_CLUSTERS = 3, MOSQ_RADIUS = 3, LEVEE_RUN_MAX = 48;
+  const ACCESS = [SURF.PATH, SURF.ROAD, SURF.BOARDWALK, SURF.BRIDGE].filter((v) => Number.isFinite(v));
+
+  // ---------------------------------------------------------------------------
+  // Cache, selection, modes
+  // ---------------------------------------------------------------------------
+  const cache = { state: null, tick: -1e9, list: [], dirty: true, version: 0, computes: 0 };
+  const sinceMap = new Map();   // issue id → tick first seen (survives recomputes while the issue persists)
+  let selectedId = null, spotlightOn = false, pulseKinds = null, subscribed = false;
+  const conn = new Uint8Array(N), ring = new Uint8Array(N), queue = new Int32Array(N), visited = new Uint8Array(N);
+
+  function subscribe() {
+    if (subscribed || !BSU.events || typeof BSU.events.on !== 'function') return;
+    subscribed = true;
+    const names = [EV.BUILDING_PLACED, EV.BUILDING_REMOVED, EV.BUILDING_COMPLETE, EV.BUILDING_FLOODED, EV.BUILDING_DRIED, EV.BUILDING_DAMAGED, EV.BUILDING_REPAIRED,
+      EV.POWER_BLACKOUT, EV.POWER_RESTORED, EV.COVERAGE_CHANGED, EV.LEVEE_OVERTOP, EV.LEVEE_BREACH, EV.LEVEE_BURROW, EV.GATOR_CAMPUS, EV.GATOR_RELOCATED, EV.MOSQUITO_WARNING, EV.TILE_CHANGED];
+    for (const n of names) { if (!n) continue; try { BSU.events.on(n, function () { cache.dirty = true; }, 'issues'); } catch (e) { ierr('subscribe', e); } }
+    try { BSU.events.on(EV.SAVE_LOADED, function () { resetAll(); }, 'issues'); } catch (e) { ierr('subscribe:load', e); }
+  }
+  function resetAll() { cache.state = null; cache.tick = -1e9; cache.list = []; cache.dirty = true; sinceMap.clear(); selectedId = null; spotlightOn = false; pulseKinds = null; cache.version++; }
+
+  // ---------------------------------------------------------------------------
+  // Detection
+  // ---------------------------------------------------------------------------
+  function footprintOf(b) { return BSU.footprintTiles(b.tx | 0, b.ty | 0, Math.max(1, b.w | 0), Math.max(1, b.h | 0)); }
+  function anchorOf(b) { return { tx: (b.tx | 0) + (Math.max(1, b.w | 0) - 1) / 2, ty: (b.ty | 0) + (Math.max(1, b.h | 0) - 1) / 2 }; }
+  function tileAnchor(i) { return { tx: i % W, ty: (i / W) | 0 }; }
+  function mk(out, kind, id, o) {
+    const K = KINDS[kind]; if (!K) return;
+    out.push({
+      id: id, kind: kind, severity: clamp(fin(o.severity, K.severity) | 0, 1, 3), title: String(o.title || K.label), fix: String(o.fix || ''),
+      tiles: o.tiles || [], rect: o.rect || null, anchor: o.anchor || tileAnchor(o.tiles && o.tiles.length ? o.tiles[0] : 0),
+      buildingId: Number.isFinite(o.buildingId) ? o.buildingId : null, action: o.action || null, since: 0, color: K.color, glyph: K.glyph
+    });
+  }
+  function isAccess(sf) { return ACCESS.indexOf(sf) >= 0; }
+  /** the access network, the same walk buildings.js does privately: surface 1–4 tiles 4-connected to the Highway 1 stub or to Founders' ring */
+  function rebuildConn(state) {
+    conn.fill(0); ring.fill(0);
+    const surf = state.tiles.surface; let head = 0, tail = 0;
+    const seed = function (i) { if (i >= 0 && i < N && isAccess(surf[i]) && !conn[i]) { conn[i] = 1; queue[tail++] = i; } };
+    const plot = state.plot || {};
+    for (const i of (plot.highway || [])) seed(i);
+    let fx = plot.founders ? plot.founders.tx : -1, fy = plot.founders ? plot.founders.ty : -1, fw = 3, fh = 3;
+    for (const b of call('buildings', 'list', state, 'founders_hall') || []) { fx = b.tx; fy = b.ty; fw = b.w; fh = b.h; }
+    if (fx >= 0) for (const i of BSU.edgeTiles(fx, fy, fw, fh)) { ring[i] = 1; seed(i); }
+    while (head < tail) {
+      const i = queue[head++], tx = i % W, ty = (i / W) | 0;
+      if (ty > 0) seed(i - W); if (tx < W - 1) seed(i + 1); if (ty < H - 1) seed(i + W); if (tx > 0) seed(i - 1);
+    }
+  }
+  function linked(state, b) {
+    const surf = state.tiles.surface;
+    for (const e of BSU.edgeTiles(b.tx | 0, b.ty | 0, Math.max(1, b.w | 0), Math.max(1, b.h | 0))) { if (ring[e]) return true; if (isAccess(surf[e]) && conn[e]) return true; }
+    return false;
+  }
+  function raining(state) { const w = state.weather || {}; return fin(w.rainRate, 0) > 0.05 || !!w.event; }
+
+  function compute(state) {
+    const out = [];
+    const list = call('buildings', 'list', state) || [];
+    const econ = state.economy || {}, sup = !!econ.suppressCoverage, rain = raining(state);
+    const subR = fin(((rowOf('substation') || {}).effects || {}).power && rowOf('substation').effects.power.radius, 10);
+    const towR = fin(((rowOf('water_tower') || {}).effects || {}).water && rowOf('water_tower').effects.water.radius, 12);
+    let connBuilt = false, boilAnchor = null;
+    for (const b of list) {
+      if (!b || !(b.built >= 1)) continue;
+      const row = rowOf(b.type); if (!row) continue;
+      const name = b.name || row.name || b.type, tiles = footprintOf(b), rect = { tx: b.tx | 0, ty: b.ty | 0, w: Math.max(1, b.w | 0), h: Math.max(1, b.h | 0) }, anchor = anchorOf(b);
+      const base = { tiles: tiles, rect: rect, anchor: anchor, buildingId: b.id };
+      if (b.ruin) mk(out, 'damaged', 'damaged:' + b.id, Object.assign({ severity: 3, title: name + ' is in ruins', fix: 'Ruined: click Fix to rebuild it (Repair), or bulldoze it', action: { repair: b.id } }, base));
+      else if (fin(b.hp, 1) < 1) mk(out, 'damaged', 'damaged:' + b.id, Object.assign({ severity: 2, title: name + ' is storm-damaged', fix: 'Damaged: click Fix to repair it (Repair all is in the Storm panel)', action: { repair: b.id } }, base));
+      if (b.flooded) mk(out, 'flooded', 'flooded:' + b.id, Object.assign({ severity: 3, title: name + ' is flooded', fix: 'Flooded: it dries as the water falls; a Pump or Levee beside it keeps it dry next time', action: { openMenuCard: 'pump' } }, base));
+      if (!sup && row.needsPower && !b.powered && !b.flooded && !b.ruin) {
+        if (b.type === 'pump' && rain) mk(out, 'pumpOff', 'pumpOff:' + b.id, Object.assign({ severity: 3, title: name + ' has no power in the rain', fix: 'Unpowered pump: place a Substation within ' + subR + ' tiles (or a Generator) so it can run', action: { openMenuCard: 'substation' } }, base));
+        else mk(out, 'unpowered', 'unpowered:' + b.id, Object.assign({ severity: 2, title: name + ' has no power', fix: 'No power: place a Substation within ' + subR + ' tiles', action: { openMenuCard: 'substation' } }, base));
+      }
+      if (!sup && row.needsWater && !b.watered && !b.flooded && !b.ruin) mk(out, 'unwatered', 'unwatered:' + b.id, Object.assign({ severity: 2, title: name + ' has no water', fix: 'No water: place a Water Tower within ' + towR + ' tiles', action: { openMenuCard: 'water_tower' } }, base));
+      if (row.pathAdjacency && b.type !== 'founders_hall' && state.tiles && state.tiles.surface) {
+        if (!connBuilt) { rebuildConn(state); connBuilt = true; }
+        if (!linked(state, b)) mk(out, 'unlinkedPath', 'unlinked:' + b.id, Object.assign({ severity: 1, title: name + ' is not linked to campus', fix: 'No path to campus: lay a Path from its door to a campus path or road', action: { tool: 'path' } }, base));
+      }
+      if (b.type === 'water_tower' && !boilAnchor && (b.flooded || !b.powered)) boilAnchor = b;
+    }
+    // boil-water notice (buildings.js: a complete water tower flooded or unpowered)
+    try {
+      if (call('buildings', 'boilWaterTriggered', state) === true) {
+        const b = boilAnchor || (call('buildings', 'list', state, 'water_tower') || [])[0] || null;
+        const base = b ? { tiles: footprintOf(b), rect: { tx: b.tx | 0, ty: b.ty | 0, w: b.w | 0, h: b.h | 0 }, anchor: anchorOf(b), buildingId: b.id } : founderBase(state);
+        mk(out, 'boilWater', 'boilWater', Object.assign({ severity: 2, title: 'Boil-water notice', fix: 'Boil water: the Water Tower is ' + (b && b.flooded ? 'flooded; keep it dry (Pump / Levee)' : 'unpowered; a Substation within ' + subR + ' tiles restores it'), action: { openMenuCard: b && b.flooded ? 'pump' : 'substation' } }, base));
+      }
+    } catch (e) { ierr('boilWater', e); }
+    // brownout (buildings.stats): consumers outside coverage while a plant exists
+    try {
+      const st = call('buildings', 'stats', state);
+      if (st && st.brownout === true) {
+        let dark = 0; for (const b of list) { const r = b && rowOf(b.type); if (b && r && b.built >= 1 && ((r.needsPower && !b.powered) || (r.needsWater && !b.watered))) dark++; }
+        const sub = (call('buildings', 'list', state, 'substation') || [])[0] || null;
+        const base = sub ? { tiles: footprintOf(sub), rect: { tx: sub.tx | 0, ty: sub.ty | 0, w: sub.w | 0, h: sub.h | 0 }, anchor: anchorOf(sub), buildingId: sub.id } : founderBase(state);
+        mk(out, 'brownout', 'brownout', Object.assign({ severity: 2, title: 'Brownout: ' + dark + (dark === 1 ? ' building' : ' buildings') + ' outside coverage', fix: 'Brownout: add a Substation (' + subR + '-tile reach) or Water Tower next to the dark buildings', action: { openMenuCard: 'substation' } }, base));
+      }
+    } catch (e) { ierr('brownout', e); }
+    // weak levees: 4-connected runs of crest tiles under the integrity threshold, anchored at the weakest tile
+    try {
+      const tl = state.tiles; const weak = fin(BSU.params.hydro && BSU.params.hydro.integrityWeak, 70), half = fin(BSU.params.hydro && BSU.params.hydro.integrityHalf, 50);
+      if (tl && tl.crest && tl.integrity) {
+        visited.fill(0);
+        for (let i = 0; i < N; i++) {
+          if (!(tl.crest[i] > 0) || !(tl.integrity[i] < weak) || visited[i]) continue;
+          const run = []; let head = 0, tail = 0, worst = i; queue[tail++] = i; visited[i] = 1;
+          while (head < tail) {
+            const j = queue[head++]; run.push(j); if (tl.integrity[j] < tl.integrity[worst]) worst = j;
+            const tx = j % W, ty = (j / W) | 0;
+            const nb = [ty > 0 ? j - W : -1, tx < W - 1 ? j + 1 : -1, ty < H - 1 ? j + W : -1, tx > 0 ? j - 1 : -1];
+            for (const k of nb) if (k >= 0 && !visited[k] && tl.crest[k] > 0 && tl.integrity[k] < weak) { visited[k] = 1; queue[tail++] = k; }
+          }
+          run.sort((a, b) => a - b);
+          const integ = tl.integrity[worst] | 0;
+          mk(out, 'weakLevee', 'weakLevee:' + run[0], { severity: integ < half ? 3 : 2, title: 'Levee weak (' + integ + '%)' + (run.length > 1 ? ' · ' + run.length + ' tiles' : ''), fix: 'Weak levee: click Fix to repair this run before the next surge (Storm panel repairs them all)', tiles: run.slice(0, LEVEE_RUN_MAX), anchor: tileAnchor(worst), action: { repairLevee: worst } });
+        }
+      }
+    } catch (e) { ierr('levees', e); }
+    // over capacity: beds / seats / dining binding, anchored at the biggest building of that kind
+    try {
+      const students = fin(econ.students, 0) | 0;
+      if (students > 0) {
+        const cap = call('economy', 'capacity', state) || econ.capacityTerms || {};
+        const terms = [
+          { key: 'beds', cap: fin(cap.beds, 0), effect: 'beds', build: 'dorm', label: 'Beds' },
+          { key: 'seats', cap: fin(cap.seats, 0), effect: 'seats', build: 'lecture_hall', label: 'Seats' },
+          { key: 'dining', cap: fin(cap.dining, 0), effect: 'feeds', build: 'dining_hall', label: 'Dining' }
+        ];
+        for (const t of terms) {
+          if (!(t.cap <= students)) continue;
+          let best = null, bestV = -1;
+          for (const b of list) { const r = b && rowOf(b.type); const v = r && r.effects ? fin(r.effects[t.effect], 0) : 0; if (b && b.built >= 1 && v > bestV) { bestV = v; best = b; } }
+          const base = best ? { tiles: footprintOf(best), rect: { tx: best.tx | 0, ty: best.ty | 0, w: best.w | 0, h: best.h | 0 }, anchor: anchorOf(best), buildingId: best.id } : founderBase(state);
+          mk(out, 'overCapacity', 'overCapacity:' + t.key, Object.assign({ severity: 2, title: t.label + ' full (' + students + ' / ' + t.cap + ')', fix: 'Out of ' + t.label.toLowerCase() + ': build a ' + nameOf(t.build) + ' (students leave when it stays full)', action: { openMenuCard: t.build } }, base));
+        }
+      }
+    } catch (e) { ierr('capacity', e); }
+    // gators on campus
+    try {
+      const gs = call('wildlife', 'onCampus', state) || [];
+      for (const g of gs) {
+        if (!g) continue;
+        const i = clamp(Math.floor(fin(g.ty, 0)), 0, H - 1) * W + clamp(Math.floor(fin(g.tx, 0)), 0, W - 1);
+        mk(out, 'gatorOnCampus', 'gator:' + fin(g.id, i), { severity: 3, title: (g.name || 'A gator') + ' is on campus', fix: 'Gator on campus: click Fix to have Wildlife relocate it; a Gator Fence along the water keeps them out', tiles: [i], anchor: tileAnchor(i), action: { relocate: g.id } });
+      }
+    } catch (e) { ierr('gators', e); }
+    // mosquito hotspots: the top campus tiles over the "Biblical" band, clustered
+    try {
+      const mq = state.tiles && state.tiles.mosq; const cm = has('wildlife', 'campusMask') ? call('wildlife', 'campusMask', state) : null;
+      if (mq && mq.length === N) {
+        const cand = [];
+        for (let i = 0; i < N; i++) if (mq[i] >= MOSQ_HOT && (!cm || cm[i])) cand.push(i);
+        cand.sort((a, b) => (mq[b] - mq[a]) || (a - b));
+        const taken = new Uint8Array(N); let clusters = 0;
+        for (let k = 0; k < cand.length && clusters < MOSQ_CLUSTERS; k++) {
+          const p = cand[k]; if (taken[p]) continue;
+          const px = p % W, py = (p / W) | 0, tiles = [];
+          for (let m = k; m < cand.length && tiles.length < 9; m++) { const q = cand[m]; if (taken[q]) continue; if (BSU.chebyshev(px, py, q % W, (q / W) | 0) <= MOSQ_RADIUS) { taken[q] = 1; tiles.push(q); } }
+          tiles.sort((a, b) => a - b); clusters++;
+          const peak = fin(mq[p], 0), cell = ((py / 4) | 0) * 16 + ((px / 4) | 0);   // a 4×4 cell id keeps the issue id (and its age) stable while the peak drifts
+          mk(out, 'mosquitoHotspot', 'mosq:' + cell, { severity: peak >= MOSQ_SEVERE ? 2 : 1, title: 'Mosquito hotspot' + (tiles.length > 1 ? ' · ' + tiles.length + ' tiles' : ''), fix: 'Mosquitoes: build Abatement or a Bat House here, or drain the standing water (Canal)', tiles: tiles, anchor: tileAnchor(p), action: { openMenuCard: 'abatement' } });
+        }
+      }
+    } catch (e) { ierr('mosquito', e); }
+    return out;
+  }
+  function founderBase(state) {
+    const f = (state.plot && state.plot.founders) || null;
+    if (!f) return { tiles: [0], rect: null, anchor: { tx: 32, ty: 32 }, buildingId: null };
+    return { tiles: BSU.footprintTiles(f.tx | 0, f.ty | 0, 3, 3), rect: { tx: f.tx | 0, ty: f.ty | 0, w: 3, h: 3 }, anchor: { tx: (f.tx | 0) + 1, ty: (f.ty | 0) + 1 }, buildingId: null };
+  }
+  function finish(state, out) {
+    const tick = fin(state.tick, 0) | 0, seen = new Set();
+    for (const it of out) { seen.add(it.id); if (!sinceMap.has(it.id)) sinceMap.set(it.id, tick); it.since = sinceMap.get(it.id); }
+    for (const id of Array.from(sinceMap.keys())) if (!seen.has(id)) sinceMap.delete(id);
+    out.sort((a, b) => (b.severity - a.severity) || (a.since - b.since) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+    if (selectedId !== null && !seen.has(selectedId)) selectedId = null;
+    return out;
+  }
+
+  // ---------------------------------------------------------------------------
+  // API
+  // ---------------------------------------------------------------------------
+  /** list(state) → the current issues, sorted by severity (3 first) then age (oldest first); cached ≤ 25 ticks */
+  M.list = function (state) {
+    try {
+      state = state || BSU.state; if (!state || !state.tiles) return cache.list;
+      subscribe();
+      const tick = fin(state.tick, 0) | 0;
+      if (cache.state !== state) { resetAll(); cache.state = state; }
+      if (!cache.dirty && tick >= cache.tick && tick - cache.tick < REFRESH_TICKS && cache.list) return cache.list;
+      cache.list = finish(state, compute(state)); cache.tick = tick; cache.dirty = false; cache.version++; cache.computes++;
+      return cache.list;
+    } catch (e) { ierr('list', e); return cache.list || []; }
+  };
+  M.invalidate = function () { cache.dirty = true; };
+  M.version = function () { return cache.version; };
+  M.byId = function (state, id) { const l = M.list(state); for (let k = 0; k < l.length; k++) if (l[k].id === id) return l[k]; return null; };
+  M.ofKinds = function (state, kinds) { const l = M.list(state), set = Array.isArray(kinds) ? kinds : [kinds]; return l.filter((it) => set.indexOf(it.kind) >= 0); };
+  M.ofFamily = function (state, family) { return M.ofKinds(state, FAMILY_KINDS[family] || []); };
+  M.summary = function (state) { const l = M.list(state); const s = { count: l.length, worst: 0, bySeverity: [0, 0, 0, 0] }; for (const it of l) { s.bySeverity[it.severity]++; if (it.severity > s.worst) s.worst = it.severity; } return s; };
+  M.select = function (id) { selectedId = (id === undefined || id === null) ? null : String(id); cache.version++; return selectedId; };
+  M.selectedId = function () { return selectedId; };
+  M.selected = function (state) { return selectedId === null ? null : M.byId(state, selectedId); };
+  /** cycle(state, dir) → the next issue after the selected one (wraps; dir −1 goes back) and selects it; null when there are none */
+  M.cycle = function (state, dir) {
+    const l = M.list(state); if (!l.length) { selectedId = null; return null; }
+    dir = dir < 0 ? -1 : 1; let k = -1;
+    for (let j = 0; j < l.length; j++) if (l[j].id === selectedId) { k = j; break; }
+    const next = l[(k < 0 ? (dir > 0 ? 0 : l.length - 1) : (k + dir + l.length) % l.length)];
+    selectedId = next.id; cache.version++;
+    return next;
+  };
+  /** spotlight(on?) → spotlight mode (the map dims except issue tiles); render_fx reads it every frame */
+  M.spotlight = function (on) { if (on !== undefined) { spotlightOn = !!on; cache.version++; } return spotlightOn; };
+  /** pulse(kinds | family | null): beacons of these kinds pulse hard (the Power / Water gauge hover) */
+  M.pulse = function (kinds) { if (kinds === null || kinds === undefined) pulseKinds = null; else if (typeof kinds === 'string') pulseKinds = (FAMILY_KINDS[kinds] || [kinds]).slice(); else pulseKinds = Array.isArray(kinds) ? kinds.slice() : null; return pulseKinds; };
+  M.pulsing = function () { return pulseKinds; };
+  M.isPulsing = function (kind) { return !!(pulseKinds && pulseKinds.indexOf(kind) >= 0); };
+  M.kinds = function () { return KINDS; };
+  M.families = function () { return FAMILY_KINDS; };
+  M.colorOf = function (kind) { const K = KINDS[kind]; return K ? K.color : '#FDD023'; };
+  M.glyphOf = function (kind) { const K = KINDS[kind]; return K ? K.glyph : 'link'; };
+  M.familyOf = function (kind) { const K = KINDS[kind]; return K ? K.family : ''; };
+  /** age in ticks → '12s', '3m', '2d' at 1× (ticksPerDay from params.time) */
+  M.ageText = function (state, it) {
+    const tpd = fin(BSU.params.time && BSU.params.time.ticksPerDay, 200), tps = fin(BSU.params.time && BSU.params.time.baseTps, 5);
+    const age = Math.max(0, (fin(state && state.tick, 0) | 0) - fin(it && it.since, 0));
+    if (age >= tpd) return Math.floor(age / tpd) + 'd';
+    const s = Math.round(age / tps); return s >= 60 ? Math.floor(s / 60) + 'm' : s + 's';
+  };
+  M.refreshTicks = REFRESH_TICKS;
+  M.init = function (state) { try { subscribe(); if (state) M.list(state); } catch (e) { ierr('init', e); } };
+  M.reset = function (state, fresh) { void fresh; resetAll(); if (state) cache.state = null; };
+  M.stats = function () { return { computes: cache.computes, version: cache.version, cached: cache.list.length, tick: cache.tick }; };
+
+  // ---------------------------------------------------------------------------
+  // selfTest: synthetic buildings on a fresh state (no terrain/hydro needed), deterministic
+  // ---------------------------------------------------------------------------
+  M.selfTest = function () {
+    const notes = [];
+    const A = function (c, m) { if (!c) throw new Error('issues.selfTest: ' + m); };
+    const s = BSU.newState(7); s.tick = 100; s.economy.suppressCoverage = false; s.economy.students = 0;
+    const struct = function (id, type, tx, ty, o) { const r = rowOf(type); const d = r ? { w: r.w, h: r.h } : { w: 1, h: 1 }; const b = Object.assign({ id: id, type: type, tx: tx, ty: ty, w: fin(d.w, 1), h: fin(d.h, 1), rot: 0, name: '', hp: 1, built: 1, builtDay: 0, pilings: false, sunk: 0, powered: true, watered: true, provider: { power: -1, water: -1 }, flooded: false, floodedSince: -1, closedUntil: -1, blackout: false, tier: 0, upgradeDoneDay: -1, ruin: false, tarp: false }, o || {}); s.buildings[id] = b; return b; };
+    s.buildings = [];
+    const dorm = struct(0, 'dorm', 20, 20, { powered: false, name: 'Tiger Hall' });
+    // lay a path from the dorm's edge to the founders ring so it is linked (a reachable network root)
+    s.plot = s.plot || {}; s.plot.founders = { tx: 20, ty: 26 }; s.plot.highway = [];
+    const surf = s.tiles.surface; for (let y = 20 + dorm.h; y < 26; y++) surf[BSU.idx(20, y)] = SURF.PATH;
+    let l = M.list(s);
+    const up = l.find((it) => it.kind === 'unpowered');
+    A(up && up.buildingId === 0 && up.rect && up.rect.tx === 20 && up.tiles.length === dorm.w * dorm.h, 'a dorm with no substation is an unpowered issue with its footprint');
+    A(/No power: place a Substation within 10 tiles/.test(up.fix) && /Tiger Hall/.test(up.title), 'fix text: ' + up.fix);
+    A(up.action && up.action.openMenuCard === 'substation' && up.since === 100 && up.severity === 2, 'action opens the Substation card; since = the tick');
+    A(!l.some((it) => it.kind === 'unlinkedPath'), 'a path to Founders\' ring links the dorm');
+    surf[BSU.idx(20, 25)] = SURF.NONE; M.invalidate(); l = M.list(s);
+    A(l.some((it) => it.kind === 'unlinkedPath' && it.action.tool === 'path'), 'breaking the path → unlinkedPath with the path tool');
+    // cache: same tick, no invalidation → same array
+    const l2 = M.list(s); A(l2 === l, 'cached between refreshes');
+    s.tick = 100 + REFRESH_TICKS; const l3 = M.list(s); A(l3 !== l && l3.length === l.length, 'recomputed after refreshTicks');
+    A(l3.find((it) => it.kind === 'unpowered').since === 100, 'since survives a recompute');
+    // flooded + ruin + hp
+    dorm.flooded = true; M.invalidate(); l = M.list(s);
+    A(l.some((it) => it.kind === 'flooded' && it.severity === 3) && !l.some((it) => it.kind === 'unpowered'), 'flooded (sev 3) replaces unpowered while under water');
+    dorm.flooded = false; dorm.hp = 0.4; M.invalidate(); l = M.list(s);
+    A(l.some((it) => it.kind === 'damaged' && it.action.repair === 0 && it.severity === 2), 'hp < 1 → damaged with a repair action');
+    dorm.ruin = true; M.invalidate(); l = M.list(s); A(l.find((it) => it.kind === 'damaged').severity === 3, 'ruin → severity 3');
+    dorm.ruin = false; dorm.hp = 1; dorm.powered = true;
+    // pump in the rain, water tower boil notice is buildings' call (skipped), weak levee run
+    struct(1, 'pump', 30, 30, { powered: false }); s.weather.rainRate = 0.5; M.invalidate(); l = M.list(s);
+    A(l.some((it) => it.kind === 'pumpOff' && it.severity === 3), 'an unpowered pump in the rain is pumpOff (sev 3)');
+    s.weather.rainRate = 0; M.invalidate(); l = M.list(s); A(l.some((it) => it.kind === 'unpowered' && it.buildingId === 1) && !l.some((it) => it.kind === 'pumpOff'), 'dry → plain unpowered');
+    s.buildings[1] = null;
+    const tl = s.tiles; for (let x = 40; x < 44; x++) { tl.crest[BSU.idx(x, 10)] = 6; tl.integrity[BSU.idx(x, 10)] = x === 42 ? 40 : 65; }
+    M.invalidate(); l = M.list(s);
+    const lv = l.find((it) => it.kind === 'weakLevee');
+    A(lv && lv.tiles.length === 4 && lv.anchor.tx === 42 && lv.severity === 3 && lv.action.repairLevee === BSU.idx(42, 10) && /40%/.test(lv.title), 'weak levee run → one issue anchored at the weakest tile');
+    for (let x = 40; x < 44; x++) { tl.crest[BSU.idx(x, 10)] = 0; tl.integrity[BSU.idx(x, 10)] = 100; }
+    // sorting: severity desc then age asc; selection cycles and clears
+    struct(2, 'lecture_hall', 10, 10, { watered: false }); M.invalidate(); l = M.list(s);
+    A(l.some((it) => it.kind === 'unwatered' && /Water Tower within 12 tiles/.test(it.fix)), 'unwatered fix names the tower radius');
+    for (let k = 1; k < l.length; k++) A(l[k - 1].severity > l[k].severity || (l[k - 1].severity === l[k].severity && l[k - 1].since <= l[k].since), 'sorted by severity then age');
+    A(M.selected(s) === null, 'nothing selected at first');
+    const c1 = M.cycle(s, 1); A(c1 && c1.id === l[0].id && M.selectedId() === l[0].id, 'I cycles to the first issue');
+    const c2 = M.cycle(s, 1); A(c2 && c2.id === l[1 % l.length].id, 'then the next');
+    for (let k = 0; k < l.length; k++) M.cycle(s, 1); A(M.selectedId() === c2.id, 'wraps around');
+    M.cycle(s, -1); A(M.selectedId() === l[0].id, 'Shift-direction goes back');
+    M.select(null); A(M.selected(s) === null, 'select(null) clears');
+    M.select(l[0].id); s.buildings = []; M.invalidate(); l = M.list(s); A(l.length === 0 && M.selected(s) === null, 'selection drops with its issue');
+    A(M.spotlight() === false && M.spotlight(true) === true && M.spotlight(false) === false, 'spotlight getter/setter');
+    A(M.pulse('power').length === 3 && M.isPulsing('pumpOff') && M.pulse(null) === null && !M.isPulsing('pumpOff'), 'pulse by family');
+    A(M.colorOf('flooded') === '#2BD4C0' && M.glyphOf('gatorOnCampus') === 'gator' && M.colorOf('nope') === '#FDD023', 'kind table');
+    const cols = Object.keys(KINDS).map((k) => KINDS[k].family + ':' + KINDS[k].color); A(new Set(cols.map((c) => c.split(':')[1])).size === Object.keys(FAMILY_KINDS).length, 'one colour per family');
+    A(M.ageText({ tick: 100 }, { since: 100 }) === '0s' && M.ageText({ tick: 100 + 200 * 3 }, { since: 100 }) === '3d', 'ageText');
+    resetAll();
+    return { ok: true, notes: notes.join('; ') };
+  };
+})();
+
+;
 ;// ===== economy.js =====
 'use strict';
 // ============================================================================
@@ -13458,7 +13883,10 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     const summer = month >= U.summerMonths[0] && month <= U.summerMonths[1];
     M.charge(state, Math.round((U.perBuilding * completeList(state).length + U.perStudent * students) * (summer ? U.summerMult : 1)), 'utilities', force);
     // coaching
-    M.charge(state, Math.round(num(e.coaching, 0) / P.time.monthsPerYear), 'coaching', force);
+    // coaching: the athletics fund (PLAN_V2 P3: the Jan 1 top-up, sports.drawFund) pays first, cash the rest
+    const coachingDue = Math.round(num(e.coaching, 0) / P.time.monthsPerYear);
+    const fromFund = Math.max(0, int(call('sports', 'drawFund', [state, coachingDue], 0), 0));
+    M.charge(state, coachingDue - fromFund, 'coaching', force);
     // interest on a negative balance
     if (e.cash < 0) { const interest = Math.round(-e.cash * PE.interest); M.charge(state, interest, 'interest', force); e.interestPaid = int(e.interestPaid, 0) + interest; }
     // insurance premium while the policy exists
@@ -16691,6 +17119,8 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     if (sp.prospects && !Array.isArray(sp.prospects.list)) sp.prospects = null;
     if (!Array.isArray(sp.seasonLog)) sp.seasonLog = [];
     if (!sp.seasonLines || typeof sp.seasonLines !== 'object') sp.seasonLines = newLines();
+    // PLAN_V2 P3: the athletics budget (a pre-P3 save gets one from its prestige and last season; revenue starts at 0)
+    if (!sp.budget || typeof sp.budget !== 'object') initBudget(state); else budgetOf(state);
   }
 
   // ---------------------------------------------------------------------------
@@ -17648,6 +18078,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     if (!r.book || typeof r.book !== 'object') r.book = {};
     if (!Array.isArray(r.seasons)) r.seasons = [];
     if (!Array.isArray(r.hof)) r.hof = [];
+    if (!Array.isArray(r.recruits)) r.recruits = [];   // PLAN_V2 P3: signed prospects that arrived (the Records tab's recruiting history)
   }
   function updateRecords(state, g, sum) {
     const sp = state.sports; if (!sp.records) sp.records = {}; const r = sp.records; ensureRecords(r);
@@ -17948,7 +18379,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     while (sp.record.last4.length > 4) sp.record.last4.shift();
     if (g.home && won) sp.homeWins++;
     // money
-    if (g.kind === 'club') { call('economy', 'post', state, 'athletics', PS.clubPay, { note: 'club game vs ' + oppName(g.opp) }); g.revenue = PS.clubPay; }
+    if (g.kind === 'club') { call('economy', 'post', state, 'athletics', PS.clubPay, { note: 'club game vs ' + oppName(g.opp) }); g.revenue = PS.clubPay; addRevenue(state, PS.clubPay); }
     else if (g.home) {
       const ticket = num(state.economy && state.economy.ticket, PS.ticketDefault);
       const athletics = g.attendance * (ticket + CONCESSIONS);
@@ -17957,6 +18388,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
       if (athletics > 0) call('economy', 'post', state, 'athletics', athletics, { i: vt, note: 'home game vs ' + oppName(g.opp) });
       if (g.tailgate > 0) call('economy', 'post', state, 'tailgate', g.tailgate, { i: vt, note: 'tailgate' });
       g.revenue = athletics + g.tailgate;
+      addRevenue(state, g.revenue);   // P3: the athletics budget's revenue share
       if (sp.firstHomeGameDay < 0) sp.firstHomeGameDay = today(state);
       if (g.night && sp.firstNightGameDay < 0) sp.firstNightGameDay = today(state);
     }
@@ -18245,6 +18677,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
       bowlScore = res ? [res.bsu, res.opp] : null;
       if (bowlWon) { call('economy', 'post', state, 'athletics', PS.bowlWin, { note: 'Sugar Cane Bowl (won)' }); call('economy', 'bump', state, 'prestige', PS.bowlPrestige, 'Sugar Cane Bowl'); }
       else call('economy', 'post', state, 'athletics', PS.bowlLose, { note: 'Sugar Cane Bowl' });
+      addRevenue(state, bowlWon ? PS.bowlWin : PS.bowlLose);
     } else ticker(state, 'No bowl this year: ' + regWins + ' wins, ' + PS.bowlWins + ' needed for the Sugar Cane Bowl.', {});
     const undefeated = regWins >= PS.undefeatedWins && regLosses === 0;
     sp.lastSeason = { wins: sp.record.wins, losses: sp.record.losses, bowlWon: bowlWon, undefeated: undefeated };
@@ -18267,6 +18700,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
       if (regLosses > regWins) sp.losingSeasons++; else sp.losingSeasons = 0;
       if (sp.losingSeasons >= PS.starDriftLosing) { sp.coach.stars = Math.max(PS.starMin, num(sp.coach.stars, 2) - 1); sp.losingSeasons = 0; }
     }
+    rollBudget(state);   // PLAN_V2 P3: next year's athletics budget from this season's gate, wins and prestige
     sp.seasonDone = true;
     sp.homeWins = 0;
     sp.record.wins = 0; sp.record.losses = 0;
@@ -18404,7 +18838,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     const purple = g.score[0], gold = g.score[1], won = purple > gold;
     sp.lastSpring = { year: yearOf(state), day: g.day, score: g.score.slice(), won: won, ot: !!g.ot, mvp: sum.mvp ? { name: sum.mvp.name, pos: sum.mvp.pos, line: sum.mvp.line } : null, bigPlay: sum.bigPlay, attendance: num(g.attendance, 0) };
     const cons = num(Sg.concessions, 0);
-    if (cons > 0) { call('economy', 'post', state, 'athletics', cons, { i: venueTile(state), note: 'Spring Game concessions' }); g.revenue = cons; }
+    if (cons > 0) { call('economy', 'post', state, 'athletics', cons, { i: venueTile(state), note: 'Spring Game concessions' }); g.revenue = cons; addRevenue(state, cons); }
     if (num(Sg.happiness, 0) > 0) call('economy', 'bump', state, 'happiness', num(Sg.happiness, 0), 'Spring Game');
     if (num(Sg.prestige, 0) > 0) call('economy', 'bump', state, 'prestige', num(Sg.prestige, 0), 'Spring Game');
     const mvpText = sum.mvp ? ' ' + sum.mvp.pos + ' ' + sum.mvp.name + ': ' + sum.mvp.line + '.' : '';
@@ -18466,6 +18900,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
       if (k < 0) k = Math.max(0, POS.indexOf(p.pos));
       const old = sp.starters[k];
       sp.starters[k] = { name: p.name, pos: p.pos, hometown: p.hometown, rating: p.rating, class: L.recruitClass };
+      if (sp.records && Array.isArray(sp.records.recruits)) { sp.records.recruits.push({ year: yearOf(state), name: p.name, pos: p.pos, hometown: p.hometown, rating: p.rating, cost: int(p.cost, 0), title: String(p.title || '') }); while (sp.records.recruits.length > PB.recruitsMax) sp.records.recruits.shift(); }   // P3: Records tab
       call('ui', 'notify', state, { text: p.pos + ' ' + p.name + ' (' + p.hometown + ') arrives rated ' + p.rating + (old ? ', replacing ' + old.name + ' (' + old.rating + ')' : '') + '.', kind: 'sports', ttl: 9000 });
       ticker(state, p.pos + ' ' + p.name + ' reports for fall camp.' + (p.blurb ? ' ' + p.blurb : ''), {});
     }
@@ -18531,6 +18966,8 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     if (sp.hasTeam && sp.starters.length && day === dayOfDate('May 5', year)) seniorsLeave(state);
     // Dec 9: the offseason hire card and the prospect board (pass C: offered once per off-season)
     if (sp.hasTeam && day === dayOfDate(PS.schedule.offseasonStart, year)) { drawCandidates(state); drawProspects(state); offerProspects(state); }
+    // PLAN_V2 P3: Jan 1 — the university's top-up moves into the athletics fund (once per year, with a team)
+    if (sp.hasTeam && day > 0 && day === dayOfDate(PB.transferDate, year)) yearlyTopUp(state, year);
     storeRating(state);
     if (!sp.hasTeam) return;
     // catch-up: an unplayed game whose date passed (a set piece blocked it) resolves off-screen
@@ -18594,6 +19031,182 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
       clearGame(S);
     } catch (e) { BSU.error('sports', 'setpiece:end', e); }
   }
+
+  // ---------------------------------------------------------------------------
+  // PLAN_V2 P3: the athletics budget — a salary cap that grows with success
+  //   total     = base + revenueShare × last season's athletics revenue (gate, concessions, tailgates, club pay,
+  //               bowl purse, Spring Game concessions) + prestigePer10 × prestige/10 + boosters (a season of
+  //               ≥ boosterWins) + the university top-up (topUpShare × base, 0–150 %)
+  //   committed = head coach salary (coachSalary: $150k × stars²) + signed prospects + upkeepShare × the venue's
+  //               annual upkeep + the coaching spend + the Homecoming tier
+  //   headroom  = total − committed; every sports spend asks canAfford(state, amount) before cash.
+  //   The top-up is real money: it moves each Jan 1 (ledger expense 'athletics' → "Athletics top-up"; raising
+  //   the slider mid-year moves the difference at once), sits in budget.fund, and athletics spends (fees,
+  //   buyouts, signings, the NIL fund, the monthly coaching charge via drawFund) draw on it before cash.
+  // ---------------------------------------------------------------------------
+  const PB = PS.budget || { base: 2000000, revenueShare: 0.35, prestigePer10: 50000, boosters: 500000, boosterWins: 7, topUpMax: 1.5, topUpStep: 0.1, salaryPerStar2: 150000, coordinatorShare: 0.55, upkeepShare: 0.1, transferDate: 'Jan 1', recruitsMax: 40 };
+  /** $150k × stars² a year for the head coach ('hc'); coordinators ('oc' | 'dc', P1) at coordinatorShare of that. Pure. */
+  function coachSalary(stars, role) {
+    const st = clamp(int(stars, 0), 0, num(PS.starMax, 5));
+    const hc = PB.salaryPerStar2 * st * st;
+    return Math.round(role === 'oc' || role === 'dc' ? hc * PB.coordinatorShare : hc);
+  }
+  function budgetText() { const f = data().football; return (f && f.budget) || {}; }
+  function newBudget() { return { year: 0, base: PB.base, fromRevenue: 0, fromPrestige: 0, boosters: 0, topUpShare: 0, topUp: 0, total: PB.base, committed: 0, lines: [], fund: 0, revenueYear: 0, lastRevenue: 0, lastWins: 0, topUpPaid: 0, topUpYear: 0 }; }
+  /** the stored budget, every field finite (lazy on old saves) */
+  function budgetOf(state) {
+    const sp = state.sports;
+    if (!sp.budget || typeof sp.budget !== 'object') sp.budget = newBudget();
+    const b = sp.budget;
+    b.year = int(b.year, 0); b.base = Math.max(0, int(b.base, PB.base)); b.fromRevenue = Math.max(0, int(b.fromRevenue, 0)); b.fromPrestige = Math.max(0, int(b.fromPrestige, 0)); b.boosters = Math.max(0, int(b.boosters, 0));
+    b.topUpShare = clamp(num(b.topUpShare, 0), 0, PB.topUpMax); b.topUp = Math.max(0, int(b.topUp, 0)); b.total = int(b.total, b.base); b.committed = int(b.committed, 0);
+    b.fund = Math.max(0, int(b.fund, 0)); b.revenueYear = Math.max(0, int(b.revenueYear, 0)); b.lastRevenue = Math.max(0, int(b.lastRevenue, 0));
+    b.lastWins = int(b.lastWins, 0); b.topUpPaid = Math.max(0, int(b.topUpPaid, 0)); b.topUpYear = int(b.topUpYear, 0);
+    if (!Array.isArray(b.lines)) b.lines = [];
+    return b;
+  }
+  /** the top-up the cap counts: the planned share × base, never below what already moved this year */
+  function topUpOf(state, b) { const planned = Math.round(b.topUpShare * b.base); const paid = b.topUpYear === yearOf(state) ? b.topUpPaid : 0; return Math.max(planned, paid); }
+  /** the venue's annual upkeep (practice field + bleachers tier + stadium tier) from the catalog, as buildings.upkeepTotal counts it */
+  function venueUpkeepYear(state) {
+    const cat = data().catalog || {}; let monthly = 0;
+    const types = ['practice_field', 'stadium'];
+    for (let t = 0; t < types.length; t++) {
+      const row = cat[types[t]]; const list = call('buildings', 'list', state, types[t]) || [];
+      for (let i = 0; i < list.length; i++) {
+        const bld = list[i]; if (!bld || !row) continue;
+        const tier = int(bld.tier, 0); const tr = tier > 0 ? (row.tiers || []).filter(function (x) { return x && x.tier === tier; })[0] : null;
+        let u = tr ? num(tr.upkeep, 0) : num(row.upkeep, 0);
+        if (types[t] === 'practice_field' && tr) u = num(row.upkeep, 0) + num(tr.upkeep, 0);
+        monthly += u;
+      }
+    }
+    return Math.round(monthly * num(PT.monthsPerYear, 12));
+  }
+  /** the committed lines, live: [{key, label, amount}] (P2 adds the roster's per-year costs under 'signings') */
+  function committedLines(state) {
+    const sp = state.sports, e = state.economy || {}, T = budgetText().lines || {};
+    const lines = [];
+    lines.push({ key: 'coach', label: T.coach || 'Head coach salary', amount: sp.coach && sp.coach.name ? coachSalary(sp.coach.stars, 'hc') : 0 });
+    lines.push({ key: 'coaching', label: T.coaching || 'Coaching spend', amount: Math.max(0, int(e.coaching, 0)) });
+    let sign = 0; const b = sp.prospects; if (b && Array.isArray(b.list)) for (let i = 0; i < b.list.length; i++) if (b.list[i] && b.list[i].signed) sign += Math.max(0, int(b.list[i].cost, 0));
+    lines.push({ key: 'signings', label: T.signings || 'Signed prospects', amount: sign });
+    lines.push({ key: 'upkeep', label: T.upkeep || 'Venue upkeep share', amount: sp.hasTeam ? Math.round(venueUpkeepYear(state) * PB.upkeepShare) : 0 });
+    lines.push({ key: 'homecoming', label: T.homecoming || 'Homecoming', amount: Math.max(0, int(sp.homecomingBudget, 0)) });
+    return lines;
+  }
+  /** recompute the stored total / committed / lines; emits budget:changed{why} when why is given */
+  function refreshBudget(state, why) {
+    const b = budgetOf(state);
+    b.topUp = topUpOf(state, b);
+    b.total = Math.round(b.base + b.fromRevenue + b.fromPrestige + b.boosters + b.topUp);
+    b.lines = committedLines(state);
+    let c = 0; for (let i = 0; i < b.lines.length; i++) c += b.lines[i].amount;
+    b.committed = c;
+    if (why) emit(EV.BUDGET_CHANGED, { why: why, year: b.year, total: b.total, committed: b.committed, headroom: b.total - b.committed, fund: b.fund });
+    return b;
+  }
+  /** season end: next year's sources from this season's revenue, wins and the prestige of the day */
+  function rollBudget(state) {
+    const b = budgetOf(state), e = state.economy || {};
+    b.lastRevenue = b.revenueYear; b.revenueYear = 0;
+    b.lastWins = int(state.sports.lastSeason && state.sports.lastSeason.wins, 0);
+    b.fromRevenue = Math.round(b.lastRevenue * PB.revenueShare);
+    b.fromPrestige = Math.round(PB.prestigePer10 * num(e.prestige, 0) / 10);
+    b.boosters = b.lastWins >= PB.boosterWins ? PB.boosters : 0;
+    b.year = yearOf(state) + 1;
+    refreshBudget(state, 'season');
+  }
+  /** a new game or a pre-P3 save: prestige and last season are known, the revenue share starts at 0 */
+  function initBudget(state) {
+    const b = budgetOf(state), e = state.economy || {};
+    b.year = yearOf(state);
+    b.fromPrestige = Math.round(PB.prestigePer10 * num(e.prestige, 0) / 10);
+    b.lastWins = int(state.sports.lastSeason && state.sports.lastSeason.wins, 0);
+    b.boosters = b.lastWins >= PB.boosterWins ? PB.boosters : 0;
+    refreshBudget(state, null);
+  }
+  function addRevenue(state, amount) { const b = budgetOf(state); b.revenueYear += Math.max(0, int(amount, 0)); }
+  /** move cash into the athletics fund: a forced ledger 'athletics' expense ("Athletics top-up") */
+  function transferTopUp(state, amount) {
+    const b = budgetOf(state), amt = Math.max(0, int(amount, 0));
+    if (amt <= 0) return true;
+    if (call('economy', 'charge', state, amt, 'athletics', { force: true, note: budgetText().ledgerLabel || 'Athletics top-up' }) === false) return false;
+    b.fund += amt; b.topUpPaid += amt; b.topUpYear = yearOf(state);
+    return true;
+  }
+  /** Jan 1 (with a team): the year's planned top-up moves, once */
+  function yearlyTopUp(state, year) {
+    const b = budgetOf(state);
+    if (b.topUpYear === year) return;
+    b.topUpPaid = 0; b.topUpYear = year;
+    const planned = Math.round(b.topUpShare * b.base);
+    if (planned > 0) transferTopUp(state, planned);
+    refreshBudget(state, 'topup');
+  }
+  /** an athletics spend: the fund first, then cash through economy.charge; false (nothing moved) when neither covers it */
+  function athleticsCharge(state, amount, key, meta) {
+    const b = budgetOf(state), amt = Math.max(0, int(amount, 0));
+    if (amt <= 0) return true;
+    const fromFund = Math.min(b.fund, amt), rest = amt - fromFund;
+    if (rest > 0 && call('economy', 'charge', state, rest, key, meta) === false) return false;
+    b.fund -= fromFund;
+    return true;
+  }
+  /** {ok, reason, headroom, total, committed, amount}: amount ≤ headroom, and the cash (after the fund) covers it */
+  function canAffordAthletics(state, amount) {
+    const b = refreshBudget(state, null), amt = int(amount, 0), headroom = b.total - b.committed;
+    const money = function (n) { return BSU.formatMoney ? BSU.formatMoney(n) : '$' + n; };
+    const out = { ok: true, reason: '', headroom: headroom, total: b.total, committed: b.committed, amount: amt };
+    if (amt <= 0) return out;
+    if (amt > headroom) { out.ok = false; out.reason = 'Athletics budget: ' + money(amt) + ' needed, ' + money(Math.max(0, headroom)) + ' headroom (' + money(b.committed) + ' of ' + money(b.total) + ' committed)'; return out; }
+    const rest = amt - Math.min(b.fund, amt);
+    if (rest > 0 && call('economy', 'canAfford', state, rest) === false) { out.ok = false; out.reason = 'Not enough cash for ' + money(amt) + ' (athletics fund ' + money(b.fund) + ')'; }
+    return out;
+  }
+  /** the player-facing view: the stored budget plus headroom and the five sources, committed recomputed live */
+  M.budget = function (state) {
+    try {
+      const b = refreshBudget(state, null), T = budgetText().sources || {};
+      const money = function (n) { return BSU.formatMoney ? BSU.formatMoney(n) : '$' + n; };
+      return {
+        year: b.year, base: b.base, fromRevenue: b.fromRevenue, fromPrestige: b.fromPrestige, boosters: b.boosters, topUpShare: b.topUpShare, topUp: b.topUp,
+        total: b.total, committed: b.committed, headroom: b.total - b.committed, fund: b.fund, lastRevenue: b.lastRevenue, revenueYear: b.revenueYear, lastWins: b.lastWins,
+        topUpPaid: b.topUpYear === yearOf(state) ? b.topUpPaid : 0, topUpMax: PB.topUpMax, topUpStep: PB.topUpStep, boosterWins: PB.boosterWins,
+        sources: [
+          { key: 'base', label: T.base || 'Base allocation', amount: b.base, note: '' },
+          { key: 'revenue', label: T.revenue || 'Share of last season\'s gate', amount: b.fromRevenue, note: Math.round(PB.revenueShare * 100) + '% of ' + money(b.lastRevenue) },
+          { key: 'prestige', label: T.prestige || 'Prestige', amount: b.fromPrestige, note: money(PB.prestigePer10) + ' per 10 prestige' },
+          { key: 'boosters', label: T.boosters || 'Booster donations', amount: b.boosters, note: b.lastWins >= PB.boosterWins ? b.lastWins + ' wins last season' : 'after ' + PB.boosterWins + ' wins (' + b.lastWins + ' last season)' },
+          { key: 'topUp', label: T.topUp || 'University top-up', amount: b.topUp, note: Math.round(b.topUpShare * 100) + '% of base' }
+        ],
+        lines: b.lines.map(function (l) { return { key: l.key, label: l.label, amount: l.amount }; })
+      };
+    } catch (e) { BSU.error('sports', 'budget', e); return null; }
+  };
+  /** the top-up slider: share of base (0–topUpMax, snapped to topUpStep); with a team, a raise above this year's paid amount moves now → {ok, share, topUp, moved} */
+  M.setTopUp = function (state, share) {
+    try {
+      const b = budgetOf(state), sp = state.sports;
+      const step = num(PB.topUpStep, 0.1);
+      const v = clamp(Math.round(num(share, 0) / step) * step, 0, PB.topUpMax);
+      b.topUpShare = Math.round(v * 1000) / 1000;
+      let moved = 0;
+      if (sp.hasTeam) {
+        const year = yearOf(state);
+        if (b.topUpYear !== year) { b.topUpYear = year; b.topUpPaid = 0; }
+        const planned = Math.round(b.topUpShare * b.base), raise = planned - b.topUpPaid;
+        if (raise > 0 && transferTopUp(state, raise)) moved = raise;
+      }
+      refreshBudget(state, 'topup');
+      return { ok: true, share: b.topUpShare, topUp: b.topUp, moved: moved };
+    } catch (e) { BSU.error('sports', 'setTopUp', e); return { ok: false, reason: 'error' }; }
+  };
+  /** {ok, reason, headroom, total, committed}: can athletics commit `amount` now? (every sports spend asks this first) */
+  M.canAfford = function (state, amount) { try { return canAffordAthletics(state, amount); } catch (e) { BSU.error('sports', 'canAfford', e); return { ok: false, reason: 'error', headroom: 0, total: 0, committed: 0, amount: int(amount, 0) }; } };
+  /** economy's monthly coaching charge draws on the athletics fund first: returns the amount the fund covered */
+  M.drawFund = function (state, amount) { try { const b = budgetOf(state); const d = Math.min(b.fund, Math.max(0, int(amount, 0))); b.fund -= d; return d; } catch (e) { BSU.error('sports', 'drawFund', e); return 0; } };
+  M.coachSalary = function (stars, role) { return coachSalary(stars, role); };
 
   // ---------------------------------------------------------------------------
   // Lifecycle
@@ -18768,10 +19381,12 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
       const max = int(PE.recruit.maxSignings, 2);
       if (int(b.signed, 0) >= max) return { ok: false, cost: p.cost, reason: 'Only ' + max + ' signings per off-season' };
       if (b.list.some(function (q) { return q !== p && q.signed && q.pos === p.pos; })) return { ok: false, cost: p.cost, reason: 'A ' + p.pos + ' is already signed' };
-      if (call('economy', 'canAfford', state, p.cost) === false) return { ok: false, cost: p.cost, reason: 'Cannot afford ' + (BSU.formatMoney ? BSU.formatMoney(p.cost) : p.cost) };
-      if (call('economy', 'charge', state, p.cost, 'coaching', { note: 'signing ' + p.name }) === false) return { ok: false, cost: p.cost, reason: 'Cannot afford the signing' };
+      const ca = canAffordAthletics(state, p.cost);   // P3: the athletics budget's headroom, then cash (the fund first)
+      if (!ca.ok) return { ok: false, cost: p.cost, reason: ca.reason };
+      if (!athleticsCharge(state, p.cost, 'coaching', { note: 'signing ' + p.name })) return { ok: false, cost: p.cost, reason: 'Cannot afford the signing' };
       p.signed = true; b.signed = int(b.signed, 0) + 1;
       ticker(state, p.pos + ' ' + p.name + ' (' + p.hometown + ') signs with the ' + L.bsuNick + '. Rated ' + p.rating + '; arrives Aug 5.', {});
+      refreshBudget(state, 'sign');
       return { ok: true, cost: p.cost, name: p.name, pos: p.pos, rating: p.rating, reason: '' };
     } catch (e) { BSU.error('sports', 'signProspect', e); return { ok: false, cost: 0, reason: 'error' }; }
   };
@@ -18813,15 +19428,19 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
   M.summary = function (state) { try { const g = state.sports.game; if (g) return g.summary || buildSummary(state, g); return state.sports.lastSummary || null; } catch (e) { BSU.error('sports', 'summary', e); return null; } };
   M.setNight = function (state, on) { try { state.sports.nightToggle = !!on; refreshNights(state); } catch (e) { BSU.error('sports', 'setNight', e); } };
   M.setAutoSim = function (state, on) { try { state.sports.autoSim = !!on; } catch (e) { BSU.error('sports', 'setAutoSim', e); } };
-  M.setPermits = function (state, v) { try { state.sports.permits = v === 'free' ? 'free' : 'paid'; } catch (e) { BSU.error('sports', 'setPermits', e); } };
+  M.setPermits = function (state, v) { try { const ca = canAffordAthletics(state, 0); state.sports.permits = v === 'free' ? 'free' : 'paid'; return ca; } catch (e) { BSU.error('sports', 'setPermits', e); return { ok: false, reason: 'error' }; } };
   /** 0 | 50000 | 150000: charges the tier (boardCards) and adds the homecomingBudget happiness timer */
   M.setHomecomingBudget = function (state, v) {
     try {
       const tier = L.homecomingTiers.indexOf(num(v, 0));
       if (tier < 0) return { ok: false, reason: 'Unknown tier' };
       const cost = L.homecomingTiers[tier];
-      if (cost > 0 && call('economy', 'charge', state, cost, 'boardCards', { note: 'Homecoming budget' }) === false) return { ok: false, reason: 'Cannot afford' };
+      const cur = int(state.sports.homecomingBudget, 0);
+      const ca = canAffordAthletics(state, cost - cur);   // P3: the tier's step up against the athletics headroom (a lower tier costs nothing more)
+      if (!ca.ok) return { ok: false, cost: cost, reason: ca.reason };
+      if (cost > cur && !athleticsCharge(state, cost - cur, 'boardCards', { note: 'Homecoming budget' })) return { ok: false, cost: cost, reason: 'Cannot afford' };
       state.sports.homecomingBudget = cost;
+      refreshBudget(state, 'homecoming');
       const hb = P.econ.boardCards.homecomingBudget;
       if (tier > 0) call('progress', 'addTimer', state, 'homecomingBudget', num(hb.happiness[tier], tier * 3), num(hb.days, 10));
       return { ok: true, cost: cost };
@@ -18835,12 +19454,15 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
       if (!c) return { ok: false, cost: 0, reason: 'No such candidate' };
       const fee = PS.coachFee * c.stars;
       if (num(e.coaching, 0) < PS.coachSign * c.stars) return { ok: false, cost: fee, reason: 'Coaching budget must be at least ' + BSU.formatMoney(PS.coachSign * c.stars) + '/yr' };
-      if (num(e.cash, 0) < fee) return { ok: false, cost: fee, reason: 'Signing fee ' + BSU.formatMoney(fee) };
-      if (call('economy', 'charge', state, fee, 'coaching', { note: 'signing ' + c.name }) === false) return { ok: false, cost: fee, reason: 'Cannot afford the signing fee' };
+      // P3: the fee plus the salary step up must fit the athletics budget's headroom (the fund pays the fee first)
+      const ca = canAffordAthletics(state, fee + Math.max(0, coachSalary(c.stars, 'hc') - (sp.coach && sp.coach.name ? coachSalary(sp.coach.stars, 'hc') : 0)));
+      if (!ca.ok) return { ok: false, cost: fee, reason: ca.reason };
+      if (!athleticsCharge(state, fee, 'coaching', { note: 'signing ' + c.name })) return { ok: false, cost: fee, reason: 'Cannot afford the signing fee' };
       sp.coach = { name: c.name, stars: c.stars, hiredYear: yearOf(state), quote: c.quote || coachQuote(c.name), rep: c.rep || '' };
       sp.candidates = [];
       emit(EV.COACH_CHANGED, { name: sp.coach.name, stars: sp.coach.stars });
       storeRating(state);
+      refreshBudget(state, 'hire');
       return { ok: true, cost: fee, reason: '' };
     } catch (e) { BSU.error('sports', 'hireCoach', e); return { ok: false, cost: 0, reason: 'error' }; }
   };
@@ -18850,11 +19472,16 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
       const sp = state.sports;
       if (!sp.hasTeam || !sp.coach || !sp.coach.name) return { ok: false, cost: 0, reason: 'No coach' };
       const cost = sp.rivalryLossStreak >= PS.rivalryLossFire ? 0 : PS.buyout;
-      if (cost > 0 && call('economy', 'charge', state, cost, 'coaching', { note: 'buyout ' + sp.coach.name }) === false) return { ok: false, cost: cost, reason: 'Cannot afford the buyout' };
+      if (cost > 0) {   // P3: the buyout against the headroom, net of the salary the firing frees
+        const ca = canAffordAthletics(state, cost - Math.max(0, coachSalary(sp.coach.stars, 'hc') - coachSalary(L.interimCoach.stars, 'hc')));
+        if (!ca.ok) return { ok: false, cost: cost, reason: ca.reason };
+        if (!athleticsCharge(state, cost, 'coaching', { note: 'buyout ' + sp.coach.name })) return { ok: false, cost: cost, reason: 'Cannot afford the buyout' };
+      }
       sp.coach = { name: L.interimCoach.name, stars: L.interimCoach.stars, hiredYear: yearOf(state), quote: '', rep: L.interimCoach.rep };
       drawCandidates(state);
       emit(EV.COACH_CHANGED, { name: sp.coach.name, stars: sp.coach.stars });
       storeRating(state);
+      refreshBudget(state, 'fire');
       return { ok: true, cost: cost };
     } catch (e) { BSU.error('sports', 'fireCoach', e); return { ok: false, cost: 0, reason: 'error' }; }
   };
@@ -18866,7 +19493,9 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
       rc.answered = true;
       if (!accept) { rc.accepted = false; return; }
       if (rc.price === L.recruitPrices[0]) {
-        if (call('economy', 'charge', state, L.recruitNil, 'coaching', { note: 'NIL fund' }) === false) { rc.accepted = false; return; }
+        const ca = canAffordAthletics(state, L.recruitNil);   // P3
+        if (!ca.ok) { rc.accepted = false; call('ui', 'notify', state, { text: ca.reason, kind: 'sports', ttl: 6000 }); return; }
+        if (!athleticsCharge(state, L.recruitNil, 'coaching', { note: 'NIL fund' })) { rc.accepted = false; return; }
         rc.paid = true;
       }
       rc.accepted = true;
@@ -18941,7 +19570,8 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     halftime: function () {}, skipToFinal: function () {}, setNight: function () {}, setAutoSim: function () {}, setPermits: function () {},
     decide: function () { return { ok: false, reason: 'No game state' }; }, setPlaybook: function () {}, setAggression: function () {}, setWatchFull: function () {},
     live: function () { return { active: false }; }, playState: function () { return null; }, recentPlays: function () { return []; }, summary: function () { return null; },
-    answerRecruit: function () {}, postpone: function () {}, scheduleMakeup: function () {}, offerPlayThrough: function () {}, startNightGameScript: function () {}
+    answerRecruit: function () {}, postpone: function () {}, scheduleMakeup: function () {}, offerPlayThrough: function () {}, startNightGameScript: function () {},
+    budget: function () { return null; }, setTopUp: function () { return { ok: false, reason: 'No game state' }; }, canAfford: function () { return { ok: false, reason: 'No game state', headroom: 0, total: 0, committed: 0, amount: 0 }; }, drawFund: function () { return 0; }   // P3
   };
   for (const name in FALLBACKS) {
     (function (fnName, inner, fallback) {
@@ -19301,6 +19931,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
         s.economy.coaching = 0; s.economy.cash = 1e7;
         A(!M.hireCoach(s, 0).ok, 'hire refused without the coaching budget');
         s.economy.coaching = PS.coachSign * c0.stars;
+        M.setTopUp(s, PB.topUpMax);   // P3: a 3★ hire needs the headroom the max top-up gives (the fee plus the salary step)
         const h = M.hireCoach(s, 0);
         A(h.ok && h.cost === PS.coachFee * c0.stars && s.sports.coach.name === c0.name && log.some(function (x) { return x.name === EV.COACH_CHANGED; }), 'hire signs the candidate');
         s.sports.schedule = [makeEntry(BSU.dateToDay('Sep 8', 1), 'delta', true, 'regular', 2, 62)];
@@ -28190,6 +28821,21 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
         }
         g.closePath(); g.stroke();
       }
+      // issue spotlight pass: a blinking pip per issue in its kind colour (selected: a white ring), ≤ 40
+      try {
+        const IS = mod('issues'); const li = IS && typeof IS.list === 'function' ? IS.list(state) : null;
+        if (li && li.length) {
+          const sel = typeof IS.selectedId === 'function' ? IS.selectedId() : null, blink = ((frameNo / 12) | 0) & 1;
+          for (let k = 0; k < li.length && k < 40; k++) {
+            const it = li[k], a = it.anchor || { tx: 32, ty: 32 };
+            const mx = mw / 2 + (fin(a.tx, 32) - fin(a.ty, 32)) * s, my = mh / 2 - (HGT * s) / 2 + (fin(a.tx, 32) + fin(a.ty, 32)) * s / 2;
+            g.globalAlpha = 0.9; g.fillStyle = 'rgba(12,8,28,.9)'; g.fillRect(mx - 3, my - 3, 6, 6);
+            g.globalAlpha = blink ? 1 : 0.45; g.fillStyle = it.color || GOLD; g.fillRect(mx - 2, my - 2, 4, 4);
+            if (sel !== null && it.id === sel) { g.globalAlpha = 1; g.strokeStyle = '#FFFFFF'; g.lineWidth = 1; g.strokeRect(mx - 4.5, my - 4.5, 9, 9); }
+          }
+          g.globalAlpha = 1;
+        }
+      } catch (e) { rerr('minimap:issues', e); }
       if (state.storms && state.storms.current && state.storms.current.phase >= 1 && state.storms.current.phase < 4) {   // the cone, roughly: a gold mark at the forecast landfall side
         g.fillStyle = PAL.danger || '#E0443E'; g.globalAlpha = 0.6 + 0.3 * Math.sin(frameNo / 8); g.fillRect(mw / 2 - 2, mh - 6, 4, 4); g.globalAlpha = 1;
       }
@@ -29880,10 +30526,215 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
   R.mistFor = mistFor;
   R.addShell = function (wx, wy, z0, z1, scale) { addShell(wx, wy, z0, z1, fin(scale, 1)); };
 
+  // ---------------------------------------------------------------------------
+  // Issue spotlight (issue spotlight pass): beacons (7.5, above the lights so they stay bright at night)
+  // and the spotlight layer (9.5, above the overlays: the dim, the selected label, the edge arrows).
+  // Every ring breathes on a 1.2 s cycle in the kind's colour (BSU.issues.kinds(), used nowhere else);
+  // a 40-px light column rises from the anchor to a glyph disc; off-screen issues get a border arrow.
+  // Caps: ≤ ISS_MAX beacons, ≤ ISS_ARROWS arrows, the pass stops early past ISS_BUDGET_MS (perf guard).
+  // ---------------------------------------------------------------------------
+  const ISS_MAX = 40, ISS_ARROWS = 12, ISS_BUDGET_MS = 1.0, ISS_BREATH_MS = 1200, ISS_PULSE_MS = 420, ISS_COL_PX = 40, ISS_DIM = 0.55;
+  const issStats = { drawn: 0, arrows: 0, ms: 0, capped: false, labels: 0, frames: 0 };
+  const issPt = { x: 0, y: 0 }, issCorners = [{ x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 }];
+  function issuesApi() { const I = BSU.issues; return (I && typeof I.list === 'function') ? I : null; }
+  function issRgba(hex, a) { const c = parseInt(String(hex).slice(1), 16); if (!Number.isFinite(c)) return 'rgba(253,208,35,' + a + ')'; return 'rgba(' + ((c >> 16) & 255) + ',' + ((c >> 8) & 255) + ',' + (c & 255) + ',' + a + ')'; }
+  /** the iso outline of a tile rect: top / right / bottom / left vertices in screen px (each corner at its own tile's elevation) */
+  function issRectCorners(rect, z, pad, out) {
+    const x1 = rect.tx + rect.w - 1, y1 = rect.ty + rect.h - 1, hw = 32 * z, hh = 16 * z;
+    let p = R.tileToScreen(rect.tx, rect.ty); out[0].x = p.x; out[0].y = p.y - hh - pad * 0.5;
+    p = R.tileToScreen(x1, rect.ty); out[1].x = p.x + hw + pad; out[1].y = p.y;
+    p = R.tileToScreen(x1, y1); out[2].x = p.x; out[2].y = p.y + hh + pad * 0.5;
+    p = R.tileToScreen(rect.tx, y1); out[3].x = p.x - hw - pad; out[3].y = p.y;
+    return out;
+  }
+  function issDiamondPath(g, c) { g.moveTo(c[0].x, c[0].y); g.lineTo(c[1].x, c[1].y); g.lineTo(c[2].x, c[2].y); g.lineTo(c[3].x, c[3].y); g.closePath(); }
+  function issTilePath(g, i, z, pad) { const p = R.tilePx(i); const hw = 32 * z + pad, hh = 16 * z + pad * 0.5; g.moveTo(p.x, p.y - hh); g.lineTo(p.x + hw, p.y); g.lineTo(p.x, p.y + hh); g.lineTo(p.x - hw, p.y); g.closePath(); }
+  /** add every outline of an issue to the current path (rect → one diamond, else per-tile diamonds, ≤ 16 then the bounding diamond) */
+  function issOutlinePath(g, it, z, pad) {
+    if (it.rect) { issDiamondPath(g, issRectCorners(it.rect, z, pad, issCorners)); return; }
+    const tl = it.tiles || [];
+    if (tl.length <= 16) { for (let k = 0; k < tl.length; k++) issTilePath(g, tl[k] | 0, z, pad); return; }
+    let x0 = W, y0 = HGT, x1 = 0, y1 = 0; for (let k = 0; k < tl.length; k++) { const i = tl[k] | 0, tx = i % W, ty = (i / W) | 0; if (tx < x0) x0 = tx; if (tx > x1) x1 = tx; if (ty < y0) y0 = ty; if (ty > y1) y1 = ty; }
+    issDiamondPath(g, issRectCorners({ tx: x0, ty: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 }, z, pad, issCorners));
+  }
+  /** the anchor's screen point (and whether it is inside the viewport with a margin) */
+  function issAnchorScreen(it, view, margin, out) {
+    const a = it.anchor || { tx: 32, ty: 32 }; const p = R.tileToScreen(fin(a.tx, 32), fin(a.ty, 32)); out.x = p.x; out.y = p.y;
+    return p.x >= -margin && p.x <= view.vw + margin && p.y >= -margin && p.y <= view.vh + margin;
+  }
+  /** the HUD-free frame of the viewport (top bar, palette + ticker, the right column: minimap / keys / tray, the left goals tracker) in CSS px */
+  const issFrameO = { L: 26, R: 1254, T: 70, B: 564, ui: 1, rightCol: 250, rightColH: 600, leftCol: 390, leftColH: 520 };
+  function issFrame(view) {
+    let ui = 1; try { const U = mod('ui'); if (U && typeof U.uiScaleEffective === 'function') ui = fin(U.uiScaleEffective(), 1) || 1; } catch (e) { ui = 1; }
+    issFrameO.ui = ui; issFrameO.L = 26; issFrameO.R = view.vw - 26; issFrameO.T = 70 * ui; issFrameO.B = view.vh - 236 * ui;
+    issFrameO.rightCol = view.vw - 250 * ui; issFrameO.rightColH = 600 * ui; issFrameO.leftCol = 390 * ui; issFrameO.leftColH = 520 * ui;
+    return issFrameO;
+  }
+  function issInFrame(x, y, f) { return x >= f.L && x <= f.R && y >= f.T && y <= f.B && !(x > f.rightCol && y < f.rightColH) && !(x < f.leftCol && y < f.leftColH); }
+  const issGroups = {};
+  /** simple glyphs, r = half size in px: bolt, drop, wave, crack, gator (eye), link, mosquito, sandbag, crowd */
+  function drawIssueGlyph(g, kind, cx, cy, r, color) {
+    g.save(); g.translate(cx, cy); g.scale(r, r); g.lineCap = 'round'; g.lineJoin = 'round'; g.fillStyle = color; g.strokeStyle = color; g.lineWidth = 0.22;
+    switch (kind) {
+      case 'bolt': g.beginPath(); g.moveTo(0.15, -1); g.lineTo(-0.55, 0.12); g.lineTo(-0.02, 0.12); g.lineTo(-0.2, 1); g.lineTo(0.55, -0.18); g.lineTo(0.02, -0.18); g.closePath(); g.fill(); break;
+      case 'drop': g.beginPath(); g.moveTo(0, -1); g.bezierCurveTo(0.75, -0.05, 0.72, 0.95, 0, 0.95); g.bezierCurveTo(-0.72, 0.95, -0.75, -0.05, 0, -1); g.closePath(); g.fill(); break;
+      case 'wave': g.beginPath(); for (let w = 0; w < 2; w++) { const oy = w === 0 ? -0.35 : 0.4; g.moveTo(-0.95, oy); for (let x = -0.95; x <= 0.96; x += 0.16) g.lineTo(x, oy + 0.25 * Math.sin((x + 0.95) * 3.3)); } g.stroke(); break;
+      case 'crack': g.beginPath(); g.moveTo(-0.15, -1); g.lineTo(0.2, -0.45); g.lineTo(-0.3, -0.05); g.lineTo(0.25, 0.4); g.lineTo(-0.1, 1); g.moveTo(-0.3, -0.05); g.lineTo(-0.85, -0.3); g.moveTo(0.25, 0.4); g.lineTo(0.8, 0.6); g.stroke(); break;
+      case 'gator': g.save(); g.scale(1, 0.55); g.beginPath(); g.arc(0, 0, 1, 0, Math.PI * 2); g.fill(); g.restore(); g.fillStyle = 'rgba(10,8,24,.95)'; g.beginPath(); g.moveTo(0, -0.62); g.lineTo(0.17, 0); g.lineTo(0, 0.62); g.lineTo(-0.17, 0); g.closePath(); g.fill(); break;
+      case 'link': g.beginPath(); g.arc(-0.38, 0, 0.5, 0, Math.PI * 2); g.moveTo(0.88, 0); g.arc(0.38, 0, 0.5, 0, Math.PI * 2); g.stroke(); g.beginPath(); g.moveTo(-0.3, 0); g.lineTo(0.3, 0); g.stroke(); break;
+      case 'mosquito': g.beginPath(); g.moveTo(0, -0.25); g.lineTo(0, 0.95); g.stroke(); g.beginPath(); g.arc(0, 0.05, 0.3, 0, Math.PI * 2); g.fill(); g.save(); g.globalAlpha *= 0.75; g.beginPath(); g.scale(1, 0.45); g.arc(-0.5, -0.75, 0.48, 0, Math.PI * 2); g.moveTo(0.98, -0.75); g.arc(0.5, -0.75, 0.48, 0, Math.PI * 2); g.fill(); g.restore(); break;
+      case 'sandbag': g.fillRect(-0.95, 0.2, 0.85, 0.55); g.fillRect(0.1, 0.2, 0.85, 0.55); g.fillRect(-0.42, -0.45, 0.85, 0.55); break;
+      case 'crowd': g.beginPath(); g.arc(-0.38, -0.45, 0.3, 0, Math.PI * 2); g.moveTo(0.68, -0.45); g.arc(0.38, -0.45, 0.3, 0, Math.PI * 2); g.fill(); g.beginPath(); g.arc(-0.38, 0.75, 0.55, Math.PI, 0); g.moveTo(0.93, 0.75); g.arc(0.38, 0.75, 0.55, Math.PI, 0); g.fill(); break;
+      default: g.beginPath(); g.arc(0, 0, 0.6, 0, Math.PI * 2); g.fill();
+    }
+    g.restore();
+  }
+  R.drawIssueGlyph = drawIssueGlyph;
+  function issIconDisc(g, kind, color, x, y, r, a) {
+    g.globalAlpha = a; g.fillStyle = 'rgba(12,8,28,.88)'; g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill();
+    g.strokeStyle = color; g.lineWidth = 1.5; g.stroke();
+    drawIssueGlyph(g, kind, x, y, r * 0.58, color);
+  }
+  /** rings + columns + icons for every on-screen issue; returns the number drawn. selOnly: just the selected one's extras */
+  function drawBeacons(state, g, view, issues, sel, t0) {
+    const z = (camOf(state).zoom) || 1, perf = !!(state.ui && state.ui.perfMode), now = nowMs(), I = issuesApi();
+    const brA = 0.5 - 0.5 * Math.cos((now % ISS_BREATH_MS) / ISS_BREATH_MS * Math.PI * 2), brP = 0.5 - 0.5 * Math.cos((now % ISS_PULSE_MS) / ISS_PULSE_MS * Math.PI * 2);
+    let drawn = 0; issStats.capped = false;
+    // issues that share a footprint (no power + no water + full …): concentric rings, icons side by side
+    for (const k in issGroups) delete issGroups[k];
+    for (let k = 0; k < issues.length; k++) { const it = issues[k]; const key = it.rect ? ('r' + it.rect.tx + ',' + it.rect.ty + ',' + it.rect.w + ',' + it.rect.h) : ('t' + (it.tiles && it.tiles[0])); it._gk = key; issGroups[key] = (issGroups[key] | 0) + 1; }
+    const seenG = {}, anyPulse = !!(I && I.pulsing());
+    for (let pass = 0; pass < (anyPulse ? 2 : 1); pass++) for (let k = 0; k < issues.length; k++) {   // pulsing beacons (gauge hover) are drawn last, on top
+      if (drawn >= ISS_MAX) { issStats.capped = true; break; }
+      if (drawn > 4 && nowMs() - t0 > ISS_BUDGET_MS) { issStats.capped = true; break; }
+      const it = issues[k]; const pulsing = anyPulse && I.isPulsing(it.kind); if (anyPulse && (pass === 0) === pulsing) continue;
+      if (!issAnchorScreen(it, view, 160 * z, issPt)) continue;
+      const gi = seenG[it._gk] | 0, gn = issGroups[it._gk] | 0; seenG[it._gk] = gi + 1;
+      const isSel = sel && sel.id === it.id, br = pulsing ? brP : brA, single = !it.rect && it.tiles && it.tiles.length <= 1;
+      const col = it.color || '#FDD023', pad = (2 + 3 * br) * z + (pulsing ? 6 + 4 * br : 0) + (isSel ? 2 : 0) + (single ? 3 * z : 0) + gi * 3.5 * Math.max(0.75, z);
+      // ring: a soft outer glow (skipped in perf mode) and the crisp outline; a faint wash inside the first ring of a footprint
+      g.beginPath(); issOutlinePath(g, it, z, pad);
+      if (!perf && (gi === 0 || isSel)) { g.globalAlpha = (pulsing ? 0.5 : 0.22) + 0.25 * br; g.strokeStyle = col; g.lineWidth = (pulsing ? 12 : 9) * Math.max(0.75, z); g.stroke(); }
+      g.globalAlpha = 0.75 + 0.25 * br; g.strokeStyle = col; g.lineWidth = isSel || pulsing ? 3 : 2; g.stroke();
+      if (gi === 0 || pulsing) { g.globalAlpha = (isSel || pulsing ? 0.14 : 0.07) + 0.08 * br; g.fillStyle = col; g.fill(); }
+      // light column from the anchor up to the glyph disc (stacked issues fan out left / right)
+      const ax = issPt.x + (gi - (gn - 1) / 2) * 24 * Math.max(0.75, z), ay = issPt.y, hc = Math.max(28, ISS_COL_PX * Math.max(0.75, z)), top = ay - hc;
+      let grad = null; try { grad = g.createLinearGradient(ax, ay, ax, top); grad.addColorStop(0, issRgba(col, 0.9)); grad.addColorStop(1, issRgba(col, 0.12)); } catch (e) { grad = null; }
+      g.strokeStyle = grad || col; g.globalAlpha = 0.9;
+      if (!perf) { g.lineWidth = 6; g.globalAlpha = 0.18 + 0.12 * br; g.beginPath(); g.moveTo(ax, ay); g.lineTo(ax, top); g.stroke(); }
+      g.lineWidth = 2.5; g.globalAlpha = 0.9; g.beginPath(); g.moveTo(ax, ay); g.lineTo(ax, top); g.stroke();
+      g.globalAlpha = 0.9; g.fillStyle = col; g.beginPath(); g.arc(ax, ay, 2.5, 0, Math.PI * 2); g.fill();   // the foot
+      const ir = isSel ? 13 : 11;
+      issIconDisc(g, it.glyph || 'link', col, ax, top - ir - 2 - 3 * br, ir, 0.92 + 0.08 * br);
+      if (it.severity >= 3 && !isSel) { g.globalAlpha = 0.9; g.fillStyle = PAL.danger || '#E0443E'; g.beginPath(); g.arc(ax + ir * 0.8, top - ir * 1.8, 3, 0, Math.PI * 2); g.fill(); g.strokeStyle = 'rgba(12,8,28,.9)'; g.lineWidth = 1; g.stroke(); }   // red dot: severity 3
+      drawn++;
+    }
+    g.globalAlpha = 1;
+    return drawn;
+  }
+  function issWrap(g, text, maxW) {
+    const words = String(text).split(' '), lines = []; let line = '';
+    for (const w of words) { const t = line ? line + ' ' + w : w; if (g.measureText(t).width > maxW && line) { lines.push(line); line = w; } else line = t; }
+    if (line) lines.push(line); return lines.slice(0, 4);
+  }
+  /** the floating label beside the selected issue's icon: title + fix (+ the key hint) */
+  function drawIssueLabel(state, g, view, sel) {
+    if (!sel || !issAnchorScreen(sel, view, 0, issPt)) return false;
+    const f = issFrame(view); if (!issInFrame(issPt.x, issPt.y, f)) return false;   // off-screen or under the HUD: the edge arrow carries the title instead
+    const z = (camOf(state).zoom) || 1, hc = Math.max(28, ISS_COL_PX * Math.max(0.75, z)), col = sel.color || '#FDD023';
+    let gi = 0, gn = 1; if (sel._gk) { gn = issGroups[sel._gk] | 0 || 1; const li = issuesApi() ? issuesApi().list(state) : []; for (let k = 0; k < li.length; k++) { if (li[k] === sel) break; if (li[k]._gk === sel._gk) gi++; } }
+    const ax = issPt.x + (gi - (gn - 1) / 2) * 24 * Math.max(0.75, z), iy = issPt.y - hc - 16;
+    g.font = 'bold 13px system-ui, -apple-system, "Segoe UI", sans-serif';
+    const title = issWrap(g, sel.title, 230); g.font = '12px system-ui, -apple-system, "Segoe UI", sans-serif'; const fix = issWrap(g, sel.fix || '', 230);
+    const hint = 'Fix / Locate in the Issues tray · I next · Esc';
+    let bw = 0; g.font = 'bold 13px system-ui, -apple-system, "Segoe UI", sans-serif'; for (const l of title) bw = Math.max(bw, g.measureText(l).width);
+    g.font = '12px system-ui, -apple-system, "Segoe UI", sans-serif'; for (const l of fix) bw = Math.max(bw, g.measureText(l).width); g.font = '11px system-ui, -apple-system, "Segoe UI", sans-serif'; bw = Math.max(bw, g.measureText(hint).width);
+    bw = Math.min(260, bw + 26); const bh = 10 + title.length * 17 + fix.length * 15 + 16;
+    let bx = ax + 24, by = iy - bh / 2; if (bx + bw > f.rightCol - 8 && iy < f.rightColH) bx = ax - 24 - bw; else if (bx + bw > view.vw - 8) bx = ax - 24 - bw; by = clamp(by, f.T, Math.max(f.T, f.B - bh));
+    g.globalAlpha = 0.96; g.fillStyle = 'rgba(26,18,48,.95)'; g.fillRect(bx, by, bw, bh); g.strokeStyle = issRgba(col, 0.9); g.lineWidth = 1; g.strokeRect(bx + 0.5, by + 0.5, bw - 1, bh - 1);
+    g.fillStyle = col; g.fillRect(bx, by, 4, bh);
+    // a connector from the box to the icon
+    g.strokeStyle = issRgba(col, 0.7); g.lineWidth = 1.5; g.beginPath(); g.moveTo(bx > ax ? bx : bx + bw, by + Math.min(bh - 6, 18)); g.lineTo(ax + (bx > ax ? 14 : -14), iy); g.stroke();
+    g.textBaseline = 'top'; g.textAlign = 'left'; let ty = by + 8; const tx = bx + 14;
+    g.fillStyle = '#F4EEE2'; g.font = 'bold 13px system-ui, -apple-system, "Segoe UI", sans-serif'; for (const l of title) { g.fillText(l, tx, ty); ty += 17; }
+    g.fillStyle = col; g.font = '12px system-ui, -apple-system, "Segoe UI", sans-serif'; for (const l of fix) { g.fillText(l, tx, ty); ty += 15; }
+    g.fillStyle = 'rgba(185,175,201,.95)'; g.font = '11px system-ui, -apple-system, "Segoe UI", sans-serif'; g.fillText(hint, tx, ty + 1);
+    g.globalAlpha = 1; g.textBaseline = 'alphabetic';
+    return true;
+  }
+  const issArrowPts = []; for (let k = 0; k < ISS_ARROWS; k++) issArrowPts.push({ x: 0, y: 0 });
+  /** border arrows for issues outside the viewport (inset past the top bar and the palette), with the glyph and the distance in tiles */
+  function drawEdgeArrows(state, g, view, issues, sel) {
+    const f = issFrame(view); const L = f.L, T = f.T, B = f.B, cx = view.vw / 2, cy = (T + B) / 2;
+    const now = nowMs(), br = 0.5 - 0.5 * Math.cos((now % ISS_BREATH_MS) / ISS_BREATH_MS * Math.PI * 2);
+    const cam = camOf(state); const camT = (cam.x / 32 + cam.y / 16) / 2, camU = (cam.y / 16 - cam.x / 32) / 2;
+    let n = 0;
+    for (let k = 0; k < issues.length && n < ISS_ARROWS; k++) {
+      const it = issues[k]; issAnchorScreen(it, view, 0, issPt);
+      const px = issPt.x, py = issPt.y;
+      if (issInFrame(px, py, f)) continue;   // visible (inside the HUD-free frame): no arrow
+      let dx = px - cx, dy = py - cy; const len = Math.hypot(dx, dy) || 1; dx /= len; dy /= len;
+      // ray from the centre to the inset rect; a hit in the right column (minimap / keys / tray) or the left tracker is re-cast against that column's edge
+      let Rr = f.R, Lx = L, t = 1e9; if (dx > 1e-6) t = Math.min(t, (Rr - cx) / dx); if (dx < -1e-6) t = Math.min(t, (Lx - cx) / dx); if (dy > 1e-6) t = Math.min(t, (B - cy) / dy); if (dy < -1e-6) t = Math.min(t, (T - cy) / dy);
+      let ex = cx + dx * t, ey = cy + dy * t;
+      if (ex > f.rightCol && ey < f.rightColH) { Rr = f.rightCol; t = 1e9; if (dx > 1e-6) t = Math.min(t, (Rr - cx) / dx); if (dx < -1e-6) t = Math.min(t, (Lx - cx) / dx); if (dy > 1e-6) t = Math.min(t, (B - cy) / dy); if (dy < -1e-6) t = Math.min(t, (T - cy) / dy); ex = cx + dx * t; ey = cy + dy * t; }
+      if (ex < f.leftCol && ey < f.leftColH) { Lx = f.leftCol; t = 1e9; if (dx > 1e-6) t = Math.min(t, (Rr - cx) / dx); if (dx < -1e-6) t = Math.min(t, (Lx - cx) / dx); if (dy > 1e-6) t = Math.min(t, (B - cy) / dy); if (dy < -1e-6) t = Math.min(t, (T - cy) / dy); ex = cx + dx * t; ey = cy + dy * t; }
+      let near = false; for (let j = 0; j < n; j++) if (Math.hypot(issArrowPts[j].x - ex, issArrowPts[j].y - ey) < 26) { near = true; break; }
+      if (near) continue;
+      issArrowPts[n].x = ex; issArrowPts[n].y = ey; n++;
+      const col = it.color || '#FDD023', isSel = sel && sel.id === it.id, a = it.anchor || { tx: 32, ty: 32 };
+      const dist = Math.round(BSU.chebyshev(fin(a.tx, 32), fin(a.ty, 32), camT, camU));
+      // triangle pointing outward
+      g.globalAlpha = 0.75 + 0.25 * br; g.fillStyle = col; g.beginPath(); g.moveTo(ex + dx * 10, ey + dy * 10); g.lineTo(ex - dy * 7, ey + dx * 7); g.lineTo(ex + dy * 7, ey - dx * 7); g.closePath(); g.fill();
+      g.strokeStyle = 'rgba(12,8,28,.9)'; g.lineWidth = 1; g.stroke();
+      issIconDisc(g, it.glyph || 'link', col, ex - dx * 16, ey - dy * 16, isSel ? 12 : 10, 0.95);
+      if (dist > 0 && !isSel) { g.globalAlpha = 0.95; g.font = 'bold 10px system-ui, -apple-system, "Segoe UI", sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; const lx = ex - dx * 36, ly = ey - dy * 36; const tw = g.measureText(dist + 't').width + 8; g.fillStyle = 'rgba(12,8,28,.85)'; g.fillRect(lx - tw / 2, ly - 7, tw, 14); g.fillStyle = col; g.fillText(dist + 't', lx, ly); g.textAlign = 'left'; g.textBaseline = 'alphabetic'; }
+      if (isSel) {   // the selected issue is off-screen: its title rides with the arrow
+        g.font = 'bold 12px system-ui, -apple-system, "Segoe UI", sans-serif'; const tt = String(it.title) + (dist > 0 ? ' · ' + dist + ' tiles' : ''), tw = g.measureText(tt).width + 14;
+        let lx = ex - dx * 34 - tw / 2, ly = ey - dy * 34 - 9; if (Math.abs(dy) < 0.7) { lx = dx > 0 ? ex - 48 - tw : ex + 48; }   // side arrows: the box sits beside the disc; top / bottom arrows: inward of it
+        lx = clamp(lx, f.L, view.vw - tw - 8); ly = clamp(ly, f.T, f.B - 18);
+        g.globalAlpha = 0.95; g.fillStyle = 'rgba(26,18,48,.95)'; g.fillRect(lx, ly, tw, 18); g.strokeStyle = issRgba(col, 0.9); g.lineWidth = 1; g.strokeRect(lx + 0.5, ly + 0.5, tw - 1, 17); g.fillStyle = '#F4EEE2'; g.textBaseline = 'middle'; g.fillText(tt, lx + 7, ly + 9); g.textBaseline = 'alphabetic';
+      }
+    }
+    g.globalAlpha = 1;
+    return n;
+  }
+  function passBeacons(state, g, view) {
+    const I = issuesApi(); if (!I || !state || !state.tiles) return;
+    if (I.spotlight()) return;   // the spotlight pass draws them above the dim
+    const t0 = nowMs(); const issues = I.list(state), sel = I.selected(state);
+    issStats.drawn = drawBeacons(state, g, view, issues, sel, t0); issStats.ms = nowMs() - t0; issStats.frames++;
+  }
+  function passSpotlight(state, g, view) {
+    const I = issuesApi(); if (!I || !state || !state.tiles) return;
+    const t0 = nowMs(); const issues = I.list(state), sel = I.selected(state), z = (camOf(state).zoom) || 1;
+    if (I.spotlight()) {
+      // dim everything except the issue tiles (even-odd: the viewport minus every outline; rects deduped so stacked issues do not cancel)
+      g.globalAlpha = ISS_DIM; g.fillStyle = 'rgb(6,4,18)'; g.beginPath(); g.rect(0, 0, view.vw, view.vh);
+      const seen = new Set(); let holes = 0;
+      for (let k = 0; k < issues.length && holes < ISS_MAX; k++) {
+        const it = issues[k]; const key = it.rect ? ('r' + it.rect.tx + ',' + it.rect.ty + ',' + it.rect.w + ',' + it.rect.h) : ('t' + (it.tiles && it.tiles[0]));
+        if (seen.has(key)) continue; seen.add(key);
+        if (!issAnchorScreen(it, view, 200 * z, issPt)) continue;
+        issOutlinePath(g, it, z, 3 * z); holes++;
+      }
+      g.fill('evenodd'); g.globalAlpha = 1;
+      issStats.drawn = drawBeacons(state, g, view, issues, sel, t0);
+    }
+    issStats.arrows = drawEdgeArrows(state, g, view, issues, sel);
+    issStats.labels = drawIssueLabel(state, g, view, sel) ? 1 : 0;
+    issStats.ms = Math.max(issStats.ms, nowMs() - t0);
+  }
+  /** last frame's beacon numbers: {drawn, arrows, labels, ms, capped} */
+  R.issueStats = function () { return { drawn: issStats.drawn, arrows: issStats.arrows, labels: issStats.labels, ms: issStats.ms, capped: issStats.capped, frames: issStats.frames, max: ISS_MAX, arrowsMax: ISS_ARROWS }; };
+  R._issueDraw = { beacons: drawBeacons, label: drawIssueLabel, arrows: drawEdgeArrows, glyph: drawIssueGlyph };
+
   // Passes (same-name registrations replace render's fallbacks for 'tint'; overlays/hud stay render's)
   R.registerPass('weather', function (s, g, v, a, dt) { try { passWeather(s, g, v, a, dt); } finally { g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; } }, 5);
   R.registerPass('tint', function (s, g, v) { try { passTint(s, g, v); } finally { g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; } }, 6);
   R.registerPass('lights', function (s, g, v) { try { passLights(s, g, v); } finally { g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; } }, 7);
+  R.registerPass('beacons', function (s, g, v) { try { passBeacons(s, g, v); } finally { g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; g.lineWidth = 1; } }, 7.5);   // issue spotlight pass
+  R.registerPass('spotlight', function (s, g, v) { try { passSpotlight(s, g, v); } finally { g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; g.lineWidth = 1; } }, 9.5);
   R.registerPass('fog', function (s, g, v, a, dt) { try { passFog(s, g, v, a, dt); } finally { g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; } }, 8);
   R.registerPass('fireworks', function (s, g, v) { try { passFireworks(s, g, v); } finally { g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; } }, 8.2);
   R.registerPass('storm', function (s, g, v, a, dt) { try { passStorm(s, g, v, a, dt); } finally { g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; } }, 8.5);
@@ -30183,9 +31034,12 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
       const g = el('div', 'need'); g.dataset.key = k; const lab = el('div', 'need-label', (BSU.data && BSU.data.needs && BSU.data.needs[k] ? BSU.data.needs[k].label : k)); const bar = el('div', 'bar'); const f = el('div', 'fill'); bar.appendChild(f); const val = el('div', 'need-val', '—');
       g.appendChild(lab); g.appendChild(bar); g.appendChild(val); gauges.appendChild(g); E.needEls[k] = { el: g, fill: f, val: val };
       g.addEventListener('click', function () { const s = stateOf(); const b = (BSU.data.needs[k] || {}).build; if (s && b) M.openBuildMenu(s, { focus: b, pulse: true }); });
+      if (k === 'power' || k === 'water') { g.addEventListener('mouseenter', function () { const I = issuesApi(); if (I) I.pulse(k); }); g.addEventListener('mouseleave', function () { const I = issuesApi(); if (I) I.pulse(null); }); }   // issue spotlight pass: hovering the gauge pulses every unpowered / unwatered beacon
     }
     const ntext = el('button', 'needs-text'); ntext.id = 'needs-text'; ntext.type = 'button'; ntext.addEventListener('click', function () { const s = stateOf(); const b = ntext.dataset.build; if (s && b) { M.openBuildMenu(s, { focus: b, pulse: true }); } });
-    strip.appendChild(gauges); strip.appendChild(ntext);
+    const nloc = btn('needs-locate', 'Locate', 'small hidden', function () { const s = stateOf(); const fam = nloc.dataset.family; if (!s || !fam) return; const it = issueFirstOf(s, (issuesApi() && issuesApi().families()[fam]) || []); if (it) locateIssue(s, it); }); nloc.title = 'Ease the camera to the first building with this problem';
+    const nrow = el('div', 'needs-row'); nrow.appendChild(ntext); nrow.appendChild(nloc);
+    strip.appendChild(gauges); strip.appendChild(nrow); E['needs-locate'] = nloc;
     c.appendChild(bub); c.appendChild(head); c.appendChild(progRow); c.appendChild(acts); c.appendChild(next); c.appendChild(bg); c.appendChild(strip);
     E['objective-card'] = c; E['obj-portrait'] = portrait; E['obj-kicker'] = kick; E['obj-title'] = title; E['obj-text'] = text; E['obj-why'] = why; E['obj-progress'] = prog; E['obj-prog-row'] = progRow; E['obj-fill'] = fill; E['obj-count'] = count; E['obj-actions'] = acts;
     E['btn-obj-build'] = build; E['btn-showme'] = showme; E['btn-postcard-obj'] = post; E['btn-obj-dismiss'] = dis; E['obj-next'] = next; E['obj-background'] = bg; E['speech-bubble'] = bub; E['needs-strip'] = strip; E['needs-text'] = ntext;
@@ -30298,7 +31152,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     if (!world) { world = el('canvas', 'world'); world.id = 'world'; world.setAttribute('tabindex', '0'); app.appendChild(world); }
     E.world = world;
     const hud = el('div'); hud.id = 'hud'; E.hud = hud;
-    hud.appendChild(buildTopbar()); hud.appendChild(buildAlert()); hud.appendChild(buildMinimap()); hud.appendChild(buildOverlays());
+    hud.appendChild(buildTopbar()); hud.appendChild(buildAlert()); hud.appendChild(buildMinimap()); hud.appendChild(buildOverlays()); hud.appendChild(buildIssuesTray());
     buildObjective().forEach(function (x) { hud.appendChild(x); });
     const notes = el('div'); notes.id = 'notifications'; E.notifications = notes; hud.appendChild(notes);
     hud.appendChild(buildToast()); hud.appendChild(buildInspect());
@@ -30377,7 +31231,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
   // ---------------------------------------------------------------------------
   // DOM listeners → the machine (pointer / wheel / keys / gestures)
   // ---------------------------------------------------------------------------
-  function modsOf(e) { return { ctrl: !!e.ctrlKey, shift: !!e.shiftKey, meta: !!e.metaKey, alt: !!e.altKey, code: e.code }; }
+  function modsOf(e) { return { ctrl: !!e.ctrlKey, shift: !!e.shiftKey, meta: !!e.metaKey, alt: !!e.altKey, code: e.code, repeat: !!e.repeat }; }
   function attachInput(world) {
     const pt = function (type) { return function (e) { try { if (type === 'down' && typeof world.focus === 'function') world.focus(); M.pointer(type, fin(e.offsetX, 0), fin(e.offsetY, 0), fin(e.button, 0), modsOf(e)); if (type === 'down' && e.preventDefault) e.preventDefault(); } catch (err) { uerr('pointer:' + type, err); } }; };
     world.addEventListener('pointerdown', pt('down'));
@@ -30431,7 +31285,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     on('game:decision', function (p) { if (!p || !p.id) return; if (p.closed) { delete gameDecs[p.id]; return; } gameDecs[p.id] = { id: p.id, kind: p.kind, options: Array.isArray(p.options) ? p.options : null, def: p.def, deadlineTicks: fin(p.deadlineTicks, 0) }; });   // football pass D: the engine emits this just before ui.decision, so openToast finds the options
     on('storm:toast', function (p) { const s = stateOf(); if (s) M.decision(s, { id: p.id, text: p.text, yes: p.yes, no: p.no, untilTick: p.untilTick, ticks: L.toastTicks }); });
     on('storm:named', function () { alertAt = -1e9; }); on('storm:watch', function () { alertAt = -1e9; }); on('storm:bands', function () { alertAt = -1e9; }); on('storm:landfall', function () { alertAt = -1e9; }); on('storm:passed', function () { alertAt = -1e9; });
-    on('mosquito:warning', function (p) { alertAt = -1e9; const s = stateOf(); if (s && p && p.text) M.notify(s, { kind: 'wildlife', text: p.text }); });
+    on('mosquito:warning', function (p) { alertAt = -1e9; const s = stateOf(); if (s && p && p.text) M.notify(s, { kind: 'wildlife', text: p.text, locate: 'mosquito' }); });
     on('gator:campus', function () { alertAt = -1e9; });
     on('weather:heat', function () { alertAt = -1e9; });
     on('power:blackout', function () { alertAt = -1e9; }); on('power:restored', function () { alertAt = -1e9; });
@@ -30633,7 +31487,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     }
     return null;
   }
-  function keyup(key) { const d = panDirOf(key); if (d) held[d] = false; if (key === 'Shift') { heldShift = false; if (live.state === 'PLACING') updateGhostQuiet(); } }
+  function keyup(key) { const d = panDirOf(key); if (d) held[d] = false; if (key === 'Shift') { heldShift = false; if (live.state === 'PLACING') updateGhostQuiet(); } if (key === 'i' || key === 'I') { if (heldI) { heldI = false; applySpotlight(); } } }   // issue spotlight pass: releasing I restores the map
   /** keydown(key, mods) → true when handled (also headless.key) */
   M.keydown = function (key, mods) {
     try {
@@ -30673,7 +31527,14 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
         if (!E.popover.classList.contains('hidden')) { show(E.popover, false); return true; }
         if (s.ui.panel) { M.openPanel(null); return true; }
         if (card) { M.closeCard(); return true; }
+        if (spotToggled || (issuesApi() && issuesApi().selectedId() !== null)) { clearIssueUi(); return true; }   // issue spotlight pass: Esc #5 clears the issue selection / spotlight
         return false;
+      }
+      // issue spotlight pass: I is handled here (not in data.keys, data.js is not edited in this pass): tap = next issue, hold = spotlight, Shift+I = toggle spotlight
+      if ((key === 'i' || key === 'I') && !mods.ctrl && !mods.meta && !mods.alt) {
+        if (mods.shift) { toggleSpotlight(); return true; }
+        if (!mods.repeat) cycleIssue(s, 1);
+        heldI = true; applySpotlight(); return true;
       }
       let k = key;
       if (mods.shift && typeof mods.code === 'string' && /^Digit[1-9]$/.test(mods.code)) k = mods.code.slice(5);
@@ -31269,6 +32130,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
       g.el.title = (needsData()[t.key] || {}).label + ': ' + t.used + ' ' + ((needsData()[t.key] || {}).unit || '') + ' using ' + t.cap + ' of capacity' + (t.short > 0 ? ' · ' + t.short + ' unserved' : '') + ' · click to build a ' + ((rowOf((needsData()[t.key] || {}).build) || {}).name || '');
     }
     const nt = E['needs-text']; if (n.binding) { setText(nt, n.binding.text); nt.dataset.level = n.binding.level; nt.dataset.build = n.binding.build || ''; nt.disabled = !n.binding.build; }
+    try { const fam = n.binding && n.binding.level !== 'ok' ? ({ power: 'power', water: 'water', beds: 'capacity', seats: 'capacity', dining: 'capacity' })[n.binding.key] || '' : ''; const nl = E['needs-locate']; if (nl) { const any = fam && issuesApi() && issuesApi().ofFamily(s, fam).length > 0; nl.dataset.family = fam; show(nl, !!any); } } catch (e) { uerr('needsLocate', e); }
   }
   /** utility coverage warning for the ghost's second line (none while the tutorial suppresses coverage) */
   function utilityWarning(s, row, r) {
@@ -31285,7 +32147,8 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
       if (row.needsPower && pre.power === false) { text = row.name + ' placed with no power yet. Build a Power Substation within 10 tiles (P shows coverage).'; ov = OV.POWER; }
       else if (row.needsWater && pre.water === false) { text = row.name + ' placed with no water yet. Build a Water Tower within 12 tiles (W shows coverage).'; ov = OV.WATER; }
       if (!text) return;
-      M.notify(s, { kind: 'info', text: text, ttl: 9000, action: { label: 'Show coverage', fn: function (st) { M.setOverlay(st, ov); } } });
+      try { if (BSU.issues) BSU.issues.invalidate(); } catch (e) { /* */ }
+      M.notify(s, { kind: 'info', text: text, ttl: 9000, locate: ov === OV.POWER ? 'power' : 'water', action: { label: 'Show coverage', fn: function (st) { M.setOverlay(st, ov); } } });
     } catch (e) { uerr('placedHint', e); }
   }
   // ---- effects → plain lines (the detail card)
@@ -31536,6 +32399,114 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
   M._ux = { needsOf: needsOf, recommend: recommend, objTarget: objTarget, effectLines: effectLines, requirementsOf: requirementsOf, utilityWarning: utilityWarning };
 
   // ---------------------------------------------------------------------------
+  // Issue spotlight pass: the Issues tray (docked under the minimap / overlay keys), Fix / Locate, keys
+  // ---------------------------------------------------------------------------
+  const tray = { key: '', ageAt: -1e9, rows: [], collapsed: false, userCollapsed: false, clearAt: -1e9, hadIssues: false, at: -1e9, lastCount: 0 };
+  let heldI = false, spotToggled = false;
+  function issuesApi() { const I = BSU.issues; return (I && typeof I.list === 'function') ? I : null; }
+  function issueList(s) { const I = issuesApi(); return I ? I.list(s) : []; }
+  function applySpotlight() { const I = issuesApi(); if (I) I.spotlight(spotToggled || heldI); if (E['issues-spot']) cls(E['issues-spot'], 'active', spotToggled); }
+  function toggleSpotlight() { spotToggled = !spotToggled; applySpotlight(); tray.key = ''; }
+  /** ease the camera to an issue, select it (the floating label) and flash its tiles */
+  function locateIssue(s, it) {
+    const I = issuesApi(); if (!I || !it) return false;
+    I.select(it.id); const a = it.anchor || { tx: 32, ty: 32 };
+    call('render', 'panToTile', fin(a.tx, 32), fin(a.ty, 32));
+    if (it.tiles && it.tiles.length) call('render', 'flashTiles', it.tiles.slice(0, 64), 900);
+    if (s && s.setPiece) call('render', 'captureCameraTouch', s);
+    tray.key = ''; return true;
+  }
+  /** run an issue's one-click fix: open the build menu on the card, pick a tool, show an overlay, or repair / relocate */
+  function fixIssue(s, it) {
+    const I = issuesApi(); if (!I || !it) return { ok: false, reason: 'No issue' };
+    const a = it.action; let r = { ok: true };
+    locateIssue(s, it);
+    if (!a) return r;
+    if (a.openMenuCard) { M.openBuildMenu(s, { focus: a.openMenuCard, pulse: true }); }
+    else if (a.tool) { M.selectTool(s, a.tool); }
+    else if (Number.isFinite(a.overlay)) { M.setOverlay(s, a.overlay); }
+    else if (Number.isFinite(a.repair)) { r = call('buildings', 'repair', s, a.repair) || r; }
+    else if (Number.isFinite(a.repairLevee)) { r = call('buildings', 'repairLevee', s, a.repairLevee) || r; }
+    else if (Number.isFinite(a.relocate)) { call('wildlife', 'relocate', s, a.relocate); r = { ok: true }; }
+    if (r && r.ok === false) { call('audio', 'play', 'invalid'); if (r.reason) M.notify(s, { kind: 'info', text: r.reason, ttl: 4000 }); }
+    else if (Number.isFinite(a.repair) || Number.isFinite(a.repairLevee) || Number.isFinite(a.relocate)) { I.select(null); M.notify(s, { kind: 'info', text: 'Fixed: ' + it.title + (r && r.cost > 0 ? ' · ' + money(r.cost) : ''), ttl: 3500 }); }
+    I.invalidate(); tray.key = '';
+    return r;
+  }
+  function cycleIssue(s, dir) { const I = issuesApi(); if (!I) return null; const it = I.cycle(s, dir); if (it) locateIssue(s, it); else { I.select(null); M.notify(s, { kind: 'info', text: 'All clear: no issues on campus', ttl: 2500 }); } return it; }
+  function clearIssueUi() { const I = issuesApi(); if (I) I.select(null); spotToggled = false; heldI = false; applySpotlight(); tray.key = ''; }
+  function issueFirstOf(s, kinds) { const I = issuesApi(); if (!I) return null; const l = I.ofKinds(s, kinds); return l.length ? l[0] : null; }
+  /** which issue kinds a notification / needs line is about (used to add a 'Locate' button) */
+  function locateKindsOf(spec) {
+    if (!spec) return null;
+    if (spec.locate) { const lc = spec.locate; if (typeof lc === 'string') return (issuesApi() && issuesApi().families()[lc]) || [lc]; if (Array.isArray(lc)) return lc; if (lc.kind) return [lc.kind]; if (lc.family) return (issuesApi() && issuesApi().families()[lc.family]) || null; return null; }
+    const t = String(spec.text || ''); const F = issuesApi() ? issuesApi().families() : null; if (!F) return null;
+    if (/gator/i.test(t)) return F.gator; if (/flood/i.test(t)) return F.flood; if (/levee/i.test(t)) return F.levee; if (/mosquito/i.test(t)) return F.mosquito;
+    if (/blackout|brownout|no power|unpowered/i.test(t)) return F.power; if (/boil|no water/i.test(t)) return F.water; if (/damage|ruin/i.test(t)) return F.damage;
+    return null;
+  }
+  function buildIssuesTray() {
+    const wrap = el('div', 'hidden'); wrap.id = 'issues-tray';
+    const head = el('div'); head.id = 'issues-head';
+    const n = el('span', 'n', ''); n.id = 'issues-count'; const sub = el('span', 'sub', ''); sub.id = 'issues-sub';
+    const spot = btn('issues-spot', 'Spotlight', 'small', function () { toggleSpotlight(); }); spot.title = 'Dim the map except the issues (Shift+I; hold I)';
+    const car = btn('issues-toggle', '▾', 'icon small', function () { tray.userCollapsed = !tray.userCollapsed; tray.key = ''; }); car.title = 'Collapse / expand';
+    head.appendChild(n); head.appendChild(sub); head.appendChild(spot); head.appendChild(car);
+    head.addEventListener('click', function (ev) { if (ev && ev.target && (ev.target === spot || ev.target === car)) return; if (tray.userCollapsed) { tray.userCollapsed = false; tray.key = ''; } else { const s = stateOf(); if (s) cycleIssue(s, 1); } });
+    const list = el('div'); list.id = 'issues-list'; const more = el('div', 'hidden', ''); more.id = 'issues-more';
+    wrap.appendChild(head); wrap.appendChild(list); wrap.appendChild(more);
+    E['issues-tray'] = wrap; E['issues-head'] = head; E['issues-count'] = n; E['issues-sub'] = sub; E['issues-spot'] = spot; E['issues-toggle'] = car; E['issues-list'] = list; E['issues-more'] = more;
+    return wrap;
+  }
+  function issueRow(s, it, sel) {
+    const row = el('div', 'issue-row' + (sel ? ' sel' : '')); row.dataset.id = it.id; row.dataset.kind = it.kind; try { row.style.borderLeftColor = it.color || '#FDD023'; if (sel) row.style.boxShadow = '0 0 0 .2rem ' + (it.color || '#FDD023'); } catch (e) { /* stub */ } row.title = it.fix || it.title;
+    const ic = el('canvas'); ic.width = 18; ic.height = 18; try { const g = ic.getContext('2d'); if (g && has('render', 'drawIssueGlyph')) call('render', 'drawIssueGlyph', g, it.glyph, 9, 9, 7, it.color || '#FDD023'); } catch (e) { /* stub */ }
+    const col = el('div', 't', it.title); const age = el('span', 'a', ' · ' + (issuesApi() ? issuesApi().ageText(s, it) : '')); col.appendChild(age);
+    const fix = btn(null, 'Fix', 'small fix', function () { const st = stateOf(); if (st) fixIssue(st, issuesApi().byId(st, it.id) || it); }); fix.title = it.fix || 'Fix it';
+    const loc = btn(null, 'Locate', 'small', function () { const st = stateOf(); if (st) locateIssue(st, issuesApi().byId(st, it.id) || it); }); loc.title = 'Ease the camera there (I cycles)';
+    row.appendChild(ic); row.appendChild(col); row.appendChild(fix); row.appendChild(loc);
+    row.addEventListener('click', function (ev) { if (ev && ev.target && (ev.target === fix || ev.target === loc)) return; const st = stateOf(); if (st) locateIssue(st, issuesApi().byId(st, it.id) || it); });
+    return { el: row, age: age, id: it.id };
+  }
+  /** rows that fit between the overlay keys and the palette; < 2 → chip only ("space is tight") */
+  function trayRowsFit() {
+    try {
+      const sc = effScale || 1, px = 10 * sc, top = (5.6 + 28.4) * px, bot = (18 + 2.8 + 2 + 1) * px, head = 3.4 * px, row = 3.9 * px;
+      const h = fin(window.innerHeight, 800) - top - bot - head; return clamp(Math.floor(h / row), 0, 6);
+    } catch (e) { return 4; }
+  }
+  function updateIssues(s) {
+    if (!dom() || !E['issues-tray']) return;
+    const I = issuesApi(); if (!I) return;
+    if (clock - tray.at < 250) return; tray.at = clock;
+    if (titleOn || coach.step >= 0) { show(E['issues-tray'], false); tray.key = ''; return; }
+    const list = I.list(s), sel = I.selectedId(), fit = trayRowsFit();
+    const collapsed = tray.userCollapsed || fit < 2;
+    if (list.length === 0) {
+      if (tray.hadIssues) { tray.hadIssues = false; tray.clearAt = clock; }
+      const showClear = clock - tray.clearAt < 3000;
+      show(E['issues-tray'], showClear); if (!showClear) { tray.key = ''; return; }
+      const k = 'clear'; if (tray.key !== k) { tray.key = k; setText(E['issues-count'], 'All clear ✓'); setText(E['issues-sub'], ''); cls(E['issues-head'], 'clear', true); cls(E['issues-tray'], 'collapsed', true); clear(E['issues-list']); tray.rows = []; show(E['issues-more'], false); }
+      return;
+    }
+    tray.hadIssues = true; show(E['issues-tray'], true);
+    const shown = collapsed ? 0 : Math.min(fit, list.length);
+    const key = list.length + '|' + shown + '|' + (sel || '') + '|' + list.slice(0, shown).map(function (it) { return it.id + it.title + it.severity; }).join(';');
+    if (key !== tray.key) {
+      tray.key = key; tray.ageAt = clock;
+      setText(E['issues-count'], list.length + (list.length === 1 ? ' issue' : ' issues'));
+      const w3 = list.filter(function (it) { return it.severity >= 3; }).length; setText(E['issues-sub'], w3 ? w3 + ' urgent' : (collapsed ? 'click to cycle' : ''));
+      cls(E['issues-head'], 'clear', false); cls(E['issues-tray'], 'collapsed', collapsed); setText(E['issues-toggle'], collapsed ? '▸' : '▾');
+      clear(E['issues-list']); tray.rows = [];
+      for (let k = 0; k < shown; k++) { const r = issueRow(s, list[k], list[k].id === sel); E['issues-list'].appendChild(r.el); tray.rows.push(r); }
+      const rest = list.length - shown; setText(E['issues-more'], rest > 0 ? '+' + rest + ' more · I cycles through all' : ''); show(E['issues-more'], rest > 0 && !collapsed);
+    } else if (clock - tray.ageAt >= 1000) {
+      tray.ageAt = clock; for (const r of tray.rows) { const it = I.byId(s, r.id); if (it) setText(r.age, ' · ' + I.ageText(s, it)); }
+    }
+  }
+  M.issues = { locate: function (s, idOrIt) { const I = issuesApi(); const it = typeof idOrIt === 'string' ? (I && I.byId(s || stateOf(), idOrIt)) : idOrIt; return locateIssue(s || stateOf(), it); }, fix: function (s, idOrIt) { const I = issuesApi(); const it = typeof idOrIt === 'string' ? (I && I.byId(s || stateOf(), idOrIt)) : idOrIt; return fixIssue(s || stateOf(), it); }, cycle: function (s, dir) { return cycleIssue(s || stateOf(), dir); }, spotlight: function (on) { if (on !== undefined) { spotToggled = !!on; applySpotlight(); } return spotToggled; }, clear: clearIssueUi, rowsFit: trayRowsFit, kindsOf: locateKindsOf, held: function () { return heldI; } };
+
+  // ---------------------------------------------------------------------------
   // Notifications, hints
   // ---------------------------------------------------------------------------
   function mapAction(s, a) {
@@ -31570,6 +32541,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
         d.appendChild(el('span', 'notif-text', spec.text));
         if (act) { const b = btn(null, act.label || 'Do it', 'notif-action small', function () { try { act.fn(stateOf()); } catch (e) { uerr('notif:action', e); } closeNotif(n, 'action'); }); d.appendChild(b); }
         if (spec.showMe != null) { const b = btn(null, 'Show me', 'notif-action small', function () { showMe(stateOf(), spec.showMe); }); d.appendChild(b); }
+        const lk = locateKindsOf(spec); if (lk && lk.length && issuesApi() && issuesApi().ofKinds(s, lk).length) { const b = btn(null, 'Locate', 'notif-action small locate', function () { const st = stateOf(); const it = issueFirstOf(st, lk); if (it) locateIssue(st, it); else M.notify(st, { kind: 'info', text: 'Already resolved', ttl: 2500 }); closeNotif(n, 'action'); }); d.appendChild(b); }   // issue spotlight pass
         const x = btn(null, '✕', 'notif-close icon', function () { closeNotif(n, 'close'); }); d.appendChild(x);
         E.notifications.appendChild(d); n.el = d;
       }
@@ -32163,6 +33135,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     sec('ghost', updateGhostCosmetics, state, dtMs);
     sec('undochip', updateUndoChip, state, dtMs);
     sec('perf', updatePerf, state, dtMs);
+    sec('issues', updateIssues, state, dtMs);
     sec('legend', function (s) { const ov = fin(s.ui.overlay, 0); const list = (BSU.data && BSU.data.overlays) || []; for (const o of list) cls(E.ovBtns[o.ov], 'active', o.ov === ov); const o = list.find(function (x) { return x.ov === ov; }); show(E.legend, !!o); if (o) setText(E.legend, o.name + ' · ' + o.legend.join(' → ')); }, state, dtMs);
   };
   /** every newGame (fresh) and load: close everything, tool null, palette refresh from the new root */
@@ -32177,6 +33150,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
       tk = { x: 0, line: null, seen: Math.max(0, ((state && state.ticker) || []).length - 1), w: 0, lastLen: -1, logOpen: false, cycle: 0 };
       bubble = { since: clock, until: 0, key: '' }; objKey = ''; alertKey = ''; alertAt = -1e9; msAt = -1e9; speedKey = ''; paletteKey = ''; palShownTab = ''; pipKey = ''; paletteDirty = true; capacityShown = false; skipShown = false; paletteHidden = null; hudFade = false;   // null: the first updateSetPiece re-syncs #palette and #hud.no-palette (a stale no-palette from the title / tutorial left a 0-height palette after newGame/load)
       M.debug.open = false; M.hoverTile = -1; lastGhost = null;
+      tray.key = ''; tray.rows = []; tray.hadIssues = false; tray.clearAt = -1e9; tray.userCollapsed = false; heldI = false; spotToggled = false; try { if (BSU.issues) { BSU.issues.select(null); BSU.issues.spotlight(false); BSU.issues.pulse(null); } } catch (e) { /* */ }
       bm.open = false; bm.hover = null; bm.selected = null; bm.pulseId = null; bm.key = ''; bm.detailKey = ''; bm.dirty = true; needsCache = null; needsAt = -1e9; needsKey = ''; coach.step = -1; coach.armedAt = 0; coach.paused = false;
       for (const k in held) held[k] = false;
       if (dom()) {
@@ -32279,6 +33253,21 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
       A(M.keydown('Dead', { ctrl: false, shift: false, meta: false, alt: false, code: 'Backquote' }) === true && M.debug.open === d0, 'Dead + code Backquote toggles back');
       A(M.keydown('Backquote', { ctrl: false, shift: false, meta: false, alt: false, code: 'Backquote' }) === true && M.debug.open === !d0, 'Backquote name toggles');
       M.debug.open = d0;
+      // 12. issue spotlight pass: I / Shift+I / Esc and the Fix action on a synthetic unpowered dorm
+      if (BSU.issues) {
+        const I = BSU.issues; I.reset(); s.economy.suppressCoverage = false; s.buildings = []; const dr = rowOf('dorm');
+        s.buildings[0] = { id: 0, type: 'dorm', tx: 20, ty: 20, w: dr ? dr.w : 3, h: dr ? dr.h : 2, rot: 0, name: 'Test Hall', hp: 1, built: 1, builtDay: 0, pilings: false, sunk: 0, powered: false, watered: true, provider: { power: -1, water: -1 }, flooded: false, floodedSince: -1, closedUntil: -1, blackout: false, tier: 0, upgradeDoneDay: -1, ruin: false, tarp: false };
+        s.plot = s.plot || {}; s.plot.founders = { tx: 20, ty: 26 }; for (let y = 22; y < 26; y++) s.tiles.surface[BSU.idx(20, y)] = BSU.SURF.PATH;
+        I.invalidate(); const li = I.list(s); A(li.length >= 1 && li[0].kind === 'unpowered', 'synthetic dorm → unpowered issue');
+        A(M.keydown('i', M0) === true && I.selectedId() === li[0].id && heldI === true && I.spotlight() === true, 'I selects the first issue and spotlights while held');
+        keyup('i'); A(heldI === false && I.spotlight() === false, 'releasing I restores the map');
+        A(M.keydown('i', { ctrl: false, shift: false, meta: false, alt: false, repeat: true }) === true && I.selectedId() === li[0].id, 'key repeat does not cycle'); keyup('i');
+        A(M.keydown('I', { ctrl: false, shift: true, meta: false, alt: false }) === true && I.spotlight() === true && spotToggled, 'Shift+I toggles spotlight on');
+        s.ui.tool = null; s.ui.panel = null; A(M.keydown('Escape', M0) === true && I.spotlight() === false && I.selectedId() === null, 'Esc clears the selection and the spotlight');
+        A(locateKindsOf({ text: 'A gator is on the quad' })[0] === 'gatorOnCampus' && locateKindsOf({ locate: 'power' }).length === 3 && locateKindsOf({ text: 'Saved' }) === null, 'locate kinds from a notification');
+        const r = fixIssue(s, li[0]); A(r && r.ok !== false && bm.open === true && I.selectedId() === li[0].id, 'Fix opens the build menu on the Substation card'); M.closeBuildMenu();
+        s.buildings = []; I.invalidate(); A(I.list(s).length === 0 && I.selectedId() === null, 'issue gone → selection gone'); I.reset();
+      }
       for (const t of M._tests) { try { t(s, A); } catch (e) { throw e; } }
       return { ok: true, notes: notes.join('; ') };
     } catch (e) {
@@ -32390,7 +33379,8 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     const coaching = el('input'); coaching.type = 'range'; coaching.id = 'sl-coaching';
     coaching.min = '0'; coaching.max = String(fin(PE.sliders && PE.sliders.coachingMax, 3000000)); coaching.step = String(fin(PE.sliders && PE.sliders.coachingStep, 100000));
     coaching.addEventListener('input', function () { call('economy', 'setCoaching', stateFor(host), parseInt(coaching.value, 10)); });
-    host._coaching = coaching; host._coachingRow = rowEl('Coaching budget', coaching);
+    host._coaching = coaching; host._coachingRow = rowEl('Coaching spend', coaching);
+    host._athRow = el('div', 'row'); host._athRow.id = 'bud-athletics'; host._athRow.appendChild(el('span', 'k', 'Athletics budget')); host._athV = el('span', 'v', ''); host._athRow.appendChild(host._athV); host.appendChild(host._athRow);   // P3
 
     host._ticket = seg('seg-ticket', ['$25', '$35', '$60'], [25, 35, 60], function (v) { call('economy', 'setTicket', stateFor(host), v); });
     host._ticketRow = rowEl('Ticket price', host._ticket);
@@ -32412,10 +33402,11 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
   function stateFor(host) { void host; return BSU.state || null; }
   const LEDGER_INC = BSU.LEDGER_INCOME_KEYS || ['tuition', 'state', 'donations', 'research', 'athletics', 'tailgate', 'parking', 'festivals', 'pelts', 'grants', 'endowment', 'disaster', 'insurance', 'misc'];
   const LEDGER_EXP = BSU.LEDGER_EXPENSE_KEYS || ['salaries', 'upkeep', 'utilities', 'coaching', 'interest', 'repair', 'prep', 'construction', 'demolition', 'boardCards', 'misc'];
-  function fillLedgerCol(host, map, keys) {
+  const EXP_LABELS = { athletics: ((BSU.data && BSU.data.football && BSU.data.football.budget) || {}).ledgerLabel || 'Athletics top-up' };   // PLAN_V2 P3: the one expense key whose label is not its name
+  function fillLedgerCol(host, map, keys, labels) {
     clear(host);
     let total = 0, any = false;
-    for (const k of keys) { const v = fin(map && map[k], 0); if (Math.round(v) === 0) continue; any = true; total += v; const r = el('div', 'row'); r.appendChild(el('span', 'k', capitalize(k))); r.appendChild(el('span', 'v', money(v))); host.appendChild(r); }
+    for (const k of keys) { const v = fin(map && map[k], 0); if (Math.round(v) === 0) continue; any = true; total += v; const r = el('div', 'row'); r.appendChild(el('span', 'k', (labels && labels[k]) || capitalize(k))); r.appendChild(el('span', 'v', money(v))); host.appendChild(r); }
     if (!any) host.appendChild(el('div', 'row', 'None'));
     const tr = el('div', 'row'); tr.appendChild(el('span', 'k', 'Total')); tr.appendChild(el('span', 'v', money(total))); host.appendChild(tr);
     return total;
@@ -32426,7 +33417,9 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     const titleEl = host.parentNode ? host.parentNode : null; void titleEl;
     const stm = call('economy', 'statement', s) || { income: {}, expense: {} };
     const inc = fillLedgerCol(host._income, stm.income, LEDGER_INC);
-    const exp = fillLedgerCol(host._expense, stm.expense, LEDGER_EXP);
+    const exp = fillLedgerCol(host._expense, stm.expense, LEDGER_EXP, EXP_LABELS);
+    const topUpNow = fin(s.ledger && s.ledger.month && s.ledger.month.expense && s.ledger.month.expense.athletics, 0);   // P3: a top-up moved this month shows before the month closes
+    if (topUpNow > 0 && fin(stm.expense && stm.expense.athletics, 0) === 0) { const r = el('div', 'row'); r.id = 'bud-topup-now'; r.appendChild(el('span', 'k', EXP_LABELS.athletics + ' (this month)')); r.appendChild(el('span', 'v', money(topUpNow))); host._expense.appendChild(r); }
     const net = inc - exp;
     const rw = call('economy', 'runway', s) || { months: 0, nextPayDay: -1, red: false };
     clear(host._runway);
@@ -32445,6 +33438,8 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
 
     const hasTeam = !!call('sports', 'season', s) && call('sports', 'season', s).hasTeam;
     show(host._coachingRow, !!hasTeam); if (hasTeam) host._coaching.value = String(fin(s.economy && s.economy.coaching, 0));
+    const AB = hasTeam ? call('sports', 'budget', s) : null; show(host._athRow, !!AB);   // P3: the cap, what is committed, what is free (the Season panel has the detail)
+    if (AB) setText(host._athV, money(AB.total) + ' · committed ' + money(AB.committed) + ' · ' + (AB.headroom >= 0 ? money(AB.headroom) + ' headroom' : money(-AB.headroom) + ' over'));
     const hasVenue = hasTeam && !!(call('sports', 'season', s) && call('sports', 'season', s).venue && call('sports', 'season', s).venue !== 'none');
     show(host._ticketRow, !!hasVenue); if (hasVenue) { const t = fin(s.economy && s.economy.ticket, 35); (host._ticket._btns || []).forEach(function (b) { cls(b, 'active', Number(b.dataset.v) === t); }); }
 
@@ -32860,70 +33855,162 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     return b && Array.isArray(b.list) && b.list.length ? b : null;
   }
 
+  // --- PLAN_V2 P3: the wide, tabbed Season panel -----------------------------------------------------------------
+  // 110 rem (P5), tabs across the top: Overview · Staff · Roster · Recruiting · Schedule · Records. Every engine setter
+  // call, control id and list id of pass D survives inside the tabs (tests click them by id); the tabs remember the
+  // last one open (ui settings.seasonTab) and ←/→ switch them while the panel has focus. Hooks for the next passes:
+  //   P1 → host._staffGrid.slots[0..2] (head coach card, two 'Coordinators coming soon' placeholders), sports.coachSalary
+  //   P2 → #sea-starters holds two .fb-roster tables (data-side offense | defense) of .fb-tr.fb-ro[data-pos] rows;
+  //        backups go in as .fb-tr.fb-ro.backup[data-pos] right after their starter; sports.canAfford gates signings.
+  const TABS_FALLBACK = [['overview', 'Overview'], ['staff', 'Staff'], ['roster', 'Roster'], ['recruiting', 'Recruiting'], ['schedule', 'Schedule'], ['records', 'Records']];
+  function budgetText() { const f = BSU.data && BSU.data.football; return (f && f.budget) || {}; }
+  function seasonTabs() { const t = budgetText().tabs; return Array.isArray(t) && t.length ? t : TABS_FALLBACK; }
+  function rememberedTab(host) {
+    try { const st = UI.settings && UI.settings(); const t = st && st.seasonTab; if (t && seasonTabs().some(function (x) { return x[0] === t; })) return t; } catch (e) { /* no settings */ }
+    return host._tab || seasonTabs()[0][0];
+  }
+  function setTab(host, name, remember) {
+    const tabs = seasonTabs(); if (!tabs.some(function (x) { return x[0] === name; })) name = tabs[0][0];
+    host._tab = name;
+    for (const b of host._tabBtns.children) { const on = b.dataset.tab === name; cls(b, 'active', on); b.setAttribute('aria-selected', on ? 'true' : 'false'); }
+    for (const p of host._pages.children) show(p, p.dataset.tab === name);
+    if (remember !== false) { try { const st = UI.settings && UI.settings(); if (st && st.seasonTab !== name) { st.seasonTab = name; if (typeof UI.saveSettings === 'function') UI.saveSettings(); } } catch (e) { /* settings unavailable */ } }
+  }
+  function stepTab(host, dir) {
+    const tabs = seasonTabs(); let i = 0; for (let k = 0; k < tabs.length; k++) if (tabs[k][0] === host._tab) i = k;
+    setTab(host, tabs[(i + dir + tabs.length) % tabs.length][0], true);
+  }
+  /** a labelled control block for the Overview row (label above the control; the effect line lives in the shared fx strip) */
+  function ctlBlock(parent, label, control) { const w = el('div', 'fb-ctlb'); w.appendChild(el('div', 'fb-ctlb-k', label)); w.appendChild(control); parent.appendChild(w); return w; }
+  function noteOn(e, text) { if (!e) return; setText(e, text || ''); show(e, !!text); }
+  function kv(parent, k, v, id) { const r = el('div', 'row'); if (id) r.id = id; r.appendChild(el('span', 'k', k)); const vv = el('span', 'v', v); r.appendChild(vv); parent.appendChild(r); return vv; }
+
   function buildSeason(host) {
     host._keys = {};
     host.appendChild(el('div', 'panel-title', 'Season'));
     host._record = el('div', 'fb-record'); host._record.id = 'sea-record'; host.appendChild(host._record);
-    const cols = el('div', 'fb-cols'); host.appendChild(cols);
-    const Lc = el('div', 'fb-col'), Rc = el('div', 'fb-col'); cols.appendChild(Lc); cols.appendChild(Rc);
 
-    // ---- left: the next game, the game plan, the program ----
+    // tabs
+    const tabs = el('div', 'fb-tabs'); tabs.id = 'sea-tabs'; tabs.setAttribute('role', 'tablist'); host._tabBtns = tabs; host.appendChild(tabs);
+    seasonTabs().forEach(function (t) { const b = btn('tab-' + t[0], t[1], 'fb-tab', function () { setTab(host, t[0], true); try { if (typeof host.focus === 'function') host.focus(); } catch (e) { /* stub */ } refreshSeason(stateFor(host), host); }); b.dataset.tab = t[0]; b.setAttribute('role', 'tab'); tabs.appendChild(b); });
+    const pages = el('div', 'fb-pages'); host._pages = pages; host.appendChild(pages);
+    const page = function (name) { const p = el('div', 'fb-page'); p.dataset.tab = name; p.id = 'sea-tab-' + name; pages.appendChild(p); return p; };
+    try { host.tabIndex = -1; } catch (e) { /* stub */ }
+    host.addEventListener('keydown', function (ev) {
+      const k = ev && ev.key; if (k !== 'ArrowLeft' && k !== 'ArrowRight') return;
+      try { stepTab(host, k === 'ArrowRight' ? 1 : -1); refreshSeason(stateFor(host), host); } catch (e) { BSU.error('ui_panels', 'season:key', e); }
+      if (typeof ev.preventDefault === 'function') ev.preventDefault(); if (typeof ev.stopPropagation === 'function') ev.stopPropagation();
+    });
+
+    // ---- Overview: next game + program | the budget bar; then one row of game-plan controls ----
+    const ov = page('overview');
+    const row = el('div', 'fb-ctl-row'); row.id = 'sea-controls'; ov.appendChild(row);
+    const pick = function (which) { host._fxActive = which; };
+    host._playbook = seg('seg-playbook', [['ground', 'Ground'], ['balanced', 'Balanced'], ['air', 'Air Raid']], function (v) { pick('playbook'); call('sports', 'setPlaybook', stateFor(host), v); refreshSeason(stateFor(host), host); });
+    ctlBlock(row, 'Playbook', host._playbook);
+    host._aggr = seg('seg-aggression', [['conservative', 'Conservative'], ['normal', 'Normal'], ['aggressive', 'Aggressive']], function (v) { pick('aggression'); call('sports', 'setAggression', stateFor(host), v); refreshSeason(stateFor(host), host); });
+    ctlBlock(row, 'Aggression', host._aggr);
+    host._watch = btn('chk-watchfull', 'Off', 'toggle', function () { pick('watch'); const s = stateFor(host); call('sports', 'setWatchFull', s, !(s.sports && s.sports.watchFull)); refreshSeason(s, host); });
+    ctlBlock(row, 'Watch', host._watch);
+    host._autosim = btn('chk-autosim', 'Off', 'toggle', function () { pick('autosim'); const s = stateFor(host); call('sports', 'setAutoSim', s, !(s.sports && s.sports.autoSim)); refreshSeason(s, host); });
+    ctlBlock(row, 'Auto-sim', host._autosim);
+    host._night = btn('chk-night', 'Off', 'toggle', function () { pick('night'); const s = stateFor(host); call('sports', 'setNight', s, !(s.sports && s.sports.nightToggle)); refreshSeason(s, host); });
+    ctlBlock(row, 'Night games', host._night);
+    const fxs = el('div', 'fb-fxs'); fxs.id = 'sea-fx'; ov.appendChild(fxs);
+    host._fx = {};
+    [['playbook', 'fx-playbook'], ['aggression', 'fx-aggression'], ['watch', 'fx-watch'], ['autosim', 'fx-autosim'], ['night', 'fx-night']].forEach(function (p) { const d = el('div', 'fb-fx'); d.id = p[1]; host._fx[p[0]] = d; fxs.appendChild(d); });
+    host._fxPlaybook = host._fx.playbook; host._fxAggr = host._fx.aggression; host._fxWatch = host._fx.watch; host._fxAuto = host._fx.autosim; host._fxNight = host._fx.night;
+    host._fxActive = 'playbook';
+    const ovGrid = el('div', 'fb-ov'); ov.appendChild(ovGrid);
+    const Lc = el('div', 'fb-col'), Rc = el('div', 'fb-col'); ovGrid.appendChild(Lc); ovGrid.appendChild(Rc);
     Lc.appendChild(el('div', 'card-kicker', 'Next game'));
     host._next = el('div', 'fb-next'); host._next.id = 'sea-next';
     host._nextLine = el('div', 'fb-next-line'); host._nextBar = el('div', 'bar'); host._nextFill = el('div', 'fill'); host._nextBar.appendChild(host._nextFill); host._nextFx = el('div', 'fb-fx');
     host._next.appendChild(host._nextLine); host._next.appendChild(host._nextBar); host._next.appendChild(host._nextFx); Lc.appendChild(host._next);
-
-    Lc.appendChild(el('div', 'card-kicker', 'Game plan'));
-    host._playbook = seg('seg-playbook', [['ground', 'Ground'], ['balanced', 'Balanced'], ['air', 'Air Raid']], function (v) { call('sports', 'setPlaybook', stateFor(host), v); refreshSeason(stateFor(host), host); });
-    host._fxPlaybook = ctl(Lc, 'Playbook', host._playbook, 'fx-playbook');
-    host._aggr = seg('seg-aggression', [['conservative', 'Conservative'], ['normal', 'Normal'], ['aggressive', 'Aggressive']], function (v) { call('sports', 'setAggression', stateFor(host), v); refreshSeason(stateFor(host), host); });
-    host._fxAggr = ctl(Lc, 'Aggression', host._aggr, 'fx-aggression');
-    host._watch = btn('chk-watchfull', 'Off', 'toggle', function () { const s = stateFor(host); call('sports', 'setWatchFull', s, !(s.sports && s.sports.watchFull)); refreshSeason(s, host); });
-    host._fxWatch = ctl(Lc, 'Watch full games', host._watch, 'fx-watch');
-    host._autosim = btn('chk-autosim', 'Off', 'toggle', function () { const s = stateFor(host); call('sports', 'setAutoSim', s, !(s.sports && s.sports.autoSim)); refreshSeason(s, host); });
-    host._fxAuto = ctl(Lc, 'Auto-sim home games', host._autosim, 'fx-autosim');
-    host._night = btn('chk-night', 'Off', 'toggle', function () { const s = stateFor(host); call('sports', 'setNight', s, !(s.sports && s.sports.nightToggle)); refreshSeason(s, host); });
-    host._fxNight = ctl(Lc, 'Night games', host._night, 'fx-night');
-
     Lc.appendChild(el('div', 'card-kicker', 'Program'));
     const sl = el('input'); sl.type = 'range'; sl.id = 'sl-coaching-sea'; sl.className = 'fb-slider';
     sl.min = '0'; sl.max = String(fin(PE.sliders && PE.sliders.coachingMax, 3000000)); sl.step = String(fin(PE.sliders && PE.sliders.coachingStep, 100000));
     sl.addEventListener('input', function () { const s = stateFor(host); call('economy', 'setCoaching', s, parseInt(sl.value, 10)); refreshSeason(s, host); });
     host._slider = sl; host._sliderVal = el('span', 'fb-sl-val', ''); const slw = el('span', 'fb-slw'); slw.appendChild(sl); slw.appendChild(host._sliderVal);
-    host._fxCoaching = ctl(Lc, 'Coaching budget', slw, 'fx-coaching');
+    host._fxCoaching = ctl(Lc, 'Coaching spend', slw, 'fx-coaching');
     host._ratingLine = el('div', 'fb-ratingline'); host._ratingLine.id = 'sea-ratingline'; Lc.appendChild(host._ratingLine);
     host._rating = el('div', 'fb-chips'); host._rating.id = 'sea-rating'; Lc.appendChild(host._rating);
-    host._permits = seg('seg-permits', [['paid', 'Paid'], ['free', 'Free']], function (v) { call('sports', 'setPermits', stateFor(host), v); refreshSeason(stateFor(host), host); });
-    host._fxPermits = ctl(Lc, 'Tailgate permits', host._permits, 'fx-permits');
-    host._homecoming = seg('seg-homecoming', [[0, '$0'], [50000, money(50000)], [150000, money(150000)]], function (v) { const r = call('sports', 'setHomecomingBudget', stateFor(host), v); if (r && r.ok === false) notify(stateFor(host), r.reason); refreshSeason(stateFor(host), host); });
-    host._fxHome = ctl(Lc, 'Homecoming budget', host._homecoming, 'fx-homecoming');
-    // the venue row: the Upgrade button is the panel's one build action
-    host._upgrade = btn('btn-upgrade', 'Upgrade', 'small', function () { doUpgrade(host); });
-    const venue = el('div', 'row'); venue.id = 'sea-venue'; host._venue = el('span', 'k', 'Venue'); venue.appendChild(host._venue); const vv = el('span', 'v'); vv.appendChild(host._upgrade); venue.appendChild(vv); Lc.appendChild(venue);
 
-    // ---- right: coach, starters, recruiting, schedule, history ----
-    Rc.appendChild(el('div', 'card-kicker', 'Coach'));
-    host._coach = el('div', 'row fb-coach'); host._coach.id = 'sea-coach'; Rc.appendChild(host._coach);
-    host._coachFx = el('div', 'fb-fx'); host._coachFx.id = 'fx-coachfit'; Rc.appendChild(host._coachFx);
-    host._candidates = el('div'); Rc.appendChild(host._candidates);
+    Rc.appendChild(el('div', 'card-kicker', budgetText().title || 'Athletics budget'));
+    const bud = el('div', 'fb-budget'); bud.id = 'sea-budget'; Rc.appendChild(bud); host._budget = bud;
+    const bh = el('div', 'fb-bud-head'); host._budTotal = el('div', 'fb-bud-total'); host._budTotal.id = 'sea-budget-total'; host._budSub = el('div', 'fb-bud-sub'); host._budSub.id = 'sea-budget-sub';
+    bh.appendChild(host._budTotal); bh.appendChild(host._budSub); bud.appendChild(bh);
+    host._budBar = el('div', 'bar fb-bud-bar'); host._budBar.id = 'sea-budget-bar'; host._budFill = el('div', 'fill'); host._budBar.appendChild(host._budFill); bud.appendChild(host._budBar);
+    host._budLegend = el('div', 'fb-bud-legend'); host._budLegend.id = 'sea-budget-legend'; bud.appendChild(host._budLegend);
+    const bg = el('div', 'fb-bud-grid'); bud.appendChild(bg);
+    const bsrc = el('div', 'fb-bud-col'); bsrc.appendChild(el('div', 'fb-bud-k', 'Sources')); host._budSources = el('div'); host._budSources.id = 'sea-budget-sources'; bsrc.appendChild(host._budSources); bg.appendChild(bsrc);
+    const blin = el('div', 'fb-bud-col'); blin.appendChild(el('div', 'fb-bud-k', 'Committed')); host._budLines = el('div'); host._budLines.id = 'sea-budget-lines'; blin.appendChild(host._budLines); bg.appendChild(blin);
+    const tuRow = el('div', 'fb-bud-topup'); bud.insertBefore(tuRow, bg);
+    const tu = el('input'); tu.type = 'range'; tu.id = 'sl-topup'; tu.className = 'fb-slider';
+    tu.min = '0'; tu.max = String(Math.round(fin(PSP.budget && PSP.budget.topUpMax, 1.5) * 100)); tu.step = String(Math.round(fin(PSP.budget && PSP.budget.topUpStep, 0.1) * 100));
+    tu.addEventListener('input', function () { const s = stateFor(host); const r = call('sports', 'setTopUp', s, parseInt(tu.value, 10) / 100); if (r && r.ok === false && r.reason) notify(s, r.reason, 'money'); else if (r && r.moved > 0) notify(s, money(r.moved) + ' moved to athletics (' + (budgetText().ledgerLabel || 'Athletics top-up') + ')', 'money'); refreshSeason(s, host); });
+    host._topUp = tu; host._topUpVal = el('span', 'fb-sl-val', ''); host._topUpVal.id = 'sea-topup-val';
+    host._topUpK = el('span', 'k', (budgetText().sources || {}).topUp || 'University top-up'); tuRow.appendChild(host._topUpK); tuRow.appendChild(tu); tuRow.appendChild(host._topUpVal);
+    host._fxTopUp = el('div', 'fb-fx hidden'); host._fxTopUp.id = 'fx-topup'; bud.appendChild(host._fxTopUp);
+
+
+    // ---- Staff: the head coach card + two coordinator slots (P1 fills them) ----
+    const stf = page('staff'); const grid = el('div', 'fb-staff'); grid.id = 'sea-staff'; stf.appendChild(grid); host._staffGrid = grid; grid.slots = [];
+    const slot = function (label, role) { const c = el('div', 'fb-staff-card'); c.dataset.role = role; c.appendChild(el('div', 'card-kicker', label)); grid.appendChild(c); grid.slots.push(c); return c; };
+    const hc = slot(budgetText().hcLabel || 'Head coach', 'hc'); hc.classList.add('hc');
+    host._coach = el('div', 'fb-coach'); host._coach.id = 'sea-coach'; hc.appendChild(host._coach);
+    host._coachRep = el('div', 'fb-coach-rep'); hc.appendChild(host._coachRep);
+    host._coachMeta = el('div', 'fb-staff-meta'); hc.appendChild(host._coachMeta);
+    host._coachStyle = kv(host._coachMeta, 'Style', ''); host._coachSalary = kv(host._coachMeta, 'Salary', '', 'sea-coach-salary'); host._coachSince = kv(host._coachMeta, 'Hired', '');
+    host._coachFx = el('div', 'fb-fx'); host._coachFx.id = 'fx-coachfit'; hc.appendChild(host._coachFx);
+    host._candidatesK = el('div', 'card-kicker', 'Candidates'); hc.appendChild(host._candidatesK);
+    host._candidates = el('div'); host._candidates.id = 'sea-candidates'; hc.appendChild(host._candidates);
+    host._staffNote = el('div', 'fb-note hidden'); host._staffNote.id = 'sea-staff-note'; hc.appendChild(host._staffNote);
     const coachActs = el('div', 'card-actions');
     // #btn-hire stands in only when no candidates are drawn yet; once they are (offseason, or a 3-game rivalry
     // losing streak) the per-candidate buttons are the real hire action and this one hides.
     host._hire = btn('btn-hire', 'Hire', 'small', function () { notify(stateFor(host), 'No candidates yet', 'sports'); });
-    host._fire = btn('btn-fire', 'Fire ($500k)', 'small danger', function () { const r = call('sports', 'fireCoach', stateFor(host)); if (r && !r.ok) notify(stateFor(host), r.reason, 'sports'); });
-    coachActs.appendChild(host._hire); coachActs.appendChild(host._fire); Rc.appendChild(coachActs);
+    host._fire = btn('btn-fire', 'Fire ($500k)', 'small danger', function () { const r = call('sports', 'fireCoach', stateFor(host)); if (r && !r.ok) { notify(stateFor(host), r.reason, 'sports'); noteOn(host._staffNote, 'Fire refused — ' + r.reason); } else noteOn(host._staffNote, ''); refreshSeason(stateFor(host), host); });
+    coachActs.appendChild(host._hire); coachActs.appendChild(host._fire); hc.appendChild(coachActs);
+    [['oc', budgetText().ocLabel || 'Offensive coordinator'], ['dc', budgetText().dcLabel || 'Defensive coordinator']].forEach(function (r) { const c = slot(r[1], r[0]); c.classList.add('empty'); c.appendChild(el('div', 'fb-empty', budgetText().comingSoon || 'Coordinators coming soon')); });
 
-    Rc.appendChild(el('div', 'card-kicker', 'Starters'));
-    host._starters = el('div', 'fb-table'); host._starters.id = 'sea-starters'; Rc.appendChild(host._starters);
-    host._recruit = el('div', 'row'); host._recruit.id = 'sea-recruit'; Rc.appendChild(host._recruit);
-    host._prospectsK = el('div', 'card-kicker', 'Recruiting board'); Rc.appendChild(host._prospectsK);
-    host._prospects = el('div', 'fb-table'); host._prospects.id = 'sea-prospects'; Rc.appendChild(host._prospects);
-    Rc.appendChild(el('div', 'card-kicker', 'Schedule'));
-    host._schedule = el('div', 'fb-table'); host._schedule.id = 'sea-schedule'; Rc.appendChild(host._schedule);
-    host._historyK = el('div', 'card-kicker', 'History'); Rc.appendChild(host._historyK);
-    host._history = el('div'); host._history.id = 'sea-history'; Rc.appendChild(host._history);
+    // ---- Roster: the eight starters in two tables (offense | defense); P2 adds backups and class years ----
+    const ros = page('roster');
+    host._starters = el('div', 'fb-roster-cols'); host._starters.id = 'sea-starters'; ros.appendChild(host._starters);
+
+    // ---- Recruiting: the prospect board against the headroom ----
+    const rec = page('recruiting');
+    host._recruit = el('div', 'row'); host._recruit.id = 'sea-recruit'; rec.appendChild(host._recruit);
+    host._prospectsK = el('div', 'card-kicker', 'Recruiting board'); rec.appendChild(host._prospectsK);
+    host._recHead = el('div', 'fb-rec-head'); host._recHead.id = 'sea-recruit-head'; rec.appendChild(host._recHead);
+    host._recNote = el('div', 'fb-note hidden'); host._recNote.id = 'sea-recruit-note'; rec.appendChild(host._recNote);
+    host._prospects = el('div', 'fb-table'); host._prospects.id = 'sea-prospects'; rec.appendChild(host._prospects);
+    host._recEmpty = el('div', 'fb-empty', ''); host._recEmpty.id = 'sea-recruit-empty'; rec.appendChild(host._recEmpty);
+
+    // ---- Schedule: the season list | game day (venue + Upgrade, permits, Homecoming) ----
+    const sch = page('schedule'); const sgrid = el('div', 'fb-sched'); sch.appendChild(sgrid);
+    const sL = el('div', 'fb-col'), sR = el('div', 'fb-col'); sgrid.appendChild(sL); sgrid.appendChild(sR);
+    sL.appendChild(el('div', 'card-kicker', 'Schedule'));
+    host._schedule = el('div', 'fb-table'); host._schedule.id = 'sea-schedule'; sL.appendChild(host._schedule);
+    sR.appendChild(el('div', 'card-kicker', 'Game day'));
+    host._upgrade = btn('btn-upgrade', 'Upgrade', 'small', function () { doUpgrade(host); });
+    const venue = el('div', 'row'); venue.id = 'sea-venue'; host._venue = el('span', 'k', 'Venue'); venue.appendChild(host._venue); const vv = el('span', 'v'); vv.appendChild(host._upgrade); venue.appendChild(vv); sR.appendChild(venue);
+    host._crowd = kv(sR, 'Crowd', '', 'sea-crowd');
+    host._permits = seg('seg-permits', [['paid', 'Paid'], ['free', 'Free']], function (v) { call('sports', 'setPermits', stateFor(host), v); refreshSeason(stateFor(host), host); });
+    host._fxPermits = ctl(sR, 'Tailgate permits', host._permits, 'fx-permits');
+    host._homecoming = seg('seg-homecoming', [[0, '$0'], [50000, money(50000)], [150000, money(150000)]], function (v) { const r = call('sports', 'setHomecomingBudget', stateFor(host), v); if (r && r.ok === false) notify(stateFor(host), r.reason); refreshSeason(stateFor(host), host); });
+    host._fxHome = ctl(sR, 'Homecoming budget', host._homecoming, 'fx-homecoming');
+
+    // ---- Records: what the Almanac shows + the recruiting history ----
+    const rcd = page('records'); const rgrid = el('div', 'fb-rec'); rcd.appendChild(rgrid);
+    const rL = el('div', 'fb-col'), rR = el('div', 'fb-col'); rgrid.appendChild(rL); rgrid.appendChild(rR);
+    rL.appendChild(el('div', 'card-kicker', 'Record book'));
+    host._records = { _football: el('div'), _fbKey: null }; host._records._football.id = 'sea-records'; rL.appendChild(host._records._football);
+    rR.appendChild(el('div', 'card-kicker', 'Recruiting history'));
+    host._recruits = el('div', 'fb-table'); host._recruits.id = 'sea-recruits'; rR.appendChild(host._recruits);
 
     const bug = el('div', 'row'); bug.id = 'score-bug'; show(bug, false); host.appendChild(bug); host._bug = bug;
+    setTab(host, rememberedTab(host), false);
   }
   function doUpgrade(host) {
     const s = stateFor(host);
@@ -32964,14 +34051,16 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     const hasTeam = !!sp.hasTeam, up = call('sports', 'upcoming', s);
     const rec = sp.record || { wins: 0, losses: 0 };
     const playbook = sp.playbook || 'balanced', aggr = sp.aggression || 'normal';
+    const B = has('sports', 'budget') ? call('sports', 'budget', s) : null;
+    const headroom = B ? fin(B.headroom, 0) : Infinity;
 
     // record + rating headline
     const rt = call('sports', 'rating', s) || { rating: 0, terms: {} };
     const offSeason = !!sp.seasonDone && rec.wins + rec.losses === 0 && sp.lastSeason && (fin(sp.lastSeason.wins, 0) + fin(sp.lastSeason.losses, 0)) > 0;   // qa pass 3: between Dec 8 and the new schedule the header kept the finished season's line, not a 0–0
     const recLine = offSeason ? ('Last season ' + fin(sp.lastSeason.wins, 0) + '–' + fin(sp.lastSeason.losses, 0)) : ('Record ' + rec.wins + '–' + rec.losses);
-    setText(host._record, hasTeam ? (recLine + ' · Team rating ' + Math.round(fin(rt.rating, 0))) : 'No team yet: build a Practice Field to field one.');
+    setText(host._record, hasTeam ? (recLine + ' · Team rating ' + Math.round(fin(rt.rating, 0)) + (B ? ' · Budget ' + money(B.total) + ', ' + money(Math.max(0, headroom)) + ' free' : '')) : 'No team yet: build a Practice Field to field one.');
 
-    // next game: opponent rating/style, your live win probability (the slider moves it at once)
+    // ---- Overview: next game, the program, the budget bar, the controls ----
     if (up) {
       const o = oppOf(up.opp), orat = fin(up.oppRating, fin(o.rating, 50));
       const p = has('sports', '_probFor') ? call('sports', '_probFor', s, fin(rt.rating, 0), orat, !!up.night, !!up.home) : call('sports', 'winProb', s, up.opp, !!up.night, !!up.home);
@@ -32979,17 +34068,17 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
       host._nextFill.style.width = Math.round(clamp(fin(p, 0.5), 0, 1) * 100) + '%';
       const live = s.sports && s.sports.game && !s.sports.game.finalized && has('sports', '_liveProb') ? call('sports', '_liveProb', s, 0) : null;
       setText(host._nextFx, 'Your win chance: ' + Math.round(fin(p, 0.5) * 100) + '% (' + call('sports', 'probWord', p) + ')' + (live !== null && live !== undefined ? ' · live now ' + Math.round(fin(live, 0.5) * 100) + '%' : ''));
-    } else { setText(host._nextLine, 'No upcoming game'); host._nextFill.style.width = '0%'; setText(host._nextFx, hasTeam ? 'The season is over: recruit, retool, repeat.' : 'Build a Practice Field and the schedule appears.'); }
+    } else { setText(host._nextLine, 'No upcoming game'); host._nextFill.style.width = '0%'; setText(host._nextFx, hasTeam ? (offSeason ? 'The season is over: recruit, retool, repeat.' : 'The schedule is drawn on Aug 5.') : 'Build a Practice Field and the schedule appears.'); }
     const spr = has('sports', 'spring') ? call('sports', 'spring', s) : null;   // pass C: the Purple & Gold Spring Game on the calendar
     if (spr && fin(spr.scheduledDay, -1) >= 0 && fin(spr.daysUntil, -1) >= 0) setText(host._nextFx, host._nextFx.textContent + ' · ' + (spr.title || 'Spring Game') + ' ' + BSU.formatDate(spr.scheduledDay) + ' (' + spr.daysUntil + ' d)');
 
-    // controls and their effects
     segSet(host._playbook, playbook); setText(host._fxPlaybook, playbookFx(playbook));
     segSet(host._aggr, aggr); setText(host._fxAggr, aggressionFx(aggr));
     const watchOn = !!sp.watchFull; setText(host._watch, watchOn ? 'Full' : 'Highlights'); host._watch.setAttribute('aria-pressed', watchOn ? 'true' : 'false'); setText(host._fxWatch, watchFx(watchOn));
     const autoOn = !!sp.autoSim; setText(host._autosim, autoOn ? 'On' : 'Off'); host._autosim.setAttribute('aria-pressed', autoOn ? 'true' : 'false'); setText(host._fxAuto, autoSimFx(autoOn));
     const hasStadium2 = call('buildings', 'has', s, 'stadium', 2) === true, nightOn = !!sp.nightToggle;
     setText(host._night, nightOn && hasStadium2 ? 'On' : 'Off'); host._night.setAttribute('aria-pressed', nightOn && hasStadium2 ? 'true' : 'false'); host._night.disabled = !hasStadium2; setText(host._fxNight, nightFx(hasStadium2, nightOn, venueTier(s)));
+    for (const k in host._fx) cls(host._fx[k], 'on', k === host._fxActive);
     const permits = sp.permits || 'paid'; segSet(host._permits, permits); setText(host._fxPermits, permitsFx(permits));
     const hb = fin(sp.homecomingBudget, 0); segSet(host._homecoming, hb); setText(host._fxHome, homecomingFx(hb));
 
@@ -33007,40 +34096,74 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     region(host, 'rating', JSON.stringify(rt.terms || {}), host._rating, function (box) {
       for (const k of Object.keys(rt.terms || {})) { const v = fin(rt.terms[k], 0); if (Math.abs(v) < 0.05) continue; const c = el('span', 'fb-chip' + (v < 0 ? ' neg' : '')); c.appendChild(el('span', 'k', capitalize(k))); c.appendChild(el('span', 'v', signed(v, 10))); box.appendChild(c); }
     });
-    const up2 = upgradeLabel(s); setText(host._upgrade, up2.label); host._upgrade.disabled = !!up2.disabled;
-    setText(host._venue, 'Venue · ' + venueName(s));
 
-    // coach card
+    // the athletics budget bar: total / committed / headroom, the five sources, the committed lines, the top-up slider
+    if (B) {
+      const over = B.committed > B.total;
+      setText(host._budTotal, money(B.total) + ' budget · year ' + fin(B.year, 0));
+      setText(host._budSub, money(B.committed) + ' committed · ' + (over ? money(B.committed - B.total) + ' over' : money(headroom) + ' headroom') + (fin(B.fund, 0) > 0 ? ' · fund ' + money(B.fund) : ''));
+      host._budFill.style.width = Math.round(clamp(B.total > 0 ? B.committed / B.total : 1, 0, 1) * 100) + '%';
+      cls(host._budBar, 'over', over); cls(host._budget, 'over', over);
+      setText(host._budLegend, over ? (budgetText().overBudget || 'Over budget: cut the coaching spend or raise the top-up.') : ''); show(host._budLegend, over);
+      region(host, 'budSources', JSON.stringify((B.sources || []).map(function (x) { return [x.key, x.amount, x.note]; })), host._budSources, function (box) {
+        (B.sources || []).forEach(function (x) { const r = el('div', 'row fb-bud-row'); r.dataset.key = x.key; const k = el('span', 'k', x.label); if (x.note) { k.appendChild(el('span', 'dim', ' · ' + x.note)); k.title = x.label + ' · ' + x.note; } r.appendChild(k); r.appendChild(el('span', 'v' + (x.amount > 0 ? '' : ' zero'), money(x.amount))); box.appendChild(r); });
+      });
+      region(host, 'budLines', JSON.stringify((B.lines || []).map(function (x) { return [x.key, x.amount]; }).concat([B.committed, headroom])), host._budLines, function (box) {
+        (B.lines || []).forEach(function (x) { const r = el('div', 'row fb-bud-row'); r.dataset.key = x.key; r.appendChild(el('span', 'k', x.label)); r.appendChild(el('span', 'v' + (x.amount > 0 ? '' : ' zero'), money(x.amount))); box.appendChild(r); });
+      });
+      const share = Math.round(fin(B.topUpShare, 0) * 100);
+      const dragTu = typeof document !== 'undefined' && document.activeElement === host._topUp;
+      if (!dragTu && host._topUp.value !== String(share)) host._topUp.value = String(share);
+      setText(host._topUpVal, money(B.topUp) + '/yr · ' + share + '%');
+      const tuFx = (budgetText().topUpFx || 'Moves university cash to athletics each Jan 1.') + (fin(B.topUpPaid, 0) > 0 ? ' Moved this year: ' + money(B.topUpPaid) + '.' : '');
+      setText(host._fxTopUp, tuFx); if (host._topUpK.title !== tuFx) { host._topUpK.title = tuFx; host._topUp.title = tuFx; }
+    }
+
+    // ---- Staff: the head coach card and the candidates ----
     const coach = sp.coach || { name: '', stars: 0, rep: '' }, cstyle = styleOfCoach(coach.name);
-    setText(host._coach, (coach.name ? coach.name : 'No head coach') + ' ' + stars(coach.stars) + (cstyle ? ' · ' + (STYLE_NAME[cstyle] || cstyle) : '') + (coach.rep ? ' · "' + coach.rep + '"' : ''));
+    setText(host._coach, (coach.name ? coach.name : 'No head coach') + ' ' + stars(coach.stars));
+    setText(host._coachRep, coach.rep ? '"' + coach.rep + '"' : ''); show(host._coachRep, !!coach.rep);
+    setText(host._coachStyle, cstyle ? (STYLE_NAME[cstyle] || cstyle) : (coach.name ? 'No scheme' : '—'));
+    const salary = has('sports', 'coachSalary') ? fin(call('sports', 'coachSalary', coach.stars, 'hc'), 0) : 0;
+    setText(host._coachSalary, coach.name ? money(salary) + '/yr' : '—');
+    setText(host._coachSince, coach.name && fin(coach.hiredYear, 0) > 0 ? 'Year ' + fin(coach.hiredYear, 0) : '—');
     setText(host._coachFx, coach.name ? coachFitFx(cstyle, playbook) : 'Hire a coach in the offseason.');
     const candidates = sp.candidates || [];
     const coachFee = fin(PSP.coachFee, 100000), coachSign = fin(PSP.coachSign, 300000);
-    region(host, 'candidates', JSON.stringify(candidates.map(function (c) { return [c.name, c.stars]; })), host._candidates, function (box) {
+    show(host._candidatesK, candidates.length > 0);
+    region(host, 'candidates', JSON.stringify(candidates.map(function (c) { return [c.name, c.stars]; }).concat([Math.round(headroom / 1000)])), host._candidates, function (box) {
       candidates.forEach(function (c, i) {
-        const r = el('div', 'row'); const st = fin(c.stars, 0), cs = styleOfCoach(c.name);
-        r.appendChild(el('span', 'k', c.name + ' ' + '★'.repeat(st) + (cs ? ' · ' + (STYLE_NAME[cs] || cs) : '') + ' · needs ' + money(coachSign * st) + '/yr budget'));
-        const b = btn(null, 'Hire ' + money(coachFee * st), 'small', function () { const res = call('sports', 'hireCoach', stateFor(host), i); if (res && !res.ok) notify(stateFor(host), res.reason, 'sports'); refreshSeason(stateFor(host), host); });
+        const r = el('div', 'row fb-cand'); const st = fin(c.stars, 0), cs = styleOfCoach(c.name);
+        const sal = has('sports', 'coachSalary') ? fin(call('sports', 'coachSalary', st, 'hc'), 0) : 0;
+        const k = el('span', 'k', c.name + ' ' + '★'.repeat(st)); k.appendChild(el('span', 'dim', (cs ? ' · ' + (STYLE_NAME[cs] || cs) : '') + ' · ' + money(sal) + '/yr · needs ' + money(coachSign * st) + ' coaching'));
+        r.appendChild(k);
+        const b = btn(null, 'Hire ' + money(coachFee * st), 'small', function () { const res = call('sports', 'hireCoach', stateFor(host), i); if (res && !res.ok) { notify(stateFor(host), res.reason, 'sports'); noteOn(host._staffNote, 'Hire refused — ' + res.reason); } else noteOn(host._staffNote, ''); refreshSeason(stateFor(host), host); });
         r.appendChild(b); box.appendChild(r);
       });
     });
     show(host._hire, candidates.length === 0); show(host._fire, !!(coach && coach.name));
 
-    // the eight starters: pos · name · hometown · class · rating · star bar
+    // ---- Roster: offense | defense, each pos · name · hometown · class · rating · star bar ----
     const order = positions(), byPos = {}; (sp.starters || []).forEach(function (st) { if (st && st.pos) byPos[st.pos] = st; });
-    region(host, 'starters', JSON.stringify(order.map(function (p) { const st = byPos[p]; return st ? [st.name, st.hometown, st.rating, st.class] : null; })), host._starters, function (box) {
+    region(host, 'starters', JSON.stringify(order.map(function (p) { const st = byPos[p]; return st ? [st.name, st.hometown, st.rating, st.class] : null; }).concat([hasTeam])), host._starters, function (box) {
       if (!hasTeam) { box.appendChild(el('div', 'fb-empty', 'Starters arrive with the team.')); return; }
-      const head = el('div', 'fb-tr fb-th'); ['Pos', 'Player', 'Hometown', 'Cl', 'Ovr', ''].forEach(function (h) { head.appendChild(cell('', h)); }); box.appendChild(head);
-      order.forEach(function (p) {
-        const st = byPos[p]; const r = el('div', 'fb-tr'); r.dataset.pos = p;
-        r.appendChild(cell('pos', p)); r.appendChild(cell('nm', st ? st.name : '—')); r.appendChild(cell('ht', st ? st.hometown : ''));
-        r.appendChild(cell('cl', st && st.class ? st.class : '')); r.appendChild(cell('ovr' + (st && fin(st.rating, 0) >= 90 ? ' elite' : ''), st ? String(fin(st.rating, 0)) : '—'));
-        const bar = el('div', 'bar'); const f = el('div', 'fill'); f.style.width = Math.round(clamp((fin(st && st.rating, 0) - 50) / 50, 0, 1) * 100) + '%'; bar.appendChild(f); r.appendChild(bar);
-        box.appendChild(r);
+      const half = Math.ceil(order.length / 2);
+      [['offense', 'Offense', order.slice(0, half)], ['defense', 'Defense', order.slice(half)]].forEach(function (side) {
+        const t = el('div', 'fb-table fb-roster'); t.dataset.side = side[0];
+        t.appendChild(el('div', 'card-kicker', side[1]));
+        const head = el('div', 'fb-tr fb-th fb-ro'); ['Pos', 'Player', 'Hometown', 'Cl', 'Ovr', ''].forEach(function (h) { head.appendChild(cell('', h)); }); t.appendChild(head);
+        side[2].forEach(function (p) {
+          const st = byPos[p]; const r = el('div', 'fb-tr fb-ro'); r.dataset.pos = p; r.dataset.depth = '1';
+          r.appendChild(cell('pos', p)); r.appendChild(cell('nm', st ? st.name : '—')); const ht = cell('ht', st ? st.hometown : ''); if (st && st.hometown) ht.title = st.hometown; r.appendChild(ht);
+          r.appendChild(cell('cl', st && st.class ? st.class : '')); r.appendChild(cell('ovr' + (st && fin(st.rating, 0) >= 90 ? ' elite' : ''), st ? String(fin(st.rating, 0)) : '—'));
+          const bar = el('div', 'bar'); const f = el('div', 'fill'); f.style.width = Math.round(clamp((fin(st && st.rating, 0) - 50) / 50, 0, 1) * 100) + '%'; bar.appendChild(f); r.appendChild(bar);
+          t.appendChild(r);
+        });
+        box.appendChild(t);
       });
     });
 
-    // the building-priced recruit (legacy single card) and the prospects board (pass C)
+    // ---- Recruiting: the building-priced recruit (legacy single card) and the prospects board (pass C) against the headroom ----
     const rc = sp.recruit;
     if (rc && !rc.answered) {
       region(host, 'recruit', rc.name + rc.pos + rc.price, host._recruit, function (box) {
@@ -33052,18 +34175,21 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
       show(host._recruit, true);
     } else { host._keys.recruit = ''; show(host._recruit, false); }
     const pb = prospectBoard(s), board = pb ? pb.list : [], maxSign = fin(pb && pb.maxSignings, 2), nSigned = board.filter(function (p) { return p && p.signed; }).length;
-    show(host._prospectsK, board.length > 0); show(host._prospects, board.length > 0);
-    region(host, 'prospects', JSON.stringify([board.map(function (p) { return [p.name, p.pos, p.rating, p.cost, !!p.signed]; }), !!(pb && pb.answered)]), host._prospects, function (box) {
+    show(host._prospectsK, board.length > 0); show(host._prospects, board.length > 0); show(host._recHead, board.length > 0); show(host._recEmpty, board.length === 0);
+    setText(host._recEmpty, hasTeam ? 'The prospect board opens Dec 9. A bigger coaching spend draws a bigger, better board; signings come off the athletics headroom.' : 'Recruiting starts with a team.');
+    setText(host._recHead, B ? 'Headroom ' + money(Math.max(0, headroom)) + ' of ' + money(B.total) + ' · signed ' + nSigned + ' of ' + maxSign + ' · signings count against the athletics budget' : 'Signed ' + nSigned + ' of ' + maxSign);
+    region(host, 'prospects', JSON.stringify([board.map(function (p) { return [p.name, p.pos, p.rating, p.cost, !!p.signed]; }), !!(pb && pb.answered), Math.round(headroom / 1000)]), host._prospects, function (box) {
       if (!board.length) return;
       const head = el('div', 'fb-tr fb-th fb-pr'); ['Pos', 'Prospect', 'Ovr', 'Cost', ''].forEach(function (h) { head.appendChild(cell('', h)); }); box.appendChild(head);
       board.forEach(function (p, i) {
         const idx = p.index !== undefined ? p.index : i; const r = el('div', 'fb-tr fb-pr'); if (p.blurb) r.title = p.blurb;
         r.appendChild(cell('pos', p.pos || ''));
         const nm = cell('nm', (p.name || '') + (p.hometown ? ' (' + p.hometown + ')' : '')); if (p.title) nm.appendChild(el('span', 'dim', ' ' + p.title)); r.appendChild(nm);
-        r.appendChild(cell('ovr' + (fin(p.rating, 0) >= 90 ? ' elite' : ''), String(fin(p.rating, 0)))); r.appendChild(cell('cost', money(p.cost)));
+        r.appendChild(cell('ovr' + (fin(p.rating, 0) >= 90 ? ' elite' : ''), String(fin(p.rating, 0))));
+        const tooRich = !p.signed && fin(p.cost, 0) > headroom; const costCell = cell('cost' + (tooRich ? ' over' : ''), money(p.cost)); if (tooRich) costCell.title = 'Over the athletics headroom (' + money(Math.max(0, headroom)) + ')'; r.appendChild(costCell);
         const acts = el('span', 'fb-acts');
         if (p.signed) acts.appendChild(el('span', 'fb-tag', 'signed · arrives Aug 5'));
-        else acts.appendChild(btn(null, 'Sign', 'small', function () { const res = call('sports', 'signProspect', stateFor(host), idx); if (res && res.ok === false) notify(stateFor(host), res.reason, 'sports'); else if (res && res.ok) notify(stateFor(host), 'Signed ' + (res.pos || p.pos) + ' ' + (res.name || p.name) + ' · arrives Aug 5', 'sports'); refreshSeason(stateFor(host), host); }));
+        else acts.appendChild(btn(null, 'Sign', 'small', function () { const res = call('sports', 'signProspect', stateFor(host), idx); if (res && res.ok === false) { notify(stateFor(host), res.reason, 'sports'); noteOn(host._recNote, 'Sign refused — ' + res.reason); } else if (res && res.ok) { notify(stateFor(host), 'Signed ' + (res.pos || p.pos) + ' ' + (res.name || p.name) + ' · arrives Aug 5', 'sports'); noteOn(host._recNote, ''); } refreshSeason(stateFor(host), host); }));
         r.appendChild(acts); box.appendChild(r);
       });
       const foot = el('div', 'row'); foot.appendChild(el('span', 'k', 'Signed ' + nSigned + ' of ' + maxSign + (pb && pb.answered ? ' · board passed' : '') + ' · arrivals lock Aug 5'));
@@ -33071,29 +34197,39 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
       box.appendChild(foot);
     });
 
-    // schedule with results; the next game and each unplayed opponent's rating/style
+    // ---- Schedule: results, each unplayed opponent's rating/style, home/away; the venue, the crowd, game-day settings ----
     region(host, 'schedule', JSON.stringify([(sp.schedule || []).map(function (e) { return [e.day, e.opp, e.home, e.kind, e.played, e.cancelled, e.postponedTo, e.result && e.result.bsu, e.result && e.result.opp, e.oppRating]; }), up && up.day, up && up.opp, hasTeam]), host._schedule, function (box) {
       if (!hasTeam) { box.appendChild(el('div', 'fb-empty', 'No team yet: build a Practice Field.')); return; }
+      if (!(sp.schedule || []).length) { box.appendChild(el('div', 'fb-empty', 'The schedule is drawn on Aug 5.')); return; }
+      const head = el('div', 'fb-tr fb-th sched-head'); ['Date', 'Opponent', 'Rating', '', 'Result'].forEach(function (h) { head.appendChild(cell('', h)); }); box.appendChild(head);
       (sp.schedule || []).forEach(function (e) {
         const o = oppOf(e.opp), res = resultText(e);
         const isNext = !!(up && e.day === up.day && e.opp === up.opp && !e.played);
         const r = el('div', 'fb-tr fb-sc' + (isNext ? ' next' : ''));
         r.appendChild(cell('dt', BSU.formatDate(e.day)));
         r.appendChild(cell('nm', o.name + (e.kind && e.kind !== 'regular' ? ' · ' + e.kind : '')));
-        r.appendChild(cell('rs', e.played ? '' : Math.round(fin(e.oppRating, fin(o.rating, 50))) + ' ' + String(STYLE_NAME[o.style] || 'Balanced').slice(0, 3).toUpperCase()));
+        r.appendChild(cell('rs', Math.round(fin(e.oppRating, fin(o.rating, 50))) + ' ' + String(STYLE_NAME[o.style] || 'Balanced').slice(0, 3).toUpperCase()));
         r.appendChild(cell('ha', e.home ? 'H' : 'A'));
         r.appendChild(cell('res ' + res.c, res.t)); const lg = logOf(sp, e); if (lg && lg.mvp) r.title = 'MVP ' + lg.mvp.pos + ' ' + lg.mvp.name + ': ' + lg.mvp.line; box.appendChild(r);
       });
     });
+    const up2 = upgradeLabel(s); setText(host._upgrade, up2.label); host._upgrade.disabled = !!up2.disabled;
+    setText(host._venue, 'Venue · ' + venueName(s));
+    const seats = fin(call('sports', 'venueSeats', s), 0), crowd = hasTeam && seats > 0 ? fin(call('sports', 'attendance', s), 0) : 0;
+    setText(host._crowd, seats > 0 ? seats.toLocaleString('en-US') + ' seats · next crowd ≈ ' + Math.round(crowd).toLocaleString('en-US') : 'No seats yet');
 
-    // season history from the record book (pass C fills seasons[]; all-time is always there)
+    // ---- Records: the Almanac's football block + the recruiting history ----
+    refreshFootball(s, host._records);   // the Almanac's football block (season history, record book, Hall of Fame, last game), hoisted
     const R = (sp.records && typeof sp.records === 'object') ? sp.records : null;
-    const seasons = R && Array.isArray(R.seasons) ? R.seasons : [];
-    const at = R && R.allTime ? R.allTime : null;
-    show(host._historyK, !!(at && (at.wins + at.losses > 0)) || seasons.length > 0); show(host._history, !!(at && (at.wins + at.losses > 0)) || seasons.length > 0);
-    region(host, 'history', JSON.stringify([at, seasons.slice(-5)]), host._history, function (box) {
-      if (at && at.wins + at.losses > 0) { const r = el('div', 'row'); r.appendChild(el('span', 'k', 'All-time')); r.appendChild(el('span', 'v', at.wins + '–' + at.losses)); box.appendChild(r); }
-      seasons.slice(-5).reverse().forEach(function (x) { const t = seasonLine(x); const r = el('div', 'row'); r.appendChild(el('span', 'k', t.left)); r.appendChild(el('span', 'v', t.right)); if (t.sub) r.title = t.sub; box.appendChild(r); });
+    const recruits = R && Array.isArray(R.recruits) ? R.recruits : [];
+    region(host, 'recruits', JSON.stringify(recruits.map(function (x) { return [x.year, x.name, x.pos]; })), host._recruits, function (box) {
+      if (!recruits.length) { box.appendChild(el('div', 'fb-empty', 'No signings have arrived yet: sign prospects in December, they report Aug 5.')); return; }
+      const head = el('div', 'fb-tr fb-th fb-rh'); ['Year', 'Pos', 'Player', 'Ovr', 'Cost'].forEach(function (h) { head.appendChild(cell('', h)); }); box.appendChild(head);
+      recruits.slice().reverse().forEach(function (x) {
+        const r = el('div', 'fb-tr fb-rh'); r.appendChild(cell('dt', String(fin(x.year, 0)))); r.appendChild(cell('pos', x.pos || ''));
+        const nm = cell('nm', (x.name || '') + (x.hometown ? ' (' + x.hometown + ')' : '')); if (x.title) nm.appendChild(el('span', 'dim', ' ' + x.title)); r.appendChild(nm);
+        r.appendChild(cell('ovr', String(fin(x.rating, 0)))); r.appendChild(cell('cost', money(x.cost))); box.appendChild(r);
+      });
     });
 
     const g = s.sports && s.sports.game;
@@ -33147,7 +34283,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
   function downText(down, dist, spot) { return ordinal(down) + ' & ' + (fin(dist, 10) >= 100 - fin(spot, 0) ? 'Goal' : Math.round(fin(dist, 10))); }
   /** "BSU 35" / "MAG 38" / "midfield" */
   function spotText(spot, oppKey, abbr) { const sp = Math.round(fin(spot, 50)); if (sp === 50) return 'midfield'; return sp < 50 ? 'BSU ' + sp : (abbr || oppAbbr(oppKey)) + ' ' + (100 - sp); }   // abbr: the engine's own (live().oppAbbr: 'GLD' for the Spring Game, not 'GOL')
-  UI.registerPanel('season', { build: buildSeason, refresh: refreshSeason, events: ['game:scheduled', 'game:kickoff', 'game:score', 'game:halftime', 'game:final', 'season:end', 'coach:changed', 'building:complete', 'building:upgraded', 'game:decision'] });
+  UI.registerPanel('season', { build: buildSeason, refresh: refreshSeason, events: ['game:scheduled', 'game:kickoff', 'game:score', 'game:halftime', 'game:final', 'season:end', 'coach:changed', 'building:complete', 'building:upgraded', 'game:decision', 'budget:changed'] });
 
   // ===========================================================================
   // GAME DAY HUD: the score bug (two rows: score + clock, down & distance + possession), the play-by-play strip
