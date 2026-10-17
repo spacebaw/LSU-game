@@ -788,7 +788,10 @@
     const summer = month >= U.summerMonths[0] && month <= U.summerMonths[1];
     M.charge(state, Math.round((U.perBuilding * completeList(state).length + U.perStudent * students) * (summer ? U.summerMult : 1)), 'utilities', force);
     // coaching
-    M.charge(state, Math.round(num(e.coaching, 0) / P.time.monthsPerYear), 'coaching', force);
+    // coaching: the athletics fund (PLAN_V2 P3: the Jan 1 top-up, sports.drawFund) pays first, cash the rest
+    const coachingDue = Math.round(num(e.coaching, 0) / P.time.monthsPerYear);
+    const fromFund = Math.max(0, int(call('sports', 'drawFund', [state, coachingDue], 0), 0));
+    M.charge(state, coachingDue - fromFund, 'coaching', force);
     // interest on a negative balance
     if (e.cash < 0) { const interest = Math.round(-e.cash * PE.interest); M.charge(state, interest, 'interest', force); e.interestPaid = int(e.interestPaid, 0) + interest; }
     // insurance premium while the policy exists

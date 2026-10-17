@@ -198,6 +198,8 @@
     if (sp.prospects && !Array.isArray(sp.prospects.list)) sp.prospects = null;
     if (!Array.isArray(sp.seasonLog)) sp.seasonLog = [];
     if (!sp.seasonLines || typeof sp.seasonLines !== 'object') sp.seasonLines = newLines();
+    // PLAN_V2 P3: the athletics budget (a pre-P3 save gets one from its prestige and last season; revenue starts at 0)
+    if (!sp.budget || typeof sp.budget !== 'object') initBudget(state); else budgetOf(state);
   }
 
   // ---------------------------------------------------------------------------
@@ -1155,6 +1157,7 @@
     if (!r.book || typeof r.book !== 'object') r.book = {};
     if (!Array.isArray(r.seasons)) r.seasons = [];
     if (!Array.isArray(r.hof)) r.hof = [];
+    if (!Array.isArray(r.recruits)) r.recruits = [];   // PLAN_V2 P3: signed prospects that arrived (the Records tab's recruiting history)
   }
   function updateRecords(state, g, sum) {
     const sp = state.sports; if (!sp.records) sp.records = {}; const r = sp.records; ensureRecords(r);
@@ -1455,7 +1458,7 @@
     while (sp.record.last4.length > 4) sp.record.last4.shift();
     if (g.home && won) sp.homeWins++;
     // money
-    if (g.kind === 'club') { call('economy', 'post', state, 'athletics', PS.clubPay, { note: 'club game vs ' + oppName(g.opp) }); g.revenue = PS.clubPay; }
+    if (g.kind === 'club') { call('economy', 'post', state, 'athletics', PS.clubPay, { note: 'club game vs ' + oppName(g.opp) }); g.revenue = PS.clubPay; addRevenue(state, PS.clubPay); }
     else if (g.home) {
       const ticket = num(state.economy && state.economy.ticket, PS.ticketDefault);
       const athletics = g.attendance * (ticket + CONCESSIONS);
@@ -1464,6 +1467,7 @@
       if (athletics > 0) call('economy', 'post', state, 'athletics', athletics, { i: vt, note: 'home game vs ' + oppName(g.opp) });
       if (g.tailgate > 0) call('economy', 'post', state, 'tailgate', g.tailgate, { i: vt, note: 'tailgate' });
       g.revenue = athletics + g.tailgate;
+      addRevenue(state, g.revenue);   // P3: the athletics budget's revenue share
       if (sp.firstHomeGameDay < 0) sp.firstHomeGameDay = today(state);
       if (g.night && sp.firstNightGameDay < 0) sp.firstNightGameDay = today(state);
     }
@@ -1752,6 +1756,7 @@
       bowlScore = res ? [res.bsu, res.opp] : null;
       if (bowlWon) { call('economy', 'post', state, 'athletics', PS.bowlWin, { note: 'Sugar Cane Bowl (won)' }); call('economy', 'bump', state, 'prestige', PS.bowlPrestige, 'Sugar Cane Bowl'); }
       else call('economy', 'post', state, 'athletics', PS.bowlLose, { note: 'Sugar Cane Bowl' });
+      addRevenue(state, bowlWon ? PS.bowlWin : PS.bowlLose);
     } else ticker(state, 'No bowl this year: ' + regWins + ' wins, ' + PS.bowlWins + ' needed for the Sugar Cane Bowl.', {});
     const undefeated = regWins >= PS.undefeatedWins && regLosses === 0;
     sp.lastSeason = { wins: sp.record.wins, losses: sp.record.losses, bowlWon: bowlWon, undefeated: undefeated };
@@ -1774,6 +1779,7 @@
       if (regLosses > regWins) sp.losingSeasons++; else sp.losingSeasons = 0;
       if (sp.losingSeasons >= PS.starDriftLosing) { sp.coach.stars = Math.max(PS.starMin, num(sp.coach.stars, 2) - 1); sp.losingSeasons = 0; }
     }
+    rollBudget(state);   // PLAN_V2 P3: next year's athletics budget from this season's gate, wins and prestige
     sp.seasonDone = true;
     sp.homeWins = 0;
     sp.record.wins = 0; sp.record.losses = 0;
@@ -1911,7 +1917,7 @@
     const purple = g.score[0], gold = g.score[1], won = purple > gold;
     sp.lastSpring = { year: yearOf(state), day: g.day, score: g.score.slice(), won: won, ot: !!g.ot, mvp: sum.mvp ? { name: sum.mvp.name, pos: sum.mvp.pos, line: sum.mvp.line } : null, bigPlay: sum.bigPlay, attendance: num(g.attendance, 0) };
     const cons = num(Sg.concessions, 0);
-    if (cons > 0) { call('economy', 'post', state, 'athletics', cons, { i: venueTile(state), note: 'Spring Game concessions' }); g.revenue = cons; }
+    if (cons > 0) { call('economy', 'post', state, 'athletics', cons, { i: venueTile(state), note: 'Spring Game concessions' }); g.revenue = cons; addRevenue(state, cons); }
     if (num(Sg.happiness, 0) > 0) call('economy', 'bump', state, 'happiness', num(Sg.happiness, 0), 'Spring Game');
     if (num(Sg.prestige, 0) > 0) call('economy', 'bump', state, 'prestige', num(Sg.prestige, 0), 'Spring Game');
     const mvpText = sum.mvp ? ' ' + sum.mvp.pos + ' ' + sum.mvp.name + ': ' + sum.mvp.line + '.' : '';
@@ -1973,6 +1979,7 @@
       if (k < 0) k = Math.max(0, POS.indexOf(p.pos));
       const old = sp.starters[k];
       sp.starters[k] = { name: p.name, pos: p.pos, hometown: p.hometown, rating: p.rating, class: L.recruitClass };
+      if (sp.records && Array.isArray(sp.records.recruits)) { sp.records.recruits.push({ year: yearOf(state), name: p.name, pos: p.pos, hometown: p.hometown, rating: p.rating, cost: int(p.cost, 0), title: String(p.title || '') }); while (sp.records.recruits.length > PB.recruitsMax) sp.records.recruits.shift(); }   // P3: Records tab
       call('ui', 'notify', state, { text: p.pos + ' ' + p.name + ' (' + p.hometown + ') arrives rated ' + p.rating + (old ? ', replacing ' + old.name + ' (' + old.rating + ')' : '') + '.', kind: 'sports', ttl: 9000 });
       ticker(state, p.pos + ' ' + p.name + ' reports for fall camp.' + (p.blurb ? ' ' + p.blurb : ''), {});
     }
@@ -2038,6 +2045,8 @@
     if (sp.hasTeam && sp.starters.length && day === dayOfDate('May 5', year)) seniorsLeave(state);
     // Dec 9: the offseason hire card and the prospect board (pass C: offered once per off-season)
     if (sp.hasTeam && day === dayOfDate(PS.schedule.offseasonStart, year)) { drawCandidates(state); drawProspects(state); offerProspects(state); }
+    // PLAN_V2 P3: Jan 1 — the university's top-up moves into the athletics fund (once per year, with a team)
+    if (sp.hasTeam && day > 0 && day === dayOfDate(PB.transferDate, year)) yearlyTopUp(state, year);
     storeRating(state);
     if (!sp.hasTeam) return;
     // catch-up: an unplayed game whose date passed (a set piece blocked it) resolves off-screen
@@ -2101,6 +2110,182 @@
       clearGame(S);
     } catch (e) { BSU.error('sports', 'setpiece:end', e); }
   }
+
+  // ---------------------------------------------------------------------------
+  // PLAN_V2 P3: the athletics budget — a salary cap that grows with success
+  //   total     = base + revenueShare × last season's athletics revenue (gate, concessions, tailgates, club pay,
+  //               bowl purse, Spring Game concessions) + prestigePer10 × prestige/10 + boosters (a season of
+  //               ≥ boosterWins) + the university top-up (topUpShare × base, 0–150 %)
+  //   committed = head coach salary (coachSalary: $150k × stars²) + signed prospects + upkeepShare × the venue's
+  //               annual upkeep + the coaching spend + the Homecoming tier
+  //   headroom  = total − committed; every sports spend asks canAfford(state, amount) before cash.
+  //   The top-up is real money: it moves each Jan 1 (ledger expense 'athletics' → "Athletics top-up"; raising
+  //   the slider mid-year moves the difference at once), sits in budget.fund, and athletics spends (fees,
+  //   buyouts, signings, the NIL fund, the monthly coaching charge via drawFund) draw on it before cash.
+  // ---------------------------------------------------------------------------
+  const PB = PS.budget || { base: 2000000, revenueShare: 0.35, prestigePer10: 50000, boosters: 500000, boosterWins: 7, topUpMax: 1.5, topUpStep: 0.1, salaryPerStar2: 150000, coordinatorShare: 0.55, upkeepShare: 0.1, transferDate: 'Jan 1', recruitsMax: 40 };
+  /** $150k × stars² a year for the head coach ('hc'); coordinators ('oc' | 'dc', P1) at coordinatorShare of that. Pure. */
+  function coachSalary(stars, role) {
+    const st = clamp(int(stars, 0), 0, num(PS.starMax, 5));
+    const hc = PB.salaryPerStar2 * st * st;
+    return Math.round(role === 'oc' || role === 'dc' ? hc * PB.coordinatorShare : hc);
+  }
+  function budgetText() { const f = data().football; return (f && f.budget) || {}; }
+  function newBudget() { return { year: 0, base: PB.base, fromRevenue: 0, fromPrestige: 0, boosters: 0, topUpShare: 0, topUp: 0, total: PB.base, committed: 0, lines: [], fund: 0, revenueYear: 0, lastRevenue: 0, lastWins: 0, topUpPaid: 0, topUpYear: 0 }; }
+  /** the stored budget, every field finite (lazy on old saves) */
+  function budgetOf(state) {
+    const sp = state.sports;
+    if (!sp.budget || typeof sp.budget !== 'object') sp.budget = newBudget();
+    const b = sp.budget;
+    b.year = int(b.year, 0); b.base = Math.max(0, int(b.base, PB.base)); b.fromRevenue = Math.max(0, int(b.fromRevenue, 0)); b.fromPrestige = Math.max(0, int(b.fromPrestige, 0)); b.boosters = Math.max(0, int(b.boosters, 0));
+    b.topUpShare = clamp(num(b.topUpShare, 0), 0, PB.topUpMax); b.topUp = Math.max(0, int(b.topUp, 0)); b.total = int(b.total, b.base); b.committed = int(b.committed, 0);
+    b.fund = Math.max(0, int(b.fund, 0)); b.revenueYear = Math.max(0, int(b.revenueYear, 0)); b.lastRevenue = Math.max(0, int(b.lastRevenue, 0));
+    b.lastWins = int(b.lastWins, 0); b.topUpPaid = Math.max(0, int(b.topUpPaid, 0)); b.topUpYear = int(b.topUpYear, 0);
+    if (!Array.isArray(b.lines)) b.lines = [];
+    return b;
+  }
+  /** the top-up the cap counts: the planned share × base, never below what already moved this year */
+  function topUpOf(state, b) { const planned = Math.round(b.topUpShare * b.base); const paid = b.topUpYear === yearOf(state) ? b.topUpPaid : 0; return Math.max(planned, paid); }
+  /** the venue's annual upkeep (practice field + bleachers tier + stadium tier) from the catalog, as buildings.upkeepTotal counts it */
+  function venueUpkeepYear(state) {
+    const cat = data().catalog || {}; let monthly = 0;
+    const types = ['practice_field', 'stadium'];
+    for (let t = 0; t < types.length; t++) {
+      const row = cat[types[t]]; const list = call('buildings', 'list', state, types[t]) || [];
+      for (let i = 0; i < list.length; i++) {
+        const bld = list[i]; if (!bld || !row) continue;
+        const tier = int(bld.tier, 0); const tr = tier > 0 ? (row.tiers || []).filter(function (x) { return x && x.tier === tier; })[0] : null;
+        let u = tr ? num(tr.upkeep, 0) : num(row.upkeep, 0);
+        if (types[t] === 'practice_field' && tr) u = num(row.upkeep, 0) + num(tr.upkeep, 0);
+        monthly += u;
+      }
+    }
+    return Math.round(monthly * num(PT.monthsPerYear, 12));
+  }
+  /** the committed lines, live: [{key, label, amount}] (P2 adds the roster's per-year costs under 'signings') */
+  function committedLines(state) {
+    const sp = state.sports, e = state.economy || {}, T = budgetText().lines || {};
+    const lines = [];
+    lines.push({ key: 'coach', label: T.coach || 'Head coach salary', amount: sp.coach && sp.coach.name ? coachSalary(sp.coach.stars, 'hc') : 0 });
+    lines.push({ key: 'coaching', label: T.coaching || 'Coaching spend', amount: Math.max(0, int(e.coaching, 0)) });
+    let sign = 0; const b = sp.prospects; if (b && Array.isArray(b.list)) for (let i = 0; i < b.list.length; i++) if (b.list[i] && b.list[i].signed) sign += Math.max(0, int(b.list[i].cost, 0));
+    lines.push({ key: 'signings', label: T.signings || 'Signed prospects', amount: sign });
+    lines.push({ key: 'upkeep', label: T.upkeep || 'Venue upkeep share', amount: sp.hasTeam ? Math.round(venueUpkeepYear(state) * PB.upkeepShare) : 0 });
+    lines.push({ key: 'homecoming', label: T.homecoming || 'Homecoming', amount: Math.max(0, int(sp.homecomingBudget, 0)) });
+    return lines;
+  }
+  /** recompute the stored total / committed / lines; emits budget:changed{why} when why is given */
+  function refreshBudget(state, why) {
+    const b = budgetOf(state);
+    b.topUp = topUpOf(state, b);
+    b.total = Math.round(b.base + b.fromRevenue + b.fromPrestige + b.boosters + b.topUp);
+    b.lines = committedLines(state);
+    let c = 0; for (let i = 0; i < b.lines.length; i++) c += b.lines[i].amount;
+    b.committed = c;
+    if (why) emit(EV.BUDGET_CHANGED, { why: why, year: b.year, total: b.total, committed: b.committed, headroom: b.total - b.committed, fund: b.fund });
+    return b;
+  }
+  /** season end: next year's sources from this season's revenue, wins and the prestige of the day */
+  function rollBudget(state) {
+    const b = budgetOf(state), e = state.economy || {};
+    b.lastRevenue = b.revenueYear; b.revenueYear = 0;
+    b.lastWins = int(state.sports.lastSeason && state.sports.lastSeason.wins, 0);
+    b.fromRevenue = Math.round(b.lastRevenue * PB.revenueShare);
+    b.fromPrestige = Math.round(PB.prestigePer10 * num(e.prestige, 0) / 10);
+    b.boosters = b.lastWins >= PB.boosterWins ? PB.boosters : 0;
+    b.year = yearOf(state) + 1;
+    refreshBudget(state, 'season');
+  }
+  /** a new game or a pre-P3 save: prestige and last season are known, the revenue share starts at 0 */
+  function initBudget(state) {
+    const b = budgetOf(state), e = state.economy || {};
+    b.year = yearOf(state);
+    b.fromPrestige = Math.round(PB.prestigePer10 * num(e.prestige, 0) / 10);
+    b.lastWins = int(state.sports.lastSeason && state.sports.lastSeason.wins, 0);
+    b.boosters = b.lastWins >= PB.boosterWins ? PB.boosters : 0;
+    refreshBudget(state, null);
+  }
+  function addRevenue(state, amount) { const b = budgetOf(state); b.revenueYear += Math.max(0, int(amount, 0)); }
+  /** move cash into the athletics fund: a forced ledger 'athletics' expense ("Athletics top-up") */
+  function transferTopUp(state, amount) {
+    const b = budgetOf(state), amt = Math.max(0, int(amount, 0));
+    if (amt <= 0) return true;
+    if (call('economy', 'charge', state, amt, 'athletics', { force: true, note: budgetText().ledgerLabel || 'Athletics top-up' }) === false) return false;
+    b.fund += amt; b.topUpPaid += amt; b.topUpYear = yearOf(state);
+    return true;
+  }
+  /** Jan 1 (with a team): the year's planned top-up moves, once */
+  function yearlyTopUp(state, year) {
+    const b = budgetOf(state);
+    if (b.topUpYear === year) return;
+    b.topUpPaid = 0; b.topUpYear = year;
+    const planned = Math.round(b.topUpShare * b.base);
+    if (planned > 0) transferTopUp(state, planned);
+    refreshBudget(state, 'topup');
+  }
+  /** an athletics spend: the fund first, then cash through economy.charge; false (nothing moved) when neither covers it */
+  function athleticsCharge(state, amount, key, meta) {
+    const b = budgetOf(state), amt = Math.max(0, int(amount, 0));
+    if (amt <= 0) return true;
+    const fromFund = Math.min(b.fund, amt), rest = amt - fromFund;
+    if (rest > 0 && call('economy', 'charge', state, rest, key, meta) === false) return false;
+    b.fund -= fromFund;
+    return true;
+  }
+  /** {ok, reason, headroom, total, committed, amount}: amount ≤ headroom, and the cash (after the fund) covers it */
+  function canAffordAthletics(state, amount) {
+    const b = refreshBudget(state, null), amt = int(amount, 0), headroom = b.total - b.committed;
+    const money = function (n) { return BSU.formatMoney ? BSU.formatMoney(n) : '$' + n; };
+    const out = { ok: true, reason: '', headroom: headroom, total: b.total, committed: b.committed, amount: amt };
+    if (amt <= 0) return out;
+    if (amt > headroom) { out.ok = false; out.reason = 'Athletics budget: ' + money(amt) + ' needed, ' + money(Math.max(0, headroom)) + ' headroom (' + money(b.committed) + ' of ' + money(b.total) + ' committed)'; return out; }
+    const rest = amt - Math.min(b.fund, amt);
+    if (rest > 0 && call('economy', 'canAfford', state, rest) === false) { out.ok = false; out.reason = 'Not enough cash for ' + money(amt) + ' (athletics fund ' + money(b.fund) + ')'; }
+    return out;
+  }
+  /** the player-facing view: the stored budget plus headroom and the five sources, committed recomputed live */
+  M.budget = function (state) {
+    try {
+      const b = refreshBudget(state, null), T = budgetText().sources || {};
+      const money = function (n) { return BSU.formatMoney ? BSU.formatMoney(n) : '$' + n; };
+      return {
+        year: b.year, base: b.base, fromRevenue: b.fromRevenue, fromPrestige: b.fromPrestige, boosters: b.boosters, topUpShare: b.topUpShare, topUp: b.topUp,
+        total: b.total, committed: b.committed, headroom: b.total - b.committed, fund: b.fund, lastRevenue: b.lastRevenue, revenueYear: b.revenueYear, lastWins: b.lastWins,
+        topUpPaid: b.topUpYear === yearOf(state) ? b.topUpPaid : 0, topUpMax: PB.topUpMax, topUpStep: PB.topUpStep, boosterWins: PB.boosterWins,
+        sources: [
+          { key: 'base', label: T.base || 'Base allocation', amount: b.base, note: '' },
+          { key: 'revenue', label: T.revenue || 'Share of last season\'s gate', amount: b.fromRevenue, note: Math.round(PB.revenueShare * 100) + '% of ' + money(b.lastRevenue) },
+          { key: 'prestige', label: T.prestige || 'Prestige', amount: b.fromPrestige, note: money(PB.prestigePer10) + ' per 10 prestige' },
+          { key: 'boosters', label: T.boosters || 'Booster donations', amount: b.boosters, note: b.lastWins >= PB.boosterWins ? b.lastWins + ' wins last season' : 'after ' + PB.boosterWins + ' wins (' + b.lastWins + ' last season)' },
+          { key: 'topUp', label: T.topUp || 'University top-up', amount: b.topUp, note: Math.round(b.topUpShare * 100) + '% of base' }
+        ],
+        lines: b.lines.map(function (l) { return { key: l.key, label: l.label, amount: l.amount }; })
+      };
+    } catch (e) { BSU.error('sports', 'budget', e); return null; }
+  };
+  /** the top-up slider: share of base (0–topUpMax, snapped to topUpStep); with a team, a raise above this year's paid amount moves now → {ok, share, topUp, moved} */
+  M.setTopUp = function (state, share) {
+    try {
+      const b = budgetOf(state), sp = state.sports;
+      const step = num(PB.topUpStep, 0.1);
+      const v = clamp(Math.round(num(share, 0) / step) * step, 0, PB.topUpMax);
+      b.topUpShare = Math.round(v * 1000) / 1000;
+      let moved = 0;
+      if (sp.hasTeam) {
+        const year = yearOf(state);
+        if (b.topUpYear !== year) { b.topUpYear = year; b.topUpPaid = 0; }
+        const planned = Math.round(b.topUpShare * b.base), raise = planned - b.topUpPaid;
+        if (raise > 0 && transferTopUp(state, raise)) moved = raise;
+      }
+      refreshBudget(state, 'topup');
+      return { ok: true, share: b.topUpShare, topUp: b.topUp, moved: moved };
+    } catch (e) { BSU.error('sports', 'setTopUp', e); return { ok: false, reason: 'error' }; }
+  };
+  /** {ok, reason, headroom, total, committed}: can athletics commit `amount` now? (every sports spend asks this first) */
+  M.canAfford = function (state, amount) { try { return canAffordAthletics(state, amount); } catch (e) { BSU.error('sports', 'canAfford', e); return { ok: false, reason: 'error', headroom: 0, total: 0, committed: 0, amount: int(amount, 0) }; } };
+  /** economy's monthly coaching charge draws on the athletics fund first: returns the amount the fund covered */
+  M.drawFund = function (state, amount) { try { const b = budgetOf(state); const d = Math.min(b.fund, Math.max(0, int(amount, 0))); b.fund -= d; return d; } catch (e) { BSU.error('sports', 'drawFund', e); return 0; } };
+  M.coachSalary = function (stars, role) { return coachSalary(stars, role); };
 
   // ---------------------------------------------------------------------------
   // Lifecycle
@@ -2275,10 +2460,12 @@
       const max = int(PE.recruit.maxSignings, 2);
       if (int(b.signed, 0) >= max) return { ok: false, cost: p.cost, reason: 'Only ' + max + ' signings per off-season' };
       if (b.list.some(function (q) { return q !== p && q.signed && q.pos === p.pos; })) return { ok: false, cost: p.cost, reason: 'A ' + p.pos + ' is already signed' };
-      if (call('economy', 'canAfford', state, p.cost) === false) return { ok: false, cost: p.cost, reason: 'Cannot afford ' + (BSU.formatMoney ? BSU.formatMoney(p.cost) : p.cost) };
-      if (call('economy', 'charge', state, p.cost, 'coaching', { note: 'signing ' + p.name }) === false) return { ok: false, cost: p.cost, reason: 'Cannot afford the signing' };
+      const ca = canAffordAthletics(state, p.cost);   // P3: the athletics budget's headroom, then cash (the fund first)
+      if (!ca.ok) return { ok: false, cost: p.cost, reason: ca.reason };
+      if (!athleticsCharge(state, p.cost, 'coaching', { note: 'signing ' + p.name })) return { ok: false, cost: p.cost, reason: 'Cannot afford the signing' };
       p.signed = true; b.signed = int(b.signed, 0) + 1;
       ticker(state, p.pos + ' ' + p.name + ' (' + p.hometown + ') signs with the ' + L.bsuNick + '. Rated ' + p.rating + '; arrives Aug 5.', {});
+      refreshBudget(state, 'sign');
       return { ok: true, cost: p.cost, name: p.name, pos: p.pos, rating: p.rating, reason: '' };
     } catch (e) { BSU.error('sports', 'signProspect', e); return { ok: false, cost: 0, reason: 'error' }; }
   };
@@ -2320,15 +2507,19 @@
   M.summary = function (state) { try { const g = state.sports.game; if (g) return g.summary || buildSummary(state, g); return state.sports.lastSummary || null; } catch (e) { BSU.error('sports', 'summary', e); return null; } };
   M.setNight = function (state, on) { try { state.sports.nightToggle = !!on; refreshNights(state); } catch (e) { BSU.error('sports', 'setNight', e); } };
   M.setAutoSim = function (state, on) { try { state.sports.autoSim = !!on; } catch (e) { BSU.error('sports', 'setAutoSim', e); } };
-  M.setPermits = function (state, v) { try { state.sports.permits = v === 'free' ? 'free' : 'paid'; } catch (e) { BSU.error('sports', 'setPermits', e); } };
+  M.setPermits = function (state, v) { try { const ca = canAffordAthletics(state, 0); state.sports.permits = v === 'free' ? 'free' : 'paid'; return ca; } catch (e) { BSU.error('sports', 'setPermits', e); return { ok: false, reason: 'error' }; } };
   /** 0 | 50000 | 150000: charges the tier (boardCards) and adds the homecomingBudget happiness timer */
   M.setHomecomingBudget = function (state, v) {
     try {
       const tier = L.homecomingTiers.indexOf(num(v, 0));
       if (tier < 0) return { ok: false, reason: 'Unknown tier' };
       const cost = L.homecomingTiers[tier];
-      if (cost > 0 && call('economy', 'charge', state, cost, 'boardCards', { note: 'Homecoming budget' }) === false) return { ok: false, reason: 'Cannot afford' };
+      const cur = int(state.sports.homecomingBudget, 0);
+      const ca = canAffordAthletics(state, cost - cur);   // P3: the tier's step up against the athletics headroom (a lower tier costs nothing more)
+      if (!ca.ok) return { ok: false, cost: cost, reason: ca.reason };
+      if (cost > cur && !athleticsCharge(state, cost - cur, 'boardCards', { note: 'Homecoming budget' })) return { ok: false, cost: cost, reason: 'Cannot afford' };
       state.sports.homecomingBudget = cost;
+      refreshBudget(state, 'homecoming');
       const hb = P.econ.boardCards.homecomingBudget;
       if (tier > 0) call('progress', 'addTimer', state, 'homecomingBudget', num(hb.happiness[tier], tier * 3), num(hb.days, 10));
       return { ok: true, cost: cost };
@@ -2342,12 +2533,15 @@
       if (!c) return { ok: false, cost: 0, reason: 'No such candidate' };
       const fee = PS.coachFee * c.stars;
       if (num(e.coaching, 0) < PS.coachSign * c.stars) return { ok: false, cost: fee, reason: 'Coaching budget must be at least ' + BSU.formatMoney(PS.coachSign * c.stars) + '/yr' };
-      if (num(e.cash, 0) < fee) return { ok: false, cost: fee, reason: 'Signing fee ' + BSU.formatMoney(fee) };
-      if (call('economy', 'charge', state, fee, 'coaching', { note: 'signing ' + c.name }) === false) return { ok: false, cost: fee, reason: 'Cannot afford the signing fee' };
+      // P3: the fee plus the salary step up must fit the athletics budget's headroom (the fund pays the fee first)
+      const ca = canAffordAthletics(state, fee + Math.max(0, coachSalary(c.stars, 'hc') - (sp.coach && sp.coach.name ? coachSalary(sp.coach.stars, 'hc') : 0)));
+      if (!ca.ok) return { ok: false, cost: fee, reason: ca.reason };
+      if (!athleticsCharge(state, fee, 'coaching', { note: 'signing ' + c.name })) return { ok: false, cost: fee, reason: 'Cannot afford the signing fee' };
       sp.coach = { name: c.name, stars: c.stars, hiredYear: yearOf(state), quote: c.quote || coachQuote(c.name), rep: c.rep || '' };
       sp.candidates = [];
       emit(EV.COACH_CHANGED, { name: sp.coach.name, stars: sp.coach.stars });
       storeRating(state);
+      refreshBudget(state, 'hire');
       return { ok: true, cost: fee, reason: '' };
     } catch (e) { BSU.error('sports', 'hireCoach', e); return { ok: false, cost: 0, reason: 'error' }; }
   };
@@ -2357,11 +2551,16 @@
       const sp = state.sports;
       if (!sp.hasTeam || !sp.coach || !sp.coach.name) return { ok: false, cost: 0, reason: 'No coach' };
       const cost = sp.rivalryLossStreak >= PS.rivalryLossFire ? 0 : PS.buyout;
-      if (cost > 0 && call('economy', 'charge', state, cost, 'coaching', { note: 'buyout ' + sp.coach.name }) === false) return { ok: false, cost: cost, reason: 'Cannot afford the buyout' };
+      if (cost > 0) {   // P3: the buyout against the headroom, net of the salary the firing frees
+        const ca = canAffordAthletics(state, cost - Math.max(0, coachSalary(sp.coach.stars, 'hc') - coachSalary(L.interimCoach.stars, 'hc')));
+        if (!ca.ok) return { ok: false, cost: cost, reason: ca.reason };
+        if (!athleticsCharge(state, cost, 'coaching', { note: 'buyout ' + sp.coach.name })) return { ok: false, cost: cost, reason: 'Cannot afford the buyout' };
+      }
       sp.coach = { name: L.interimCoach.name, stars: L.interimCoach.stars, hiredYear: yearOf(state), quote: '', rep: L.interimCoach.rep };
       drawCandidates(state);
       emit(EV.COACH_CHANGED, { name: sp.coach.name, stars: sp.coach.stars });
       storeRating(state);
+      refreshBudget(state, 'fire');
       return { ok: true, cost: cost };
     } catch (e) { BSU.error('sports', 'fireCoach', e); return { ok: false, cost: 0, reason: 'error' }; }
   };
@@ -2373,7 +2572,9 @@
       rc.answered = true;
       if (!accept) { rc.accepted = false; return; }
       if (rc.price === L.recruitPrices[0]) {
-        if (call('economy', 'charge', state, L.recruitNil, 'coaching', { note: 'NIL fund' }) === false) { rc.accepted = false; return; }
+        const ca = canAffordAthletics(state, L.recruitNil);   // P3
+        if (!ca.ok) { rc.accepted = false; call('ui', 'notify', state, { text: ca.reason, kind: 'sports', ttl: 6000 }); return; }
+        if (!athleticsCharge(state, L.recruitNil, 'coaching', { note: 'NIL fund' })) { rc.accepted = false; return; }
         rc.paid = true;
       }
       rc.accepted = true;
@@ -2448,7 +2649,8 @@
     halftime: function () {}, skipToFinal: function () {}, setNight: function () {}, setAutoSim: function () {}, setPermits: function () {},
     decide: function () { return { ok: false, reason: 'No game state' }; }, setPlaybook: function () {}, setAggression: function () {}, setWatchFull: function () {},
     live: function () { return { active: false }; }, playState: function () { return null; }, recentPlays: function () { return []; }, summary: function () { return null; },
-    answerRecruit: function () {}, postpone: function () {}, scheduleMakeup: function () {}, offerPlayThrough: function () {}, startNightGameScript: function () {}
+    answerRecruit: function () {}, postpone: function () {}, scheduleMakeup: function () {}, offerPlayThrough: function () {}, startNightGameScript: function () {},
+    budget: function () { return null; }, setTopUp: function () { return { ok: false, reason: 'No game state' }; }, canAfford: function () { return { ok: false, reason: 'No game state', headroom: 0, total: 0, committed: 0, amount: 0 }; }, drawFund: function () { return 0; }   // P3
   };
   for (const name in FALLBACKS) {
     (function (fnName, inner, fallback) {
@@ -2808,6 +3010,7 @@
         s.economy.coaching = 0; s.economy.cash = 1e7;
         A(!M.hireCoach(s, 0).ok, 'hire refused without the coaching budget');
         s.economy.coaching = PS.coachSign * c0.stars;
+        M.setTopUp(s, PB.topUpMax);   // P3: a 3★ hire needs the headroom the max top-up gives (the fee plus the salary step)
         const h = M.hireCoach(s, 0);
         A(h.ok && h.cost === PS.coachFee * c0.stars && s.sports.coach.name === c0.name && log.some(function (x) { return x.name === EV.COACH_CHANGED; }), 'hire signs the candidate');
         s.sports.schedule = [makeEntry(BSU.dateToDay('Sep 8', 1), 'delta', true, 'regular', 2, 62)];

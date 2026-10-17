@@ -620,5 +620,85 @@ if (existsSync(join(root, 'index.html'))) {
   delete SP._deps.data;
 }
 
+// --- PLAN_V2 P3: the athletics budget — sources, boosters, headroom, the top-up transfer, the fund, monotone in revenue ----
+{
+  const PB = BSU.params.sports.budget;
+  const charges = []; const econ = SP._deps.economy; const prevCharge = econ.charge, prevAfford = econ.canAfford;
+  econ.charge = (s, a, k, m) => { charges.push({ key: k, amount: a, note: m && m.note, day: s.calendar.day }); return true; }; econ.canAfford = () => true;
+  const budgetEvents = []; BSU.events.on('budget:changed', (p) => budgetEvents.push(JSON.parse(JSON.stringify(p))), 'test');
+  ok(PB && PB.base === 2000000 && PB.revenueShare === 0.35 && PB.prestigePer10 === 50000 && PB.boosters === 500000 && PB.boosterWins === 7 && PB.topUpMax === 1.5, 'params.sports.budget carries the plan numbers');
+  eq(SP.coachSalary(1), 150000, 'coachSalary(1★) = $150k'); eq(SP.coachSalary(2), 600000, 'coachSalary(2★) = $600k'); eq(SP.coachSalary(5), 3750000, 'coachSalary(5★) = $3.75M');
+  eq(SP.coachSalary(4, 'oc'), Math.round(150000 * 16 * PB.coordinatorShare), 'a coordinator earns coordinatorShare of the head-coach salary (P1 reuses this)');
+  const s = newGame(31);   // prestige 16, coaching $200k
+  rec.posts.length = 0;   // the recorder is shared by every block above
+  const b0 = SP.budget(s);
+  ok(b0 && b0.year === 1 && b0.base === 2000000 && b0.fromPrestige === 80000 && b0.fromRevenue === 0 && b0.boosters === 0 && b0.topUp === 0 && b0.total === 2080000, 'a new game: base + $50k × prestige/10 (' + JSON.stringify([b0 && b0.total, b0 && b0.fromPrestige]) + ')');
+  ok(b0.sources.length === 5 && b0.sources.map(x => x.key).join() === 'base,revenue,prestige,boosters,topUp' && b0.lines.map(x => x.key).join() === 'coach,coaching,signings,upkeep,homecoming', 'five sources and five committed lines in a fixed order');
+  ok(b0.committed === 200000 && b0.headroom === b0.total - b0.committed, 'before the team only the coaching spend is committed (' + b0.committed + ')');
+  run(s, 100);   // the field → Coach Cheramie 2★
+  const b1 = SP.budget(s);
+  const upkeepLine = b1.lines.find(l => l.key === 'upkeep');
+  ok(b1.lines.find(l => l.key === 'coach').amount === 600000 && upkeepLine.amount === Math.round((3000 + 4000) * 12 * PB.upkeepShare) && b1.committed === 600000 + 200000 + upkeepLine.amount, 'with the team: the 2★ salary, 10% of Bayou Field\'s annual upkeep ($3k + $4k a month) and the coaching spend are committed (' + b1.committed + ')');
+  // headroom checks
+  const ca0 = SP.canAfford(s, b1.headroom); ok(ca0.ok === true && ca0.headroom === b1.headroom, 'canAfford: exactly the headroom is ok');
+  const ca1 = SP.canAfford(s, b1.headroom + 1); ok(ca1.ok === false && /headroom/.test(ca1.reason) && ca1.total === b1.total, 'canAfford: one dollar over the headroom is refused with the budget line (' + ca1.reason + ')');
+  ok(SP.canAfford(s, 0).ok === true && SP.canAfford(s, -5).ok === true, 'a free action is always affordable');
+  // the top-up: a raise mid-year moves cash now (ledger key athletics, note "Athletics top-up"), lowering never refunds
+  charges.length = 0;
+  const t1 = SP.setTopUp(s, 0.5);
+  ok(t1.ok && t1.share === 0.5 && t1.moved === 1000000 && charges.length === 1 && charges[0].key === 'athletics' && charges[0].amount === 1000000 && /Athletics top-up/.test(charges[0].note), 'setTopUp(0.5) with a team moves $1M at once as an athletics ledger expense (' + JSON.stringify(charges[0]) + ')');
+  const b2 = SP.budget(s); ok(b2.topUp === 1000000 && b2.fund === 1000000 && b2.total === b1.total + 1000000 && b2.topUpShare === 0.5, 'the cap and the fund both carry the $1M');
+  const t2 = SP.setTopUp(s, 0.2); ok(t2.ok && t2.moved === 0 && charges.length === 1 && SP.budget(s).topUp === 1000000 && SP.budget(s).topUpShare === 0.2, 'lowering the share refunds nothing: the paid $1M still counts this year');
+  { const q = newGame(32); ok(SP.setTopUp(q, 9).share === PB.topUpMax && SP.setTopUp(q, -1).share === 0 && SP.setTopUp(q, 0.37).share === 0.4 && charges.length === 1, 'share clamps to 0–150% and snaps to 10% steps; without a team nothing moves'); }
+  ok(budgetEvents.length >= 3 && budgetEvents.every(e => e.why && Number.isFinite(e.total) && Number.isFinite(e.headroom)), 'budget:changed fires for each top-up with total/headroom');
+  // the fund pays first: a signing within the fund leaves cash alone
+  SP.setTopUp(s, 0); const fundBefore = SP.budget(s).fund; ok(fundBefore === 1000000 && SP.budget(s).topUp === 1000000, 'fund $1M after the top-up; the cap keeps the paid $1M for the year');
+  const dec9 = BSU.dateToDay('Dec 9', 1);
+  runUntilDay(s, dec9); run(s, 2); while (s.setPiece) tick1(s);
+  const b3 = SP.budget(s);
+  const rev = rec.posts.filter(p => (p.key === 'athletics' || p.key === 'tailgate') && p.day <= dec9).reduce((a, p) => a + p.amount, 0);
+  ok(b3.year === 2 && b3.lastRevenue === rev && b3.fromRevenue === Math.round(rev * PB.revenueShare) && rev > 0, 'season end rolls the year: lastRevenue = the season\'s athletics + tailgate posts (' + rev + '), 35% of it joins the budget');
+  ok(b3.boosters === (s.sports.lastSeason.wins >= PB.boosterWins ? PB.boosters : 0), 'boosters follow the ≥ 7-win rule (' + s.sports.lastSeason.wins + ' wins → ' + b3.boosters + ')');
+  ok(budgetEvents.some(e => e.why === 'season'), 'budget:changed{why: season} at season end');
+  const board = SP.prospects(s); const p0 = board.list[0];
+  charges.length = 0;
+  const r1 = SP.signProspect(s, 0);
+  ok(r1.ok === true && charges.filter(c => c.key === 'coaching').length === 0 && SP.budget(s).fund === fundBefore - p0.cost, 'a signing inside the fund charges no cash: the fund drops by the cost (' + p0.cost + ')');
+  ok(SP.budget(s).lines.find(l => l.key === 'signings').amount === p0.cost, 'the signed prospect is a committed line');
+  // over the cap: the coaching slider alone can exceed the budget; then every spend is refused with the headroom line
+  s.economy.coaching = 3000000;
+  const over = SP.budget(s); ok(over.committed > over.total && over.headroom < 0, 'a $3M coaching spend puts the program over budget (' + over.committed + ' of ' + over.total + ')');
+  const idx2 = board.list.findIndex((p, i) => i > 0 && p.pos !== p0.pos);
+  const r2 = SP.signProspect(s, idx2); ok(r2.ok === false && /headroom/.test(r2.reason), 'Sign refused by the headroom, not by cash (' + r2.reason + ')');
+  const hc = SP.hireCoach(s, 0); ok(hc.ok === false && /headroom|budget/.test(hc.reason), 'hire refused over budget (' + hc.reason + ')');
+  const hb = SP.setHomecomingBudget(s, 150000); ok(hb.ok === false && /headroom/.test(hb.reason), 'Homecoming tier refused over budget');
+  ok(SP.setPermits(s, 'free').ok === true && s.sports.permits === 'free', 'permits (a free toggle) still flip over budget'); SP.setPermits(s, 'paid');
+  s.economy.coaching = 0;
+  const r3 = SP.signProspect(s, idx2); ok(r3.ok === true, 'with the headroom back the same signing goes through');
+  // monotone in revenue: the same season end with more revenue gives a bigger budget
+  const trigger = (st, wins) => { st.sports.seasonDone = false; st.calendar.day = BSU.dateToDay('Dec 8', 2); SP._buildSchedule(st); for (const e of st.sports.schedule) { e.played = true; e.result = null; e.cancelled = true; } st.sports.record.wins = wins === undefined ? 4 : wins; st.sports.record.losses = 3; run(st, 101); return SP.budget(st); };   // the schedule build resets the record, so the wins go in after it
+  s.sports.budget.revenueYear = 1000000; const m1 = trigger(s);
+  s.sports.budget.revenueYear = 2000000; const m2 = trigger(s);
+  ok(m1.fromRevenue === 350000 && m2.fromRevenue === 700000 && m2.total - m1.total === 350000, 'budget is monotone in revenue (+$1M gate → +$350k budget)');
+  s.sports.budget.revenueYear = 0; const m3 = trigger(s, 8);
+  ok(m3.boosters === 500000 && m3.lastWins >= 7, 'an 8-win season brings $500k of boosters');
+  s.sports.budget.revenueYear = 0; const m4 = trigger(s, 6);
+  ok(m4.boosters === 0 && m4.total === m3.total - 500000, 'a 6-win season brings none');
+  // Jan 1: the planned share moves once (the fund keeps what the signings left)
+  SP.setTopUp(s, 0.3); charges.length = 0;
+  const jan1 = BSU.dateToDay('Jan 1', 3); s.sports.budget.topUpYear = 2; s.sports.budget.topUpPaid = 600000;
+  runUntilDay(s, jan1); run(s, 2);
+  const moved = charges.filter(c => c.key === 'athletics');
+  ok(moved.length === 1 && moved[0].amount === 600000 && moved[0].day === jan1 && SP.budget(s).topUpPaid === 600000, 'Jan 1 moves 30% of base ($600k) once as "Athletics top-up" (' + JSON.stringify(moved) + ')');
+  const fundNow = SP.budget(s).fund; const d = SP.drawFund(s, fundNow + 5); ok(d === fundNow && SP.budget(s).fund === 0, 'drawFund never overdraws the fund');
+  // save migration: a save without a budget gets one from its prestige and last season
+  const old = JSON.parse(JSON.stringify(s)); delete old.sports.budget; old.economy.prestige = 40; old.sports.lastSeason.wins = 9;
+  BSU.rng.sim.state = old.rng.sim; SP.reset(old, false);
+  const mb = SP.budget(old);
+  ok(mb && mb.fromPrestige === 200000 && mb.boosters === 500000 && mb.fromRevenue === 0 && mb.year === BSU.dayParts(old.calendar.day).year && Number.isFinite(mb.total), 'an old save: budget rebuilt from prestige 40 and a 9-win season (revenue unknown → 0)');
+  ok(JSON.stringify(s.sports.budget).indexOf('null') < 0 && Object.values(s.sports.budget).every(v => Array.isArray(v) || Number.isFinite(v)), 'every stored budget field is finite');
+  econ.charge = prevCharge; econ.canAfford = prevAfford; BSU.events.clear('test');
+}
+
 console.log(`\n${passes} passed, ${failures} failed`);
 process.exit(failures ? 1 : 0);

@@ -341,5 +341,93 @@ ok(st && st.ok, 'ui.selfTest ok (includes ui_panels pushed tests) ' + (st && st.
   U.openPanel(null);
 }
 
+// --- PLAN_V2 P3: the wide, tabbed Season panel — six tabs, the budget bar, the top-up slider, Sign against the headroom ----
+{
+  const walk = (e, fn) => { fn(e); for (const c of (e.children || [])) walk(c, fn); };
+  const byId = (root, id) => { let f = null; walk(root, (e) => { if (e.id === id && !f) f = e; }); return f; };
+  const findAll = (root, pred) => { const out = []; walk(root, (e) => { if (e && e.tagName && pred(e)) out.push(e); }); return out; };
+  const click = (b) => b.dispatchEvent({ type: 'click' });
+  const textOf = (e) => { let t = String(e.textContent || ''); for (const c of (e.children || [])) t += ' ' + textOf(c); return t; };
+  const visible = (e) => !!e && !e.classList.contains('hidden');
+  const money = (n) => BSU.formatMoney(n);
+  const H = BSU.headless, B = BSU.buildings;
+  const TABS = ['overview', 'staff', 'roster', 'recruiting', 'schedule', 'records'];
+  // fresh game, no team: every tab builds and refreshes
+  BSU.session.newGame({ seed: 42, skipTutorial: true });
+  const s0 = BSU.state; const errs0 = BSU.errors ? BSU.errors.size : 0;
+  U.openPanel('season'); U.update(s0, 600);
+  const host = U.el['panel-season'];
+  ok(TABS.every((t) => !!byId(host, 'tab-' + t) && !!byId(host, 'sea-tab-' + t)), 'six tabs with six pages: ' + TABS.join(' · '));
+  ok(TABS.filter((t) => visible(byId(host, 'sea-tab-' + t))).length === 1, 'exactly one page is shown');
+  for (const t of TABS) { click(byId(host, 'tab-' + t)); U.update(s0, 600); ok(visible(byId(host, 'sea-tab-' + t)) && TABS.filter((x) => visible(byId(host, 'sea-tab-' + x))).length === 1 && byId(host, 'tab-' + t).classList.contains('active'), 'tab ' + t + ' shows its page alone (fresh game)'); }
+  ok(U.settings().seasonTab === 'records', 'the last open tab is remembered in the ui settings');
+  host.dispatchEvent({ type: 'keydown', key: 'ArrowRight' }); ok(visible(byId(host, 'sea-tab-overview')), 'ArrowRight wraps Records → Overview');
+  host.dispatchEvent({ type: 'keydown', key: 'ArrowLeft' }); ok(visible(byId(host, 'sea-tab-records')), 'ArrowLeft goes back');
+  click(byId(host, 'tab-overview'));
+  ok(/No team yet/.test(textOf(byId(host, 'sea-record'))) && /Starters arrive/.test(textOf(byId(host, 'sea-starters'))), 'no-team copy in the header and the roster');
+  ok(host._staffGrid && host._staffGrid.slots.length === 3 && host._staffGrid.slots[0].dataset.role === 'hc' && /Coordinators coming soon/.test(textOf(host._staffGrid.slots[1])) && /Coordinators coming soon/.test(textOf(host._staffGrid.slots[2])), 'Staff: host._staffGrid has the head-coach slot and two coordinator placeholders (P1 hook)');
+  const B0 = BSU.sports.budget(s0);
+  ok(textOf(byId(host, 'sea-budget-total')).indexOf(money(B0.total)) >= 0 && findAll(byId(host, 'sea-budget-sources'), (e) => e.dataset && e.dataset.key).length === 5 && findAll(byId(host, 'sea-budget-lines'), (e) => e.dataset && e.dataset.key).length === 5, 'budget bar on a fresh game: the total, five sources, five lines');
+  U.openPanel(null);
+  // a team, a stadium, then a jump to the season's end: revenue exists and the budget rolled
+  BSU.economy.post(s0, 'misc', 9e6); BSU.economy.addStudents(s0, 700, 'test');
+  const scan = (id) => { for (let y = 2; y < 60; y++) for (let x = 2; x < 60; x++) { const c = B.canPlace(s0, id, x, y, { ignoreCash: true }); if (c && c.ok) return [x, y]; } return null; };
+  const psp = scan('practice_field'); H.place('practice_field', psp[0], psp[1]); H.tick(2500);
+  const pf = s0.buildings.find((x) => x && x.type === 'practice_field'); B.upgrade(s0, pf.id); H.tick(2500);
+  const ssp = scan('stadium'); H.place('stadium', ssp[0], ssp[1]); H.tick(2500);
+  BSU.sports.setAutoSim(s0, true);
+  s0.calendar.day = BSU.dateToDay('Dec 7', 1); for (let i = 0; i < 6 * BSU.params.time.ticksPerDay && !(s0.sports.seasonDone); i++) H.tick(1);
+  while (s0.setPiece) H.tick(1);
+  ok(s0.sports.hasTeam && s0.sports.seasonDone && s0.sports.records.seasons.length === 1, 'P3 setup: a team, a stadium and one finished season (' + s0.sports.lastSeason.wins + '-' + s0.sports.lastSeason.losses + ')');
+  const B1 = BSU.sports.budget(s0);
+  ok(B1.year === 2 && B1.lastRevenue > 0 && B1.fromRevenue === Math.round(B1.lastRevenue * BSU.params.sports.budget.revenueShare), 'the budget rolled with the season\'s gate (' + money(B1.lastRevenue) + ' → ' + money(B1.fromRevenue) + ')');
+  U.openPanel('season'); U.update(s0, 600); U.update(s0, 600);
+  for (const t of TABS) { click(byId(host, 'tab-' + t)); U.update(s0, 600); ok(visible(byId(host, 'sea-tab-' + t)), 'tab ' + t + ' refreshes after a season'); }
+  click(byId(host, 'tab-overview')); U.update(s0, 600);
+  const tot = textOf(byId(host, 'sea-budget-total')), sub = textOf(byId(host, 'sea-budget-sub'));
+  ok(tot.indexOf(money(B1.total)) >= 0 && sub.indexOf(money(B1.committed)) >= 0 && sub.indexOf(money(B1.headroom)) >= 0, 'budget bar numbers match sports.budget: ' + tot + ' / ' + sub);
+  const srcRows = findAll(byId(host, 'sea-budget-sources'), (e) => e.dataset && e.dataset.key);
+  ok(srcRows.length === 5 && B1.sources.every((x, i) => srcRows[i].dataset.key === x.key && textOf(srcRows[i]).indexOf(money(x.amount)) >= 0), 'the five sources carry their amounts');
+  const lineRows = findAll(byId(host, 'sea-budget-lines'), (e) => e.dataset && e.dataset.key);
+  ok(lineRows.length === 5 && B1.lines.every((x, i) => lineRows[i].dataset.key === x.key && textOf(lineRows[i]).indexOf(money(x.amount)) >= 0), 'the five committed lines carry their amounts');
+  ok(byId(host, 'sea-budget-bar').children[0].style.width === Math.round(Math.min(1, B1.committed / B1.total) * 100) + '%', 'the bar fill is committed / total');
+  // the top-up slider → sports.setTopUp, reflected in the Budget panel's expenses this month
+  const tu = byId(host, 'sl-topup'); ok(!!tu && tu.max === '150' && tu.step === '10' && tu.value === '0', 'top-up slider 0–150% in steps of 10');
+  const cashBefore = s0.economy.cash; tu.value = '50'; tu.dispatchEvent({ type: 'input' }); U.update(s0, 600);
+  const B2 = BSU.sports.budget(s0);
+  ok(B2.topUpShare === 0.5 && B2.topUp === 1000000 && s0.economy.cash === cashBefore - 1000000 && textOf(byId(host, 'sea-topup-val')).indexOf(money(1000000)) >= 0, 'slider 50% → setTopUp: $1M moved, shown on the slider value');
+  ok(textOf(byId(host, 'sea-budget-total')).indexOf(money(B2.total)) >= 0 && B2.total === B1.total + 1000000, 'the total grew by the top-up');
+  U.openPanel('budget'); U.update(s0, 600);
+  const bud = U.el['panel-budget'];
+  ok(/Athletics top-up/.test(textOf(bud)) && textOf(bud).indexOf(money(1000000)) >= 0 && /Athletics budget/.test(textOf(byId(bud, 'bud-athletics'))), 'Budget panel: the "Athletics top-up" expense line and the athletics budget row');
+  U.openPanel('season'); U.update(s0, 600);
+  // Recruiting: a Sign over the headroom is refused with the reason (the board is synthetic, the engine is real)
+  s0.sports.prospects = { year: 1, offeredDay: 0, offered: true, signed: 0, answered: false, list: [{ name: 'Rich Kid', pos: 'QB', rating: 92, cost: 9000000, hometown: 'Houma', title: 'Gunslinger', blurb: '', archetype: 'x', signed: false }, { name: 'Fair Kid', pos: 'RB', rating: 80, cost: 150000, hometown: 'Eunice', title: '', blurb: '', archetype: 'y', signed: false }] };
+  click(byId(host, 'tab-recruiting')); U.update(s0, 600); U.update(s0, 600);
+  ok(/Headroom/.test(textOf(byId(host, 'sea-recruit-head'))), 'Recruiting shows the headroom line: ' + textOf(byId(host, 'sea-recruit-head')));
+  const pRows = findAll(byId(host, 'sea-prospects'), (e) => /fb-pr/.test(e.className) && !/fb-th/.test(e.className));
+  ok(pRows.length === 2 && findAll(pRows[0], (e) => /cost/.test(e.className) && /over/.test(e.className)).length === 1 && findAll(pRows[1], (e) => /cost/.test(e.className) && /over/.test(e.className)).length === 0, 'a cost over the headroom is flagged, one inside it is not');
+  const notes = []; const prevNotify = U.notify; U.notify = (st, spec) => notes.push(spec.text);
+  click(findAll(pRows[0], (e) => e.tagName === 'BUTTON' && e.textContent === 'Sign')[0]);
+  ok(notes.length === 1 && /headroom/.test(notes[0]) && s0.sports.prospects.list[0].signed === false, 'Sign refused by the headroom: ' + notes[0]);
+  click(findAll(pRows[1], (e) => e.tagName === 'BUTTON' && e.textContent === 'Sign')[0]);
+  ok(s0.sports.prospects.list[1].signed === true && /arrives Aug 5/.test(notes[1] || ''), 'the affordable one signs');
+  U.notify = prevNotify; s0.sports.prospects = null;
+  // Roster: two tables, eight starters in order (P2 hook)
+  click(byId(host, 'tab-roster')); U.update(s0, 600);
+  const tables = findAll(byId(host, 'sea-starters'), (e) => /fb-roster/.test(e.className) && e.dataset && e.dataset.side);
+  const rows = findAll(byId(host, 'sea-starters'), (e) => e.dataset && e.dataset.pos);
+  ok(tables.length === 2 && tables[0].dataset.side === 'offense' && tables[1].dataset.side === 'defense' && rows.length === 8 && rows.map((r) => r.dataset.pos).join() === 'QB,RB,WR,OL,DL,LB,DB,K', 'Roster: offense | defense tables, eight starter rows in order');
+  // Staff: the head coach card shows the salary from sports.coachSalary; Records shows the season history
+  click(byId(host, 'tab-staff')); U.update(s0, 600);
+  ok(textOf(byId(host, 'sea-coach-salary')).indexOf(money(BSU.sports.coachSalary(s0.sports.coach.stars))) >= 0, 'Staff: the head coach salary line (' + textOf(byId(host, 'sea-coach-salary')) + ')');
+  click(byId(host, 'tab-records')); U.update(s0, 600);
+  ok(/Season history/.test(textOf(byId(host, 'sea-records'))) && /Year 1/.test(textOf(byId(host, 'sea-records'))) && !!byId(host, 'sea-recruits'), 'Records: season history and the recruiting history list');
+  click(byId(host, 'tab-schedule')); U.update(s0, 600);
+  ok(findAll(byId(host, 'sea-schedule'), (e) => /fb-sc/.test(e.className)).length === s0.sports.schedule.length && !!byId(host, 'btn-upgrade') && !!byId(host, 'seg-permits') && !!byId(host, 'seg-homecoming'), 'Schedule: the results list, the venue Upgrade, permits and Homecoming');
+  U.openPanel(null);
+  ok((BSU.errors ? BSU.errors.size : 0) === errs0, 'no BSU.error through the P3 tour');
+}
+
 console.log(`\n${passes} passed, ${failures} failed`);
 process.exit(failures ? 1 : 0);

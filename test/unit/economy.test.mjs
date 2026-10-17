@@ -279,5 +279,30 @@ events.length = 0;
   ok(proj.years.every(y => y.students >= 60 && y.prestige >= 0 && y.prestige <= 100), 'no negative students; prestige bounded');
 }
 
+// --- PLAN_V2 P3: the athletics ledger line and the fund-first coaching charge ----------------------------------------
+{
+  ok(BSU.LEDGER_EXPENSE_KEYS.indexOf('athletics') > 0 && BSU.LEDGER_INCOME_KEYS.indexOf('athletics') >= 0, "'athletics' is both an income key (the gate) and an expense key (the top-up)");
+  const s = BSU.newState(9); E.init(s); E.reset(s, true);
+  const cash0 = s.economy.cash;
+  ok(E.charge(s, 750000, 'athletics', { note: 'Athletics top-up' }) === true && s.economy.cash === cash0 - 750000 && s.ledger.month.expense.athletics === 750000, 'a top-up charge lands under ledger.month.expense.athletics');
+  drive(s, 1100);   // past the first month boundary
+  const st = E.statement(s);
+  ok(st.expense.athletics === 750000 && Object.keys(st.expense).indexOf('athletics') === 4, 'the statement carries the Athletics top-up line in the fixed key order');
+  // the monthly coaching charge draws on the athletics fund first (sports.drawFund), cash pays the rest
+  let fund = 150000; const draws = [];
+  E._deps.sports.drawFund = (st2, due) => { const d = Math.min(fund, due); fund -= d; draws.push([due, d]); return d; };
+  s.economy.coaching = 1200000;   // $100k a month
+  const before = s.ledger.month.expense.coaching;
+  // the month's charges post after it closes, so each statement shows the previous boundary's charge
+  drive(s, 1000); drive(s, 1000); const m1 = E.statement(s).expense.coaching;
+  drive(s, 1000); const m2 = E.statement(s).expense.coaching;
+  drive(s, 1000); const m3 = E.statement(s).expense.coaching;
+  ok(draws.length >= 3 && draws[0][0] === 100000 && draws[0][1] === 100000 && m1 === 0, 'month 1: the fund covers the whole $100k, no coaching line (' + m1 + ')');
+  ok(draws[1][1] === 50000 && m2 === 50000, 'month 2: $50k from the fund, $50k from cash (' + m2 + ')');
+  ok(draws[2][1] === 0 && fund === 0 && m3 === 100000, 'month 3: the fund is empty, the full $100k hits cash (' + m3 + ')');
+  void before;
+  delete E._deps.sports.drawFund;
+}
+
 console.log(`\n${passes} passed, ${failures} failed`);
 process.exit(failures ? 1 : 0);

@@ -83,7 +83,7 @@
   BSU.HAPPINESS_TIMERS = freeze(['bellTower', 'wastewater', 'brownout', 'floodwallView', 'evacuation', 'unsheltered', 'boilWater', 'playThroughIt', 'austerity', 'sunbather', 'tuitionFreeze', 'homecomingBudget', 'bigBoil', 'noParking', 'nutriaBounty', 'freePermits', 'surgeBarrier', 'gatorPool', 'beads', 'hurricaneParty', 'goForIt', 'studentVoice']);
   // Ledger keys in Budget-panel print order (ARCHITECTURE §2.7).
   BSU.LEDGER_INCOME_KEYS = freeze(['tuition', 'state', 'donations', 'research', 'athletics', 'tailgate', 'parking', 'festivals', 'pelts', 'grants', 'endowment', 'disaster', 'insurance', 'misc']);
-  BSU.LEDGER_EXPENSE_KEYS = freeze(['salaries', 'upkeep', 'utilities', 'coaching', 'interest', 'repair', 'prep', 'construction', 'demolition', 'boardCards', 'misc']);
+  BSU.LEDGER_EXPENSE_KEYS = freeze(['salaries', 'upkeep', 'utilities', 'coaching', 'athletics', 'interest', 'repair', 'prep', 'construction', 'demolition', 'boardCards', 'misc']);
   BSU.MONTHS = freeze(['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']);
   BSU.SEASONS = freeze(['spring', 'summer', 'fall', 'winter']);
   BSU.SEMESTERS = freeze(['spring', 'summer', 'fall', 'break']);
@@ -448,6 +448,8 @@
       oppNoise: 8, oppPerYear: 7, oppScaleFromFlagship: 3,
       coachSign: 300000, coachFee: 100000, buyout: 500000, candidates: 3, candidateStarDiv: 20, candidateStarAdd: 1,
       starDriftLosing: 2, starMax: 5, starMin: 1,
+      // PLAN_V2 P3: the athletics budget (a salary cap that grows with success; sports.budget / canAfford / setTopUp)
+      budget: { base: 2000000, revenueShare: 0.35, prestigePer10: 50000, boosters: 500000, boosterWins: 7, topUpMax: 1.5, topUpStep: 0.1, salaryPerStar2: 150000, coordinatorShare: 0.55, upkeepShare: 0.1, transferDate: 'Jan 1', recruitsMax: 40 },
       starterGrad: 0.4, starterRating: { min: 60, max: 99, base: 55, prestigeDiv: 2, perStar: 5 }, recruitRating: 95, seniorLeaveP: 0.4,
       playThroughHappiness: 10, playThroughPrestige: 3, playThroughMaxCat: 1,
       resiliencePrestige: 4, rivalryPrestige: 3, rivalryDonation: 1.3, rivalryLossFire: 3, undefeatedDonation: 1.5, undefeatedWins: 7,
@@ -771,6 +773,7 @@
     'game:scheduled', 'game:kickoff', 'game:score', 'game:halftime', 'game:final', 'season:end', 'coach:changed',
     'game:play', 'game:drive', 'game:decision',   // PLAN_FOOTBALL pass B: the drive/play engine (sports.js)
     'game:spring',                                 // PLAN_FOOTBALL pass C: the Purple & Gold Spring Game final (sports.js)
+    'budget:changed',                              // PLAN_V2 P3: the athletics budget was recomputed, topped up or re-committed (sports.js)
     'econ:income', 'econ:expense', 'econ:month', 'econ:stat', 'econ:card',
     'enroll:round', 'enroll:lock', 'enroll:attrition', 'enroll:graduation',
     'board:offered', 'board:resolved', 'voice:offered', 'voice:resolved',
@@ -1181,7 +1184,8 @@
         game: null, firstHomeGameDay: -1, firstNightGameDay: -1, scriptedNightDay: -1,
         playbook: 'balanced', aggression: 'normal', watchFull: false, lastSummary: null,   // PLAN_FOOTBALL pass B (sports.ensureKeys fills records)
         records: { allTime: { wins: 0, losses: 0 }, bestWin: null, longestPlay: null, seasonBests: {}, book: {}, seasons: [], hof: [] },
-        springDay: -1, springYear: 0, lastSpring: null, prospects: null, seasonLog: [], seasonLines: null   // PLAN_FOOTBALL pass C: spring game, prospect board, the season's game log and stat lines
+        springDay: -1, springYear: 0, lastSpring: null, prospects: null, seasonLog: [], seasonLines: null,   // PLAN_FOOTBALL pass C: spring game, prospect board, the season's game log and stat lines
+        budget: null   // PLAN_V2 P3: the athletics budget {year, base, fromRevenue, fromPrestige, boosters, topUpShare, topUp, total, committed, lines, fund, ...} (sports.ensureKeys builds it lazily)
       },
       progress: {
         tutorialStage: 0, objectives: objectives, card: null, background: null, interruptQueue: [], backgroundQueue: [],

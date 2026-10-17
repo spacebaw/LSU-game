@@ -386,7 +386,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
 .fb-cols{display:grid;grid-template-columns:1fr 1fr;gap:1.2rem 2.4rem} .fb-col{min-width:0} .fb-col>.card-kicker{margin-top:1.6rem} .fb-col>.card-kicker:first-child{margin-top:0}
 .fb-ctl{padding:.6rem 0 .8rem;border-bottom:1px solid rgba(255,255,255,.06)} .fb-ctl .row{border-bottom:0;align-items:center;padding:.4rem 0}
 .fb-fx{font-size:1.3rem;line-height:1.4;color:var(--text-dim);min-height:1.8rem}
-.fb-next{padding:1.2rem 1.4rem;border-radius:var(--radius-sm);background:rgba(255,255,255,.04);border:1px solid rgba(253,208,35,.2)} .fb-next-line{font:600 1.4rem/1.35 var(--font-ui);margin-bottom:.8rem} .fb-next .bar{height:.8rem;margin-bottom:.8rem}
+.fb-next{padding:1rem 1.4rem;border-radius:var(--radius-sm);background:rgba(255,255,255,.04);border:1px solid rgba(253,208,35,.2)} .fb-next-line{font:600 1.4rem/1.35 var(--font-ui);margin-bottom:.8rem} .fb-next .bar{height:.8rem;margin-bottom:.8rem}
 .fb-slw{display:inline-flex;align-items:center;gap:1.2rem} .fb-slider{width:15rem;accent-color:var(--gold)} .fb-sl-val{min-width:7.2rem;text-align:right;font-variant-numeric:tabular-nums;color:var(--gold-hi)}
 .fb-ratingline{font:700 1.4rem/1.3 var(--font-ui);color:var(--gold-hi);margin:.4rem 0 .8rem}
 .fb-chips{display:flex;flex-wrap:wrap;gap:.6rem;margin-bottom:.8rem} .fb-chip{display:inline-flex;gap:.6rem;padding:3px 1rem;border-radius:99.9rem;background:rgba(255,255,255,.07);font-size:1.2rem} .fb-chip .k{color:var(--text-dim)} .fb-chip .v{font-weight:700;color:var(--gold-hi)} .fb-chip.neg .v{color:#FF8A84}
@@ -398,8 +398,43 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
 .fb-pr{grid-template-columns:3.6rem 1fr 3.2rem 6rem auto}
 .fb-sc{grid-template-columns:6.8rem 1fr 6rem 2rem 6.4rem} .fb-sc .dt,.fb-sc .rs{white-space:nowrap} .fb-sc .rs{color:var(--text-dim);font-size:1.2rem} .fb-sc .res{text-align:right;font-weight:700;white-space:nowrap} .fb-sc .res.win{color:var(--good)} .fb-sc .res.loss{color:#FF8A84} .fb-sc .ha{color:var(--text-dim)} .fb-sc.next{background:rgba(253,208,35,.1);box-shadow:inset 3px 0 0 var(--gold);padding-left:.6rem}
 .fb-acts{display:inline-flex;gap:.6rem;justify-content:flex-end} .fb-tag{font-size:1.2rem;color:var(--good)} .fb-empty{font-size:1.4rem;color:var(--text-dim);padding:.6rem 0}
-.fb-coach{font-weight:600}
-@media (max-width:900px){#panels #panel-season{width:72rem} .fb-cols{grid-template-columns:1fr}}
+.fb-coach{font-weight:600;font-size:1.5rem;margin-bottom:.4rem}
+/* PLAN_V2 P3: the tabbed Season panel — tabs, the Overview budget bar + control row, the Staff grid (P1 slots), the two-table Roster (P2), Schedule and Records columns; stacks under 1366 */
+.fb-tabs{display:flex;flex-wrap:wrap;gap:.4rem;margin:0 0 1.2rem;padding-bottom:.6rem;border-bottom:1px solid rgba(255,255,255,.1)}
+#panels #panel-season .card-kicker{margin-top:1.2rem} #panels #panel-season .fb-record{margin-bottom:1rem}
+.fb-tab{padding:.7rem 1.6rem;font-size:1.4rem;border-radius:var(--radius-sm);background:transparent;border-color:transparent;color:var(--text-dim);min-width:0}
+.fb-tab.active{background:rgba(253,208,35,.14);color:var(--gold-hi);border-color:rgba(253,208,35,.35)}
+.fb-pages{min-height:28rem} .fb-page>.card-kicker:first-child{margin-top:0!important}
+.fb-ov,.fb-sched,.fb-rec,.fb-roster-cols{display:grid;grid-template-columns:1fr 1fr;gap:1.2rem 3.2rem;align-items:start}
+.fb-staff{display:grid;grid-template-columns:1.5fr 1fr 1fr;gap:2rem;align-items:start}
+.fb-staff-card{padding:1.4rem 1.6rem;border-radius:var(--radius-sm);background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);min-width:0}
+.fb-staff-card.hc{border-color:rgba(253,208,35,.3)} .fb-staff-card.empty{color:var(--text-dim);min-height:16rem}
+#panels .panel .fb-staff-card>.card-kicker{margin-top:0} #panels .panel .fb-staff-card>.card-kicker+.card-kicker,#panels .panel .fb-staff-card .fb-fx+.card-kicker{margin-top:1.6rem}
+.fb-staff-meta .row{padding:.4rem 0;font-size:1.3rem} .fb-coach-rep{font:italic 1.3rem/1.4 var(--font-title);color:var(--text-dim);margin-bottom:.6rem}
+#panels .panel .fb-roster>.card-kicker{margin-top:0}
+.fb-ctl-row{display:flex;flex-wrap:wrap;gap:1rem 2.8rem;align-items:flex-end;padding:.2rem 0 .8rem;border-bottom:1px solid rgba(255,255,255,.06)} .fb-ctl-row+.fb-fxs{margin:.6rem 0 .4rem;min-height:1.8rem}
+.fb-ctlb{display:flex;flex-direction:column;gap:.6rem} .fb-ctlb-k{font:600 1.1rem/1 var(--font-ui);letter-spacing:.08em;text-transform:uppercase;color:var(--text-dim)}
+.fb-fxs{min-height:2rem;margin-top:.8rem} .fb-fxs .fb-fx{display:none} .fb-fxs .fb-fx.on{display:block}
+.fb-budget{padding:1rem 1.4rem 1.2rem;border-radius:var(--radius-sm);background:rgba(255,255,255,.04);border:1px solid rgba(253,208,35,.2)} .fb-budget.over{border-color:rgba(224,68,62,.6)}
+.fb-bud-head{display:flex;justify-content:space-between;align-items:baseline;gap:1.2rem;flex-wrap:wrap;margin-bottom:.6rem}
+.fb-bud-total{font:700 1.5rem/1.3 var(--font-ui);color:var(--gold-hi);white-space:nowrap} .fb-bud-sub{font-size:1.2rem;color:var(--text-dim);white-space:nowrap}
+.fb-bud-bar{height:1rem;margin-bottom:.8rem}
+.fb-bud-topup{display:flex;align-items:center;gap:1.2rem;padding:.2rem 0 .8rem;margin-bottom:.6rem;border-bottom:1px solid rgba(255,255,255,.08);font-size:1.3rem} .fb-bud-topup .k{color:var(--text-dim);flex:0 0 auto} .fb-bud-topup .fb-slider{flex:1 1 auto;width:auto;min-width:10rem} .fb-bud-topup .fb-sl-val{min-width:9.6rem} .fb-bud-bar.over .fill{background:linear-gradient(90deg,#B8302B,#FF8A84)}
+.fb-bud-legend{font-size:1.2rem;line-height:1.4;color:#FF8A84;margin-bottom:.8rem}
+.fb-bud-grid{display:grid;grid-template-columns:1fr 1fr;gap:0 2.4rem;margin-bottom:.4rem} .fb-bud-col{min-width:0}
+.fb-bud-k{font:600 1.1rem/1 var(--font-ui);letter-spacing:.08em;text-transform:uppercase;color:var(--text-dim);margin-bottom:.4rem}
+.fb-bud-row{padding:.2rem 0;font-size:1.3rem} .fb-bud-row .k{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap} .fb-bud-row .dim{color:var(--text-dim);font-size:1.2rem}
+.fb-bud-row .v{white-space:nowrap} .fb-bud-row .v.zero{color:var(--text-dim)} .fb-bud-row.total{font-weight:700;color:var(--gold-hi)} .fb-bud-row.total.bad .v{color:#FF8A84}
+.fb-budget .fb-ctl{border-bottom:0;padding-bottom:0}
+.fb-rec-head{font-size:1.3rem;color:var(--text-dim);margin:-.4rem 0 .8rem} .fb-note{font-size:1.3rem;line-height:1.4;color:#FF8A84;margin:0 0 .8rem;padding:.6rem 1rem;border-radius:var(--radius-sm);background:rgba(224,68,62,.12);border:1px solid rgba(224,68,62,.35)} .fb-tr .cost.over{color:#FF8A84}
+.fb-tr.sched-head{grid-template-columns:6.8rem 1fr 6rem 2rem 6.4rem} .fb-tr.sched-head span:last-child{text-align:right}
+.fb-ro .ht{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fb-rh{grid-template-columns:4rem 3.6rem 1fr 3.4rem 6.4rem} .fb-rh .dt{color:var(--text-dim)} .fb-rh .cost{text-align:right}
+.fb-cand .k{flex:1 1 auto;min-width:0} .fb-cand .dim{color:var(--text-dim);font-weight:400;font-size:1.2rem}
+#panel-season:focus{outline:none}
+@media (max-width:1365px){.fb-ov,.fb-sched,.fb-rec,.fb-roster-cols{grid-template-columns:1fr} .fb-staff{grid-template-columns:1.4fr 1fr 1fr}}
+@media (max-width:1000px){.fb-staff{grid-template-columns:1fr}}
+@media (max-width:900px){#panels #panel-season{width:72rem} .fb-bud-grid{grid-template-columns:1fr}}
 #card-gamesummary{width:60rem}
 .sum-banner{display:flex;align-items:center;justify-content:center;gap:1.6rem;padding:1.2rem 1.6rem;border-radius:var(--radius);background:rgba(255,255,255,.05);border:1px solid var(--line)}
 .sum-banner.win{border-color:var(--good)} .sum-banner.loss{border-color:rgba(224,68,62,.7)}

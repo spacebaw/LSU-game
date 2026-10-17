@@ -831,6 +831,19 @@
           'The Marsh Mob mutters in two languages.'
         ]
       }
+    },
+    // PLAN_V2 P3: the athletics budget and the tabbed Season panel (ui_panels.js reads these; numbers live in params.sports.budget)
+    budget: {
+      tabs: [['overview', 'Overview'], ['staff', 'Staff'], ['roster', 'Roster'], ['recruiting', 'Recruiting'], ['schedule', 'Schedule'], ['records', 'Records']],
+      title: 'Athletics budget',
+      sources: { base: 'Base allocation', revenue: 'Share of last season\'s gate', prestige: 'Prestige', boosters: 'Booster donations', topUp: 'University top-up' },
+      lines: { coach: 'Head coach salary', coaching: 'Coaching spend', signings: 'Signed prospects', upkeep: 'Venue upkeep share', homecoming: 'Homecoming' },
+      topUpFx: 'Moves university cash to athletics each Jan 1 (raising it mid-year moves the difference now). Athletics spends draw on that fund first.',
+      boostersFx: 'Boosters give after a season of 7 wins or more.',
+      overBudget: 'Over budget: cut the coaching spend or raise the top-up.',
+      comingSoon: 'Coordinators coming soon',
+      ocLabel: 'Offensive coordinator', dcLabel: 'Defensive coordinator', hcLabel: 'Head coach',
+      ledgerLabel: 'Athletics top-up'
     }
   };
 
