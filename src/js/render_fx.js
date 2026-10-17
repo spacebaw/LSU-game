@@ -958,6 +958,7 @@
           if (b.type === 'bell_tower' && b.built >= 1 && !b.ruin) pushLight('beacon', cx, cy - 78 * z, 2.2 + 0.4 * Math.sin(frameNo * 0.05), prestige, 0);
           else if (b.type === 'water_tower' && b.built >= 1 && !b.ruin && (((frameNo / 60) | 0) & 1) === 0) pushLight('blink', cx, cy - 64 * z, 1.5, 1, 0);
           else if (b.type === 'substation' && (v & SPR.NIGHT) && (frameNo % 180) < 6) pushLight('arc', cx, cy - 10 * z, 2.5, 1, 0);
+          else if (b.type === 'tiger_habitat' && (v & SPR.NIGHT) && b.built >= 1 && !b.ruin && !b.blackout) { const Sp = mod('sprites'), fl = (v & SPR.FRONT_L) !== 0; if (Sp && typeof Sp.habitatPoint === 'function') for (let q = 0; q < 2; q++) { const o = Sp.habitatPoint(fl, 2.9, q ? 2.8 : 0.2, 11); pushLight('lamp', e.sx + o[0] * z, e.sy + o[1] * z, 1.2, 0.95, 0); } }   // habitat pass: the plaza's two lamps
           else if (b.type === 'generator' && b.data && fin(b.data.fuelDays, 0) > 0 && b.built >= 1) pushLight('glow', cx, cy - 6 * z, 1.5 + 0.2 * Math.sin(frameNo * 0.3), 0.85, 0);
           else if ((b.type === 'dining_hall' || b.type === 'poboy') && (v & SPR.NIGHT)) pushLight('pot', e.sx + 10 * z, e.sy - 8 * z, 1.6, 0.75 + 0.25 * ((frameNo >> 2) & 1), 0);
           else if (b.type === 'stadium' && (b.tier | 0) >= 2 && b.built >= 1 && !b.ruin && !b.blackout && game && game.home) {

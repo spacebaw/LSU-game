@@ -211,7 +211,7 @@
   // ---------------------------------------------------------------------------
   const EXTRA_TOP = {
     quad: 48, bell_tower: 22, water_tower: 40, stadium: 44, practice_field: 20, bat_house: 20, substation: 14, engineering: 12,
-    coastal_institute: 10, rookery: 40, tiger_habitat: 16, surge_barrier: 20, greek_house: 6, wildlife_post: 6, marsh_restoration: 4,
+    coastal_institute: 10, rookery: 40, tiger_habitat: 30, surge_barrier: 20, greek_house: 6, wildlife_post: 6, marsh_restoration: 4,
     library: 8, union: 10, dining_hall: 6, poboy: 4, generator: 6, pond: 8, wastewater: 8, res_tower: 12, founders_hall: 10, west_hall: 10
   };
   /** the special painter key of a row: paint.special, else the row id when a special exists for it */
@@ -291,7 +291,8 @@
     swamp: { base: XB.lawn, alt: XB.lawnStripe, hi: XB.lawnStripe, pattern: 'lawn', hedge: true },
     site: { base: XB.siteDirt, alt: '#6E5236', hi: '#A08560', pattern: 'gravel' }
   });
-  const OWN_GROUND = { stadium: 1, practice_field: 1, quad: 1, pond: 1, parking: 1, rookery: 1 };
+  const OWN_GROUND = { stadium: 1, practice_field: 1, quad: 1, pond: 1, parking: 1, rookery: 1, tiger_habitat: 1 };
+  const OWN_STATES = { tiger_habitat: 1 };   // habitat pass: specials that dress DAMAGED / BOARDED / FLOODED themselves (the generic window / roof / wall passes would draw nothing sensible)
   M.APRON = APRON;
   function apronOf(row) { return APRON[(row && row.tab) || ''] || APRON.life; }
   /** the footprint quad's corners in canvas px (ground level): T back, R right, B bottom (= anchor tile's bottom), L left */
@@ -1465,7 +1466,348 @@
   // The ~12 structural specials that are not a plain box (everything else falls back to
   // drawStandardBox automatically through specialOf()). Signature: (ctx, P, g, row, variant, frame).
   // ---------------------------------------------------------------------------
+  // ---------------------------------------------------------------------------
+  // Tiger Habitat (habitat pass) — a small zoo exhibit on the 3×3 footprint instead of a grey slab.
+  // LOCAL coordinates: X = depth (0 = the back rock … 3 = the front edge), Y = along the front (0 … 3). The front is the SE edge
+  // (world X = fw); under SPR.FRONT_L the painter is transposed (local X → world Y), so one layout serves both entrances and
+  // `pt` / `inv` are the only places that know. Layout (tiles): the visitor plaza is the front row X ∈ [2, 3] (brick, two benches, two
+  // lamps, the viewing spots); the viewing wall stands at X ≈ 2 (stone, purple iron railing, a glass panel at Y ∈ [0.8, 2.2]); behind
+  // it the enclosure floor lies 3 px below the plaza: grass, a pool with a waterfall off the back rock, a den with a stone arch and the
+  // ROUX sign, boulders, a climbing log, a shade oak and palmettos; the keeper's gate is in the near side wall (Y = 3). The layout is
+  // shared with render (Roux's route) and agents (the viewing spots) through M.HABITAT / M.habitatWorld: one source of truth.
+  // `layer` 1 = only what stands in FRONT of Roux (the near side wall, the viewing wall with its railing and the glass, the gate
+  // piers): render draws it again after the tiger (sprite id `habfront`) so he walks behind the glass.
+  // ---------------------------------------------------------------------------
+  const HAB = Object.freeze({
+    FLOOR_Z: -3, WALL_Z: 6, FX0: 0.14, FX1: 1.92, FY0: 0.14, FY1: 2.86, WALL_X: 2.08, GLASS: Object.freeze([0.8, 2.2]),
+    POOL: Object.freeze([[0.4, 1.0, 0.28], [0.76, 1.4, 0.42], [0.98, 1.88, 0.3]]),      // metaballs [x, y, r] (tiles)
+    TREE: Object.freeze([0.5, 0.5]), NAP: Object.freeze([1.06, 0.72]), SWIM: Object.freeze([[0.78, 1.12], [0.98, 2.04]]),
+    ROUX: Object.freeze({ x0: 0.5, x1: 1.6, y0: 0.45, y1: 2.55 }),                       // where he may walk (the glass stop is x = 1.55)
+    SPOT_X: Object.freeze([2.25, 2.75]), SPOT_Y: Object.freeze([0.75, 1.25, 1.75, 2.25])  // the plaza's standing cells (the 0.5-tile occupancy grid)
+  });
+  M.HABITAT = HAB;
+  /** local (X, Y) → world tile coordinates (tile units, tile corner = integer) of a habitat whose origin tile is (tx, ty) */
+  M.habitatWorld = function (tx, ty, frontLeft, X, Y) { return frontLeft ? [tx + Y, ty + X] : [tx + X, ty + Y]; };
+  /** the pool's metaball field at local (X, Y): > 0 inside the water */
+  function habPool(lx, ly) { let f = -9; for (let i = 0; i < HAB.POOL.length; i++) { const c = HAB.POOL[i], dx = lx - c[0], dy = ly - c[1], v = 1 - (dx * dx + dy * dy) / (c[2] * c[2]); if (v > f) f = v; } return f; }
+  M.habitatPool = habPool;
+  let habBoxMemo = null;
+  /** a point of the exhibit (local X, Y at height z px) as a 1× pixel offset from the building sprite's anchor — for the lights pass (render_fx lights the plaza lamps with it) */
+  M.habitatPoint = function (frontLeft, X, Y, z) {
+    const g = habBoxMemo || (habBoxMemo = M.buildingBox(BSU.data.catalog.tiger_habitat, 0, 1, 0)), p = frontLeft ? fpPt(g, Y, X, z) : fpPt(g, X, Y, z);
+    return [p[0] - g.ax, p[1] - g.ay];
+  };
+  let hbX = 0, hbY = 0;
+  const toneAt = M.toneAt;
+
+  function habitatPaint(ctx, P, g, row, variant, frame, layer) {
+    const T = !!g.frontLeft, night = !!(variant & SPR.NIGHT), flood = !!(variant & FLOODED_BIT), dmg = !!(variant & SPR.DAMAGED), board = !!(variant & SPR.BOARDED);
+    const seed = g.seed | 0, FZ = HAB.FLOOR_Z, WZ = HAB.WALL_Z, front = layer === 1, fr = (frame | 0) & 3;
+    const site = layer === 2 ? (((frame | 0) % 3) + 3) % 3 : -1;           // construction stage 0..2 (layer 2: over the graded-dirt site that drawGrounds painted), else -1
+    const litX = T, litY = !T;                                              // which local face (+X, +Y) is the SW (lit) one
+    const pt = (lx, ly, z) => (T ? fpPt(g, ly, lx, z) : fpPt(g, lx, ly, z));
+    const inv = (px, py, z) => {                                            // screen pixel on the plane z → local (X, Y) in hbX, hbY
+      const d = (px - g.ax) / 32 - (g.fh - g.fw), s = (py - g.ay - 16 + z + g.lift) / 16 + g.fw + g.fh, wx = (s + d) / 2, wy = (s - d) / 2;
+      if (T) { hbX = wy; hbY = wx; } else { hbX = wx; hbY = wy; }
+    };
+    const region = (x0, y0, x1, y1, z, fn) => {                             // every pixel of the local rect on the plane z → fn(px, py, lx, ly)
+      let a0 = 1e9, a1 = -1e9, b0 = 1e9, b1 = -1e9;
+      for (const c of [pt(x0, y0, z), pt(x1, y0, z), pt(x1, y1, z), pt(x0, y1, z)]) { if (c[0] < a0) a0 = c[0]; if (c[0] > a1) a1 = c[0]; if (c[1] < b0) b0 = c[1]; if (c[1] > b1) b1 = c[1]; }
+      for (let py = b0; py <= b1; py++) for (let px = a0; px <= a1; px++) { inv(px, py, z); if (hbX >= x0 && hbX < x1 && hbY >= y0 && hbY < y1) fn(px, py, hbX, hbY); }
+    };
+    const face = (axis, c, a0, a1, za, zb, fn) => {                         // a vertical face on the line (X = c | Y = c), a0 → a1 along the other axis, from za up to zb
+      const pa = axis === 'X' ? pt(c, a0, 0) : pt(a0, c, 0), pb = axis === 'X' ? pt(c, a1, 0) : pt(a1, c, 0), dx = pb[0] - pa[0]; if (!dx) return;
+      const lo = Math.min(pa[0], pb[0]), hi = Math.max(pa[0], pb[0]);
+      for (let x = lo; x < hi; x++) {
+        const s = (x - pa[0]) / dx, yb = Math.round(pa[1] + (pb[1] - pa[1]) * s), top = typeof zb === 'function' ? zb(s, x) : zb;
+        for (let z = za; z < top; z++) { const col = fn(x, yb - z - 1, s, z, z === top - 1); if (col) P.px(x, yb - z - 1, col); }
+      }
+    };
+    const poly = (pts, color) => fillPoly(P, pts.map((p) => pt(p[0], p[1], p[2] || 0)), color);
+    const seg = (a, b, color) => { const p = pt(a[0], a[1], a[2] || 0), q = pt(b[0], b[1], b[2] || 0); P.line(p[0], p[1], q[0], q[1], color); };
+    const box = (x0, y0, x1, y1, z0, z1, top, cx, cy) => {                  // cx: colour of the +X face, cy: of the +Y face
+      poly([[x1, y0, z0], [x1, y1, z0], [x1, y1, z1], [x1, y0, z1]], cx); poly([[x0, y1, z0], [x1, y1, z0], [x1, y1, z1], [x0, y1, z1]], cy); poly([[x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1]], top);
+    };
+    const clampT = (t) => (t < 0 ? 0 : t > 4 ? 4 : t);
+    const GRS = M.ramp('grass'), GHI = M.ramp('highGrass'), DIRT = M.ramp('dirt'), SAND = M.ramp('sand'), WS = M.ramp('waterShallow'), WD = M.ramp('waterDeep'), BARK = M.ramp('bark'), MOSS = M.ramp('moss'),
+      OAK = M.ramp('oakLeaf'), STONE = rampOf('#9C978E'), ROCK = rampOf('#8A7D70'), LIME = MAT.trim, IRON = MAT.iron, GLASS = MAT.glass, BRICK = rampOf(XB.brick), WOOD = MAT.wood, PU = MAT.purple, GO = MAT.gold;
+    const FOAM = '#F1FBF6';
+    const stoneAt = (lit, sd) => (px, py, s, z, top) => {
+      const course = Math.floor((z + 9) / 3), ex = (px + ((course * 5 + sd) % 7)) % 7, n = noiseAt(px, py, seed + sd);
+      let t = lit ? 2 : 1; if (n > 0.66) t++; else if (n < 0.2) t--;
+      if (((z + 9) % 3) === 0) t--; else if (ex === 0) t--;
+      if (top) t = lit ? 4 : 3;
+      return STONE[clampT(t)];
+    };
+
+    // ---- 1. the plaza: brick paving, limestone curbs, the viewing wall's cast shadow ----------------------------------------
+    if (!front) {
+      region(HAB.WALL_X - 0.14, 0, 3.0, 3.0, 0, (px, py, lx, ly) => {
+        const gx = Math.floor(lx * 32), gy = Math.floor(ly * 32), course = gx >> 2, off = (course & 1) * 4;
+        let col;
+        if ((gx & 3) === 3 || ((gy + off) & 7) === 7) col = mix(BRICK[3], SAND[2], 0.5);                        // mortar
+        else { const hb = hash(seed + 3, course * 53 + ((gy + off) >> 3)) % 5; col = BRICK[hb === 0 ? 3 : hb === 1 ? 1 : 2]; }
+        if (lx > 2.9 || ly < 0.07 || ly > 2.93) col = ((gx + gy) & 1) ? LIME[3] : LIME[2];                    // the limestone curb on the outer edges
+        else if (lx < 2.36) { const k = (2.36 - lx) / 0.36; if (hash(seed, px * 7 + py) % 100 < k * 72) col = shade(col, 0.72); }
+        if (site >= 0) { if (site === 0) return; if (site === 1 || ly < 1.5) col = SAND[toneAt(0.35 + noiseAt(px, py, seed + 4) * 0.35, px, py, [0.2, 0.4, 0.62, 0.84], 0.12)]; }   // construction: a compacted sand bed, bricks laid from the far end
+        if (night) for (let q = 0; q < 2; q++) { const d = Math.hypot(lx - 2.9, ly - (q ? 2.8 : 0.2)); if (d < 0.85) { const k = 1 - d / 0.85; col = mix(col, PAL.windowGlow, Math.min(0.85, k * k * 0.95 + 0.12 * k)); } }   // the lamps' pools of light, clipped to the paving
+        P.px(px, py, col);
+      });
+    }
+
+    // ---- 2. the enclosure floor: grass, worn dirt, shore sand, the pool ---------------------------------------------------
+    const tufts = [];
+    if (!front) region(0, 0, HAB.WALL_X, 3.0, FZ, (px, py, lx, ly) => {
+      if (lx < HAB.FX0 || ly < HAB.FY0 || ly > HAB.FY1 + 0.14 || lx > HAB.FX1 + 0.16) return;
+      const f = habPool(lx, ly), n = noiseAt(px, py, seed + 11);
+      let col;
+      if (site === 0) return;
+      if (site >= 1) { col = DIRT[toneAt(0.18 + n * 0.4, px, py, [0.2, 0.4, 0.6, 0.85], 0.12)]; if (f > 0) col = site === 1 ? '#2E4C66' : mix(WS[1], WD[2], 0.45); else if (lx < HAB.FX0 + 0.3 || ly < HAB.FY0 + 0.15) col = shade(col, 0.8); P.px(px, py, col); return; }   // the dug pit; the pool lined, then filling
+      if (f > 0) {                                                                                           // the pool: shallow → deep, edge sheen, tree reflection, glints
+        const t = toneAt(1 - Math.min(1, f * 1.7), px, py, [0.2, 0.45, 0.7, 0.88], 0.14);                  // 0 = deep … 4 = rim
+        col = [WD[2], mix(WD[2], WS[1], 0.4), mix(WS[1], WD[2], 0.3), WS[1], WS[2]][4 - t];
+        if (f < 0.07) col = ((px + py) & 1) ? WS[3] : WS[2];
+        if (ly < 1.3 && lx < 1.1 && n > 0.5 && f > 0.12) col = mix(col, OAK[1], 0.6);                        // the oak's reflection
+        if (hash(seed + fr, py * 9 + (px >> 2)) % (night ? 9 : 15) === 0 && f > 0.15) col = night ? '#DDE8FF' : WS[3];     // glints
+      } else if (f > -0.15) col = SAND[toneAt(0.5 + (n - 0.5) * 0.5, px, py, [0.2, 0.4, 0.62, 0.84], 0.12)];  // the shore
+      else {
+        let t = toneAt(n, px, py, M.TH_GROUND, 0.1);
+        const dx = lx - HAB.FX0, dy = ly - HAB.FY0;
+        if (dx < 0.34 && hash(seed + 1, px * 5 + py) % 100 < (0.34 - dx) / 0.34 * 80) t -= 1;               // the back rock's cast shadow (+X)
+        if (dy < 0.16) t -= 1;
+        const worn = (Math.abs(lx - 1.42) < 0.16 && ly > 0.5 && ly < 2.6) || (lx < 0.6 && ly > 2.0 && ly < 2.78);
+        const nap = (lx - HAB.NAP[0]) * (lx - HAB.NAP[0]) + (ly - HAB.NAP[1]) * (ly - HAB.NAP[1]) < 0.09;
+        if (worn && n > 0.34) col = DIRT[toneAt(n * 0.8 + 0.1, px, py, [0.2, 0.4, 0.6, 0.85], 0.12)];
+        else { col = (nap ? GHI : GRS)[clampT(t)]; if (t >= 3 && hash(seed + 2, px * 11 + py * 3) % 19 === 0) tufts.push(px, py); }
+      }
+      P.px(px, py, col);
+    });
+    for (let i = 0; i < tufts.length; i += 2) { const x = tufts[i], y = tufts[i + 1], fl = hash(seed + 3, x * 5 + y) % 9; P.px(x, y, GHI[3]); P.px(x - 1, y - 1, GRS[3]); P.px(x + 1, y - 1, GHI[4]); if (fl === 0) P.px(x, y - 1, PAL.azalea); else if (fl === 1) P.px(x, y - 1, '#FFF6C8'); }
+
+    // ---- 3. the back rock (waterfall, den, sign) and the far side wall -----------------------------------------------------
+    const RX = HAB.FX0, rockTop = (s, x) => 16 + (hash(seed + 5, x >> 2) % 4) + ((s > 0.62 && s < 0.9) ? 2 : 0);
+    if (!front && (site < 0 || site === 2)) {
+      face('X', RX, 0, 3.0, FZ, rockTop, (px, py, s, z, top) => {
+        const rw = Math.floor((z + 20) / 6), off = hash(seed, rw) & 7, cl = Math.floor((px + off) / 9), hb = hash(seed + 7, rw * 37 + cl);
+        let t = litX ? 2 : 1; t += (hb % 5 === 0) ? 1 : ((hb % 7 === 0) ? -1 : 0);
+        const ey = (z + 20) % 6, ex = (px + off) % 9; if (ey === 0 || ex === 0) t -= 1; else if (ey === 5 && ex < 5) t += 1;
+        if (top) t = 4;
+        return (z > 8 && noiseAt(px, py, seed + 9) > 0.64) ? MOSS[clampT(t - 1)] : ROCK[clampT(t)];          // moss and lichen high up
+      });
+      { const ra = pt(RX, 0, 0), rb = pt(RX, 3.0, 0);                                                         // grass and ferns on the crest
+        for (let x = Math.min(ra[0], rb[0]); x < Math.max(ra[0], rb[0]); x++) {
+          if (hash(seed + 22, x) % 3 !== 0) continue; const s = (x - ra[0]) / (rb[0] - ra[0]), yb = Math.round(ra[1] + (rb[1] - ra[1]) * s), top = rockTop(s, x);
+          P.px(x, yb - top, GHI[3]); P.px(x, yb - top - 1, (hash(seed + 23, x) & 1) ? GRS[2] : GHI[4]);
+        } }
+      face('Y', HAB.FY0, HAB.FX0, HAB.FX1 + 0.1, FZ, WZ, (px, py, s, z, top) => {                             // the far side wall: stone, moss, a coping
+        let col = stoneAt(litY, 3)(px, py, s, z, top);
+        if (!top && z < FZ + 5 && noiseAt(px, py, seed + 14) > 0.55) col = MOSS[litY ? 2 : 1];
+        if (!top && hash(seed + 15, px) % 7 === 0 && z > 0) col = GRS[litY ? 2 : 1];                          // vine strands
+        return col;
+      });
+      poly([[HAB.FX0, 0.06, WZ], [HAB.WALL_X, 0.06, WZ], [HAB.WALL_X, HAB.FY0, WZ], [HAB.FX0, HAB.FY0, WZ]], STONE[4]);
+      seg([HAB.FX0, 0.06, WZ], [HAB.WALL_X, 0.06, WZ], LIME[4]);
+      // the waterfall: a spout in the rock, streaks down into the pool, foam at its foot
+      if (site < 0) {
+      const wy0 = 0.86, wy1 = 1.14, spoutZ = 13;
+      face('X', RX + 0.01, wy0, wy1, FZ, spoutZ, (px, py, s, z, top) => {
+        const k = hash(seed + 31, px * 3 + (z >> 2)) % 7;
+        let col = k < 2 ? FOAM : (k < 4 ? WS[4] : (k < 6 ? WS[3] : WS[2]));
+        if (s < 0.1 || s > 0.9) col = WS[1];
+        if (z < FZ + 3) col = (hash(seed + 32, px + py * 3) % 3 === 0) ? FOAM : WS[3];
+        return col;
+      });
+      { const sp = pt(RX + 0.01, (wy0 + wy1) / 2, spoutZ); P.hline(sp[0] - 5, sp[1] - 1, 10, ROCK[3]); P.hline(sp[0] - 4, sp[1] - 2, 8, ROCK[4]);
+        const fp = pt(RX + 0.18, (wy0 + wy1) / 2, FZ); for (let i = 0; i < 10; i++) P.px(fp[0] - 6 + (hash(seed + 33, i) % 13), fp[1] + (hash(seed + 34, i) % 3) - 1, i & 1 ? FOAM : WS[4]); }
+      }
+      // the den: a limestone arch in the rock, a dark room, a sill
+      const dy0 = 2.17, dy1 = 2.63, archTop = (s) => 9 + Math.round(Math.sqrt(Math.max(0, 1 - (2 * s - 1) * (2 * s - 1))) * 4);
+      face('X', RX + 0.01, dy0 - 0.07, dy1 + 0.07, FZ, (s) => archTop(s) + 3, (px, py, s, z, top) => LIME[top ? 4 : (litX ? 3 : 2)]);
+      face('X', RX + 0.012, dy0, dy1, FZ, archTop, (px, py, s, z, top) => {
+        const u = Math.max(0, 1 - z / 9);
+        if (z < FZ + 1) return LIME[2];
+        return night ? mix('#2A1A22', '#FFB45A', 0.12 + 0.34 * u) : mix('#1B1424', '#3A2A30', u * 0.6);
+      });
+      // the sign: a purple board with a gold border and gold letters, sheared along the face, mounted above the arch
+      if (site < 0) { const ys = 2.08, ye = 2.72, zs = 17, zt = 25, A = pt(RX + 0.015, ys, zt), B = pt(RX + 0.015, ye, zt), C = pt(RX + 0.015, ye, zs), D = pt(RX + 0.015, ys, zs);
+        const lft = Math.min(A[0], B[0]), rgt = Math.max(A[0], B[0]);
+        fillPoly(P, [A, B, C, D], PAL.gold2);
+        fillPoly(P, [[A[0] + (A[0] < B[0] ? 1 : -1), A[1] + 1], [B[0] + (B[0] < A[0] ? 1 : -1), B[1] + 1], [C[0] + (C[0] < D[0] ? 1 : -1), C[1] - 1], [D[0] + (D[0] < C[0] ? 1 : -1), D[1] - 1]], PAL.purple);
+        for (let i = 0; i < 4; i++) { const ch = 'ROUX'[i], gx = lft + 3 + i * 4, gt = Math.round((A[0] < B[0] ? A[1] + (gx - A[0]) * (B[1] - A[1]) / (B[0] - A[0]) : B[1] + (gx - B[0]) * (A[1] - B[1]) / (A[0] - B[0])) + 2); P.glyph(ch, gx, gt, night ? PAL.goldHi : PAL.gold); }
+        void rgt; }
+    }
+
+    // ---- 4. the floor decor, back to front ---------------------------------------------------------------------------------
+    const dropShadow = (cx, cy, rx, ry) => P.ellipse(cx + 2, cy, rx + 1, Math.max(1, ry), shade(GRS[1], 0.78));
+    const boulder = (lx, ly, rx, ry, sd, mossy) => {
+      const c = pt(lx, ly, FZ), cx = c[0], cy = c[1] - ry + 1;
+      dropShadow(cx, c[1], rx, Math.max(1, ry >> 1));
+      for (let dy = -ry; dy <= ry; dy++) {
+        const half = Math.round(Math.sqrt(1 - (dy * dy) / (ry * ry + 0.01)) * rx) + (hash(seed + sd, dy + 40) % 2);
+        for (let dx = -half; dx < half; dx++) {
+          const lit = (-dx / rx) * 0.55 + (-dy / ry) * 0.7, n = noiseAt(cx + dx, cy + dy, seed + sd), v = 0.5 + lit * 0.4 + (n - 0.5) * 0.4;
+          let t = toneAt(v, cx + dx, cy + dy, [0.18, 0.4, 0.62, 0.82], 0.12);
+          if (dy === ry || dx === half - 1 || (dy === ry - 1 && dx > 0)) t = 0;
+          let col = ROCK[t]; if (mossy && dy < -ry * 0.25 && n > 0.58 && t > 0) col = MOSS[clampT(t - 1)];
+          P.px(cx + dx, cy + dy, col);
+        }
+      }
+    };
+    const sprite = (id, v, lx, ly, dy) => { const p = pt(lx, ly, FZ); blitSprite(ctx, g.zoom, M.get(id, v, 0, g.zoom), p[0], p[1] + (dy || 0)); };
+    const logPiece = (a, b, z0, z1) => {                                    // a trunk lying from local a to b, lifted z0 → z1 px (a rock under its high end)
+      const pa = pt(a[0], a[1], FZ + z0), pb = pt(b[0], b[1], FZ + z1), dx = pb[0] - pa[0]; if (!dx) return;
+      const lo = Math.min(pa[0], pb[0]), hi = Math.max(pa[0], pb[0]);
+      for (let x = lo; x <= hi; x++) {
+        const s = (x - pa[0]) / dx, yc = Math.round(pa[1] + (pb[1] - pa[1]) * s) - 3;
+        for (let k = 0; k < 5; k++) P.px(x, yc + k, BARK[[3, 3, 2, 1, 0][k]]);
+        if (hash(seed + 41, x) % 4 === 0) P.px(x, yc + 1, BARK[4]);
+      }
+      const ea = pa, eb = pb; for (const e of [ea, eb]) { P.ellipse(e[0], e[1] - 1, 2, 3, '#B58B5A'); P.px(e[0], e[1] - 1, '#8A6540'); }
+      const m = pt((a[0] + b[0]) / 2 + 0.03, (a[1] + b[1]) / 2, FZ + (z0 + z1) / 2); P.line(m[0], m[1] - 3, m[0] + 3, m[1] - 8, BARK[2]); P.line(m[0] + 1, m[1] - 3, m[0] + 4, m[1] - 8, BARK[1]); P.px(m[0] + 3, m[1] - 9, OAK[3]); P.px(m[0] + 4, m[1] - 9, OAK[2]);
+    };
+    // trunk of the shade oak (the canopy is drawn after everything on the floor)
+    const tp = pt(HAB.TREE[0], HAB.TREE[1], FZ);
+    if (!front && site < 0) {
+    dropShadow(tp[0] + 4, tp[1], 12, 3); M.trunk(P, tp[0] - 2, tp[1] - 17, 5, 17, 2, 5);
+    boulder(0.3, 0.8, 5, 3, 51, true);
+    sprite('shrub', 1, 0.34, 0.62, 2);
+    boulder(1.02, 0.95, 7, 4, 52, true);
+    boulder(0.3, 1.52, 6, 4, 53, true);
+    boulder(0.62, 2.02, 5, 3, 54, false);
+    sprite('palmetto', M.treeVariant(1, false, false, 1), 0.34, 1.78, 2);
+    logPiece([1.46, 1.58], [1.46, 2.42], 0, 4); boulder(1.46, 2.5, 4, 3, 55, false);
+    boulder(1.18, 2.32, 3, 2, 56, false);
+    sprite('azalea', M.treeVariant(2, false, true, 1), 0.52, 2.62, 2);
+    sprite('azalea', M.treeVariant(2, false, true, 2), 1.55, 0.5, 2);
+    sprite('palmetto', M.treeVariant(1, false, false, 1), 1.74, 0.36, 2);
+    sprite('shrub', 2, 1.42, 0.2, 2);
+    }
+
+    // ---- 5. flood water over the enclosure (drawn before the canopy so the oak still stands above it) --------------------------------
+    if (flood && !front && site < 0) {                                                                     // the pool has spilled: floodwater over the whole floor, the old pool a deeper swirl in it
+      const FW = rampOf('#7C9A92');
+      region(HAB.FX0, HAB.FY0, HAB.FX1, HAB.FY1, FZ + 5, (px, py, lx, ly) => {
+        const n = noiseAt(px, py, seed + 61), f = habPool(lx, ly);
+        let t = toneAt(0.3 + n * 0.45, px, py, [0.15, 0.4, 0.62, 0.8], 0.1);
+        if (hash(seed + 65, (py >> 1) * 7 + (px >> 3)) % 11 === 0 && (py & 1)) t = 4;                       // ripple streaks
+        let col = FW[clampT(t)];
+        if (f > 0.05) col = mix(col, WD[2], Math.min(0.55, f * 0.9));                                       // the pool is still the deep part
+        else if (f > -0.1 && hash(seed + 63, px * 3 + py) % 3 === 0) col = FOAM;                            // foam where it brimmed over
+        P.px(px, py, col);
+      });
+      for (let i = 0; i < 12; i++) { const p = pt(0.3 + (hash(seed + 66, i) % 150) / 100, 0.3 + (hash(seed + 67, i) % 250) / 100, FZ + 5); P.px(p[0], p[1], i & 1 ? OAK[3] : BARK[2]); P.px(p[0] + 1, p[1], OAK[1]); }   // leaves and twigs adrift
+      for (let i = 0; i < 6; i++) { const p = pt(0.5 + (hash(seed + 68, i) % 120) / 100, 0.5 + (hash(seed + 69, i) % 220) / 100, FZ + 5); P.hline(p[0] - 1, p[1], 3, FW[4]); }
+      { const fp = pt(RX + 0.18, 1.0, FZ + 5); for (let i = 0; i < 16; i++) P.px(fp[0] - 9 + (hash(seed + 70, i) % 19), fp[1] + (hash(seed + 71, i) % 5) - 2, i & 1 ? FOAM : WS[4]); }   // the falls keep pouring
+    }
+
+    // ---- 6. the oak canopy --------------------------------------------------------------------------------------------------------
+    if (!front && site < 0) {
+      const CW = 58, CH = 30, ox = tp[0] - 29, oy = tp[1] - 17 - 25, Q = offsetPen(P, ox, oy);
+      const bottoms = M.canopy(Q, [[29, 14, 24, 10], [13, 18, 13, 8], [45, 18, 13, 8], [28, 7, 15, 6]], CW, CH, OAK, seed ^ 0x77, { cell: 4 });
+      M.mossStrands(Q, bottoms, 6, seed, 3, 8, CH);
+    }
+
+    // ---- 7. what stands in front of Roux: the near side wall (+ keeper's gate), the viewing wall (+ glass), railings, piers ----------
+    const WX = HAB.WALL_X, G0 = HAB.GLASS[0], G1 = HAB.GLASS[1], FW2 = rampOf('#7C9A92');
+    const limeBox = (x0, y0, x1, y1, z1) => box(x0, y0, x1, y1, 0, z1, LIME[4], STONE[litX ? 3 : 1], STONE[litY ? 3 : 1]);
+    const rail = (axis, c, a0, a1, skip) => {                               // purple iron posts every 0.25 tile with gold finials and two rails; damage removes posts and rail runs
+      const n = Math.max(1, Math.round((a1 - a0) / 0.25)); let prev = null;
+      for (let k = 0; k <= n; k++) {
+        const a = a0 + (a1 - a0) * k / n; if (skip && skip(a)) { prev = null; continue; }
+        const q = axis === 'Y' ? [c, a] : [a, c], gone = dmg && (hash(seed + 71, k + (axis === 'Y' ? 0 : 40)) % 5 === 0), p = pt(q[0], q[1], WZ);
+        if (!gone) { P.vline(p[0], p[1] - 6, 7, PU[2]); P.px(p[0], p[1] - 7, (k & 1) ? GO[3] : PU[4]); if (night && (k & 3) === 0) { P.px(p[0], p[1] - 8, '#FFE0A0'); P.px(p[0] - 1, p[1] - 8, '#B58B3A'); P.px(p[0] + 1, p[1] - 8, '#B58B3A'); } }
+        if (prev && !gone && !(dmg && hash(seed + 72, k) % 6 === 0)) { seg([prev[0], prev[1], WZ + 6], [q[0], q[1], WZ + 6], PU[3]); seg([prev[0], prev[1], WZ + 3], [q[0], q[1], WZ + 3], PU[1]); }
+        prev = gone ? null : q;
+      }
+    };
+    const built = site < 0, walls = site < 0 || site === 2;                 // construction stage 2 has the walls up but no railing, glass or gate yet
+    // the near side wall (Y = 3, its outer face is the SW one in SE-front) with the keeper's gate
+    if (walls) { face('Y', 3.0, 0, WX, 0, WZ, stoneAt(litY, 1));
+      poly([[0, 2.9, WZ], [WX, 2.9, WZ], [WX, 3.0, WZ], [0, 3.0, WZ]], STONE[4]); seg([0, 3.0, WZ], [WX, 3.0, WZ], LIME[4]); }
+    if (built) {
+      rail('X', 2.93, 0.06, 1.9, (a) => a > 0.86 && a < 1.5);
+      face('Y', 3.0, 0.97, 1.4, 0, 10, (px, py, s, z) => ((z === 9 || z === 0 || z === 5 || (px & 1) === 0) ? IRON[litY ? 3 : 2] : '#1B1424'));
+      { const lk = pt(1.19, 3.0, 4); P.px(lk[0], lk[1] - 1, GO[3]); P.px(lk[0] + 1, lk[1] - 1, GO[1]); P.px(lk[0], lk[1], GO[1]); }
+      limeBox(0.91, 2.88, 0.99, 3.0, 12); limeBox(1.38, 2.88, 1.46, 3.0, 12);
+    }
+    // the viewing wall (X = 2.08 outer face; its +X face is the shadow one in SE-front), railing, glass panel
+    if (walls) { face('X', WX, 0, 3.0, 0, WZ, stoneAt(litX, 2));
+      poly([[1.98, 0, WZ], [WX, 0, WZ], [WX, 3.0, WZ], [1.98, 3.0, WZ]], STONE[4]); seg([WX, 0, WZ], [WX, 3.0, WZ], LIME[4]); }
+    if (built) rail('Y', 2.0, 0.22, 2.78, (a) => a > G0 - 0.12 && a < G1 + 0.12);
+    if (built) { const gz0 = WZ + 1, gz1 = WZ + 12, panes = [[G0, 1.5], [1.5, G1]];
+      for (let i = 0; i < 2; i++) {
+        face('X', 2.0, panes[i][0], panes[i][1], gz0, gz1, (px, py, s, z, top) => {
+          if (board) return (top || z === gz0 || ((z - gz0) % 4) === 3) ? shade(X.plywood, 0.8) : (((px + z) % 9) === 0 ? shade(X.plywood, 0.9) : X.plywood);
+          const q = (px + z + i * 5 + 40) % 15;
+          if (q < 2) return '#EAF8FF';                                                                       // long diagonal sheens, two to a pane
+          if (q === 2) return '#B9DDF0';
+          if (night && z < gz0 + 5 && ((px + z) & 1) === 0 && hash(seed, px) % 3 === 0) return '#FFD27A';  // lamp reflections
+          return (z === gz0 || top) ? GLASS[3] : ((((px >> 1) + z) & 3) === 0 ? GLASS[2] : null);
+        });
+      }
+      for (const y of [G0, 1.5, G1]) { const p = pt(2.0, y, WZ); P.vline(p[0], p[1] - 12, 13, IRON[3]); P.vline(p[0] + 1, p[1] - 12, 13, IRON[1]); P.px(p[0], p[1] - 13, GO[3]); P.px(p[0] + 1, p[1] - 13, GO[1]); }
+      seg([2.0, G0, gz1], [2.0, G1, gz1], IRON[3]); seg([2.0, G0, gz1 - 1], [2.0, G1, gz1 - 1], IRON[1]);
+      if (board) for (const y of [0.95, 1.35, 1.75, 2.1]) { const p = pt(2.0, y, WZ + 6); P.px(p[0], p[1], X.nail); }
+      if (dmg && !board) for (const [dy, dz] of [[-0.3, 4], [0.25, 5], [0.35, -2], [-0.2, -4], [0.05, 5], [-0.4, -1]]) seg([2.0, 1.2, WZ + 7], [2.0, 1.2 + dy, WZ + 7 + dz], '#EAF8FF'); }
+    if (flood) {                                                                                             // the pool has spilled: water pours over the wall's notch and runs down its face
+      const pa = pt(WX, 0.42, WZ), pb = pt(WX, 0.84, WZ), lo = Math.min(pa[0], pb[0]), hi = Math.max(pa[0], pb[0]);
+      for (let x = lo; x < hi; x++) { const s = (x - pa[0]) / (pb[0] - pa[0]), yb = Math.round(pa[1] + (pb[1] - pa[1]) * s); for (let z = 0; z < WZ + 1; z++) { const k = hash(seed + 91, x * 3 + (z >> 1)) % 6; P.px(x, yb - z - 1, k < 2 ? FOAM : (k < 4 ? WS[4] : WS[3])); } }
+      face('X', WX, 0, 3.0, 0, 3, (px, py, s, z) => (hash(seed + 92, px) % 5 < 3 ? mix(STONE[1], '#4A3B2A', 0.55) : null));   // the mud line
+    }
+    if (walls) { limeBox(1.94, 0, 2.14, 0.14, 11); limeBox(1.94, 2.86, 2.14, 3.0, 11); }
+    if (night && built) for (const [lx, ly] of [[2.0, 0.1], [2.0, 2.9]]) { const p = pt(lx, ly, 12); P.px(p[0], p[1], '#FFE0A0'); P.px(p[0] - 1, p[1], '#B58B3A'); P.px(p[0] + 1, p[1], '#B58B3A'); P.px(p[0], p[1] - 1, '#B58B3A'); }
+
+    // ---- 7b. the building site (layer 2): survey lines and stakes → footings and the lined pit → walls up in scaffolding -------------
+    if (site >= 0) {
+      const ORG = '#E07020', LINE = '#F4EFE0', ST = MAT.steel, CO = MAT.concrete;
+      if (site === 0) {
+        for (const [a, b] of [[[HAB.FX0, HAB.FY0], [HAB.FX1, HAB.FY0]], [[HAB.FX1, HAB.FY0], [HAB.FX1, HAB.FY1]], [[HAB.FX1, HAB.FY1], [HAB.FX0, HAB.FY1]], [[HAB.FX0, HAB.FY1], [HAB.FX0, HAB.FY0]], [[2.0, 0.1], [2.0, 2.9]], [[2.9, 0.1], [2.9, 2.9]]]) seg(a, b, LINE);
+        for (const [lx, ly] of [[HAB.FX0, HAB.FY0], [HAB.FX1, HAB.FY0], [HAB.FX1, HAB.FY1], [HAB.FX0, HAB.FY1], [2.0, 0.1], [2.0, 2.9], [2.9, 0.1], [2.9, 2.9], [1.0, 1.5]]) { const p = pt(lx, ly, 0); P.vline(p[0], p[1] - 5, 5, WOOD[2]); P.px(p[0], p[1] - 6, ORG); P.px(p[0] + 1, p[1] - 5, ORG); }
+        { const p = pt(2.5, 0.5, 0); P.rect(p[0] - 5, p[1] - 3, 10, 3, ROCK[2]); P.hline(p[0] - 4, p[1] - 4, 7, ROCK[3]); P.rect(p[0] + 6, p[1] - 2, 4, 2, ROCK[1]); P.rect(p[0] - 9, p[1] - 1, 4, 2, ROCK[1]); }
+      } else if (site === 1) {
+        for (const [a, b] of [[[HAB.FX0, HAB.FY0], [HAB.FX1 + 0.14, HAB.FY0]], [[HAB.FX1, HAB.FY0], [HAB.FX1, HAB.FY1]], [[HAB.FX0, HAB.FY1], [HAB.FX1 + 0.14, HAB.FY1]]]) { seg([a[0], a[1], FZ], [b[0], b[1], FZ], CO[3]); seg([a[0], a[1] + 0.03, FZ], [b[0], b[1] + 0.03, FZ], CO[1]); }
+        face('X', RX, 0, 3.0, FZ, FZ + 4, (px, py, s, z) => DIRT[(z & 1) ? 1 : 2]); face('Y', HAB.FY0, HAB.FX0, HAB.FX1, FZ, FZ + 4, (px, py, s, z) => DIRT[litY ? ((z & 1) ? 2 : 3) : 1]);   // the pit's walls
+        for (let i = 0; i < 9; i++) { const p = pt(1.94 + (i & 1) * 0.1, 0.2 + i * 0.32, FZ + 1); P.vline(p[0], p[1] - 5, 5, ST[1]); P.px(p[0], p[1] - 6, ORG); }   // rebar along the wall footing
+        { const p = pt(2.5, 2.4, 0); P.rect(p[0] - 5, p[1] - 4, 10, 4, rampOf(XB.brick)[2]); P.hline(p[0] - 5, p[1] - 4, 10, rampOf(XB.brick)[3]); P.rect(p[0] - 11, p[1] - 1, 5, 2, WOOD[2]); }   // a pallet of brick
+      } else {
+        for (const y of [0.1, 0.9, 1.7, 2.5]) { const a = pt(2.12, y, 0), t = a[1] - 15; P.vline(a[0], t, 16, ST[2]); P.vline(a[0] + 1, t, 16, ST[1]); P.hline(a[0] - 1, t - 1, 3, ST[4]); }
+        for (const z of [6, 11]) seg([2.12, 0.1, z], [2.12, 2.5, z], ST[3]);
+        for (const [a, b] of [[[2.12, 0.1, 0], [2.12, 0.9, 11]], [[2.12, 0.9, 0], [2.12, 1.7, 11]], [[2.12, 1.7, 0], [2.12, 2.5, 11]]]) seg(a, b, ST[1]);
+        for (let i = 0; i < 4; i++) { const p = pt(2.12, 0.5 + i * 0.6, 11); P.hline(p[0] - 3, p[1], 7, WOOD[3]); P.hline(p[0] - 3, p[1] + 1, 7, WOOD[1]); }   // the work deck
+        { const p = pt(2.7, 1.5, 0); P.rect(p[0] - 6, p[1] - 3, 12, 3, WOOD[2]); P.hline(p[0] - 6, p[1] - 3, 12, WOOD[3]); P.rect(p[0] - 5, p[1] - 6, 10, 3, rampOf(XB.brick)[2]); P.hline(p[0] - 5, p[1] - 6, 10, rampOf(XB.brick)[3]); }   // lumber and a pallet of brick
+      }
+    }
+
+    // ---- 8. plaza furniture: two benches facing the enclosure, two lamps; damage and flood dress the plaza too ---------------------
+    if (!front && site < 0) {
+      if (flood) {                                                                                           // the spill spreads over the paving
+        region(2.0, 0, 3.0, 3.0, 0, (px, py, lx, ly) => {
+          const d = Math.hypot((lx - 2.0) * 1.0, (ly - 0.65) * 0.62), n = noiseAt(px, py, seed + 63), f = 1.12 - d * 0.78 + (n - 0.5) * 0.5;
+          if (f < 0.3) return;
+          const t = toneAt(n, px, py, [0.15, 0.4, 0.7, 0.9], 0.12), edge = f < 0.38;
+          P.px(px, py, edge ? FW2[4] : FW2[clampT(t)]);
+          if (!edge && hash(seed + 64, px * 5 + (py >> 1)) % 53 === 0 && (py & 1)) P.hline(px, py, 2, FW2[4]);
+        });
+      }
+      const bench = (y0, y1) => {
+        for (const yy of [y0 + 0.03, y1 - 0.09]) box(2.42, yy, 2.58, yy + 0.06, 0, 3, IRON[2], IRON[1], IRON[2]);
+        box(2.4, y0, 2.6, y1, 3, 5, WOOD[3], WOOD[litX ? 2 : 1], WOOD[litY ? 2 : 1]);
+        box(2.6, y0, 2.66, y1, 5, 10, WOOD[3], WOOD[litX ? 2 : 1], WOOD[litY ? 2 : 1]);
+        for (let i = 1; i < 4; i++) { const p = pt(2.66, y0 + (y1 - y0) * i / 4, 7); P.px(p[0], p[1], WOOD[0]); }
+      };
+      bench(0.12, 0.54); bench(2.46, 2.88);
+      for (const ly of [0.2, 2.8]) { const p = pt(2.9, ly, 0); lampPost(P, p[0], p[1], night, BRICK[2]); }
+      if (dmg) {                                                                                             // a fallen limb across the plaza edge and leaf litter
+        seg([2.2, 2.4, 0], [2.85, 1.95, 0], BARK[2]); seg([2.2, 2.42, 1], [2.85, 1.97, 1], BARK[3]); seg([2.5, 2.2, 1], [2.58, 2.0, 5], BARK[2]);
+        for (let i = 0; i < 9; i++) { const p = pt(2.2 + (hash(seed + 95, i) % 70) / 100, 1.7 + (hash(seed + 96, i) % 70) / 100, 0); P.px(p[0], p[1], OAK[(i & 1) ? 3 : 2]); P.px(p[0] + 1, p[1], OAK[1]); }
+      }
+    }
+    // the same limb's twin on the enclosure floor, and torn leaves under the tree
+    if (dmg && !front) { seg([1.0, 0.95, 0], [1.5, 0.9, 1], BARK[1]); for (let i = 0; i < 8; i++) { const p = pt(0.8 + (hash(seed + 97, i) % 60) / 100, 0.6 + (hash(seed + 98, i) % 60) / 100, FZ); P.px(p[0], p[1], OAK[(i & 1) ? 3 : 2]); } }
+  }
+
   const SPECIAL = {
+    tiger_habitat(ctx, P, g, row, variant, frame) { habitatPaint(ctx, P, g, row, variant, frame, 0); },
     substation(ctx, P, g, row, variant, frame) {
       const cx = g.bcx, cy = g.bcy;
       P.diamond(cx, cy, g.bw, g.bh, XB.gravelPad, shade(XB.gravelPad, 0.75));
@@ -1699,13 +2041,14 @@
     if (variant & SPR.PILINGS) drawPilingsGround(P, g, g.seed); else drawGrounds(P, g, row, variant, g.seed);
     if ((variant & SPR.PILINGS) && !(variant & SPR.SCAFFOLD)) drawStiltsBack(P, g);
     if (variant & SPR.SCAFFOLD) {
-      drawScaffoldStage(P, g, row, frame);
+      if (g.special === 'tiger_habitat') habitatPaint(ctx, P, g, row, variant, frame, 2); else drawScaffoldStage(P, g, row, frame);   // habitat pass: its own three construction stages
     } else {
       const fn = SPECIAL[g.special];
       if (fn) fn(ctx, P, g, row, variant, frame); else drawStandardBox(ctx, P, g, row, variant, frame);
     }
     if ((variant & SPR.PILINGS) && !(variant & SPR.SCAFFOLD)) drawStilts(P, g);
     try { drawMargins(P, g, row, variant, frame); } catch (e) { BSU.error('sprites', 'margins:' + row.id, e); }
+    if (OWN_STATES[g.special] && !(variant & SPR.SCAFFOLD)) return { w: g.w, h: g.h, ox: g.ox, oy: g.oy };   // habitat pass: the special painted its own damage / boards / flood
     if (variant & SPR.DAMAGED) applyDamaged(P, g);
     if (variant & SPR.BOARDED) applyBoarded(P, g);
     if (variant & FLOODED_BIT) { try { applyFlooded(P, g); } catch (e) { BSU.error('sprites', 'flooded:' + row.id, e); } }
@@ -2035,6 +2378,19 @@
     else if (sp === 'water_tower' || sp === 'surge_barrier') { frames = 4; perVariant = false; }
     spec.frames = frames; spec.framesPerVariant = perVariant;
     return M.paintBuilding(ctx, row, spec.variant, spec.frame, spec.zoom, spec.seed, spec.rot, spec.tees);
+  });
+  /** habitat pass: `habfront` = the Tiger Habitat's foreground (near side wall, viewing wall, railing, glass) on a canvas laid out exactly like the building's, drawn by render AFTER Roux so he walks behind the glass */
+  M.registerPainter('habfront', function (ctx, spec) {
+    const row = BSU.data && BSU.data.catalog && BSU.data.catalog.tiger_habitat, v = spec.variant | 0;
+    if (!row) { begin(ctx, 1, 1, spec.zoom); return { w: 1, h: 1, ox: 0, oy: 0 }; }
+    const g = M.buildingBox(row, v, spec.zoom, 0);
+    g.paint = row.paint || {};
+    g.seed = hash(strHash(row.id), (hash(strHash(row.id), v) ^ v) >>> 0);   // the building sprite's own seed, so the two layers match pixel for pixel
+    g.tone = (v & SPR.DAMAGED) ? 0.8 : 1; g.frontLeft = !!(v & SPR.FRONT_L);
+    const y0 = Math.max(0, g.ay - 56);   // the foreground walls and glass lie on the two lower edges: drop the empty top of the canvas (≈ 45 % of the atlas memory of this layer)
+    begin(ctx, g.w, g.h - y0, spec.zoom);
+    habitatPaint(ctx, offsetPen(tonePen(pen(ctx, g.zoom), g.tone), 0, -y0), g, row, v, 0, 1);
+    return { w: g.w, h: g.h - y0, ox: g.ox, oy: g.oy + y0 };
   });
   M.registerPainter('ruin', paintRuinFamily);
   M.registerPainter('thibodeaux', paintThibodeaux);

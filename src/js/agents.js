@@ -122,7 +122,8 @@
       jit: new Float32Array(Math.ceil(W / PM.spotPitch) * Math.ceil(H / PM.spotPitch) * 2).fill(9),
       gX: new Float64Array(64), gY: new Float64Array(64), gI: new Int32Array(64),   // gator positions for the flee test
       cellHead: new Int32Array(N), cellNext: new Int32Array(512),
-      occW: Math.ceil(W / PM.spotPitch), occ: new Uint32Array(Math.ceil(W / PM.spotPitch) * Math.ceil(H / PM.spotPitch)), occGen: 1
+      occW: Math.ceil(W / PM.spotPitch), occ: new Uint32Array(Math.ceil(W / PM.spotPitch) * Math.ceil(H / PM.spotPitch)), occGen: 1,
+      hv: new Map(), hdoor: new Map()   // habitat pass: Tiger Habitat id → {n, x, y, total} the students standing at its glass this tick and everyone committed to it (rebuilt by buildGrids; render reads it for Roux); door tile → habitat id
     };
   }
   let X = newCtx();
@@ -556,6 +557,7 @@
       spd: 0, step: 0,                     // eased speed fraction 0..1 and the distance moved last tick (the "slower than me" test of local avoidance)
       hd: 0, sd: 0, psd: 0,                // heading of the last move (radians, tx → ty), distance walked and its value one tick ago (render drives the walk cycle with it)
       early: false, react: 0, reactPhase: 0, leaveAt: 0, leavePb: -1, spotX: -1, spotY: -1, approach: false, enter: false, linger: false, sitPlan: false, hold: 0, holdIn: false,
+      view: -1,                            // habitat pass: the id of the Tiger Habitat whose glass this student stands at (−1 = none); transient, never saved
       rh: 0, rhSet: false, ox: 0, oy: 0, pw: 0, rdx: 0, rdy: 0, rs: 0   // render-only (poseAgent): eased heading, eased lateral offset, curve weight, last drawn position, interpolated stride
     };
   }
@@ -634,7 +636,7 @@
     clearStand(a);
   }
   /** drop everything about standing around (spot, approach, linger, held start): a new goal, a flee or an evacuation */
-  function clearStand(a) { a.spotX = -1; a.spotY = -1; a.approach = false; a.enter = false; a.linger = false; a.sitPlan = false; a.hold = 0; a.holdIn = false; }
+  function clearStand(a) { a.spotX = -1; a.spotY = -1; a.approach = false; a.enter = false; a.linger = false; a.sitPlan = false; a.hold = 0; a.holdIn = false; a.view = -1; }
   function goalTile(state, a) {
     if (a.target < 0) return -1;
     if (a.goal === 'idle' || a.goal === 'parade' || a.goal === 'graduation' || a.goal === 'flee' || a.goal === 'tile') return validTile(a.target) ? a.target : -1;
@@ -645,6 +647,96 @@
   }
   function goalIsBuilding(state, a) { return a.target >= 0 && a.goal !== 'idle' && a.goal !== 'parade' && a.goal !== 'graduation' && a.goal !== 'tile' && !!getBuilding(state, a.target); }
   function pickTile(r, list, fallback) { return list && list.length ? list[r.int(list.length)] : fallback; }
+
+  // ---------------------------------------------------------------------------
+  // Tiger Habitat visitors (habitat pass). The habitat is an idle destination like the quad, weighted by its happiness effect (value × radius / 225 = a one-in-three
+  // share of the idle strolls). Students walk to the habitat's door tile (the path tile just outside the middle of the plaza edge), then
+  // stand on the plaza: the front tile row of the 3×3 footprint, which the sprite paints as brick paving along the viewing wall. Those are building tiles
+  // (walk class 0), so they are NOT standable in general: the cells below are claimed explicitly and never overlap the enclosure (local depth < 2). Twelve cells
+  // (two rows of four on the plaza, four more on the path tiles outside it) are the cap on visitors: a full habitat sends the late ones to the ordinary spot
+  // search around the door. The layout mirrors `sprites.HABITAT` (local X depth, Y along the front; a test keeps them equal); `fl` is `render.frontLeftOf`'s rule.
+  // ---------------------------------------------------------------------------
+  const HB_SPOT_X = [2.25, 2.75], HB_SPOT_Y = [0.75, 1.25, 1.75, 2.25], HB_OUT_X = 3.25;
+  const HB_MAX = 12;   // the cap on visitors: the 12 standing cells
+  const HB_DWELL = [50, 150];   // 10–30 s at 1× (ticks)
+  /** which edge of a Tiger Habitat faces the path: true = the SW (south) edge — the same rule as render.frontLeftOf, so sprite and spots agree */
+  function habFrontLeft(state, b) {
+    const surf = state.tiles.surface, w = b.w | 0, h = b.h | 0, tx = b.tx | 0, ty = b.ty | 0;
+    if (tx + w < W) for (let y = ty; y < ty + h; y++) { const q = surf[y * W + tx + w]; if (q >= 1 && q <= 3) return false; }
+    if (ty + h < H) for (let x = tx; x < tx + w; x++) { const q = surf[(ty + h) * W + x]; if (q >= 1 && q <= 3) return true; }
+    return false;
+  }
+  /** local exhibit coordinates → world tile coordinates (sprites.habitatWorld) */
+  function habWorld(b, fl, lx, ly) { return fl ? [b.tx + ly, b.ty + lx] : [b.tx + lx, b.ty + ly]; }
+  function habOpen(state, b) { return !!b && !b.flooded && !b.ruin && fin(b.built, 1) >= 1 && fin(b.hp, 1) > 0.3; }
+  /** twelve students at the glass or on their way: nobody else is sent there this tick */
+  function habFull(b) { const h = X.hv.get(b.id); return !!h && h.total >= HB_MAX; }
+  /** the path tile just outside the middle of the plaza edge (any walkable tile along it, else the generic door) */
+  function habDoor(state, b) {
+    const fl = habFrontLeft(state, b), walk = state.tiles.walk, order = [1, 0, 2];
+    for (let q = 0; q < order.length; q++) { const k = order[q], x = fl ? b.tx + k : b.tx + b.w, y = fl ? b.ty + b.h : b.ty + k; if (x >= 0 && y >= 0 && x < W && y < H && walk[y * W + x] > 0) return y * W + x; }
+    return doorTile(state, b);
+  }
+  /** the share of idle strolls a habitat draws: its happiness value × radius / 225 (5 × 15 → one in three), clamped to 5–40 % — it scales with the effect, so a bigger catalog radius draws more */
+  function habShare() {
+    const row = BSU.data && BSU.data.catalog && BSU.data.catalog.tiger_habitat, hp = row && row.effects && row.effects.happiness;
+    return hp ? BSU.clamp(fin(hp.value, 0) * fin(hp.radius, 0) / 225, 0.05, 0.4) : 0.1;
+  }
+  /** append a habitat's door to `choices` as many times as gives it its share of the final list (the others are already in `choices`; `nHab` habitats split the share) */
+  function addHabitat(choices, door, base, nHab) { const sh = habShare(), n = Math.max(1, Math.round(sh / (1 - sh) * base / Math.max(1, nHab))); for (let q = 0; q < n; q++) choices.push(door); }
+  /** the standing cells [x, y, row, …] of a habitat, nearest the glass first (row 0 beside the wall, row 1 behind it, row 2 on the path tiles outside); plaza cells need a walkable tile just outside the plaza edge for the way out */
+  function habSpots(state, b, fl) {
+    const out = [], rows = [HB_SPOT_X[0], HB_SPOT_X[1], HB_OUT_X];
+    for (let r = 0; r < 3; r++) for (let k = 0; k < HB_SPOT_Y.length; k++) {
+      const p = habWorld(b, fl, rows[r], HB_SPOT_Y[k]), tx = Math.floor(p[0]), ty = Math.floor(p[1]);
+      if (tx < 0 || ty < 0 || tx >= W || ty >= H) continue;
+      if (r < 2) { const ox = fl ? tx : b.tx + b.w, oy = fl ? b.ty + b.h : ty; if (ox < 0 || oy < 0 || ox >= W || oy >= H || !(state.tiles.walk[oy * W + ox] > 0)) continue; }
+      else if (!standable(state, ty * W + tx)) continue;
+      out.push(p[0], p[1], r);
+    }
+    return out;
+  }
+  /** claim a viewing cell for `a`, who has just arrived at tile `door`; false when no open habitat has this door or every cell is taken */
+  function claimHabitatSpot(state, a, door) {
+    refreshBuildingCaches(state);
+    const L = X.homes.idle, inv = 1 / PM.spotPitch;
+    for (let q = 0; q < L.length; q++) {
+      const b = L[q];
+      if (b.type !== 'tiger_habitat' || !habOpen(state, b) || habDoor(state, b) !== door) continue;
+      const sp = habSpots(state, b, habFrontLeft(state, b)), n = sp.length / 3;
+      for (let r = 0; r < 3; r++) {
+        let cnt = 0; for (let j = 0; j < n; j++) if (sp[j * 3 + 2] === r) cnt++;
+        if (!cnt) continue;
+        const s0 = (Math.imul(a.id + 1 + r * 977, 0x9E3779B1) >>> 12) % cnt;
+        for (let m = 0; m < cnt; m++) {
+          let want = (s0 + m) % cnt, j = 0; for (; j < n; j++) if (sp[j * 3 + 2] === r && want-- === 0) break;
+          const x = sp[j * 3], y = sp[j * 3 + 1], cell = Math.floor(y * inv) * X.occW + Math.floor(x * inv);
+          if (X.occ[cell] === X.occGen) continue;
+          X.occ[cell] = X.occGen; a.spotX = x; a.spotY = y; a.view = b.id;
+          a.approach = Math.abs(x - a.tx) + Math.abs(y - a.ty) > 0.02;
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+  /** a stable 10–30 s dwell at the glass (hash of the id, ±20 % per visit) */
+  function habDwell(a) { const base = HB_DWELL[0] + (HB_DWELL[1] - HB_DWELL[0]) * hashFrac(a.id, 0x6478); return Math.round(BSU.clamp(base * (0.8 + 0.4 * BSU.rng.sim.float()), HB_DWELL[0], HB_DWELL[1])); }
+  /** the pose of a student at the glass: ~4.4 s segments of idle / selfie / binoculars / a wave at Roux; a selfie pops a tiny camera flash once per segment */
+  function habitatPose(state, a, ctx) {
+    const seg = Math.floor((ctx.tick + a.id * 13) / 22), r = hashFrac(a.id * 31 + seg, 0x7b01);
+    const anim = r < 0.34 ? 'idle' : (r < 0.64 ? 'selfie' : (r < 0.88 ? 'binoculars' : 'wave'));
+    if (anim === 'selfie' && (ctx.tick + a.id * 13) % 22 === 9) {
+      const R = dep('render');
+      if (R && R.particles && typeof R.particles.emit === 'function') {
+        const e = state.tiles.elev[agentTile(a)] || 0;
+        guard('flash', function () { R.particles.emit('foam', (a.tx - a.ty) * 32, (a.tx + a.ty - 2) * 16 - e * 6, 1, { z: 20, life: 140, size: 2, jitter: 0 }); });
+      }
+    }
+    return anim;
+  }
+  /** the students standing at a habitat's glass this tick: {n, x[], y[]} (world tile coordinates) or null (render moves Roux toward them; tests count them) */
+  M.habitatViewers = function (state, id) { return X.hv.get(id) || null; };
 
   function idleSpot(state, a, r, advisory) {
     refreshBuildingCaches(state);
@@ -661,8 +753,10 @@
       }
     }
     if (!choices.length) {
-      for (let k = 0; k < Hc.idle.length; k++) choices.push(doorTile(state, Hc.idle[k]));
+      let nh = 0;
+      for (let k = 0; k < Hc.idle.length; k++) { const ib = Hc.idle[k]; if (ib.type === 'tiger_habitat') { if (habOpen(state, ib) && !habFull(ib)) nh++; } else choices.push(doorTile(state, ib)); }
       for (let k = 0; k < Hc.oakTiles.length; k++) choices.push(Hc.oakTiles[k]);
+      if (nh) { const base = choices.length; for (let k = 0; k < Hc.idle.length; k++) { const ib = Hc.idle[k]; if (ib.type === 'tiger_habitat' && habOpen(state, ib) && !habFull(ib)) addHabitat(choices, habDoor(state, ib), base, nh); } }   // habitat pass: weighted by its happiness effect
     }
     if (!choices.length) choices.push(foundersFront(state));
     return pickTile(r, choices, foundersFront(state));
@@ -676,6 +770,9 @@
     const choices = [];
     for (let k = 0; k < Hc.greek.length; k++) choices.push(doorTile(state, Hc.greek[k]));
     for (let k = 0; k < Hc.union.length; k++) choices.push(doorTile(state, Hc.union[k]));
+    { const base = choices.length; let nh = 0; for (let k = 0; k < Hc.idle.length; k++) if (Hc.idle[k].type === 'tiger_habitat' && habOpen(state, Hc.idle[k]) && !habFull(Hc.idle[k])) nh++;
+      if (base) for (let k = 0; k < Hc.idle.length; k++) { const ib = Hc.idle[k]; if (ib.type === 'tiger_habitat' && habOpen(state, ib) && !habFull(ib)) addHabitat(choices, habDoor(state, ib), base, nh); }   // habitat pass: the lit plaza at Dusk
+      else for (let k = 0; k < Hc.idle.length; k++) { const ib = Hc.idle[k]; if (ib.type === 'tiger_habitat' && habOpen(state, ib) && !habFull(ib)) choices.push(habDoor(state, ib)); } }
     if (!choices.length) return { goal: 'idle', target: idleSpot(state, a, r, false) };
     return { goal: 'idle', target: pickTile(r, choices, foundersFront(state)) };
   }
@@ -808,7 +905,7 @@
         a.state = (ctx && ctx.advisory && a.sitUntil > 0) ? 'SIT' : 'IDLE';
         a.next = null;
         settle(state, a, ctx, a.state === 'IDLE');
-        if (a.state === 'IDLE') { a.waitTicks = dwellTicks(a); a.next = 'mingle'; }   // stand a while (8–25 s), then shuffle over or stroll to another spot
+        if (a.state === 'IDLE') { a.waitTicks = a.view >= 0 ? habDwell(a) : dwellTicks(a); a.next = 'mingle'; }   // stand a while (8–25 s; 10–30 s at the habitat's glass), then shuffle over or stroll to another spot
         break;
       default:
         a.state = 'IDLE'; a.next = null;
@@ -830,6 +927,7 @@
     if (!n) return;
     if (n === 'mingle') {   // an idle dweller whose dwell is up: half shuffle to a free spot nearby, half stroll to another idle place; nothing at night, in heat, a storm, a game or a set piece
       if (a.state !== 'IDLE' || a.inside || !ctx || ctx.phase === SKY.NIGHT || ctx.advisory || ctx.watch || state.setPiece || (state.sports && state.sports.game) || X.sheltering || X.evacuating) return;
+      if (a.view >= 0) { setGoal(state, a, 'idle', idleSpot(state, a, BSU.rng.sim, false), null); return; }   // habitat pass: off the plaza (it is not walkable ground) to another idle place, maybe back here
       if (BSU.rng.sim.chance(0.5)) setGoal(state, a, 'idle', agentTile(a), null);
       else setGoal(state, a, 'idle', idleSpot(state, a, BSU.rng.sim, false), null);
       return;
@@ -854,11 +952,20 @@
     X.cellHead.fill(0);
     X.occGen = (X.occGen + 1) >>> 0; if (X.occGen === 0) { X.occ.fill(0); X.occGen = 1; }
     const inv = 1 / PM.spotPitch;
+    for (const h of X.hv.values()) { h.n = 0; h.total = 0; }
+    X.hdoor.clear();
+    if (X.homes) for (let q = 0; q < X.homes.idle.length; q++) { const ib = X.homes.idle[q]; if (ib.type === 'tiger_habitat') X.hdoor.set(habDoor(state, ib), ib.id); }
     for (let k = 0; k < A.length; k++) {
       const a = A[k];
       if (!a || a.state === 'GONE' || a.aboard || a.inside) continue;
       const t = agentTile(a);
       X.cellNext[k] = X.cellHead[t]; X.cellHead[t] = k + 1;
+      const hid = a.view >= 0 ? a.view : ((a.goal === 'idle' && a.state === 'WALK' && a.target >= 0) ? X.hdoor.get(a.target) : undefined);   // viewing, or on the way
+      if (hid !== undefined) {
+        let h = X.hv.get(hid); if (!h) { h = { n: 0, x: new Float32Array(16), y: new Float32Array(16), total: 0 }; X.hv.set(hid, h); }
+        h.total++;
+        if (a.view >= 0 && !a.approach && a.state === 'IDLE' && h.n < 16) { h.x[h.n] = a.tx; h.y[h.n] = a.ty; h.n++; }
+      }
       if (a.approach && a.spotX >= 0) X.occ[Math.floor(a.spotY * inv) * X.occW + Math.floor(a.spotX * inv)] = X.occGen;
       else if (a.state === 'IDLE' || a.state === 'SIT' || a.state === 'CHEER') X.occ[Math.floor(a.ty * inv) * X.occW + Math.floor(a.tx * inv)] = X.occGen;
     }
@@ -917,7 +1024,8 @@
   function settle(state, a, ctx, canSit) {
     if (a.inside) return;
     const i = agentTile(a);
-    a.approach = false; a.spotX = -1; a.spotY = -1;
+    a.approach = false; a.spotX = -1; a.spotY = -1; a.view = -1;
+    if (a.goal === 'idle' && a.target === i && claimHabitatSpot(state, a, i)) { a.sitPlan = false; return; }   // habitat pass: a place at the glass
     if (claimSpot(state, a, i)) a.approach = Math.abs(a.spotX - a.tx) + Math.abs(a.spotY - a.ty) > 0.02;
     a.sitPlan = false;
     if (canSit && a.state === 'IDLE' && !(ctx && (ctx.rain || ctx.advisory)) && state.tiles.surface[i] === BSU.SURF.NONE && depthAt(state, i) < 0.05 && BSU.rng.sim.chance(PM.sitShare)) a.sitPlan = true;
@@ -1050,7 +1158,7 @@
   function enterTile(state, a, i) {
     a.lastTile = i;
     // desire lines: bare grass only
-    if (state.tiles.surface[i] === BSU.SURF.NONE) {
+    if (state.tiles.surface[i] === BSU.SURF.NONE && state.tiles.owner[i] < 0) {
       const t = state.tiles.type[i];
       if (t === T.DRY || t === T.HIGH || t === T.WET) {
         const w = state.tiles.wear[i];
@@ -1175,7 +1283,7 @@
     else if (a.state === 'SIT' && !moving) a.anim = 'sit';
     else if (a.state === 'WADE' || (moving && inWater)) a.anim = 'splash';
     else if (moving) a.anim = a.prop === 'umbrella' ? 'umbrella' : (a.prop === 'foam' ? 'foam' : (a.prop === 'beads' ? 'beads' : (a.prop === 'tube' ? 'tube' : 'walk')));
-    else a.anim = 'idle';
+    else a.anim = (a.view >= 0 && !a.approach && a.state === 'IDLE') ? habitatPose(state, a, ctx) : 'idle';
     a.frame = moving ? (a.frame + 1) & 1023 : (ctx.tick >> 3) & 1023;
   }
   function samplePresent(state, a, ctx) {
@@ -1785,7 +1893,11 @@
     cacheSize: function () { return X.routeCache.size; },
     cacheHas: function (from, to, grid) { return X.routeCache.has(routeKey(from, to, grid || 'walk')); },
     queueSize: function () { return X.queue.length; },
-    counters: function () { return { assigned: X.assigned, reached: X.reached }; }
+    counters: function () { return { assigned: X.assigned, reached: X.reached }; },
+    // habitat pass (tests): the share of idle strolls a habitat draws, n idle picks, and a habitat's front / door / standing cells ([x, y, row, …])
+    habShare: function () { return habShare(); },
+    idleTargets: function (state, n) { const out = [], a = state.agents[0]; for (let k = 0; k < n; k++) out.push(idleSpot(state, a, BSU.rng.sim, false)); return out; },
+    habitat: function (state, id) { const b = getBuilding(state, id); if (!b) return null; const fl = habFrontLeft(state, b); return { fl: fl, door: habDoor(state, b), spots: habSpots(state, b, fl), max: HB_MAX, spotX: HB_SPOT_X.slice(), spotY: HB_SPOT_Y.slice(), outX: HB_OUT_X }; }
   };
 
   // ---------------------------------------------------------------------------
@@ -1908,6 +2020,12 @@
         A(M._debug.cacheHas(from, to, 'walk'), 'kept for a tile outside its bbox');
         M.invalidateRoutes(s, BSU.idx(6, 2));
         A(!M._debug.cacheHas(from, to, 'walk'), 'dropped for a tile inside its bbox');
+      }
+      // 6b. habitat pass: the viewing layout mirrors sprites.HABITAT (when the sprite modules are loaded) and fits the 0.5-tile grid and the cap
+      {
+        const H = BSU.sprites && BSU.sprites.HABITAT, same = function (a, b) { return Array.isArray(b) && a.length === b.length && a.every(function (v, i) { return v === b[i]; }); };
+        A(HB_MAX === 12 && HB_SPOT_X.length * HB_SPOT_Y.length + HB_SPOT_Y.length >= HB_MAX && HB_SPOT_X.every(function (v) { return v > 2 && v < 3 && (v * 2) % 1 === 0.5; }) && HB_SPOT_Y.every(function (v) { return (v * 2) % 1 === 0.5; }), 'habitat cells sit on the centres of the 0.5-tile grid, on the plaza (depth 2–3)');
+        if (H) A(same(HB_SPOT_X, Array.from(H.SPOT_X)) && same(HB_SPOT_Y, Array.from(H.SPOT_Y)), 'agents.js habitat cells equal sprites.HABITAT.SPOT_X / SPOT_Y');
       }
       // 7. sampling means
       {

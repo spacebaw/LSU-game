@@ -112,6 +112,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - agents.invalidateRoutes(state, i)
 - agents.count(state)
 - agents.regenerate(state)
+- agents.habitatViewers(state, id)
 - agents.turnStep(cur, target, maxStep)
 - agents.lateral(a, state)
 - agents.shelter(state, capacities)
@@ -464,6 +465,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - render.registerPass(name, fn, order_, builtin)
 - render.passes()
 - render.attachMinimap(el)
+- render.habitatRoux(id)
 - render.agentPose(a, state)
 - render.teesOf(state, b, frontLeft)
 - render.teeStats()
@@ -585,7 +587,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - sports.selfTest()
 
 ## BSU.sprites
-- values: palette:object, CANVAS_LIMIT_MB:number, ZOOM2:boolean, GC_FRAMES:number, TILE_W:number, TILE_H:number, PX_PER_FT:number, extra:object, RAMPS:object, RAMP_BASES:object, COOL_TINT:string, WARM_TINT:string, TH_GROUND:array[4], FONT:object, _tests:array[2], FRAMES:object, DIRS:array[4], EXTRA_DECALS:object, decalPainters:object, LIGHTS:object, TREE_SIL_SHIFT:number, TREE_WATER:number, extraBuildings:object, APRON:object, materials:object, FEATURES:array[23], roofs:object, entityConst:object, entityColors:object, _buf:object, SHEET_LIMIT_MB:number, _gcWrapped:boolean, fbFrames:object, fbSizes:object, fbPoses:object, fbRoles:array[5], fbCompose:object, stuAnims:object, _bake:object, animFrames:object, vehCompose:object, entFrames:object, entityFacings:number, _initWrappedEntities:boolean, entitySizes:object, entityCells:object
+- values: palette:object, CANVAS_LIMIT_MB:number, ZOOM2:boolean, GC_FRAMES:number, TILE_W:number, TILE_H:number, PX_PER_FT:number, extra:object, RAMPS:object, RAMP_BASES:object, COOL_TINT:string, WARM_TINT:string, TH_GROUND:array[4], FONT:object, _tests:array[2], FRAMES:object, DIRS:array[4], EXTRA_DECALS:object, decalPainters:object, LIGHTS:object, TREE_SIL_SHIFT:number, TREE_WATER:number, extraBuildings:object, APRON:object, materials:object, FEATURES:array[23], roofs:object, HABITAT:object, entityConst:object, entityColors:object, _buf:object, SHEET_LIMIT_MB:number, _gcWrapped:boolean, fbFrames:object, fbSizes:object, fbPoses:object, fbRoles:array[5], fbCompose:object, stuAnims:object, _bake:object, animFrames:object, vehCompose:object, entFrames:object, entityFacings:number, _initWrappedEntities:boolean, entitySizes:object, entityCells:object
 - sprites.hex(h)
 - sprites.rgb(r, g, b)
 - sprites.shade(h, k)
@@ -647,6 +649,9 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - sprites.rampOf(hex)
 - sprites.noiseAt(x, y, seed)
 - sprites.placeDecal(ctx, g, name, anchor, frame)
+- sprites.habitatWorld(tx, ty, frontLeft, X, Y)
+- sprites.habitatPool(lx, ly)
+- sprites.habitatPoint(frontLeft, X, Y, z)
 - sprites.paintBuilding(ctx, row, variant, frame, zoom, seed, rot, tees)
 - sprites.iconPlan(id)
 - sprites.iconFit(id)
@@ -749,6 +754,8 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - ui.init(state)
 - ui.uiScale()
 - ui.uiScaleEffective()
+- ui.uiScaleMode()
+- ui.autoScaleFor(w)
 - ui.setUiScale(v)
 - ui._machine(cb)
 - ui.pointer(type, px, py, button, mods)

@@ -392,7 +392,7 @@
     row({ n: 40, name: 'Tiger Habitat', w: 3, h: 3, cost: 1800000, upkeep: 12000, wr: 4,
       unlock: { students: 1000, prestige: 20 },
       effects: { landmark: 8, happiness: { value: 5, radius: 15 }, homeWinBonus: 0.05, gatorAvoidRadius: 10, special: ['tank', 'habitat'] },
-      paint: P({ wall: ['#8A8A8E', '#6E6E72'], roof: 'none', roofColor: '', decals: ['pool'], special: 'tiger_habitat', material: 'stone', accent: '#E07020', features: ['sign:TIGERS'] }),
+      paint: P({ wall: ['#9C978E', '#7C776F'], roof: 'none', roofColor: '', floors: 0, decals: [], special: 'tiger_habitat', material: 'stone', accent: '#E07020', features: ['sign:ROUX'] }),   // habitat pass: a bespoke zoo-exhibit painter (sprites_buildings.js habitatPaint) draws the pool, den, glass, plaza; the paint row only names it
       why: 'Roux lives here. The gators keep their distance. So do opponents.',
       desc: 'Landmark +8; +5 happiness radius 15; home win +5%; gators avoid radius 10; floods → Roux Is Loose.' }),
     row({ n: 41, name: 'Bayou Surge Barrier', kind: 'drag', cost: 6000000, upkeep: 40000, wr: 5, placeRule: PLACE.BARRIER,

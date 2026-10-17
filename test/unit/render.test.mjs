@@ -120,6 +120,50 @@ ok(R.chunkDirty(chunkOf(ex, ey)) && (R.chunkDirty(chunkOf(ex, ey - 1)) || before
   }
 }
 
+// --- habitat pass: Roux lives in his exhibit (bounds, naps, swims, comes to the glass), the foreground layer and the plaza's sort key ----------
+{
+  BSU.economy.post(s, 'misc', 30000000); BSU.economy.bump(s, 'prestige', 20, 'debug'); BSU.economy.addStudents(s, 1200, 'debug');
+  for (let x = 46; x <= 52; x++) BSU.headless.place('path', x, 13);
+  for (let y = 10; y <= 13; y++) BSU.headless.place('path', 52, y);
+  const pr = BSU.headless.place('tiger_habitat', 47, 10);
+  ok(pr && pr.ok, 'habitat test: a Tiger Habitat placed beside a path (' + (pr && (pr.reason || pr.id)) + ')');
+  if (pr && pr.ok) {
+    BSU.headless.fastForwardDays(8);
+    const hb = s.buildings.find((x) => x && x.id === pr.id), H = BSU.sprites.HABITAT;
+    ok(hb && hb.built >= 1, 'the habitat finishes building');
+    R.panToTile(hb.tx + 2, hb.ty + 2.5, false);
+    const eb2 = BSU.errors.size; let modes = new Set(), outside = 0, glassSeen = false, swam = false, maxFront = 0, order = true;
+    for (let k = 0; k < 4200; k++) {                                                                  // 70 s of frames at 60 fps
+      R.frame(s, 0, 16.67);
+      const st = R.habitatRoux(hb.id);
+      if (st) { modes.add(st.mode); if (st.x < H.ROUX.x0 - 0.12 || st.x > H.ROUX.x1 + 0.08 || st.y < H.ROUX.y0 - 0.12 || st.y > H.ROUX.y1 + 0.08) outside++; if (BSU.sprites.habitatPool(st.x, st.y) > 0.04) swam = true; if (st.glass) glassSeen = true; }
+      if (k === 60) {
+        const L = R.drawList, b = L.find((e) => e.kind === 'building' && e.b === hb), rx = L.find((e) => e.kind === 'roux' && e.ax === b.ax && e.ay === b.ay), ff = L.find((e) => e.kind === 'habfront');
+        ok(b && rx && ff && ff.ax === b.ax && ff.ay === b.ay && b.key < rx.key && rx.key < ff.key, 'the draw order at the habitat: building < Roux < foreground layer (habfront) at the same anchor tile');
+        ok(ff && ff.ref && ff.ref.sh < b.ref.sh && ff.ref.ox === b.ref.ox, 'habfront is the cropped foreground canvas of the building');
+        ok(typeof R.habitatRoux === 'function' && R.habitatRoux(hb.id) && R.habitatRoux(999) === null, 'habitatRoux(id) exposes the state for tools');
+      }
+    }
+    ok(outside === 0, `Roux never leaves the enclosure bounds in 70 s of frames (${outside} samples outside)`);
+    ok(modes.has('LIE') && modes.has('WALK') && modes.has('REST'), `Roux naps, paces and rests (${[...modes].sort().join(', ')})`);
+    ok(swam, 'Roux swims through the pool (the lower body under the waterline) during the minute');
+    ok(BSU.errors.size === eb2, 'no BSU.error while Roux lives in the exhibit');
+    // students at the glass pull him to the wall; a student on the plaza stands in front of the foreground layer
+    const viewer = s.agents.find((a) => a && a.state !== 'GONE');
+    viewer.inside = false; viewer.state = 'IDLE'; viewer.goal = 'idle'; viewer.target = -1; viewer.route = []; viewer.waitTicks = 9999;
+    for (const w of [BSU.sprites.habitatWorld(hb.tx, hb.ty, false, 2.5, 1.5), BSU.sprites.habitatWorld(hb.tx, hb.ty, true, 2.5, 1.5)]) {   // a plaza cell for either entrance
+      viewer.tx = w[0]; viewer.ty = w[1]; viewer.px = w[0]; viewer.py = w[1]; viewer.lastTile = Math.floor(w[1]) * 64 + Math.floor(w[0]);
+      R.frame(s, 0, 16.67);
+      const L = R.drawList, ff = L.find((e) => e.kind === 'habfront'), ent = L.find((e) => e.kind === 'agent' && e.b === viewer);
+      ok(s.tiles.owner[viewer.lastTile] === hb.id && ent && ff && ent.key > ff.key, 'a student standing on a plaza tile sorts after the foreground layer (in front of the glass): ' + (ent ? ent.key.toFixed(2) : '?') + ' > ' + (ff ? ff.key.toFixed(2) : '?'));
+    }
+    // flooded: the enclosure is empty (the pool has spilled and Roux is out), no ripple, the foreground still draws
+    hb.flooded = true; R.frame(s, 0, 16.67);
+    ok(!R.drawList.some((e) => e.kind === 'roux' && e.ax === hb.tx + hb.w - 1 && e.ay === hb.ty + hb.h - 1) && !R.drawList.some((e) => e.kind === 'ripple') && R.drawList.some((e) => e.kind === 'habfront'), 'a flooded habitat shows no Roux and no ripple; the foreground layer still draws');
+    hb.flooded = false;
+  }
+}
+
 // --- camera math round trips --------------------------------------------------------
 let roundTrips = 0;
 for (let k = 0; k < 30; k++) {

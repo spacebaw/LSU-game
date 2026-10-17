@@ -1390,29 +1390,115 @@
     e.a = fin(size, 1); e.variant = typeof colorIdx === 'number' ? colorIdx : 0; e.id = typeof colorIdx === 'string' ? colorIdx : ''; e.d = type;
     e.sx = (x - camera.x) * zoomNow + vw / 2; e.sy = (y - zz - camera.y) * zoomNow + vh / 2;
   }
-  /** art pass B4: the Tiger Habitat's resident (Roux on all fours) paces its enclosure, then idles, lies down and yawns; deterministic from the frame counter, drawn right after the building */
-  const hbPos = [0, 0, 0, 0];
-  function habitatPos(b, k, t) {
-    const cx = b.tx + b.w / 2, cy = b.ty + b.h / 2, ax = Math.max(0.35, b.w / 2 - 1.05), ay = Math.max(0.35, b.h / 2 - 1.05), ph = (hash(k + 1, 7) % 628) / 100;
-    hbPos[0] = cx + ax * Math.sin(t / 110 + ph) * 0.95 + 0.25 * Math.sin(t / 37); hbPos[1] = cy + ay * Math.sin(t / 83 + ph * 1.7 + 1.3) * 0.95 + 0.25 * Math.cos(t / 41);
+  /**
+   * habitat pass: Roux in his exhibit (presentation only; nothing here is saved or read by the sim). One small deterministic state machine per Tiger Habitat
+   * (`hbRoux`): he walks between stations on the lawn, naps in the oak's shade (LIE, then a yawn), swims the pool (the lower body hidden under the waterline and
+   * ripple rings around him) and comes to the glass when students gather on the plaza (they are read from `agents.habitatViewers`). All positions are LOCAL exhibit
+   * coordinates (`sprites.HABITAT`: X depth, Y along the front) mapped to world tiles through `sprites.habitatWorld`, so both entrances share the code and he never
+   * leaves the enclosure. He is drawn right after the building, and `habfront` (the foreground wall, railing and glass) right after him, so he walks behind the glass.
+   * The loose Roux of the "Roux Is Loose" event and a flooded exhibit (the pool has spilled) mean the enclosure is empty. The sideline mascot is untouched.
+   */
+  const hbRoux = new Map(), hbDraw = [];
+  const HB_ST = [[1.35, 1.12], [1.3, 2.2], [0.9, 0.38], [1.52, 0.62], [0.74, 2.4]];    // lawn stations: the glass side, the front lawn, by the oak, the far corner, the den mouth
+  const HB_GLASS_X = 1.5, HB_SPEED = 0.6, HB_SWIM_SPEED = 0.36;
+  /** walk round the pool (down the lawn beside the glass) unless the goal is a swim: when the straight line would cross the water, the target becomes a waypoint and the real goal waits in st.via */
+  function hbVia(st) {
+    st.via = null;
+    if (st.goal === 'SWIM') return;
+    const P = BSU.sprites.habitatPool; if (typeof P !== 'function') return;
+    for (let k = 1; k < 10; k++) { const t = k / 10; if (P(st.x + (st.tx - st.x) * t, st.y + (st.ty - st.y) * t) > -0.04) { st.via = [st.tx, st.ty]; st.tx = 1.36; st.ty = clamp((st.y + st.via[1]) / 2, 0.9, 2.25); return; } }
   }
-  function habitatRoux(state, sp) {
-    const bl = mod('buildings');
-    if (typeof sp.rouxFrame !== 'function' || !bl || typeof bl.list !== 'function') return;
-    const list = bl.list(state, 'tiger_habitat'); if (!Array.isArray(list)) return;
-    for (let k = 0; k < list.length; k++) {
-      const b = list[k]; if (!b || fin(b.built, 1) < 1 || b.ruin) continue;
-      const ax = clamp((b.tx | 0) + (b.w | 0) - 1, 0, W - 1), ay = clamp((b.ty | 0) + (b.h | 0) - 1, 0, HGT - 1);
-      if (!inView(ax, ay, 4)) continue;
-      const per = 1000, u = (frameNo + (hash(k + 1, 3) % per)) % per, walked = Math.floor((frameNo + (hash(k + 1, 3) % per)) / per) * 560 + Math.min(u, 560);
-      habitatPos(b, k, walked); const x = hbPos[0], y = hbPos[1]; habitatPos(b, k, walked - 5); const px = hbPos[0], py = hbPos[1];
-      const state2 = u < 560 ? 'PACE' : u < 680 ? 'IDLE' : u < 880 ? 'LIE' : u < 940 ? 'YAWN' : 'IDLE';
-      const r = { tx: x, ty: y, px: u < 560 ? px : x, py: u < 560 ? py : y, dir: 1, state: state2 };
-      const e = push('roux', ax, ay, fin(state.tiles.elev[ay * W + ax], 0), 3, drawSprite);
-      e.ref = getRefE('roux', 0, sp.rouxFrame(r, frameNo)); e.id = 'roux'; e.variant = 0;
-      const sax = e.ax, say = e.ay; e.ax = x - 0.5; e.ay = y - 0.5; moverScreen(e); e.ax = sax; e.ay = say;
+  function hbPick(st, b, nv, ymean) {
+    hbPick0(st, b, nv, ymean); hbVia(st);
+  }
+  function hbPick0(st, b, nv, ymean) {
+    const h = hash((b.id | 0) * 131 + 7, st.n++) % 100, H = BSU.sprites.HABITAT;
+    st.swimTo = null;
+    if (nv > 0 && st.glassHold <= 0 && h < 72) { st.mode = 'WALK'; st.goal = 'GLASS'; st.tx = HB_GLASS_X; st.ty = clamp(ymean, 0.85, 1.75); st.glassHold = 26; return; }
+    if (h < 28) { const q = HB_ST[hash(st.n, 17) % HB_ST.length]; st.mode = 'WALK'; st.goal = 'REST'; st.tx = q[0]; st.ty = q[1]; return; }
+    if (h < 55) { st.mode = 'WALK'; st.goal = 'NAP'; st.tx = H.NAP[0]; st.ty = H.NAP[1]; return; }
+    if (h < 70) { st.mode = 'WALK'; st.goal = 'SWIM'; st.tx = H.SWIM[0][0]; st.ty = H.SWIM[0][1]; st.swimTo = H.SWIM[1]; if (st.y > 1.6) { st.tx = H.SWIM[1][0]; st.ty = H.SWIM[1][1]; st.swimTo = H.SWIM[0]; } return; }
+    st.mode = 'REST'; st.t = 3 + (hash(st.n, 29) % 40) / 10; st.goal = '';
+  }
+  /** advance one habitat's Roux by dt seconds; `nv` students at the glass, `ymean` their mean local Y; returns the state object */
+  function hbStep(st, b, nv, ymean, dt) {
+    const H = BSU.sprites.HABITAT, R = H.ROUX;
+    if (st.glassHold > 0) st.glassHold -= dt;
+    if (st.mode === 'WALK') {
+      const dx = st.tx - st.x, dy = st.ty - st.y, d = Math.sqrt(dx * dx + dy * dy), inWater = BSU.sprites.habitatPool(st.x, st.y) > 0.04, sp = (inWater ? HB_SWIM_SPEED : HB_SPEED) * dt;
+      if (d <= sp + 1e-4) {
+        st.x = st.tx; st.y = st.ty;
+        if (st.via) { st.tx = st.via[0]; st.ty = st.via[1]; st.via = null; return; }   // round the pool, then on to the real goal
+        if (st.goal === 'NAP') { st.mode = 'LIE'; st.t = 14 + (hash(st.n, 5) % 130) / 10; st.fx = 1; st.fy = 0.3; }
+        else if (st.goal === 'GLASS') { st.mode = 'REST'; st.t = 7 + (hash(st.n, 9) % 80) / 10; st.fx = 1; st.fy = 0; st.glass = true; }
+        else if (st.goal === 'SWIM' && st.swimTo) { st.goal = 'REST'; st.tx = st.swimTo[0]; st.ty = st.swimTo[1]; st.swimTo = null; }
+        else { st.mode = 'REST'; st.t = 2.5 + (hash(st.n, 11) % 45) / 10; }
+        return;
+      }
+      st.x += dx / d * sp; st.y += dy / d * sp; st.fx = dx / d; st.fy = dy / d;
+      st.x = clamp(st.x, R.x0 - 0.1, R.x1 + 0.05); st.y = clamp(st.y, R.y0 - 0.1, R.y1 + 0.05);
+    } else {
+      st.t -= dt;
+      if (st.mode === 'REST' && st.glass) { if (nv <= 0 || st.t <= 0) { st.glass = false; if (st.t > 0) st.t = Math.min(st.t, 1.2); } else if (st.t < 2 && nv > 0) st.t = 2; }
+      if (st.t <= 0) {
+        if (st.mode === 'LIE') { st.mode = 'YAWN'; st.t = 2.2; }
+        else { st.glass = false; hbPick(st, b, nv, ymean); }
+      }
     }
   }
+  function drawRouxSwim(e, g) {                    // the swimmer: the lowest 8 art px of the sprite are under the waterline
+    const ref = e.ref; if (!ref) return;
+    const zs = zsOf(ref), cut = Math.round(8 * (ref.zoom || 1));
+    g.drawImage(ref.canvas, ref.sx, ref.sy, ref.sw, ref.sh - cut, Math.round(e.sx + ref.ox * zs), Math.round(e.sy + ref.oy * zs), ref.sw * zs, (ref.sh - cut) * zs); drawCalls++;
+  }
+  function drawRipple(e, g) {                      // three expanding 2:1 ring outlines of fillRects around a swimmer
+    const z = zoomNow, ph = ((frameNo >> 1) + (e.d | 0)) % 30 / 30, fy = e.sy + 16 * z;   // the mover origin is 16 art px above its foot point
+    g.fillStyle = '#E9F7F0';
+    for (let r = 0; r < 3; r++) {
+      const t = (ph + r / 3) % 1, rx = Math.max(3, Math.round(6 + t * 13)), ry = Math.max(1, rx >> 1);
+      g.globalAlpha = (1 - t) * 0.85;
+      for (let dy = -ry; dy <= ry; dy++) {
+        const half = Math.round(Math.sqrt(1 - (dy * dy) / (ry * ry + 0.01)) * rx);
+        if (Math.abs(dy) === ry) g.fillRect(Math.round(e.sx - half * z), Math.round(fy + dy * z), 2 * half * z, z);
+        else { g.fillRect(Math.round(e.sx - half * z), Math.round(fy + dy * z), z, z); g.fillRect(Math.round(e.sx + (half - 1) * z), Math.round(fy + dy * z), z, z); }
+      }
+      drawCalls++;
+    }
+    g.globalAlpha = 1;
+  }
+  const hbVis = { n: 0, x: 0, y: 0 };
+  function habitatRoux(state, sp) {
+    if (!hbDraw.length) return;
+    const AG = BSU.agents, wl = mod('wildlife');
+    let loose = false; try { const lr = wl && typeof wl.roux === 'function' ? wl.roux(state) : null; loose = !!(lr && Number.isFinite(lr.tx)); } catch (err) { loose = false; }
+    const H = sp.HABITAT, dt = clamp(frameDt, 0.001, 0.1);
+    for (let q = 0; q < hbDraw.length; q += 3) {
+      const b = hbDraw[q], v = hbDraw[q + 1] | 0, fl = (v & SPR.FRONT_L) !== 0;
+      const ax = clamp((b.tx | 0) + (b.w | 0) - 1, 0, W - 1), ay = clamp((b.ty | 0) + (b.h | 0) - 1, 0, HGT - 1), el = fin(state.tiles.elev[ay * W + ax], 0);
+      if (H && typeof sp.rouxFrame === 'function' && typeof sp.habitatWorld === 'function' && !loose && !b.flooded) {
+        let st = hbRoux.get(b.id);
+        if (!st) { st = { x: H.NAP[0], y: H.NAP[1], tx: H.NAP[0], ty: H.NAP[1], mode: 'LIE', goal: '', t: 6 + (hash((b.id | 0) + 1, 3) % 100) / 10, n: hash((b.id | 0) + 1, 71) % 1000, fx: 1, fy: 0.3, glass: false, glassHold: 0, swimTo: null, via: null }; hbRoux.set(b.id, st); }
+        // students standing at the glass (world → local: the same transpose the painter uses)
+        let nv = 0, ym = 0;
+        if (AG && typeof AG.habitatViewers === 'function') { const vw = AG.habitatViewers(state, b.id); if (vw && vw.n > 0) for (let k = 0; k < vw.n; k++) { const lx = fl ? vw.y[k] - b.ty : vw.x[k] - b.tx, ly = fl ? vw.x[k] - b.tx : vw.y[k] - b.ty; if (lx < 3.0 && lx >= 2.0) { nv++; ym += ly; } } }
+        hbStep(st, b, nv, nv ? ym / nv : 1.5, dt);
+        const w = sp.habitatWorld(b.tx, b.ty, fl, st.x, st.y), fw = fl ? [st.fy, st.fx] : [st.fx, st.fy];
+        const pf = (st.mode === 'WALK') ? 'PACE' : (st.mode === 'LIE' ? 'LIE' : ((st.mode === 'YAWN' || (st.glass && ((frameNo + (hash(b.id | 0, 13) % 400)) % 420) < 90)) ? 'YAWN' : 'IDLE'));   // at the glass he greets the crowd with a yawn every seven seconds
+        const r = { tx: w[0], ty: w[1], px: w[0] - fw[0] * 0.06, py: w[1] - fw[1] * 0.06, dir: 1, state: pf };
+        const swimming = typeof sp.habitatPool === 'function' && sp.habitatPool(st.x, st.y) > 0.04;
+        if (swimming) { const rp = push('ripple', ax, ay, el - 0.5, 2.5, drawRipple); rp.d = hash(b.id | 0, 5) & 31; const sx0 = rp.ax, sy0 = rp.ay; rp.ax = w[0] - 0.5; rp.ay = w[1] - 0.5; moverScreen(rp); rp.ax = sx0; rp.ay = sy0; }
+        const e = push('roux', ax, ay, el, 3, swimming ? drawRouxSwim : drawSprite);   // the floor lies 3 px (half a foot) below the plaza
+        e.ref = getRefE('roux', 0, sp.rouxFrame(r, frameNo)); e.id = 'roux'; e.variant = 0;
+        const sax = e.ax, say = e.ay, sel = e.elev; e.ax = w[0] - 0.5; e.ay = w[1] - 0.5; e.elev = el - 0.5; moverScreen(e); e.ax = sax; e.ay = say; e.elev = sel;
+      }
+      const o = push('habfront', ax, ay, el, 4, drawSprite);   // the foreground (near wall, viewing wall, glass) over Roux
+      o.ref = getRef('habfront', v, 0); o.id = 'habfront'; o.variant = v; tileScreen(o);
+    }
+  }
+  /** habitat pass: a habitat's Roux state ({x, y} local, mode, goal …) or null — for tests and the tour scripts */
+  M.habitatRoux = function (id) { return hbRoux.get(id) || null; };
+  /** the depth-sort key of a Tiger Habitat's foreground layer; students standing on its plaza tiles sort after it (they stand in front of the glass), 0 when `owner` is not a habitat in view */
+  function habitatKeyOf(owner) { for (let q = 0; q < hbDraw.length; q += 3) if (hbDraw[q].id === owner) return sortKey(clamp((hbDraw[q].tx | 0) + (hbDraw[q].w | 0) - 1, 0, W - 1), clamp((hbDraw[q].ty | 0) + (hbDraw[q].h | 0) - 1, 0, HGT - 1), fin(hbDraw[q + 2], 0), 5); return 0; }
   // -- movement pass: where a student is DRAWN. The sim keeps tile-centre progress (a.px/py → a.tx/ty); this lays it on the smoothed path curve
   //    from the smoothing pass (nearest point on the curve segments bucketed for the tile), adds the agent's stable lateral offset to the right of
   //    its heading, eases the heading (turns take params.agents.move.turnSecs, through the diagonal facings) and interpolates the distance walked
@@ -2044,7 +2130,7 @@
     fbPlayers(G, state, lv, dr);
   }
   function entityPass(state, g) {
-    count = 0; agentsDrawn = 0; particlesDrawn = 0; teeBakes = 0;
+    count = 0; agentsDrawn = 0; particlesDrawn = 0; teeBakes = 0; hbDraw.length = 0;
     const sp = S(), t = state.tiles, elev = t.elev;
     const bl = mod('buildings'), wl = mod('wildlife'), cat = (BSU.data && BSU.data.catalog) || {};
     // buildings
@@ -2061,6 +2147,7 @@
         const v = M.variantOf(b, ci), fr = M.frameOf(b, v, ci);
         const e = push('building', ax, ay, fin(elev[ay * W + ax], 0), 0, drawBuilding);
         e.b = b; e.id = b.rot ? b.type + ':r' : b.type; e.variant = v; e.frame = fr;
+        if (b.type === 'tiger_habitat' && !(v & (SPR.SCAFFOLD | SPR.RUIN))) { hbDraw.push(b, v, fin(elev[ay * W + ax], 0)); }   // habitat pass: Roux, the foreground layer and the plaza's sort key
         let tr = null;
         if (M.teesEnabled !== false && row && row.pathAdjacency && !(v & (SPR.SCAFFOLD | SPR.RUIN))) { try { tr = teeRef(state, b, row, e.id, v, fr); } catch (err) { rerr('tee:ref', err); tr = null; } }
         e.ref = tr || getRef(e.id, v, fr);
@@ -2102,7 +2189,10 @@
         // art pass B4: 8 facings, per-agent phase, cycle rate by speed, idle fidgets and the 0.5× two-pose rule live in sprites_entities.agentFrame (agent, zoom and frame counter passed)
         const fr = typeof sp.agentFrame === 'function' ? sp.agentFrame(anim, a.dir | 0, f, a, zoomNow, frameNo) : ((a.dir | 0) * 4 + ((zoomNow < 1 ? f & 2 : f) & 3));
         const e = pushMover('agent', a, id, fin(a.look, 0) | 0, fr, groundElev, state, true);
-        if (e) { e.c = a.state === 'FLEE' ? 1 : 0; e.b = a; agentsDrawn++; }
+        if (e) {
+          e.c = a.state === 'FLEE' ? 1 : 0; e.b = a; agentsDrawn++;
+          if (hbDraw.length) { const ow = t.owner[clamp(Math.floor(poseY), 0, HGT - 1) * W + clamp(Math.floor(poseX), 0, W - 1)]; if (ow >= 0) { const hk = habitatKeyOf(ow); if (hk > 0) { e.key = hk; keys[count - 1] = hk; } } }   // habitat pass: a student on the plaza stands in front of the glass
+        }
         if (a.state === 'FLEE' && a.fleeGator >= 0) fleeStamp[a.fleeGator & 63] = frameNo;
       }
     }
@@ -2602,7 +2692,7 @@
     flashes.length = 0; ghostSpec = null; gates.clear(); shakeUntil = 0; shakePx = 0; hitStopUntilMs = 0;
     for (const k in M.squash) delete M.squash[k];
     perfRing.fill(0); perfI = 0; perfFilled = false; perfTripped = false;
-    birdTiles = null; firstFrame = true; count = 0; list.length = 0; teeClear();
+    birdTiles = null; firstFrame = true; count = 0; list.length = 0; teeClear(); hbRoux.clear(); hbDraw.length = 0;
     if (fresh === true && state.plot && state.plot.founders && Number.isFinite(state.plot.founders.tx)) {
       camera.zoom = 1; M.panToTile(state.plot.founders.tx + 1, state.plot.founders.ty + 1, false);
     }

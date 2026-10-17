@@ -13,7 +13,7 @@
 --ui-scale:1;
 --sp-1:.4rem;--sp-2:.8rem;--sp-3:1.2rem;--sp-4:1.6rem;--sp-5:2rem;--sp-6:2.4rem;--sp-7:3.2rem;--gutter:2rem;
 --fs-body:1.5rem;--fs-small:1.3rem;--fs-label:1.1rem;--fs-title:2.2rem;
---panel-alpha:.92;--radius:1.2rem;--radius-sm:.8rem;--topbar-h:5.6rem;--ticker-h:2.8rem;--palette-h:18rem;--pal-tabs-h:3.4rem;--pal-gap:1.2rem;--pal-pad-b:.8rem;--pal-tile-w:11.2rem;--pal-icon:6.4rem;--inspect-w:34rem;--bot:calc(var(--palette-h) + var(--ticker-h) + var(--gutter));
+--panel-alpha:.92;--radius:1.2rem;--radius-sm:.8rem;--topbar-h:5.6rem;--ticker-h:2.8rem;--palette-h:18rem;--pal-tabs-h:3.4rem;--pal-gap:1.2rem;--pal-pad-b:.8rem;--pal-tile-w:11.2rem;--pal-icon:6.4rem;--inspect-w:38rem;--bot:calc(var(--palette-h) + var(--ticker-h) + var(--gutter));
 --font-ui:system-ui,-apple-system,"Segoe UI",sans-serif;--font-title:Georgia,"Times New Roman",serif;
 --panel-bg:rgba(26,18,48,var(--panel-alpha));--g-purple:linear-gradient(180deg,var(--purple-2),var(--purple));--g-gold:linear-gradient(180deg,var(--gold-hi),var(--gold));--line:rgba(253,208,35,.35);--shadow:0 .6rem 2.4rem rgba(0,0,0,.45);
 }
@@ -58,7 +58,7 @@ background:var(--panel-bg);border:1px solid var(--line);color:var(--text);border
 .row.quote .v{font-style:italic;color:var(--gold-hi);text-align:left}
 .card-kicker,.panel-title{font:600 1.2rem/1 var(--font-ui);letter-spacing:.12em;text-transform:uppercase;color:var(--gold);margin-bottom:.8rem}
 .panel-title{font-size:2.2rem;line-height:1.2;letter-spacing:.02em;text-transform:none;font-family:var(--font-title);color:var(--gold-hi);margin:0 0 1.2rem}
-#hud{position:absolute;inset:0;pointer-events:none;--bot:calc(var(--palette-h) + var(--ticker-h) + var(--gutter))}   /* qa pass 3: re-declared here so #hud.no-palette's --palette-h:0 reaches it (a :root var() is resolved at :root, so the game strip / Skip / notifications floated a palette-height too high during set pieces) */
+#hud{position:absolute;inset:0;pointer-events:none;--bot:calc(var(--palette-h) + var(--ticker-h) + var(--gutter));--side:max(var(--gutter),calc((100vw - 130rem) / 2));--mid:calc(100vw - 2 * var(--side) - 76rem)}   /* P5: --side keeps the docked cards in a 130-rem column centred on very wide windows (= the gutter below ~1700 px); the topbar / palette stay full-bleed */   /* qa pass 3: re-declared here so #hud.no-palette's --palette-h:0 reaches it (a :root var() is resolved at :root, so the game strip / Skip / notifications floated a palette-height too high during set pieces) */
 #hud>*{pointer-events:auto}
 #hud.no-palette{--palette-h:0px}
 #hud.setpiece #milestones-card,#hud.setpiece #voice-card,#hud.setpiece #overlay-buttons,#hud.setpiece #notifications{opacity:0;pointer-events:none}
@@ -68,8 +68,8 @@ background:var(--panel-bg);border:1px solid var(--line);color:var(--text);border
 .stats{display:flex;align-items:stretch;gap:.4rem;height:100%}
 .stat{display:flex;flex-direction:column;justify-content:center;padding:0 1.2rem;min-width:8.8rem;cursor:pointer;border-radius:var(--radius-sm);transition:background .15s,opacity .4s;position:relative}
 .stat:hover{background:rgba(255,255,255,.07)}
-.stat-label{font:600 1.1rem/1 var(--font-ui);letter-spacing:.1em;text-transform:uppercase;color:var(--text-dim)}
-.stat .odometer{font:700 2rem/1.1 var(--font-ui);color:var(--text);font-variant-numeric:tabular-nums;margin-top:3px}
+.stat-label{font:600 1.2rem/1 var(--font-ui);letter-spacing:.1em;text-transform:uppercase;color:var(--text-dim)}
+.stat .odometer{font:700 2.2rem/1.1 var(--font-ui);color:var(--text);font-variant-numeric:tabular-nums;margin-top:3px}
 #stat-cash .odometer{color:var(--gold-hi)}
 #stat-cash.neg .odometer{color:#FF8A84}
 .stat .delta{position:absolute;left:50%;top:calc(100% + .4rem);padding:3px 1rem;border-radius:99.9rem;background:rgba(26,18,48,.94);border:1px solid var(--line);white-space:nowrap;z-index:1;font:700 1.2rem/1 var(--font-ui);opacity:0;transform:translate(-50%,-.6rem);transition:opacity .6s,transform .6s;pointer-events:none}
@@ -97,8 +97,9 @@ background:var(--panel-bg);border:1px solid var(--line);color:var(--text);border
 #topbar.tight{gap:1.2rem} #topbar.tight #brand .brand-name{display:none}
 #topbar.cap .tb{flex-direction:column;justify-content:center;gap:3px;height:4.6rem;min-height:4.6rem;padding:0 1rem;min-width:5.6rem} #topbar.cap .tb .glyph{font-size:1.8rem} #topbar.cap .tb .label{font:600 1.1rem/1 var(--font-ui);letter-spacing:.06em;text-transform:uppercase}
 #topbar.tighter .stat{padding:0 .8rem;min-width:7.2rem} #topbar.tighter #chip-weather{display:none}
+#topbar.tightest #stat-students .stat-label{display:block !important}   /* the capacity chip is the Students tile's caption; without it the tile still says what it is */
 #topbar.tightest{gap:.8rem} #topbar.tightest .stat-label{letter-spacing:.04em} #topbar.tightest #chip-capacity{display:none} #topbar.bare #date-chip{display:none}
-#score-bug-hud{position:absolute;left:var(--gutter);top:calc(var(--topbar-h) + 1.6rem);display:flex;flex-direction:column;align-items:flex-start;gap:.8rem;padding:1rem 1.6rem 1rem 1.4rem;border-radius:var(--radius);background:var(--panel-bg);border:1px solid var(--line);border-left:.4rem solid var(--gold);font:600 1.5rem/1 var(--font-ui);pointer-events:none;font-variant-numeric:tabular-nums;box-shadow:var(--shadow)}
+#score-bug-hud{position:absolute;left:var(--side);top:calc(var(--topbar-h) + 1.6rem);display:flex;flex-direction:column;align-items:flex-start;gap:.8rem;padding:1rem 1.6rem 1rem 1.4rem;border-radius:var(--radius);background:var(--panel-bg);border:1px solid var(--line);border-left:.4rem solid var(--gold);font:600 1.5rem/1 var(--font-ui);pointer-events:none;font-variant-numeric:tabular-nums;box-shadow:var(--shadow)}
 .sb-main,.sb-dd{display:flex;align-items:center;gap:1.2rem;white-space:nowrap}
 .sb-score{font:800 2rem/1 var(--font-ui);color:var(--gold)} .sb-clock{color:var(--text-dim);padding-left:1.2rem;border-left:1px solid var(--line)}
 .sb-team.ball::before{content:"";display:inline-block;width:.8rem;height:.8rem;margin-right:.6rem;border-radius:50%;background:var(--gold);box-shadow:0 0 .6rem var(--gold)}
@@ -106,19 +107,19 @@ background:var(--panel-bg);border:1px solid var(--line);color:var(--text);border
 .sb-poss{color:var(--gold);font-size:1.4rem} .sb-down{font-weight:700;color:var(--gold-hi)} .sb-spot,.sb-to{color:var(--text-dim)} .sb-wp{margin-left:auto;padding:3px 1rem;border-radius:99.9rem;background:rgba(253,208,35,.14);color:var(--gold-hi)}
 #hud.scorebug [id^=perf]{top:calc(var(--topbar-h) + 15rem)}
 #perf-chip{left:auto;right:calc(var(--gutter) + 24rem);top:calc(var(--topbar-h) + 26rem)}
-#alert-strip{position:absolute;top:calc(var(--topbar-h) + 1.6rem);left:50%;transform:translateX(-50%);width:max-content;max-width:clamp(32rem,calc(100vw - 80rem),68rem);display:flex;align-items:center;gap:1.2rem;padding:1rem 1.6rem;font-weight:600;font-size:1.5rem;line-height:1.35;border-left:.4rem solid var(--gold)}
+#alert-strip{position:absolute;top:calc(var(--topbar-h) + 1.6rem);left:50%;transform:translateX(-50%);width:max-content;max-width:clamp(32rem,var(--mid),68rem);display:flex;align-items:center;gap:1.2rem;padding:1rem 1.6rem;font-weight:600;font-size:1.5rem;line-height:1.35;border-left:.4rem solid var(--gold)}
 #alert-strip[data-kind="danger"]{border-left-color:var(--danger)} #alert-strip[data-kind="water"]{border-left-color:var(--water)} #alert-strip[data-kind="wildlife"]{border-left-color:var(--good)}
 #alert-icon{font-size:2rem}
 #alert-gator{cursor:pointer;color:var(--gold-hi)}
 #alert-gator:hover{border-color:var(--gold)}
-#minimap-wrap{position:absolute;right:var(--gutter);top:calc(var(--topbar-h) + 1.6rem);width:21rem;height:21rem;padding:.4rem;border-radius:var(--radius);background:var(--panel-bg);border:1px solid var(--line);box-shadow:var(--shadow);transition:transform .2s}
-#hud.inspect-open #minimap-wrap,#hud.inspect-open #overlay-buttons{transform:translateX(calc(-1 * var(--inspect-w) - var(--gutter)))}
+#minimap-wrap{position:absolute;right:var(--side);top:calc(var(--topbar-h) + 1.6rem);width:21rem;height:21rem;padding:.4rem;border-radius:var(--radius);background:var(--panel-bg);border:1px solid var(--line);box-shadow:var(--shadow);transition:transform .2s}
+#hud.inspect-open #minimap-wrap,#hud.inspect-open #overlay-buttons,#hud.inspect-open #voice-card{transform:translateX(calc(-1 * var(--inspect-w) - var(--gutter)))}
 #minimap{display:block;width:20rem;height:20rem;border-radius:.8rem;image-rendering:pixelated;cursor:pointer}
 #minimap-viewport{position:absolute;pointer-events:none}
-#overlay-buttons{position:absolute;right:var(--gutter);top:calc(var(--topbar-h) + 23.6rem);width:21rem;display:grid;grid-template-columns:repeat(6,1fr);gap:.4rem;transition:transform .2s}
+#overlay-buttons{position:absolute;right:var(--side);top:calc(var(--topbar-h) + 23.6rem);width:21rem;display:grid;grid-template-columns:repeat(6,1fr);gap:.4rem;transition:transform .2s}
 .ov-btn{width:100%;min-width:0;height:3.6rem;min-height:3.6rem;padding:0;font-size:1.4rem;line-height:3.4rem;text-align:center;border-radius:var(--radius-sm)}
 #legend{grid-column:1 / -1;justify-content:center;font-size:1.2rem;white-space:normal;text-align:center}
-#objective-card,#voice-card,#milestones-card{position:absolute;left:var(--gutter);width:36rem;padding:1.6rem}
+#objective-card,#voice-card,#milestones-card{position:absolute;left:var(--side);width:36rem;padding:1.6rem}
 #objective-card{top:calc(var(--topbar-h) + 1.6rem);width:36rem;transition:width .2s,padding .2s}
 #objective-card[data-kind="background"]{border-left:.4rem solid var(--teal)}
 #objective-card[data-kind="interrupt"]{border-left:.4rem solid var(--gold)}
@@ -142,6 +143,7 @@ background:var(--panel-bg);border:1px solid var(--line);color:var(--text);border
 #objective-card.collapsed .obj-col{padding-right:0}
 #objective-card.collapsed #obj-text,#objective-card.collapsed #obj-why,#objective-card.collapsed .obj-prog-row,#objective-card.collapsed .obj-actions,#objective-card.collapsed .obj-next,#objective-card.collapsed #needs-strip,#objective-card.collapsed #btn-obj-dismiss,#objective-card.collapsed #speech-bubble,#objective-card.collapsed .obj-kicker{display:none !important}
 #objective-card.collapsed #obj-title{font-size:1.4rem;white-space:nowrap}
+#hud.short #objective-card #obj-why,#hud.short #objective-card .obj-next{display:none}
 #hud.scorebug #objective-card.collapsed{top:calc(var(--topbar-h) + 11.2rem)}
 /* needs strip: five gauges + the binding line */
 #needs-strip{margin-top:1.2rem;padding-top:1.2rem;border-top:1px solid rgba(255,255,255,.08)}
@@ -156,8 +158,7 @@ background:var(--panel-bg);border:1px solid var(--line);color:var(--text);border
 #obj-background{margin-top:1.2rem;padding-top:.8rem;border-top:1px solid rgba(255,255,255,.08);border-bottom:0;font-size:1.3rem;color:var(--text-dim);display:block}
 #speech-bubble{position:absolute;left:1.2rem;top:calc(100% + 1.2rem);max-width:34rem;padding:1rem 1.4rem;font:italic 1.4rem/1.4 var(--font-ui);color:var(--purple-shadow);background:var(--gold-hi);border-radius:var(--radius);box-shadow:var(--shadow);animation:rise .25s ease-out;z-index:1}
 #speech-bubble::after{content:"";position:absolute;left:2.8rem;top:-.8rem;border:.8rem solid transparent;border-bottom-color:var(--gold-hi);border-top:0}
-#voice-card{left:50%;transform:translateX(-50%);bottom:var(--bot);width:clamp(30rem,calc(100vw - 80rem),40rem);border-left:.4rem solid var(--purple-hi)}
-#voice-card:not(.hidden) ~ #hint{margin-bottom:17rem}
+#voice-card{left:auto;right:var(--side);bottom:var(--bot);width:36rem;border-left:.4rem solid var(--purple-hi)}   /* P5: the bottom centre belongs to the notification stack; the voice card takes the old notification slot at the right */
 .voice-student{font:700 1.5rem/1.2 var(--font-ui);color:var(--gold-hi);margin-bottom:.4rem}
 #voice-text{font-size:1.5rem} #voice-payoff{font-size:1.3rem;color:var(--text-dim);margin-top:.8rem}
 #milestones-card{bottom:var(--bot);width:36rem}
@@ -167,20 +168,21 @@ background:var(--panel-bg);border:1px solid var(--line);color:var(--text);border
 .card-actions{display:flex;gap:1.2rem;margin-top:1.6rem;flex-wrap:wrap}
 @keyframes rise{from{opacity:0;transform:translateY(.6rem)} to{opacity:1;transform:none} }
 @keyframes rise-x{from{opacity:0;transform:translate(-50%,.6rem)} to{opacity:1;transform:translateX(-50%)} }
-#notifications{position:absolute;right:var(--gutter);top:calc(var(--topbar-h) + 32rem);bottom:var(--bot);width:38rem;display:flex;flex-direction:column;justify-content:flex-end;gap:.8rem;align-items:stretch;overflow:hidden;pointer-events:none !important;transition:transform .2s}
+#notifications{position:absolute;left:50%;transform:translateX(-50%);bottom:var(--bot);height:14.4rem;width:min(44rem,var(--mid));display:flex;flex-direction:column;justify-content:flex-end;gap:.8rem;align-items:stretch;overflow:hidden;pointer-events:none !important;transition:transform .2s}
 #notifications .notif{pointer-events:auto}
-#hud.inspect-open #notifications{transform:translateX(calc(-1 * var(--inspect-w) - var(--gutter)))}
+#notifications .notif:nth-last-child(n+3){display:none}   /* P5: the newest two show (the older ones return as these expire); keeps the stack out of the map centre */
+#hud:has(#hint:not(.hidden)) #notifications{bottom:calc(var(--bot) + 6rem)}   /* P5: the hint sits just above the palette too; the stack rides above it */
 .notif{display:flex;flex-wrap:wrap;align-items:center;gap:.8rem 1.2rem;padding:1rem 1.6rem;font-size:1.5rem;line-height:1.4;border-left:.4rem solid #9A93AD;animation:slide-in .2s ease-out}
 .notif[data-kind="water"]{border-left-color:var(--water)} .notif[data-kind="wildlife"]{border-left-color:var(--good)}
 .notif[data-kind="money"],.notif[data-kind="sports"]{border-left-color:var(--gold)} .notif[data-kind="event"]{border-left-color:var(--purple-hi)} .notif[data-kind="danger"]{border-left-color:var(--danger)}
 .notif-text{order:1;flex:1 1 calc(100% - 5.2rem);min-width:0} .notif-close{order:2} .notif-action{order:3}
 .notif.paw .notif-text::before{content:"🐾 "}
 .notif-close{opacity:.7} .notif-close:hover{opacity:1}
-@keyframes slide-in{from{opacity:0;transform:translateX(2.4rem)} to{opacity:1;transform:none} }
-#decision-toast{position:absolute;top:calc(var(--topbar-h) + 7.2rem);left:50%;transform:translateX(-50%);width:clamp(32rem,calc(100vw - 80rem),60rem);padding:2rem;z-index:9;border-top:3px solid var(--gold);animation:rise-x .2s ease-out}
+@keyframes slide-in{from{opacity:0;transform:translateY(1.2rem)} to{opacity:1;transform:none} }
+#decision-toast{position:absolute;top:calc(var(--topbar-h) + 7.2rem);left:50%;transform:translateX(-50%);width:clamp(36rem,var(--mid),64rem);padding:2rem;z-index:9;border-top:3px solid var(--gold);animation:rise-x .2s ease-out}
 #dt-text{font:600 1.6rem/1.45 var(--font-ui);margin-bottom:1.2rem}
 #dt-countdown{height:.6rem} #dt-countdown .fill{transition:width .1s linear;background:linear-gradient(90deg,var(--gold),var(--gold-hi))}
-#decision-toast.dt-opts{width:clamp(32rem,calc(100vw - 80rem),60rem)}
+#decision-toast.dt-opts{width:clamp(36rem,var(--mid),64rem)}
 /* qa pass 3: during a game set piece the engine's option toast docks where the game strip sits (the strip hides under it) and lays its options in a row, so the field, the halftime band and the 4th-down spot stay in view instead of under a 34-rem card */
 #hud.setpiece #decision-toast.dt-opts{top:auto;bottom:calc(var(--bot) - .4rem);width:min(96rem,calc(100vw - 30rem));padding:1.2rem 1.6rem 1rem}
 #hud.setpiece #decision-toast.dt-opts #dt-text{font-size:1.4rem;margin-bottom:.8rem}
@@ -199,7 +201,7 @@ background:var(--panel-bg);border:1px solid var(--line);color:var(--text);border
 .dt-d{min-width:4rem;text-align:right;font:700 1.3rem/1 var(--font-ui);color:var(--text-dim)} .dt-d.up{color:var(--good)} .dt-d.down{color:#FF8A84}
 #dt-options .btn.primary .dt-d{color:var(--purple-shadow)} #dt-options .btn.primary .dt-d.down{color:#7A1D19}
 #dt-foot{margin-top:1.2rem;font-size:1.3rem;color:var(--text-dim)}
-#inspect{position:absolute;right:var(--gutter);top:calc(var(--topbar-h) + 1.6rem);bottom:var(--bot);width:var(--inspect-w);padding:1.6rem;display:flex;flex-direction:column;gap:1.2rem;overflow:hidden;transform:translateX(0);transition:transform .2s,opacity .2s}
+#inspect{position:absolute;right:var(--side);top:calc(var(--topbar-h) + 1.6rem);bottom:var(--bot);width:var(--inspect-w);padding:1.6rem;display:flex;flex-direction:column;gap:1.2rem;overflow:hidden;transform:translateX(0);transition:transform .2s,opacity .2s}
 #inspect.hidden{display:flex !important;transform:translateX(calc(var(--inspect-w) + 4rem));opacity:0;pointer-events:none}
 .insp-head{display:flex;gap:1.2rem;align-items:flex-start}
 #insp-sprite{width:6.4rem;height:6.4rem;flex:0 0 6.4rem;border-radius:var(--radius-sm);background:var(--purple-shadow);border:1px solid var(--line);image-rendering:pixelated}
@@ -225,20 +227,20 @@ input.rename{width:100%;font:700 1.6rem/1.2 var(--font-title);color:var(--text);
 #pop-next{margin-top:.8rem;font-size:1.3rem;color:var(--text-dim)}
 #popover .btn.icon{position:absolute;right:1.2rem;top:1.2rem}
 #hint{position:absolute;left:50%;bottom:calc(var(--palette-h) + var(--ticker-h) + 1.6rem);transform:translateX(-50%);padding:1rem 1.6rem;font-size:1.4rem;display:flex;gap:1.2rem;align-items:center;border-color:var(--gold);animation:rise-x .25s ease-out;z-index:4}
-#undo-chip{position:absolute;left:var(--gutter);bottom:calc(var(--palette-h) + var(--ticker-h) + 1.6rem);z-index:4;display:flex;align-items:center;gap:1.2rem;padding:1rem 1.6rem 1.4rem;font-size:1.4rem;overflow:hidden;animation:rise .2s ease-out}
+#undo-chip{position:absolute;left:var(--side);bottom:calc(var(--palette-h) + var(--ticker-h) + 1.6rem);z-index:4;display:flex;align-items:center;gap:1.2rem;padding:1rem 1.6rem 1.4rem;font-size:1.4rem;overflow:hidden;animation:rise .2s ease-out}
 #undo-chip .uc-glyph{font-size:1.8rem;line-height:1}
 #undo-chip .uc-main{max-width:30rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #undo-chip .uc-bar{position:absolute;left:0;right:0;bottom:0;height:.4rem;background:rgba(255,255,255,.1)}
 #undo-chip .uc-fill{display:block;height:100%;width:100%;background:var(--gold)}
 #perf-chip,#perfmode-chip{position:absolute;left:var(--gutter);top:calc(var(--topbar-h) + 1.6rem);font-family:ui-monospace,Menlo,monospace;font-size:1.2rem}
 #perfmode-chip{left:auto;right:calc(var(--gutter) + 24rem);color:var(--gold-hi)}
-#btn-skip{position:absolute;right:var(--gutter);bottom:var(--bot);z-index:4}
+#btn-skip{position:absolute;right:var(--side);bottom:var(--bot);z-index:4}
 #ticker{position:absolute;left:0;right:0;bottom:var(--palette-h);height:var(--ticker-h);background:rgba(14,18,48,.92);border-top:1px solid rgba(253,208,35,.25);overflow:hidden;display:flex;align-items:center}
 #ticker-track{position:absolute;left:0;top:0;height:var(--ticker-h);line-height:var(--ticker-h);white-space:nowrap;font-size:1.4rem;color:var(--text);padding-left:var(--gutter);cursor:pointer;will-change:transform}
 #ticker-track:not(:empty)::before{content:"▸ ";color:var(--gold)}
 #ticker-track[data-kind="danger"]{color:#FF9A94} #ticker-track[data-kind="water"]{color:#9ED3F4} #ticker-track[data-kind="wildlife"]{color:#8FE0B5} #ticker-track[data-kind="money"],#ticker-track[data-kind="sports"]{color:var(--gold-hi)}
 #btn-ticker-log{position:absolute;right:var(--gutter);top:2px;padding:0;width:3.2rem;min-width:3.2rem;height:2.4rem;min-height:2.4rem;line-height:2.2rem;z-index:1;font-size:1.4rem}
-#ticker-log{position:absolute;right:var(--gutter);bottom:calc(var(--ticker-h) + .8rem);width:48rem;max-height:36rem;overflow-y:auto;padding:1.2rem 1.6rem;font-size:1.3rem;line-height:1.4;z-index:5}
+#ticker-log{position:absolute;right:var(--side);bottom:calc(var(--ticker-h) + .8rem);width:48rem;max-height:36rem;overflow-y:auto;padding:1.2rem 1.6rem;font-size:1.3rem;line-height:1.4;z-index:5}
 .log-line{display:flex;gap:1.2rem;padding:.6rem 0;border-bottom:1px solid rgba(255,255,255,.06);cursor:pointer}
 .log-line:hover{color:var(--gold-hi)}
 .log-day{flex:0 0 8.8rem;color:var(--text-dim);font-variant-numeric:tabular-nums}
@@ -276,8 +278,8 @@ input.rename{width:100%;font:700 1.6rem/1.2 var(--font-title);color:var(--text);
 #palette.compact .item{width:8rem;flex-basis:8rem} #palette.compact .item .name,#palette.compact .item .cost,#palette.compact .item .cond{display:none}
 #palette.compact .tab .tab-name{font-size:1.4rem}
 @media (max-width:1180px){.tb .label{display:none} .stat{min-width:7.2rem;padding:0 .8rem} #chip-weather{display:none} }
-#cards{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(14,18,48,.45);z-index:8}
-.card{width:54rem;max-width:calc(100vw - 4rem);max-height:calc(100vh - 8rem);overflow:auto;padding:2rem 2.4rem;border-top:3px solid var(--gold);animation:rise .25s ease-out}
+#cards{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:var(--topbar-h) 2rem calc(var(--palette-h) + var(--ticker-h));background:rgba(14,18,48,.45);z-index:8}   /* P5: centred on the map area, not the whole window */
+.card{width:60rem;max-width:calc(100vw - 4rem);max-height:calc(100vh - var(--topbar-h) - var(--palette-h) - var(--ticker-h) - 3.2rem);overflow:auto;padding:2rem 2.4rem;border-top:3px solid var(--gold);animation:rise .25s ease-out}
 .card-title{font:700 2.4rem/1.2 var(--font-title);color:var(--gold-hi)}
 .card-body{margin-top:1.2rem;font-size:1.5rem;line-height:1.5}
 .card-body p{margin:0 0 1.2rem}
@@ -286,8 +288,8 @@ input.rename{width:100%;font:700 1.6rem/1.2 var(--font-title);color:var(--text);
 .board-list{display:flex;flex-direction:column;gap:.8rem}
 .board-card{text-align:left;padding:1.2rem 1.6rem;white-space:normal}
 .board-name{font-weight:700;font-size:1.5rem;line-height:1.3} .board-text{font-size:1.3rem;line-height:1.4;color:var(--text-dim);font-weight:400;margin-top:.4rem}
-#panels{position:absolute;inset:0;pointer-events:none;z-index:4}
-#panels .panel{background:rgba(26,18,48,.98);position:absolute;left:50%;top:calc(var(--topbar-h) + 1.6rem);transform:translateX(-50%);width:64rem;max-width:calc(100vw - 4rem);max-height:calc(100vh - var(--topbar-h) - var(--palette-h) - var(--ticker-h) - 3.2rem);overflow:auto;padding:2rem;pointer-events:auto;animation:rise-x .2s ease-out}
+#panels{position:absolute;inset:0;pointer-events:none;z-index:4;display:flex;align-items:center;justify-content:center;padding:calc(var(--topbar-h) + 1.6rem) 2rem calc(var(--palette-h) + var(--ticker-h) + 1.6rem)}   /* P5: panels centre in the map area (flex, no transform: crisp text) */
+#panels .panel{background:rgba(26,18,48,.98);position:relative;flex:0 1 auto;width:72rem;max-width:100%;max-height:100%;overflow:auto;padding:2rem;pointer-events:auto;animation:rise .2s ease-out}
 .panel-head{position:absolute;right:1.2rem;top:1.2rem;z-index:5} .panel-head .icon{width:3.6rem;height:3.6rem;min-height:3.6rem;font-size:1.6rem;line-height:3.4rem}
 .panel-status{font:600 1.3rem/1.3 var(--font-ui);letter-spacing:.08em;text-transform:uppercase;color:var(--text-dim);margin:-.4rem 0 1.2rem}
 #panels .panel .card-kicker{margin-top:2rem}
@@ -312,6 +314,12 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
 #btn-charter{margin-top:1.2rem;font-size:1.8rem;line-height:2rem;padding:1.6rem 3.2rem;box-shadow:0 0 0 .4rem rgba(253,208,35,.15),0 .8rem 2.4rem rgba(0,0,0,.5)}
 #btn-continue{font-size:1.5rem}
 .title-row{display:flex;align-items:center;gap:1.2rem;margin-top:.8rem}
+.title-size{display:flex;flex-direction:column;align-items:center;gap:.8rem;margin-top:.4rem}
+.title-size-label{font:600 1.2rem/1 var(--font-ui);letter-spacing:.2em;text-transform:uppercase;color:var(--text-dim)}
+.title-size .seg{flex-wrap:wrap;justify-content:center;gap:2px}
+.title-size .seg-btn{padding:.9rem 1.6rem;min-height:4rem;font-size:1.4rem}
+.title-size .pct{margin-left:.6rem;font-weight:500;opacity:.75}
+.title-size .seg-note{min-height:1.4rem}
 .seed-label{display:inline-flex;align-items:center;gap:.8rem;font:600 1.2rem/1 var(--font-ui);letter-spacing:.08em;text-transform:uppercase;color:var(--text-dim)}
 #title-seed{width:12rem;font:1.5rem/1 var(--font-ui);color:var(--text);background:rgba(0,0,0,.35);border:1px solid rgba(253,208,35,.4);border-radius:var(--radius-sm);padding:1rem 1.2rem;outline:none;text-align:center}
 #title-seed:focus{border-color:var(--gold)}
@@ -329,7 +337,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
 #alm-achievements .bud-col.locked{opacity:.5;border-color:rgba(255,255,255,.12)}
 
 /* UX pass: the build menu (G), the coach-mark tour, card pulse */
-#build-menu{position:absolute;left:50%;top:calc(var(--topbar-h) + 1.6rem);transform:translateX(-50%);background:rgba(26,18,48,.99);width:min(138rem,calc(100vw - 4rem));height:min(68rem,calc(100vh - var(--topbar-h) - var(--palette-h) - var(--ticker-h) - 3.2rem));display:flex;flex-direction:column;z-index:6;padding:0;border-top:3px solid var(--gold);animation:rise-x .2s ease-out}
+#build-menu{position:absolute;left:50%;top:calc(var(--topbar-h) + 1.6rem);transform:translateX(-50%);background:rgba(26,18,48,.99);width:min(130rem,calc(100vw - 4rem));height:min(68rem,calc(100vh - var(--topbar-h) - var(--palette-h) - var(--ticker-h) - 3.2rem));display:flex;flex-direction:column;z-index:6;padding:0;border-top:3px solid var(--gold);animation:rise-x .2s ease-out}
 #build-menu.hidden{display:none !important}
 .bm-head{display:flex;align-items:baseline;gap:1.6rem;padding:1.6rem 2rem 1.2rem;border-bottom:1px solid rgba(255,255,255,.08)} .bm-head .panel-title{margin:0;font-size:2.4rem}
 .bm-sub{font-size:1.4rem;color:var(--text-dim);flex:1 1 auto} #btn-bm-close{margin-left:auto;align-self:center}
@@ -338,7 +346,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
 .bm-cat{position:relative;display:flex;align-items:center;gap:.8rem;text-align:left;font:600 1.5rem/1.2 var(--font-ui);color:var(--text-dim);background:transparent;border:1px solid transparent;border-radius:var(--radius-sm);padding:1rem 1.2rem;min-height:4rem;cursor:pointer;transition:background .15s,color .15s}
 .bm-cat:hover{background:rgba(255,255,255,.07);color:var(--text)} .bm-cat.active{background:rgba(253,208,35,.14);color:var(--gold);border-color:rgba(253,208,35,.5)}
 .bm-cat-name{flex:1 1 auto} .bm-cat-count{font-size:1.2rem;opacity:.7;font-variant-numeric:tabular-nums} .bm-cat-star{color:var(--gold);font-size:1.3rem} .bm-cat .pip{position:static;flex:0 0 .8rem;width:.8rem;height:.8rem;border-radius:50%;background:var(--gold);box-shadow:0 0 .6rem var(--gold)}
-#bm-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(32rem,1fr));gap:1.2rem;padding:1.6rem;overflow-y:auto;align-content:start;scrollbar-width:thin}
+#bm-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(30rem,1fr));gap:1.2rem;padding:1.6rem;overflow-y:auto;align-content:start;scrollbar-width:thin}
 .bm-card{position:relative;display:flex;flex-direction:column;gap:.8rem;padding:1.4rem 1.6rem;border-radius:var(--radius);border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.03);cursor:pointer;outline:none;transition:background .15s,border-color .15s,transform .1s}
 .bm-card:hover,.bm-card.hover,.bm-card:focus{background:rgba(255,255,255,.08);border-color:rgba(253,208,35,.45)}
 .bm-card.active{border-color:var(--gold);box-shadow:inset 0 0 0 1px rgba(253,208,35,.4)} .bm-card.reco{border-color:rgba(253,208,35,.55);background:rgba(253,208,35,.06)}
@@ -361,7 +369,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
 @keyframes bm-pulse{0%,100%{box-shadow:0 0 0 0 rgba(253,208,35,.0);transform:none} 40%{box-shadow:0 0 0 .6rem rgba(253,208,35,.45),0 0 2.4rem rgba(253,208,35,.5);transform:scale(1.03)} }
 .bm-card.pulse{animation:bm-pulse 1.3s ease-in-out 2;border-color:var(--gold)}
 #hud.bm-open #hint,#hud.bm-open #tooltip{display:none !important}
-#hud.bm-open #objective-card,#hud.bm-open #minimap-wrap,#hud.bm-open #overlay-buttons,#hud.bm-open #alert-strip{opacity:.12;pointer-events:none;transition:opacity .2s}
+#hud.bm-open #objective-card,#hud.bm-open #minimap-wrap,#hud.bm-open #overlay-buttons,#hud.bm-open #alert-strip,#hud.bm-open #notifications{opacity:.12;pointer-events:none;transition:opacity .2s}
 #objective-card,#minimap-wrap,#overlay-buttons,#notifications,#voice-card{transition-property:opacity,transform,width,padding;transition-duration:.2s}
 #hud .hud-fade{opacity:.12;pointer-events:none}
 .bm-card.reco .bm-name{padding-right:12.4rem}
@@ -380,7 +388,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
 .pb-line{font-size:1.4rem;line-height:1.4;color:var(--text-dim);border-left:3px solid transparent;padding-left:1rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-height:2rem}
 .pb-line.empty{opacity:.25} .pb-line.opp{border-left-color:rgba(185,175,201,.45)} .pb-line.key{border-left-color:var(--gold)}
 .pb-line.new{color:var(--text);font-weight:600;background:linear-gradient(90deg,rgba(253,208,35,.16),transparent)}
-#panels #panel-season{width:96rem}
+#panels #panel-season{width:110rem}
 .fb-record{font:600 1.4rem/1.3 var(--font-ui);color:var(--gold-hi);margin:-.4rem 0 1.2rem}
 .fb-cols{display:grid;grid-template-columns:1fr 1fr;gap:1.2rem 2.4rem} .fb-col{min-width:0} .fb-col>.card-kicker{margin-top:1.6rem} .fb-col>.card-kicker:first-child{margin-top:0}
 .fb-ctl{padding:.6rem 0 .8rem;border-bottom:1px solid rgba(255,255,255,.06)} .fb-ctl .row{border-bottom:0;align-items:center;padding:.4rem 0}
@@ -398,8 +406,8 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
 .fb-sc{grid-template-columns:6.8rem 1fr 6rem 2rem 6.4rem} .fb-sc .dt,.fb-sc .rs{white-space:nowrap} .fb-sc .rs{color:var(--text-dim);font-size:1.2rem} .fb-sc .res{text-align:right;font-weight:700;white-space:nowrap} .fb-sc .res.win{color:var(--good)} .fb-sc .res.loss{color:#FF8A84} .fb-sc .ha{color:var(--text-dim)} .fb-sc.next{background:rgba(253,208,35,.1);box-shadow:inset 3px 0 0 var(--gold);padding-left:.6rem}
 .fb-acts{display:inline-flex;gap:.6rem;justify-content:flex-end} .fb-tag{font-size:1.2rem;color:var(--good)} .fb-empty{font-size:1.4rem;color:var(--text-dim);padding:.6rem 0}
 .fb-coach{font-weight:600}
-@media (max-width:900px){#panels #panel-season{width:64rem} .fb-cols{grid-template-columns:1fr}}
-#card-gamesummary{width:56rem}
+@media (max-width:900px){#panels #panel-season{width:72rem} .fb-cols{grid-template-columns:1fr}}
+#card-gamesummary{width:60rem}
 .sum-banner{display:flex;align-items:center;justify-content:center;gap:1.6rem;padding:1.2rem 1.6rem;border-radius:var(--radius);background:rgba(255,255,255,.05);border:1px solid var(--line)}
 .sum-banner.win{border-color:var(--good)} .sum-banner.loss{border-color:rgba(224,68,62,.7)}
 .sum-team{font:700 1.5rem/1 var(--font-ui);letter-spacing:.08em;color:var(--text-dim)} .sum-pts{font:800 3.2rem/1 var(--font-title);color:var(--gold)}
@@ -409,6 +417,26 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
 .sum-stats{margin-bottom:1.2rem} .sum-row{display:grid;grid-template-columns:1fr 1.6fr 1fr;text-align:center;padding:.6rem 0;border-bottom:1px solid rgba(255,255,255,.06);font-size:1.4rem} .sum-row .l{color:var(--text-dim)} .sum-row .a{font-weight:700;text-align:left} .sum-row .b{font-weight:700;text-align:right}
 .sum-mvp{font-weight:700;color:var(--gold-hi);margin-top:.8rem} .sum-big,.sum-gate,.sum-campus{font-size:1.4rem;color:var(--text-dim);margin-top:.8rem}
 .alm-sub{font:600 1.2rem/1 var(--font-ui);letter-spacing:.08em;text-transform:uppercase;color:var(--text-dim);margin:1.2rem 0 .4rem} .row.dim{color:var(--text-dim);font-style:italic} .alm-note{font-size:1.2rem;color:var(--text-dim);margin:-2px 0 .4rem 1.2rem}
+
+/* storm prep */
+#panels #panel-storm,#panels #panel-budget{width:72rem}
+.sp-all{margin:0 0 1.6rem;padding:1.4rem 1.6rem;border:1px solid rgba(253,208,35,.45);border-radius:var(--radius-sm);background:rgba(253,208,35,.06)}
+.sp-all .btn.primary{width:100%;margin-top:.8rem}
+.sp-steps{margin-top:.8rem} .sp-steps .row.sp-total,.sp-lines .row.sp-total{font-weight:700;color:var(--gold-hi)}
+.sp-group{margin:2.4rem 0 0;padding-top:1.4rem;border-top:2px solid rgba(253,208,35,.35)}
+.sp-head{font:600 1.8rem/1.2 var(--font-title);color:var(--gold-hi);letter-spacing:.02em;margin-bottom:.4rem}
+.sp-sub{font:600 1.3rem/1 var(--font-ui);letter-spacing:.1em;text-transform:uppercase;color:var(--gold);margin:1.6rem 0 .4rem}
+.sp-note{font-size:1.3rem;line-height:1.4;color:var(--text-dim);margin:0 0 .8rem}
+.sp-effect{font-size:1.4rem;line-height:1.4;color:var(--text);margin:.4rem 0 .8rem}
+.sp-acts{display:flex;flex-wrap:wrap;gap:.8rem;margin:.6rem 0}
+.sp-reason{font-size:1.3rem;line-height:1.35;color:#FF8A84;margin:.2rem 0 .6rem} .sp-reason:empty{display:none} .sp-reason.done{color:var(--good)}
+.sp-done{position:sticky;top:0;z-index:4;margin:0 4.8rem 1.2rem 0;padding:.8rem 1.2rem;border-radius:var(--radius-sm);background:#17302E;border:1px solid rgba(63,191,127,.6);font-size:1.4rem;line-height:1.4;box-shadow:0 .4rem 1.2rem rgba(0,0,0,.5)} .sp-done.bad{background:#35171A;border-color:rgba(224,68,62,.6)}
+.sp-lines .row{padding:.3rem 0;font-size:1.3rem}
+.pick-list .row.pick .sp-wr,.pick-list .row.sp-boarded .sp-wr{flex:0 0 auto;color:var(--gold);font-weight:600;font-size:1.2rem;min-width:4.2rem}
+.pick-list .row.pick .v,.pick-list .row.sp-boarded .v{margin-left:auto;flex:0 0 auto}
+.sp-dim{color:var(--text-dim);font-size:1.2rem} .pick-list .row.pick .k,.pick-list .row.sp-boarded .k{flex:1 1 auto;min-width:0}
+.pick-list .row.sp-boarded{color:var(--good)} .pick-list .row.sp-boarded .v{color:var(--good)}
+.btn.done{opacity:1;color:var(--good);border-color:rgba(63,191,127,.6);background:rgba(63,191,127,.12)}
 
 </style>
 </head>
@@ -2188,7 +2216,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     row({ n: 40, name: 'Tiger Habitat', w: 3, h: 3, cost: 1800000, upkeep: 12000, wr: 4,
       unlock: { students: 1000, prestige: 20 },
       effects: { landmark: 8, happiness: { value: 5, radius: 15 }, homeWinBonus: 0.05, gatorAvoidRadius: 10, special: ['tank', 'habitat'] },
-      paint: P({ wall: ['#8A8A8E', '#6E6E72'], roof: 'none', roofColor: '', decals: ['pool'], special: 'tiger_habitat', material: 'stone', accent: '#E07020', features: ['sign:TIGERS'] }),
+      paint: P({ wall: ['#9C978E', '#7C776F'], roof: 'none', roofColor: '', floors: 0, decals: [], special: 'tiger_habitat', material: 'stone', accent: '#E07020', features: ['sign:ROUX'] }),   // habitat pass: a bespoke zoo-exhibit painter (sprites_buildings.js habitatPaint) draws the pool, den, glass, plaza; the paint row only names it
       why: 'Roux lives here. The gators keep their distance. So do opponents.',
       desc: 'Landmark +8; +5 happiness radius 15; home win +5%; gators avoid radius 10; floods → Roux Is Loose.' }),
     row({ n: 41, name: 'Bayou Surge Barrier', kind: 'drag', cost: 6000000, upkeep: 40000, wr: 5, placeRule: PLACE.BARRIER,
@@ -7834,64 +7862,233 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
       state.weather.rainRate = 0;
     } catch (e) { BSU.error('weather', 'skipSetPiece', e); }
   };
-  /** Storm-panel prep actions: 'boardUp'|'sandbags'|'repairAll'|'evacuate'|'preDrain'|'spillway' → {ok, cost, reason}. */
+  // ---------------------------------------------------------------------------
+  // Storm-panel prep actions (P4). prepQuote prices and checks an action with no side effects; prepAction runs the quote and,
+  // when it is ok, does the work. Both ALWAYS return the same structured result, never a bare false:
+  //   {action, ok, reason, cost, affected: [building ids | tile indices], effectText, alreadyDone, precautionary, ...detail}
+  // Actions: boardUp (selection: 'all' | [building ids]), sandbags ('all' | 'weak' | [levee run keys]), preDrain, spillway,
+  // evacuate, repairAll, prepareAll (the recommended set). Availability: Evacuate / Pre-drain from the cone to the bands;
+  // Board Up and Sandbags also with no storm in the Gulf (precautionary, full price); Repair All any time but mid-landfall.
+  // ---------------------------------------------------------------------------
+  const PREP_ACTIONS = ['boardUp', 'sandbags', 'preDrain', 'spillway', 'evacuate', 'repairAll', 'prepareAll'];
+  M.PREP_ACTIONS = Object.freeze(PREP_ACTIONS.slice());
+  function prepResult(action, o) { return Object.assign({ action: action, ok: false, reason: '', cost: 0, affected: [], effectText: '', alreadyDone: false, precautionary: false }, o || {}); }
+  function dateOf(day) { try { return BSU.dayParts(day).date; } catch (e) { return ''; } }
+  function afford(state, cost) { return cost <= 0 || call('economy', 'canAfford', state, cost) !== false; }
+  /** {st: the live storm or null (near-misses are no storm), inbound: cone..bands, late: landfall or later, days: to landfall or -1, day} */
+  function prepCtx(state) {
+    const st = state.storms && state.storms.current, real = (st && !st.nearMiss) ? st : null, day = fin(state.calendar && state.calendar.day, 0);
+    return { st: real, inbound: !!real && real.phase >= STORM.NAMED && real.phase <= STORM.BANDS, late: !!real && real.phase > STORM.BANDS, day: day, days: real && fin(real.landfallDay, -1) >= 0 ? Math.max(0, real.landfallDay - day) : NONE };
+  }
+  function needStorm(x) { return x.late ? 'The storm is here: it is too late to prepare' : 'No storm in the Gulf: available once a storm is named'; }
+  function money0(n) { return '$' + Math.round(fin(n, 0)).toLocaleString('en-US'); }
+  function plural(n, one, many) { return n + ' ' + (n === 1 ? one : (many || one + 's')); }
+
+  function quoteBoard(state, x, arg, o) {
+    const info = call('buildings', 'boardInfo', state);
+    if (!info) return prepResult('boardUp', { reason: 'Not yet' });
+    if (x.late) return prepResult('boardUp', { reason: 'The storm is here: it is too late to board up' });
+    const eligible = info.rows.filter(function (r) { return r.eligible; });
+    let pick;
+    if (arg === undefined || arg === null || arg === 'all') pick = eligible;
+    else { const want = new Set(Array.isArray(arg) ? arg : [arg]); pick = eligible.filter(function (r) { return want.has(r.id); }); }
+    const base = { precautionary: !x.inbound };
+    if (!info.rows.length) return prepResult('boardUp', Object.assign(base, { reason: 'No buildings to board up yet' }));
+    if (!pick.length) {
+      const wantedAll = arg === undefined || arg === null || arg === 'all';
+      if (!wantedAll && Array.isArray(arg) && !arg.length) return prepResult('boardUp', Object.assign(base, { reason: 'Select at least one building' }));
+      return prepResult('boardUp', Object.assign(base, { reason: wantedAll ? 'Every building is already boarded or queued' : 'Those buildings are already boarded or queued', alreadyDone: true }));
+    }
+    const cost = pick.length * info.unit, ids = pick.map(function (r) { return r.id; });
+    const cut = Math.round((1 - PS.boardedMult) * 100);
+    let text;
+    if (x.inbound) {
+      const queued = info.rows.filter(function (r) { return r.queued > 0; }).length;
+      const inTime = Math.max(0, Math.min(pick.length, info.perDay * info.daysLeft - queued));
+      text = 'Crews board ' + info.perDay + ' a day from tomorrow, utilities first. ' + (inTime >= pick.length ? 'All ' + pick.length : inTime + ' of ' + pick.length) + ' will be up by landfall (' + dateOf(x.st.landfallDay) + '). Boarded buildings take ' + cut + '% less wind damage.';
+    } else text = 'Precautionary: boards go up now and stay ' + info.precautionDays + ' days (until ' + dateOf(x.day + info.precautionDays) + '), ' + cut + '% less wind damage. Full price, no storm in the Gulf.';
+    const r = prepResult('boardUp', Object.assign(base, { cost: cost, affected: ids, effectText: text, count: pick.length }));
+    if (!afford(state, cost)) { r.reason = 'Not enough cash (' + money0(cost) + ')'; return r; }
+    r.ok = true; return r;
+  }
+  function quoteSandbags(state, x, arg) {
+    if (x.late) return prepResult('sandbags', { reason: 'The storm is here: it is too late to sandbag' });
+    const H = M.forecastSurge(state), runs = call('buildings', 'sandbagRuns', state, H);
+    const base = { precautionary: !x.inbound, surge: H };
+    if (!runs) return prepResult('sandbags', Object.assign(base, { reason: 'Not yet' }));
+    if (!runs.length) return prepResult('sandbags', Object.assign(base, { reason: 'No levee faces the water at ' + H + ' ft: build a levee first' }));
+    const open = runs.filter(function (r) { return !r.sandbagged; });
+    let pick;
+    if (arg === undefined || arg === null || arg === 'all') pick = open;
+    else if (arg === 'weak') pick = open.filter(function (r) { return r.weak; });
+    else { const want = new Set(Array.isArray(arg) ? arg : [arg]); pick = open.filter(function (r) { return want.has(r.key); }); }
+    if (!pick.length) {
+      if (Array.isArray(arg) && !arg.length) return prepResult('sandbags', Object.assign(base, { reason: 'Select at least one levee run' }));
+      if (arg === 'weak' && open.length) return prepResult('sandbags', Object.assign(base, { reason: 'No weak runs: every wall is above ' + PS.toast1Integrity + '% integrity' }));
+      return prepResult('sandbags', Object.assign(base, { reason: open.length ? 'Those runs are already sandbagged' : 'Every run is already sandbagged', alreadyDone: true }));
+    }
+    let cost = 0, tiles = 0; const aff = [];
+    for (let i = 0; i < pick.length; i++) { cost += pick[i].cost; tiles += pick[i].tiles.length; for (let k = 0; k < pick[i].tiles.length; k++) aff.push(pick[i].tiles[k]); }
+    const until = Math.max(x.day + PS.sandbagDays, x.st && fin(x.st.landfallDay, -1) >= x.day ? x.st.landfallDay + 1 : 0) - 1;
+    const text = 'Adds ' + PS.sandbagFt + ' ft to ' + plural(tiles, 'wall tile') + ' on ' + plural(pick.length, 'run') + ' through ' + dateOf(until) + (x.inbound ? ' (landfall ' + dateOf(x.st.landfallDay) + ')' : ' (' + PS.sandbagDays + ' days)') + '.' + (x.inbound ? '' : ' Precautionary: full price, no storm in the Gulf.');
+    const r = prepResult('sandbags', Object.assign(base, { cost: cost, affected: aff, effectText: text, runs: pick.map(function (p) { return p.key; }) }));
+    if (!afford(state, cost)) { r.reason = 'Not enough cash (' + money0(cost) + ')'; return r; }
+    r.ok = true; return r;
+  }
+  /** the pumps a pre-drain would speed up: [{id, name, running, district (tiles drained), ftPerDay (water taken off its district per day, doubled)}] */
+  function prepPumps(state) {
+    const pumps = call('buildings', 'list', state, BSU.B.pump) || [], nets = call('hydro', 'networks', state) || [], out = [];
+    for (let i = 0; i < pumps.length; i++) {
+      const b = pumps[i]; if (!b || !(fin(b.built, 1) >= 1) || b.ruin) continue;
+      let tiles = 0;
+      for (let n = 0; n < nets.length; n++) if (nets[n] && Array.isArray(nets[n].pumps) && nets[n].pumps.indexOf(b.id) >= 0) { tiles = Array.isArray(nets[n].tiles) ? nets[n].tiles.length : 0; break; }
+      const running = call('buildings', 'effective', state, b.id) === 1;
+      out.push({ id: b.id, name: b.name || 'Pump', running: running, district: tiles, ftPerDay: tiles > 0 ? Math.round(PHY.pumpTileFtPerDay * PHY.preDrainMult / tiles * 100) / 100 : 0 });
+    }
+    return out;
+  }
+  function quotePreDrain(state, x) {
+    if (!x.inbound) return prepResult('preDrain', { reason: needStorm(x) });
+    if (x.st.preDrain) return prepResult('preDrain', { reason: 'Pumps are already running at double speed', alreadyDone: true });
+    const pumps = prepPumps(state), powered = pumps.filter(function (p) { return p.running; }), run = powered.filter(function (p) { return p.district > 0; });
+    if (!run.length) return prepResult('preDrain', { reason: !pumps.length ? 'No pumps to speed up: build a Pump on a canal first' : (!powered.length ? 'No pump has power: restore power to a pump first' : 'No powered pump is connected to a canal: pre-drain would do nothing'), pumps: pumps });
+    const perPump = fin(P.build && P.build.pumpRunCost, 3000) / Math.max(1, fin(P.time && P.time.daysPerMonth, 10));
+    const perDay = Math.round(run.length * perPump);
+    const feet = Math.round(run.reduce(function (a, p) { return a + p.ftPerDay; }, 0) / run.length * 10) / 10;
+    const text = plural(run.length, 'pump') + ' will run at double speed (' + PHY.pumpTileFtPerDay * PHY.preDrainMult + ' tile-ft a day each) until the storm ends, taking up to ' + feet + ' ft a day off the canals ' + (run.length === 1 ? 'it drains' : 'they drain') + '. No up-front cost: about ' + money0(perDay) + ' a day extra in power.';
+    return prepResult('preDrain', { ok: true, cost: 0, perDay: perDay, feet: feet, pumps: pumps, affected: run.map(function (p) { return p.id; }), effectText: text });
+  }
+  function spillCheck(state) {
+    const SP = PW.spillway, w = state.weather, cal = state.calendar;
+    const base = { cost: SP.cost };
+    if (cal.year < SP.fromYear) return prepResult('spillway', Object.assign(base, { reason: 'Available from Year ' + SP.fromYear }));
+    if (call('buildings', 'has', state, BSU.B.engineering) !== true) return prepResult('spillway', Object.assign(base, { reason: 'Needs an Engineering Hall' }));
+    if (fin(w.spillwayUsedYear, 0) === cal.year) return prepResult('spillway', Object.assign(base, { reason: 'Already opened this year', alreadyDone: true }));
+    const s = stagesFor(state, cal.day);
+    if (!s.window || fin(w.riverStage, 0) < SP.minStage) return prepResult('spillway', Object.assign(base, { reason: 'Only during a 2–3 ft high-water window' }));
+    const hy = dep('hydro');
+    if (!hy || typeof hy.spillway !== 'function') return prepResult('spillway', Object.assign(base, { reason: 'Not yet' }));
+    const r = prepResult('spillway', Object.assign(base, { effectText: 'Opens the Bonnet Roux Spillway: the river drops ' + SP.dropFt + ' ft north of the campus for the high-water window and 1 ft of water spreads over the marsh to the south. Once a year; ecology ' + SP.ecologyNow + ' now.' }));
+    if (!afford(state, SP.cost)) { r.reason = 'Not enough cash (' + money0(SP.cost) + ')'; return r; }
+    r.ok = true; return r;
+  }
+  function quoteEvac(state, x) {
+    if (!x.inbound) return prepResult('evacuate', { reason: needStorm(x) });
+    if (x.st.evacuated) return prepResult('evacuate', { reason: 'Already evacuated: the buses have left', alreadyDone: true });
+    const students = Math.round(fin(state.economy && state.economy.students, 0)), tm = (P.econ && P.econ.timers && P.econ.timers.evacuation) || { value: -6 };
+    const asg = call('buildings', 'shelterAssignments', state) || {}, shelters = [];
+    let capacity = 0;
+    Object.keys(asg).forEach(function (k) { const id = Number(k), b = call('buildings', 'get', state, id); capacity += fin(asg[k], 0); shelters.push({ id: id, name: b ? (b.name || b.type) : '#' + id, capacity: fin(asg[k], 0) }); });
+    const cost = PS.evacPer1000 * Math.ceil(students / 1000);
+    const base = { cost: cost, students: students, capacity: capacity, shelters: shelters, happiness: tm.value, days: PS.evacDays, affected: shelters.map(function (q) { return q.id; }) };
+    if (students <= 0) return prepResult('evacuate', Object.assign(base, { cost: 0, reason: 'No students on campus to evacuate' }));
+    const text = 'All ' + students.toLocaleString('en-US') + ' students leave by bus for ' + money0(cost) + '. Happiness ' + tm.value + ' for ' + PS.evacDays + ' days. Sheltering in place instead: ' + (shelters.length ? shelters.map(function (q) { return q.name + ' ' + q.capacity; }).join(', ') : 'no shelter buildings') + ' = room for ' + Math.min(capacity, students).toLocaleString('en-US') + (capacity >= students ? ' (everyone)' : ' of ' + students.toLocaleString('en-US')) + '.';
+    const r = prepResult('evacuate', Object.assign(base, { effectText: text }));
+    if (!afford(state, cost)) { r.reason = 'Not enough cash (' + money0(cost) + ')'; return r; }
+    r.ok = true; return r;
+  }
+  function quoteRepair(state, x) {
+    const q = call('buildings', 'repairQuote', state);
+    if (!q) return prepResult('repairAll', { reason: 'Not yet' });
+    if (x.st && x.st.phase === STORM.LANDFALL) return prepResult('repairAll', { reason: 'Wait until the storm passes', cost: q.cost });
+    if (!(q.cost > 0)) return prepResult('repairAll', { reason: 'Nothing to repair' });
+    const parts = [];
+    if (q.ids.length) parts.push(plural(q.ids.length, 'building'));
+    if (q.levees) parts.push(plural(q.levees, 'levee tile'));
+    if (q.towers) parts.push(plural(q.towers, 'toppled Water Tower'));
+    const r = prepResult('repairAll', { cost: q.cost, affected: q.ids.slice(), buildings: q.ids.length, levees: q.levees, towers: q.towers, effectText: 'Repairs ' + parts.join(', ') + ' at once.' });
+    if (!afford(state, q.cost)) { r.reason = 'Not enough cash (' + money0(q.cost) + ')'; return r; }
+    r.ok = true; return r;
+  }
+  /** the recommended set while a storm is inbound: utilities and WR ≤ 2 boarded, weak levee runs sandbagged, pumps doubled, evacuate when the shelters cannot hold everyone (or Cat 4+) */
+  function planSteps(state, x) {
+    const steps = [];
+    if (!x.inbound) return steps;
+    const add = function (action, label, selection) { const q = quote(state, action, selection); if (q.ok) steps.push({ action: action, label: label, selection: selection, cost: q.cost, effectText: q.effectText, affected: q.affected }); };
+    const info = call('buildings', 'boardInfo', state);
+    if (info) { const ids = info.rows.filter(function (r) { return r.eligible && (r.wr <= 2 || r.type === 'water_tower' || r.type === 'substation'); }).map(function (r) { return r.id; }); if (ids.length) add('boardUp', 'Board up', ids); }
+    add('sandbags', 'Sandbag weak levee runs', 'weak');
+    add('preDrain', 'Pre-drain', undefined);
+    const ev = quoteEvac(state, x);
+    if (ev.ok && (ev.capacity < ev.students || fin(x.st.forecastCat, 1) >= 4)) steps.push({ action: 'evacuate', label: 'Evacuate', selection: undefined, cost: ev.cost, effectText: ev.effectText, affected: ev.affected });
+    return steps;
+  }
+  function quoteAll(state, x) {
+    const steps = planSteps(state, x), cost = steps.reduce(function (a, q) { return a + q.cost; }, 0);
+    const base = { steps: steps, cost: cost, affected: [].concat.apply([], steps.map(function (q) { return q.affected; })) };
+    if (!x.inbound) return prepResult('prepareAll', Object.assign(base, { reason: x.late ? needStorm(x) : 'No storm in the Gulf: precautions only (Board Up, Sandbags)' }));
+    if (!steps.length) return prepResult('prepareAll', Object.assign(base, { reason: 'Everything recommended is already done', alreadyDone: true }));
+    const r = prepResult('prepareAll', Object.assign(base, { effectText: steps.map(function (q) { return q.label + ' ' + money0(q.cost); }).join(' · ') + ' = ' + money0(cost) }));
+    if (!afford(state, cost)) { r.reason = 'Not enough cash for everything (' + money0(cost) + ')'; return r; }
+    r.ok = true; return r;
+  }
+  function quote(state, action, selection) {
+    const x = prepCtx(state);
+    switch (action) {
+      case 'boardUp': return quoteBoard(state, x, selection);
+      case 'sandbags': return quoteSandbags(state, x, selection);
+      case 'preDrain': return quotePreDrain(state, x);
+      case 'spillway': return spillCheck(state);
+      case 'evacuate': return quoteEvac(state, x);
+      case 'repairAll': return quoteRepair(state, x);
+      case 'prepareAll': return quoteAll(state, x);
+      default: return prepResult(String(action), { reason: 'Unknown action' });
+    }
+  }
+  /** Price and check a prep action without doing it → the same structured result prepAction returns. */
+  M.prepQuote = function (state, action, selection) {
+    try { return quote(state, action, selection); } catch (e) { BSU.error('weather', 'prepQuote', e); return prepResult(String(action), { reason: 'Error' }); }
+  };
+  /** Storm-panel prep actions → {action, ok, reason, cost, affected, effectText, alreadyDone, precautionary, ...}. `arg` is the selection (see above). */
   M.prepAction = function (state, action, arg) {
-    const no = function (reason) { return { ok: false, cost: 0, reason: reason }; };
     try {
-      if (action === 'spillway') return spillway(state);
-      const st = state.storms.current;
-      if (!st || st.nearMiss || st.phase < STORM.NAMED || st.phase > STORM.BANDS) return no('No storm');
+      const q = quote(state, action, arg);
+      if (!q.ok) return q;
+      const st = state.storms && state.storms.current;
       let r;
       switch (action) {
         case 'boardUp':
-          r = call('buildings', 'boardUp', state, arg === undefined ? 'all' : arg);
-          if (!r) return no('Not yet');
-          if (r.ok && Array.isArray(arg)) for (let i = 0; i < arg.length; i++) if (st.boardQueue.indexOf(arg[i]) < 0) st.boardQueue.push(arg[i]);
-          return { ok: !!r.ok, cost: fin(r.cost, 0), reason: r.ok ? '' : (r.reason || 'Refused') };
+          r = call('buildings', 'boardUp', state, q.affected);
+          if (!r || !r.ok) return Object.assign(q, { ok: false, reason: (r && r.reason) || 'Refused' });
+          return Object.assign(q, { cost: fin(r.cost, 0), affected: r.ids || q.affected });
         case 'sandbags':
-          r = call('buildings', 'sandbags', state, M.forecastSurge(state));
-          if (!r) return no('Not yet');
-          if (r.ok) st.sandbagged = true;
-          return { ok: !!r.ok, cost: fin(r.cost, 0), reason: r.ok ? '' : (r.reason || 'Refused') };
-        case 'repairAll':
-          r = call('buildings', 'repairAllLevees', state);
-          if (!r) return no('Not yet');
-          return { ok: !!r.ok, cost: fin(r.cost, 0), reason: r.ok ? '' : (r.reason || 'Refused') };
-        case 'evacuate': {
-          if (st.evacuated) return no('Already evacuated');
-          const students = fin(state.economy && state.economy.students, 0);
-          const cost = PS.evacPer1000 * Math.ceil(students / 1000);
-          if (call('economy', 'charge', state, cost, 'prep') === false) return no('Not enough cash');
+          r = call('buildings', 'sandbags', state, q.surge, { runs: q.runs });
+          if (!r || !r.ok) return Object.assign(q, { ok: false, reason: (r && r.reason) || 'Refused' });
+          if (st && !st.nearMiss) st.sandbagged = true;
+          return Object.assign(q, { cost: fin(r.cost, 0), affected: r.tiles || q.affected });
+        case 'preDrain':
+          st.preDrain = true;
+          return q;
+        case 'spillway':
+          if (call('economy', 'charge', state, q.cost, 'prep') === false) return Object.assign(q, { ok: false, reason: 'Not enough cash' });
+          state.weather.spillwayUsedYear = state.calendar.year;
+          r = call('hydro', 'spillway', state);
+          return Object.assign(q, { affected: [] , tiles: r ? fin(r.tiles, 0) : 0 });
+        case 'evacuate':
+          if (call('economy', 'charge', state, q.cost, 'prep') === false) return Object.assign(q, { ok: false, reason: 'Not enough cash' });
           call('agents', 'evacuate', state);
           st.evacuated = true;
           call('progress', 'addTimer', state, 'evacuation', P.econ.timers.evacuation.value, PS.evacDays);
-          return { ok: true, cost: cost, reason: '' };
+          return q;
+        case 'repairAll':
+          r = call('buildings', 'repairAll', state);
+          if (!r || !r.ok) return Object.assign(q, { ok: false, reason: 'Nothing was repaired' });
+          return Object.assign(q, { cost: fin(r.cost, 0) });
+        case 'prepareAll': {
+          const done = [];
+          let total = 0, ok = true, reason = '';
+          const aff = [];
+          for (let i = 0; i < q.steps.length; i++) {
+            const sr = M.prepAction(state, q.steps[i].action, q.steps[i].selection);
+            done.push(sr); total += fin(sr.cost, 0);
+            if (sr.ok) for (let k = 0; k < sr.affected.length; k++) aff.push(sr.affected[k]); else { ok = false; reason = sr.reason || 'A step failed'; }
+          }
+          return Object.assign(q, { ok: ok, reason: reason, cost: total, affected: aff, done: done });
         }
-        case 'preDrain':
-          if (st.preDrain) return no('Already pre-draining');
-          st.preDrain = true;
-          return { ok: true, cost: 0, reason: '' };
-        default:
-          return no('Unknown action');
+        default: return q;
       }
-    } catch (e) { BSU.error('weather', 'prepAction', e); return no('Error'); }
+    } catch (e) { BSU.error('weather', 'prepAction', e); return prepResult(String(action), { reason: 'Error' }); }
   };
-  /** Bonnet Roux Spillway (GDD §6.9; Tier 2 with hydro): once per year, 2–3 ft window, Year ≥ 3, Engineering Hall. */
-  function spillway(state) {
-    const SP = PW.spillway, w = state.weather, cal = state.calendar;
-    const no = function (reason) { return { ok: false, cost: 0, reason: reason }; };
-    if (cal.year < SP.fromYear) return no('Available from Year ' + SP.fromYear);
-    if (call('buildings', 'has', state, BSU.B.engineering) !== true) return no('Needs an Engineering Hall');
-    const s = stagesFor(state, cal.day);
-    if (!s.window || fin(w.riverStage, 0) < SP.minStage) return no('Only during a 2–3 ft window');
-    if (fin(w.spillwayUsedYear, 0) === cal.year) return no('Already opened this year');
-    const hy = dep('hydro');
-    if (!hy || typeof hy.spillway !== 'function') return no('Not yet');
-    if (call('economy', 'charge', state, SP.cost, 'prep') === false) return no('Not enough cash');
-    w.spillwayUsedYear = cal.year;
-    call('hydro', 'spillway', state);
-    return { ok: true, cost: SP.cost, reason: '' };
-  }
   /** Debug: jam a floodgate tile for the current storm. */
   M.jamGate = function (state, i) {
     try {
@@ -9777,6 +9974,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     floodedCoreDays: PE.prestige.blight.floodedDays,    // 3
     oakStageForEffect: 1,
     landmarkShelterDeclaredPhaseMax: BSU.STORM.LANDFALL, // "from the cone to T+1"
+    precautionDays: 10,                                 // storm prep pass: a Board Up ordered with no storm in the Gulf stays up this many days
     coreRows: null                                      // computed lazily from data
   };
 
@@ -11710,20 +11908,54 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
       return runs;
     } catch (e) { if (BSU.SELFTEST) throw e; BSU.error('buildings', 'leveeRuns', e); return []; }
   };
-  /** Sandbags: every boundary levee tile at H gets +1.5 ft for 5 days; cost ceil(n/10) × $10k (opts.free from the toast) */
+  /** expiry day (exclusive) of sandbags laid today: 5 days, or through the landfall day when a real storm is inbound (a cone-day order must still hold at the peak) */
+  function sandbagUntil(state, day) {
+    const st = state.storms && state.storms.current;
+    const lf = (st && !st.nearMiss) ? fin(st.landfallDay, -1) : -1;
+    return Math.min(65535, Math.max(day + PS.sandbagDays, lf >= day ? lf + 1 : 0));
+  }
+  /** Storm panel: every levee run with boundary tiles at H → [{key, name, length, tiles (boundary), integrity (mean), minIntegrity, weak, sandbagged, cost}] */
+  M.sandbagRuns = function (state, Hft) {
+    try {
+      const tl = state.tiles, day = dayOf(state), out = [];
+      const bset = new Set(boundaryFrom(state, protectionInner(state, fin(Hft, PS.ringDefaultH))));
+      for (const r of M.leveeRuns(state)) {
+        const tiles = r.tiles.filter(function (i) { return bset.has(i); });
+        if (!tiles.length) continue;
+        let min = 100, sum = 0, bagged = 0;
+        for (const i of tiles) { const g = tl.integrity[i]; if (g < min) min = g; sum += g; if (tl.sandbag[i] > 0 && tl.sandbagDay[i] > day) bagged++; }
+        out.push({ key: r.key, name: r.name || ('Levee segment (' + (r.tiles[0] & 63) + ', ' + (r.tiles[0] >> 6) + ')'), length: r.tiles.length, tiles: tiles,
+          integrity: Math.round(sum / tiles.length), minIntegrity: min, weak: min < PS.toast1Integrity, sandbagged: bagged === tiles.length, cost: Math.ceil(tiles.length / PS.sandbagPer) * PS.sandbagCost });
+      }
+      return out;
+    } catch (e) { if (BSU.SELFTEST) throw e; BSU.error('buildings', 'sandbagRuns', e); return []; }
+  };
+  /** Sandbags: every boundary levee tile at H (or only the runs named in opts.runs) gets +1.5 ft until the storm's landfall (min 5 days); cost ceil(n/10) × $10k, summed per run when opts.runs is given (opts.free from the toast) */
   M.sandbags = function (state, Hft, opts) {
     opts = opts || {};
     try {
-      const tiles = M.boundaryLevees(state, fin(Hft, PS.ringDefaultH));
-      if (!tiles.length) return { ok: false, cost: 0, tiles: [], reason: 'No levee on the boundary' };
-      const cost = opts.free ? 0 : Math.ceil(tiles.length / PS.sandbagPer) * PS.sandbagCost;
-      if (cost > 0 && !charge(state, cost, 'prep', { i: tiles[0] })) return { ok: false, cost: cost, tiles: [], reason: 'Not enough cash' };
-      const day = dayOf(state);
-      for (const i of tiles) { state.tiles.sandbag[i] = PS.sandbagTenths; state.tiles.sandbagDay[i] = Math.min(65535, day + PS.sandbagDays); markLeveeChange(state, i); }
+      let tiles, cost;
+      if (Array.isArray(opts.runs)) {
+        const want = new Set(opts.runs);
+        const runs = M.sandbagRuns(state, Hft).filter(function (r) { return want.has(r.key) && !r.sandbagged; });
+        tiles = []; cost = 0;
+        for (const r of runs) { for (const i of r.tiles) tiles.push(i); cost += r.cost; }
+        if (!tiles.length) return { ok: false, cost: 0, tiles: [], runs: [], reason: 'No levee run to sandbag' };
+        if (opts.free) cost = 0;
+        if (cost > 0 && !charge(state, cost, 'prep', { i: tiles[0] })) return { ok: false, cost: cost, tiles: [], runs: [], reason: 'Not enough cash' };
+        opts = Object.assign({}, opts, { _runKeys: runs.map(function (r) { return r.key; }) });
+      } else {
+        tiles = M.boundaryLevees(state, fin(Hft, PS.ringDefaultH));
+        if (!tiles.length) return { ok: false, cost: 0, tiles: [], runs: [], reason: 'No levee on the boundary' };
+        cost = opts.free ? 0 : Math.ceil(tiles.length / PS.sandbagPer) * PS.sandbagCost;
+        if (cost > 0 && !charge(state, cost, 'prep', { i: tiles[0] })) return { ok: false, cost: cost, tiles: [], runs: [], reason: 'Not enough cash' };
+      }
+      const until = sandbagUntil(state, dayOf(state));
+      for (const i of tiles) { state.tiles.sandbag[i] = PS.sandbagTenths; state.tiles.sandbagDay[i] = until; markLeveeChange(state, i); }
       if (state.storms && state.storms.current) state.storms.current.sandbagged = true;
       M.dirtyRing(state);
-      return { ok: true, cost: cost, tiles: tiles };
-    } catch (e) { if (BSU.SELFTEST) throw e; BSU.error('buildings', 'sandbags', e); return { ok: false, cost: 0, tiles: [], reason: 'Cannot sandbag' }; }
+      return { ok: true, cost: cost, tiles: tiles, runs: opts._runKeys || [], until: until };
+    } catch (e) { if (BSU.SELFTEST) throw e; BSU.error('buildings', 'sandbags', e); return { ok: false, cost: 0, tiles: [], runs: [], reason: 'Cannot sandbag' }; }
   };
 
   // ---------------------------------------------------------------------------
@@ -11771,6 +12003,18 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
       if (lv.ok) { total += lv.cost; any = true; }
       return { ok: any, cost: total };
     } catch (e) { if (BSU.SELFTEST) throw e; BSU.error('buildings', 'repairAll', e); return { ok: false, cost: 0 }; }
+  };
+  /** what Repair All would cost right now: {cost, ids (damaged / ruined buildings), towers (toppled Water Towers), levees (tiles below 100)} */
+  M.repairQuote = function (state) {
+    try {
+      let cost = 0; const ids = [];
+      for (const b of M.list(state)) if (b.hp < 1 || b.ruin) { ids.push(b.id); cost += repairCostOf(b); }
+      const towers = cache(state).toppled.length; cost += PS.towerToppleCost * towers;
+      let levees = 0; const tl = state.tiles;
+      for (let i = 0; i < N; i++) if (tl.crest[i] > 0 && tl.integrity[i] < 100) levees++;
+      cost += levees * PS.repairPerTile;
+      return { cost: cost, ids: ids, towers: towers, levees: levees };
+    } catch (e) { if (BSU.SELFTEST) throw e; BSU.error('buildings', 'repairQuote', e); return { cost: 0, ids: [], towers: 0, levees: 0 }; }
   };
   /** $5k per levee tile below 100 */
   M.repairLevee = function (state, i) {
@@ -11851,34 +12095,67 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
       emit(EV.BUILDING_DAMAGED, { id: b.id, type: b.type, hp: b.hp, cause: 'topple' });
     }
   }
-  /** default board-up order: water towers, substations, then WR ascending, cost descending */
+  /** a real storm the crews can still prepare for (cone → bands); a near-miss counts as no storm */
+  function inboundStorm(state) {
+    const st = state.storms && state.storms.current;
+    return (st && !st.nearMiss && st.phase >= BSU.STORM.NAMED && st.phase <= BSU.STORM.BANDS) ? st : null;
+  }
+  /** the day a board must outlast to count: landfall + 1 for an inbound storm, else today */
+  function boardHorizon(state) { const st = inboundStorm(state); return (st && fin(st.landfallDay, -1) >= 0) ? st.landfallDay + 1 : dayOf(state); }
+  function boardRank(b) { return b.type === 'water_tower' ? 0 : (b.type === 'substation' ? 1 : 2); }
+  function boardSort(cat) {
+    return function (a, b) { const ra = boardRank(a), rb = boardRank(b); if (ra !== rb) return ra - rb; const wa = wrOf(cat[a.type], a), wb = wrOf(cat[b.type], b); if (wa !== wb) return wa - wb; const ca = cat[a.type].cost, cb = cat[b.type].cost; if (ca !== cb) return cb - ca; return a.id - b.id; };
+  }
+  /** default board-up order: water towers, substations, then WR ascending, cost descending (buildings whose boards already outlast the landfall are left out) */
   function boardOrder(state) {
-    const cat = catalog(), day = dayOf(state);
-    const rank = function (b) { return b.type === 'water_tower' ? 0 : (b.type === 'substation' ? 1 : 2); };
-    return M.list(state).filter(function (b) { return isComplete(b) && fin(b.data.boardedUntil, -1) < day && cat[b.type] && cat[b.type].kind === 'footprint'; })
-      .sort(function (a, b) { const ra = rank(a), rb = rank(b); if (ra !== rb) return ra - rb; const wa = wrOf(cat[a.type], a), wb = wrOf(cat[b.type], b); if (wa !== wb) return wa - wb; const ca = cat[a.type].cost, cb = cat[b.type].cost; if (ca !== cb) return cb - ca; return a.id - b.id; });
+    const cat = catalog(), horizon = boardHorizon(state);
+    return M.list(state).filter(function (b) { return isComplete(b) && fin(b.data.boardedUntil, -1) < horizon && cat[b.type] && cat[b.type].kind === 'footprint'; }).sort(boardSort(cat));
   }
   M.boardOrder = function (state) { try { return boardOrder(state).map(function (b) { return b.id; }); } catch (e) { BSU.error('buildings', 'boardOrder', e); return []; } };
-  /** $5k per building; crews board 6/day (12 with a post) from tomorrow, in pick-list order */
+  /** Storm panel: every complete footprint building with its board state → {rows: [{id, name, type, wr, cost, boarded, until, covers, queued (1-based crew position, 0 = no), eligible}],
+   *  perDay (crews), daysLeft (to landfall, -1 none), live (inbound storm), unit ($ per building)} */
+  M.boardInfo = function (state) {
+    try {
+      const cat = catalog(), day = dayOf(state), horizon = boardHorizon(state), st = inboundStorm(state);
+      const q = (st && Array.isArray(st.boardQueue)) ? st.boardQueue : [];
+      const rows = M.list(state).filter(function (b) { return isComplete(b) && cat[b.type] && cat[b.type].kind === 'footprint'; }).sort(boardSort(cat)).map(function (b) {
+        const row = cat[b.type], until = fin(b.data.boardedUntil, -1), qi = q.indexOf(b.id);
+        return { id: b.id, name: b.name || row.name || b.type, type: b.type, wr: wrOf(row, b), cost: PS.boardCost, boarded: until >= day, until: until >= day ? until : -1, covers: until >= horizon, queued: qi + 1, eligible: until < horizon && qi < 0 };
+      });
+      return { rows: rows, perDay: M.has(state, 'wildlife_post') ? PS.boardPerDayPost : PS.boardPerDay, daysLeft: (st && fin(st.landfallDay, -1) >= 0) ? Math.max(0, st.landfallDay - day) : -1, live: !!st, unit: PS.boardCost, precautionDays: LOCAL.precautionDays };
+    } catch (e) { if (BSU.SELFTEST) throw e; BSU.error('buildings', 'boardInfo', e); return { rows: [], perDay: PS.boardPerDay, daysLeft: -1, live: false, unit: PS.boardCost, precautionDays: LOCAL.precautionDays }; }
+  };
+  /** $5k per building. With a storm inbound the crews board 6/day (12 with a post) from tomorrow, in pick-list order;
+   *  with no storm the boards go up at once and stay LOCAL.precautionDays ('precautionary', same price). */
   M.boardUp = function (state, ids) {
     try {
       const st = state.storms && state.storms.current;
-      if (!st) return { ok: false, cost: 0, queued: 0, reason: 'No storm' };
-      if (!Array.isArray(st.boardQueue)) st.boardQueue = [];
+      if (st && !st.nearMiss && st.phase > BSU.STORM.BANDS) return { ok: false, cost: 0, queued: 0, ids: [], reason: 'The storm is here: too late to board up' };
+      const live = inboundStorm(state);
+      if (live && !Array.isArray(live.boardQueue)) live.boardQueue = [];
       const order = boardOrder(state);
       let pick;
       if (ids === 'all') pick = order;
       else { const want = new Set((Array.isArray(ids) ? ids : [ids]).filter(Number.isInteger)); pick = order.filter(function (b) { return want.has(b.id); }); }
-      pick = pick.filter(function (b) { return st.boardQueue.indexOf(b.id) < 0; });
-      if (!pick.length) return { ok: false, cost: 0, queued: 0, reason: 'Nothing to board' };
+      if (live) pick = pick.filter(function (b) { return live.boardQueue.indexOf(b.id) < 0; });
+      if (!pick.length) return { ok: false, cost: 0, queued: 0, ids: [], reason: (ids === 'all' || (Array.isArray(ids) && ids.length)) ? 'Already boarded or queued' : 'Nothing to board', alreadyDone: ids === 'all' || (Array.isArray(ids) && ids.length > 0) };
       const cost = PS.boardCost * pick.length;
-      if (!charge(state, cost, 'prep', { i: BSU.idx(pick[0].tx, pick[0].ty) })) return { ok: false, cost: cost, queued: 0, reason: 'Not enough cash' };
-      for (const b of pick) st.boardQueue.push(b.id);
-      return { ok: true, cost: cost, queued: pick.length };
-    } catch (e) { if (BSU.SELFTEST) throw e; BSU.error('buildings', 'boardUp', e); return { ok: false, cost: 0, queued: 0, reason: 'Cannot board' }; }
+      if (!charge(state, cost, 'prep', { i: BSU.idx(pick[0].tx, pick[0].ty) })) return { ok: false, cost: cost, queued: 0, ids: [], reason: 'Not enough cash' };
+      const out = pick.map(function (b) { return b.id; });
+      if (live) { for (const b of pick) live.boardQueue.push(b.id); return { ok: true, cost: cost, queued: pick.length, ids: out, precautionary: false }; }
+      const until = dayOf(state) + LOCAL.precautionDays;
+      for (const b of pick) { b.data.boardedUntil = Math.max(fin(b.data.boardedUntil, -1), until); for (const i of footprintOf(b)) touch(state, i, 'decor'); }
+      return { ok: true, cost: cost, queued: 0, boarded: pick.length, ids: out, precautionary: true, until: until };
+    } catch (e) { if (BSU.SELFTEST) throw e; BSU.error('buildings', 'boardUp', e); return { ok: false, cost: 0, queued: 0, ids: [], reason: 'Cannot board' }; }
   };
   function boardCrews(state, day) {
     const st = state.storms && state.storms.current;
+    const live = inboundStorm(state);
+    if (live) {   // precautionary boards that already outlast the landfall count as boarded (the Cone of concern objective reads boardedCount)
+      const horizon = boardHorizon(state); let cov = 0;
+      for (const b of M.list(state)) if (isComplete(b) && fin(b.data.boardedUntil, -1) >= horizon) cov++;
+      if (cov > fin(live.boardedCount, 0)) live.boardedCount = cov;
+    }
     if (!st || !Array.isArray(st.boardQueue) || !st.boardQueue.length) return;
     let n = M.has(state, 'wildlife_post') ? PS.boardPerDayPost : PS.boardPerDay;
     const until = fin(st.landfallDay, -1) >= 0 ? st.landfallDay + 1 : day + PS.coneDays + 1;
@@ -14178,7 +14455,8 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
       jit: new Float32Array(Math.ceil(W / PM.spotPitch) * Math.ceil(H / PM.spotPitch) * 2).fill(9),
       gX: new Float64Array(64), gY: new Float64Array(64), gI: new Int32Array(64),   // gator positions for the flee test
       cellHead: new Int32Array(N), cellNext: new Int32Array(512),
-      occW: Math.ceil(W / PM.spotPitch), occ: new Uint32Array(Math.ceil(W / PM.spotPitch) * Math.ceil(H / PM.spotPitch)), occGen: 1
+      occW: Math.ceil(W / PM.spotPitch), occ: new Uint32Array(Math.ceil(W / PM.spotPitch) * Math.ceil(H / PM.spotPitch)), occGen: 1,
+      hv: new Map(), hdoor: new Map()   // habitat pass: Tiger Habitat id → {n, x, y, total} the students standing at its glass this tick and everyone committed to it (rebuilt by buildGrids; render reads it for Roux); door tile → habitat id
     };
   }
   let X = newCtx();
@@ -14612,6 +14890,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
       spd: 0, step: 0,                     // eased speed fraction 0..1 and the distance moved last tick (the "slower than me" test of local avoidance)
       hd: 0, sd: 0, psd: 0,                // heading of the last move (radians, tx → ty), distance walked and its value one tick ago (render drives the walk cycle with it)
       early: false, react: 0, reactPhase: 0, leaveAt: 0, leavePb: -1, spotX: -1, spotY: -1, approach: false, enter: false, linger: false, sitPlan: false, hold: 0, holdIn: false,
+      view: -1,                            // habitat pass: the id of the Tiger Habitat whose glass this student stands at (−1 = none); transient, never saved
       rh: 0, rhSet: false, ox: 0, oy: 0, pw: 0, rdx: 0, rdy: 0, rs: 0   // render-only (poseAgent): eased heading, eased lateral offset, curve weight, last drawn position, interpolated stride
     };
   }
@@ -14690,7 +14969,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     clearStand(a);
   }
   /** drop everything about standing around (spot, approach, linger, held start): a new goal, a flee or an evacuation */
-  function clearStand(a) { a.spotX = -1; a.spotY = -1; a.approach = false; a.enter = false; a.linger = false; a.sitPlan = false; a.hold = 0; a.holdIn = false; }
+  function clearStand(a) { a.spotX = -1; a.spotY = -1; a.approach = false; a.enter = false; a.linger = false; a.sitPlan = false; a.hold = 0; a.holdIn = false; a.view = -1; }
   function goalTile(state, a) {
     if (a.target < 0) return -1;
     if (a.goal === 'idle' || a.goal === 'parade' || a.goal === 'graduation' || a.goal === 'flee' || a.goal === 'tile') return validTile(a.target) ? a.target : -1;
@@ -14701,6 +14980,96 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
   }
   function goalIsBuilding(state, a) { return a.target >= 0 && a.goal !== 'idle' && a.goal !== 'parade' && a.goal !== 'graduation' && a.goal !== 'tile' && !!getBuilding(state, a.target); }
   function pickTile(r, list, fallback) { return list && list.length ? list[r.int(list.length)] : fallback; }
+
+  // ---------------------------------------------------------------------------
+  // Tiger Habitat visitors (habitat pass). The habitat is an idle destination like the quad, weighted by its happiness effect (value × radius / 225 = a one-in-three
+  // share of the idle strolls). Students walk to the habitat's door tile (the path tile just outside the middle of the plaza edge), then
+  // stand on the plaza: the front tile row of the 3×3 footprint, which the sprite paints as brick paving along the viewing wall. Those are building tiles
+  // (walk class 0), so they are NOT standable in general: the cells below are claimed explicitly and never overlap the enclosure (local depth < 2). Twelve cells
+  // (two rows of four on the plaza, four more on the path tiles outside it) are the cap on visitors: a full habitat sends the late ones to the ordinary spot
+  // search around the door. The layout mirrors `sprites.HABITAT` (local X depth, Y along the front; a test keeps them equal); `fl` is `render.frontLeftOf`'s rule.
+  // ---------------------------------------------------------------------------
+  const HB_SPOT_X = [2.25, 2.75], HB_SPOT_Y = [0.75, 1.25, 1.75, 2.25], HB_OUT_X = 3.25;
+  const HB_MAX = 12;   // the cap on visitors: the 12 standing cells
+  const HB_DWELL = [50, 150];   // 10–30 s at 1× (ticks)
+  /** which edge of a Tiger Habitat faces the path: true = the SW (south) edge — the same rule as render.frontLeftOf, so sprite and spots agree */
+  function habFrontLeft(state, b) {
+    const surf = state.tiles.surface, w = b.w | 0, h = b.h | 0, tx = b.tx | 0, ty = b.ty | 0;
+    if (tx + w < W) for (let y = ty; y < ty + h; y++) { const q = surf[y * W + tx + w]; if (q >= 1 && q <= 3) return false; }
+    if (ty + h < H) for (let x = tx; x < tx + w; x++) { const q = surf[(ty + h) * W + x]; if (q >= 1 && q <= 3) return true; }
+    return false;
+  }
+  /** local exhibit coordinates → world tile coordinates (sprites.habitatWorld) */
+  function habWorld(b, fl, lx, ly) { return fl ? [b.tx + ly, b.ty + lx] : [b.tx + lx, b.ty + ly]; }
+  function habOpen(state, b) { return !!b && !b.flooded && !b.ruin && fin(b.built, 1) >= 1 && fin(b.hp, 1) > 0.3; }
+  /** twelve students at the glass or on their way: nobody else is sent there this tick */
+  function habFull(b) { const h = X.hv.get(b.id); return !!h && h.total >= HB_MAX; }
+  /** the path tile just outside the middle of the plaza edge (any walkable tile along it, else the generic door) */
+  function habDoor(state, b) {
+    const fl = habFrontLeft(state, b), walk = state.tiles.walk, order = [1, 0, 2];
+    for (let q = 0; q < order.length; q++) { const k = order[q], x = fl ? b.tx + k : b.tx + b.w, y = fl ? b.ty + b.h : b.ty + k; if (x >= 0 && y >= 0 && x < W && y < H && walk[y * W + x] > 0) return y * W + x; }
+    return doorTile(state, b);
+  }
+  /** the share of idle strolls a habitat draws: its happiness value × radius / 225 (5 × 15 → one in three), clamped to 5–40 % — it scales with the effect, so a bigger catalog radius draws more */
+  function habShare() {
+    const row = BSU.data && BSU.data.catalog && BSU.data.catalog.tiger_habitat, hp = row && row.effects && row.effects.happiness;
+    return hp ? BSU.clamp(fin(hp.value, 0) * fin(hp.radius, 0) / 225, 0.05, 0.4) : 0.1;
+  }
+  /** append a habitat's door to `choices` as many times as gives it its share of the final list (the others are already in `choices`; `nHab` habitats split the share) */
+  function addHabitat(choices, door, base, nHab) { const sh = habShare(), n = Math.max(1, Math.round(sh / (1 - sh) * base / Math.max(1, nHab))); for (let q = 0; q < n; q++) choices.push(door); }
+  /** the standing cells [x, y, row, …] of a habitat, nearest the glass first (row 0 beside the wall, row 1 behind it, row 2 on the path tiles outside); plaza cells need a walkable tile just outside the plaza edge for the way out */
+  function habSpots(state, b, fl) {
+    const out = [], rows = [HB_SPOT_X[0], HB_SPOT_X[1], HB_OUT_X];
+    for (let r = 0; r < 3; r++) for (let k = 0; k < HB_SPOT_Y.length; k++) {
+      const p = habWorld(b, fl, rows[r], HB_SPOT_Y[k]), tx = Math.floor(p[0]), ty = Math.floor(p[1]);
+      if (tx < 0 || ty < 0 || tx >= W || ty >= H) continue;
+      if (r < 2) { const ox = fl ? tx : b.tx + b.w, oy = fl ? b.ty + b.h : ty; if (ox < 0 || oy < 0 || ox >= W || oy >= H || !(state.tiles.walk[oy * W + ox] > 0)) continue; }
+      else if (!standable(state, ty * W + tx)) continue;
+      out.push(p[0], p[1], r);
+    }
+    return out;
+  }
+  /** claim a viewing cell for `a`, who has just arrived at tile `door`; false when no open habitat has this door or every cell is taken */
+  function claimHabitatSpot(state, a, door) {
+    refreshBuildingCaches(state);
+    const L = X.homes.idle, inv = 1 / PM.spotPitch;
+    for (let q = 0; q < L.length; q++) {
+      const b = L[q];
+      if (b.type !== 'tiger_habitat' || !habOpen(state, b) || habDoor(state, b) !== door) continue;
+      const sp = habSpots(state, b, habFrontLeft(state, b)), n = sp.length / 3;
+      for (let r = 0; r < 3; r++) {
+        let cnt = 0; for (let j = 0; j < n; j++) if (sp[j * 3 + 2] === r) cnt++;
+        if (!cnt) continue;
+        const s0 = (Math.imul(a.id + 1 + r * 977, 0x9E3779B1) >>> 12) % cnt;
+        for (let m = 0; m < cnt; m++) {
+          let want = (s0 + m) % cnt, j = 0; for (; j < n; j++) if (sp[j * 3 + 2] === r && want-- === 0) break;
+          const x = sp[j * 3], y = sp[j * 3 + 1], cell = Math.floor(y * inv) * X.occW + Math.floor(x * inv);
+          if (X.occ[cell] === X.occGen) continue;
+          X.occ[cell] = X.occGen; a.spotX = x; a.spotY = y; a.view = b.id;
+          a.approach = Math.abs(x - a.tx) + Math.abs(y - a.ty) > 0.02;
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+  /** a stable 10–30 s dwell at the glass (hash of the id, ±20 % per visit) */
+  function habDwell(a) { const base = HB_DWELL[0] + (HB_DWELL[1] - HB_DWELL[0]) * hashFrac(a.id, 0x6478); return Math.round(BSU.clamp(base * (0.8 + 0.4 * BSU.rng.sim.float()), HB_DWELL[0], HB_DWELL[1])); }
+  /** the pose of a student at the glass: ~4.4 s segments of idle / selfie / binoculars / a wave at Roux; a selfie pops a tiny camera flash once per segment */
+  function habitatPose(state, a, ctx) {
+    const seg = Math.floor((ctx.tick + a.id * 13) / 22), r = hashFrac(a.id * 31 + seg, 0x7b01);
+    const anim = r < 0.34 ? 'idle' : (r < 0.64 ? 'selfie' : (r < 0.88 ? 'binoculars' : 'wave'));
+    if (anim === 'selfie' && (ctx.tick + a.id * 13) % 22 === 9) {
+      const R = dep('render');
+      if (R && R.particles && typeof R.particles.emit === 'function') {
+        const e = state.tiles.elev[agentTile(a)] || 0;
+        guard('flash', function () { R.particles.emit('foam', (a.tx - a.ty) * 32, (a.tx + a.ty - 2) * 16 - e * 6, 1, { z: 20, life: 140, size: 2, jitter: 0 }); });
+      }
+    }
+    return anim;
+  }
+  /** the students standing at a habitat's glass this tick: {n, x[], y[]} (world tile coordinates) or null (render moves Roux toward them; tests count them) */
+  M.habitatViewers = function (state, id) { return X.hv.get(id) || null; };
 
   function idleSpot(state, a, r, advisory) {
     refreshBuildingCaches(state);
@@ -14717,8 +15086,10 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
       }
     }
     if (!choices.length) {
-      for (let k = 0; k < Hc.idle.length; k++) choices.push(doorTile(state, Hc.idle[k]));
+      let nh = 0;
+      for (let k = 0; k < Hc.idle.length; k++) { const ib = Hc.idle[k]; if (ib.type === 'tiger_habitat') { if (habOpen(state, ib) && !habFull(ib)) nh++; } else choices.push(doorTile(state, ib)); }
       for (let k = 0; k < Hc.oakTiles.length; k++) choices.push(Hc.oakTiles[k]);
+      if (nh) { const base = choices.length; for (let k = 0; k < Hc.idle.length; k++) { const ib = Hc.idle[k]; if (ib.type === 'tiger_habitat' && habOpen(state, ib) && !habFull(ib)) addHabitat(choices, habDoor(state, ib), base, nh); } }   // habitat pass: weighted by its happiness effect
     }
     if (!choices.length) choices.push(foundersFront(state));
     return pickTile(r, choices, foundersFront(state));
@@ -14732,6 +15103,9 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     const choices = [];
     for (let k = 0; k < Hc.greek.length; k++) choices.push(doorTile(state, Hc.greek[k]));
     for (let k = 0; k < Hc.union.length; k++) choices.push(doorTile(state, Hc.union[k]));
+    { const base = choices.length; let nh = 0; for (let k = 0; k < Hc.idle.length; k++) if (Hc.idle[k].type === 'tiger_habitat' && habOpen(state, Hc.idle[k]) && !habFull(Hc.idle[k])) nh++;
+      if (base) for (let k = 0; k < Hc.idle.length; k++) { const ib = Hc.idle[k]; if (ib.type === 'tiger_habitat' && habOpen(state, ib) && !habFull(ib)) addHabitat(choices, habDoor(state, ib), base, nh); }   // habitat pass: the lit plaza at Dusk
+      else for (let k = 0; k < Hc.idle.length; k++) { const ib = Hc.idle[k]; if (ib.type === 'tiger_habitat' && habOpen(state, ib) && !habFull(ib)) choices.push(habDoor(state, ib)); } }
     if (!choices.length) return { goal: 'idle', target: idleSpot(state, a, r, false) };
     return { goal: 'idle', target: pickTile(r, choices, foundersFront(state)) };
   }
@@ -14864,7 +15238,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
         a.state = (ctx && ctx.advisory && a.sitUntil > 0) ? 'SIT' : 'IDLE';
         a.next = null;
         settle(state, a, ctx, a.state === 'IDLE');
-        if (a.state === 'IDLE') { a.waitTicks = dwellTicks(a); a.next = 'mingle'; }   // stand a while (8–25 s), then shuffle over or stroll to another spot
+        if (a.state === 'IDLE') { a.waitTicks = a.view >= 0 ? habDwell(a) : dwellTicks(a); a.next = 'mingle'; }   // stand a while (8–25 s; 10–30 s at the habitat's glass), then shuffle over or stroll to another spot
         break;
       default:
         a.state = 'IDLE'; a.next = null;
@@ -14886,6 +15260,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     if (!n) return;
     if (n === 'mingle') {   // an idle dweller whose dwell is up: half shuffle to a free spot nearby, half stroll to another idle place; nothing at night, in heat, a storm, a game or a set piece
       if (a.state !== 'IDLE' || a.inside || !ctx || ctx.phase === SKY.NIGHT || ctx.advisory || ctx.watch || state.setPiece || (state.sports && state.sports.game) || X.sheltering || X.evacuating) return;
+      if (a.view >= 0) { setGoal(state, a, 'idle', idleSpot(state, a, BSU.rng.sim, false), null); return; }   // habitat pass: off the plaza (it is not walkable ground) to another idle place, maybe back here
       if (BSU.rng.sim.chance(0.5)) setGoal(state, a, 'idle', agentTile(a), null);
       else setGoal(state, a, 'idle', idleSpot(state, a, BSU.rng.sim, false), null);
       return;
@@ -14910,11 +15285,20 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     X.cellHead.fill(0);
     X.occGen = (X.occGen + 1) >>> 0; if (X.occGen === 0) { X.occ.fill(0); X.occGen = 1; }
     const inv = 1 / PM.spotPitch;
+    for (const h of X.hv.values()) { h.n = 0; h.total = 0; }
+    X.hdoor.clear();
+    if (X.homes) for (let q = 0; q < X.homes.idle.length; q++) { const ib = X.homes.idle[q]; if (ib.type === 'tiger_habitat') X.hdoor.set(habDoor(state, ib), ib.id); }
     for (let k = 0; k < A.length; k++) {
       const a = A[k];
       if (!a || a.state === 'GONE' || a.aboard || a.inside) continue;
       const t = agentTile(a);
       X.cellNext[k] = X.cellHead[t]; X.cellHead[t] = k + 1;
+      const hid = a.view >= 0 ? a.view : ((a.goal === 'idle' && a.state === 'WALK' && a.target >= 0) ? X.hdoor.get(a.target) : undefined);   // viewing, or on the way
+      if (hid !== undefined) {
+        let h = X.hv.get(hid); if (!h) { h = { n: 0, x: new Float32Array(16), y: new Float32Array(16), total: 0 }; X.hv.set(hid, h); }
+        h.total++;
+        if (a.view >= 0 && !a.approach && a.state === 'IDLE' && h.n < 16) { h.x[h.n] = a.tx; h.y[h.n] = a.ty; h.n++; }
+      }
       if (a.approach && a.spotX >= 0) X.occ[Math.floor(a.spotY * inv) * X.occW + Math.floor(a.spotX * inv)] = X.occGen;
       else if (a.state === 'IDLE' || a.state === 'SIT' || a.state === 'CHEER') X.occ[Math.floor(a.ty * inv) * X.occW + Math.floor(a.tx * inv)] = X.occGen;
     }
@@ -14973,7 +15357,8 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
   function settle(state, a, ctx, canSit) {
     if (a.inside) return;
     const i = agentTile(a);
-    a.approach = false; a.spotX = -1; a.spotY = -1;
+    a.approach = false; a.spotX = -1; a.spotY = -1; a.view = -1;
+    if (a.goal === 'idle' && a.target === i && claimHabitatSpot(state, a, i)) { a.sitPlan = false; return; }   // habitat pass: a place at the glass
     if (claimSpot(state, a, i)) a.approach = Math.abs(a.spotX - a.tx) + Math.abs(a.spotY - a.ty) > 0.02;
     a.sitPlan = false;
     if (canSit && a.state === 'IDLE' && !(ctx && (ctx.rain || ctx.advisory)) && state.tiles.surface[i] === BSU.SURF.NONE && depthAt(state, i) < 0.05 && BSU.rng.sim.chance(PM.sitShare)) a.sitPlan = true;
@@ -15106,7 +15491,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
   function enterTile(state, a, i) {
     a.lastTile = i;
     // desire lines: bare grass only
-    if (state.tiles.surface[i] === BSU.SURF.NONE) {
+    if (state.tiles.surface[i] === BSU.SURF.NONE && state.tiles.owner[i] < 0) {
       const t = state.tiles.type[i];
       if (t === T.DRY || t === T.HIGH || t === T.WET) {
         const w = state.tiles.wear[i];
@@ -15231,7 +15616,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     else if (a.state === 'SIT' && !moving) a.anim = 'sit';
     else if (a.state === 'WADE' || (moving && inWater)) a.anim = 'splash';
     else if (moving) a.anim = a.prop === 'umbrella' ? 'umbrella' : (a.prop === 'foam' ? 'foam' : (a.prop === 'beads' ? 'beads' : (a.prop === 'tube' ? 'tube' : 'walk')));
-    else a.anim = 'idle';
+    else a.anim = (a.view >= 0 && !a.approach && a.state === 'IDLE') ? habitatPose(state, a, ctx) : 'idle';
     a.frame = moving ? (a.frame + 1) & 1023 : (ctx.tick >> 3) & 1023;
   }
   function samplePresent(state, a, ctx) {
@@ -15841,7 +16226,11 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     cacheSize: function () { return X.routeCache.size; },
     cacheHas: function (from, to, grid) { return X.routeCache.has(routeKey(from, to, grid || 'walk')); },
     queueSize: function () { return X.queue.length; },
-    counters: function () { return { assigned: X.assigned, reached: X.reached }; }
+    counters: function () { return { assigned: X.assigned, reached: X.reached }; },
+    // habitat pass (tests): the share of idle strolls a habitat draws, n idle picks, and a habitat's front / door / standing cells ([x, y, row, …])
+    habShare: function () { return habShare(); },
+    idleTargets: function (state, n) { const out = [], a = state.agents[0]; for (let k = 0; k < n; k++) out.push(idleSpot(state, a, BSU.rng.sim, false)); return out; },
+    habitat: function (state, id) { const b = getBuilding(state, id); if (!b) return null; const fl = habFrontLeft(state, b); return { fl: fl, door: habDoor(state, b), spots: habSpots(state, b, fl), max: HB_MAX, spotX: HB_SPOT_X.slice(), spotY: HB_SPOT_Y.slice(), outX: HB_OUT_X }; }
   };
 
   // ---------------------------------------------------------------------------
@@ -15964,6 +16353,12 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
         A(M._debug.cacheHas(from, to, 'walk'), 'kept for a tile outside its bbox');
         M.invalidateRoutes(s, BSU.idx(6, 2));
         A(!M._debug.cacheHas(from, to, 'walk'), 'dropped for a tile inside its bbox');
+      }
+      // 6b. habitat pass: the viewing layout mirrors sprites.HABITAT (when the sprite modules are loaded) and fits the 0.5-tile grid and the cap
+      {
+        const H = BSU.sprites && BSU.sprites.HABITAT, same = function (a, b) { return Array.isArray(b) && a.length === b.length && a.every(function (v, i) { return v === b[i]; }); };
+        A(HB_MAX === 12 && HB_SPOT_X.length * HB_SPOT_Y.length + HB_SPOT_Y.length >= HB_MAX && HB_SPOT_X.every(function (v) { return v > 2 && v < 3 && (v * 2) % 1 === 0.5; }) && HB_SPOT_Y.every(function (v) { return (v * 2) % 1 === 0.5; }), 'habitat cells sit on the centres of the 0.5-tile grid, on the plaza (depth 2–3)');
+        if (H) A(same(HB_SPOT_X, Array.from(H.SPOT_X)) && same(HB_SPOT_Y, Array.from(H.SPOT_Y)), 'agents.js habitat cells equal sprites.HABITAT.SPOT_X / SPOT_Y');
       }
       // 7. sampling means
       {
@@ -20781,7 +21176,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
   // ---------------------------------------------------------------------------
   const EXTRA_TOP = {
     quad: 48, bell_tower: 22, water_tower: 40, stadium: 44, practice_field: 20, bat_house: 20, substation: 14, engineering: 12,
-    coastal_institute: 10, rookery: 40, tiger_habitat: 16, surge_barrier: 20, greek_house: 6, wildlife_post: 6, marsh_restoration: 4,
+    coastal_institute: 10, rookery: 40, tiger_habitat: 30, surge_barrier: 20, greek_house: 6, wildlife_post: 6, marsh_restoration: 4,
     library: 8, union: 10, dining_hall: 6, poboy: 4, generator: 6, pond: 8, wastewater: 8, res_tower: 12, founders_hall: 10, west_hall: 10
   };
   /** the special painter key of a row: paint.special, else the row id when a special exists for it */
@@ -20861,7 +21256,8 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     swamp: { base: XB.lawn, alt: XB.lawnStripe, hi: XB.lawnStripe, pattern: 'lawn', hedge: true },
     site: { base: XB.siteDirt, alt: '#6E5236', hi: '#A08560', pattern: 'gravel' }
   });
-  const OWN_GROUND = { stadium: 1, practice_field: 1, quad: 1, pond: 1, parking: 1, rookery: 1 };
+  const OWN_GROUND = { stadium: 1, practice_field: 1, quad: 1, pond: 1, parking: 1, rookery: 1, tiger_habitat: 1 };
+  const OWN_STATES = { tiger_habitat: 1 };   // habitat pass: specials that dress DAMAGED / BOARDED / FLOODED themselves (the generic window / roof / wall passes would draw nothing sensible)
   M.APRON = APRON;
   function apronOf(row) { return APRON[(row && row.tab) || ''] || APRON.life; }
   /** the footprint quad's corners in canvas px (ground level): T back, R right, B bottom (= anchor tile's bottom), L left */
@@ -22035,7 +22431,348 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
   // The ~12 structural specials that are not a plain box (everything else falls back to
   // drawStandardBox automatically through specialOf()). Signature: (ctx, P, g, row, variant, frame).
   // ---------------------------------------------------------------------------
+  // ---------------------------------------------------------------------------
+  // Tiger Habitat (habitat pass) — a small zoo exhibit on the 3×3 footprint instead of a grey slab.
+  // LOCAL coordinates: X = depth (0 = the back rock … 3 = the front edge), Y = along the front (0 … 3). The front is the SE edge
+  // (world X = fw); under SPR.FRONT_L the painter is transposed (local X → world Y), so one layout serves both entrances and
+  // `pt` / `inv` are the only places that know. Layout (tiles): the visitor plaza is the front row X ∈ [2, 3] (brick, two benches, two
+  // lamps, the viewing spots); the viewing wall stands at X ≈ 2 (stone, purple iron railing, a glass panel at Y ∈ [0.8, 2.2]); behind
+  // it the enclosure floor lies 3 px below the plaza: grass, a pool with a waterfall off the back rock, a den with a stone arch and the
+  // ROUX sign, boulders, a climbing log, a shade oak and palmettos; the keeper's gate is in the near side wall (Y = 3). The layout is
+  // shared with render (Roux's route) and agents (the viewing spots) through M.HABITAT / M.habitatWorld: one source of truth.
+  // `layer` 1 = only what stands in FRONT of Roux (the near side wall, the viewing wall with its railing and the glass, the gate
+  // piers): render draws it again after the tiger (sprite id `habfront`) so he walks behind the glass.
+  // ---------------------------------------------------------------------------
+  const HAB = Object.freeze({
+    FLOOR_Z: -3, WALL_Z: 6, FX0: 0.14, FX1: 1.92, FY0: 0.14, FY1: 2.86, WALL_X: 2.08, GLASS: Object.freeze([0.8, 2.2]),
+    POOL: Object.freeze([[0.4, 1.0, 0.28], [0.76, 1.4, 0.42], [0.98, 1.88, 0.3]]),      // metaballs [x, y, r] (tiles)
+    TREE: Object.freeze([0.5, 0.5]), NAP: Object.freeze([1.06, 0.72]), SWIM: Object.freeze([[0.78, 1.12], [0.98, 2.04]]),
+    ROUX: Object.freeze({ x0: 0.5, x1: 1.6, y0: 0.45, y1: 2.55 }),                       // where he may walk (the glass stop is x = 1.55)
+    SPOT_X: Object.freeze([2.25, 2.75]), SPOT_Y: Object.freeze([0.75, 1.25, 1.75, 2.25])  // the plaza's standing cells (the 0.5-tile occupancy grid)
+  });
+  M.HABITAT = HAB;
+  /** local (X, Y) → world tile coordinates (tile units, tile corner = integer) of a habitat whose origin tile is (tx, ty) */
+  M.habitatWorld = function (tx, ty, frontLeft, X, Y) { return frontLeft ? [tx + Y, ty + X] : [tx + X, ty + Y]; };
+  /** the pool's metaball field at local (X, Y): > 0 inside the water */
+  function habPool(lx, ly) { let f = -9; for (let i = 0; i < HAB.POOL.length; i++) { const c = HAB.POOL[i], dx = lx - c[0], dy = ly - c[1], v = 1 - (dx * dx + dy * dy) / (c[2] * c[2]); if (v > f) f = v; } return f; }
+  M.habitatPool = habPool;
+  let habBoxMemo = null;
+  /** a point of the exhibit (local X, Y at height z px) as a 1× pixel offset from the building sprite's anchor — for the lights pass (render_fx lights the plaza lamps with it) */
+  M.habitatPoint = function (frontLeft, X, Y, z) {
+    const g = habBoxMemo || (habBoxMemo = M.buildingBox(BSU.data.catalog.tiger_habitat, 0, 1, 0)), p = frontLeft ? fpPt(g, Y, X, z) : fpPt(g, X, Y, z);
+    return [p[0] - g.ax, p[1] - g.ay];
+  };
+  let hbX = 0, hbY = 0;
+  const toneAt = M.toneAt;
+
+  function habitatPaint(ctx, P, g, row, variant, frame, layer) {
+    const T = !!g.frontLeft, night = !!(variant & SPR.NIGHT), flood = !!(variant & FLOODED_BIT), dmg = !!(variant & SPR.DAMAGED), board = !!(variant & SPR.BOARDED);
+    const seed = g.seed | 0, FZ = HAB.FLOOR_Z, WZ = HAB.WALL_Z, front = layer === 1, fr = (frame | 0) & 3;
+    const site = layer === 2 ? (((frame | 0) % 3) + 3) % 3 : -1;           // construction stage 0..2 (layer 2: over the graded-dirt site that drawGrounds painted), else -1
+    const litX = T, litY = !T;                                              // which local face (+X, +Y) is the SW (lit) one
+    const pt = (lx, ly, z) => (T ? fpPt(g, ly, lx, z) : fpPt(g, lx, ly, z));
+    const inv = (px, py, z) => {                                            // screen pixel on the plane z → local (X, Y) in hbX, hbY
+      const d = (px - g.ax) / 32 - (g.fh - g.fw), s = (py - g.ay - 16 + z + g.lift) / 16 + g.fw + g.fh, wx = (s + d) / 2, wy = (s - d) / 2;
+      if (T) { hbX = wy; hbY = wx; } else { hbX = wx; hbY = wy; }
+    };
+    const region = (x0, y0, x1, y1, z, fn) => {                             // every pixel of the local rect on the plane z → fn(px, py, lx, ly)
+      let a0 = 1e9, a1 = -1e9, b0 = 1e9, b1 = -1e9;
+      for (const c of [pt(x0, y0, z), pt(x1, y0, z), pt(x1, y1, z), pt(x0, y1, z)]) { if (c[0] < a0) a0 = c[0]; if (c[0] > a1) a1 = c[0]; if (c[1] < b0) b0 = c[1]; if (c[1] > b1) b1 = c[1]; }
+      for (let py = b0; py <= b1; py++) for (let px = a0; px <= a1; px++) { inv(px, py, z); if (hbX >= x0 && hbX < x1 && hbY >= y0 && hbY < y1) fn(px, py, hbX, hbY); }
+    };
+    const face = (axis, c, a0, a1, za, zb, fn) => {                         // a vertical face on the line (X = c | Y = c), a0 → a1 along the other axis, from za up to zb
+      const pa = axis === 'X' ? pt(c, a0, 0) : pt(a0, c, 0), pb = axis === 'X' ? pt(c, a1, 0) : pt(a1, c, 0), dx = pb[0] - pa[0]; if (!dx) return;
+      const lo = Math.min(pa[0], pb[0]), hi = Math.max(pa[0], pb[0]);
+      for (let x = lo; x < hi; x++) {
+        const s = (x - pa[0]) / dx, yb = Math.round(pa[1] + (pb[1] - pa[1]) * s), top = typeof zb === 'function' ? zb(s, x) : zb;
+        for (let z = za; z < top; z++) { const col = fn(x, yb - z - 1, s, z, z === top - 1); if (col) P.px(x, yb - z - 1, col); }
+      }
+    };
+    const poly = (pts, color) => fillPoly(P, pts.map((p) => pt(p[0], p[1], p[2] || 0)), color);
+    const seg = (a, b, color) => { const p = pt(a[0], a[1], a[2] || 0), q = pt(b[0], b[1], b[2] || 0); P.line(p[0], p[1], q[0], q[1], color); };
+    const box = (x0, y0, x1, y1, z0, z1, top, cx, cy) => {                  // cx: colour of the +X face, cy: of the +Y face
+      poly([[x1, y0, z0], [x1, y1, z0], [x1, y1, z1], [x1, y0, z1]], cx); poly([[x0, y1, z0], [x1, y1, z0], [x1, y1, z1], [x0, y1, z1]], cy); poly([[x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1]], top);
+    };
+    const clampT = (t) => (t < 0 ? 0 : t > 4 ? 4 : t);
+    const GRS = M.ramp('grass'), GHI = M.ramp('highGrass'), DIRT = M.ramp('dirt'), SAND = M.ramp('sand'), WS = M.ramp('waterShallow'), WD = M.ramp('waterDeep'), BARK = M.ramp('bark'), MOSS = M.ramp('moss'),
+      OAK = M.ramp('oakLeaf'), STONE = rampOf('#9C978E'), ROCK = rampOf('#8A7D70'), LIME = MAT.trim, IRON = MAT.iron, GLASS = MAT.glass, BRICK = rampOf(XB.brick), WOOD = MAT.wood, PU = MAT.purple, GO = MAT.gold;
+    const FOAM = '#F1FBF6';
+    const stoneAt = (lit, sd) => (px, py, s, z, top) => {
+      const course = Math.floor((z + 9) / 3), ex = (px + ((course * 5 + sd) % 7)) % 7, n = noiseAt(px, py, seed + sd);
+      let t = lit ? 2 : 1; if (n > 0.66) t++; else if (n < 0.2) t--;
+      if (((z + 9) % 3) === 0) t--; else if (ex === 0) t--;
+      if (top) t = lit ? 4 : 3;
+      return STONE[clampT(t)];
+    };
+
+    // ---- 1. the plaza: brick paving, limestone curbs, the viewing wall's cast shadow ----------------------------------------
+    if (!front) {
+      region(HAB.WALL_X - 0.14, 0, 3.0, 3.0, 0, (px, py, lx, ly) => {
+        const gx = Math.floor(lx * 32), gy = Math.floor(ly * 32), course = gx >> 2, off = (course & 1) * 4;
+        let col;
+        if ((gx & 3) === 3 || ((gy + off) & 7) === 7) col = mix(BRICK[3], SAND[2], 0.5);                        // mortar
+        else { const hb = hash(seed + 3, course * 53 + ((gy + off) >> 3)) % 5; col = BRICK[hb === 0 ? 3 : hb === 1 ? 1 : 2]; }
+        if (lx > 2.9 || ly < 0.07 || ly > 2.93) col = ((gx + gy) & 1) ? LIME[3] : LIME[2];                    // the limestone curb on the outer edges
+        else if (lx < 2.36) { const k = (2.36 - lx) / 0.36; if (hash(seed, px * 7 + py) % 100 < k * 72) col = shade(col, 0.72); }
+        if (site >= 0) { if (site === 0) return; if (site === 1 || ly < 1.5) col = SAND[toneAt(0.35 + noiseAt(px, py, seed + 4) * 0.35, px, py, [0.2, 0.4, 0.62, 0.84], 0.12)]; }   // construction: a compacted sand bed, bricks laid from the far end
+        if (night) for (let q = 0; q < 2; q++) { const d = Math.hypot(lx - 2.9, ly - (q ? 2.8 : 0.2)); if (d < 0.85) { const k = 1 - d / 0.85; col = mix(col, PAL.windowGlow, Math.min(0.85, k * k * 0.95 + 0.12 * k)); } }   // the lamps' pools of light, clipped to the paving
+        P.px(px, py, col);
+      });
+    }
+
+    // ---- 2. the enclosure floor: grass, worn dirt, shore sand, the pool ---------------------------------------------------
+    const tufts = [];
+    if (!front) region(0, 0, HAB.WALL_X, 3.0, FZ, (px, py, lx, ly) => {
+      if (lx < HAB.FX0 || ly < HAB.FY0 || ly > HAB.FY1 + 0.14 || lx > HAB.FX1 + 0.16) return;
+      const f = habPool(lx, ly), n = noiseAt(px, py, seed + 11);
+      let col;
+      if (site === 0) return;
+      if (site >= 1) { col = DIRT[toneAt(0.18 + n * 0.4, px, py, [0.2, 0.4, 0.6, 0.85], 0.12)]; if (f > 0) col = site === 1 ? '#2E4C66' : mix(WS[1], WD[2], 0.45); else if (lx < HAB.FX0 + 0.3 || ly < HAB.FY0 + 0.15) col = shade(col, 0.8); P.px(px, py, col); return; }   // the dug pit; the pool lined, then filling
+      if (f > 0) {                                                                                           // the pool: shallow → deep, edge sheen, tree reflection, glints
+        const t = toneAt(1 - Math.min(1, f * 1.7), px, py, [0.2, 0.45, 0.7, 0.88], 0.14);                  // 0 = deep … 4 = rim
+        col = [WD[2], mix(WD[2], WS[1], 0.4), mix(WS[1], WD[2], 0.3), WS[1], WS[2]][4 - t];
+        if (f < 0.07) col = ((px + py) & 1) ? WS[3] : WS[2];
+        if (ly < 1.3 && lx < 1.1 && n > 0.5 && f > 0.12) col = mix(col, OAK[1], 0.6);                        // the oak's reflection
+        if (hash(seed + fr, py * 9 + (px >> 2)) % (night ? 9 : 15) === 0 && f > 0.15) col = night ? '#DDE8FF' : WS[3];     // glints
+      } else if (f > -0.15) col = SAND[toneAt(0.5 + (n - 0.5) * 0.5, px, py, [0.2, 0.4, 0.62, 0.84], 0.12)];  // the shore
+      else {
+        let t = toneAt(n, px, py, M.TH_GROUND, 0.1);
+        const dx = lx - HAB.FX0, dy = ly - HAB.FY0;
+        if (dx < 0.34 && hash(seed + 1, px * 5 + py) % 100 < (0.34 - dx) / 0.34 * 80) t -= 1;               // the back rock's cast shadow (+X)
+        if (dy < 0.16) t -= 1;
+        const worn = (Math.abs(lx - 1.42) < 0.16 && ly > 0.5 && ly < 2.6) || (lx < 0.6 && ly > 2.0 && ly < 2.78);
+        const nap = (lx - HAB.NAP[0]) * (lx - HAB.NAP[0]) + (ly - HAB.NAP[1]) * (ly - HAB.NAP[1]) < 0.09;
+        if (worn && n > 0.34) col = DIRT[toneAt(n * 0.8 + 0.1, px, py, [0.2, 0.4, 0.6, 0.85], 0.12)];
+        else { col = (nap ? GHI : GRS)[clampT(t)]; if (t >= 3 && hash(seed + 2, px * 11 + py * 3) % 19 === 0) tufts.push(px, py); }
+      }
+      P.px(px, py, col);
+    });
+    for (let i = 0; i < tufts.length; i += 2) { const x = tufts[i], y = tufts[i + 1], fl = hash(seed + 3, x * 5 + y) % 9; P.px(x, y, GHI[3]); P.px(x - 1, y - 1, GRS[3]); P.px(x + 1, y - 1, GHI[4]); if (fl === 0) P.px(x, y - 1, PAL.azalea); else if (fl === 1) P.px(x, y - 1, '#FFF6C8'); }
+
+    // ---- 3. the back rock (waterfall, den, sign) and the far side wall -----------------------------------------------------
+    const RX = HAB.FX0, rockTop = (s, x) => 16 + (hash(seed + 5, x >> 2) % 4) + ((s > 0.62 && s < 0.9) ? 2 : 0);
+    if (!front && (site < 0 || site === 2)) {
+      face('X', RX, 0, 3.0, FZ, rockTop, (px, py, s, z, top) => {
+        const rw = Math.floor((z + 20) / 6), off = hash(seed, rw) & 7, cl = Math.floor((px + off) / 9), hb = hash(seed + 7, rw * 37 + cl);
+        let t = litX ? 2 : 1; t += (hb % 5 === 0) ? 1 : ((hb % 7 === 0) ? -1 : 0);
+        const ey = (z + 20) % 6, ex = (px + off) % 9; if (ey === 0 || ex === 0) t -= 1; else if (ey === 5 && ex < 5) t += 1;
+        if (top) t = 4;
+        return (z > 8 && noiseAt(px, py, seed + 9) > 0.64) ? MOSS[clampT(t - 1)] : ROCK[clampT(t)];          // moss and lichen high up
+      });
+      { const ra = pt(RX, 0, 0), rb = pt(RX, 3.0, 0);                                                         // grass and ferns on the crest
+        for (let x = Math.min(ra[0], rb[0]); x < Math.max(ra[0], rb[0]); x++) {
+          if (hash(seed + 22, x) % 3 !== 0) continue; const s = (x - ra[0]) / (rb[0] - ra[0]), yb = Math.round(ra[1] + (rb[1] - ra[1]) * s), top = rockTop(s, x);
+          P.px(x, yb - top, GHI[3]); P.px(x, yb - top - 1, (hash(seed + 23, x) & 1) ? GRS[2] : GHI[4]);
+        } }
+      face('Y', HAB.FY0, HAB.FX0, HAB.FX1 + 0.1, FZ, WZ, (px, py, s, z, top) => {                             // the far side wall: stone, moss, a coping
+        let col = stoneAt(litY, 3)(px, py, s, z, top);
+        if (!top && z < FZ + 5 && noiseAt(px, py, seed + 14) > 0.55) col = MOSS[litY ? 2 : 1];
+        if (!top && hash(seed + 15, px) % 7 === 0 && z > 0) col = GRS[litY ? 2 : 1];                          // vine strands
+        return col;
+      });
+      poly([[HAB.FX0, 0.06, WZ], [HAB.WALL_X, 0.06, WZ], [HAB.WALL_X, HAB.FY0, WZ], [HAB.FX0, HAB.FY0, WZ]], STONE[4]);
+      seg([HAB.FX0, 0.06, WZ], [HAB.WALL_X, 0.06, WZ], LIME[4]);
+      // the waterfall: a spout in the rock, streaks down into the pool, foam at its foot
+      if (site < 0) {
+      const wy0 = 0.86, wy1 = 1.14, spoutZ = 13;
+      face('X', RX + 0.01, wy0, wy1, FZ, spoutZ, (px, py, s, z, top) => {
+        const k = hash(seed + 31, px * 3 + (z >> 2)) % 7;
+        let col = k < 2 ? FOAM : (k < 4 ? WS[4] : (k < 6 ? WS[3] : WS[2]));
+        if (s < 0.1 || s > 0.9) col = WS[1];
+        if (z < FZ + 3) col = (hash(seed + 32, px + py * 3) % 3 === 0) ? FOAM : WS[3];
+        return col;
+      });
+      { const sp = pt(RX + 0.01, (wy0 + wy1) / 2, spoutZ); P.hline(sp[0] - 5, sp[1] - 1, 10, ROCK[3]); P.hline(sp[0] - 4, sp[1] - 2, 8, ROCK[4]);
+        const fp = pt(RX + 0.18, (wy0 + wy1) / 2, FZ); for (let i = 0; i < 10; i++) P.px(fp[0] - 6 + (hash(seed + 33, i) % 13), fp[1] + (hash(seed + 34, i) % 3) - 1, i & 1 ? FOAM : WS[4]); }
+      }
+      // the den: a limestone arch in the rock, a dark room, a sill
+      const dy0 = 2.17, dy1 = 2.63, archTop = (s) => 9 + Math.round(Math.sqrt(Math.max(0, 1 - (2 * s - 1) * (2 * s - 1))) * 4);
+      face('X', RX + 0.01, dy0 - 0.07, dy1 + 0.07, FZ, (s) => archTop(s) + 3, (px, py, s, z, top) => LIME[top ? 4 : (litX ? 3 : 2)]);
+      face('X', RX + 0.012, dy0, dy1, FZ, archTop, (px, py, s, z, top) => {
+        const u = Math.max(0, 1 - z / 9);
+        if (z < FZ + 1) return LIME[2];
+        return night ? mix('#2A1A22', '#FFB45A', 0.12 + 0.34 * u) : mix('#1B1424', '#3A2A30', u * 0.6);
+      });
+      // the sign: a purple board with a gold border and gold letters, sheared along the face, mounted above the arch
+      if (site < 0) { const ys = 2.08, ye = 2.72, zs = 17, zt = 25, A = pt(RX + 0.015, ys, zt), B = pt(RX + 0.015, ye, zt), C = pt(RX + 0.015, ye, zs), D = pt(RX + 0.015, ys, zs);
+        const lft = Math.min(A[0], B[0]), rgt = Math.max(A[0], B[0]);
+        fillPoly(P, [A, B, C, D], PAL.gold2);
+        fillPoly(P, [[A[0] + (A[0] < B[0] ? 1 : -1), A[1] + 1], [B[0] + (B[0] < A[0] ? 1 : -1), B[1] + 1], [C[0] + (C[0] < D[0] ? 1 : -1), C[1] - 1], [D[0] + (D[0] < C[0] ? 1 : -1), D[1] - 1]], PAL.purple);
+        for (let i = 0; i < 4; i++) { const ch = 'ROUX'[i], gx = lft + 3 + i * 4, gt = Math.round((A[0] < B[0] ? A[1] + (gx - A[0]) * (B[1] - A[1]) / (B[0] - A[0]) : B[1] + (gx - B[0]) * (A[1] - B[1]) / (A[0] - B[0])) + 2); P.glyph(ch, gx, gt, night ? PAL.goldHi : PAL.gold); }
+        void rgt; }
+    }
+
+    // ---- 4. the floor decor, back to front ---------------------------------------------------------------------------------
+    const dropShadow = (cx, cy, rx, ry) => P.ellipse(cx + 2, cy, rx + 1, Math.max(1, ry), shade(GRS[1], 0.78));
+    const boulder = (lx, ly, rx, ry, sd, mossy) => {
+      const c = pt(lx, ly, FZ), cx = c[0], cy = c[1] - ry + 1;
+      dropShadow(cx, c[1], rx, Math.max(1, ry >> 1));
+      for (let dy = -ry; dy <= ry; dy++) {
+        const half = Math.round(Math.sqrt(1 - (dy * dy) / (ry * ry + 0.01)) * rx) + (hash(seed + sd, dy + 40) % 2);
+        for (let dx = -half; dx < half; dx++) {
+          const lit = (-dx / rx) * 0.55 + (-dy / ry) * 0.7, n = noiseAt(cx + dx, cy + dy, seed + sd), v = 0.5 + lit * 0.4 + (n - 0.5) * 0.4;
+          let t = toneAt(v, cx + dx, cy + dy, [0.18, 0.4, 0.62, 0.82], 0.12);
+          if (dy === ry || dx === half - 1 || (dy === ry - 1 && dx > 0)) t = 0;
+          let col = ROCK[t]; if (mossy && dy < -ry * 0.25 && n > 0.58 && t > 0) col = MOSS[clampT(t - 1)];
+          P.px(cx + dx, cy + dy, col);
+        }
+      }
+    };
+    const sprite = (id, v, lx, ly, dy) => { const p = pt(lx, ly, FZ); blitSprite(ctx, g.zoom, M.get(id, v, 0, g.zoom), p[0], p[1] + (dy || 0)); };
+    const logPiece = (a, b, z0, z1) => {                                    // a trunk lying from local a to b, lifted z0 → z1 px (a rock under its high end)
+      const pa = pt(a[0], a[1], FZ + z0), pb = pt(b[0], b[1], FZ + z1), dx = pb[0] - pa[0]; if (!dx) return;
+      const lo = Math.min(pa[0], pb[0]), hi = Math.max(pa[0], pb[0]);
+      for (let x = lo; x <= hi; x++) {
+        const s = (x - pa[0]) / dx, yc = Math.round(pa[1] + (pb[1] - pa[1]) * s) - 3;
+        for (let k = 0; k < 5; k++) P.px(x, yc + k, BARK[[3, 3, 2, 1, 0][k]]);
+        if (hash(seed + 41, x) % 4 === 0) P.px(x, yc + 1, BARK[4]);
+      }
+      const ea = pa, eb = pb; for (const e of [ea, eb]) { P.ellipse(e[0], e[1] - 1, 2, 3, '#B58B5A'); P.px(e[0], e[1] - 1, '#8A6540'); }
+      const m = pt((a[0] + b[0]) / 2 + 0.03, (a[1] + b[1]) / 2, FZ + (z0 + z1) / 2); P.line(m[0], m[1] - 3, m[0] + 3, m[1] - 8, BARK[2]); P.line(m[0] + 1, m[1] - 3, m[0] + 4, m[1] - 8, BARK[1]); P.px(m[0] + 3, m[1] - 9, OAK[3]); P.px(m[0] + 4, m[1] - 9, OAK[2]);
+    };
+    // trunk of the shade oak (the canopy is drawn after everything on the floor)
+    const tp = pt(HAB.TREE[0], HAB.TREE[1], FZ);
+    if (!front && site < 0) {
+    dropShadow(tp[0] + 4, tp[1], 12, 3); M.trunk(P, tp[0] - 2, tp[1] - 17, 5, 17, 2, 5);
+    boulder(0.3, 0.8, 5, 3, 51, true);
+    sprite('shrub', 1, 0.34, 0.62, 2);
+    boulder(1.02, 0.95, 7, 4, 52, true);
+    boulder(0.3, 1.52, 6, 4, 53, true);
+    boulder(0.62, 2.02, 5, 3, 54, false);
+    sprite('palmetto', M.treeVariant(1, false, false, 1), 0.34, 1.78, 2);
+    logPiece([1.46, 1.58], [1.46, 2.42], 0, 4); boulder(1.46, 2.5, 4, 3, 55, false);
+    boulder(1.18, 2.32, 3, 2, 56, false);
+    sprite('azalea', M.treeVariant(2, false, true, 1), 0.52, 2.62, 2);
+    sprite('azalea', M.treeVariant(2, false, true, 2), 1.55, 0.5, 2);
+    sprite('palmetto', M.treeVariant(1, false, false, 1), 1.74, 0.36, 2);
+    sprite('shrub', 2, 1.42, 0.2, 2);
+    }
+
+    // ---- 5. flood water over the enclosure (drawn before the canopy so the oak still stands above it) --------------------------------
+    if (flood && !front && site < 0) {                                                                     // the pool has spilled: floodwater over the whole floor, the old pool a deeper swirl in it
+      const FW = rampOf('#7C9A92');
+      region(HAB.FX0, HAB.FY0, HAB.FX1, HAB.FY1, FZ + 5, (px, py, lx, ly) => {
+        const n = noiseAt(px, py, seed + 61), f = habPool(lx, ly);
+        let t = toneAt(0.3 + n * 0.45, px, py, [0.15, 0.4, 0.62, 0.8], 0.1);
+        if (hash(seed + 65, (py >> 1) * 7 + (px >> 3)) % 11 === 0 && (py & 1)) t = 4;                       // ripple streaks
+        let col = FW[clampT(t)];
+        if (f > 0.05) col = mix(col, WD[2], Math.min(0.55, f * 0.9));                                       // the pool is still the deep part
+        else if (f > -0.1 && hash(seed + 63, px * 3 + py) % 3 === 0) col = FOAM;                            // foam where it brimmed over
+        P.px(px, py, col);
+      });
+      for (let i = 0; i < 12; i++) { const p = pt(0.3 + (hash(seed + 66, i) % 150) / 100, 0.3 + (hash(seed + 67, i) % 250) / 100, FZ + 5); P.px(p[0], p[1], i & 1 ? OAK[3] : BARK[2]); P.px(p[0] + 1, p[1], OAK[1]); }   // leaves and twigs adrift
+      for (let i = 0; i < 6; i++) { const p = pt(0.5 + (hash(seed + 68, i) % 120) / 100, 0.5 + (hash(seed + 69, i) % 220) / 100, FZ + 5); P.hline(p[0] - 1, p[1], 3, FW[4]); }
+      { const fp = pt(RX + 0.18, 1.0, FZ + 5); for (let i = 0; i < 16; i++) P.px(fp[0] - 9 + (hash(seed + 70, i) % 19), fp[1] + (hash(seed + 71, i) % 5) - 2, i & 1 ? FOAM : WS[4]); }   // the falls keep pouring
+    }
+
+    // ---- 6. the oak canopy --------------------------------------------------------------------------------------------------------
+    if (!front && site < 0) {
+      const CW = 58, CH = 30, ox = tp[0] - 29, oy = tp[1] - 17 - 25, Q = offsetPen(P, ox, oy);
+      const bottoms = M.canopy(Q, [[29, 14, 24, 10], [13, 18, 13, 8], [45, 18, 13, 8], [28, 7, 15, 6]], CW, CH, OAK, seed ^ 0x77, { cell: 4 });
+      M.mossStrands(Q, bottoms, 6, seed, 3, 8, CH);
+    }
+
+    // ---- 7. what stands in front of Roux: the near side wall (+ keeper's gate), the viewing wall (+ glass), railings, piers ----------
+    const WX = HAB.WALL_X, G0 = HAB.GLASS[0], G1 = HAB.GLASS[1], FW2 = rampOf('#7C9A92');
+    const limeBox = (x0, y0, x1, y1, z1) => box(x0, y0, x1, y1, 0, z1, LIME[4], STONE[litX ? 3 : 1], STONE[litY ? 3 : 1]);
+    const rail = (axis, c, a0, a1, skip) => {                               // purple iron posts every 0.25 tile with gold finials and two rails; damage removes posts and rail runs
+      const n = Math.max(1, Math.round((a1 - a0) / 0.25)); let prev = null;
+      for (let k = 0; k <= n; k++) {
+        const a = a0 + (a1 - a0) * k / n; if (skip && skip(a)) { prev = null; continue; }
+        const q = axis === 'Y' ? [c, a] : [a, c], gone = dmg && (hash(seed + 71, k + (axis === 'Y' ? 0 : 40)) % 5 === 0), p = pt(q[0], q[1], WZ);
+        if (!gone) { P.vline(p[0], p[1] - 6, 7, PU[2]); P.px(p[0], p[1] - 7, (k & 1) ? GO[3] : PU[4]); if (night && (k & 3) === 0) { P.px(p[0], p[1] - 8, '#FFE0A0'); P.px(p[0] - 1, p[1] - 8, '#B58B3A'); P.px(p[0] + 1, p[1] - 8, '#B58B3A'); } }
+        if (prev && !gone && !(dmg && hash(seed + 72, k) % 6 === 0)) { seg([prev[0], prev[1], WZ + 6], [q[0], q[1], WZ + 6], PU[3]); seg([prev[0], prev[1], WZ + 3], [q[0], q[1], WZ + 3], PU[1]); }
+        prev = gone ? null : q;
+      }
+    };
+    const built = site < 0, walls = site < 0 || site === 2;                 // construction stage 2 has the walls up but no railing, glass or gate yet
+    // the near side wall (Y = 3, its outer face is the SW one in SE-front) with the keeper's gate
+    if (walls) { face('Y', 3.0, 0, WX, 0, WZ, stoneAt(litY, 1));
+      poly([[0, 2.9, WZ], [WX, 2.9, WZ], [WX, 3.0, WZ], [0, 3.0, WZ]], STONE[4]); seg([0, 3.0, WZ], [WX, 3.0, WZ], LIME[4]); }
+    if (built) {
+      rail('X', 2.93, 0.06, 1.9, (a) => a > 0.86 && a < 1.5);
+      face('Y', 3.0, 0.97, 1.4, 0, 10, (px, py, s, z) => ((z === 9 || z === 0 || z === 5 || (px & 1) === 0) ? IRON[litY ? 3 : 2] : '#1B1424'));
+      { const lk = pt(1.19, 3.0, 4); P.px(lk[0], lk[1] - 1, GO[3]); P.px(lk[0] + 1, lk[1] - 1, GO[1]); P.px(lk[0], lk[1], GO[1]); }
+      limeBox(0.91, 2.88, 0.99, 3.0, 12); limeBox(1.38, 2.88, 1.46, 3.0, 12);
+    }
+    // the viewing wall (X = 2.08 outer face; its +X face is the shadow one in SE-front), railing, glass panel
+    if (walls) { face('X', WX, 0, 3.0, 0, WZ, stoneAt(litX, 2));
+      poly([[1.98, 0, WZ], [WX, 0, WZ], [WX, 3.0, WZ], [1.98, 3.0, WZ]], STONE[4]); seg([WX, 0, WZ], [WX, 3.0, WZ], LIME[4]); }
+    if (built) rail('Y', 2.0, 0.22, 2.78, (a) => a > G0 - 0.12 && a < G1 + 0.12);
+    if (built) { const gz0 = WZ + 1, gz1 = WZ + 12, panes = [[G0, 1.5], [1.5, G1]];
+      for (let i = 0; i < 2; i++) {
+        face('X', 2.0, panes[i][0], panes[i][1], gz0, gz1, (px, py, s, z, top) => {
+          if (board) return (top || z === gz0 || ((z - gz0) % 4) === 3) ? shade(X.plywood, 0.8) : (((px + z) % 9) === 0 ? shade(X.plywood, 0.9) : X.plywood);
+          const q = (px + z + i * 5 + 40) % 15;
+          if (q < 2) return '#EAF8FF';                                                                       // long diagonal sheens, two to a pane
+          if (q === 2) return '#B9DDF0';
+          if (night && z < gz0 + 5 && ((px + z) & 1) === 0 && hash(seed, px) % 3 === 0) return '#FFD27A';  // lamp reflections
+          return (z === gz0 || top) ? GLASS[3] : ((((px >> 1) + z) & 3) === 0 ? GLASS[2] : null);
+        });
+      }
+      for (const y of [G0, 1.5, G1]) { const p = pt(2.0, y, WZ); P.vline(p[0], p[1] - 12, 13, IRON[3]); P.vline(p[0] + 1, p[1] - 12, 13, IRON[1]); P.px(p[0], p[1] - 13, GO[3]); P.px(p[0] + 1, p[1] - 13, GO[1]); }
+      seg([2.0, G0, gz1], [2.0, G1, gz1], IRON[3]); seg([2.0, G0, gz1 - 1], [2.0, G1, gz1 - 1], IRON[1]);
+      if (board) for (const y of [0.95, 1.35, 1.75, 2.1]) { const p = pt(2.0, y, WZ + 6); P.px(p[0], p[1], X.nail); }
+      if (dmg && !board) for (const [dy, dz] of [[-0.3, 4], [0.25, 5], [0.35, -2], [-0.2, -4], [0.05, 5], [-0.4, -1]]) seg([2.0, 1.2, WZ + 7], [2.0, 1.2 + dy, WZ + 7 + dz], '#EAF8FF'); }
+    if (flood) {                                                                                             // the pool has spilled: water pours over the wall's notch and runs down its face
+      const pa = pt(WX, 0.42, WZ), pb = pt(WX, 0.84, WZ), lo = Math.min(pa[0], pb[0]), hi = Math.max(pa[0], pb[0]);
+      for (let x = lo; x < hi; x++) { const s = (x - pa[0]) / (pb[0] - pa[0]), yb = Math.round(pa[1] + (pb[1] - pa[1]) * s); for (let z = 0; z < WZ + 1; z++) { const k = hash(seed + 91, x * 3 + (z >> 1)) % 6; P.px(x, yb - z - 1, k < 2 ? FOAM : (k < 4 ? WS[4] : WS[3])); } }
+      face('X', WX, 0, 3.0, 0, 3, (px, py, s, z) => (hash(seed + 92, px) % 5 < 3 ? mix(STONE[1], '#4A3B2A', 0.55) : null));   // the mud line
+    }
+    if (walls) { limeBox(1.94, 0, 2.14, 0.14, 11); limeBox(1.94, 2.86, 2.14, 3.0, 11); }
+    if (night && built) for (const [lx, ly] of [[2.0, 0.1], [2.0, 2.9]]) { const p = pt(lx, ly, 12); P.px(p[0], p[1], '#FFE0A0'); P.px(p[0] - 1, p[1], '#B58B3A'); P.px(p[0] + 1, p[1], '#B58B3A'); P.px(p[0], p[1] - 1, '#B58B3A'); }
+
+    // ---- 7b. the building site (layer 2): survey lines and stakes → footings and the lined pit → walls up in scaffolding -------------
+    if (site >= 0) {
+      const ORG = '#E07020', LINE = '#F4EFE0', ST = MAT.steel, CO = MAT.concrete;
+      if (site === 0) {
+        for (const [a, b] of [[[HAB.FX0, HAB.FY0], [HAB.FX1, HAB.FY0]], [[HAB.FX1, HAB.FY0], [HAB.FX1, HAB.FY1]], [[HAB.FX1, HAB.FY1], [HAB.FX0, HAB.FY1]], [[HAB.FX0, HAB.FY1], [HAB.FX0, HAB.FY0]], [[2.0, 0.1], [2.0, 2.9]], [[2.9, 0.1], [2.9, 2.9]]]) seg(a, b, LINE);
+        for (const [lx, ly] of [[HAB.FX0, HAB.FY0], [HAB.FX1, HAB.FY0], [HAB.FX1, HAB.FY1], [HAB.FX0, HAB.FY1], [2.0, 0.1], [2.0, 2.9], [2.9, 0.1], [2.9, 2.9], [1.0, 1.5]]) { const p = pt(lx, ly, 0); P.vline(p[0], p[1] - 5, 5, WOOD[2]); P.px(p[0], p[1] - 6, ORG); P.px(p[0] + 1, p[1] - 5, ORG); }
+        { const p = pt(2.5, 0.5, 0); P.rect(p[0] - 5, p[1] - 3, 10, 3, ROCK[2]); P.hline(p[0] - 4, p[1] - 4, 7, ROCK[3]); P.rect(p[0] + 6, p[1] - 2, 4, 2, ROCK[1]); P.rect(p[0] - 9, p[1] - 1, 4, 2, ROCK[1]); }
+      } else if (site === 1) {
+        for (const [a, b] of [[[HAB.FX0, HAB.FY0], [HAB.FX1 + 0.14, HAB.FY0]], [[HAB.FX1, HAB.FY0], [HAB.FX1, HAB.FY1]], [[HAB.FX0, HAB.FY1], [HAB.FX1 + 0.14, HAB.FY1]]]) { seg([a[0], a[1], FZ], [b[0], b[1], FZ], CO[3]); seg([a[0], a[1] + 0.03, FZ], [b[0], b[1] + 0.03, FZ], CO[1]); }
+        face('X', RX, 0, 3.0, FZ, FZ + 4, (px, py, s, z) => DIRT[(z & 1) ? 1 : 2]); face('Y', HAB.FY0, HAB.FX0, HAB.FX1, FZ, FZ + 4, (px, py, s, z) => DIRT[litY ? ((z & 1) ? 2 : 3) : 1]);   // the pit's walls
+        for (let i = 0; i < 9; i++) { const p = pt(1.94 + (i & 1) * 0.1, 0.2 + i * 0.32, FZ + 1); P.vline(p[0], p[1] - 5, 5, ST[1]); P.px(p[0], p[1] - 6, ORG); }   // rebar along the wall footing
+        { const p = pt(2.5, 2.4, 0); P.rect(p[0] - 5, p[1] - 4, 10, 4, rampOf(XB.brick)[2]); P.hline(p[0] - 5, p[1] - 4, 10, rampOf(XB.brick)[3]); P.rect(p[0] - 11, p[1] - 1, 5, 2, WOOD[2]); }   // a pallet of brick
+      } else {
+        for (const y of [0.1, 0.9, 1.7, 2.5]) { const a = pt(2.12, y, 0), t = a[1] - 15; P.vline(a[0], t, 16, ST[2]); P.vline(a[0] + 1, t, 16, ST[1]); P.hline(a[0] - 1, t - 1, 3, ST[4]); }
+        for (const z of [6, 11]) seg([2.12, 0.1, z], [2.12, 2.5, z], ST[3]);
+        for (const [a, b] of [[[2.12, 0.1, 0], [2.12, 0.9, 11]], [[2.12, 0.9, 0], [2.12, 1.7, 11]], [[2.12, 1.7, 0], [2.12, 2.5, 11]]]) seg(a, b, ST[1]);
+        for (let i = 0; i < 4; i++) { const p = pt(2.12, 0.5 + i * 0.6, 11); P.hline(p[0] - 3, p[1], 7, WOOD[3]); P.hline(p[0] - 3, p[1] + 1, 7, WOOD[1]); }   // the work deck
+        { const p = pt(2.7, 1.5, 0); P.rect(p[0] - 6, p[1] - 3, 12, 3, WOOD[2]); P.hline(p[0] - 6, p[1] - 3, 12, WOOD[3]); P.rect(p[0] - 5, p[1] - 6, 10, 3, rampOf(XB.brick)[2]); P.hline(p[0] - 5, p[1] - 6, 10, rampOf(XB.brick)[3]); }   // lumber and a pallet of brick
+      }
+    }
+
+    // ---- 8. plaza furniture: two benches facing the enclosure, two lamps; damage and flood dress the plaza too ---------------------
+    if (!front && site < 0) {
+      if (flood) {                                                                                           // the spill spreads over the paving
+        region(2.0, 0, 3.0, 3.0, 0, (px, py, lx, ly) => {
+          const d = Math.hypot((lx - 2.0) * 1.0, (ly - 0.65) * 0.62), n = noiseAt(px, py, seed + 63), f = 1.12 - d * 0.78 + (n - 0.5) * 0.5;
+          if (f < 0.3) return;
+          const t = toneAt(n, px, py, [0.15, 0.4, 0.7, 0.9], 0.12), edge = f < 0.38;
+          P.px(px, py, edge ? FW2[4] : FW2[clampT(t)]);
+          if (!edge && hash(seed + 64, px * 5 + (py >> 1)) % 53 === 0 && (py & 1)) P.hline(px, py, 2, FW2[4]);
+        });
+      }
+      const bench = (y0, y1) => {
+        for (const yy of [y0 + 0.03, y1 - 0.09]) box(2.42, yy, 2.58, yy + 0.06, 0, 3, IRON[2], IRON[1], IRON[2]);
+        box(2.4, y0, 2.6, y1, 3, 5, WOOD[3], WOOD[litX ? 2 : 1], WOOD[litY ? 2 : 1]);
+        box(2.6, y0, 2.66, y1, 5, 10, WOOD[3], WOOD[litX ? 2 : 1], WOOD[litY ? 2 : 1]);
+        for (let i = 1; i < 4; i++) { const p = pt(2.66, y0 + (y1 - y0) * i / 4, 7); P.px(p[0], p[1], WOOD[0]); }
+      };
+      bench(0.12, 0.54); bench(2.46, 2.88);
+      for (const ly of [0.2, 2.8]) { const p = pt(2.9, ly, 0); lampPost(P, p[0], p[1], night, BRICK[2]); }
+      if (dmg) {                                                                                             // a fallen limb across the plaza edge and leaf litter
+        seg([2.2, 2.4, 0], [2.85, 1.95, 0], BARK[2]); seg([2.2, 2.42, 1], [2.85, 1.97, 1], BARK[3]); seg([2.5, 2.2, 1], [2.58, 2.0, 5], BARK[2]);
+        for (let i = 0; i < 9; i++) { const p = pt(2.2 + (hash(seed + 95, i) % 70) / 100, 1.7 + (hash(seed + 96, i) % 70) / 100, 0); P.px(p[0], p[1], OAK[(i & 1) ? 3 : 2]); P.px(p[0] + 1, p[1], OAK[1]); }
+      }
+    }
+    // the same limb's twin on the enclosure floor, and torn leaves under the tree
+    if (dmg && !front) { seg([1.0, 0.95, 0], [1.5, 0.9, 1], BARK[1]); for (let i = 0; i < 8; i++) { const p = pt(0.8 + (hash(seed + 97, i) % 60) / 100, 0.6 + (hash(seed + 98, i) % 60) / 100, FZ); P.px(p[0], p[1], OAK[(i & 1) ? 3 : 2]); } }
+  }
+
   const SPECIAL = {
+    tiger_habitat(ctx, P, g, row, variant, frame) { habitatPaint(ctx, P, g, row, variant, frame, 0); },
     substation(ctx, P, g, row, variant, frame) {
       const cx = g.bcx, cy = g.bcy;
       P.diamond(cx, cy, g.bw, g.bh, XB.gravelPad, shade(XB.gravelPad, 0.75));
@@ -22269,13 +23006,14 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     if (variant & SPR.PILINGS) drawPilingsGround(P, g, g.seed); else drawGrounds(P, g, row, variant, g.seed);
     if ((variant & SPR.PILINGS) && !(variant & SPR.SCAFFOLD)) drawStiltsBack(P, g);
     if (variant & SPR.SCAFFOLD) {
-      drawScaffoldStage(P, g, row, frame);
+      if (g.special === 'tiger_habitat') habitatPaint(ctx, P, g, row, variant, frame, 2); else drawScaffoldStage(P, g, row, frame);   // habitat pass: its own three construction stages
     } else {
       const fn = SPECIAL[g.special];
       if (fn) fn(ctx, P, g, row, variant, frame); else drawStandardBox(ctx, P, g, row, variant, frame);
     }
     if ((variant & SPR.PILINGS) && !(variant & SPR.SCAFFOLD)) drawStilts(P, g);
     try { drawMargins(P, g, row, variant, frame); } catch (e) { BSU.error('sprites', 'margins:' + row.id, e); }
+    if (OWN_STATES[g.special] && !(variant & SPR.SCAFFOLD)) return { w: g.w, h: g.h, ox: g.ox, oy: g.oy };   // habitat pass: the special painted its own damage / boards / flood
     if (variant & SPR.DAMAGED) applyDamaged(P, g);
     if (variant & SPR.BOARDED) applyBoarded(P, g);
     if (variant & FLOODED_BIT) { try { applyFlooded(P, g); } catch (e) { BSU.error('sprites', 'flooded:' + row.id, e); } }
@@ -22605,6 +23343,19 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     else if (sp === 'water_tower' || sp === 'surge_barrier') { frames = 4; perVariant = false; }
     spec.frames = frames; spec.framesPerVariant = perVariant;
     return M.paintBuilding(ctx, row, spec.variant, spec.frame, spec.zoom, spec.seed, spec.rot, spec.tees);
+  });
+  /** habitat pass: `habfront` = the Tiger Habitat's foreground (near side wall, viewing wall, railing, glass) on a canvas laid out exactly like the building's, drawn by render AFTER Roux so he walks behind the glass */
+  M.registerPainter('habfront', function (ctx, spec) {
+    const row = BSU.data && BSU.data.catalog && BSU.data.catalog.tiger_habitat, v = spec.variant | 0;
+    if (!row) { begin(ctx, 1, 1, spec.zoom); return { w: 1, h: 1, ox: 0, oy: 0 }; }
+    const g = M.buildingBox(row, v, spec.zoom, 0);
+    g.paint = row.paint || {};
+    g.seed = hash(strHash(row.id), (hash(strHash(row.id), v) ^ v) >>> 0);   // the building sprite's own seed, so the two layers match pixel for pixel
+    g.tone = (v & SPR.DAMAGED) ? 0.8 : 1; g.frontLeft = !!(v & SPR.FRONT_L);
+    const y0 = Math.max(0, g.ay - 56);   // the foreground walls and glass lie on the two lower edges: drop the empty top of the canvas (≈ 45 % of the atlas memory of this layer)
+    begin(ctx, g.w, g.h - y0, spec.zoom);
+    habitatPaint(ctx, offsetPen(tonePen(pen(ctx, g.zoom), g.tone), 0, -y0), g, row, v, 0, 1);
+    return { w: g.w, h: g.h - y0, ox: g.ox, oy: g.oy + y0 };
   });
   M.registerPainter('ruin', paintRuinFamily);
   M.registerPainter('thibodeaux', paintThibodeaux);
@@ -26395,29 +27146,115 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     e.a = fin(size, 1); e.variant = typeof colorIdx === 'number' ? colorIdx : 0; e.id = typeof colorIdx === 'string' ? colorIdx : ''; e.d = type;
     e.sx = (x - camera.x) * zoomNow + vw / 2; e.sy = (y - zz - camera.y) * zoomNow + vh / 2;
   }
-  /** art pass B4: the Tiger Habitat's resident (Roux on all fours) paces its enclosure, then idles, lies down and yawns; deterministic from the frame counter, drawn right after the building */
-  const hbPos = [0, 0, 0, 0];
-  function habitatPos(b, k, t) {
-    const cx = b.tx + b.w / 2, cy = b.ty + b.h / 2, ax = Math.max(0.35, b.w / 2 - 1.05), ay = Math.max(0.35, b.h / 2 - 1.05), ph = (hash(k + 1, 7) % 628) / 100;
-    hbPos[0] = cx + ax * Math.sin(t / 110 + ph) * 0.95 + 0.25 * Math.sin(t / 37); hbPos[1] = cy + ay * Math.sin(t / 83 + ph * 1.7 + 1.3) * 0.95 + 0.25 * Math.cos(t / 41);
+  /**
+   * habitat pass: Roux in his exhibit (presentation only; nothing here is saved or read by the sim). One small deterministic state machine per Tiger Habitat
+   * (`hbRoux`): he walks between stations on the lawn, naps in the oak's shade (LIE, then a yawn), swims the pool (the lower body hidden under the waterline and
+   * ripple rings around him) and comes to the glass when students gather on the plaza (they are read from `agents.habitatViewers`). All positions are LOCAL exhibit
+   * coordinates (`sprites.HABITAT`: X depth, Y along the front) mapped to world tiles through `sprites.habitatWorld`, so both entrances share the code and he never
+   * leaves the enclosure. He is drawn right after the building, and `habfront` (the foreground wall, railing and glass) right after him, so he walks behind the glass.
+   * The loose Roux of the "Roux Is Loose" event and a flooded exhibit (the pool has spilled) mean the enclosure is empty. The sideline mascot is untouched.
+   */
+  const hbRoux = new Map(), hbDraw = [];
+  const HB_ST = [[1.35, 1.12], [1.3, 2.2], [0.9, 0.38], [1.52, 0.62], [0.74, 2.4]];    // lawn stations: the glass side, the front lawn, by the oak, the far corner, the den mouth
+  const HB_GLASS_X = 1.5, HB_SPEED = 0.6, HB_SWIM_SPEED = 0.36;
+  /** walk round the pool (down the lawn beside the glass) unless the goal is a swim: when the straight line would cross the water, the target becomes a waypoint and the real goal waits in st.via */
+  function hbVia(st) {
+    st.via = null;
+    if (st.goal === 'SWIM') return;
+    const P = BSU.sprites.habitatPool; if (typeof P !== 'function') return;
+    for (let k = 1; k < 10; k++) { const t = k / 10; if (P(st.x + (st.tx - st.x) * t, st.y + (st.ty - st.y) * t) > -0.04) { st.via = [st.tx, st.ty]; st.tx = 1.36; st.ty = clamp((st.y + st.via[1]) / 2, 0.9, 2.25); return; } }
   }
-  function habitatRoux(state, sp) {
-    const bl = mod('buildings');
-    if (typeof sp.rouxFrame !== 'function' || !bl || typeof bl.list !== 'function') return;
-    const list = bl.list(state, 'tiger_habitat'); if (!Array.isArray(list)) return;
-    for (let k = 0; k < list.length; k++) {
-      const b = list[k]; if (!b || fin(b.built, 1) < 1 || b.ruin) continue;
-      const ax = clamp((b.tx | 0) + (b.w | 0) - 1, 0, W - 1), ay = clamp((b.ty | 0) + (b.h | 0) - 1, 0, HGT - 1);
-      if (!inView(ax, ay, 4)) continue;
-      const per = 1000, u = (frameNo + (hash(k + 1, 3) % per)) % per, walked = Math.floor((frameNo + (hash(k + 1, 3) % per)) / per) * 560 + Math.min(u, 560);
-      habitatPos(b, k, walked); const x = hbPos[0], y = hbPos[1]; habitatPos(b, k, walked - 5); const px = hbPos[0], py = hbPos[1];
-      const state2 = u < 560 ? 'PACE' : u < 680 ? 'IDLE' : u < 880 ? 'LIE' : u < 940 ? 'YAWN' : 'IDLE';
-      const r = { tx: x, ty: y, px: u < 560 ? px : x, py: u < 560 ? py : y, dir: 1, state: state2 };
-      const e = push('roux', ax, ay, fin(state.tiles.elev[ay * W + ax], 0), 3, drawSprite);
-      e.ref = getRefE('roux', 0, sp.rouxFrame(r, frameNo)); e.id = 'roux'; e.variant = 0;
-      const sax = e.ax, say = e.ay; e.ax = x - 0.5; e.ay = y - 0.5; moverScreen(e); e.ax = sax; e.ay = say;
+  function hbPick(st, b, nv, ymean) {
+    hbPick0(st, b, nv, ymean); hbVia(st);
+  }
+  function hbPick0(st, b, nv, ymean) {
+    const h = hash((b.id | 0) * 131 + 7, st.n++) % 100, H = BSU.sprites.HABITAT;
+    st.swimTo = null;
+    if (nv > 0 && st.glassHold <= 0 && h < 72) { st.mode = 'WALK'; st.goal = 'GLASS'; st.tx = HB_GLASS_X; st.ty = clamp(ymean, 0.85, 1.75); st.glassHold = 26; return; }
+    if (h < 28) { const q = HB_ST[hash(st.n, 17) % HB_ST.length]; st.mode = 'WALK'; st.goal = 'REST'; st.tx = q[0]; st.ty = q[1]; return; }
+    if (h < 55) { st.mode = 'WALK'; st.goal = 'NAP'; st.tx = H.NAP[0]; st.ty = H.NAP[1]; return; }
+    if (h < 70) { st.mode = 'WALK'; st.goal = 'SWIM'; st.tx = H.SWIM[0][0]; st.ty = H.SWIM[0][1]; st.swimTo = H.SWIM[1]; if (st.y > 1.6) { st.tx = H.SWIM[1][0]; st.ty = H.SWIM[1][1]; st.swimTo = H.SWIM[0]; } return; }
+    st.mode = 'REST'; st.t = 3 + (hash(st.n, 29) % 40) / 10; st.goal = '';
+  }
+  /** advance one habitat's Roux by dt seconds; `nv` students at the glass, `ymean` their mean local Y; returns the state object */
+  function hbStep(st, b, nv, ymean, dt) {
+    const H = BSU.sprites.HABITAT, R = H.ROUX;
+    if (st.glassHold > 0) st.glassHold -= dt;
+    if (st.mode === 'WALK') {
+      const dx = st.tx - st.x, dy = st.ty - st.y, d = Math.sqrt(dx * dx + dy * dy), inWater = BSU.sprites.habitatPool(st.x, st.y) > 0.04, sp = (inWater ? HB_SWIM_SPEED : HB_SPEED) * dt;
+      if (d <= sp + 1e-4) {
+        st.x = st.tx; st.y = st.ty;
+        if (st.via) { st.tx = st.via[0]; st.ty = st.via[1]; st.via = null; return; }   // round the pool, then on to the real goal
+        if (st.goal === 'NAP') { st.mode = 'LIE'; st.t = 14 + (hash(st.n, 5) % 130) / 10; st.fx = 1; st.fy = 0.3; }
+        else if (st.goal === 'GLASS') { st.mode = 'REST'; st.t = 7 + (hash(st.n, 9) % 80) / 10; st.fx = 1; st.fy = 0; st.glass = true; }
+        else if (st.goal === 'SWIM' && st.swimTo) { st.goal = 'REST'; st.tx = st.swimTo[0]; st.ty = st.swimTo[1]; st.swimTo = null; }
+        else { st.mode = 'REST'; st.t = 2.5 + (hash(st.n, 11) % 45) / 10; }
+        return;
+      }
+      st.x += dx / d * sp; st.y += dy / d * sp; st.fx = dx / d; st.fy = dy / d;
+      st.x = clamp(st.x, R.x0 - 0.1, R.x1 + 0.05); st.y = clamp(st.y, R.y0 - 0.1, R.y1 + 0.05);
+    } else {
+      st.t -= dt;
+      if (st.mode === 'REST' && st.glass) { if (nv <= 0 || st.t <= 0) { st.glass = false; if (st.t > 0) st.t = Math.min(st.t, 1.2); } else if (st.t < 2 && nv > 0) st.t = 2; }
+      if (st.t <= 0) {
+        if (st.mode === 'LIE') { st.mode = 'YAWN'; st.t = 2.2; }
+        else { st.glass = false; hbPick(st, b, nv, ymean); }
+      }
     }
   }
+  function drawRouxSwim(e, g) {                    // the swimmer: the lowest 8 art px of the sprite are under the waterline
+    const ref = e.ref; if (!ref) return;
+    const zs = zsOf(ref), cut = Math.round(8 * (ref.zoom || 1));
+    g.drawImage(ref.canvas, ref.sx, ref.sy, ref.sw, ref.sh - cut, Math.round(e.sx + ref.ox * zs), Math.round(e.sy + ref.oy * zs), ref.sw * zs, (ref.sh - cut) * zs); drawCalls++;
+  }
+  function drawRipple(e, g) {                      // three expanding 2:1 ring outlines of fillRects around a swimmer
+    const z = zoomNow, ph = ((frameNo >> 1) + (e.d | 0)) % 30 / 30, fy = e.sy + 16 * z;   // the mover origin is 16 art px above its foot point
+    g.fillStyle = '#E9F7F0';
+    for (let r = 0; r < 3; r++) {
+      const t = (ph + r / 3) % 1, rx = Math.max(3, Math.round(6 + t * 13)), ry = Math.max(1, rx >> 1);
+      g.globalAlpha = (1 - t) * 0.85;
+      for (let dy = -ry; dy <= ry; dy++) {
+        const half = Math.round(Math.sqrt(1 - (dy * dy) / (ry * ry + 0.01)) * rx);
+        if (Math.abs(dy) === ry) g.fillRect(Math.round(e.sx - half * z), Math.round(fy + dy * z), 2 * half * z, z);
+        else { g.fillRect(Math.round(e.sx - half * z), Math.round(fy + dy * z), z, z); g.fillRect(Math.round(e.sx + (half - 1) * z), Math.round(fy + dy * z), z, z); }
+      }
+      drawCalls++;
+    }
+    g.globalAlpha = 1;
+  }
+  const hbVis = { n: 0, x: 0, y: 0 };
+  function habitatRoux(state, sp) {
+    if (!hbDraw.length) return;
+    const AG = BSU.agents, wl = mod('wildlife');
+    let loose = false; try { const lr = wl && typeof wl.roux === 'function' ? wl.roux(state) : null; loose = !!(lr && Number.isFinite(lr.tx)); } catch (err) { loose = false; }
+    const H = sp.HABITAT, dt = clamp(frameDt, 0.001, 0.1);
+    for (let q = 0; q < hbDraw.length; q += 3) {
+      const b = hbDraw[q], v = hbDraw[q + 1] | 0, fl = (v & SPR.FRONT_L) !== 0;
+      const ax = clamp((b.tx | 0) + (b.w | 0) - 1, 0, W - 1), ay = clamp((b.ty | 0) + (b.h | 0) - 1, 0, HGT - 1), el = fin(state.tiles.elev[ay * W + ax], 0);
+      if (H && typeof sp.rouxFrame === 'function' && typeof sp.habitatWorld === 'function' && !loose && !b.flooded) {
+        let st = hbRoux.get(b.id);
+        if (!st) { st = { x: H.NAP[0], y: H.NAP[1], tx: H.NAP[0], ty: H.NAP[1], mode: 'LIE', goal: '', t: 6 + (hash((b.id | 0) + 1, 3) % 100) / 10, n: hash((b.id | 0) + 1, 71) % 1000, fx: 1, fy: 0.3, glass: false, glassHold: 0, swimTo: null, via: null }; hbRoux.set(b.id, st); }
+        // students standing at the glass (world → local: the same transpose the painter uses)
+        let nv = 0, ym = 0;
+        if (AG && typeof AG.habitatViewers === 'function') { const vw = AG.habitatViewers(state, b.id); if (vw && vw.n > 0) for (let k = 0; k < vw.n; k++) { const lx = fl ? vw.y[k] - b.ty : vw.x[k] - b.tx, ly = fl ? vw.x[k] - b.tx : vw.y[k] - b.ty; if (lx < 3.0 && lx >= 2.0) { nv++; ym += ly; } } }
+        hbStep(st, b, nv, nv ? ym / nv : 1.5, dt);
+        const w = sp.habitatWorld(b.tx, b.ty, fl, st.x, st.y), fw = fl ? [st.fy, st.fx] : [st.fx, st.fy];
+        const pf = (st.mode === 'WALK') ? 'PACE' : (st.mode === 'LIE' ? 'LIE' : ((st.mode === 'YAWN' || (st.glass && ((frameNo + (hash(b.id | 0, 13) % 400)) % 420) < 90)) ? 'YAWN' : 'IDLE'));   // at the glass he greets the crowd with a yawn every seven seconds
+        const r = { tx: w[0], ty: w[1], px: w[0] - fw[0] * 0.06, py: w[1] - fw[1] * 0.06, dir: 1, state: pf };
+        const swimming = typeof sp.habitatPool === 'function' && sp.habitatPool(st.x, st.y) > 0.04;
+        if (swimming) { const rp = push('ripple', ax, ay, el - 0.5, 2.5, drawRipple); rp.d = hash(b.id | 0, 5) & 31; const sx0 = rp.ax, sy0 = rp.ay; rp.ax = w[0] - 0.5; rp.ay = w[1] - 0.5; moverScreen(rp); rp.ax = sx0; rp.ay = sy0; }
+        const e = push('roux', ax, ay, el, 3, swimming ? drawRouxSwim : drawSprite);   // the floor lies 3 px (half a foot) below the plaza
+        e.ref = getRefE('roux', 0, sp.rouxFrame(r, frameNo)); e.id = 'roux'; e.variant = 0;
+        const sax = e.ax, say = e.ay, sel = e.elev; e.ax = w[0] - 0.5; e.ay = w[1] - 0.5; e.elev = el - 0.5; moverScreen(e); e.ax = sax; e.ay = say; e.elev = sel;
+      }
+      const o = push('habfront', ax, ay, el, 4, drawSprite);   // the foreground (near wall, viewing wall, glass) over Roux
+      o.ref = getRef('habfront', v, 0); o.id = 'habfront'; o.variant = v; tileScreen(o);
+    }
+  }
+  /** habitat pass: a habitat's Roux state ({x, y} local, mode, goal …) or null — for tests and the tour scripts */
+  M.habitatRoux = function (id) { return hbRoux.get(id) || null; };
+  /** the depth-sort key of a Tiger Habitat's foreground layer; students standing on its plaza tiles sort after it (they stand in front of the glass), 0 when `owner` is not a habitat in view */
+  function habitatKeyOf(owner) { for (let q = 0; q < hbDraw.length; q += 3) if (hbDraw[q].id === owner) return sortKey(clamp((hbDraw[q].tx | 0) + (hbDraw[q].w | 0) - 1, 0, W - 1), clamp((hbDraw[q].ty | 0) + (hbDraw[q].h | 0) - 1, 0, HGT - 1), fin(hbDraw[q + 2], 0), 5); return 0; }
   // -- movement pass: where a student is DRAWN. The sim keeps tile-centre progress (a.px/py → a.tx/ty); this lays it on the smoothed path curve
   //    from the smoothing pass (nearest point on the curve segments bucketed for the tile), adds the agent's stable lateral offset to the right of
   //    its heading, eases the heading (turns take params.agents.move.turnSecs, through the diagonal facings) and interpolates the distance walked
@@ -27049,7 +27886,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     fbPlayers(G, state, lv, dr);
   }
   function entityPass(state, g) {
-    count = 0; agentsDrawn = 0; particlesDrawn = 0; teeBakes = 0;
+    count = 0; agentsDrawn = 0; particlesDrawn = 0; teeBakes = 0; hbDraw.length = 0;
     const sp = S(), t = state.tiles, elev = t.elev;
     const bl = mod('buildings'), wl = mod('wildlife'), cat = (BSU.data && BSU.data.catalog) || {};
     // buildings
@@ -27066,6 +27903,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
         const v = M.variantOf(b, ci), fr = M.frameOf(b, v, ci);
         const e = push('building', ax, ay, fin(elev[ay * W + ax], 0), 0, drawBuilding);
         e.b = b; e.id = b.rot ? b.type + ':r' : b.type; e.variant = v; e.frame = fr;
+        if (b.type === 'tiger_habitat' && !(v & (SPR.SCAFFOLD | SPR.RUIN))) { hbDraw.push(b, v, fin(elev[ay * W + ax], 0)); }   // habitat pass: Roux, the foreground layer and the plaza's sort key
         let tr = null;
         if (M.teesEnabled !== false && row && row.pathAdjacency && !(v & (SPR.SCAFFOLD | SPR.RUIN))) { try { tr = teeRef(state, b, row, e.id, v, fr); } catch (err) { rerr('tee:ref', err); tr = null; } }
         e.ref = tr || getRef(e.id, v, fr);
@@ -27107,7 +27945,10 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
         // art pass B4: 8 facings, per-agent phase, cycle rate by speed, idle fidgets and the 0.5× two-pose rule live in sprites_entities.agentFrame (agent, zoom and frame counter passed)
         const fr = typeof sp.agentFrame === 'function' ? sp.agentFrame(anim, a.dir | 0, f, a, zoomNow, frameNo) : ((a.dir | 0) * 4 + ((zoomNow < 1 ? f & 2 : f) & 3));
         const e = pushMover('agent', a, id, fin(a.look, 0) | 0, fr, groundElev, state, true);
-        if (e) { e.c = a.state === 'FLEE' ? 1 : 0; e.b = a; agentsDrawn++; }
+        if (e) {
+          e.c = a.state === 'FLEE' ? 1 : 0; e.b = a; agentsDrawn++;
+          if (hbDraw.length) { const ow = t.owner[clamp(Math.floor(poseY), 0, HGT - 1) * W + clamp(Math.floor(poseX), 0, W - 1)]; if (ow >= 0) { const hk = habitatKeyOf(ow); if (hk > 0) { e.key = hk; keys[count - 1] = hk; } } }   // habitat pass: a student on the plaza stands in front of the glass
+        }
         if (a.state === 'FLEE' && a.fleeGator >= 0) fleeStamp[a.fleeGator & 63] = frameNo;
       }
     }
@@ -27607,7 +28448,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     flashes.length = 0; ghostSpec = null; gates.clear(); shakeUntil = 0; shakePx = 0; hitStopUntilMs = 0;
     for (const k in M.squash) delete M.squash[k];
     perfRing.fill(0); perfI = 0; perfFilled = false; perfTripped = false;
-    birdTiles = null; firstFrame = true; count = 0; list.length = 0; teeClear();
+    birdTiles = null; firstFrame = true; count = 0; list.length = 0; teeClear(); hbRoux.clear(); hbDraw.length = 0;
     if (fresh === true && state.plot && state.plot.founders && Number.isFinite(state.plot.founders.tx)) {
       camera.zoom = 1; M.panToTile(state.plot.founders.tx + 1, state.plot.founders.ty + 1, false);
     }
@@ -28654,6 +29495,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
           if (b.type === 'bell_tower' && b.built >= 1 && !b.ruin) pushLight('beacon', cx, cy - 78 * z, 2.2 + 0.4 * Math.sin(frameNo * 0.05), prestige, 0);
           else if (b.type === 'water_tower' && b.built >= 1 && !b.ruin && (((frameNo / 60) | 0) & 1) === 0) pushLight('blink', cx, cy - 64 * z, 1.5, 1, 0);
           else if (b.type === 'substation' && (v & SPR.NIGHT) && (frameNo % 180) < 6) pushLight('arc', cx, cy - 10 * z, 2.5, 1, 0);
+          else if (b.type === 'tiger_habitat' && (v & SPR.NIGHT) && b.built >= 1 && !b.ruin && !b.blackout) { const Sp = mod('sprites'), fl = (v & SPR.FRONT_L) !== 0; if (Sp && typeof Sp.habitatPoint === 'function') for (let q = 0; q < 2; q++) { const o = Sp.habitatPoint(fl, 2.9, q ? 2.8 : 0.2, 11); pushLight('lamp', e.sx + o[0] * z, e.sy + o[1] * z, 1.2, 0.95, 0); } }   // habitat pass: the plaza's two lamps
           else if (b.type === 'generator' && b.data && fin(b.data.fuelDays, 0) > 0 && b.built >= 1) pushLight('glow', cx, cy - 6 * z, 1.5 + 0.2 * Math.sin(frameNo * 0.3), 0.85, 0);
           else if ((b.type === 'dining_hall' || b.type === 'poboy') && (v & SPR.NIGHT)) pushLight('pot', e.sx + 10 * z, e.sy - 8 * z, 1.6, 0.75 + 0.25 * ((frameNo >> 2) & 1), 0);
           else if (b.type === 'stadium' && (b.tier | 0) >= 2 && b.built >= 1 && !b.ruin && !b.blackout && game && game.home) {
@@ -29418,11 +30260,14 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     const ts = btn('btn-title-settings', 'Settings', 'small', function () { M.openPanel('settings'); });
     const tm = btn('btn-title-mute', '🔊', 'small icon', function () { toggleMute(); });
     row.appendChild(seedLab); row.appendChild(ts); row.appendChild(tm);
+    const sz = el('div', 'title-size'); sz.appendChild(el('span', 'title-size-label', 'Display size')); const szs = el('div', 'seg'); const szn = el('div', 'seg-note hidden', '');   // P5: Compact 100 / Comfortable 115 / Large 130 / Auto
+    SIZE_CHOICES.forEach(function (c) { const b = btn('btn-size-' + c[0], c[1], 'seg-btn', function () { M.setUiScale(c[2]); refreshTitleSize(); }); b.dataset.scale = String(c[2]); if (c[3]) b.appendChild(el('span', 'pct', c[3])); b.title = c[2] === 'auto' ? 'Pick the size from this window (1366 px and up: 115 %, 1680 px and up: 130 %)' : c[1] + ' (' + c[3] + ')'; szs.appendChild(b); });
+    sz.appendChild(szs); sz.appendChild(szn);
     const campus = el('canvas', 'hidden'); campus.id = 'title-campus'; campus.width = 320; campus.height = 200;
     const foot = el('div', 'title-foot', 'Louisiana. One ridge. Mind the water.');
-    box.appendChild(kicker); box.appendChild(name); box.appendChild(tag); box.appendChild(charter); box.appendChild(cont); box.appendChild(row); box.appendChild(campus); box.appendChild(foot);
+    box.appendChild(kicker); box.appendChild(name); box.appendChild(tag); box.appendChild(charter); box.appendChild(cont); box.appendChild(row); box.appendChild(sz); box.appendChild(campus); box.appendChild(foot);
     t.appendChild(box);
-    E.title = t; E['title-name'] = name; E['title-tag'] = tag; E['btn-charter'] = charter; E['btn-continue'] = cont; E['title-seed'] = seed; E['btn-title-settings'] = ts; E['btn-title-mute'] = tm; E['title-campus'] = campus; return t;
+    E.title = t; E['title-name'] = name; E['title-tag'] = tag; E['btn-charter'] = charter; E['btn-continue'] = cont; E['title-seed'] = seed; E['btn-title-settings'] = ts; E['btn-title-mute'] = tm; E['title-campus'] = campus; E['title-size'] = sz; E['title-size-note'] = szn; return t;
   }
   function buildPanelsHost() { const p = el('div'); p.id = 'panels'; E.panels = p; return p; }
   function buildChips() {
@@ -29467,7 +30312,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     subscribe();
     registerBuiltins();
     try { const w = fin(window.innerWidth, 1280); cls(E.palette, 'compact', w < L.compactWidth); } catch (e) { /* stub */ }
-    try { const raw = window.localStorage.getItem('bsu.settings'); const o = raw ? JSON.parse(raw) : null; if (o && o.uiScale != null) applyScale(o.uiScale); } catch (e) { /* no storage */ }   // the title screen is scaled too
+    try { const raw = window.localStorage.getItem('bsu.settings'); const o = raw ? JSON.parse(raw) : null; applyScale(o && o.uiScale != null ? o.uiScale : 'auto'); } catch (e) { try { applyScale('auto'); } catch (e2) { /* stub */ } }   // the title screen is scaled too; nothing stored (first run) = the smart default for this window
     fitTopbar();
   };
   /** the topbar must never push its buttons off-screen. UI scale pass: it now sheds content in six steps, re-measured from scratch on
@@ -29487,8 +30332,14 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
   // ---- UI scale (UI scale pass): html{font-size:calc(10px * var(--ui-scale))} and every CSS length is rem, so the layout math and every
   // getBoundingClientRect() (coach spotlights, ghost label, tooltips) stay in real viewport pixels at 90 / 100 / 115 / 130 %
   const UI_SCALES = [0.9, 1, 1.15, 1.3], MM_BASE = 200;
-  let appliedScale = 1, effScale = 1;   // the chosen factor / what the window can actually hold
+  /** P5 Display size choices (title screen): the three presets the plan names + Auto (= the viewport default below) */
+  const SIZE_CHOICES = [['compact', 'Compact', 1, '100%'], ['comfortable', 'Comfortable', 1.15, '115%'], ['large', 'Large', 1.3, '130%'], ['auto', 'Auto', 'auto', '']];
+  let appliedScale = 1, effScale = 1, uiMode = 'auto';   // the chosen factor / what the window can actually hold / 'auto' or the explicit factor
   function scaleOf(v) { v = Number(v); if (!Number.isFinite(v) || v <= 0) return 1; if (v > 3) v /= 100; let b = 1; for (const c of UI_SCALES) if (Math.abs(c - v) < Math.abs(b - v)) b = c; return b; }
+  /** P5 smart default by window width: < 1366 → 100 %, 1366–1679 → 115 %, ≥ 1680 → 130 % (effectiveScale still caps it to what the window holds) */
+  function autoScaleFor(w) { w = fin(w, 1280); return w >= 1680 ? 1.3 : w >= 1366 ? 1.15 : 1; }
+  function isAuto(v) { return v == null || v === 'auto'; }
+  function wantScale(v) { return isAuto(v) ? autoScaleFor(window.innerWidth) : scaleOf(v); }
   /** a bigger-than-100 % UI is limited to what the window can hold (a 1280×800 laptop tops out near 114 %): the HUD columns must never collide, and never shrink below 100 % */
   function effectiveScale(sc) {
     if (sc <= 1) return sc;
@@ -29496,17 +30347,32 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     return Math.round(Math.max(1, Math.min(sc, cap)) * 1000) / 1000;
   }
   function applyScale(v) {
-    const sc = scaleOf(v), eff = effectiveScale(sc); const changed = eff !== effScale || sc !== appliedScale; appliedScale = sc; effScale = eff;
+    const auto = isAuto(v), sc = wantScale(v), eff = effectiveScale(sc), mode = auto ? 'auto' : sc;
+    const changed = eff !== effScale || sc !== appliedScale || mode !== uiMode; appliedScale = sc; effScale = eff; uiMode = mode;
     if (!dom()) return;
     try { const de = document.documentElement; if (de && de.style && typeof de.style.setProperty === 'function') de.style.setProperty('--ui-scale', String(eff)); } catch (e) { /* stub */ }
     try { const c = E.minimap; if (c) { const px = Math.round(MM_BASE * eff); if (c.width !== px) { c.width = px; c.height = px; } } } catch (e) { /* stub */ }
-    if (changed) { fitTopbar(); try { coach.layoutAt = -1e9; const st = stateOf(); if (st && coach.step >= 0) layoutCoach(st); } catch (e) { /* stub */ } }
+    try { cls(E.hud, 'short', fin(window.innerHeight, 800) < eff * 760); } catch (e) { /* stub */ }   // P5: the tracker + palette need ~72 rem of height; a shorter window drops the tracker's flavour text and "next up" line so it never runs under the ticker
+    if (changed) { fitTopbar(); refreshTitleSize(); try { coach.layoutAt = -1e9; const st = stateOf(); if (st && coach.step >= 0) layoutCoach(st); } catch (e) { /* stub */ } }
+  }
+  /** title screen "Display size" row: the active button follows the stored mode, the note says what Auto picked / what the window limited */
+  function refreshTitleSize() {
+    try {
+      const box = E['title-size']; if (!box) return;
+      for (const b of box.children[1].children) { const d = b.dataset.scale; cls(b, 'active', d === 'auto' ? uiMode === 'auto' : uiMode !== 'auto' && Number(d) === appliedScale); b.setAttribute('aria-pressed', b.classList.contains('active') ? 'true' : 'false'); }
+      const note = E['title-size-note']; const lim = effScale < appliedScale - 0.005;
+      const txt = uiMode === 'auto' ? 'Auto picks ' + Math.round(effScale * 100) + '% for this window.' : lim ? 'Limited to ' + Math.round(effScale * 100) + '% by this window size.' : '';
+      if (note) { setText(note, txt); show(note, !!txt); }
+    } catch (e) { /* stub */ }
   }
   /** the chosen factor (1 = 100 %), snapped to the four offered sizes; M.uiScaleEffective() is what the window allows */
   M.uiScale = function () { return appliedScale; };
   M.uiScaleEffective = function () { return effScale; };
+  /** P5: 'auto' (the viewport default) or the explicit factor; M.autoScaleFor(width) is the default's table */
+  M.uiScaleMode = function () { return uiMode; };
+  M.autoScaleFor = autoScaleFor;
   /** Settings → UI size: remember it (state.ui.settings + localStorage) and apply it now */
-  M.setUiScale = function (v) { try { const sc = scaleOf(v); M.settings().uiScale = sc; M.saveSettings(); applyScale(sc); return sc; } catch (e) { uerr('setUiScale', e); return appliedScale; } };
+  M.setUiScale = function (v) { try { const sc = isAuto(v) ? 'auto' : scaleOf(v); M.settings().uiScale = sc; M.saveSettings(); applyScale(sc); return appliedScale; } catch (e) { uerr('setUiScale', e); return appliedScale; } };
 
   // ---------------------------------------------------------------------------
   // DOM listeners → the machine (pointer / wheel / keys / gestures)
@@ -29538,7 +30404,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
         window.addEventListener('keyup', function (e) { try { keyup(e.key); } catch (err) { uerr('keyup', err); } });
         window.addEventListener('blur', function () { try { for (const k in held) held[k] = false; if (live.down || live.state === 'DRAGGING') M.pointer('cancel', lastPx, lastPy, 0, M0); } catch (err) { uerr('blur', err); } });
         window.addEventListener('pointerup', function (e) { try { if (live.down && e.target !== world) M.pointer('up', lastPx, lastPy, fin(e.button, 0), modsOf(e)); } catch (err) { uerr('pointerup:window', err); } });
-        window.addEventListener('resize', function () { try { const w = fin(window.innerWidth, 1280); cls(E.palette, 'compact', w < L.compactWidth); } catch (err) { /* stub */ } try { applyScale(appliedScale); } catch (err) { /* stub */ } fitTopbar(); paletteFade(); });
+        window.addEventListener('resize', function () { try { const w = fin(window.innerWidth, 1280); cls(E.palette, 'compact', w < L.compactWidth); } catch (err) { /* stub */ } try { applyScale(uiMode); } catch (err) { /* stub */ } fitTopbar(); paletteFade(); });
       }
     } catch (e) { /* stub window */ }
   }
@@ -30927,7 +31793,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
   M.panel = function () { const s = stateOf(); return s && s.ui ? s.ui.panel : null; };
   function refreshPanel(s, name) { const p = panels[name]; if (!p || !p.el) return; p.lastRefresh = clock; try { if (typeof p.refresh === 'function') p.refresh(s, p.el); } catch (e) { uerr('panel:refresh:' + name, e); } }
   /** UI scale pass: a panel wide enough to reach the docked cards (goals tracker, minimap, overlay keys, notifications, voice card) fades just the ones it overlaps, so no half-hidden text peeks out around it */
-  const FADE_IDS = ['objective-card', 'minimap-wrap', 'overlay-buttons', 'notifications', 'voice-card'];
+  const FADE_IDS = ['objective-card', 'minimap-wrap', 'overlay-buttons', 'notifications', 'voice-card', 'alert-strip'];
   let fadeAt = -1e9;
   function syncPanelFade(s) {
     if (!dom() || clock - fadeAt < 250) return; fadeAt = clock;
@@ -30955,7 +31821,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
       show(E.title, on); show(E.hud, !on); cls(E.app, 'title-on', on);
       if (on) {
         let can = !!opts.canContinue; if (!can) { try { can = !!window.localStorage.getItem('bsu.last'); } catch (e) { can = false; } }
-        E['btn-continue'].disabled = !can; show(E['btn-continue'], can); refreshMuteButtons();
+        E['btn-continue'].disabled = !can; show(E['btn-continue'], can); refreshMuteButtons(); refreshTitleSize();
         try { const slots = call('session', 'slots') || []; const last = slots.find(function (x) { return x && (x.last || x.slot === 'bsu.last'); }); if (last && last.label) E['btn-continue'].title = last.label; } catch (e) { /* optional */ }
       } else { if (focusedInput === E['title-seed']) focusedInput = null; }
     } catch (e) { uerr('showTitle', e); }
@@ -31004,6 +31870,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     host._cb = chk('chk-colorblind', 'Colorblind overlays', function () { return !!M.settings().colorblind; }, function (v) { M.settings().colorblind = v; });
     const sp = el('div', 'seg'); [0, 1, 2, 4, 8].forEach(function (v) { const b = btn(null, v === 0 ? 'Pause' : v + '×', 'seg-btn', function () { M.setSpeed(stateOf(), v); refreshSettingsPanel(stateOf(), host); }); b.dataset.speed = String(v); sp.appendChild(b); }); rowEl('Speed', sp); host._speed = sp;
     const us = el('div', 'seg'); host._uiScale = us; UI_SCALES.forEach(function (v) { const b = btn('btn-uiscale-' + Math.round(v * 100), Math.round(v * 100) + '%', 'seg-btn', function () { M.setUiScale(v); refreshSettingsPanel(stateOf(), host); }); b.dataset.scale = String(v); b.title = 'Interface size ' + Math.round(v * 100) + '%'; us.appendChild(b); });
+    { const ab = btn('btn-uiscale-auto', 'Auto', 'seg-btn', function () { M.setUiScale('auto'); refreshSettingsPanel(stateOf(), host); }); ab.dataset.scale = 'auto'; ab.title = 'Pick the interface size from this window'; us.appendChild(ab); }   // P5
     const uw = el('div', 'seg-wrap'); const un = el('div', 'seg-note hidden', ''); host._uiNote = un; uw.appendChild(us); uw.appendChild(un); rowEl('UI size', uw);   // UI scale pass (C7)
     rowEl('Tour', btn('btn-coach-replay', 'Replay the 60-second tour', 'small', function () { M.startCoach(stateOf()); }));
     const leg = el('div', 'legend-table'); for (const o of ((BSU.data && BSU.data.overlays) || [])) { const r = el('div', 'legend-row'); r.appendChild(el('span', 'key', o.key)); r.appendChild(el('span', 'k', o.name)); r.appendChild(el('span', 'v', o.legend.join(' · '))); leg.appendChild(r); } rowEl('Overlays', leg);
@@ -31020,8 +31887,8 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     [host._audio, host._particles, host._shake, host._cb].forEach(function (b) { if (!b || !b._get) return; const on = !!b._get(); setText(b, on ? 'On' : 'Off'); b.setAttribute('aria-pressed', on ? 'true' : 'false'); });
     if (host._speed) for (const b of host._speed.children) cls(b, 'active', String(fin(s.ui.speed, 1)) === b.dataset.speed);
     if (host._vol) host._vol.value = String(fin(M.settings().volume, 0.5));
-    if (host._uiScale) for (const b of host._uiScale.children) cls(b, 'active', Number(b.dataset.scale) === appliedScale);
-    if (host._uiNote) { const lim = effScale < appliedScale - 0.005; show(host._uiNote, lim); if (lim) setText(host._uiNote, 'Limited to ' + Math.round(effScale * 100) + '% by this window size.'); }
+    if (host._uiScale) for (const b of host._uiScale.children) { const d = b.dataset.scale; cls(b, 'active', d === 'auto' ? uiMode === 'auto' : uiMode !== 'auto' && Number(d) === appliedScale); }
+    if (host._uiNote) { const lim = effScale < appliedScale - 0.005; const txt = uiMode === 'auto' ? 'Auto picks ' + Math.round(effScale * 100) + '% for this window.' : lim ? 'Limited to ' + Math.round(effScale * 100) + '% by this window size.' : ''; show(host._uiNote, !!txt); if (txt) setText(host._uiNote, txt); }
   }
   // Debug panel (built in; hidden; Backquote). ui_panels may re-register 'debug' with the full params tree.
   function buildDebugPanel(host) {
@@ -31273,7 +32140,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
   M.update = function (state, dtMs) {
     if (!inited || !state || !state.ui) return;
     root = state; dtMs = fin(dtMs, 16.67); clock += dtMs;
-    if (dom()) { try { const want = scaleOf(M.settings().uiScale); if (want !== appliedScale) applyScale(want); if (clock - fitAt > 1000) { fitAt = clock; const tb = E.topbar; if (tb && fitLevel < 6 && tb.scrollWidth > tb.clientWidth + 1) fitTopbar(); } } catch (e) { /* stub */ } }
+    if (dom()) { try { const raw = M.settings().uiScale; const want = wantScale(raw); if (want !== appliedScale || (isAuto(raw) ? 'auto' : want) !== uiMode) applyScale(raw); if (clock - fitAt > 1000) { fitAt = clock; const tb = E.topbar; if (tb && fitLevel < 6 && tb.scrollWidth > tb.clientWidth + 1) fitTopbar(); } } catch (e) { /* stub */ } }
     if (titleOn) { sec('title', function (s) { refreshMuteButtons(); if (s.ui.panel) updatePanels(s); }, state, dtMs); return; }
     sec('queue', drainQueue, state, dtMs);
     sec('pan', heldPan, state, dtMs);
@@ -31616,45 +32483,124 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     const ca = fin(a.cost, 0), cb = fin(b.cost, 0); if (ca !== cb) return cb - ca;
     return 0;
   }
+  // P4 storm prep pass: the panel is a status strip, a "Prepare everything" block and three groups (Board up / Water / People). Every control is
+  // priced and checked by weather.prepQuote (cost, effect in plain words, the reason when disabled); selections live in host._windSel / host._sbSel
+  // (Sets of building ids / levee run keys) so the 500 ms refresh never eats a tick, and a list is rebuilt only when its content key changes.
+  function usd(n) { return '$' + Math.round(fin(n, 0)).toLocaleString('en-US'); }
+  function dateStr(day) { try { return BSU.dayParts(day).date; } catch (e) { return ''; } }
+  function stormKey(s) { const st = call('weather', 'storm', s); return st ? st.name + ':' + st.landfallDay : ''; }
+  function spGroup(host, id, title, blurb) {
+    const g = el('div', 'sp-group'); g.id = id;
+    g.appendChild(el('div', 'sp-head', title)); g.appendChild(el('div', 'sp-note', blurb));
+    host.appendChild(g); return g;
+  }
+  /** one prep action: heading, plain-words explanation, live effect line, button, visible reason */
+  function spAction(host, parent, key, id, label, action, subTitle, blurb) {
+    const wrap = el('div', 'sp-act'); wrap.id = 'sp-' + key;
+    wrap.appendChild(el('div', 'sp-sub', subTitle));
+    wrap.appendChild(el('div', 'sp-note', blurb));
+    const effect = el('div', 'sp-effect'); wrap.appendChild(effect);
+    const lines = el('div', 'sp-lines'); wrap.appendChild(lines);
+    const acts = el('div', 'sp-acts');
+    const b = btn(id, label, 'small', function () { prep(host, action, undefined, label); }); acts.appendChild(b); wrap.appendChild(acts);
+    const why = el('div', 'sp-reason'); wrap.appendChild(why);
+    parent.appendChild(wrap);
+    const ctl = { wrap: wrap, effect: effect, lines: lines, btn: b, why: why, label: label, key: '' };
+    host['_' + key] = ctl; return ctl;
+  }
+  function syncAction(ctl, q, doneLabel, extra) {
+    const label = q.alreadyDone ? '✓ ' + doneLabel : ctl.label + (q.cost > 0 ? ' · ' + usd(q.cost) : (extra || ''));
+    setText(ctl.btn, label); ctl.btn.disabled = !q.ok; cls(ctl.btn, 'done', !!q.alreadyDone);
+    setText(ctl.effect, q.ok ? q.effectText : (q.effectText || ''));
+    setText(ctl.why, q.ok ? '' : q.reason); cls(ctl.why, 'done', !!q.alreadyDone);
+  }
+  /** run a prep action through weather, confirm it (panel strip + notify + ticker), refresh */
+  function prep(host, action, selection, label) {
+    const s = stateFor(host); if (!s) return null;
+    const r = call('weather', 'prepAction', s, action, selection);
+    if (!r) { notify(s, label + ': not available yet', 'event'); return null; }
+    let msg;
+    if (r.ok) {
+      msg = label + (r.cost > 0 ? ' (' + usd(r.cost) + ')' : '') + ': ' + (r.effectText || 'done');
+      notify(s, msg, 'money'); call('progress', 'ticker', s, msg, {}, 'event');
+    } else { msg = label + ': ' + r.reason; notify(s, msg, 'event'); }
+    host._doneMsg = { ok: !!r.ok, text: (r.ok ? '✓ ' : '✗ ') + msg, day: todayOf(s), storm: stormKey(s) };
+    if (r.ok && Array.isArray(r.affected)) { const gone = new Set(r.affected); if (action === 'boardUp') for (const id of Array.from(host._windSel || [])) if (gone.has(id)) host._windSel.delete(id); }
+    if (r.ok && action === 'sandbags' && Array.isArray(r.runs)) for (const k of r.runs) host._sbSel.delete(k);
+    if (action === 'prepareAll') { host._windSel.clear(); host._sbSel.clear(); }
+    refreshStorm(s, host);
+    return r;
+  }
   function buildStorm(host) {
+    host._windSel = new Set(); host._sbSel = new Set();
     const title = el('div', 'panel-title', 'Storm'); title.id = 'storm-title'; host.appendChild(title);
     host._status = el('div', 'panel-status'); host._status.id = 'storm-status'; host.appendChild(host._status);   // status line (the panel's firstChild is the chrome head with the ✕ — never write into it)
+    host._done = el('div', 'sp-done hidden'); host._done.id = 'storm-done'; host.appendChild(host._done);
+
+    // Prepare everything (recommended)
+    const all = el('div', 'sp-all'); all.id = 'sp-all';
+    all.appendChild(el('div', 'sp-note', 'One click does the recommended set: boards the Water Tower, substations and every building with wind rating 2 or lower, sandbags the weak levee runs, doubles the pumps and evacuates if the shelters cannot hold everyone.'));
+    host._allBtn = btn('btn-prepall', 'Prepare everything (recommended)', 'primary', function () { prep(host, 'prepareAll', undefined, 'Prepare everything'); });
+    all.appendChild(host._allBtn);
+    host._allSteps = el('div', 'sp-steps'); all.appendChild(host._allSteps);
+    host._allWhy = el('div', 'sp-reason'); all.appendChild(host._allWhy);
+    host.appendChild(all);
+
     const seg = el('div', 'seg'); seg.id = 'seg-testcat'; host.appendChild(seg); host._testcat = seg;
     const cv = el('canvas'); cv.id = 'storm-cone'; cv.width = 200; cv.height = 200; cv.className = 'card-canvas'; host.appendChild(cv); host._cone = cv;
     host._ring = el('div', 'row'); host._ring.id = 'storm-ring'; host.appendChild(host._ring);
     host._reached = el('div', 'row'); host._reached.id = 'storm-reached'; host.appendChild(host._reached);
 
-    host.appendChild(el('div', 'card-kicker', 'Wind exposure'));
-    const windSummary = el('div', 'row'); host.appendChild(windSummary); host._windSummary = windSummary;
-    const windList = el('div', 'pick-list'); windList.id = 'storm-wind'; host.appendChild(windList); host._windList = windList;
-    const windActs = el('div', 'card-actions');
-    host._boardSel = btn(null, 'Board Up selected', 'small', function () {
-      const s = stateFor(host); const ids = [];
-      for (const row of (host._windList ? host._windList.children : [])) { if (row._checked && row._checked()) ids.push(row._id); }
-      if (!ids.length) { notify(s, 'Select at least one building'); return; }
-      const r = call('weather', 'prepAction', s, 'boardUp', ids); if (r && !r.ok) notify(s, r.reason, 'event');
+    // 1. BOARD UP
+    const g1 = spGroup(host, 'sp-board', 'Board up', 'Plywood over the windows cuts wind damage 40%. $5,000 a building. WR is the wind rating (1 weakest, 5 strongest): board the low ones first. Water Towers and substations go first.');
+    host._boardSum = el('div', 'sp-effect'); host._boardSum.id = 'storm-boardsum'; g1.appendChild(host._boardSum);
+    const bacts = el('div', 'sp-acts');
+    host._selWr2 = btn('btn-selwr2', 'Select all WR ≤ 2', 'small', function () {
+      const s = stateFor(host), info = call('buildings', 'boardInfo', s); if (!info) return;
+      info.rows.forEach(function (r) { if (r.eligible && r.wr <= 2) host._windSel.add(r.id); });
+      syncChecks(host._windList, host._windSel); refreshStorm(s, host);
     });
-    host._boardAll = btn('btn-boardall', 'Board Up all', 'small', function () { const s = stateFor(host); const r = call('weather', 'prepAction', s, 'boardUp', 'all'); if (r && !r.ok) notify(s, r.reason, 'event'); });
-    windActs.appendChild(host._boardSel); windActs.appendChild(host._boardAll); host.appendChild(windActs);
+    host._selNone = btn('btn-selnone', 'Clear', 'small', function () { host._windSel.clear(); syncChecks(host._windList, host._windSel); refreshStorm(stateFor(host), host); });
+    host._boardSel = btn('btn-boardsel', 'Board Up selected', 'small', function () { prep(host, 'boardUp', Array.from(host._windSel), 'Board Up'); });
+    host._boardAll = btn('btn-boardall', 'Board Up all', 'small', function () { prep(host, 'boardUp', 'all', 'Board Up'); });
+    bacts.appendChild(host._selWr2); bacts.appendChild(host._selNone); bacts.appendChild(host._boardSel); bacts.appendChild(host._boardAll); g1.appendChild(bacts);
+    host._boardWhy = el('div', 'sp-reason'); g1.appendChild(host._boardWhy);
+    const windList = el('div', 'pick-list'); windList.id = 'storm-wind'; g1.appendChild(windList); host._windList = windList;
 
-    host._shelter = el('div', 'row'); host._shelter.id = 'storm-shelter'; host.appendChild(host._shelter);
+    // 2. WATER
+    const g2 = spGroup(host, 'sp-water', 'Water', 'Keep the surge out and the rain moving. Sandbags and Pre-drain are worth the most inside the last few days before landfall.');
+    const sb = el('div', 'sp-act'); sb.id = 'sp-sandbags';
+    sb.appendChild(el('div', 'sp-sub', 'Sandbags'));
+    sb.appendChild(el('div', 'sp-note', 'Adds 1.5 ft to the levee runs that face the water, through landfall. $10,000 per 10 tiles. Weak runs (integrity under 85%) are the ones that breach.'));
+    host._sbSum = el('div', 'sp-effect'); host._sbSum.id = 'storm-sbsum'; sb.appendChild(host._sbSum);
+    const sacts = el('div', 'sp-acts');
+    host._sbWeak = btn('btn-sbweak', 'Select all weak runs', 'small', function () {
+      const s = stateFor(host), runs = call('buildings', 'sandbagRuns', s, call('weather', 'forecastSurge', s)) || [];
+      runs.forEach(function (r) { if (r.weak && !r.sandbagged) host._sbSel.add(r.key); });
+      syncChecks(host._sbList, host._sbSel); refreshStorm(s, host);
+    });
+    host._sbSelBtn = btn('btn-sbsel', 'Sandbag selected', 'small', function () { prep(host, 'sandbags', Array.from(host._sbSel), 'Sandbags'); });
+    host._sandbags = btn('btn-sandbags', 'Sandbag all', 'small', function () { prep(host, 'sandbags', 'all', 'Sandbags'); });
+    sacts.appendChild(host._sbWeak); sacts.appendChild(host._sbSelBtn); sacts.appendChild(host._sandbags); sb.appendChild(sacts);
+    host._sbWhy = el('div', 'sp-reason'); sb.appendChild(host._sbWhy);
+    const sbList = el('div', 'pick-list'); sbList.id = 'storm-runs'; sb.appendChild(sbList); host._sbList = sbList;
+    g2.appendChild(sb);
+    spAction(host, g2, 'predrain', 'btn-predrain', 'Pre-drain', 'preDrain', 'Pre-drain', 'Runs every powered pump at double speed from now until the storm is over, so the streets drain faster when the rain comes. No up-front cost.');
+    spAction(host, g2, 'spillway', 'btn-spillway', 'Open Spillway', 'spillway', 'Bonnet Roux Spillway', 'Opens the spillway when the river is at 2–3 ft in the high-water window: the river drops 1 ft. Once a year; needs an Engineering Hall and Year 3.');
 
-    const acts = el('div', 'card-actions'); acts.id = 'storm-actions';
-    const mkAction = function (id, label, action) {
-      const b = btn(id, label, 'small', function () { const s = stateFor(host); const r = call('weather', 'prepAction', s, action); if (r) { if (!r.ok) notify(s, r.reason, 'event'); else notify(s, label + ': ' + money(r.cost), 'money'); } refreshStorm(s, host); });
-      acts.appendChild(b); return b;
-    };
-    host._sandbags = mkAction('btn-sandbags', 'Sandbags', 'sandbags');
-    host._repairall = mkAction('btn-repairall', 'Repair All', 'repairAll');
-    host._evacuate = mkAction('btn-evacuate', 'Evacuate', 'evacuate');
-    host._predrain = btn('btn-predrain', 'Pre-drain', 'small toggle', function () { const s = stateFor(host); const r = call('weather', 'prepAction', s, 'preDrain'); if (r && !r.ok) notify(s, r.reason); refreshStorm(s, host); }); acts.appendChild(host._predrain);
-    host._playthrough = btn('btn-playthrough', 'Play Through It', 'small toggle', function () { const s = stateFor(host); const on = !(s.storms && s.storms.playThroughIt); call('weather', 'setPlayThrough', s, on); refreshStorm(s, host); }); acts.appendChild(host._playthrough);
-    host._spillway = btn('btn-spillway', 'Spillway $250k', 'small', function () { const s = stateFor(host); const r = call('weather', 'prepAction', s, 'spillway'); if (r && !r.ok) notify(s, r.reason, 'water'); }); acts.appendChild(host._spillway);
-    host.appendChild(acts);
+    // 3. PEOPLE
+    const g3 = spGroup(host, 'sp-people', 'People', 'Get students out of the way, then fix what the storm broke.');
+    spAction(host, g3, 'evacuate', 'btn-evacuate', 'Evacuate', 'evacuate', 'Evacuate', 'Buses take every student off campus. $20,000 per 1,000 students and a happiness hit; the alternative is sheltering in place.');
+    host._evacuate.lines.id = 'storm-shelter';
+    spAction(host, g3, 'repairall', 'btn-repairall', 'Repair All', 'repairAll', 'Repair All', 'After the storm: fixes every damaged building, toppled tower and weak levee tile at once.');
+    const ptRow = el('div', 'sp-acts');
+    host._playthrough = btn('btn-playthrough', 'Play Through It', 'small toggle', function () { const s = stateFor(host); const on = !(s.storms && s.storms.playThroughIt); call('weather', 'setPlayThrough', s, on); refreshStorm(s, host); });
+    ptRow.appendChild(host._playthrough); g3.appendChild(ptRow);
 
     host.appendChild(el('div', 'card-kicker', 'Storm log'));
     host._log = el('div'); host.appendChild(host._log);
   }
+  function syncChecks(list, set) { if (!list) return; for (const row of Array.prototype.slice.call(list.children)) if (row._cb) row._cb.checked = set.has(row._key); }
   // Base tile colors for the minimap-style read (T enum: OPEN_WATER, BAYOU, MARSH, WET, DRY, HIGH, DRAINED, POND).
   const TILE_COLORS = ['#2A5C82', '#3A7099', '#3E6B55', '#4C7A4A', '#5C8A4C', '#6E9F55', '#5A6E42', '#2A5C82'];
   function drawCone(s, cv, H) {
@@ -31679,74 +32625,149 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
       if (f) { ctx.fillStyle = '#FDD023'; ctx.fillRect(f.tx * sx, f.ty * sy, Math.max(2, sx * 3), Math.max(2, sy * 3)); }
     } catch (e) { BSU.error('ui_panels', 'drawCone', e); }
   }
-  function windPickList(s) {
-    const ids = call('buildings', 'boardOrder', s) || [];
-    const day = todayOf(s);
-    return ids.map(function (id) {
-      const b = call('buildings', 'get', s, id); if (!b) return null;
-      const row = rowOf(b.type) || {};
-      return { id: id, name: b.name || row.name || b.type, wr: fin(row.wr, 0), cost: fin(row.cost, 0), type: b.type, boarded: fin(b.data && b.data.boardedUntil, -1) >= day };
-    }).filter(Boolean);
+  function stormStatus(s, storm, H, fc) {
+    const today = todayOf(s);
+    if (!storm) return 'No storm in the Gulf — precautions available';
+    if (storm.nearMiss) return (storm.name || 'A storm') + ' is passing offshore — precautions available';
+    const nm = (storm.name || '').toUpperCase(), phase = int(storm.phase, 0), B = BSU.STORM || {};
+    if (phase >= B.LANDFALL) return 'HURRICANE ' + nm + ' · Cat ' + int(storm.cat, fc) + (phase >= B.RECOVERY ? ' · passed — repairs below' : ' · landfall now');
+    const days = Math.max(0, fin(storm.landfallDay, today) - today);
+    return 'HURRICANE ' + nm + ' · Cat ' + fc + ' (±1) · landfall ' + (days === 0 ? 'today' : 'in ' + days + (days === 1 ? ' day' : ' days')) + ' (' + dateStr(storm.landfallDay) + ') · surge ' + H + ' ft';
+  }
+  /** disabled-control reasons, one visible line each (deduplicated) */
+  function whyText(pairs) {
+    const out = [];
+    pairs.forEach(function (p) { if (p[1] && p[1].reason && !p[1].ok) { const t = p[0] + ': ' + p[1].reason; if (out.indexOf(t) < 0) out.push(t); } });
+    return out.join(' · ');
   }
   function refreshStorm(s, host) {
-    if (!host) return;
-    const storm = call('weather', 'storm', s);
-    if (!storm) { setText(host._status, 'STORM · no storm in the Gulf'); show(host._cone, false); setText(host._ring, ''); setText(host._reached, ''); clear(host._windList); clear(host._log); show(host._testcat, false); return; }
-    show(host._testcat, true); show(host._cone, true);
-    const fc = int(storm.forecastCat, 1);
-    const opts = [clamp(fc - 1, 1, 5), clamp(fc, 1, 5), clamp(fc + 1, 1, 5)];
-    if (!host._testcat._opts || host._testcat._opts.join(',') !== opts.join(',')) {
-      clear(host._testcat); host._testcat._opts = opts;
-      opts.forEach(function (c) { const b = btn(null, 'Cat ' + c, 'seg-btn', function () { UI.panels.storm.testCat = c; refreshStorm(stateFor(host), host); }); b.dataset.c = String(c); host._testcat.appendChild(b); });
-      if (!Number.isFinite(UI.panels.storm.testCat) || opts.indexOf(UI.panels.storm.testCat) < 0) UI.panels.storm.testCat = fc;
+    if (!host || !host._status) return;
+    const storm = call('weather', 'storm', s), real = storm && !storm.nearMiss ? storm : null;
+    const q = function (a, sel) { return call('weather', 'prepQuote', s, a, sel) || { ok: false, reason: 'Not yet', cost: 0, affected: [], effectText: '', alreadyDone: false }; };
+    const fc = real ? int(real.forecastCat, 1) : 0;
+    // cone, test height, ring (a real storm only)
+    show(host._testcat, !!real); show(host._cone, !!real); show(host._ring, !!real); show(host._reached, !!real);
+    let H = fin(PS.ringDefaultH, 5);
+    if (real) {
+      const opts = [clamp(fc - 1, 1, 5), clamp(fc, 1, 5), clamp(fc + 1, 1, 5)];
+      if (!host._testcat._opts || host._testcat._opts.join(',') !== opts.join(',')) {
+        clear(host._testcat); host._testcat._opts = opts;
+        opts.forEach(function (c) { const b = btn(null, 'Cat ' + c, 'seg-btn', function () { UI.panels.storm.testCat = c; refreshStorm(stateFor(host), host); }); b.dataset.c = String(c); host._testcat.appendChild(b); });
+        if (!Number.isFinite(UI.panels.storm.testCat) || opts.indexOf(UI.panels.storm.testCat) < 0) UI.panels.storm.testCat = fc;
+      }
+      for (const b of host._testcat.children) cls(b, 'active', Number(b.dataset.c) === UI.panels.storm.testCat);
+      H = fin(call('weather', 'forecastSurge', s, UI.panels.storm.testCat), fin(PS.surge && PS.surge[fc], 5));
+      drawCone(s, host._cone, H);
+      const ringClosed = !!call('buildings', 'ringClosed', s, H);
+      if (ringClosed) setText(host._ring, 'Ring closed at ' + H + ' ft ✓');
+      else { const g = call('buildings', 'gaps', s, H) || { gaps: [], weak: [], gates: [], reachedBuildings: [] }; setText(host._ring, formatRingLine(H, g)); host._lastGaps = g; }
+      const g2 = host._lastGaps || call('buildings', 'gaps', s, H) || { reachedBuildings: [] };
+      const rb = g2.reachedBuildings || [];
+      setText(host._reached, rb.length ? ('Reached buildings: ' + rb.map(function (r) { return nameOf(s, r.id) + ' (' + Math.round(r.depth * 10) / 10 + ' ft) ⚠'; }).join(' · ')) : 'Reached buildings: none');
     }
-    for (const b of host._testcat.children) cls(b, 'active', Number(b.dataset.c) === UI.panels.storm.testCat);
-    const H = fin(call('weather', 'forecastSurge', s, UI.panels.storm.testCat), fin(PS.surge && PS.surge[fc], 5));
-    const days = Math.max(0, fin(storm.landfallDay, todayOf(s)) - todayOf(s));
-    setText(host._status, 'HURRICANE ' + (storm.name || '').toUpperCase() + ' · Cat ' + fc + ' (±1) · landfall in ' + days + ' days · surge ' + H + ' ft');
-    drawCone(s, host._cone, H);
+    setText(host._status, stormStatus(s, storm, H, fc));
+    if (host._doneMsg && (host._doneMsg.day !== todayOf(s) || host._doneMsg.storm !== stormKey(s))) host._doneMsg = null;   // a confirmation lives for the day it was made, then the status below speaks for itself
+    if (host._doneMsg) { setText(host._done, host._doneMsg.text); cls(host._done, 'bad', !host._doneMsg.ok); show(host._done, true); } else show(host._done, false);
 
-    const ringClosed = !!call('buildings', 'ringClosed', s, H);
-    if (ringClosed) setText(host._ring, 'Ring closed at ' + H + ' ft ✓');
-    else { const g = call('buildings', 'gaps', s, H) || { gaps: [], weak: [], gates: [], reachedBuildings: [] }; setText(host._ring, formatRingLine(H, g)); host._lastGaps = g; }
-    const g2 = host._lastGaps || call('buildings', 'gaps', s, H) || { reachedBuildings: [] };
-    const rb = g2.reachedBuildings || [];
-    setText(host._reached, rb.length ? ('Reached buildings: ' + rb.map(function (r) { return nameOf(s, r.id) + ' (' + Math.round(r.depth * 10) / 10 + ' ft) ⚠'; }).join(' · ')) : 'Reached buildings: none');
-
-    const list = windPickList(s).filter(function (r) { return !r.boarded; });
-    const unboardedLowWr = list.filter(function (r) { return r.wr <= 2; }).length;
-    const wt = list.find(function (r) { return r.type === 'water_tower'; });
-    setText(host._windSummary, unboardedLowWr + ' unboarded buildings WR ≤ 2' + (wt ? ' · Water Tower ' + ((s.plot && true) ? 'unbraced' : 'unbraced') : ''));
-    // Rebuild the checklist only when its content changes; a 500 ms refresh must never eat a checked box (playtest bug).
-    host._windSel = host._windSel || new Set();
-    const boardedCount = windPickList(s).filter(function (r) { return r.boarded; }).length;
-    const key = list.map(function (r) { return r.id + ':' + r.wr; }).join('|') + '#' + boardedCount;
-    if (host._windKey !== key) {
-      host._windKey = key;
-      clear(host._windList);
-      const live = new Set(list.map(function (r) { return r.id; }));
-      for (const id of Array.from(host._windSel)) if (!live.has(id)) host._windSel.delete(id);
-      list.forEach(function (r) {
-        const row = el('label', 'row pick'); const cb = el('input'); cb.type = 'checkbox'; cb.checked = host._windSel.has(r.id);
-        cb.addEventListener('change', function () { if (cb.checked) host._windSel.add(r.id); else host._windSel.delete(r.id); });
-        row._checked = function () { return host._windSel.has(r.id); }; row._id = r.id;
-        const lab = el('span', 'k', r.name + ' (WR ' + r.wr + ')');
-        row.appendChild(cb); row.appendChild(lab); host._windList.appendChild(row);
+    // Prepare everything
+    const all = q('prepareAll');
+    const stepsKey = (all.steps || []).map(function (st) { return st.label + st.cost; }).join('|') + '#' + all.reason;
+    if (host._allKey !== stepsKey) {
+      host._allKey = stepsKey; clear(host._allSteps);
+      (all.steps || []).forEach(function (st) {
+        const r = el('div', 'row'); r.appendChild(el('span', 'k', st.label)); r.appendChild(el('span', 'v', st.cost > 0 ? usd(st.cost) : 'no up-front cost')); host._allSteps.appendChild(r);
       });
-      if (boardedCount) { const d = el('div', 'row'); d.appendChild(el('span', 'k', boardedCount + ' boarded ✓')); host._windList.appendChild(d); }
+      if ((all.steps || []).length) { const t = el('div', 'row sp-total'); t.appendChild(el('span', 'k', 'Total')); t.appendChild(el('span', 'v', usd(all.cost))); host._allSteps.appendChild(t); }
     }
+    setText(host._allBtn, 'Prepare everything (recommended)' + (all.steps && all.steps.length ? ' · ' + usd(all.cost) : ''));
+    host._allBtn.disabled = !all.ok; setText(host._allWhy, all.ok ? '' : all.reason); cls(host._allWhy, 'done', !!all.alreadyDone);
 
-    const shelter = call('buildings', 'shelter', s) || { capacity: 0, students: 0, ok: false, lines: [] };
-    setText(host._shelter, 'Shelter ' + shelter.capacity.toLocaleString('en-US') + ' / ' + shelter.students.toLocaleString('en-US') + ' students ' + (shelter.ok ? '✓' : '✗') + (shelter.lines.length ? ' (' + shelter.lines.join(', ') + ')' : ''));
+    // 1. board up: checklist (selection kept in host._windSel, rebuilt only when its content changes)
+    const info = call('buildings', 'boardInfo', s) || { rows: [], perDay: 6, daysLeft: -1, live: false, unit: 5000 };
+    const order = function (r) { return r.eligible ? 0 : (r.queued > 0 ? 1 : 2); };
+    const rows = info.rows.slice().sort(function (a, b) { return order(a) - order(b); });
+    const live = new Set(rows.filter(function (r) { return r.eligible; }).map(function (r) { return r.id; }));
+    for (const id of Array.from(host._windSel)) if (!live.has(id)) host._windSel.delete(id);
+    const key = rows.map(function (r) { return r.id + ':' + r.wr + ':' + (r.eligible ? 'e' : r.queued > 0 ? 'q' + r.queued : 'b') + r.until; }).join('|');
+    if (host._windKey !== key) {
+      host._windKey = key; clear(host._windList);
+      if (!rows.length) host._windList.appendChild(el('div', 'row dim', 'No finished buildings to board up yet.'));
+      rows.forEach(function (r) {
+        if (r.eligible) {
+          const row = el('label', 'row pick'); const cb = el('input'); cb.type = 'checkbox'; cb.checked = host._windSel.has(r.id);
+          cb.addEventListener('change', function () { if (cb.checked) host._windSel.add(r.id); else host._windSel.delete(r.id); refreshStorm(stateFor(host), host); });
+          row._cb = cb; row._key = r.id; row._id = r.id; row._checked = function () { return host._windSel.has(r.id); };
+          row.appendChild(cb); row.appendChild(el('span', 'k', r.name)); row.appendChild(el('span', 'sp-wr', 'WR ' + r.wr));
+          if (r.boarded) row.appendChild(el('span', 'sp-dim', 'boards up to ' + dateStr(r.until) + ', too early'));
+          row.appendChild(el('span', 'v', usd(r.cost))); host._windList.appendChild(row);
+        } else {
+          const row = el('div', 'row sp-boarded'); row._key = r.id;
+          row.appendChild(el('span', 'k', (r.queued > 0 ? '⏳ ' : '✓ ') + r.name)); row.appendChild(el('span', 'sp-wr', 'WR ' + r.wr));
+          row.appendChild(el('span', 'v', r.queued > 0 ? 'Crew queued (#' + r.queued + ')' : 'Boarded until ' + dateStr(r.until)));
+          host._windList.appendChild(row);
+        }
+      });
+    }
+    const qSel = host._windSel.size ? q('boardUp', Array.from(host._windSel)) : null, qAll = q('boardUp', 'all');
+    const nWr2 = rows.filter(function (r) { return r.eligible && r.wr <= 2; }).length;
+    setText(host._boardSum, qSel ? ('Selected ' + qSel.count + ' · ' + usd(qSel.cost) + ' total. ' + qSel.effectText) : (qAll.count ? ('Nothing ticked. Board Up all: ' + qAll.count + ' buildings · ' + usd(qAll.cost) + '. ' + qAll.effectText) : (qAll.reason || '')));
+    setText(host._boardSel, qSel ? 'Board Up selected (' + qSel.count + ') · ' + usd(qSel.cost) : 'Board Up selected'); host._boardSel.disabled = !qSel || !qSel.ok;
+    setText(host._boardAll, qAll.count ? 'Board Up all (' + qAll.count + ') · ' + usd(qAll.cost) : (qAll.alreadyDone ? '✓ All boarded' : 'Board Up all')); host._boardAll.disabled = !qAll.ok;
+    host._selWr2.disabled = !nWr2; host._selNone.disabled = !host._windSel.size;
+    setText(host._boardWhy, whyText([['Board Up selected', qSel || { ok: false, reason: 'tick at least one building' }], ['Board Up all', qAll], ['Select WR ≤ 2', nWr2 ? { ok: true } : { ok: false, reason: 'no unboarded building has WR 2 or lower' }]]));
 
-    cls(host._predrain, 'active', !!storm.preDrain);
+    // 2. water: sandbags (levee runs), pre-drain, spillway
+    const runs = call('buildings', 'sandbagRuns', s, call('weather', 'forecastSurge', s)) || [];
+    const openRuns = new Set(runs.filter(function (r) { return !r.sandbagged; }).map(function (r) { return r.key; }));
+    for (const k of Array.from(host._sbSel)) if (!openRuns.has(k)) host._sbSel.delete(k);
+    const skey = runs.map(function (r) { return r.key + ':' + r.tiles.length + ':' + r.integrity + ':' + (r.sandbagged ? 1 : 0); }).join('|');
+    if (host._sbKey !== skey) {
+      host._sbKey = skey; clear(host._sbList);
+      if (!runs.length) host._sbList.appendChild(el('div', 'row dim', 'No levee faces the water at ' + H + ' ft. Build a levee first.'));
+      runs.forEach(function (r) {
+        const info2 = r.length + ' tiles · integrity ' + r.integrity + '%' + (r.weak ? ' ⚠ weak' : '');
+        if (!r.sandbagged) {
+          const row = el('label', 'row pick'); const cb = el('input'); cb.type = 'checkbox'; cb.checked = host._sbSel.has(r.key);
+          cb.addEventListener('change', function () { if (cb.checked) host._sbSel.add(r.key); else host._sbSel.delete(r.key); refreshStorm(stateFor(host), host); });
+          row._cb = cb; row._key = r.key;
+          row.appendChild(cb); row.appendChild(el('span', 'k', r.name)); row.appendChild(el('span', 'sp-dim', info2)); row.appendChild(el('span', 'v', usd(r.cost))); host._sbList.appendChild(row);
+        } else {
+          const row = el('div', 'row sp-boarded'); row._key = r.key;
+          row.appendChild(el('span', 'k', '✓ ' + r.name)); row.appendChild(el('span', 'sp-dim', info2)); row.appendChild(el('span', 'v', 'Sandbagged')); host._sbList.appendChild(row);
+        }
+      });
+    }
+    const sSel = host._sbSel.size ? q('sandbags', Array.from(host._sbSel)) : null, sAll = q('sandbags', 'all'), sWeak = q('sandbags', 'weak');
+    const nWeak = runs.filter(function (r) { return r.weak && !r.sandbagged; }).length;
+    setText(host._sbSum, sSel ? ('Selected ' + host._sbSel.size + ' · ' + usd(sSel.cost) + ' total. ' + sSel.effectText) : (sAll.ok ? ('Nothing ticked. Sandbag all: ' + usd(sAll.cost) + '. ' + sAll.effectText) : (sAll.reason || '')));
+    setText(host._sbSelBtn, sSel ? 'Sandbag selected (' + host._sbSel.size + ') · ' + usd(sSel.cost) : 'Sandbag selected'); host._sbSelBtn.disabled = !sSel || !sSel.ok;
+    setText(host._sandbags, sAll.ok ? 'Sandbag all · ' + usd(sAll.cost) : (sAll.alreadyDone ? '✓ All sandbagged' : 'Sandbag all')); host._sandbags.disabled = !sAll.ok;
+    host._sbWeak.disabled = !nWeak;
+    setText(host._sbWhy, whyText([['Sandbag selected', sSel || { ok: false, reason: 'tick at least one levee run' }], ['Sandbag all', sAll], ['Select weak runs', nWeak ? { ok: true } : { ok: false, reason: sWeak.reason || 'no weak runs' }]]));
+
+    const pd = q('preDrain'); syncAction(host._predrain, pd, 'Pre-draining', pd.ok && pd.perDay ? ' · $0 now, +' + usd(pd.perDay) + '/day' : '');
+    const pk = (pd.pumps || []).map(function (p) { return p.id + ':' + (p.running ? 1 : 0) + ':' + p.district; }).join('|');
+    if (host._predrain.key !== pk) {
+      host._predrain.key = pk; clear(host._predrain.lines);
+      (pd.pumps || []).forEach(function (p) { const r = el('div', 'row'); r.appendChild(el('span', 'k', (p.running ? '✓ ' : '✗ ') + p.name)); r.appendChild(el('span', 'v', p.running ? (p.district > 0 ? 'powered · drains ' + p.district + ' canal tiles · up to ' + p.ftPerDay + ' ft/day doubled' : 'powered, but not on a canal') : 'no power, will not run')); host._predrain.lines.appendChild(r); });
+    }
+    syncAction(host._spillway, q('spillway'), 'Spillway open');
+
+    // 3. people
+    const ev = q('evacuate'); syncAction(host._evacuate, ev, 'Evacuated');
+    const ek = (ev.shelters || []).map(function (p) { return p.id + ':' + p.capacity; }).join('|') + '#' + ev.students + '/' + ev.capacity;
+    if (host._evacuate.key !== ek) {
+      host._evacuate.key = ek; clear(host._evacuate.lines);
+      if (ev.students != null) {
+        (ev.shelters || []).forEach(function (p) { const r = el('div', 'row'); r.appendChild(el('span', 'k', p.name)); r.appendChild(el('span', 'v', 'shelters up to ' + p.capacity.toLocaleString('en-US'))); host._evacuate.lines.appendChild(r); });
+        const t = el('div', 'row sp-total'); t.appendChild(el('span', 'k', 'Shelter in place')); t.appendChild(el('span', 'v', Math.min(ev.capacity, ev.students).toLocaleString('en-US') + ' of ' + ev.students.toLocaleString('en-US') + ' students ' + (ev.capacity >= ev.students ? '✓' : '✗')));
+        host._evacuate.lines.appendChild(t);
+      }
+    }
+    syncAction(host._repairall, q('repairAll'), 'Repaired');
     cls(host._playthrough, 'active', !!(s.storms && s.storms.playThroughIt));
     const nextHome = call('sports', 'upcoming', s);
-    const canPlayThrough = !!nextHome && fin(nextHome.day, -1) - todayOf(s) <= 1 && fc <= 1;
-    show(host._playthrough, canPlayThrough);
-    show(host._evacuate, true); host._evacuate.disabled = !!storm.evacuated;
-    host._sandbags.disabled = !!storm.sandbagged;
-    show(host._spillway, yearOf(s) >= 3 && !!call('buildings', 'has', s, 'engineering'));
+    show(host._playthrough, !!real && !!nextHome && fin(nextHome.day, -1) - todayOf(s) <= 1 && fc <= 1);
 
     clear(host._log);
     const log = (s.storms && s.storms.log) || [];

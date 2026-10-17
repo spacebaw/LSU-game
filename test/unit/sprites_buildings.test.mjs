@@ -211,5 +211,51 @@ eq(bad.join(','), '', 'every row x every variant combo renders');
   ok(S.get('icon:dorm', 0, 0, 2) === S.get('icon:dorm', 0, 0, 2), 'icons are cached once');
 }
 
+// --- habitat pass: the Tiger Habitat is a bespoke exhibit painter (sunken enclosure, pool, den, glass, plaza) ------------------
+{
+  const row = BSU.data.catalog.tiger_habitat, H = S.HABITAT, FL = SPR.FRONT_L, FLD = SPR.FLOODED;
+  ok(H && Object.isFrozen(H) && typeof S.habitatWorld === 'function' && typeof S.habitatPool === 'function' && S.hasPainter('habfront'), 'the habitat layout (HABITAT, habitatWorld, habitatPool) and the habfront foreground painter are registered');
+  const g = S.buildingBox(row, 0, 1, 0);
+  ok(g.fw === 3 && g.fh === 3 && g.w === 196 && g.ox === -98 && g.extraTop === 30 && g.wallH === 0 && g.h === 130, `footprint and canvas size unchanged (3×3, ${g.w}×${g.h} px, ox ${g.ox}); it is low and wall-less, so no building shadow / AO box (wallH ${g.wallH}) and the oak's headroom is the old wall + extraTop (${g.extraTop})`);
+  ok(row.paint.special === 'tiger_habitat' && row.w === 3 && row.h === 3 && row.effects.landmark === 8 && row.effects.happiness.radius === 15 && row.effects.gatorAvoidRadius === 10, 'the catalog row is untouched: special, 3×3, landmark +8, +5 happiness radius 15, gators avoid 10');
+  // layout: plaza cells in front of the wall, the floor behind it, the pool where Roux swims and not where he naps
+  ok(H.SPOT_X.every((x) => x > 2.08 && x < 3) && H.SPOT_Y.every((y) => y > 0.5 && y < 2.5), 'the viewing cells lie on the plaza (depth 2.08–3), inside the glass span');
+  ok(H.ROUX.x1 < H.WALL_X - 0.3 && H.ROUX.x0 > H.FX0 && H.ROUX.y0 > H.FY0 && H.ROUX.y1 < H.FY1, 'Roux\'s bounds stay inside the enclosure floor, clear of the viewing wall');
+  ok(S.habitatPool(H.SWIM[0][0], H.SWIM[0][1]) > 0 && S.habitatPool(H.SWIM[1][0], H.SWIM[1][1]) > 0 && S.habitatPool(H.NAP[0], H.NAP[1]) < -0.2, 'the swim legs start and end in the pool; the nap spot is dry, in the oak\'s shade');
+  ok(S.habitatPool(2.5, 1.5) < 0 && S.habitatPool(0.8, 1.4) > 0.5, 'the pool field is positive in the pool and negative on the plaza');
+  const w0 = S.habitatWorld(40, 30, false, 1.5, 0.5), w1 = S.habitatWorld(40, 30, true, 1.5, 0.5);
+  ok(w0[0] === 41.5 && w0[1] === 30.5 && w1[0] === 40.5 && w1[1] === 31.5, 'habitatWorld maps local (depth, along) to world tiles and transposes under FRONT_L');
+  // bakes: every state, both entrances, 1× and 2×
+  const states = [0, SPR.NIGHT, SPR.DAMAGED, SPR.BOARDED, FLD, FLD | SPR.NIGHT, SPR.DAMAGED | SPR.NIGHT, SPR.PILINGS, SPR.RUIN];
+  let bad = [];
+  for (const v of states) for (const f of [0, FL]) for (const z of [1, 2]) { const e = S.get('tiger_habitat', v | f, 0, z); if (!e || e.sw !== g.w * z || e.sh !== g.h * z + (v & SPR.PILINGS ? 10 * z : 0)) bad.push(v + '|' + f + '|' + z); }
+  eq(bad.join(' '), '', 'the habitat bakes in 9 states × 2 entrances × 2 zooms with the box size (night, damaged, boarded, flooded, pilings, ruin)');
+  for (const f of [0, 1, 2]) ok(!!S.get('tiger_habitat', SPR.SCAFFOLD, f, 1), `construction stage ${f} goes through the scaffold pipeline`);
+  eq(S.frames('tiger_habitat', SPR.NIGHT), 4, 'night still has the four building frames');
+  // the foreground layer: same anchor and bottom as the building, much smaller canvas, per state
+  for (const v of [0, FL, SPR.NIGHT | FL, FLD | FL, SPR.DAMAGED, SPR.BOARDED]) {
+    const b = S.get('tiger_habitat', v, 0, 1), f = S.get('habfront', v, 0, 1);
+    ok(b && f && f.ox === b.ox && f.sw === b.sw && f.oy + f.sh === b.oy + b.sh && f.sh < b.sh * 0.65, `habfront (variant ${v}) shares the building's anchor, width and bottom edge and is ${f ? f.sh : '?'} px tall against ${b ? b.sh : '?'}`);
+  }
+  // drawing: recorded fillRect streams (the DOM stub keeps no pixels): the states and entrances differ, nothing is painted outside the canvas
+  const rec = (v) => {
+    const c = S.newCanvas(1, 1), gx = S.ctx2d(c), calls = []; gx.fillRect = (x, y, w, h) => { calls.push([x, y, w, h, gx.fillStyle]); }; gx.drawImage = () => { calls.push(['img']); };
+    S.paintBuilding(gx, row, v, 0, 1, 7, 0); return { calls, w: c.width, h: c.height };
+  };
+  const day = rec(0), dayL = rec(FL), night = rec(SPR.NIGHT), flood = rec(FLD), dmg = rec(SPR.DAMAGED), brd = rec(SPR.BOARDED);
+  const sig = (r) => r.calls.map((q) => q.join(',')).join(';');
+  ok(day.calls.length > 8000 && day.calls.length < 60000, `a day bake is ${day.calls.length} fillRects (a few thousand pixels of art; bounded)`);
+  ok(sig(day) !== sig(dayL) && sig(day) !== sig(night) && sig(day) !== sig(flood) && sig(day) !== sig(dmg) && sig(day) !== sig(brd) && sig(night) !== sig(flood), 'entrance, night, flooded, damaged and boarded each paint differently');
+  const outside = (r) => r.calls.filter((q) => q[0] !== 'img' && (q[0] < 0 || q[1] < 0 || q[0] + q[2] > r.w || q[1] + q[3] > r.h)).length;
+  eq(outside(day) + outside(dayL) + outside(night) + outside(flood) + outside(dmg), 0, 'nothing is painted outside the sprite canvas');
+  const nightColors = new Set(night.calls.map((q) => q[4])), dayColors = new Set(day.calls.map((q) => q[4]));
+  ok([...nightColors].some((c) => /^#FFF1A8$|^#FFE680$/i.test(c)) && ![...dayColors].some((c) => /^#FFF1A8$/i.test(c)), 'night adds the warm lamp light; day has none');
+  ok([...flood.calls.map((q) => q[4])].filter((c) => /^#7C9A92$/i.test(c)).length > 100, 'the flooded exhibit is full of floodwater (the pool has spilled)');
+  // the icon is generated from the painter: the habitat's own sprite (FRONT_L) on the slab
+  const pl = S.iconPlan('tiger_habitat');
+  ok(pl.items.length === 1 && pl.items[0].id === 'tiger_habitat' && (pl.items[0].v & FL) && pl.foot === '3×3', 'the palette icon is the habitat painter\'s own sprite with the entrance on the lit side');
+  ok(!!S.get('icon:tiger_habitat', 0, 0, 2) && !!S.get('icon:tiger_habitat', 1, 0, 2), 'the icon bakes unlocked and locked');
+}
+
 console.log(`\n${passes} passed, ${failures} failed`);
 process.exit(failures ? 1 : 0);

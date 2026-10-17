@@ -246,5 +246,90 @@ ok(s.agents.every(a => a.state !== 'GONE'), 'all 60 agents present after 30 days
   }
 }
 
+// --- habitat pass: the Tiger Habitat is an idle destination with a viewing plaza (12 cells, never the enclosure) ------------------
+{
+  const D = M._deps, prevB = D.buildings;
+  const hab = { id: 2, type: 'tiger_habitat', tx: 40, ty: 30, w: 3, h: 3, built: 1, ruin: false, flooded: false, tier: 0, hp: 1 };
+  const quad = { id: 3, type: 'quad', tx: 10, ty: 40, w: 2, h: 2, built: 1, ruin: false, flooded: false, tier: 0, hp: 1 };
+  D.buildings = Object.assign({}, prevB, {
+    list(q, t) { return prevB.list(q, t).concat([hab, quad]).filter(b => !t || b.type === t); },
+    get(q, id) { return id === 2 ? hab : id === 3 ? quad : prevB.get(q, id); },
+    footprint(q, id) { return id === 2 ? BSU.footprintTiles(40, 30, 3, 3) : id === 3 ? BSU.footprintTiles(10, 40, 2, 2) : prevB.footprint(q, id); }
+  });
+  const mkH = (side, n, seed) => {
+    const q = BSU.newState(seed); q.tiles.walk.fill(2); q.tiles.type.fill(BSU.T.DRY);
+    for (const i of BSU.footprintTiles(40, 30, 3, 3)) { q.tiles.walk[i] = 0; q.tiles.owner[i] = 2; }
+    for (const i of BSU.footprintTiles(10, 40, 2, 2)) { q.tiles.walk[i] = 0; q.tiles.owner[i] = 3; }
+    if (side === 'SE') for (let y = 28; y <= 34; y++) { q.tiles.walk[y * 64 + 43] = 1; q.tiles.surface[y * 64 + 43] = 1; }   // a path along the east edge: the front is the SE edge
+    else for (let x = 38; x <= 45; x++) { q.tiles.walk[33 * 64 + x] = 1; q.tiles.surface[33 * 64 + x] = 1; }                // along the south edge: the front is the SW edge (FRONT_L)
+    q.economy.students = n; q.plot.founders = { tx: 40, ty: 7 }; q.calendar.day = 10; q.tick = 40; q.__lock = 40; BSU.state = q; BSU.rng.sim.state = q.rng.sim; M.init(q); M.reset(q, true); return q;
+  };
+  const put = (a, x, y) => { a.inside = false; a.aboard = false; a.tx = x; a.ty = y; a.px = x; a.py = y; a.lastTile = Math.floor(y) * 64 + Math.floor(x); a.next = null; a.waitTicks = 0; a.prop = 'none'; a.approach = false; };
+  const toDoor = (a, door) => { a.state = 'WALK'; a.goal = 'idle'; a.target = door; a.route = []; a.routeIdx = 0; a.spd = 0; a.step = 0; };
+  // the local exhibit depth of a world position (the sprite's transpose): X = depth 0 back … 3 front; < 2 is the enclosure
+  const depthOf = (fl, x, y) => (fl ? y - 30 : x - 40);
+  for (const side of ['SE', 'SW']) {
+    const q = mkH(side, 1500, side === 'SE' ? 61 : 62); M.tick(q, { newDay: false }), q.tick++;
+    const info = M._debug.habitat(q, 2), fl = info.fl;
+    ok(fl === (side === 'SW') && info.door === (fl ? 33 * 64 + 41 : 31 * 64 + 43), `${side}-front habitat: front rule ${fl ? 'SW' : 'SE'}, door tile ${info.door & 63},${info.door >> 6} (the path tile just outside the plaza's middle)`);
+    const nSpots = info.spots.length / 3, rows = [0, 0, 0]; for (let k = 0; k < nSpots; k++) rows[info.spots[k * 3 + 2]]++;
+    ok(nSpots === 12 && rows.join() === '4,4,4' && nSpots <= info.max, `${side}: twelve standing cells (two rows of four on the plaza, four on the path tiles outside)`);
+    let inEnclosure = 0; for (let k = 0; k < nSpots; k++) if (depthOf(fl, info.spots[k * 3], info.spots[k * 3 + 1]) < 2) inEnclosure++;
+    ok(inEnclosure === 0, `${side}: no standing cell lies on an enclosure tile (depth < 2)`);
+    // 40 students sent to the door at once: the cap holds, nobody ever steps onto the enclosure, dwell is 10–30 s, the poses show up
+    const A = q.agents.filter(a => a.state !== 'GONE').slice(0, 40), ids = new Set(A.map(a => a.id));
+    A.forEach((a, k) => { put(a, 20.5 + (k % 8) * 0.9, 25.5 + ((k / 8) | 0)); toDoor(a, info.door); });
+    let maxViewers = 0, trespass = 0, sharedCell = 0, badSpot = 0; const firstWait = new Map(), poses = new Set(); let left = 0;
+    for (let t = 0; t < 700; t++) {
+      M.tick(q, { newDay: false }), q.tick++;
+      const cells = new Set(); let v = 0;
+      for (const a of q.agents) {
+        if (a.state === 'GONE' || a.inside) continue;
+        const d = depthOf(fl, a.tx, a.ty), onTiles = fl ? (a.tx >= 40 && a.tx < 43 && a.ty >= 30 && a.ty < 33) : (a.tx >= 40 && a.tx < 43 && a.ty >= 30 && a.ty < 33);
+        if (onTiles && d < 2) trespass++;
+        if (a.view === 2) {
+          v++;
+          if (!a.approach && a.state === 'IDLE') {
+            const key = Math.floor(a.tx * 2) + ',' + Math.floor(a.ty * 2); if (cells.has(key)) sharedCell++; cells.add(key);
+            if (d < 2.2) badSpot++;
+            if (a.waitTicks > 0 && !firstWait.has(a.id)) firstWait.set(a.id, a.waitTicks);
+            poses.add(a.anim);
+          }
+        } else if (ids.has(a.id) && a.view === -1 && a.goal === 'idle' && a.target !== info.door && t > 150) left++;
+      }
+      maxViewers = Math.max(maxViewers, v);
+    }
+    ok(trespass === 0, `${side}: no student is ever on an enclosure tile (over 700 ticks)`);
+    ok(maxViewers >= 8 && maxViewers <= 12, `${side}: ${maxViewers} students at the glass at the peak (cap 12)`);
+    ok(sharedCell === 0 && badSpot === 0, `${side}: no two viewers share a cell and every viewer stands on the plaza or outside it`);
+    const waits = [...firstWait.values()];
+    ok(waits.length >= 8 && waits.every(v => v >= 50 - 2 && v <= 150) && new Set(waits).size >= 5, `${side}: viewers dwell 10–30 s (${Math.min(...waits)}–${Math.max(...waits)} ticks, ${waits.length} measured)`);
+    ok(poses.has('idle') && (poses.has('selfie') || poses.has('binoculars')), `${side}: viewers show idle / selfie / binoculars poses (${[...poses].sort().join(', ')})`);
+    ok(left >= 1, `${side}: viewers move on after the dwell`);
+    const vw = M.habitatViewers(q, 2); ok(vw && vw.n >= 0 && vw.x.length >= 12 && vw.total >= vw.n, `${side}: habitatViewers lists the glass (n ${vw && vw.n}, total ${vw && vw.total})`);
+  }
+  // the weight scales with the happiness effect: value × radius / 225 (one in three) of the idle picks; a full habitat draws nobody
+  {
+    const q = mkH('SW', 600, 63); M.tick(q, { newDay: false }), q.tick++;
+    q.veg = []; for (let k = 0; k < 6; k++) q.veg.push({ type: 'oak', stage: 2, tx: 8 + k * 3, ty: 50 });
+    M.reset(q, true);
+    const hp = BSU.data.catalog.tiger_habitat.effects.happiness;
+    ok(Math.abs(M._debug.habShare() - Math.min(0.4, Math.max(0.05, hp.value * hp.radius / 225))) < 1e-9 && Math.abs(M._debug.habShare() - 1 / 3) < 0.01, `the habitat's share of idle strolls = value ${hp.value} × radius ${hp.radius} / 225 = ${M._debug.habShare().toFixed(3)}`);
+    const door = M._debug.habitat(q, 2).door, picks = M._debug.idleTargets(q, 1500), share = picks.filter(t => t === door).length / picks.length;
+    ok(share > 0.25 && share < 0.42, `${(share * 100).toFixed(1)} % of 1500 idle picks are the habitat (about a third)`);
+    // twelve students committed: nobody else is sent
+    const A = q.agents.filter(a => a.state !== 'GONE').slice(0, 12);
+    A.forEach((a, k) => { put(a, 41.5, 36.5 + (k % 3) * 0.1); toDoor(a, door); });
+    M.tick(q, { newDay: false }), q.tick++;
+    const picks2 = M._debug.idleTargets(q, 400), n2 = picks2.filter(t => t === door).length;
+    ok(n2 === 0, `with 12 students at or on their way to the glass the habitat draws none of 400 picks (${n2})`);
+    // flooded or ruined: closed
+    hab.flooded = true; M.tick(q, { newDay: false }), q.tick++;
+    ok(M._debug.idleTargets(q, 300).filter(t => t === door).length === 0, 'a flooded habitat is not an idle destination');
+    hab.flooded = false;
+  }
+  D.buildings = prevB;
+}
+
 console.log(`${passes} passed, ${failures} failed`);
 process.exit(failures ? 1 : 0);
