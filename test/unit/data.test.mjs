@@ -188,7 +188,7 @@ ok(D.catalog.substation.effects.power.radius === 10 && D.catalog.tiger_habitat.e
   ok(FN.every(k => FB.formations[k].xy.length === 11 && FB.formations[k].pos.length === 11), 'every formation has 11 players');
   ok(FB.formations.iform.xy.slice(3, 8).map(q => q[1]).join() === '-4,-2,0,2,4' && FB.formations.d43.xy.slice(0, 4).map(q => q[1]).join() === '-3,-1,1,3', 'I-form line (0, −4…+4 step 2) and 4-3 front (+1, −3…+3) match the plan');
   const PK = Object.keys(FB.phrases).filter(k => k !== 'reaction');
-  eq(PK.length, 16, 'sixteen play-by-play phrase tables (+ reaction)');
+  eq(PK.length, 19, 'nineteen play-by-play phrase tables (+ reaction; qa pass 3 added runLoss / passLoss / passZero)');
   ok(PK.every(k => FB.phrases[k].length >= 4 && FB.phrases[k].length <= 8) && FB.phrases.reaction.good.length >= 4 && FB.phrases.reaction.bad.length >= 4, 'each phrase table has 4–8 variants');
   ok(['run', 'passComplete', 'passIncomplete', 'sack', 'punt', 'fgGood', 'fgMiss', 'interception', 'fumble', 'touchdownRun', 'touchdownPass', 'twoPointGood', 'twoPointFail'].every(k => !!FB.phrases[k]), 'run/pass complete/incomplete/sack/punt/FG good+miss/turnover/touchdown/two-point all present');
   const used = new Set(); for (const k of PK) for (const t of FB.phrases[k]) for (const v of (t.match(/\{[^}]*\}/g) || [])) used.add(v.slice(1, -1));

@@ -1702,12 +1702,13 @@
   M.fieldVenue = function (state, forDrill) {
     state = state || root; if (!state || !Array.isArray(state.buildings)) return null;
     const sp = state.sports, g = sp && sp.game;
+    const spring = !forDrill && !!(g && g.kind === 'spring');   // qa pass 3: the Spring Game is played on the Practice Field, bleachers or not (sports.venue is 'none' at 200 students)
     const venue = forDrill ? 'bayou_field' : String((sp && sp.venue) || (g && g.venue) || '');
-    const want = venue.indexOf('stadium') === 0 ? 'stadium' : 'practice_field';
+    const want = (!spring && venue.indexOf('stadium') === 0) ? 'stadium' : 'practice_field';
     let pick = null;
     for (let k = 0; k < state.buildings.length; k++) {
       const b = state.buildings[k]; if (!b || b.type !== want || !(fin(b.built, 0) >= 1) || b.ruin) continue;
-      if ((want === 'stadium' || !forDrill) && !(fin(b.tier, 0) >= 1)) continue;
+      if ((want === 'stadium' || !(forDrill || spring)) && !(fin(b.tier, 0) >= 1)) continue;
       if (!pick || fin(b.tier, 0) > fin(pick.tier, 0)) pick = b;
     }
     return pick;
@@ -1749,6 +1750,11 @@
     const C = FB.cam;
     if (!on) {
       if (C.active) { C.active = false; if (!C.touched && cam.zoom !== C.zoomBefore) setZoomCam(cam, C.zoomBefore, vw / 2, vh / 2, vw, vh); cam.hasTarget = false; markMoved(false); }
+      if (kind === 'montage' && C.montage !== spc && !spc.cameraTouched) {   // qa pass 3: the auto-sim montage eases the camera onto the venue once (no zoom change; a user pan still wins)
+        C.montage = spc;
+        const vb = M.fieldVenue(state, false), q = vb ? M.fieldQuad(vb) : null, wc = q ? M.fieldToWorld(vb, 50, FB_YD_V / 2, 0, q) : null;
+        if (wc) { cam.tx = wc.x; cam.ty = wc.y; cam.hasTarget = true; }
+      }
       return;
     }
     const b = FB.venue, q = M.fieldQuad(b); if (!q) return;
@@ -1820,7 +1826,13 @@
       } else { fbScreen(G, G.q.fw / 2, 0.45, 0); rect = { x: fbScr.x - 24 * z, y: fbScr.y - 10 * z, w: 48 * z, h: 9 * z }; }
       if (rect) {
         g.save();
-        if (b.type === 'stadium') {   // the bowl ellipse covers the turf: keep the shader off the field quad
+        if (b.type === 'stadium' && (b.tier | 0) <= 1) {   // qa pass 3: tier I is two long stands with open ends — clip the shader to the stands' lifted treads (the bowl ellipse leaked onto the lawn past the stand ends)
+          const Q = G.q, fw = fin(Q.fw, 6), fh = fin(Q.fh, 5), hOut = 14;
+          g.beginPath();
+          const stands = [[[1, 0.1, hOut], [fw - 1, 0.1, hOut], [fw - 1, 1.0, 3], [1, 1.0, 3]], [[1, fh - 1.0, 0], [fw - 1, fh - 1.0, 0], [fw - 1, fh - 0.1, hOut], [1, fh - 0.1, hOut]]];
+          for (let s = 0; s < 2; s++) { const pts = stands[s]; for (let k = 0; k < 4; k++) { fbScreen(G, pts[k][0], pts[k][1], pts[k][2]); if (k === 0) g.moveTo(fbScr.x, fbScr.y); else g.lineTo(fbScr.x, fbScr.y); } g.closePath(); }
+          g.clip();
+        } else if (b.type === 'stadium') {   // the bowl ellipse covers the turf: keep the shader off the field quad
           g.beginPath(); g.rect(0, 0, vw, vh);
           const Q = G.q, pts = [[Q.x0, Q.y0], [Q.x1, Q.y0], [Q.x1, Q.y1], [Q.x0, Q.y1]];
           for (let k = 0; k < 4; k++) { fbScreen(G, pts[k][0], pts[k][1], 0); if (k === 0) g.moveTo(fbScr.x, fbScr.y); else g.lineTo(fbScr.x, fbScr.y); }
@@ -2022,7 +2034,7 @@
     if (lv) {
       if (FB.game !== state.sports.game) { FB.game = state.sports.game; FB.warm = 0; FB.crewU = fin(lv.spot, 50); FB.gainU = FB.crewU + 10; FB.refU = FB.crewU; }
       fbWarmStep(G, lv);
-      if (lv.home) {
+      if (lv.home && (b.type === 'stadium' || fin(b.tier, 0) >= 1)) {   // a bare Practice Field (the first Spring Game) has no stands to fill
         const seats = Math.max(1, fin(mod('sports') && mod('sports').venueSeats ? mod('sports').venueSeats(state) : 0, 0) || 15000);
         const e = push('fbcrowd', G.ax, G.ay, G.el, 0.4, drawFbCrowd); tileScreen(e);
         e.b = G; e.a = clamp(fin(state.sports.game && state.sports.game.attendance, 0) / seats, 0, 1); e.c = fin(state.weather && state.weather.rainRate, 0) > 0.05 ? 1 : 0; e.d = G.sp.fbLook(lv.opp) | 0;

@@ -810,7 +810,7 @@
     const list = R.drawList; if (!Array.isArray(list)) return;
     const S = mod('sprites'), cat = (BSU.data && BSU.data.catalog) || {};
     // the venue the game is played at (sports.venue; the scheduled game's own venue as the fallback), never just the first field in the draw list
-    const venue = String((state.sports && state.sports.venue) || game.venue || ''); const wantType = venue.indexOf('stadium') === 0 ? 'stadium' : 'practice_field';
+    const venue = String((state.sports && state.sports.venue) || game.venue || ''); const wantType = (game.kind !== 'spring' && venue.indexOf('stadium') === 0) ? 'stadium' : 'practice_field';   // the Spring Game is on the Practice Field whatever the venue
     let pick = null;
     for (let k = 0; k < list.length; k++) {
       const e = list[k]; if (!e || e.kind !== 'building' || !e.b) continue;
@@ -963,8 +963,8 @@
           else if (b.type === 'stadium' && (b.tier | 0) >= 2 && b.built >= 1 && !b.ruin && !b.blackout && game && game.home) {
             // six masts around the bowl, cones rotated toward the field
             const rx = (span) * 14 * z, ry = span * 7 * z, fy = cy - 18 * z;
-            for (let m = 0; m < 6 && lightsN < LMAX; m++) { const ang = (m / 6) * Math.PI * 2 + 0.3; const mx = cx + Math.cos(ang) * rx, my = fy + Math.sin(ang) * ry - 40 * z; pushLight('mast', mx, my, 1.9, 0.42, Math.atan2(fy - my, cx - mx) - Math.PI / 2); }   // B5: six overlapping cones used to white out the bowl; the haze below carries the glow now
-            pushLight('glow', cx, fy, 7 * span * 0.25, 0.45, 0);
+            for (let m = 0; m < 6 && lightsN < LMAX; m++) { const ang = (m / 6) * Math.PI * 2 + 0.3; const mx = cx + Math.cos(ang) * rx, my = fy + Math.sin(ang) * ry - 40 * z; pushLight('mast', mx, my, 1.9, 0.26, Math.atan2(fy - my, cx - mx) - Math.PI / 2); }   // qa pass 3: 0.42 still whited out midfield at the game camera's 2×, hiding the band and the ball   // B5: six overlapping cones used to white out the bowl; the haze below carries the glow now
+            pushLight('glow', cx, fy, 7 * span * 0.25, 0.32, 0);
             if (FXO.haze && hazeN < 2) { hazeX[hazeN] = cx; hazeY[hazeN] = fy - 22 * z; hazeR[hazeN] = span * 38 * z * (1 + 0.15 * ((b.tier | 0) - 2)); hazeA[hazeN] = 0.9; hazeN++; }
           }
         } else if (!inScreen(e.sx, e.sy)) continue;

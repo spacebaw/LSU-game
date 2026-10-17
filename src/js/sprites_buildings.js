@@ -1384,6 +1384,7 @@
    */
   function stadiumStand(P, g, r, inner, hIn, hOut, steps) {
     const alongX = inner[0] === 'y', faces = inner[1] === '1';
+    if (!faces) hIn = 0;   // qa pass 3: a stand seen from behind starts at the turf, so its first tread never covers the near sideline (it hid the near 3 px of the field and the WR at the wall's foot)
     const span = alongX ? r.y1 - r.y0 : r.x1 - r.x0, d = span / steps, dh = (hOut - hIn) / steps;
     const innerC = faces ? (alongX ? r.y1 : r.x1) : (alongX ? r.y0 : r.x0), outerC = faces ? (alongX ? r.y0 : r.x0) : (alongX ? r.y1 : r.x1);
     const dir = faces ? -1 : 1;
@@ -1427,7 +1428,7 @@
   /** tier II scoreboard: 28×12, BSU · score · a gold clock bar */
   function stadiumScoreboard(P, x, y, night, frame) {
     P.rect(x, y, 28, 12, X.black); P.hline(x, y, 28, PAL.gold); P.hline(x, y + 11, 28, PAL.goldShadow); P.vline(x, y, 12, PAL.gold); P.vline(x + 27, y, 12, PAL.goldShadow);
-    P.text('BSU', x + 2, y + 2, PAL.gold); P.text('0-0', x + 15, y + 2, night ? X.white : X.offWhite);
+    P.text('BSU', x + 8, y + 2, PAL.gold);   // qa pass 3: the baked board idles on the crest, not a frozen "0-0" beside a live 7–0 score bug
     P.hline(x + 2, y + 8, 24, shade(PAL.goldShadow, 0.7)); P.hline(x + 2, y + 8, 6 + ((frame | 0) % 4) * 4, night ? PAL.goldHi : PAL.gold);
   }
   /** the construction site (SCAFFOLD frames 0–2 and tier 0): graded dirt, fencing, then footings and turf, then the steel frames */

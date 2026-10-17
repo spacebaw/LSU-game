@@ -51,7 +51,7 @@ background:var(--panel-bg);border:1px solid var(--line);color:var(--text);border
 .row.quote .v{font-style:italic;color:var(--gold-hi);text-align:left}
 .card-kicker,.panel-title{font:600 1.2rem/1 var(--font-ui);letter-spacing:.12em;text-transform:uppercase;color:var(--gold);margin-bottom:.8rem}
 .panel-title{font-size:2.2rem;line-height:1.2;letter-spacing:.02em;text-transform:none;font-family:var(--font-title);color:var(--gold-hi);margin:0 0 1.2rem}
-#hud{position:absolute;inset:0;pointer-events:none}
+#hud{position:absolute;inset:0;pointer-events:none;--bot:calc(var(--palette-h) + var(--ticker-h) + var(--gutter))}   /* qa pass 3: re-declared here so #hud.no-palette's --palette-h:0 reaches it (a :root var() is resolved at :root, so the game strip / Skip / notifications floated a palette-height too high during set pieces) */
 #hud>*{pointer-events:auto}
 #hud.no-palette{--palette-h:0px}
 #hud.setpiece #milestones-card,#hud.setpiece #voice-card,#hud.setpiece #overlay-buttons,#hud.setpiece #notifications{opacity:0;pointer-events:none}
@@ -174,6 +174,13 @@ background:var(--panel-bg);border:1px solid var(--line);color:var(--text);border
 #dt-text{font:600 1.6rem/1.45 var(--font-ui);margin-bottom:1.2rem}
 #dt-countdown{height:.6rem} #dt-countdown .fill{transition:width .1s linear;background:linear-gradient(90deg,var(--gold),var(--gold-hi))}
 #decision-toast.dt-opts{width:clamp(32rem,calc(100vw - 80rem),60rem)}
+/* qa pass 3: during a game set piece the engine's option toast docks where the game strip sits (the strip hides under it) and lays its options in a row, so the field, the halftime band and the 4th-down spot stay in view instead of under a 34-rem card */
+#hud.setpiece #decision-toast.dt-opts{top:auto;bottom:calc(var(--bot) - .4rem);width:min(96rem,calc(100vw - 30rem));padding:1.2rem 1.6rem 1rem}
+#hud.setpiece #decision-toast.dt-opts #dt-text{font-size:1.4rem;margin-bottom:.8rem}
+#hud.setpiece #decision-toast.dt-opts #dt-options{flex-direction:row;flex-wrap:wrap;gap:.8rem;margin-bottom:.8rem}
+#hud.setpiece #decision-toast.dt-opts #dt-options .btn{flex:1 1 26rem;min-height:4rem;padding:.8rem 1.2rem}
+#hud.setpiece #decision-toast.dt-opts #dt-foot{margin-top:.6rem}
+#hud.setpiece #decision-toast.dt-opts:not(.hidden) ~ #game-hud{visibility:hidden}
 #decision-toast .card-actions{margin-top:1.6rem}
 #decision-toast .card-actions .btn{min-height:4.4rem;padding:1.2rem 2rem;font-size:1.5rem}
 #decision-toast .btn .key{margin-left:1rem;min-width:2.4rem;padding:3px .7rem;font-size:1.3rem;line-height:1.6rem;text-align:center;font-weight:700}

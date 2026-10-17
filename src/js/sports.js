@@ -517,7 +517,18 @@
   }
   function newBox() { return { plays: 0, rushAtt: 0, rushYds: 0, passAtt: 0, passComp: 0, passYds: 0, sacks: 0, ints: 0, fumbles: 0, to: 0, firstDowns: 0, top: 0, pts: 0, fgm: 0, fga: 0, xpm: 0, xpa: 0, twoM: 0, twoA: 0, tdRush: 0, tdPass: 0, downs: 0, long: 0, longType: '' }; }
   function newLines() { return { QB: { att: 0, comp: 0, yds: 0, td: 0, int: 0 }, RB: { car: 0, yds: 0, td: 0 }, WR: { rec: 0, yds: 0, td: 0 }, OL: { plays: 0 }, DL: { sacks: 0 }, LB: { tackles: 0 }, DB: { ints: 0 }, K: { fgm: 0, fga: 0, xpm: 0, long: 0 } }; }
-  function drawOppNames() { const r = {}; for (let i = 0; i < POS.length; i++) if (POS[i] !== 'OL') r[POS[i]] = lastName(fbName()); r.OL = 'line'; return r; }
+  /** the opponent's play-by-play names (per game): one draw per position; a name already on the BSU side or earlier in this roster walks the last-name pool instead (no extra draw), so "{rb} stuffed by {dl}" never names a Tiger on both sides (qa pass 3) */
+  function drawOppNames(used) {
+    const F = (data().football || {}).roster, pool = F && F.names && Array.isArray(F.names.last) ? F.names.last : null;
+    const r = {}, taken = {}; for (const k in (used || {})) taken[String(used[k])] = 1;
+    for (let i = 0; i < POS.length; i++) {
+      if (POS[i] === 'OL') continue;
+      let ln = lastName(fbName());
+      if (taken[ln] && pool && pool.length > 1) { const j = pool.indexOf(ln); for (let s = 1; s <= pool.length && taken[ln]; s++) ln = lastName(pool[(j + s) % pool.length]); }
+      taken[ln] = 1; r[POS[i]] = ln;
+    }
+    r.OL = 'line'; return r;
+  }
   function noAdj() { return { runShare: 0, big: 1, to: 1, clockAdd: 0 }; }
 
   // --- field helpers ---------------------------------------------------------
@@ -590,8 +601,8 @@
         if (e.res === 'fumble') return 'fumble';
         if (e.res === 'td') return 'touchdownRun';
         if (e.type === 'kneel') return null;
-        return e.yds >= 15 ? 'runBig' : (e.yds <= 1 ? 'runStuff' : 'run');
-      case 'pass': if (e.res === 'inc') return 'passIncomplete'; if (e.res === 'td') return 'touchdownPass'; if (e.res === 'fumble') return 'fumble'; return e.yds >= 20 ? 'passBig' : 'passComplete';
+        return e.yds >= 15 ? 'runBig' : (e.yds < 0 ? 'runLoss' : (e.yds <= 1 ? 'runStuff' : 'run'));
+      case 'pass': if (e.res === 'inc') return 'passIncomplete'; if (e.res === 'td') return 'touchdownPass'; if (e.res === 'fumble') return 'fumble'; return e.yds >= 20 ? 'passBig' : (e.yds < 0 ? 'passLoss' : (e.yds === 0 ? 'passZero' : 'passComplete'));
       case 'sack': return e.res === 'fumble' ? 'fumble' : 'sack';
       case 'int': return 'interception';
       case 'punt': return 'punt';
@@ -603,11 +614,17 @@
     const F = data().football || {}, PH = F.phrases || {};
     const t = e.poss, on = g.names[t] || {}, dn = g.names[1 - t] || {};
     const vars = { off: teamNick(g, t), def: teamNick(g, 1 - t), qb: on.QB, rb: on.RB, wr: on.WR, k: on.K, dl: dn.DL, lb: dn.LB, db: dn.DB, yds: Math.abs(e.yds), d: Math.abs(num(p.dist, e.yds)), spot: spotWordsAbs(g, e.end) };
-    const key = phraseKey(e);
+    let key = phraseKey(e);
+    if (key && !(PH[key] && PH[key].length)) key = key === 'runLoss' ? 'runStuff' : (key === 'passLoss' || key === 'passZero' ? 'passComplete' : key);   // older phrase tables
     let text = null;
     const list = key ? PH[key] : null;
-    if (list && list.length) text = fillPhrase(list[(e.n * 7 + Math.abs(e.yds)) % list.length], vars);
-    else {
+    if (list && list.length) {
+      let idx = (e.n * 7 + Math.abs(e.yds)) % list.length;
+      if (list.length > 1 && g.lastTpl === key + ':' + idx) idx = (idx + 1) % list.length;   // qa pass 3: never the same template twice running ("bounces outside for 5" / "bounces outside for 6")
+      if (key === 'punt') { const d = g.drives[g.drives.length - 1]; if (d && d.result === 'punt' && d.plays !== 3) for (let s = 0; s < list.length && /three and out/i.test(list[idx]); s++) idx = (idx + 1) % list.length; }   // "Three and out" only after a real one
+      g.lastTpl = key + ':' + idx;
+      text = fillPhrase(list[idx], vars).replace(/\b1 yards\b/g, '1 yard');
+    } else {
       switch (e.type) {
         case 'kickoff': text = e.res === 'touchback' ? vars.off + ' kick off. Touchback.' : (e.res === 'onsideGood' ? 'Onside kick… and the ' + vars.off + ' recover!' : (e.res === 'onsideFail' ? 'Onside kick recovered by the ' + vars.def + '.' : vars.off + ' kick off. Returned to ' + vars.spot + '.')); break;
         case 'xp': text = e.res === 'good' ? vars.k + ' adds the extra point.' : vars.k + ' pushes the extra point wide.'; break;
@@ -619,10 +636,14 @@
     if (e.res === 'safety') text += ' Safety.';
     else if (e.res === 'first' && e.type !== 'kickoff') text += ' First down.';
     else if (e.res === 'downs') text += ' Turnover on downs.';
-    if (PH.reaction && e.n % 3 === 0 && e.type !== 'kickoff' && e.type !== 'xp') {
-      const bsuGood = (t === BSU_T) ? (e.yds >= 4 && e.res !== 'int' && e.res !== 'fumble' && e.res !== 'miss' && e.res !== 'inc' && e.res !== 'downs') : (e.yds <= 2 || e.res === 'int' || e.res === 'fumble' || e.res === 'miss' || e.res === 'downs');
+    if (PH.reaction && e.n % 3 === 0 && e.type !== 'kickoff' && e.type !== 'xp' && e.type !== 'punt') {
+      // the crowd's side: a score / first down / made kick is good for the offense whatever the yardage (a 1-yard touchdown is not a hush), a turnover / miss / sack / incompletion bad
+      const won = e.res === 'td' || e.res === 'first' || e.res === 'good', lost = e.res === 'int' || e.res === 'fumble' || e.res === 'miss' || e.res === 'inc' || e.res === 'downs' || e.res === 'safety' || e.type === 'sack';
+      const notable = won || lost || Math.abs(e.yds) >= 8;   // a 2-yard carry earns no hush and no eruption
+      const offGood = won || (!lost && e.yds >= 4), offBad = lost || (!won && e.yds <= 2);
+      const bsuGood = (t === BSU_T) ? offGood : offBad;
       const rl = bsuGood ? PH.reaction.good : PH.reaction.bad;
-      if (rl && rl.length) text += ' ' + rl[Math.floor(e.n / 3) % rl.length];
+      if (notable && rl && rl.length) text += ' ' + rl[Math.floor(e.n / 3) % rl.length];
     }
     return text;
   }
@@ -1265,7 +1286,7 @@
     const lp = livePlayers(g, play, f, phase === 'live' || phase === 'snap' ? 'live' : (phase === 'huddle' ? 'huddle' : 'set'));
     const last = g.lastPlay;
     return {
-      active: true, mode: g.mode, home: !!g.home, opp: g.opp, night: !!g.night, quarter: g.quarter, clock: g.clock, clockText: g.ot ? 'OT' + (g.ot.round > 1 ? g.ot.round : '') : mmss(g.clock),
+      active: true, mode: g.mode, home: !!g.home, opp: g.opp, oppAbbr: oppAbbr(g), night: !!g.night, quarter: g.quarter, clock: g.clock, clockText: g.ot ? 'OT' + (g.ot.round > 1 ? g.ot.round : '') : mmss(g.clock),
       down: g.down, distance: g.dist, spot: g.spot, possession: g.poss, score: g.score.slice(), homePts: g.homePts, awayPts: g.awayPts, timeouts: g.timeouts.slice(),
       phase: phase, frac: f, over: !!g.over, finalized: !!g.finalized, ot: !!g.ot,
       lastPlay: last ? { n: last.n, type: last.type, res: last.res, yards: last.yds, text: last.text, poss: last.poss, key: last.key } : null,
@@ -1392,7 +1413,7 @@
     g.eng = engineFor(state, g);
     const mp = starterMap(sp), bn = {};
     for (let i = 0; i < POS.length; i++) bn[POS[i]] = mp[POS[i]] ? lastName(mp[POS[i]].name) : POS[i];
-    g.names = [bn, drawOppNames()];
+    g.names = [bn, drawOppNames(bn)];
     return g;
   }
   function scorePayload(g, extra) {

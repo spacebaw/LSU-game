@@ -865,10 +865,14 @@
   }
   /** a tile a person may stand on: path or dry ground (not wet, not wading) */
   const WADING_FT = BSU.params.hydro.thresholds.wading;
+  const NO_STAND = { practice_field: 1, stadium: 1 };   // qa pass 3: crossable turf, but nobody settles on the pitch (the tailgate crowd stood on the field during a game)
   function standable(state, i) {
     if (i < 0 || i >= N) return false;
     const w = state.tiles.walk[i];
-    return w >= 1 && w <= 2 && !(state.tiles.depth[i] >= WADING_FT);
+    if (!(w >= 1 && w <= 2) || state.tiles.depth[i] >= WADING_FT) return false;
+    const o = state.tiles.owner[i];
+    if (o >= 0) { const b = getBuilding(state, o); if (b && NO_STAND[b.type]) return false; }
+    return true;
   }
   /**
    * Claim a standing spot near tile `ti`: the cells of a 0.5-tile grid in rings around the tile centre (4 nearest cells first, then outward), each ring

@@ -202,7 +202,7 @@
     pb.appendChild(topbarButton('btn-budget', '◆', 'Budget', 'Budget (B)', function () { M.openPanel('budget'); }));
     pb.appendChild(topbarButton('btn-season', '🏈', 'Season', 'Season (N)', function () { M.openPanel('season'); }));
     const storm = topbarButton('btn-storm', '🌀', 'Storm', 'Storm (T)', function () { M.openPanel('storm'); }); const dot = el('span', 'dot'); storm.appendChild(dot); E['btn-storm-dot'] = dot; storm.disabled = true; pb.appendChild(storm);
-    pb.appendChild(topbarButton('btn-almanac', '📖', 'Almanac', 'Almanac (L)', function () { M.openPanel('almanac'); }));
+    pb.appendChild(topbarButton('btn-almanac', '📖', 'Almanac', 'Almanac', function () { M.openPanel('almanac'); }));
     pb.appendChild(topbarButton('btn-menu', '☰', '', 'Settings', function () { M.openPanel('settings'); }));
     pb.appendChild(topbarButton('btn-mute', '🔊', '', 'Mute (M)', function () { toggleMute(); }));
     const endowed = el('span', 'chip gold hidden', 'Endowed'); endowed.id = 'chip-endowed'; E['chip-endowed'] = endowed; tb.appendChild(endowed);

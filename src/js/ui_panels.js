@@ -518,7 +518,9 @@
 
     // record + rating headline
     const rt = call('sports', 'rating', s) || { rating: 0, terms: {} };
-    setText(host._record, hasTeam ? ('Record ' + rec.wins + '–' + rec.losses + ' · Team rating ' + Math.round(fin(rt.rating, 0))) : 'No team yet: build a Practice Field to field one.');
+    const offSeason = !!sp.seasonDone && rec.wins + rec.losses === 0 && sp.lastSeason && (fin(sp.lastSeason.wins, 0) + fin(sp.lastSeason.losses, 0)) > 0;   // qa pass 3: between Dec 8 and the new schedule the header kept the finished season's line, not a 0–0
+    const recLine = offSeason ? ('Last season ' + fin(sp.lastSeason.wins, 0) + '–' + fin(sp.lastSeason.losses, 0)) : ('Record ' + rec.wins + '–' + rec.losses);
+    setText(host._record, hasTeam ? (recLine + ' · Team rating ' + Math.round(fin(rt.rating, 0))) : 'No team yet: build a Practice Field to field one.');
 
     // next game: opponent rating/style, your live win probability (the slider moves it at once)
     if (up) {
@@ -695,7 +697,7 @@
   /** "2nd & 7" / "1st & Goal" for a down, a distance and the ball spot (0 = BSU goal line, 100 = the opponent's) */
   function downText(down, dist, spot) { return ordinal(down) + ' & ' + (fin(dist, 10) >= 100 - fin(spot, 0) ? 'Goal' : Math.round(fin(dist, 10))); }
   /** "BSU 35" / "MAG 38" / "midfield" */
-  function spotText(spot, oppKey) { const sp = Math.round(fin(spot, 50)); if (sp === 50) return 'midfield'; return sp < 50 ? 'BSU ' + sp : oppAbbr(oppKey) + ' ' + (100 - sp); }
+  function spotText(spot, oppKey, abbr) { const sp = Math.round(fin(spot, 50)); if (sp === 50) return 'midfield'; return sp < 50 ? 'BSU ' + sp : (abbr || oppAbbr(oppKey)) + ' ' + (100 - sp); }   // abbr: the engine's own (live().oppAbbr: 'GLD' for the Spring Game, not 'GOL')
   UI.registerPanel('season', { build: buildSeason, refresh: refreshSeason, events: ['game:scheduled', 'game:kickoff', 'game:score', 'game:halftime', 'game:final', 'season:end', 'coach:changed', 'building:complete', 'building:upgraded', 'game:decision'] });
 
   // ===========================================================================
@@ -773,7 +775,7 @@
         const ph = lv.phase, kick = g.phase === 'kickoff', tryPt = g.phase === 'try';
         setText(P.poss, ph === 'halftime' || ph === 'pregame' ? '' : (poss === 0 ? '▶' : (poss === 1 ? '◀' : '')));
         setText(P.down, ph === 'halftime' ? 'Halftime' : (ph === 'pregame' ? 'Pre-game' : (kick ? 'Kickoff' : (tryPt ? 'Try' : downText(lv.down, lv.distance, lv.spot)))));
-        setText(P.spot, ph === 'halftime' || ph === 'pregame' ? '' : 'ball on ' + spotText(lv.spot, g.opp));
+        setText(P.spot, ph === 'halftime' || ph === 'pregame' ? '' : 'ball on ' + spotText(lv.spot, g.opp, lv.oppAbbr));
         setText(P.to, lv.timeouts ? 'TO ' + lv.timeouts[0] + '–' + lv.timeouts[1] : '');
         const wp = has('sports', '_liveProb') ? call('sports', '_liveProb', state, 0) : NaN;
         setText(P.wp, Number.isFinite(wp) ? 'Win ' + Math.round(wp * 100) + '%' : '');
@@ -790,6 +792,7 @@
           setText(G.mode, lv.mode === 'full' ? 'Full game' : 'Highlights');
           const full = !!(state.sports && state.sports.watchFull); setText(G.tog, 'Next game: ' + (full ? 'Full' : 'Highlights')); G.tog.setAttribute('aria-pressed', full ? 'true' : 'false');
           const lines = pbpLines(state), n = lines.length;
+          show(UI.el.pbp, n > 0);   // qa pass 3: no empty box through the pre-game
           for (let i = 0; i < 3; i++) {
             const it = lines[n - 3 + i], row = G.lines[i];
             setText(row, it ? it.text : ''); cls(row, 'empty', !it); cls(row, 'key', !!(it && it.key)); cls(row, 'opp', !!(it && it.poss === 1)); cls(row, 'new', !!it && i === 2);
@@ -798,6 +801,7 @@
       }
     } catch (e) { BSU.error('ui_panels', 'scoreBug', e); }
   };
+  on('setpiece:start', function (p) { if (p && (p.kind === 'game' || p.kind === 'spring' || p.kind === 'montage')) HUD.pbp.length = 0; });   // qa pass 3: the strip showed the previous game's last plays through the 20-s pre-game
   on('game:kickoff', function () { const s = BSU.state; HUD.pbp.length = 0; if (s) { HUD.prestige0 = fin(s.economy && s.economy.prestige, 0); HUD.spirit0 = fin(s.economy && s.economy.happiness, 0); UI.scoreBug(s, true); } });
   on('game:play', function (p) {
     const s = BSU.state; if (!p || !p.text) return;

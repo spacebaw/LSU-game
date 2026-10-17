@@ -672,6 +672,12 @@
         '{rb} met at the line, a yard or less. The {def} say no.',
         '{dl} shuts the gap. {rb} goes nowhere.'
       ],
+      runLoss: [   // qa pass 3: a carry that loses yards (the stuff table read every loss as "hardly a gain")
+        '{lb} blows it up. {rb} dropped for a loss of {yds}.',
+        '{rb} swallowed up behind the line. Minus {yds}.',
+        '{dl} is in the backfield before the handoff. {rb} loses {yds}.',
+        'Nowhere to run. {rb} turned back for a loss of {yds}, cher.'
+      ],
       runBig: [
         '{rb} breaks free! {yds} yards before anyone remembers to tackle.',
         '{rb} is loose for {yds}. Somebody call the fire department.',
@@ -689,6 +695,18 @@
         '{qb} checks down to {wr} for {yds}. Patience pays.',
         '{wr} on the crossing route for {yds}. Wide open as the marsh.',
         '{qb} over the middle to {wr}, {yds} yards.'
+      ],
+      passLoss: [   // qa pass 3: a completion behind the line (the gain table read "for 2" on a loss of 2)
+        '{qb} dumps it to {wr}, who is dropped for a loss of {yds}.',
+        'Screen to {wr}. {lb} sniffs it out, loss of {yds}.',
+        '{wr} catches it behind the line and {db} wraps him up. Minus {yds}.',
+        'Swing pass to {wr}. The {def} were waiting. Loss of {yds}.'
+      ],
+      passZero: [   // qa pass 3: a completion for no gain
+        '{qb} to {wr} at the line of scrimmage. No gain.',
+        '{wr} catches it and {db} is right there. Nothing doing.',
+        'Quick hitch to {wr}, stopped where he caught it.',
+        '{qb} finds {wr}, but {lb} closes before he can turn. No gain.'
       ],
       passBig: [
         '{qb} airs it out to {wr}! {yds} yards. Hold your hat.',
@@ -1399,7 +1417,7 @@
         check(cnt('punt', 'P') === 1 && cnt('punt', 'LS') === 1 && cnt('fieldGoal', 'K') === 1 && cnt('fieldGoal', 'H') === 1 && cnt('kickoff', 'K') === 1 && cnt('kickoffReturn', 'KR') === 2 && cnt('puntReturn', 'PR') === 1, 'football: special-teams sets name their kicker/holder/returners');
         check(cnt('d43', 'DE') + cnt('d43', 'DT') === 4 && cnt('d43', 'LB') === 3 && cnt('d43', 'CB') + cnt('d43', 'S') === 4 && cnt('nickel', 'NB') === 1 && cnt('nickel', 'LB') === 2, 'football: 4-3 is 4 DL + 3 LB + 4 DB, nickel swaps a LB for a DB');
         check(F.iform.xy[0][0] === -1 && F.iform.xy[2][0] === -7 && F.shotgun.xy[0][0] === -5 && F.fieldGoal.xy[1][0] === -9, 'football: plan depths (I-form QB −1, RB −7; shotgun QB −5; FG kicker −9)');
-        const P = FB.phrases, PK = ['run', 'runStuff', 'runBig', 'passComplete', 'passBig', 'passIncomplete', 'sack', 'punt', 'fgGood', 'fgMiss', 'interception', 'fumble', 'touchdownRun', 'touchdownPass', 'twoPointGood', 'twoPointFail'];
+        const P = FB.phrases, PK = ['run', 'runStuff', 'runLoss', 'runBig', 'passComplete', 'passLoss', 'passZero', 'passBig', 'passIncomplete', 'sack', 'punt', 'fgGood', 'fgMiss', 'interception', 'fumble', 'touchdownRun', 'touchdownPass', 'twoPointGood', 'twoPointFail'];
         let badPhrase = '';
         const vet = function (arr, name) {
           if (!Array.isArray(arr) || arr.length < 4 || arr.length > 8 || new Set(arr).size !== arr.length) { badPhrase = badPhrase || name + ' (4–8 unique variants)'; return; }
@@ -1412,7 +1430,7 @@
         };
         for (const k of PK) vet(P[k], k);
         vet(P.reaction && P.reaction.good, 'reaction.good'); vet(P.reaction && P.reaction.bad, 'reaction.bad');
-        check(PK.every(k => !!P[k]) && Object.keys(P).length === PK.length + 1 && !badPhrase, 'football: phrase tables — ' + (badPhrase || 'sixteen tables + reaction, 4–8 variants each'));
+        check(PK.every(k => !!P[k]) && Object.keys(P).length === PK.length + 1 && !badPhrase, 'football: phrase tables — ' + (badPhrase || 'nineteen tables + reaction, 4–8 variants each'));
         check(['run', 'runBig'].every(k => P[k].every(t => t.indexOf('{rb}') >= 0)) && P.passComplete.every(t => t.indexOf('{yds}') >= 0 && (t.indexOf('{wr}') >= 0)) && P.fgGood.every(t => t.indexOf('{k}') >= 0 || t.indexOf('{d}') >= 0) && P.sack.every(t => t.indexOf('{dl}') >= 0), 'football: phrases carry the placeholders their play needs');
       }
       for (const k of Object.keys(D.opponents)) { const o = D.opponents[k]; check(['ground', 'balanced', 'air'].indexOf(o.style) >= 0 && Number.isInteger(o.defBias) && Math.abs(o.defBias) <= 4 && o.colors.length === 2 && o.colors.every(c => /^#[0-9A-Fa-f]{6}$/.test(c)), 'opponent ' + k + ' has style, defBias ±4 and two colors'); }
