@@ -67,6 +67,34 @@ ok(U.el.minimap.width === 200, 'back at 100 % the minimap canvas is 200 px');
 const cssScale = css.replace(/\/\*[\s\S]*?\*\//g, '');
 ok(/html\{font-size:calc\(1rem \* var\(--ui-scale|html\{font-size:calc\(10px \* var\(--ui-scale/.test(cssScale), 'html font-size follows --ui-scale (all lengths are rem)');
 ok(!/--topbar-h:\s*\d+px/.test(cssScale) && /--topbar-h:\s*5\.6rem/.test(cssScale) && /--palette-h:\s*18rem/.test(cssScale), 'layout tokens are rem: topbar 56 px, palette 180 px at 100 % (palette pass)');
+// --- P5 centred UI: smart default scale by window width, the title-screen Display size choice, layout rules ---
+{
+  const W0 = win.innerWidth, H0 = win.innerHeight;
+  ok(U.autoScaleFor(1280) === 1 && U.autoScaleFor(1365) === 1 && U.autoScaleFor(1366) === 1.15 && U.autoScaleFor(1679) === 1.15 && U.autoScaleFor(1680) === 1.3 && U.autoScaleFor(2560) === 1.3, 'smart default table: < 1366 → 100 %, 1366–1679 → 115 %, ≥ 1680 → 130 %');
+  U.setUiScale('auto');
+  ok(U.uiScaleMode() === 'auto' && U.settings().uiScale === 'auto' && U.uiScale() === 1, "setUiScale('auto') stores 'auto' (the 1280-wide stub window picks 100 %)");
+  const at = (w, h) => { win.innerWidth = w; win.innerHeight = h; U.setUiScale('auto'); return [U.uiScale(), U.uiScaleEffective()]; };
+  let r = at(1440, 900); ok(r[0] === 1.15 && r[1] === 1.15, 'auto at 1440×900 → 115 %');
+  r = at(1920, 1080); ok(r[0] === 1.3 && r[1] === 1.3, 'auto at 1920×1080 → 130 %');
+  r = at(1366, 768); ok(r[0] === 1.15 && r[1] > 1 && r[1] < 1.15, 'auto at 1366×768 asks for 115 % and the height cap trims it (' + r[1] + ')');
+  r = at(1280, 800); ok(r[0] === 1 && r[1] === 1, 'auto at 1280×800 → 100 %');
+  win.innerWidth = 1920; win.innerHeight = 1080; U.setUiScale(1); ok(U.uiScaleMode() === 1 && U.uiScale() === 1, 'an explicit size beats the window default'); U.setUiScale('auto');
+  const sizeIds = ['btn-size-compact', 'btn-size-comfortable', 'btn-size-large', 'btn-size-auto'];
+  ok(sizeIds.every((id) => win.document.getElementById(id)) && win.document.getElementById('btn-size-comfortable').textContent.indexOf('Comfortable') === 0, 'title screen has the Display size row (Compact / Comfortable / Large / Auto)');
+  win.document.getElementById('btn-size-large').dispatchEvent({ type: 'click' });
+  ok(U.uiScaleMode() === 1.3 && U.settings().uiScale === 1.3 && win.document.getElementById('btn-size-large').classList.contains('active') && !win.document.getElementById('btn-size-auto').classList.contains('active'), 'Large writes the setting and lights its button');
+  win.document.getElementById('btn-size-auto').dispatchEvent({ type: 'click' });
+  ok(U.uiScaleMode() === 'auto' && win.document.getElementById('btn-size-auto').classList.contains('active'), 'Auto writes the setting back');
+  U.setUiScale('auto'); win.innerWidth = W0; win.innerHeight = H0; U.setUiScale(1);
+  const cssP5 = css.replace(/\/\*[\s\S]*?\*\//g, '');
+  ok(/#notifications\{[^}]*left:50%[^}]*bottom:var\(--bot\)/.test(cssP5) && !/#notifications\{[^}]*right:var\(--gutter\)/.test(cssP5), 'notifications stack bottom-centre above the palette (not the right corner)');
+  ok(/#cards\{[^}]*padding:var\(--topbar-h\)[^}]*var\(--palette-h\)/.test(cssP5) && /#decision-toast\{[^}]*left:50%/.test(cssP5), 'cards centre over the map area; the decision toast stays centred');
+  ok(/#panels #panel-season\{width:110rem\}/.test(cssP5) && /#panels #panel-storm,#panels #panel-budget\{width:72rem\}/.test(cssP5) && /#panels \.panel\{[^}]*width:72rem/.test(cssP5) && /#build-menu\{[^}]*width:min\(130rem/.test(cssP5), 'panels centre with wider maxima: Season 1100, Storm / Budget 720, default 720, Build menu up to 1300 px');
+  ok(/#panels\{[^}]*display:flex[^}]*align-items:center[^}]*justify-content:center/.test(cssP5), 'the panel host centres its panel in the map area');
+  ok(/--inspect-w:\s*38rem/.test(cssP5) && /#inspect\{[^}]*right:var\(--side\)/.test(cssP5) && /--side:max\(var\(--gutter\)/.test(cssP5), 'inspect panel 380 px docked right with a gutter; --side centres the docked cards on very wide windows');
+  ok(/\.stat \.odometer\{font:700 2\.2rem/.test(cssP5), 'stat numbers are 22 px at 100 %');
+  ok(/#hud\.short #objective-card #obj-why/.test(cssP5), 'a short window trims the tracker so it never runs under the ticker');
+}
 ok(U.el['title-name'].textContent === 'BAYOU STATE', '#title-name text');
 ok(U.el.title.classList.contains('hidden') === !!BSU.headlessMode, 'title hidden headless (session shows it only in a browser)');
 

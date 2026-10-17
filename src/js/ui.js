@@ -337,11 +337,14 @@
     const ts = btn('btn-title-settings', 'Settings', 'small', function () { M.openPanel('settings'); });
     const tm = btn('btn-title-mute', '🔊', 'small icon', function () { toggleMute(); });
     row.appendChild(seedLab); row.appendChild(ts); row.appendChild(tm);
+    const sz = el('div', 'title-size'); sz.appendChild(el('span', 'title-size-label', 'Display size')); const szs = el('div', 'seg'); const szn = el('div', 'seg-note hidden', '');   // P5: Compact 100 / Comfortable 115 / Large 130 / Auto
+    SIZE_CHOICES.forEach(function (c) { const b = btn('btn-size-' + c[0], c[1], 'seg-btn', function () { M.setUiScale(c[2]); refreshTitleSize(); }); b.dataset.scale = String(c[2]); if (c[3]) b.appendChild(el('span', 'pct', c[3])); b.title = c[2] === 'auto' ? 'Pick the size from this window (1366 px and up: 115 %, 1680 px and up: 130 %)' : c[1] + ' (' + c[3] + ')'; szs.appendChild(b); });
+    sz.appendChild(szs); sz.appendChild(szn);
     const campus = el('canvas', 'hidden'); campus.id = 'title-campus'; campus.width = 320; campus.height = 200;
     const foot = el('div', 'title-foot', 'Louisiana. One ridge. Mind the water.');
-    box.appendChild(kicker); box.appendChild(name); box.appendChild(tag); box.appendChild(charter); box.appendChild(cont); box.appendChild(row); box.appendChild(campus); box.appendChild(foot);
+    box.appendChild(kicker); box.appendChild(name); box.appendChild(tag); box.appendChild(charter); box.appendChild(cont); box.appendChild(row); box.appendChild(sz); box.appendChild(campus); box.appendChild(foot);
     t.appendChild(box);
-    E.title = t; E['title-name'] = name; E['title-tag'] = tag; E['btn-charter'] = charter; E['btn-continue'] = cont; E['title-seed'] = seed; E['btn-title-settings'] = ts; E['btn-title-mute'] = tm; E['title-campus'] = campus; return t;
+    E.title = t; E['title-name'] = name; E['title-tag'] = tag; E['btn-charter'] = charter; E['btn-continue'] = cont; E['title-seed'] = seed; E['btn-title-settings'] = ts; E['btn-title-mute'] = tm; E['title-campus'] = campus; E['title-size'] = sz; E['title-size-note'] = szn; return t;
   }
   function buildPanelsHost() { const p = el('div'); p.id = 'panels'; E.panels = p; return p; }
   function buildChips() {
@@ -386,7 +389,7 @@
     subscribe();
     registerBuiltins();
     try { const w = fin(window.innerWidth, 1280); cls(E.palette, 'compact', w < L.compactWidth); } catch (e) { /* stub */ }
-    try { const raw = window.localStorage.getItem('bsu.settings'); const o = raw ? JSON.parse(raw) : null; if (o && o.uiScale != null) applyScale(o.uiScale); } catch (e) { /* no storage */ }   // the title screen is scaled too
+    try { const raw = window.localStorage.getItem('bsu.settings'); const o = raw ? JSON.parse(raw) : null; applyScale(o && o.uiScale != null ? o.uiScale : 'auto'); } catch (e) { try { applyScale('auto'); } catch (e2) { /* stub */ } }   // the title screen is scaled too; nothing stored (first run) = the smart default for this window
     fitTopbar();
   };
   /** the topbar must never push its buttons off-screen. UI scale pass: it now sheds content in six steps, re-measured from scratch on
@@ -406,8 +409,14 @@
   // ---- UI scale (UI scale pass): html{font-size:calc(10px * var(--ui-scale))} and every CSS length is rem, so the layout math and every
   // getBoundingClientRect() (coach spotlights, ghost label, tooltips) stay in real viewport pixels at 90 / 100 / 115 / 130 %
   const UI_SCALES = [0.9, 1, 1.15, 1.3], MM_BASE = 200;
-  let appliedScale = 1, effScale = 1;   // the chosen factor / what the window can actually hold
+  /** P5 Display size choices (title screen): the three presets the plan names + Auto (= the viewport default below) */
+  const SIZE_CHOICES = [['compact', 'Compact', 1, '100%'], ['comfortable', 'Comfortable', 1.15, '115%'], ['large', 'Large', 1.3, '130%'], ['auto', 'Auto', 'auto', '']];
+  let appliedScale = 1, effScale = 1, uiMode = 'auto';   // the chosen factor / what the window can actually hold / 'auto' or the explicit factor
   function scaleOf(v) { v = Number(v); if (!Number.isFinite(v) || v <= 0) return 1; if (v > 3) v /= 100; let b = 1; for (const c of UI_SCALES) if (Math.abs(c - v) < Math.abs(b - v)) b = c; return b; }
+  /** P5 smart default by window width: < 1366 → 100 %, 1366–1679 → 115 %, ≥ 1680 → 130 % (effectiveScale still caps it to what the window holds) */
+  function autoScaleFor(w) { w = fin(w, 1280); return w >= 1680 ? 1.3 : w >= 1366 ? 1.15 : 1; }
+  function isAuto(v) { return v == null || v === 'auto'; }
+  function wantScale(v) { return isAuto(v) ? autoScaleFor(window.innerWidth) : scaleOf(v); }
   /** a bigger-than-100 % UI is limited to what the window can hold (a 1280×800 laptop tops out near 114 %): the HUD columns must never collide, and never shrink below 100 % */
   function effectiveScale(sc) {
     if (sc <= 1) return sc;
@@ -415,17 +424,32 @@
     return Math.round(Math.max(1, Math.min(sc, cap)) * 1000) / 1000;
   }
   function applyScale(v) {
-    const sc = scaleOf(v), eff = effectiveScale(sc); const changed = eff !== effScale || sc !== appliedScale; appliedScale = sc; effScale = eff;
+    const auto = isAuto(v), sc = wantScale(v), eff = effectiveScale(sc), mode = auto ? 'auto' : sc;
+    const changed = eff !== effScale || sc !== appliedScale || mode !== uiMode; appliedScale = sc; effScale = eff; uiMode = mode;
     if (!dom()) return;
     try { const de = document.documentElement; if (de && de.style && typeof de.style.setProperty === 'function') de.style.setProperty('--ui-scale', String(eff)); } catch (e) { /* stub */ }
     try { const c = E.minimap; if (c) { const px = Math.round(MM_BASE * eff); if (c.width !== px) { c.width = px; c.height = px; } } } catch (e) { /* stub */ }
-    if (changed) { fitTopbar(); try { coach.layoutAt = -1e9; const st = stateOf(); if (st && coach.step >= 0) layoutCoach(st); } catch (e) { /* stub */ } }
+    try { cls(E.hud, 'short', fin(window.innerHeight, 800) < eff * 760); } catch (e) { /* stub */ }   // P5: the tracker + palette need ~72 rem of height; a shorter window drops the tracker's flavour text and "next up" line so it never runs under the ticker
+    if (changed) { fitTopbar(); refreshTitleSize(); try { coach.layoutAt = -1e9; const st = stateOf(); if (st && coach.step >= 0) layoutCoach(st); } catch (e) { /* stub */ } }
+  }
+  /** title screen "Display size" row: the active button follows the stored mode, the note says what Auto picked / what the window limited */
+  function refreshTitleSize() {
+    try {
+      const box = E['title-size']; if (!box) return;
+      for (const b of box.children[1].children) { const d = b.dataset.scale; cls(b, 'active', d === 'auto' ? uiMode === 'auto' : uiMode !== 'auto' && Number(d) === appliedScale); b.setAttribute('aria-pressed', b.classList.contains('active') ? 'true' : 'false'); }
+      const note = E['title-size-note']; const lim = effScale < appliedScale - 0.005;
+      const txt = uiMode === 'auto' ? 'Auto picks ' + Math.round(effScale * 100) + '% for this window.' : lim ? 'Limited to ' + Math.round(effScale * 100) + '% by this window size.' : '';
+      if (note) { setText(note, txt); show(note, !!txt); }
+    } catch (e) { /* stub */ }
   }
   /** the chosen factor (1 = 100 %), snapped to the four offered sizes; M.uiScaleEffective() is what the window allows */
   M.uiScale = function () { return appliedScale; };
   M.uiScaleEffective = function () { return effScale; };
+  /** P5: 'auto' (the viewport default) or the explicit factor; M.autoScaleFor(width) is the default's table */
+  M.uiScaleMode = function () { return uiMode; };
+  M.autoScaleFor = autoScaleFor;
   /** Settings → UI size: remember it (state.ui.settings + localStorage) and apply it now */
-  M.setUiScale = function (v) { try { const sc = scaleOf(v); M.settings().uiScale = sc; M.saveSettings(); applyScale(sc); return sc; } catch (e) { uerr('setUiScale', e); return appliedScale; } };
+  M.setUiScale = function (v) { try { const sc = isAuto(v) ? 'auto' : scaleOf(v); M.settings().uiScale = sc; M.saveSettings(); applyScale(sc); return appliedScale; } catch (e) { uerr('setUiScale', e); return appliedScale; } };
 
   // ---------------------------------------------------------------------------
   // DOM listeners → the machine (pointer / wheel / keys / gestures)
@@ -457,7 +481,7 @@
         window.addEventListener('keyup', function (e) { try { keyup(e.key); } catch (err) { uerr('keyup', err); } });
         window.addEventListener('blur', function () { try { for (const k in held) held[k] = false; if (live.down || live.state === 'DRAGGING') M.pointer('cancel', lastPx, lastPy, 0, M0); } catch (err) { uerr('blur', err); } });
         window.addEventListener('pointerup', function (e) { try { if (live.down && e.target !== world) M.pointer('up', lastPx, lastPy, fin(e.button, 0), modsOf(e)); } catch (err) { uerr('pointerup:window', err); } });
-        window.addEventListener('resize', function () { try { const w = fin(window.innerWidth, 1280); cls(E.palette, 'compact', w < L.compactWidth); } catch (err) { /* stub */ } try { applyScale(appliedScale); } catch (err) { /* stub */ } fitTopbar(); paletteFade(); });
+        window.addEventListener('resize', function () { try { const w = fin(window.innerWidth, 1280); cls(E.palette, 'compact', w < L.compactWidth); } catch (err) { /* stub */ } try { applyScale(uiMode); } catch (err) { /* stub */ } fitTopbar(); paletteFade(); });
       }
     } catch (e) { /* stub window */ }
   }
@@ -1846,7 +1870,7 @@
   M.panel = function () { const s = stateOf(); return s && s.ui ? s.ui.panel : null; };
   function refreshPanel(s, name) { const p = panels[name]; if (!p || !p.el) return; p.lastRefresh = clock; try { if (typeof p.refresh === 'function') p.refresh(s, p.el); } catch (e) { uerr('panel:refresh:' + name, e); } }
   /** UI scale pass: a panel wide enough to reach the docked cards (goals tracker, minimap, overlay keys, notifications, voice card) fades just the ones it overlaps, so no half-hidden text peeks out around it */
-  const FADE_IDS = ['objective-card', 'minimap-wrap', 'overlay-buttons', 'notifications', 'voice-card'];
+  const FADE_IDS = ['objective-card', 'minimap-wrap', 'overlay-buttons', 'notifications', 'voice-card', 'alert-strip'];
   let fadeAt = -1e9;
   function syncPanelFade(s) {
     if (!dom() || clock - fadeAt < 250) return; fadeAt = clock;
@@ -1874,7 +1898,7 @@
       show(E.title, on); show(E.hud, !on); cls(E.app, 'title-on', on);
       if (on) {
         let can = !!opts.canContinue; if (!can) { try { can = !!window.localStorage.getItem('bsu.last'); } catch (e) { can = false; } }
-        E['btn-continue'].disabled = !can; show(E['btn-continue'], can); refreshMuteButtons();
+        E['btn-continue'].disabled = !can; show(E['btn-continue'], can); refreshMuteButtons(); refreshTitleSize();
         try { const slots = call('session', 'slots') || []; const last = slots.find(function (x) { return x && (x.last || x.slot === 'bsu.last'); }); if (last && last.label) E['btn-continue'].title = last.label; } catch (e) { /* optional */ }
       } else { if (focusedInput === E['title-seed']) focusedInput = null; }
     } catch (e) { uerr('showTitle', e); }
@@ -1923,6 +1947,7 @@
     host._cb = chk('chk-colorblind', 'Colorblind overlays', function () { return !!M.settings().colorblind; }, function (v) { M.settings().colorblind = v; });
     const sp = el('div', 'seg'); [0, 1, 2, 4, 8].forEach(function (v) { const b = btn(null, v === 0 ? 'Pause' : v + '×', 'seg-btn', function () { M.setSpeed(stateOf(), v); refreshSettingsPanel(stateOf(), host); }); b.dataset.speed = String(v); sp.appendChild(b); }); rowEl('Speed', sp); host._speed = sp;
     const us = el('div', 'seg'); host._uiScale = us; UI_SCALES.forEach(function (v) { const b = btn('btn-uiscale-' + Math.round(v * 100), Math.round(v * 100) + '%', 'seg-btn', function () { M.setUiScale(v); refreshSettingsPanel(stateOf(), host); }); b.dataset.scale = String(v); b.title = 'Interface size ' + Math.round(v * 100) + '%'; us.appendChild(b); });
+    { const ab = btn('btn-uiscale-auto', 'Auto', 'seg-btn', function () { M.setUiScale('auto'); refreshSettingsPanel(stateOf(), host); }); ab.dataset.scale = 'auto'; ab.title = 'Pick the interface size from this window'; us.appendChild(ab); }   // P5
     const uw = el('div', 'seg-wrap'); const un = el('div', 'seg-note hidden', ''); host._uiNote = un; uw.appendChild(us); uw.appendChild(un); rowEl('UI size', uw);   // UI scale pass (C7)
     rowEl('Tour', btn('btn-coach-replay', 'Replay the 60-second tour', 'small', function () { M.startCoach(stateOf()); }));
     const leg = el('div', 'legend-table'); for (const o of ((BSU.data && BSU.data.overlays) || [])) { const r = el('div', 'legend-row'); r.appendChild(el('span', 'key', o.key)); r.appendChild(el('span', 'k', o.name)); r.appendChild(el('span', 'v', o.legend.join(' · '))); leg.appendChild(r); } rowEl('Overlays', leg);
@@ -1939,8 +1964,8 @@
     [host._audio, host._particles, host._shake, host._cb].forEach(function (b) { if (!b || !b._get) return; const on = !!b._get(); setText(b, on ? 'On' : 'Off'); b.setAttribute('aria-pressed', on ? 'true' : 'false'); });
     if (host._speed) for (const b of host._speed.children) cls(b, 'active', String(fin(s.ui.speed, 1)) === b.dataset.speed);
     if (host._vol) host._vol.value = String(fin(M.settings().volume, 0.5));
-    if (host._uiScale) for (const b of host._uiScale.children) cls(b, 'active', Number(b.dataset.scale) === appliedScale);
-    if (host._uiNote) { const lim = effScale < appliedScale - 0.005; show(host._uiNote, lim); if (lim) setText(host._uiNote, 'Limited to ' + Math.round(effScale * 100) + '% by this window size.'); }
+    if (host._uiScale) for (const b of host._uiScale.children) { const d = b.dataset.scale; cls(b, 'active', d === 'auto' ? uiMode === 'auto' : uiMode !== 'auto' && Number(d) === appliedScale); }
+    if (host._uiNote) { const lim = effScale < appliedScale - 0.005; const txt = uiMode === 'auto' ? 'Auto picks ' + Math.round(effScale * 100) + '% for this window.' : lim ? 'Limited to ' + Math.round(effScale * 100) + '% by this window size.' : ''; show(host._uiNote, !!txt); if (txt) setText(host._uiNote, txt); }
   }
   // Debug panel (built in; hidden; Backquote). ui_panels may re-register 'debug' with the full params tree.
   function buildDebugPanel(host) {
@@ -2192,7 +2217,7 @@
   M.update = function (state, dtMs) {
     if (!inited || !state || !state.ui) return;
     root = state; dtMs = fin(dtMs, 16.67); clock += dtMs;
-    if (dom()) { try { const want = scaleOf(M.settings().uiScale); if (want !== appliedScale) applyScale(want); if (clock - fitAt > 1000) { fitAt = clock; const tb = E.topbar; if (tb && fitLevel < 6 && tb.scrollWidth > tb.clientWidth + 1) fitTopbar(); } } catch (e) { /* stub */ } }
+    if (dom()) { try { const raw = M.settings().uiScale; const want = wantScale(raw); if (want !== appliedScale || (isAuto(raw) ? 'auto' : want) !== uiMode) applyScale(raw); if (clock - fitAt > 1000) { fitAt = clock; const tb = E.topbar; if (tb && fitLevel < 6 && tb.scrollWidth > tb.clientWidth + 1) fitTopbar(); } } catch (e) { /* stub */ } }
     if (titleOn) { sec('title', function (s) { refreshMuteButtons(); if (s.ui.panel) updatePanels(s); }, state, dtMs); return; }
     sec('queue', drainQueue, state, dtMs);
     sec('pan', heldPan, state, dtMs);
