@@ -1357,64 +1357,233 @@
       state.weather.rainRate = 0;
     } catch (e) { BSU.error('weather', 'skipSetPiece', e); }
   };
-  /** Storm-panel prep actions: 'boardUp'|'sandbags'|'repairAll'|'evacuate'|'preDrain'|'spillway' → {ok, cost, reason}. */
+  // ---------------------------------------------------------------------------
+  // Storm-panel prep actions (P4). prepQuote prices and checks an action with no side effects; prepAction runs the quote and,
+  // when it is ok, does the work. Both ALWAYS return the same structured result, never a bare false:
+  //   {action, ok, reason, cost, affected: [building ids | tile indices], effectText, alreadyDone, precautionary, ...detail}
+  // Actions: boardUp (selection: 'all' | [building ids]), sandbags ('all' | 'weak' | [levee run keys]), preDrain, spillway,
+  // evacuate, repairAll, prepareAll (the recommended set). Availability: Evacuate / Pre-drain from the cone to the bands;
+  // Board Up and Sandbags also with no storm in the Gulf (precautionary, full price); Repair All any time but mid-landfall.
+  // ---------------------------------------------------------------------------
+  const PREP_ACTIONS = ['boardUp', 'sandbags', 'preDrain', 'spillway', 'evacuate', 'repairAll', 'prepareAll'];
+  M.PREP_ACTIONS = Object.freeze(PREP_ACTIONS.slice());
+  function prepResult(action, o) { return Object.assign({ action: action, ok: false, reason: '', cost: 0, affected: [], effectText: '', alreadyDone: false, precautionary: false }, o || {}); }
+  function dateOf(day) { try { return BSU.dayParts(day).date; } catch (e) { return ''; } }
+  function afford(state, cost) { return cost <= 0 || call('economy', 'canAfford', state, cost) !== false; }
+  /** {st: the live storm or null (near-misses are no storm), inbound: cone..bands, late: landfall or later, days: to landfall or -1, day} */
+  function prepCtx(state) {
+    const st = state.storms && state.storms.current, real = (st && !st.nearMiss) ? st : null, day = fin(state.calendar && state.calendar.day, 0);
+    return { st: real, inbound: !!real && real.phase >= STORM.NAMED && real.phase <= STORM.BANDS, late: !!real && real.phase > STORM.BANDS, day: day, days: real && fin(real.landfallDay, -1) >= 0 ? Math.max(0, real.landfallDay - day) : NONE };
+  }
+  function needStorm(x) { return x.late ? 'The storm is here: it is too late to prepare' : 'No storm in the Gulf: available once a storm is named'; }
+  function money0(n) { return '$' + Math.round(fin(n, 0)).toLocaleString('en-US'); }
+  function plural(n, one, many) { return n + ' ' + (n === 1 ? one : (many || one + 's')); }
+
+  function quoteBoard(state, x, arg, o) {
+    const info = call('buildings', 'boardInfo', state);
+    if (!info) return prepResult('boardUp', { reason: 'Not yet' });
+    if (x.late) return prepResult('boardUp', { reason: 'The storm is here: it is too late to board up' });
+    const eligible = info.rows.filter(function (r) { return r.eligible; });
+    let pick;
+    if (arg === undefined || arg === null || arg === 'all') pick = eligible;
+    else { const want = new Set(Array.isArray(arg) ? arg : [arg]); pick = eligible.filter(function (r) { return want.has(r.id); }); }
+    const base = { precautionary: !x.inbound };
+    if (!info.rows.length) return prepResult('boardUp', Object.assign(base, { reason: 'No buildings to board up yet' }));
+    if (!pick.length) {
+      const wantedAll = arg === undefined || arg === null || arg === 'all';
+      if (!wantedAll && Array.isArray(arg) && !arg.length) return prepResult('boardUp', Object.assign(base, { reason: 'Select at least one building' }));
+      return prepResult('boardUp', Object.assign(base, { reason: wantedAll ? 'Every building is already boarded or queued' : 'Those buildings are already boarded or queued', alreadyDone: true }));
+    }
+    const cost = pick.length * info.unit, ids = pick.map(function (r) { return r.id; });
+    const cut = Math.round((1 - PS.boardedMult) * 100);
+    let text;
+    if (x.inbound) {
+      const queued = info.rows.filter(function (r) { return r.queued > 0; }).length;
+      const inTime = Math.max(0, Math.min(pick.length, info.perDay * info.daysLeft - queued));
+      text = 'Crews board ' + info.perDay + ' a day from tomorrow, utilities first. ' + (inTime >= pick.length ? 'All ' + pick.length : inTime + ' of ' + pick.length) + ' will be up by landfall (' + dateOf(x.st.landfallDay) + '). Boarded buildings take ' + cut + '% less wind damage.';
+    } else text = 'Precautionary: boards go up now and stay ' + info.precautionDays + ' days (until ' + dateOf(x.day + info.precautionDays) + '), ' + cut + '% less wind damage. Full price, no storm in the Gulf.';
+    const r = prepResult('boardUp', Object.assign(base, { cost: cost, affected: ids, effectText: text, count: pick.length }));
+    if (!afford(state, cost)) { r.reason = 'Not enough cash (' + money0(cost) + ')'; return r; }
+    r.ok = true; return r;
+  }
+  function quoteSandbags(state, x, arg) {
+    if (x.late) return prepResult('sandbags', { reason: 'The storm is here: it is too late to sandbag' });
+    const H = M.forecastSurge(state), runs = call('buildings', 'sandbagRuns', state, H);
+    const base = { precautionary: !x.inbound, surge: H };
+    if (!runs) return prepResult('sandbags', Object.assign(base, { reason: 'Not yet' }));
+    if (!runs.length) return prepResult('sandbags', Object.assign(base, { reason: 'No levee faces the water at ' + H + ' ft: build a levee first' }));
+    const open = runs.filter(function (r) { return !r.sandbagged; });
+    let pick;
+    if (arg === undefined || arg === null || arg === 'all') pick = open;
+    else if (arg === 'weak') pick = open.filter(function (r) { return r.weak; });
+    else { const want = new Set(Array.isArray(arg) ? arg : [arg]); pick = open.filter(function (r) { return want.has(r.key); }); }
+    if (!pick.length) {
+      if (Array.isArray(arg) && !arg.length) return prepResult('sandbags', Object.assign(base, { reason: 'Select at least one levee run' }));
+      if (arg === 'weak' && open.length) return prepResult('sandbags', Object.assign(base, { reason: 'No weak runs: every wall is above ' + PS.toast1Integrity + '% integrity' }));
+      return prepResult('sandbags', Object.assign(base, { reason: open.length ? 'Those runs are already sandbagged' : 'Every run is already sandbagged', alreadyDone: true }));
+    }
+    let cost = 0, tiles = 0; const aff = [];
+    for (let i = 0; i < pick.length; i++) { cost += pick[i].cost; tiles += pick[i].tiles.length; for (let k = 0; k < pick[i].tiles.length; k++) aff.push(pick[i].tiles[k]); }
+    const until = Math.max(x.day + PS.sandbagDays, x.st && fin(x.st.landfallDay, -1) >= x.day ? x.st.landfallDay + 1 : 0) - 1;
+    const text = 'Adds ' + PS.sandbagFt + ' ft to ' + plural(tiles, 'wall tile') + ' on ' + plural(pick.length, 'run') + ' through ' + dateOf(until) + (x.inbound ? ' (landfall ' + dateOf(x.st.landfallDay) + ')' : ' (' + PS.sandbagDays + ' days)') + '.' + (x.inbound ? '' : ' Precautionary: full price, no storm in the Gulf.');
+    const r = prepResult('sandbags', Object.assign(base, { cost: cost, affected: aff, effectText: text, runs: pick.map(function (p) { return p.key; }) }));
+    if (!afford(state, cost)) { r.reason = 'Not enough cash (' + money0(cost) + ')'; return r; }
+    r.ok = true; return r;
+  }
+  /** the pumps a pre-drain would speed up: [{id, name, running, district (tiles drained), ftPerDay (water taken off its district per day, doubled)}] */
+  function prepPumps(state) {
+    const pumps = call('buildings', 'list', state, BSU.B.pump) || [], nets = call('hydro', 'networks', state) || [], out = [];
+    for (let i = 0; i < pumps.length; i++) {
+      const b = pumps[i]; if (!b || !(fin(b.built, 1) >= 1) || b.ruin) continue;
+      let tiles = 0;
+      for (let n = 0; n < nets.length; n++) if (nets[n] && Array.isArray(nets[n].pumps) && nets[n].pumps.indexOf(b.id) >= 0) { tiles = Array.isArray(nets[n].tiles) ? nets[n].tiles.length : 0; break; }
+      const running = call('buildings', 'effective', state, b.id) === 1;
+      out.push({ id: b.id, name: b.name || 'Pump', running: running, district: tiles, ftPerDay: tiles > 0 ? Math.round(PHY.pumpTileFtPerDay * PHY.preDrainMult / tiles * 100) / 100 : 0 });
+    }
+    return out;
+  }
+  function quotePreDrain(state, x) {
+    if (!x.inbound) return prepResult('preDrain', { reason: needStorm(x) });
+    if (x.st.preDrain) return prepResult('preDrain', { reason: 'Pumps are already running at double speed', alreadyDone: true });
+    const pumps = prepPumps(state), powered = pumps.filter(function (p) { return p.running; }), run = powered.filter(function (p) { return p.district > 0; });
+    if (!run.length) return prepResult('preDrain', { reason: !pumps.length ? 'No pumps to speed up: build a Pump on a canal first' : (!powered.length ? 'No pump has power: restore power to a pump first' : 'No powered pump is connected to a canal: pre-drain would do nothing'), pumps: pumps });
+    const perPump = fin(P.build && P.build.pumpRunCost, 3000) / Math.max(1, fin(P.time && P.time.daysPerMonth, 10));
+    const perDay = Math.round(run.length * perPump);
+    const feet = Math.round(run.reduce(function (a, p) { return a + p.ftPerDay; }, 0) / run.length * 10) / 10;
+    const text = plural(run.length, 'pump') + ' will run at double speed (' + PHY.pumpTileFtPerDay * PHY.preDrainMult + ' tile-ft a day each) until the storm ends, taking up to ' + feet + ' ft a day off the canals ' + (run.length === 1 ? 'it drains' : 'they drain') + '. No up-front cost: about ' + money0(perDay) + ' a day extra in power.';
+    return prepResult('preDrain', { ok: true, cost: 0, perDay: perDay, feet: feet, pumps: pumps, affected: run.map(function (p) { return p.id; }), effectText: text });
+  }
+  function spillCheck(state) {
+    const SP = PW.spillway, w = state.weather, cal = state.calendar;
+    const base = { cost: SP.cost };
+    if (cal.year < SP.fromYear) return prepResult('spillway', Object.assign(base, { reason: 'Available from Year ' + SP.fromYear }));
+    if (call('buildings', 'has', state, BSU.B.engineering) !== true) return prepResult('spillway', Object.assign(base, { reason: 'Needs an Engineering Hall' }));
+    if (fin(w.spillwayUsedYear, 0) === cal.year) return prepResult('spillway', Object.assign(base, { reason: 'Already opened this year', alreadyDone: true }));
+    const s = stagesFor(state, cal.day);
+    if (!s.window || fin(w.riverStage, 0) < SP.minStage) return prepResult('spillway', Object.assign(base, { reason: 'Only during a 2–3 ft high-water window' }));
+    const hy = dep('hydro');
+    if (!hy || typeof hy.spillway !== 'function') return prepResult('spillway', Object.assign(base, { reason: 'Not yet' }));
+    const r = prepResult('spillway', Object.assign(base, { effectText: 'Opens the Bonnet Roux Spillway: the river drops ' + SP.dropFt + ' ft north of the campus for the high-water window and 1 ft of water spreads over the marsh to the south. Once a year; ecology ' + SP.ecologyNow + ' now.' }));
+    if (!afford(state, SP.cost)) { r.reason = 'Not enough cash (' + money0(SP.cost) + ')'; return r; }
+    r.ok = true; return r;
+  }
+  function quoteEvac(state, x) {
+    if (!x.inbound) return prepResult('evacuate', { reason: needStorm(x) });
+    if (x.st.evacuated) return prepResult('evacuate', { reason: 'Already evacuated: the buses have left', alreadyDone: true });
+    const students = Math.round(fin(state.economy && state.economy.students, 0)), tm = (P.econ && P.econ.timers && P.econ.timers.evacuation) || { value: -6 };
+    const asg = call('buildings', 'shelterAssignments', state) || {}, shelters = [];
+    let capacity = 0;
+    Object.keys(asg).forEach(function (k) { const id = Number(k), b = call('buildings', 'get', state, id); capacity += fin(asg[k], 0); shelters.push({ id: id, name: b ? (b.name || b.type) : '#' + id, capacity: fin(asg[k], 0) }); });
+    const cost = PS.evacPer1000 * Math.ceil(students / 1000);
+    const base = { cost: cost, students: students, capacity: capacity, shelters: shelters, happiness: tm.value, days: PS.evacDays, affected: shelters.map(function (q) { return q.id; }) };
+    if (students <= 0) return prepResult('evacuate', Object.assign(base, { cost: 0, reason: 'No students on campus to evacuate' }));
+    const text = 'All ' + students.toLocaleString('en-US') + ' students leave by bus for ' + money0(cost) + '. Happiness ' + tm.value + ' for ' + PS.evacDays + ' days. Sheltering in place instead: ' + (shelters.length ? shelters.map(function (q) { return q.name + ' ' + q.capacity; }).join(', ') : 'no shelter buildings') + ' = room for ' + Math.min(capacity, students).toLocaleString('en-US') + (capacity >= students ? ' (everyone)' : ' of ' + students.toLocaleString('en-US')) + '.';
+    const r = prepResult('evacuate', Object.assign(base, { effectText: text }));
+    if (!afford(state, cost)) { r.reason = 'Not enough cash (' + money0(cost) + ')'; return r; }
+    r.ok = true; return r;
+  }
+  function quoteRepair(state, x) {
+    const q = call('buildings', 'repairQuote', state);
+    if (!q) return prepResult('repairAll', { reason: 'Not yet' });
+    if (x.st && x.st.phase === STORM.LANDFALL) return prepResult('repairAll', { reason: 'Wait until the storm passes', cost: q.cost });
+    if (!(q.cost > 0)) return prepResult('repairAll', { reason: 'Nothing to repair' });
+    const parts = [];
+    if (q.ids.length) parts.push(plural(q.ids.length, 'building'));
+    if (q.levees) parts.push(plural(q.levees, 'levee tile'));
+    if (q.towers) parts.push(plural(q.towers, 'toppled Water Tower'));
+    const r = prepResult('repairAll', { cost: q.cost, affected: q.ids.slice(), buildings: q.ids.length, levees: q.levees, towers: q.towers, effectText: 'Repairs ' + parts.join(', ') + ' at once.' });
+    if (!afford(state, q.cost)) { r.reason = 'Not enough cash (' + money0(q.cost) + ')'; return r; }
+    r.ok = true; return r;
+  }
+  /** the recommended set while a storm is inbound: utilities and WR ≤ 2 boarded, weak levee runs sandbagged, pumps doubled, evacuate when the shelters cannot hold everyone (or Cat 4+) */
+  function planSteps(state, x) {
+    const steps = [];
+    if (!x.inbound) return steps;
+    const add = function (action, label, selection) { const q = quote(state, action, selection); if (q.ok) steps.push({ action: action, label: label, selection: selection, cost: q.cost, effectText: q.effectText, affected: q.affected }); };
+    const info = call('buildings', 'boardInfo', state);
+    if (info) { const ids = info.rows.filter(function (r) { return r.eligible && (r.wr <= 2 || r.type === 'water_tower' || r.type === 'substation'); }).map(function (r) { return r.id; }); if (ids.length) add('boardUp', 'Board up', ids); }
+    add('sandbags', 'Sandbag weak levee runs', 'weak');
+    add('preDrain', 'Pre-drain', undefined);
+    const ev = quoteEvac(state, x);
+    if (ev.ok && (ev.capacity < ev.students || fin(x.st.forecastCat, 1) >= 4)) steps.push({ action: 'evacuate', label: 'Evacuate', selection: undefined, cost: ev.cost, effectText: ev.effectText, affected: ev.affected });
+    return steps;
+  }
+  function quoteAll(state, x) {
+    const steps = planSteps(state, x), cost = steps.reduce(function (a, q) { return a + q.cost; }, 0);
+    const base = { steps: steps, cost: cost, affected: [].concat.apply([], steps.map(function (q) { return q.affected; })) };
+    if (!x.inbound) return prepResult('prepareAll', Object.assign(base, { reason: x.late ? needStorm(x) : 'No storm in the Gulf: precautions only (Board Up, Sandbags)' }));
+    if (!steps.length) return prepResult('prepareAll', Object.assign(base, { reason: 'Everything recommended is already done', alreadyDone: true }));
+    const r = prepResult('prepareAll', Object.assign(base, { effectText: steps.map(function (q) { return q.label + ' ' + money0(q.cost); }).join(' · ') + ' = ' + money0(cost) }));
+    if (!afford(state, cost)) { r.reason = 'Not enough cash for everything (' + money0(cost) + ')'; return r; }
+    r.ok = true; return r;
+  }
+  function quote(state, action, selection) {
+    const x = prepCtx(state);
+    switch (action) {
+      case 'boardUp': return quoteBoard(state, x, selection);
+      case 'sandbags': return quoteSandbags(state, x, selection);
+      case 'preDrain': return quotePreDrain(state, x);
+      case 'spillway': return spillCheck(state);
+      case 'evacuate': return quoteEvac(state, x);
+      case 'repairAll': return quoteRepair(state, x);
+      case 'prepareAll': return quoteAll(state, x);
+      default: return prepResult(String(action), { reason: 'Unknown action' });
+    }
+  }
+  /** Price and check a prep action without doing it → the same structured result prepAction returns. */
+  M.prepQuote = function (state, action, selection) {
+    try { return quote(state, action, selection); } catch (e) { BSU.error('weather', 'prepQuote', e); return prepResult(String(action), { reason: 'Error' }); }
+  };
+  /** Storm-panel prep actions → {action, ok, reason, cost, affected, effectText, alreadyDone, precautionary, ...}. `arg` is the selection (see above). */
   M.prepAction = function (state, action, arg) {
-    const no = function (reason) { return { ok: false, cost: 0, reason: reason }; };
     try {
-      if (action === 'spillway') return spillway(state);
-      const st = state.storms.current;
-      if (!st || st.nearMiss || st.phase < STORM.NAMED || st.phase > STORM.BANDS) return no('No storm');
+      const q = quote(state, action, arg);
+      if (!q.ok) return q;
+      const st = state.storms && state.storms.current;
       let r;
       switch (action) {
         case 'boardUp':
-          r = call('buildings', 'boardUp', state, arg === undefined ? 'all' : arg);
-          if (!r) return no('Not yet');
-          if (r.ok && Array.isArray(arg)) for (let i = 0; i < arg.length; i++) if (st.boardQueue.indexOf(arg[i]) < 0) st.boardQueue.push(arg[i]);
-          return { ok: !!r.ok, cost: fin(r.cost, 0), reason: r.ok ? '' : (r.reason || 'Refused') };
+          r = call('buildings', 'boardUp', state, q.affected);
+          if (!r || !r.ok) return Object.assign(q, { ok: false, reason: (r && r.reason) || 'Refused' });
+          return Object.assign(q, { cost: fin(r.cost, 0), affected: r.ids || q.affected });
         case 'sandbags':
-          r = call('buildings', 'sandbags', state, M.forecastSurge(state));
-          if (!r) return no('Not yet');
-          if (r.ok) st.sandbagged = true;
-          return { ok: !!r.ok, cost: fin(r.cost, 0), reason: r.ok ? '' : (r.reason || 'Refused') };
-        case 'repairAll':
-          r = call('buildings', 'repairAllLevees', state);
-          if (!r) return no('Not yet');
-          return { ok: !!r.ok, cost: fin(r.cost, 0), reason: r.ok ? '' : (r.reason || 'Refused') };
-        case 'evacuate': {
-          if (st.evacuated) return no('Already evacuated');
-          const students = fin(state.economy && state.economy.students, 0);
-          const cost = PS.evacPer1000 * Math.ceil(students / 1000);
-          if (call('economy', 'charge', state, cost, 'prep') === false) return no('Not enough cash');
+          r = call('buildings', 'sandbags', state, q.surge, { runs: q.runs });
+          if (!r || !r.ok) return Object.assign(q, { ok: false, reason: (r && r.reason) || 'Refused' });
+          if (st && !st.nearMiss) st.sandbagged = true;
+          return Object.assign(q, { cost: fin(r.cost, 0), affected: r.tiles || q.affected });
+        case 'preDrain':
+          st.preDrain = true;
+          return q;
+        case 'spillway':
+          if (call('economy', 'charge', state, q.cost, 'prep') === false) return Object.assign(q, { ok: false, reason: 'Not enough cash' });
+          state.weather.spillwayUsedYear = state.calendar.year;
+          r = call('hydro', 'spillway', state);
+          return Object.assign(q, { affected: [] , tiles: r ? fin(r.tiles, 0) : 0 });
+        case 'evacuate':
+          if (call('economy', 'charge', state, q.cost, 'prep') === false) return Object.assign(q, { ok: false, reason: 'Not enough cash' });
           call('agents', 'evacuate', state);
           st.evacuated = true;
           call('progress', 'addTimer', state, 'evacuation', P.econ.timers.evacuation.value, PS.evacDays);
-          return { ok: true, cost: cost, reason: '' };
+          return q;
+        case 'repairAll':
+          r = call('buildings', 'repairAll', state);
+          if (!r || !r.ok) return Object.assign(q, { ok: false, reason: 'Nothing was repaired' });
+          return Object.assign(q, { cost: fin(r.cost, 0) });
+        case 'prepareAll': {
+          const done = [];
+          let total = 0, ok = true, reason = '';
+          const aff = [];
+          for (let i = 0; i < q.steps.length; i++) {
+            const sr = M.prepAction(state, q.steps[i].action, q.steps[i].selection);
+            done.push(sr); total += fin(sr.cost, 0);
+            if (sr.ok) for (let k = 0; k < sr.affected.length; k++) aff.push(sr.affected[k]); else { ok = false; reason = sr.reason || 'A step failed'; }
+          }
+          return Object.assign(q, { ok: ok, reason: reason, cost: total, affected: aff, done: done });
         }
-        case 'preDrain':
-          if (st.preDrain) return no('Already pre-draining');
-          st.preDrain = true;
-          return { ok: true, cost: 0, reason: '' };
-        default:
-          return no('Unknown action');
+        default: return q;
       }
-    } catch (e) { BSU.error('weather', 'prepAction', e); return no('Error'); }
+    } catch (e) { BSU.error('weather', 'prepAction', e); return prepResult(String(action), { reason: 'Error' }); }
   };
-  /** Bonnet Roux Spillway (GDD §6.9; Tier 2 with hydro): once per year, 2–3 ft window, Year ≥ 3, Engineering Hall. */
-  function spillway(state) {
-    const SP = PW.spillway, w = state.weather, cal = state.calendar;
-    const no = function (reason) { return { ok: false, cost: 0, reason: reason }; };
-    if (cal.year < SP.fromYear) return no('Available from Year ' + SP.fromYear);
-    if (call('buildings', 'has', state, BSU.B.engineering) !== true) return no('Needs an Engineering Hall');
-    const s = stagesFor(state, cal.day);
-    if (!s.window || fin(w.riverStage, 0) < SP.minStage) return no('Only during a 2–3 ft window');
-    if (fin(w.spillwayUsedYear, 0) === cal.year) return no('Already opened this year');
-    const hy = dep('hydro');
-    if (!hy || typeof hy.spillway !== 'function') return no('Not yet');
-    if (call('economy', 'charge', state, SP.cost, 'prep') === false) return no('Not enough cash');
-    w.spillwayUsedYear = cal.year;
-    call('hydro', 'spillway', state);
-    return { ok: true, cost: SP.cost, reason: '' };
-  }
   /** Debug: jam a floodgate tile for the current storm. */
   M.jamGate = function (state, i) {
     try {

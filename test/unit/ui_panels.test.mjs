@@ -225,5 +225,121 @@ ok((BSU.errors ? BSU.errors.size : 0) === errsPassD, 'no BSU.error during the pa
 BSU.SELFTEST = true; let st; try { st = U.selfTest(); } catch (e) { st = { ok: false, notes: e.message }; } finally { BSU.SELFTEST = false; }
 ok(st && st.ok, 'ui.selfTest ok (includes ui_panels pushed tests) ' + (st && st.notes ? '(' + st.notes + ')' : ''));
 
+// --- storm prep pass (P4): the rebuilt Storm panel ------------------------------------------------------------
+{
+  const walk = (e, fn) => { fn(e); for (const c of (e.children || [])) walk(c, fn); };
+  const byId = (root, id) => { let f = null; walk(root, (e) => { if (e.id === id && !f) f = e; }); return f; };
+  const click = (b) => b.dispatchEvent({ type: 'click' });
+  const allText = (e) => { let t = e.textContent || ''; for (const c of (e.children || [])) t += ' ' + allText(c); return t; };
+  const tick = (cb, v) => { cb.checked = v; cb.dispatchEvent({ type: 'change' }); };
+  const refreshN = (st, n) => { for (let i = 0; i < n; i++) U.update(st, 600); };
+  const H = BSU.headless, B = BSU.buildings, W = BSU.weather;
+  BSU.session.newGame({ seed: 42, skipTutorial: true });
+  const sp = BSU.state; sp.economy.cash = 30000000;
+  const put = (id) => { const f = H.findSpot(id); return f ? H.place(id, f.x, f.y) : { ok: false }; };
+  for (const id of ['water_tower', 'substation', 'dorm', 'dorm', 'dining_hall', 'pump']) put(id);
+  const col = (a, b) => { const o = []; for (let y = a; y <= b; y++) o.push(BSU.idx(57, y)); return o; };
+  const cn = []; for (let x = 54; x <= 58; x++) cn.push(BSU.idx(x, 1));
+  B.placeRun(sp, 'canal', cn, {}); B.placeRun(sp, 'levee', col(2, 22), {}); B.placeRun(sp, 'levee', col(26, 34), {});
+  H.tick(6000);
+  const errs0 = BSU.errors ? BSU.errors.size : 0;
+  U.openPanel('storm'); refreshN(sp, 2);
+  const host = U.el['panel-storm'];
+  ok(!!host && !host.classList.contains('hidden'), 'storm panel opens');
+  ok(host.children[0].className.indexOf('panel-head') >= 0, 'the chrome head (close button) is still the first child');
+  const status = byId(host, 'storm-status'), done = byId(host, 'storm-done');
+  ok(/No storm in the Gulf — precautions available/.test(status.textContent), 'status strip with no storm: ' + status.textContent);
+  for (const id of ['sp-board', 'sp-water', 'sp-people', 'sp-all', 'sp-sandbags', 'sp-predrain', 'sp-spillway', 'sp-evacuate', 'sp-repairall'])
+    ok(!!byId(host, id), 'panel has the ' + id + ' block');
+  let heads = []; walk(host, (e) => { if (/\bsp-head\b/.test(e.className || '')) heads.push(e.textContent); });
+  ok(heads.join('|') === 'Board up|Water|People', 'three groups with headings: ' + heads.join(' / '));
+  // every group carries a one-line explanation
+  let notes = 0; walk(host, (e) => { if (/\bsp-note\b/.test(e.className || '') && e.textContent.length > 20) notes++; });
+  ok(notes >= 8, 'every group and control has a plain-words explanation (' + notes + ')');
+  const allBtn = byId(host, 'btn-prepall');
+  ok(allBtn.disabled && /precautions/.test(byId(host, 'sp-all').children[3].textContent), 'no storm: Prepare everything is disabled and says why');
+  for (const id of ['predrain', 'evacuate']) { const c = host['_' + id]; ok(c.btn.disabled && /No storm/.test(c.why.textContent), 'no storm: ' + id + ' is disabled with a visible reason (' + c.why.textContent + ')'); }
+  ok(host._spillway.btn.disabled && host._spillway.why.textContent.length > 5, 'spillway disabled with a reason: ' + host._spillway.why.textContent);
+  ok(host._repairall.btn.disabled && /Nothing to repair/.test(host._repairall.why.textContent), 'repair all disabled: nothing to repair');
+  const boardAll = byId(host, 'btn-boardall'), boardSel = byId(host, 'btn-boardsel'), list = byId(host, 'storm-wind');
+  ok(!boardAll.disabled && /Board Up all \(\d+\) · \$[\d,]+/.test(boardAll.textContent), 'no storm: Board Up all is available at full price: ' + boardAll.textContent);
+  ok(boardSel.disabled && /tick at least one building/.test(byId(host, 'sp-board').children.map((c) => c.textContent).join('|')), 'Board Up selected needs a tick and says so');
+  // selection survives the 500 ms refresh
+  const rows = list.children.filter((r) => r._cb); ok(rows.length >= 5, 'checklist has a row per finished building (' + rows.length + ')');
+  tick(rows[1]._cb, true); tick(rows[2]._cb, true);
+  refreshN(sp, 5);
+  const rows2 = list.children.filter((r) => r._cb);
+  ok(host._windSel.size === 2 && rows2[1]._cb === rows[1]._cb && rows2[1]._cb.checked && rows2[2]._cb.checked && !rows2[0]._cb.checked, 'ticks survive five refreshes (same checkbox elements, still checked)');
+  ok(/Board Up selected \(2\) · \$10,000/.test(boardSel.textContent) && !boardSel.disabled, 'the selected button shows the count and total: ' + boardSel.textContent);
+  ok(/Selected 2 · \$10,000 total/.test(byId(host, 'storm-boardsum').textContent), 'confirm line shows the total: ' + byId(host, 'storm-boardsum').textContent);
+  const selIds = [rows[1]._id, rows[2]._id], cashA = sp.economy.cash;
+  click(boardSel); refreshN(sp, 1);
+  ok(sp.economy.cash === cashA - 10000 && selIds.every((id) => B.get(sp, id).data.boardedUntil >= sp.calendar.day), 'Board Up selected: charged $10,000, both buildings boarded (precautionary, at once)');
+  ok(/^✓ Board Up/.test(done.textContent) && !done.classList.contains('hidden') && host._windSel.size === 0, 'confirmation strip shown, selection cleared: ' + done.textContent.slice(0, 70));
+  ok(list.children.filter((r) => /sp-boarded/.test(r.className)).length === 2 && /Boarded until/.test(allText(list.children.filter((r) => /sp-boarded/.test(r.className))[0])), 'boarded rows show ✓ and the until date');
+  // Select all WR ≤ 2, then clear
+  click(byId(host, 'btn-selwr2')); refreshN(sp, 2);
+  const wr2 = list.children.filter((r) => r._cb && r._cb.checked).length;
+  ok(wr2 === list.children.filter((r) => r._cb).filter((r) => /WR [12]$/.test(r.children[2].textContent)).length && wr2 >= 1, 'Select all WR ≤ 2 ticks exactly those rows (' + wr2 + ')');
+  click(byId(host, 'btn-selnone')); ok(host._windSel.size === 0 && list.children.every((r) => !r._cb || !r._cb.checked), 'Clear unticks them');
+  // Board Up all (no selection)
+  const cashB = sp.economy.cash, qAll = W.prepQuote(sp, 'boardUp', 'all');
+  click(boardAll); ok(sp.economy.cash === cashB - qAll.cost && B.boardInfo(sp).rows.every((r) => r.boarded), 'Board Up all: every building boarded for the quoted $' + qAll.cost);
+  ok(boardAll.disabled && /already boarded|All boarded/i.test(boardAll.textContent + byId(host, 'sp-board').children.map((c) => c.textContent).join('|')), 'then it is disabled and says everything is boarded');
+  // sandbags: runs list, weak runs, selected / all
+  const runsEl = byId(host, 'storm-runs'), sbRows = runsEl.children.filter((r) => r._cb);
+  ok(sbRows.length === 2 && /tiles · integrity \d+%/.test(allText(sbRows[0])), 'sandbag list: one row per levee run with length and integrity: ' + allText(sbRows[0]));
+  tick(sbRows[0]._cb, true); refreshN(sp, 3);
+  ok(host._sbSel.size === 1 && runsEl.children.filter((r) => r._cb)[0]._cb.checked, 'a ticked levee run survives refreshes');
+  const sbQ = W.prepQuote(sp, 'sandbags', Array.from(host._sbSel)), cashC = sp.economy.cash;
+  ok(/Sandbag selected \(1\) · \$[\d,]+/.test(byId(host, 'btn-sbsel').textContent) && sbQ.ok, 'Sandbag selected shows count and price');
+  click(byId(host, 'btn-sbsel')); ok(sp.economy.cash === cashC - sbQ.cost && B.sandbagRuns(sp, 5).filter((r) => r.sandbagged).length === 1, 'Sandbag selected: only that run is sandbagged, charged $' + sbQ.cost);
+  ok(runsEl.children.some((r) => /sp-boarded/.test(r.className) && /Sandbagged/.test(allText(r))), 'the sandbagged run shows ✓ Sandbagged');
+  const wk = B.sandbagRuns(sp, 5).find((r) => !r.sandbagged); for (const i of wk.tiles.slice(0, 1)) { sp.tiles.integrity[i] = 60; B.onIntegrityChanged(sp, i); } refreshN(sp, 2);
+  ok(!byId(host, 'btn-sbweak').disabled, 'a weak run enables Select all weak runs'); click(byId(host, 'btn-sbweak')); refreshN(sp, 1);
+  ok(host._sbSel.has(wk.key), 'Select all weak runs ticks the weak run');
+  click(byId(host, 'btn-sandbags')); ok(B.sandbagRuns(sp, 5).every((r) => r.sandbagged) && byId(host, 'btn-sandbags').disabled, 'Sandbag all finishes the rest and disables itself');
+  // pre-drain / evacuate stay off outside a storm; open the Storm
+  const storm = H.forceHurricane(3); H.tick(30); refreshN(sp, 2);
+  ok(/HURRICANE .* · CAT|HURRICANE .* · Cat/i.test(status.textContent) && /landfall in \d+ days? \(/.test(status.textContent), 'status strip in the cone: ' + status.textContent);
+  ok(!host._testcat.classList.contains('hidden'), 'the Cat selector and cone show during a storm');
+  // reset to bare walls and bare levees for the cone
+  for (const b of B.list(sp)) b.data.boardedUntil = -1;
+  for (let i = 0; i < 4096; i++) { sp.tiles.sandbag[i] = 0; sp.tiles.sandbagDay[i] = 0; } B.dirtyRing(sp);
+  const lw = B.sandbagRuns(sp, W.forecastSurge(sp)).find((r) => r.tiles.length); if (lw) { sp.tiles.integrity[lw.tiles[0]] = 62; B.onIntegrityChanged(sp, lw.tiles[0]); }
+  refreshN(sp, 3);
+  // Prepare everything: lists the steps, total = sum, charges exactly that
+  const plan = W.prepQuote(sp, 'prepareAll'), stepRows = byId(host, 'sp-all').children[2].children;
+  ok(plan.ok && plan.steps.length >= 2, 'Prepare everything has a plan in the cone (' + plan.steps.map((x) => x.action).join(', ') + ')');
+  const sum = plan.steps.reduce((a, x) => a + x.cost, 0), totalRow = stepRows[stepRows.length - 1];
+  ok(sum === plan.cost && stepRows.length === plan.steps.length + 1 && totalRow.children[1].textContent === '$' + plan.cost.toLocaleString('en-US'), 'the panel lists each step and its total ($' + plan.cost + ') = the sum of the steps ($' + sum + ')');
+  ok(allBtn.textContent.indexOf('$' + plan.cost.toLocaleString('en-US')) > 0 && !allBtn.disabled, 'the button carries the total: ' + allBtn.textContent);
+  const cashD = sp.economy.cash; click(allBtn); refreshN(sp, 1);
+  ok(sp.economy.cash === cashD - plan.cost, 'Prepare everything charged exactly the listed total ($' + plan.cost + ')');
+  ok(/^✓ Prepare everything/.test(done.textContent), 'confirmation: ' + done.textContent.slice(0, 80));
+  ok(storm.preDrain === true && host._predrain.btn.disabled && /^✓ Pre-draining/.test(host._predrain.btn.textContent), 'pre-drain now reads ✓ Pre-draining');
+  ok(B.boardInfo(sp).rows.some((r) => r.queued > 0), 'the boards went into the crew queue');
+  // each remaining action: callable through its button, with the reason when it cannot
+  ok(!host._evacuate.btn.disabled && /Evacuate · \$[\d,]+/.test(host._evacuate.btn.textContent) && /students/.test(host._evacuate.effect.textContent), 'evacuate shows price and effect: ' + host._evacuate.effect.textContent.slice(0, 80));
+  ok(host._evacuate.lines.children.length >= 2, 'evacuate lists the shelter buildings and the shelter-in-place total (' + host._evacuate.lines.children.length + ' rows)');
+  const cashE = sp.economy.cash, evq = W.prepQuote(sp, 'evacuate'); click(host._evacuate.btn); refreshN(sp, 1);
+  ok(sp.economy.cash === cashE - evq.cost && storm.evacuated && host._evacuate.btn.disabled && /^✓ Evacuated/.test(host._evacuate.btn.textContent), 'Evacuate runs once, then reads ✓ Evacuated');
+  ok(host._spillway.btn.disabled && host._spillway.why.textContent.length > 5, 'spillway: still disabled with its reason (' + host._spillway.why.textContent + ')');
+  // every control: either enabled, or a visible reason
+  const ctls = [host._predrain, host._spillway, host._evacuate, host._repairall];
+  ok(ctls.every((c) => !c.btn.disabled || c.why.textContent.length > 0), 'every disabled action control shows a reason');
+  // through landfall → Repair All
+  H.tick(2600); try { U.closeCard('damage'); } catch (e) { /* none */ } H.tick(200);
+  { const d = B.list(sp, 'dorm')[0]; d.hp = 0.4; }
+  refreshN(sp, 2);
+  const rq = W.prepQuote(sp, 'repairAll');
+  ok(!host._repairall.btn.disabled && host._repairall.btn.textContent.indexOf('$' + rq.cost.toLocaleString('en-US')) > 0 && /Repairs 1 building/.test(host._repairall.effect.textContent), 'after the storm Repair All shows its total: ' + host._repairall.btn.textContent);
+  const cashF = sp.economy.cash; click(host._repairall.btn); refreshN(sp, 1);
+  ok(sp.economy.cash === cashF - rq.cost && B.list(sp, 'dorm')[0].hp === 1 && host._repairall.btn.disabled, 'Repair All repaired the dorm for the quoted amount');
+  ok(/passing|precautions|No storm/.test(status.textContent), 'status after the storm: ' + status.textContent);
+  ok((BSU.errors ? BSU.errors.size : 0) === errs0, 'no BSU.error driving every Storm panel control (' + ((BSU.errors ? BSU.errors.size : 0) - errs0) + ' new)');
+  U.openPanel(null);
+}
+
 console.log(`\n${passes} passed, ${failures} failed`);
 process.exit(failures ? 1 : 0);

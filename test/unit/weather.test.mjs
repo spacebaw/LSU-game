@@ -38,7 +38,7 @@ function boot() {
   // controlled here (weather resolves them lazily through BSU.<name>, so overriding after load is fine).
   vm.runInContext(`
     BSU.hydro = { setStages(){}, forceSat(){}, riverAdjacent(){ return []; }, surgeControl(s, c, a){ (BSU.__surge = BSU.__surge || []).push([c, a && a.target !== undefined ? a.target : a]); }, setJammed(){}, networks(){ return []; }, markLeveeChange(){}, tick(){} };
-    BSU.buildings = { has(){ return false; }, list(){ return []; }, damageReport(){ return { bill: 4200, tarps: 1, held: [], overtopped: [], breached: [], flooded: [], choices: {} }; }, boundaryLevees(){ return []; }, boardUp(){ return { ok: true, cost: 0, queued: 0 }; }, sandbags(){ return { ok: true, cost: 0, tiles: [] }; }, repairAllLevees(){ return { ok: true, cost: 0 }; }, refuel(){ return { ok: true, cost: 5000 }; }, shelterOverflow(){}, shelterAssignments(){ return {}; } };
+    BSU.buildings = { has(){ return false; }, list(){ return []; }, damageReport(){ return { bill: 4200, tarps: 1, held: [], overtopped: [], breached: [], flooded: [], choices: {} }; }, boundaryLevees(){ return []; }, boardUp(s, ids){ return { ok: true, cost: 5000 * (Array.isArray(ids) ? ids.length : 1), queued: 0, ids: Array.isArray(ids) ? ids : [1] }; }, boardInfo(){ return { rows: [{ id: 1, name: 'Dorm', type: 'dorm', wr: 2, cost: 5000, boarded: false, until: -1, covers: false, queued: 0, eligible: true }], perDay: 6, daysLeft: 3, live: false, unit: 5000, precautionDays: 10 }; }, sandbagRuns(){ return [{ key: 'levee:1', name: 'Wall', length: 25, tiles: [1, 2, 3], integrity: 70, minIntegrity: 60, weak: true, sandbagged: false, cost: 10000 }]; }, repairQuote(){ return { cost: 0, ids: [], towers: 0, levees: 0 }; }, repairAll(){ return { ok: false, cost: 0 }; }, effective(){ return 1; }, get(){ return null; }, sandbags(s, h, o){ return { ok: true, cost: 10000, tiles: [1, 2, 3], runs: (o && o.runs) || [] }; }, repairAllLevees(){ return { ok: true, cost: 0 }; }, refuel(){ return { ok: true, cost: 5000 }; }, shelterOverflow(){}, shelterAssignments(){ return {}; } };
     BSU.progress = { offered(){ return true; }, setPieceSeen(){ return false; }, addTimer(){}, ticker(s, t, f){ (BSU.__ticker = BSU.__ticker || []).push(String(t)); } };
     BSU.sports = { upcoming(){ return null; }, season(s){ return s.sports; }, postpone(){}, offerPlayThrough(){ BSU.__ptOffered = (BSU.__ptOffered || 0) + 1; } };
     BSU.economy = { charge(){ return true; }, addAttrition(){}, bump(){} };
@@ -312,12 +312,16 @@ eq(BSU.errors.size, errorsBefore, 'BSU.errors did not grow during selfTest');
   ok(s.sky.scripted && s.sky.phase === BSU.SKY.NIGHT && s.sky.cycleTick === before, 'scripted sky holds NIGHT and freezes cycleTick');
   Wt.releaseSky(s);
   ok(!s.sky.scripted && s.sky.cycleTick === before, 'releaseSky resumes from the captured cycleTick');
-  eq(Wt.prepAction(s, 'boardUp', 'all').reason, 'No storm', 'prepAction refuses without a storm');
+  { const pb = Wt.prepAction(s, 'boardUp', 'all'); ok(pb.ok && pb.precautionary === true && pb.cost === 5000 && pb.affected.length === 1, 'boardUp with no storm is precautionary at full price: ' + JSON.stringify(pb)); }
+  { const pe = Wt.prepAction(s, 'evacuate'); ok(!pe.ok && /No storm/.test(pe.reason) && pe.cost === 0 && Array.isArray(pe.affected), 'evacuate refuses without a storm with a reason: ' + JSON.stringify(pe)); }
   const st = Wt.spawnStorm(s, { cat: 2, coneNowTick: s.tick, landfallTick: s.tick + CONE, compressed: true });
   s.economy.students = 2500;
   const ev = Wt.prepAction(s, 'evacuate');
   ok(ev.ok && ev.cost === 60000 && st.evacuated === true, 'evacuate charges $20k per 1,000 students: ' + JSON.stringify(ev));
-  ok(Wt.prepAction(s, 'preDrain').ok && st.preDrain && !Wt.prepAction(s, 'preDrain').ok, 'preDrain once');
+  { const noPump = Wt.prepAction(s, 'preDrain'); ok(!noPump.ok && /pump/i.test(noPump.reason) && !st.preDrain, 'preDrain with no pumps says why: ' + noPump.reason); }
+  BSU.buildings.list = (st_, t) => (t === BSU.B.pump ? [{ id: 7, name: 'Pump', built: 1 }] : []);
+  BSU.hydro.networks = () => [{ tiles: [1, 2, 3, 4], pumps: [7] }];
+  { const p1 = Wt.prepAction(s, 'preDrain'), p2 = Wt.prepAction(s, 'preDrain'); ok(p1.ok && st.preDrain && !p2.ok && p2.alreadyDone === true, 'preDrain once, then alreadyDone'); }
   ok(Wt.prepAction(s, 'sandbags').ok && st.sandbagged, 'sandbags via buildings');
   eq(Wt.prepAction(s, 'spillway').ok, false, 'spillway refused in Year 1');
   eq(Wt.forecastSurge(s), BSU.params.storm.surge[st.forecastCat], 'forecastSurge from the forecast cat (' + st.forecastCat + ')');
@@ -392,6 +396,124 @@ eq(BSU.errors.size, errorsBefore, 'BSU.errors did not grow during selfTest');
   run(BSU, s, YEAR);
   const perTick = (performance.now() - t0) / YEAR;
   ok(perTick < 0.3, `weather.tick averages ${(perTick * 1000).toFixed(1)} µs per tick over a year (< 300 µs; includes the test's session emulation)`);
+}
+
+// --- storm prep pass (P4): prepAction result shape for every action, availability, precautionary boarding, spillway once a year ------
+const SHAPE = ['action', 'ok', 'reason', 'cost', 'affected', 'effectText', 'alreadyDone', 'precautionary'];
+function shapeOk(r) {
+  return !!r && typeof r === 'object' && SHAPE.every((k) => k in r) && typeof r.ok === 'boolean' && typeof r.reason === 'string' && Number.isFinite(r.cost) && Array.isArray(r.affected) && typeof r.effectText === 'string' && typeof r.alreadyDone === 'boolean' && typeof r.precautionary === 'boolean' && (r.ok || r.reason.length > 0);
+}
+{
+  // stubbed siblings: spillway once a year, with every reason spelled out
+  const { win, ctx } = boot();
+  const BSU = win.BSU, Wt = BSU.weather;
+  vm.runInContext(`BSU.hydro.spillway = function () { return { ok: true, tiles: 12 }; };`, ctx);
+  const s = newGame(BSU, 44);
+  const SP = BSU.params.weather.spillway;
+  let r = Wt.prepAction(s, 'spillway');
+  ok(shapeOk(r) && !r.ok && /Year 3/.test(r.reason), 'spillway: Year 1 reason is explicit (' + r.reason + ')');
+  s.calendar.year = 3; s.calendar.day = Wt.dayOf(s, 'Apr 8', 0);
+  r = Wt.prepAction(s, 'spillway');
+  ok(shapeOk(r) && !r.ok && /Engineering/.test(r.reason), 'spillway: needs an Engineering Hall (' + r.reason + ')');
+  BSU.buildings.has = () => true;
+  r = Wt.prepAction(s, 'spillway');
+  ok(shapeOk(r) && !r.ok && /window/.test(r.reason), 'spillway: only in the high-water window (' + r.reason + ')');
+  s.weather.riverStage = 2;
+  r = Wt.prepQuote(s, 'spillway');
+  ok(shapeOk(r) && r.ok && r.cost === SP.cost && /Spillway/.test(r.effectText), 'spillway quote (no side effects): ok, $' + SP.cost + ' ' + JSON.stringify(r).slice(0, 200));
+  ok(s.weather.spillwayUsedYear !== 3, 'prepQuote did not use the spillway');
+  r = Wt.prepAction(s, 'spillway');
+  ok(shapeOk(r) && r.ok && s.weather.spillwayUsedYear === 3, 'spillway opens once');
+  r = Wt.prepAction(s, 'spillway');
+  ok(shapeOk(r) && !r.ok && r.alreadyDone === true && /Already opened/.test(r.reason), 'spillway: a second call the same year is alreadyDone');
+  s.calendar.year = 4; s.calendar.day = Wt.dayOf(s, 'Apr 8', 0);
+  r = Wt.prepAction(s, 'spillway');
+  ok(shapeOk(r) && r.ok, 'spillway: available again next year');
+}
+{
+  // the full game: real buildings, hydro, economy
+  const win = makeWindow(); win.BSU_FORCE_HEADLESS = true; win.window = win;
+  const ctx = vm.createContext(win);
+  const manifest = JSON.parse(readFileSync(join(root, 'src', 'manifest.json'), 'utf8')).modules;
+  for (const f of manifest) { const p = join(root, 'src', 'js', f); if (existsSync(p)) vm.runInContext(readFileSync(p, 'utf8'), ctx, { filename: f }); }
+  const BSU = win.BSU, Wt = BSU.weather, B = BSU.buildings, H = BSU.headless;
+  BSU.session.newGame({ seed: 42, skipTutorial: true });
+  const s = BSU.state; s.economy.cash = 30000000;
+  const put = (id) => { const sp = H.findSpot(id); return sp ? H.place(id, sp.x, sp.y) : { ok: false }; };
+  for (const id of ['water_tower', 'substation', 'dorm', 'dorm', 'dining_hall', 'pump']) put(id);
+  const run = (a, b) => { const out = []; for (let y = a; y <= b; y++) out.push(BSU.idx(57, y)); return out; };
+  const cn = []; for (let x = 54; x <= 58; x++) cn.push(BSU.idx(x, 1));
+  B.placeRun(s, 'canal', cn, {}); B.placeRun(s, 'levee', run(2, 22), {}); B.placeRun(s, 'levee', run(26, 34), {});
+  H.tick(6000);
+  const IDS = Wt.PREP_ACTIONS;
+  ok(Array.isArray(IDS) && IDS.length === 7, 'weather.PREP_ACTIONS lists the seven action ids');
+  const sels = { boardUp: [undefined, 'all', [], [B.list(s)[0].id]], sandbags: [undefined, 'all', 'weak', [], ['levee:none']] };
+  const checkAll = (label, exec) => {   // prepQuote for every action/selection; prepAction only for the actions in `exec` (it has side effects)
+    let n = 0, bad = [];
+    for (const a of IDS) for (const sel of (sels[a] || [undefined])) {
+      for (const fn of ['prepQuote', 'prepAction']) {
+        if (fn === 'prepAction' && exec.indexOf(a) < 0) continue;
+        const r = Wt[fn](s, a, sel); n++;
+        if (!shapeOk(r) || r.action !== a) bad.push(fn + ':' + a + ':' + JSON.stringify(sel) + ' → ' + JSON.stringify(r).slice(0, 160));
+      }
+    }
+    ok(bad.length === 0, label + ': every action (' + n + ' calls, with and without a selection) returns the full result shape' + (bad.length ? ' — ' + bad[0] : ''));
+  };
+  // no storm: Board Up and Sandbags are precautionary, the rest say why not
+  const quoteBoard = Wt.prepQuote(s, 'boardUp', 'all');
+  ok(quoteBoard.ok && quoteBoard.precautionary === true && quoteBoard.cost === 5000 * quoteBoard.affected.length && quoteBoard.affected.length >= 5, 'no storm: Board Up all is allowed, precautionary, $5,000 each (' + quoteBoard.affected.length + ' buildings)');
+  ok(/precautionary/i.test(quoteBoard.effectText), 'precautionary boarding says so in plain words');
+  for (const a of ['evacuate', 'preDrain']) { const r = Wt.prepQuote(s, a); ok(!r.ok && /No storm/.test(r.reason) && r.cost === 0, 'no storm: ' + a + ' refused with a reason (' + r.reason + ')'); }
+  const pa = Wt.prepQuote(s, 'prepareAll'); ok(!pa.ok && pa.steps.length === 0 && /precautions/.test(pa.reason), 'no storm: Prepare everything lists nothing and says precautions only');
+  const sbq = Wt.prepQuote(s, 'sandbags', 'all');
+  ok(sbq.ok && sbq.precautionary && sbq.affected.length > 0 && sbq.cost > 0, 'no storm: Sandbags allowed, precautionary (' + sbq.affected.length + ' tiles, $' + sbq.cost + ')');
+  checkAll('no storm', ['evacuate', 'preDrain', 'spillway', 'repairAll', 'prepareAll']);
+  // precautionary boarding is real: the building's boards go up now and the render variant follows
+  const cash0 = s.economy.cash, wt = B.list(s, 'water_tower')[0];
+  const done = Wt.prepAction(s, 'boardUp', [wt.id]);
+  ok(done.ok && done.cost === 5000 && done.affected.length === 1 && done.affected[0] === wt.id && s.economy.cash === cash0 - 5000, 'precautionary Board Up charges $5,000 and reports the building');
+  ok(wt.data.boardedUntil >= s.calendar.day + 9 && BSU.render.variantOf(wt, { day: s.calendar.day }) === BSU.SPR.BOARDED, 'the boarded building draws the BOARDED sprite variant (until day ' + wt.data.boardedUntil + ')');
+  const again = Wt.prepAction(s, 'boardUp', [wt.id]);
+  ok(!again.ok && again.alreadyDone === true && again.cost === 0 && shapeOk(again), 'boarding the same building twice is alreadyDone, not charged');
+  const allb = Wt.prepAction(s, 'boardUp', 'all'), allb2 = Wt.prepAction(s, 'boardUp', 'all');
+  ok(allb.ok && !allb2.ok && allb2.alreadyDone === true && /already/i.test(allb2.reason), 'Board Up all twice: the second says already boarded');
+  const none = Wt.prepAction(s, 'boardUp', []); ok(!none.ok && /Select at least one/.test(none.reason), 'an empty selection says what to do');
+  const poor = Object.assign({}, quoteBoard); s.economy.cash = -BSU.params.econ.loanLimit - 1000;
+  const broke = Wt.prepAction(s, 'sandbags', 'all'); ok(!broke.ok && /Not enough cash/.test(broke.reason) && broke.cost > 0, 'not enough cash is an explicit reason with the price (' + broke.reason + ')'); void poor;
+  s.economy.cash = 30000000;
+  // a storm arrives: cone → the queue path, then Prepare everything
+  const storm = H.forceHurricane(3); H.tick(30);
+  ok(!!Wt.cone(s) && storm.phase >= BSU.STORM.NAMED, 'a Cat 3 is in the cone');
+  { const covered = B.boardInfo(s).rows.filter((r) => r.covers).length; ok(covered >= 5, 'precautionary boards that outlast the landfall still count in the cone (' + covered + ' covered)'); }
+  for (const b of B.list(s)) b.data.boardedUntil = -1;   // start the storm prep from bare walls
+  checkAll('cone', []);
+  const wk = B.sandbagRuns(s, Wt.forecastSurge(s)); for (const r of wk) if (r.length < 5) for (const i of r.tiles) { s.tiles.integrity[i] = 62; B.onIntegrityChanged(s, i); }
+  const plan = Wt.prepQuote(s, 'prepareAll');
+  ok(plan.ok && plan.steps.length >= 2 && plan.cost === plan.steps.reduce((a, x) => a + x.cost, 0), 'Prepare everything: total ' + plan.cost + ' equals the sum of its ' + plan.steps.length + ' steps (' + plan.steps.map((x) => x.action).join(', ') + ')');
+  const cashBefore = s.economy.cash, res = Wt.prepAction(s, 'prepareAll');
+  ok(res.ok && res.cost === plan.cost && s.economy.cash === cashBefore - plan.cost && res.done.every((d) => d.ok && shapeOk(d)), 'Prepare everything charges exactly its quote and runs every step (' + res.cost + ')');
+  const q2 = B.boardInfo(s); ok(q2.live && q2.rows.some((r) => r.queued > 0), 'inbound storm: the boards go to the crew queue (6 a day)');
+  ok(storm.preDrain === true || !plan.steps.some((x) => x.action === 'preDrain'), 'pre-drain is on after Prepare everything when it was in the plan');
+  const pd = Wt.prepAction(s, 'preDrain'); ok(shapeOk(pd) && !pd.ok && (storm.preDrain ? pd.alreadyDone === true : pd.reason.length > 0), 'pre-drain a second time: ' + pd.reason);
+  const ev = Wt.prepAction(s, 'evacuate');
+  ok(shapeOk(ev) && ev.ok && ev.cost === 20000 * Math.ceil(s.economy.students / 1000) && storm.evacuated === true, 'evacuate: $20k per 1,000 students, ' + ev.effectText.slice(0, 60));
+  const ev2 = Wt.prepAction(s, 'evacuate'); ok(!ev2.ok && ev2.alreadyDone === true && ev2.cost === 0, 'evacuate twice: alreadyDone');
+  checkAll('cone, after Prepare everything', ['boardUp', 'sandbags', 'preDrain', 'evacuate', 'prepareAll']);
+  // sandbags last through landfall, not just five days
+  const sbTile = B.boundaryLevees(s, Wt.forecastSurge(s))[0];
+  if (sbTile !== undefined) ok(s.tiles.sandbagDay[sbTile] === 0 || s.tiles.sandbagDay[sbTile] >= storm.landfallDay + 1, 'sandbags laid in the cone hold through landfall day (expire ' + s.tiles.sandbagDay[sbTile] + ', landfall ' + storm.landfallDay + ')');
+  // through landfall: Repair All becomes the action
+  H.tick(2600);
+  ok(!Wt.storm(s) || Wt.storm(s).phase >= BSU.STORM.RECOVERY, 'the storm has made landfall and passed (' + (Wt.storm(s) ? Wt.storm(s).phase : 'cleared') + ')');
+  for (const id of ['damage']) try { BSU.ui.closeCard(id); } catch (e) { /* headless */ }
+  H.tick(200);
+  const late = Wt.prepQuote(s, 'boardUp', 'all'); ok(shapeOk(late) && (late.ok ? late.precautionary : true), 'after the storm: Board Up falls back to precautionary or says why');
+  { const d = B.list(s, 'dorm')[0]; d.hp = 0.4; const lv = B.leveeRuns(s)[0].tiles.slice(0, 2); for (const i of lv) { s.tiles.integrity[i] = 70; B.onIntegrityChanged(s, i); } }
+  const rep = Wt.prepQuote(s, 'repairAll'); ok(shapeOk(rep), 'Repair All quote has the full shape after the storm (cost ' + rep.cost + ', ' + (rep.ok ? 'ok' : rep.reason) + ')');
+  ok(rep.ok && rep.buildings === 1 && rep.levees === 2 && rep.cost === B.repairQuote(s).cost && rep.affected.length === 1, 'Repair All quote totals the damaged dorm and two weak levee tiles: $' + rep.cost);
+  if (rep.ok) { const c0 = s.economy.cash, rr = Wt.prepAction(s, 'repairAll'); ok(shapeOk(rr) && rr.ok && rr.cost === rep.cost && s.economy.cash === c0 - rep.cost && B.list(s, 'dorm')[0].hp === 1, 'Repair All repairs and charges: ' + rr.effectText); const r3 = Wt.prepAction(s, 'repairAll'); ok(!r3.ok && /Nothing to repair/.test(r3.reason), 'Repair All again: nothing to repair'); }
+  checkAll('after the storm', IDS.slice());
+  ok((BSU.errors ? BSU.errors.size : 0) === 0, 'no BSU.error through the prep pass (' + (BSU.errors ? BSU.errors.size : 0) + ')');
 }
 
 console.log(`\n${passes} passed, ${failures} failed`);

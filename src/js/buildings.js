@@ -34,6 +34,7 @@
     floodedCoreDays: PE.prestige.blight.floodedDays,    // 3
     oakStageForEffect: 1,
     landmarkShelterDeclaredPhaseMax: BSU.STORM.LANDFALL, // "from the cone to T+1"
+    precautionDays: 10,                                 // storm prep pass: a Board Up ordered with no storm in the Gulf stays up this many days
     coreRows: null                                      // computed lazily from data
   };
 
@@ -1967,20 +1968,54 @@
       return runs;
     } catch (e) { if (BSU.SELFTEST) throw e; BSU.error('buildings', 'leveeRuns', e); return []; }
   };
-  /** Sandbags: every boundary levee tile at H gets +1.5 ft for 5 days; cost ceil(n/10) × $10k (opts.free from the toast) */
+  /** expiry day (exclusive) of sandbags laid today: 5 days, or through the landfall day when a real storm is inbound (a cone-day order must still hold at the peak) */
+  function sandbagUntil(state, day) {
+    const st = state.storms && state.storms.current;
+    const lf = (st && !st.nearMiss) ? fin(st.landfallDay, -1) : -1;
+    return Math.min(65535, Math.max(day + PS.sandbagDays, lf >= day ? lf + 1 : 0));
+  }
+  /** Storm panel: every levee run with boundary tiles at H → [{key, name, length, tiles (boundary), integrity (mean), minIntegrity, weak, sandbagged, cost}] */
+  M.sandbagRuns = function (state, Hft) {
+    try {
+      const tl = state.tiles, day = dayOf(state), out = [];
+      const bset = new Set(boundaryFrom(state, protectionInner(state, fin(Hft, PS.ringDefaultH))));
+      for (const r of M.leveeRuns(state)) {
+        const tiles = r.tiles.filter(function (i) { return bset.has(i); });
+        if (!tiles.length) continue;
+        let min = 100, sum = 0, bagged = 0;
+        for (const i of tiles) { const g = tl.integrity[i]; if (g < min) min = g; sum += g; if (tl.sandbag[i] > 0 && tl.sandbagDay[i] > day) bagged++; }
+        out.push({ key: r.key, name: r.name || ('Levee segment (' + (r.tiles[0] & 63) + ', ' + (r.tiles[0] >> 6) + ')'), length: r.tiles.length, tiles: tiles,
+          integrity: Math.round(sum / tiles.length), minIntegrity: min, weak: min < PS.toast1Integrity, sandbagged: bagged === tiles.length, cost: Math.ceil(tiles.length / PS.sandbagPer) * PS.sandbagCost });
+      }
+      return out;
+    } catch (e) { if (BSU.SELFTEST) throw e; BSU.error('buildings', 'sandbagRuns', e); return []; }
+  };
+  /** Sandbags: every boundary levee tile at H (or only the runs named in opts.runs) gets +1.5 ft until the storm's landfall (min 5 days); cost ceil(n/10) × $10k, summed per run when opts.runs is given (opts.free from the toast) */
   M.sandbags = function (state, Hft, opts) {
     opts = opts || {};
     try {
-      const tiles = M.boundaryLevees(state, fin(Hft, PS.ringDefaultH));
-      if (!tiles.length) return { ok: false, cost: 0, tiles: [], reason: 'No levee on the boundary' };
-      const cost = opts.free ? 0 : Math.ceil(tiles.length / PS.sandbagPer) * PS.sandbagCost;
-      if (cost > 0 && !charge(state, cost, 'prep', { i: tiles[0] })) return { ok: false, cost: cost, tiles: [], reason: 'Not enough cash' };
-      const day = dayOf(state);
-      for (const i of tiles) { state.tiles.sandbag[i] = PS.sandbagTenths; state.tiles.sandbagDay[i] = Math.min(65535, day + PS.sandbagDays); markLeveeChange(state, i); }
+      let tiles, cost;
+      if (Array.isArray(opts.runs)) {
+        const want = new Set(opts.runs);
+        const runs = M.sandbagRuns(state, Hft).filter(function (r) { return want.has(r.key) && !r.sandbagged; });
+        tiles = []; cost = 0;
+        for (const r of runs) { for (const i of r.tiles) tiles.push(i); cost += r.cost; }
+        if (!tiles.length) return { ok: false, cost: 0, tiles: [], runs: [], reason: 'No levee run to sandbag' };
+        if (opts.free) cost = 0;
+        if (cost > 0 && !charge(state, cost, 'prep', { i: tiles[0] })) return { ok: false, cost: cost, tiles: [], runs: [], reason: 'Not enough cash' };
+        opts = Object.assign({}, opts, { _runKeys: runs.map(function (r) { return r.key; }) });
+      } else {
+        tiles = M.boundaryLevees(state, fin(Hft, PS.ringDefaultH));
+        if (!tiles.length) return { ok: false, cost: 0, tiles: [], runs: [], reason: 'No levee on the boundary' };
+        cost = opts.free ? 0 : Math.ceil(tiles.length / PS.sandbagPer) * PS.sandbagCost;
+        if (cost > 0 && !charge(state, cost, 'prep', { i: tiles[0] })) return { ok: false, cost: cost, tiles: [], runs: [], reason: 'Not enough cash' };
+      }
+      const until = sandbagUntil(state, dayOf(state));
+      for (const i of tiles) { state.tiles.sandbag[i] = PS.sandbagTenths; state.tiles.sandbagDay[i] = until; markLeveeChange(state, i); }
       if (state.storms && state.storms.current) state.storms.current.sandbagged = true;
       M.dirtyRing(state);
-      return { ok: true, cost: cost, tiles: tiles };
-    } catch (e) { if (BSU.SELFTEST) throw e; BSU.error('buildings', 'sandbags', e); return { ok: false, cost: 0, tiles: [], reason: 'Cannot sandbag' }; }
+      return { ok: true, cost: cost, tiles: tiles, runs: opts._runKeys || [], until: until };
+    } catch (e) { if (BSU.SELFTEST) throw e; BSU.error('buildings', 'sandbags', e); return { ok: false, cost: 0, tiles: [], runs: [], reason: 'Cannot sandbag' }; }
   };
 
   // ---------------------------------------------------------------------------
@@ -2028,6 +2063,18 @@
       if (lv.ok) { total += lv.cost; any = true; }
       return { ok: any, cost: total };
     } catch (e) { if (BSU.SELFTEST) throw e; BSU.error('buildings', 'repairAll', e); return { ok: false, cost: 0 }; }
+  };
+  /** what Repair All would cost right now: {cost, ids (damaged / ruined buildings), towers (toppled Water Towers), levees (tiles below 100)} */
+  M.repairQuote = function (state) {
+    try {
+      let cost = 0; const ids = [];
+      for (const b of M.list(state)) if (b.hp < 1 || b.ruin) { ids.push(b.id); cost += repairCostOf(b); }
+      const towers = cache(state).toppled.length; cost += PS.towerToppleCost * towers;
+      let levees = 0; const tl = state.tiles;
+      for (let i = 0; i < N; i++) if (tl.crest[i] > 0 && tl.integrity[i] < 100) levees++;
+      cost += levees * PS.repairPerTile;
+      return { cost: cost, ids: ids, towers: towers, levees: levees };
+    } catch (e) { if (BSU.SELFTEST) throw e; BSU.error('buildings', 'repairQuote', e); return { cost: 0, ids: [], towers: 0, levees: 0 }; }
   };
   /** $5k per levee tile below 100 */
   M.repairLevee = function (state, i) {
@@ -2108,34 +2155,67 @@
       emit(EV.BUILDING_DAMAGED, { id: b.id, type: b.type, hp: b.hp, cause: 'topple' });
     }
   }
-  /** default board-up order: water towers, substations, then WR ascending, cost descending */
+  /** a real storm the crews can still prepare for (cone → bands); a near-miss counts as no storm */
+  function inboundStorm(state) {
+    const st = state.storms && state.storms.current;
+    return (st && !st.nearMiss && st.phase >= BSU.STORM.NAMED && st.phase <= BSU.STORM.BANDS) ? st : null;
+  }
+  /** the day a board must outlast to count: landfall + 1 for an inbound storm, else today */
+  function boardHorizon(state) { const st = inboundStorm(state); return (st && fin(st.landfallDay, -1) >= 0) ? st.landfallDay + 1 : dayOf(state); }
+  function boardRank(b) { return b.type === 'water_tower' ? 0 : (b.type === 'substation' ? 1 : 2); }
+  function boardSort(cat) {
+    return function (a, b) { const ra = boardRank(a), rb = boardRank(b); if (ra !== rb) return ra - rb; const wa = wrOf(cat[a.type], a), wb = wrOf(cat[b.type], b); if (wa !== wb) return wa - wb; const ca = cat[a.type].cost, cb = cat[b.type].cost; if (ca !== cb) return cb - ca; return a.id - b.id; };
+  }
+  /** default board-up order: water towers, substations, then WR ascending, cost descending (buildings whose boards already outlast the landfall are left out) */
   function boardOrder(state) {
-    const cat = catalog(), day = dayOf(state);
-    const rank = function (b) { return b.type === 'water_tower' ? 0 : (b.type === 'substation' ? 1 : 2); };
-    return M.list(state).filter(function (b) { return isComplete(b) && fin(b.data.boardedUntil, -1) < day && cat[b.type] && cat[b.type].kind === 'footprint'; })
-      .sort(function (a, b) { const ra = rank(a), rb = rank(b); if (ra !== rb) return ra - rb; const wa = wrOf(cat[a.type], a), wb = wrOf(cat[b.type], b); if (wa !== wb) return wa - wb; const ca = cat[a.type].cost, cb = cat[b.type].cost; if (ca !== cb) return cb - ca; return a.id - b.id; });
+    const cat = catalog(), horizon = boardHorizon(state);
+    return M.list(state).filter(function (b) { return isComplete(b) && fin(b.data.boardedUntil, -1) < horizon && cat[b.type] && cat[b.type].kind === 'footprint'; }).sort(boardSort(cat));
   }
   M.boardOrder = function (state) { try { return boardOrder(state).map(function (b) { return b.id; }); } catch (e) { BSU.error('buildings', 'boardOrder', e); return []; } };
-  /** $5k per building; crews board 6/day (12 with a post) from tomorrow, in pick-list order */
+  /** Storm panel: every complete footprint building with its board state → {rows: [{id, name, type, wr, cost, boarded, until, covers, queued (1-based crew position, 0 = no), eligible}],
+   *  perDay (crews), daysLeft (to landfall, -1 none), live (inbound storm), unit ($ per building)} */
+  M.boardInfo = function (state) {
+    try {
+      const cat = catalog(), day = dayOf(state), horizon = boardHorizon(state), st = inboundStorm(state);
+      const q = (st && Array.isArray(st.boardQueue)) ? st.boardQueue : [];
+      const rows = M.list(state).filter(function (b) { return isComplete(b) && cat[b.type] && cat[b.type].kind === 'footprint'; }).sort(boardSort(cat)).map(function (b) {
+        const row = cat[b.type], until = fin(b.data.boardedUntil, -1), qi = q.indexOf(b.id);
+        return { id: b.id, name: b.name || row.name || b.type, type: b.type, wr: wrOf(row, b), cost: PS.boardCost, boarded: until >= day, until: until >= day ? until : -1, covers: until >= horizon, queued: qi + 1, eligible: until < horizon && qi < 0 };
+      });
+      return { rows: rows, perDay: M.has(state, 'wildlife_post') ? PS.boardPerDayPost : PS.boardPerDay, daysLeft: (st && fin(st.landfallDay, -1) >= 0) ? Math.max(0, st.landfallDay - day) : -1, live: !!st, unit: PS.boardCost, precautionDays: LOCAL.precautionDays };
+    } catch (e) { if (BSU.SELFTEST) throw e; BSU.error('buildings', 'boardInfo', e); return { rows: [], perDay: PS.boardPerDay, daysLeft: -1, live: false, unit: PS.boardCost, precautionDays: LOCAL.precautionDays }; }
+  };
+  /** $5k per building. With a storm inbound the crews board 6/day (12 with a post) from tomorrow, in pick-list order;
+   *  with no storm the boards go up at once and stay LOCAL.precautionDays ('precautionary', same price). */
   M.boardUp = function (state, ids) {
     try {
       const st = state.storms && state.storms.current;
-      if (!st) return { ok: false, cost: 0, queued: 0, reason: 'No storm' };
-      if (!Array.isArray(st.boardQueue)) st.boardQueue = [];
+      if (st && !st.nearMiss && st.phase > BSU.STORM.BANDS) return { ok: false, cost: 0, queued: 0, ids: [], reason: 'The storm is here: too late to board up' };
+      const live = inboundStorm(state);
+      if (live && !Array.isArray(live.boardQueue)) live.boardQueue = [];
       const order = boardOrder(state);
       let pick;
       if (ids === 'all') pick = order;
       else { const want = new Set((Array.isArray(ids) ? ids : [ids]).filter(Number.isInteger)); pick = order.filter(function (b) { return want.has(b.id); }); }
-      pick = pick.filter(function (b) { return st.boardQueue.indexOf(b.id) < 0; });
-      if (!pick.length) return { ok: false, cost: 0, queued: 0, reason: 'Nothing to board' };
+      if (live) pick = pick.filter(function (b) { return live.boardQueue.indexOf(b.id) < 0; });
+      if (!pick.length) return { ok: false, cost: 0, queued: 0, ids: [], reason: (ids === 'all' || (Array.isArray(ids) && ids.length)) ? 'Already boarded or queued' : 'Nothing to board', alreadyDone: ids === 'all' || (Array.isArray(ids) && ids.length > 0) };
       const cost = PS.boardCost * pick.length;
-      if (!charge(state, cost, 'prep', { i: BSU.idx(pick[0].tx, pick[0].ty) })) return { ok: false, cost: cost, queued: 0, reason: 'Not enough cash' };
-      for (const b of pick) st.boardQueue.push(b.id);
-      return { ok: true, cost: cost, queued: pick.length };
-    } catch (e) { if (BSU.SELFTEST) throw e; BSU.error('buildings', 'boardUp', e); return { ok: false, cost: 0, queued: 0, reason: 'Cannot board' }; }
+      if (!charge(state, cost, 'prep', { i: BSU.idx(pick[0].tx, pick[0].ty) })) return { ok: false, cost: cost, queued: 0, ids: [], reason: 'Not enough cash' };
+      const out = pick.map(function (b) { return b.id; });
+      if (live) { for (const b of pick) live.boardQueue.push(b.id); return { ok: true, cost: cost, queued: pick.length, ids: out, precautionary: false }; }
+      const until = dayOf(state) + LOCAL.precautionDays;
+      for (const b of pick) { b.data.boardedUntil = Math.max(fin(b.data.boardedUntil, -1), until); for (const i of footprintOf(b)) touch(state, i, 'decor'); }
+      return { ok: true, cost: cost, queued: 0, boarded: pick.length, ids: out, precautionary: true, until: until };
+    } catch (e) { if (BSU.SELFTEST) throw e; BSU.error('buildings', 'boardUp', e); return { ok: false, cost: 0, queued: 0, ids: [], reason: 'Cannot board' }; }
   };
   function boardCrews(state, day) {
     const st = state.storms && state.storms.current;
+    const live = inboundStorm(state);
+    if (live) {   // precautionary boards that already outlast the landfall count as boarded (the Cone of concern objective reads boardedCount)
+      const horizon = boardHorizon(state); let cov = 0;
+      for (const b of M.list(state)) if (isComplete(b) && fin(b.data.boardedUntil, -1) >= horizon) cov++;
+      if (cov > fin(live.boardedCount, 0)) live.boardedCount = cov;
+    }
     if (!st || !Array.isArray(st.boardQueue) || !st.boardQueue.length) return;
     let n = M.has(state, 'wildlife_post') ? PS.boardPerDayPost : PS.boardPerDay;
     const until = fin(st.landfallDay, -1) >= 0 ? st.landfallDay + 1 : day + PS.coneDays + 1;

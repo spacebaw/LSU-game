@@ -188,45 +188,124 @@
     const ca = fin(a.cost, 0), cb = fin(b.cost, 0); if (ca !== cb) return cb - ca;
     return 0;
   }
+  // P4 storm prep pass: the panel is a status strip, a "Prepare everything" block and three groups (Board up / Water / People). Every control is
+  // priced and checked by weather.prepQuote (cost, effect in plain words, the reason when disabled); selections live in host._windSel / host._sbSel
+  // (Sets of building ids / levee run keys) so the 500 ms refresh never eats a tick, and a list is rebuilt only when its content key changes.
+  function usd(n) { return '$' + Math.round(fin(n, 0)).toLocaleString('en-US'); }
+  function dateStr(day) { try { return BSU.dayParts(day).date; } catch (e) { return ''; } }
+  function stormKey(s) { const st = call('weather', 'storm', s); return st ? st.name + ':' + st.landfallDay : ''; }
+  function spGroup(host, id, title, blurb) {
+    const g = el('div', 'sp-group'); g.id = id;
+    g.appendChild(el('div', 'sp-head', title)); g.appendChild(el('div', 'sp-note', blurb));
+    host.appendChild(g); return g;
+  }
+  /** one prep action: heading, plain-words explanation, live effect line, button, visible reason */
+  function spAction(host, parent, key, id, label, action, subTitle, blurb) {
+    const wrap = el('div', 'sp-act'); wrap.id = 'sp-' + key;
+    wrap.appendChild(el('div', 'sp-sub', subTitle));
+    wrap.appendChild(el('div', 'sp-note', blurb));
+    const effect = el('div', 'sp-effect'); wrap.appendChild(effect);
+    const lines = el('div', 'sp-lines'); wrap.appendChild(lines);
+    const acts = el('div', 'sp-acts');
+    const b = btn(id, label, 'small', function () { prep(host, action, undefined, label); }); acts.appendChild(b); wrap.appendChild(acts);
+    const why = el('div', 'sp-reason'); wrap.appendChild(why);
+    parent.appendChild(wrap);
+    const ctl = { wrap: wrap, effect: effect, lines: lines, btn: b, why: why, label: label, key: '' };
+    host['_' + key] = ctl; return ctl;
+  }
+  function syncAction(ctl, q, doneLabel, extra) {
+    const label = q.alreadyDone ? '✓ ' + doneLabel : ctl.label + (q.cost > 0 ? ' · ' + usd(q.cost) : (extra || ''));
+    setText(ctl.btn, label); ctl.btn.disabled = !q.ok; cls(ctl.btn, 'done', !!q.alreadyDone);
+    setText(ctl.effect, q.ok ? q.effectText : (q.effectText || ''));
+    setText(ctl.why, q.ok ? '' : q.reason); cls(ctl.why, 'done', !!q.alreadyDone);
+  }
+  /** run a prep action through weather, confirm it (panel strip + notify + ticker), refresh */
+  function prep(host, action, selection, label) {
+    const s = stateFor(host); if (!s) return null;
+    const r = call('weather', 'prepAction', s, action, selection);
+    if (!r) { notify(s, label + ': not available yet', 'event'); return null; }
+    let msg;
+    if (r.ok) {
+      msg = label + (r.cost > 0 ? ' (' + usd(r.cost) + ')' : '') + ': ' + (r.effectText || 'done');
+      notify(s, msg, 'money'); call('progress', 'ticker', s, msg, {}, 'event');
+    } else { msg = label + ': ' + r.reason; notify(s, msg, 'event'); }
+    host._doneMsg = { ok: !!r.ok, text: (r.ok ? '✓ ' : '✗ ') + msg, day: todayOf(s), storm: stormKey(s) };
+    if (r.ok && Array.isArray(r.affected)) { const gone = new Set(r.affected); if (action === 'boardUp') for (const id of Array.from(host._windSel || [])) if (gone.has(id)) host._windSel.delete(id); }
+    if (r.ok && action === 'sandbags' && Array.isArray(r.runs)) for (const k of r.runs) host._sbSel.delete(k);
+    if (action === 'prepareAll') { host._windSel.clear(); host._sbSel.clear(); }
+    refreshStorm(s, host);
+    return r;
+  }
   function buildStorm(host) {
+    host._windSel = new Set(); host._sbSel = new Set();
     const title = el('div', 'panel-title', 'Storm'); title.id = 'storm-title'; host.appendChild(title);
     host._status = el('div', 'panel-status'); host._status.id = 'storm-status'; host.appendChild(host._status);   // status line (the panel's firstChild is the chrome head with the ✕ — never write into it)
+    host._done = el('div', 'sp-done hidden'); host._done.id = 'storm-done'; host.appendChild(host._done);
+
+    // Prepare everything (recommended)
+    const all = el('div', 'sp-all'); all.id = 'sp-all';
+    all.appendChild(el('div', 'sp-note', 'One click does the recommended set: boards the Water Tower, substations and every building with wind rating 2 or lower, sandbags the weak levee runs, doubles the pumps and evacuates if the shelters cannot hold everyone.'));
+    host._allBtn = btn('btn-prepall', 'Prepare everything (recommended)', 'primary', function () { prep(host, 'prepareAll', undefined, 'Prepare everything'); });
+    all.appendChild(host._allBtn);
+    host._allSteps = el('div', 'sp-steps'); all.appendChild(host._allSteps);
+    host._allWhy = el('div', 'sp-reason'); all.appendChild(host._allWhy);
+    host.appendChild(all);
+
     const seg = el('div', 'seg'); seg.id = 'seg-testcat'; host.appendChild(seg); host._testcat = seg;
     const cv = el('canvas'); cv.id = 'storm-cone'; cv.width = 200; cv.height = 200; cv.className = 'card-canvas'; host.appendChild(cv); host._cone = cv;
     host._ring = el('div', 'row'); host._ring.id = 'storm-ring'; host.appendChild(host._ring);
     host._reached = el('div', 'row'); host._reached.id = 'storm-reached'; host.appendChild(host._reached);
 
-    host.appendChild(el('div', 'card-kicker', 'Wind exposure'));
-    const windSummary = el('div', 'row'); host.appendChild(windSummary); host._windSummary = windSummary;
-    const windList = el('div', 'pick-list'); windList.id = 'storm-wind'; host.appendChild(windList); host._windList = windList;
-    const windActs = el('div', 'card-actions');
-    host._boardSel = btn(null, 'Board Up selected', 'small', function () {
-      const s = stateFor(host); const ids = [];
-      for (const row of (host._windList ? host._windList.children : [])) { if (row._checked && row._checked()) ids.push(row._id); }
-      if (!ids.length) { notify(s, 'Select at least one building'); return; }
-      const r = call('weather', 'prepAction', s, 'boardUp', ids); if (r && !r.ok) notify(s, r.reason, 'event');
+    // 1. BOARD UP
+    const g1 = spGroup(host, 'sp-board', 'Board up', 'Plywood over the windows cuts wind damage 40%. $5,000 a building. WR is the wind rating (1 weakest, 5 strongest): board the low ones first. Water Towers and substations go first.');
+    host._boardSum = el('div', 'sp-effect'); host._boardSum.id = 'storm-boardsum'; g1.appendChild(host._boardSum);
+    const bacts = el('div', 'sp-acts');
+    host._selWr2 = btn('btn-selwr2', 'Select all WR ≤ 2', 'small', function () {
+      const s = stateFor(host), info = call('buildings', 'boardInfo', s); if (!info) return;
+      info.rows.forEach(function (r) { if (r.eligible && r.wr <= 2) host._windSel.add(r.id); });
+      syncChecks(host._windList, host._windSel); refreshStorm(s, host);
     });
-    host._boardAll = btn('btn-boardall', 'Board Up all', 'small', function () { const s = stateFor(host); const r = call('weather', 'prepAction', s, 'boardUp', 'all'); if (r && !r.ok) notify(s, r.reason, 'event'); });
-    windActs.appendChild(host._boardSel); windActs.appendChild(host._boardAll); host.appendChild(windActs);
+    host._selNone = btn('btn-selnone', 'Clear', 'small', function () { host._windSel.clear(); syncChecks(host._windList, host._windSel); refreshStorm(stateFor(host), host); });
+    host._boardSel = btn('btn-boardsel', 'Board Up selected', 'small', function () { prep(host, 'boardUp', Array.from(host._windSel), 'Board Up'); });
+    host._boardAll = btn('btn-boardall', 'Board Up all', 'small', function () { prep(host, 'boardUp', 'all', 'Board Up'); });
+    bacts.appendChild(host._selWr2); bacts.appendChild(host._selNone); bacts.appendChild(host._boardSel); bacts.appendChild(host._boardAll); g1.appendChild(bacts);
+    host._boardWhy = el('div', 'sp-reason'); g1.appendChild(host._boardWhy);
+    const windList = el('div', 'pick-list'); windList.id = 'storm-wind'; g1.appendChild(windList); host._windList = windList;
 
-    host._shelter = el('div', 'row'); host._shelter.id = 'storm-shelter'; host.appendChild(host._shelter);
+    // 2. WATER
+    const g2 = spGroup(host, 'sp-water', 'Water', 'Keep the surge out and the rain moving. Sandbags and Pre-drain are worth the most inside the last few days before landfall.');
+    const sb = el('div', 'sp-act'); sb.id = 'sp-sandbags';
+    sb.appendChild(el('div', 'sp-sub', 'Sandbags'));
+    sb.appendChild(el('div', 'sp-note', 'Adds 1.5 ft to the levee runs that face the water, through landfall. $10,000 per 10 tiles. Weak runs (integrity under 85%) are the ones that breach.'));
+    host._sbSum = el('div', 'sp-effect'); host._sbSum.id = 'storm-sbsum'; sb.appendChild(host._sbSum);
+    const sacts = el('div', 'sp-acts');
+    host._sbWeak = btn('btn-sbweak', 'Select all weak runs', 'small', function () {
+      const s = stateFor(host), runs = call('buildings', 'sandbagRuns', s, call('weather', 'forecastSurge', s)) || [];
+      runs.forEach(function (r) { if (r.weak && !r.sandbagged) host._sbSel.add(r.key); });
+      syncChecks(host._sbList, host._sbSel); refreshStorm(s, host);
+    });
+    host._sbSelBtn = btn('btn-sbsel', 'Sandbag selected', 'small', function () { prep(host, 'sandbags', Array.from(host._sbSel), 'Sandbags'); });
+    host._sandbags = btn('btn-sandbags', 'Sandbag all', 'small', function () { prep(host, 'sandbags', 'all', 'Sandbags'); });
+    sacts.appendChild(host._sbWeak); sacts.appendChild(host._sbSelBtn); sacts.appendChild(host._sandbags); sb.appendChild(sacts);
+    host._sbWhy = el('div', 'sp-reason'); sb.appendChild(host._sbWhy);
+    const sbList = el('div', 'pick-list'); sbList.id = 'storm-runs'; sb.appendChild(sbList); host._sbList = sbList;
+    g2.appendChild(sb);
+    spAction(host, g2, 'predrain', 'btn-predrain', 'Pre-drain', 'preDrain', 'Pre-drain', 'Runs every powered pump at double speed from now until the storm is over, so the streets drain faster when the rain comes. No up-front cost.');
+    spAction(host, g2, 'spillway', 'btn-spillway', 'Open Spillway', 'spillway', 'Bonnet Roux Spillway', 'Opens the spillway when the river is at 2–3 ft in the high-water window: the river drops 1 ft. Once a year; needs an Engineering Hall and Year 3.');
 
-    const acts = el('div', 'card-actions'); acts.id = 'storm-actions';
-    const mkAction = function (id, label, action) {
-      const b = btn(id, label, 'small', function () { const s = stateFor(host); const r = call('weather', 'prepAction', s, action); if (r) { if (!r.ok) notify(s, r.reason, 'event'); else notify(s, label + ': ' + money(r.cost), 'money'); } refreshStorm(s, host); });
-      acts.appendChild(b); return b;
-    };
-    host._sandbags = mkAction('btn-sandbags', 'Sandbags', 'sandbags');
-    host._repairall = mkAction('btn-repairall', 'Repair All', 'repairAll');
-    host._evacuate = mkAction('btn-evacuate', 'Evacuate', 'evacuate');
-    host._predrain = btn('btn-predrain', 'Pre-drain', 'small toggle', function () { const s = stateFor(host); const r = call('weather', 'prepAction', s, 'preDrain'); if (r && !r.ok) notify(s, r.reason); refreshStorm(s, host); }); acts.appendChild(host._predrain);
-    host._playthrough = btn('btn-playthrough', 'Play Through It', 'small toggle', function () { const s = stateFor(host); const on = !(s.storms && s.storms.playThroughIt); call('weather', 'setPlayThrough', s, on); refreshStorm(s, host); }); acts.appendChild(host._playthrough);
-    host._spillway = btn('btn-spillway', 'Spillway $250k', 'small', function () { const s = stateFor(host); const r = call('weather', 'prepAction', s, 'spillway'); if (r && !r.ok) notify(s, r.reason, 'water'); }); acts.appendChild(host._spillway);
-    host.appendChild(acts);
+    // 3. PEOPLE
+    const g3 = spGroup(host, 'sp-people', 'People', 'Get students out of the way, then fix what the storm broke.');
+    spAction(host, g3, 'evacuate', 'btn-evacuate', 'Evacuate', 'evacuate', 'Evacuate', 'Buses take every student off campus. $20,000 per 1,000 students and a happiness hit; the alternative is sheltering in place.');
+    host._evacuate.lines.id = 'storm-shelter';
+    spAction(host, g3, 'repairall', 'btn-repairall', 'Repair All', 'repairAll', 'Repair All', 'After the storm: fixes every damaged building, toppled tower and weak levee tile at once.');
+    const ptRow = el('div', 'sp-acts');
+    host._playthrough = btn('btn-playthrough', 'Play Through It', 'small toggle', function () { const s = stateFor(host); const on = !(s.storms && s.storms.playThroughIt); call('weather', 'setPlayThrough', s, on); refreshStorm(s, host); });
+    ptRow.appendChild(host._playthrough); g3.appendChild(ptRow);
 
     host.appendChild(el('div', 'card-kicker', 'Storm log'));
     host._log = el('div'); host.appendChild(host._log);
   }
+  function syncChecks(list, set) { if (!list) return; for (const row of Array.prototype.slice.call(list.children)) if (row._cb) row._cb.checked = set.has(row._key); }
   // Base tile colors for the minimap-style read (T enum: OPEN_WATER, BAYOU, MARSH, WET, DRY, HIGH, DRAINED, POND).
   const TILE_COLORS = ['#2A5C82', '#3A7099', '#3E6B55', '#4C7A4A', '#5C8A4C', '#6E9F55', '#5A6E42', '#2A5C82'];
   function drawCone(s, cv, H) {
@@ -251,74 +330,149 @@
       if (f) { ctx.fillStyle = '#FDD023'; ctx.fillRect(f.tx * sx, f.ty * sy, Math.max(2, sx * 3), Math.max(2, sy * 3)); }
     } catch (e) { BSU.error('ui_panels', 'drawCone', e); }
   }
-  function windPickList(s) {
-    const ids = call('buildings', 'boardOrder', s) || [];
-    const day = todayOf(s);
-    return ids.map(function (id) {
-      const b = call('buildings', 'get', s, id); if (!b) return null;
-      const row = rowOf(b.type) || {};
-      return { id: id, name: b.name || row.name || b.type, wr: fin(row.wr, 0), cost: fin(row.cost, 0), type: b.type, boarded: fin(b.data && b.data.boardedUntil, -1) >= day };
-    }).filter(Boolean);
+  function stormStatus(s, storm, H, fc) {
+    const today = todayOf(s);
+    if (!storm) return 'No storm in the Gulf — precautions available';
+    if (storm.nearMiss) return (storm.name || 'A storm') + ' is passing offshore — precautions available';
+    const nm = (storm.name || '').toUpperCase(), phase = int(storm.phase, 0), B = BSU.STORM || {};
+    if (phase >= B.LANDFALL) return 'HURRICANE ' + nm + ' · Cat ' + int(storm.cat, fc) + (phase >= B.RECOVERY ? ' · passed — repairs below' : ' · landfall now');
+    const days = Math.max(0, fin(storm.landfallDay, today) - today);
+    return 'HURRICANE ' + nm + ' · Cat ' + fc + ' (±1) · landfall ' + (days === 0 ? 'today' : 'in ' + days + (days === 1 ? ' day' : ' days')) + ' (' + dateStr(storm.landfallDay) + ') · surge ' + H + ' ft';
+  }
+  /** disabled-control reasons, one visible line each (deduplicated) */
+  function whyText(pairs) {
+    const out = [];
+    pairs.forEach(function (p) { if (p[1] && p[1].reason && !p[1].ok) { const t = p[0] + ': ' + p[1].reason; if (out.indexOf(t) < 0) out.push(t); } });
+    return out.join(' · ');
   }
   function refreshStorm(s, host) {
-    if (!host) return;
-    const storm = call('weather', 'storm', s);
-    if (!storm) { setText(host._status, 'STORM · no storm in the Gulf'); show(host._cone, false); setText(host._ring, ''); setText(host._reached, ''); clear(host._windList); clear(host._log); show(host._testcat, false); return; }
-    show(host._testcat, true); show(host._cone, true);
-    const fc = int(storm.forecastCat, 1);
-    const opts = [clamp(fc - 1, 1, 5), clamp(fc, 1, 5), clamp(fc + 1, 1, 5)];
-    if (!host._testcat._opts || host._testcat._opts.join(',') !== opts.join(',')) {
-      clear(host._testcat); host._testcat._opts = opts;
-      opts.forEach(function (c) { const b = btn(null, 'Cat ' + c, 'seg-btn', function () { UI.panels.storm.testCat = c; refreshStorm(stateFor(host), host); }); b.dataset.c = String(c); host._testcat.appendChild(b); });
-      if (!Number.isFinite(UI.panels.storm.testCat) || opts.indexOf(UI.panels.storm.testCat) < 0) UI.panels.storm.testCat = fc;
+    if (!host || !host._status) return;
+    const storm = call('weather', 'storm', s), real = storm && !storm.nearMiss ? storm : null;
+    const q = function (a, sel) { return call('weather', 'prepQuote', s, a, sel) || { ok: false, reason: 'Not yet', cost: 0, affected: [], effectText: '', alreadyDone: false }; };
+    const fc = real ? int(real.forecastCat, 1) : 0;
+    // cone, test height, ring (a real storm only)
+    show(host._testcat, !!real); show(host._cone, !!real); show(host._ring, !!real); show(host._reached, !!real);
+    let H = fin(PS.ringDefaultH, 5);
+    if (real) {
+      const opts = [clamp(fc - 1, 1, 5), clamp(fc, 1, 5), clamp(fc + 1, 1, 5)];
+      if (!host._testcat._opts || host._testcat._opts.join(',') !== opts.join(',')) {
+        clear(host._testcat); host._testcat._opts = opts;
+        opts.forEach(function (c) { const b = btn(null, 'Cat ' + c, 'seg-btn', function () { UI.panels.storm.testCat = c; refreshStorm(stateFor(host), host); }); b.dataset.c = String(c); host._testcat.appendChild(b); });
+        if (!Number.isFinite(UI.panels.storm.testCat) || opts.indexOf(UI.panels.storm.testCat) < 0) UI.panels.storm.testCat = fc;
+      }
+      for (const b of host._testcat.children) cls(b, 'active', Number(b.dataset.c) === UI.panels.storm.testCat);
+      H = fin(call('weather', 'forecastSurge', s, UI.panels.storm.testCat), fin(PS.surge && PS.surge[fc], 5));
+      drawCone(s, host._cone, H);
+      const ringClosed = !!call('buildings', 'ringClosed', s, H);
+      if (ringClosed) setText(host._ring, 'Ring closed at ' + H + ' ft ✓');
+      else { const g = call('buildings', 'gaps', s, H) || { gaps: [], weak: [], gates: [], reachedBuildings: [] }; setText(host._ring, formatRingLine(H, g)); host._lastGaps = g; }
+      const g2 = host._lastGaps || call('buildings', 'gaps', s, H) || { reachedBuildings: [] };
+      const rb = g2.reachedBuildings || [];
+      setText(host._reached, rb.length ? ('Reached buildings: ' + rb.map(function (r) { return nameOf(s, r.id) + ' (' + Math.round(r.depth * 10) / 10 + ' ft) ⚠'; }).join(' · ')) : 'Reached buildings: none');
     }
-    for (const b of host._testcat.children) cls(b, 'active', Number(b.dataset.c) === UI.panels.storm.testCat);
-    const H = fin(call('weather', 'forecastSurge', s, UI.panels.storm.testCat), fin(PS.surge && PS.surge[fc], 5));
-    const days = Math.max(0, fin(storm.landfallDay, todayOf(s)) - todayOf(s));
-    setText(host._status, 'HURRICANE ' + (storm.name || '').toUpperCase() + ' · Cat ' + fc + ' (±1) · landfall in ' + days + ' days · surge ' + H + ' ft');
-    drawCone(s, host._cone, H);
+    setText(host._status, stormStatus(s, storm, H, fc));
+    if (host._doneMsg && (host._doneMsg.day !== todayOf(s) || host._doneMsg.storm !== stormKey(s))) host._doneMsg = null;   // a confirmation lives for the day it was made, then the status below speaks for itself
+    if (host._doneMsg) { setText(host._done, host._doneMsg.text); cls(host._done, 'bad', !host._doneMsg.ok); show(host._done, true); } else show(host._done, false);
 
-    const ringClosed = !!call('buildings', 'ringClosed', s, H);
-    if (ringClosed) setText(host._ring, 'Ring closed at ' + H + ' ft ✓');
-    else { const g = call('buildings', 'gaps', s, H) || { gaps: [], weak: [], gates: [], reachedBuildings: [] }; setText(host._ring, formatRingLine(H, g)); host._lastGaps = g; }
-    const g2 = host._lastGaps || call('buildings', 'gaps', s, H) || { reachedBuildings: [] };
-    const rb = g2.reachedBuildings || [];
-    setText(host._reached, rb.length ? ('Reached buildings: ' + rb.map(function (r) { return nameOf(s, r.id) + ' (' + Math.round(r.depth * 10) / 10 + ' ft) ⚠'; }).join(' · ')) : 'Reached buildings: none');
-
-    const list = windPickList(s).filter(function (r) { return !r.boarded; });
-    const unboardedLowWr = list.filter(function (r) { return r.wr <= 2; }).length;
-    const wt = list.find(function (r) { return r.type === 'water_tower'; });
-    setText(host._windSummary, unboardedLowWr + ' unboarded buildings WR ≤ 2' + (wt ? ' · Water Tower ' + ((s.plot && true) ? 'unbraced' : 'unbraced') : ''));
-    // Rebuild the checklist only when its content changes; a 500 ms refresh must never eat a checked box (playtest bug).
-    host._windSel = host._windSel || new Set();
-    const boardedCount = windPickList(s).filter(function (r) { return r.boarded; }).length;
-    const key = list.map(function (r) { return r.id + ':' + r.wr; }).join('|') + '#' + boardedCount;
-    if (host._windKey !== key) {
-      host._windKey = key;
-      clear(host._windList);
-      const live = new Set(list.map(function (r) { return r.id; }));
-      for (const id of Array.from(host._windSel)) if (!live.has(id)) host._windSel.delete(id);
-      list.forEach(function (r) {
-        const row = el('label', 'row pick'); const cb = el('input'); cb.type = 'checkbox'; cb.checked = host._windSel.has(r.id);
-        cb.addEventListener('change', function () { if (cb.checked) host._windSel.add(r.id); else host._windSel.delete(r.id); });
-        row._checked = function () { return host._windSel.has(r.id); }; row._id = r.id;
-        const lab = el('span', 'k', r.name + ' (WR ' + r.wr + ')');
-        row.appendChild(cb); row.appendChild(lab); host._windList.appendChild(row);
+    // Prepare everything
+    const all = q('prepareAll');
+    const stepsKey = (all.steps || []).map(function (st) { return st.label + st.cost; }).join('|') + '#' + all.reason;
+    if (host._allKey !== stepsKey) {
+      host._allKey = stepsKey; clear(host._allSteps);
+      (all.steps || []).forEach(function (st) {
+        const r = el('div', 'row'); r.appendChild(el('span', 'k', st.label)); r.appendChild(el('span', 'v', st.cost > 0 ? usd(st.cost) : 'no up-front cost')); host._allSteps.appendChild(r);
       });
-      if (boardedCount) { const d = el('div', 'row'); d.appendChild(el('span', 'k', boardedCount + ' boarded ✓')); host._windList.appendChild(d); }
+      if ((all.steps || []).length) { const t = el('div', 'row sp-total'); t.appendChild(el('span', 'k', 'Total')); t.appendChild(el('span', 'v', usd(all.cost))); host._allSteps.appendChild(t); }
     }
+    setText(host._allBtn, 'Prepare everything (recommended)' + (all.steps && all.steps.length ? ' · ' + usd(all.cost) : ''));
+    host._allBtn.disabled = !all.ok; setText(host._allWhy, all.ok ? '' : all.reason); cls(host._allWhy, 'done', !!all.alreadyDone);
 
-    const shelter = call('buildings', 'shelter', s) || { capacity: 0, students: 0, ok: false, lines: [] };
-    setText(host._shelter, 'Shelter ' + shelter.capacity.toLocaleString('en-US') + ' / ' + shelter.students.toLocaleString('en-US') + ' students ' + (shelter.ok ? '✓' : '✗') + (shelter.lines.length ? ' (' + shelter.lines.join(', ') + ')' : ''));
+    // 1. board up: checklist (selection kept in host._windSel, rebuilt only when its content changes)
+    const info = call('buildings', 'boardInfo', s) || { rows: [], perDay: 6, daysLeft: -1, live: false, unit: 5000 };
+    const order = function (r) { return r.eligible ? 0 : (r.queued > 0 ? 1 : 2); };
+    const rows = info.rows.slice().sort(function (a, b) { return order(a) - order(b); });
+    const live = new Set(rows.filter(function (r) { return r.eligible; }).map(function (r) { return r.id; }));
+    for (const id of Array.from(host._windSel)) if (!live.has(id)) host._windSel.delete(id);
+    const key = rows.map(function (r) { return r.id + ':' + r.wr + ':' + (r.eligible ? 'e' : r.queued > 0 ? 'q' + r.queued : 'b') + r.until; }).join('|');
+    if (host._windKey !== key) {
+      host._windKey = key; clear(host._windList);
+      if (!rows.length) host._windList.appendChild(el('div', 'row dim', 'No finished buildings to board up yet.'));
+      rows.forEach(function (r) {
+        if (r.eligible) {
+          const row = el('label', 'row pick'); const cb = el('input'); cb.type = 'checkbox'; cb.checked = host._windSel.has(r.id);
+          cb.addEventListener('change', function () { if (cb.checked) host._windSel.add(r.id); else host._windSel.delete(r.id); refreshStorm(stateFor(host), host); });
+          row._cb = cb; row._key = r.id; row._id = r.id; row._checked = function () { return host._windSel.has(r.id); };
+          row.appendChild(cb); row.appendChild(el('span', 'k', r.name)); row.appendChild(el('span', 'sp-wr', 'WR ' + r.wr));
+          if (r.boarded) row.appendChild(el('span', 'sp-dim', 'boards up to ' + dateStr(r.until) + ', too early'));
+          row.appendChild(el('span', 'v', usd(r.cost))); host._windList.appendChild(row);
+        } else {
+          const row = el('div', 'row sp-boarded'); row._key = r.id;
+          row.appendChild(el('span', 'k', (r.queued > 0 ? '⏳ ' : '✓ ') + r.name)); row.appendChild(el('span', 'sp-wr', 'WR ' + r.wr));
+          row.appendChild(el('span', 'v', r.queued > 0 ? 'Crew queued (#' + r.queued + ')' : 'Boarded until ' + dateStr(r.until)));
+          host._windList.appendChild(row);
+        }
+      });
+    }
+    const qSel = host._windSel.size ? q('boardUp', Array.from(host._windSel)) : null, qAll = q('boardUp', 'all');
+    const nWr2 = rows.filter(function (r) { return r.eligible && r.wr <= 2; }).length;
+    setText(host._boardSum, qSel ? ('Selected ' + qSel.count + ' · ' + usd(qSel.cost) + ' total. ' + qSel.effectText) : (qAll.count ? ('Nothing ticked. Board Up all: ' + qAll.count + ' buildings · ' + usd(qAll.cost) + '. ' + qAll.effectText) : (qAll.reason || '')));
+    setText(host._boardSel, qSel ? 'Board Up selected (' + qSel.count + ') · ' + usd(qSel.cost) : 'Board Up selected'); host._boardSel.disabled = !qSel || !qSel.ok;
+    setText(host._boardAll, qAll.count ? 'Board Up all (' + qAll.count + ') · ' + usd(qAll.cost) : (qAll.alreadyDone ? '✓ All boarded' : 'Board Up all')); host._boardAll.disabled = !qAll.ok;
+    host._selWr2.disabled = !nWr2; host._selNone.disabled = !host._windSel.size;
+    setText(host._boardWhy, whyText([['Board Up selected', qSel || { ok: false, reason: 'tick at least one building' }], ['Board Up all', qAll], ['Select WR ≤ 2', nWr2 ? { ok: true } : { ok: false, reason: 'no unboarded building has WR 2 or lower' }]]));
 
-    cls(host._predrain, 'active', !!storm.preDrain);
+    // 2. water: sandbags (levee runs), pre-drain, spillway
+    const runs = call('buildings', 'sandbagRuns', s, call('weather', 'forecastSurge', s)) || [];
+    const openRuns = new Set(runs.filter(function (r) { return !r.sandbagged; }).map(function (r) { return r.key; }));
+    for (const k of Array.from(host._sbSel)) if (!openRuns.has(k)) host._sbSel.delete(k);
+    const skey = runs.map(function (r) { return r.key + ':' + r.tiles.length + ':' + r.integrity + ':' + (r.sandbagged ? 1 : 0); }).join('|');
+    if (host._sbKey !== skey) {
+      host._sbKey = skey; clear(host._sbList);
+      if (!runs.length) host._sbList.appendChild(el('div', 'row dim', 'No levee faces the water at ' + H + ' ft. Build a levee first.'));
+      runs.forEach(function (r) {
+        const info2 = r.length + ' tiles · integrity ' + r.integrity + '%' + (r.weak ? ' ⚠ weak' : '');
+        if (!r.sandbagged) {
+          const row = el('label', 'row pick'); const cb = el('input'); cb.type = 'checkbox'; cb.checked = host._sbSel.has(r.key);
+          cb.addEventListener('change', function () { if (cb.checked) host._sbSel.add(r.key); else host._sbSel.delete(r.key); refreshStorm(stateFor(host), host); });
+          row._cb = cb; row._key = r.key;
+          row.appendChild(cb); row.appendChild(el('span', 'k', r.name)); row.appendChild(el('span', 'sp-dim', info2)); row.appendChild(el('span', 'v', usd(r.cost))); host._sbList.appendChild(row);
+        } else {
+          const row = el('div', 'row sp-boarded'); row._key = r.key;
+          row.appendChild(el('span', 'k', '✓ ' + r.name)); row.appendChild(el('span', 'sp-dim', info2)); row.appendChild(el('span', 'v', 'Sandbagged')); host._sbList.appendChild(row);
+        }
+      });
+    }
+    const sSel = host._sbSel.size ? q('sandbags', Array.from(host._sbSel)) : null, sAll = q('sandbags', 'all'), sWeak = q('sandbags', 'weak');
+    const nWeak = runs.filter(function (r) { return r.weak && !r.sandbagged; }).length;
+    setText(host._sbSum, sSel ? ('Selected ' + host._sbSel.size + ' · ' + usd(sSel.cost) + ' total. ' + sSel.effectText) : (sAll.ok ? ('Nothing ticked. Sandbag all: ' + usd(sAll.cost) + '. ' + sAll.effectText) : (sAll.reason || '')));
+    setText(host._sbSelBtn, sSel ? 'Sandbag selected (' + host._sbSel.size + ') · ' + usd(sSel.cost) : 'Sandbag selected'); host._sbSelBtn.disabled = !sSel || !sSel.ok;
+    setText(host._sandbags, sAll.ok ? 'Sandbag all · ' + usd(sAll.cost) : (sAll.alreadyDone ? '✓ All sandbagged' : 'Sandbag all')); host._sandbags.disabled = !sAll.ok;
+    host._sbWeak.disabled = !nWeak;
+    setText(host._sbWhy, whyText([['Sandbag selected', sSel || { ok: false, reason: 'tick at least one levee run' }], ['Sandbag all', sAll], ['Select weak runs', nWeak ? { ok: true } : { ok: false, reason: sWeak.reason || 'no weak runs' }]]));
+
+    const pd = q('preDrain'); syncAction(host._predrain, pd, 'Pre-draining', pd.ok && pd.perDay ? ' · $0 now, +' + usd(pd.perDay) + '/day' : '');
+    const pk = (pd.pumps || []).map(function (p) { return p.id + ':' + (p.running ? 1 : 0) + ':' + p.district; }).join('|');
+    if (host._predrain.key !== pk) {
+      host._predrain.key = pk; clear(host._predrain.lines);
+      (pd.pumps || []).forEach(function (p) { const r = el('div', 'row'); r.appendChild(el('span', 'k', (p.running ? '✓ ' : '✗ ') + p.name)); r.appendChild(el('span', 'v', p.running ? (p.district > 0 ? 'powered · drains ' + p.district + ' canal tiles · up to ' + p.ftPerDay + ' ft/day doubled' : 'powered, but not on a canal') : 'no power, will not run')); host._predrain.lines.appendChild(r); });
+    }
+    syncAction(host._spillway, q('spillway'), 'Spillway open');
+
+    // 3. people
+    const ev = q('evacuate'); syncAction(host._evacuate, ev, 'Evacuated');
+    const ek = (ev.shelters || []).map(function (p) { return p.id + ':' + p.capacity; }).join('|') + '#' + ev.students + '/' + ev.capacity;
+    if (host._evacuate.key !== ek) {
+      host._evacuate.key = ek; clear(host._evacuate.lines);
+      if (ev.students != null) {
+        (ev.shelters || []).forEach(function (p) { const r = el('div', 'row'); r.appendChild(el('span', 'k', p.name)); r.appendChild(el('span', 'v', 'shelters up to ' + p.capacity.toLocaleString('en-US'))); host._evacuate.lines.appendChild(r); });
+        const t = el('div', 'row sp-total'); t.appendChild(el('span', 'k', 'Shelter in place')); t.appendChild(el('span', 'v', Math.min(ev.capacity, ev.students).toLocaleString('en-US') + ' of ' + ev.students.toLocaleString('en-US') + ' students ' + (ev.capacity >= ev.students ? '✓' : '✗')));
+        host._evacuate.lines.appendChild(t);
+      }
+    }
+    syncAction(host._repairall, q('repairAll'), 'Repaired');
     cls(host._playthrough, 'active', !!(s.storms && s.storms.playThroughIt));
     const nextHome = call('sports', 'upcoming', s);
-    const canPlayThrough = !!nextHome && fin(nextHome.day, -1) - todayOf(s) <= 1 && fc <= 1;
-    show(host._playthrough, canPlayThrough);
-    show(host._evacuate, true); host._evacuate.disabled = !!storm.evacuated;
-    host._sandbags.disabled = !!storm.sandbagged;
-    show(host._spillway, yearOf(s) >= 3 && !!call('buildings', 'has', s, 'engineering'));
+    show(host._playthrough, !!real && !!nextHome && fin(nextHome.day, -1) - todayOf(s) <= 1 && fc <= 1);
 
     clear(host._log);
     const log = (s.storms && s.storms.log) || [];

@@ -209,13 +209,16 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - buildings.dirtyRing(state)
 - buildings.onIntegrityChanged(state, i)
 - buildings.leveeRuns(state)
+- buildings.sandbagRuns(state, Hft)
 - buildings.sandbags(state, Hft, opts)
 - buildings.repair(state, id)
 - buildings.repairAll(state)
+- buildings.repairQuote(state)
 - buildings.repairLevee(state, i)
 - buildings.repairAllLevees(state)
 - buildings.applyWindPulse(state, n, share)
 - buildings.boardOrder(state)
+- buildings.boardInfo(state)
 - buildings.boardUp(state, ids)
 - buildings.applySubsidence(state, id, ft)
 - buildings.damageReport(state, storm)
@@ -787,7 +790,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - BSU.validateCatalogRow(row)
 
 ## BSU.weather
-- values: _deps:object, LANDFALL_HOOK_TICKS:array[14], TOAST_TICKS:array[4]
+- values: _deps:object, LANDFALL_HOOK_TICKS:array[14], TOAST_TICKS:array[4], PREP_ACTIONS:array[7]
 - weather.init(state)
 - weather.reset(state, fresh)
 - weather.tick(state)
@@ -817,6 +820,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - weather.answerToast(state, id, answer)
 - weather._openToast(state, id)
 - weather.skipSetPiece(state)
+- weather.prepQuote(state, action, selection)
 - weather.prepAction(state, action, arg)
 - weather.jamGate(state, i)
 - weather.selfTest()

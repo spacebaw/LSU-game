@@ -212,6 +212,41 @@ s2.tiles.crest[BSU.idx(15, 10)] = 0; B.dirtyRing(s2);
 const gp = B.gaps(s2, 5);
 ok(!B.ringClosed(s2, 5) && gp.gaps.length === 1 && gp.gaps[0].len >= 1 && typeof gp.gaps[0].name === 'string', 'one gap reported: ' + (gp.gaps[0] && gp.gaps[0].name));
 s2.tiles.crest[BSU.idx(15, 10)] = 6; s2.tiles.integrity[BSU.idx(15, 10)] = 100; B.onIntegrityChanged(s2, BSU.idx(15, 10));
+// --- storm prep pass (P4): levee runs for the Storm panel, run-scoped sandbags, precautionary Board Up, the repair quote -----------------
+{
+  const runs = B.sandbagRuns(s2, 5);
+  ok(runs.length === 1 && runs[0].tiles.length === 36 && runs[0].cost === 40000 && runs[0].weak === false && runs[0].sandbagged === false && runs[0].integrity === 100 && runs[0].length === 36, 'sandbagRuns lists the run with boundary tiles, integrity and price');
+  const wk = BSU.idx(12, 10); s2.tiles.integrity[wk] = 60;
+  ok(B.sandbagRuns(s2, 5)[0].weak === true && B.sandbagRuns(s2, 5)[0].minIntegrity === 60, 'a tile under 85% integrity makes the run weak'); s2.tiles.integrity[wk] = 100;
+  const none = B.sandbags(s2, 5, { runs: ['levee:none'] });
+  ok(!none.ok && /No levee run/.test(none.reason) && none.cost === 0, 'sandbags with an unknown run key is refused with a reason');
+  s2.calendar.day = 10; s2.storms.current = { name: 'T', cat: 3, forecastCat: 3, phase: BSU.STORM.NAMED, landfallDay: 18, rolls: {}, boardQueue: [] };
+  const cash0 = s2.economy.cash, sbs = B.sandbags(s2, 5, { runs: [runs[0].key] });
+  ok(sbs.ok && sbs.cost === 40000 && sbs.until === 19 && s2.tiles.sandbagDay[BSU.idx(10, 10)] === 19 && s2.economy.cash === cash0 - 40000, 'run sandbags laid in the cone last through the landfall day (19), not 5 days');
+  ok(B.sandbagRuns(s2, 5)[0].sandbagged === true && !B.sandbags(s2, 5, { runs: [runs[0].key] }).ok, 'an already sandbagged run is not charged twice');
+  s2.storms.current = null; for (let i = 0; i < 4096; i++) { s2.tiles.sandbag[i] = 0; s2.tiles.sandbagDay[i] = 0; } B.dirtyRing(s2);
+  // Board Up: precautionary with no storm, crew queue in the cone, refused once the storm is here
+  const pump = s2.buildings[0];
+  const bi = B.boardInfo(s2);
+  ok(bi.rows.length === 1 && bi.rows[0].eligible && bi.live === false && bi.unit === 5000 && bi.perDay === 6 && bi.daysLeft === -1, 'boardInfo lists the finished building as eligible, no storm');
+  const c1 = s2.economy.cash, pu = B.boardUp(s2, 'all');
+  ok(pu.ok && pu.precautionary === true && pu.cost === 5000 && pu.boarded === 1 && pump.data.boardedUntil === 20 && s2.economy.cash === c1 - 5000 && pu.ids[0] === 0, 'no storm: Board Up boards at once, $5,000, for 10 days (precautionary)');
+  const again = B.boardUp(s2, 'all'), bi2 = B.boardInfo(s2);
+  ok(!again.ok && again.alreadyDone === true && bi2.rows[0].boarded && bi2.rows[0].until === 20 && !bi2.rows[0].eligible, 'boarded: not eligible again, alreadyDone');
+  s2.storms.current = { name: 'T', cat: 3, forecastCat: 3, phase: BSU.STORM.NAMED, landfallDay: 25, rolls: {}, boardQueue: [] };
+  ok(B.boardInfo(s2).rows[0].eligible && B.boardInfo(s2).daysLeft === 15 && B.boardInfo(s2).live, 'boards that expire before landfall (day 20 < 26) can be ordered again');
+  const qd = B.boardUp(s2, 'all');
+  ok(qd.ok && qd.queued === 1 && qd.precautionary === false && s2.storms.current.boardQueue.length === 1 && B.boardInfo(s2).rows[0].queued === 1, 'in the cone the order goes to the crew queue');
+  s2.storms.current.phase = BSU.STORM.LANDFALL;
+  ok(!B.boardUp(s2, 'all').ok && /too late/.test(B.boardUp(s2, 'all').reason), 'once the storm is here it is too late to board up');
+  s2.storms.current = null; pump.data.boardedUntil = -1;
+  // Repair All quote equals what the repair then charges
+  pump.hp = 0.5; s2.tiles.integrity[BSU.idx(12, 10)] = 70; B.onIntegrityChanged(s2, BSU.idx(12, 10));
+  const rq = B.repairQuote(s2), c2 = s2.economy.cash, ra = B.repairAll(s2);
+  ok(rq.cost > 5000 && rq.ids.length === 1 && rq.levees === 1 && rq.towers === 0 && ra.ok && ra.cost === rq.cost && s2.economy.cash === c2 - rq.cost, 'repairQuote itemizes the damaged pump and the weak levee tile and equals the bill (' + rq.cost + ')');
+  ok(B.repairQuote(s2).cost === 0, 'nothing left to repair after Repair All');
+  B.dirtyRing(s2);
+}
 const sb = B.sandbags(s2, 5);
 ok(sb.ok && sb.cost === 40000 && sb.tiles.length === 36 && s2.tiles.sandbag[BSU.idx(10, 10)] === 15, 'sandbags on 36 boundary tiles for $40k');
 ok(B.ringClosed(s2, 8) === true, 'sandbagged square (9.5 ft) holds H 8');
