@@ -111,8 +111,8 @@
     greek_house: '80 beds, +3 happiness within 6 tiles, and a tailgate scene.',
     bunkhouse: '360 cheap beds in tin-roof rows: no room fee, shared baths, −1 happiness within 4.',
     suites: '240 premium beds, 60 parking spaces, +3 happiness within 6; room fees $400 a bed.',
-    dining_hall: 'Feeds 1,200 students within 10 tiles; +3 happiness nearby.',
-    poboy: 'Feeds 200 on the walk to class; +2 happiness within 5; earns $2k/mo.',
+    dining_hall: 'Feeds 1,200 within 10 tiles; +3 happiness nearby. Up to 10 dishes: cheap feeds more, fancy draws more.',
+    poboy: 'Feeds 200 on the walk to class; +2 happiness within 5; earns $2k/mo. Three-dish menu.',
     practice_field: 'Fields a football team (rating +5). Upgrade to Bayou Field for 6,000 seats and home games.',
     stadium: '15,000 seats and ticket money. Grows to 45,000 under the lights, then 80,000.',
     union: '+8 happiness within 12 tiles, feeds 400, hosts the Crawfish Boil; shelters 2,000.',
@@ -1317,6 +1317,50 @@
     wastewater: { label: 'Sewage', build: 'wastewater', unit: 'students' },
     parking: { label: 'Parking', build: 'parking', unit: 'lots' }
   };
+  // ---------------------------------------------------------------------------
+  // PLAN_V2 P6: the 24 Louisiana dishes a Dining Hall (10) or Po'boy Shack (3) can list.
+  // tier → params.econ.menu.tier (cheap $3 / prep 1 / appeal 1, standard $6 / 2 / 2, premium $11 / 3 / 4);
+  // cost is the dish's own price per plate (a little above or below the tier's); window = the calendar
+  // window the dish is served in (10-day months, wraps the year); festival = auto-joins every Dining
+  // Hall's menu for its window without counting against the cap. hall throughput = feeds × 2 / mean prep.
+  // ---------------------------------------------------------------------------
+  const dish = function (id, name, tier, cost, tags, text, extra) {
+    const t = { cheap: [1, 1], standard: [2, 2], premium: [3, 4] }[tier];
+    return Object.assign({ id: id, name: name, tier: tier, cost: cost, prep: t[0], appeal: t[1], tags: tags, window: null, festival: null, text: text }, extra || {});
+  };
+  const dishes = [
+    dish('red_beans', 'Red Beans & Rice', 'cheap', 2.75, ['rice', 'comfort'], "Monday's laundry-day pot, every day of the week."),
+    dish('boudin', 'Boudin', 'cheap', 3.25, ['sausage', 'handheld'], 'Gas-station grade, which is the highest grade.'),
+    dish('beignets', 'Beignets', 'cheap', 2.75, ['sweet', 'breakfast'], 'Powdered sugar on everything you own.'),
+    dish('sweet_tea', 'Sweet Tea', 'cheap', 2.5, ['drink'], 'Sweet enough to count as dessert.'),
+    dish('chicory_coffee', 'Chicory Coffee', 'cheap', 2.5, ['drink', 'breakfast'], 'Dark roast cut with a root, poured with conviction.'),
+    dish('cornbread', 'Cornbread', 'cheap', 2.75, ['side', 'bread'], 'Skillet-crusted. Will argue about sugar.'),
+    dish('dirty_rice', 'Dirty Rice', 'cheap', 3.25, ['rice', 'side'], 'Rice that has been places.'),
+    dish('sno_cone', 'Sno-cone', 'cheap', 2.5, ['sweet', 'cold'], 'Shaved ice, neon syrup, a paper cone that gives up.'),
+    dish('gumbo', 'Gumbo', 'standard', 6.25, ['roux', 'soup', 'classic'], "Dark roux, a long simmer, nobody's recipe but ours."),
+    dish('jambalaya', 'Jambalaya', 'standard', 5.75, ['rice', 'classic'], 'One pot, three meats, a line out the door.'),
+    dish('shrimp_poboy', "Shrimp Po'boy", 'standard', 6.5, ['poboy', 'seafood'], 'Dressed: lettuce, tomato, pickle, mayo. Pressed if you ask.'),
+    dish('roast_beef_poboy', "Roast Beef Po'boy", 'standard', 6.25, ['poboy', 'beef'], 'Debris and gravy. Bring napkins, then more napkins.'),
+    dish('fried_catfish', 'Fried Catfish', 'standard', 6, ['seafood', 'fried'], 'Cornmeal crust, pulled from a pond that may be ours.'),
+    dish('plate_lunch', 'Plate Lunch Special', 'standard', 5.5, ['plate', 'comfort'], 'Whatever the kitchen cooked, two sides and a roll.'),
+    dish('snoballs', 'Snoballs', 'standard', 5.75, ['sweet', 'cold', 'summer'], 'Fluffy ice and condensed milk: a summer-only line in the heat.', { window: { start: 'Jun 1', end: 'Aug 10' } }),
+    dish('etouffee', 'Crawfish Étouffée', 'premium', 11.5, ['crawfish', 'roux'], 'Smothered tails over rice. The chef signs each plate.'),
+    dish('grillades', 'Grillades & Grits', 'premium', 10.5, ['beef', 'brunch'], 'Brunch for people who mean it.'),
+    dish('gator_sausage', 'Alligator Sausage', 'premium', 11, ['gator', 'sausage'], 'Local. Very local. Ask the Wildlife Post.'),
+    dish('bread_pudding', 'Bread Pudding', 'premium', 10, ['sweet', 'dessert'], 'Whiskey sauce, day-old French bread, no regrets.'),
+    dish('pralines', 'Pralines', 'premium', 10.5, ['sweet', 'pecan'], 'Hand-stirred to the soft-ball stage by someone who cares.'),
+    dish('pecan_pie', 'Pecan Pie', 'premium', 11, ['sweet', 'pecan', 'dessert'], 'Orchard pecans, dark syrup, a crust that holds.'),
+    dish('king_cake', 'King Cake', 'premium', 12, ['sweet', 'carnival'], 'Purple, green and gold. Find the baby, buy the next one.', { window: { start: 'Jan 1', end: 'Mar 10' } }),
+    dish('muffuletta', 'Muffuletta', 'premium', 11.5, ['sandwich', 'olive'], 'Olive salad on a sesame round the size of a hubcap.'),
+    dish('crawfish_boil', 'Crawfish Boil', 'premium', 11, ['crawfish', 'festival'], 'Forty sacks, cayenne, corn, potatoes. The gators attend.', { window: { start: 'Mar 1', end: 'Apr 10' }, festival: 'crawfish' })
+  ];
+  /** the three Dining Hall presets (and the shack's default): ids only; throughput / cost / appeal follow from the dishes */
+  const menuPresets = {
+    cheap: { name: 'Cheap & Fast', blurb: 'Eight dishes under $3.50. Feeds twice the hall, draws nobody.', dishes: ['red_beans', 'boudin', 'beignets', 'sweet_tea', 'chicory_coffee', 'cornbread', 'dirty_rice', 'sno_cone'] },
+    classic: { name: 'Campus Classic', blurb: 'A full card across the tiers. The hall feeds its rated number.', dishes: ['gumbo', 'jambalaya', 'shrimp_poboy', 'fried_catfish', 'red_beans', 'sweet_tea', 'cornbread', 'etouffee', 'bread_pudding', 'pecan_pie'] },
+    chef: { name: "Chef's Table", blurb: 'Seven premium plates. Two-thirds the throughput, every applicant hears about it.', dishes: ['etouffee', 'grillades', 'gator_sausage', 'bread_pudding', 'pralines', 'pecan_pie', 'muffuletta'] }
+  };
+  const menuDefaults = { dining_hall: 'classic', poboy: ['shrimp_poboy', 'roast_beef_poboy', 'fried_catfish'] };
   /** build-menu requirement glyphs and their hover text ({n} = roadWithin) */
   const requirements = {
     power: { glyph: '⚡', text: 'Needs power: a Power Substation within 10 tiles' },
@@ -1362,7 +1406,8 @@
     tickerKindList: TICKER_KIND_LIST, objectives: objectives, milestones: milestones, voiceCards: voiceCards,
     boardCards: boardCards, failureCards: failureCards, tutorial: tutorial, thibodeaux: thibodeaux,
     stormQuotes: stormQuotes, overlays: overlays, keys: keys, toastKeys: toastKeys, panKeys: panKeys, rainKinds: rainKinds,
-    guide: guide, needs: needs, requirements: requirements, coach: coach, football: football
+    guide: guide, needs: needs, requirements: requirements, coach: coach, football: football,
+    dishes: dishes, menuPresets: menuPresets, menuDefaults: menuDefaults
   };
 
   /** Recursive Object.freeze; no typed arrays, Maps or functions exist in the tables. */
@@ -1433,6 +1478,16 @@
       for (const d of Object.keys(D.calendar.dates)) { dateOk(d, 'calendar.dates'); check(Array.isArray(D.calendar.dates[d]) && D.calendar.dates[d].length > 0, 'calendar.dates[' + d + '] non-empty'); }
       for (const f of D.calendar.festivals) { if (f.start) dateOk(f.start, 'festival ' + f.id); if (f.end) dateOk(f.end, 'festival ' + f.id); check(f.text.length > 0, 'festival ' + f.id + ' text'); }
       check(D.calendar.festivals.length === 7, '7 festivals');
+      // P6 dishes: 24 unique ids, tier numbers from params.econ.menu, windows parse, presets and defaults name real dishes within the caps
+      {
+        const PM = BSU.params.econ.menu, ids = new Set(D.dishes.map(x => x.id));
+        check(D.dishes.length === 24 && ids.size === 24, '24 unique dishes');
+        check(D.dishes.every(x => PM.tier[x.tier] && x.prep === PM.tier[x.tier].prep && x.appeal === PM.tier[x.tier].appeal && Math.abs(x.cost - PM.tier[x.tier].cost) <= 1.5 && x.cost > 0 && x.text.length > 0 && x.tags.length > 0), 'every dish: tier prep/appeal, cost within $1.50 of the tier, a line, tags');
+        for (const x of D.dishes) if (x.window) { dateOk(x.window.start, 'dish ' + x.id + ' start'); dateOk(x.window.end, 'dish ' + x.id + ' end'); }
+        check(D.dishes.filter(x => x.festival).length === 1 && D.dishes.find(x => x.festival).festival === 'crawfish', 'one festival special (the crawfish boil)');
+        for (const k of ['cheap', 'classic', 'chef']) { const pr = D.menuPresets[k]; check(pr && pr.name && pr.dishes.length >= 1 && pr.dishes.length <= PM.hallMax && new Set(pr.dishes).size === pr.dishes.length && pr.dishes.every(id => ids.has(id) && !D.dishes.find(x => x.id === id).window), 'preset ' + k + ' lists real, unique, year-round dishes within the cap'); }
+        check(D.menuPresets[D.menuDefaults.dining_hall] && D.menuDefaults.poboy.length === PM.shackMax && D.menuDefaults.poboy.every(id => ids.has(id)), 'menu defaults: the hall preset exists, the shack lists 3 real dishes');
+      }
       check(D.schedule.length === 8 && D.schedule.filter(g => g.home).length === 4, '8 games, 4 at home');
       // 7. counts
       check(D.stormNames.length === 26, '26 storm names');

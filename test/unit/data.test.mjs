@@ -18,7 +18,7 @@ const eq = (a, b, msg) => ok(a === b, `${msg} (got ${JSON.stringify(a)}, want ${
 const src = readFileSync(join(root, 'src', 'js', 'data.js'), 'utf8');
 ok(!/<\/script/i.test(src), 'no "</script" in source');
 ok(!/Math\.random/.test(src), 'no Math.random in source');
-ok(src.length <= 136 * 1024, `file size ${(src.length / 1024).toFixed(1)} KB ≤ 136 KB`);   // P7 housing tiers: two rows, two blurbs, two name pools (130 → 136 KB); UX pass: blurbs + guide/needs/requirements/coach tables (was 80 KB, then 100 KB); football pass A: roster/prospect/formation/phrase tables (130 KB)
+ok(src.length <= 140 * 1024, `file size ${(src.length / 1024).toFixed(1)} KB ≤ 140 KB`);   // P6 dining menus: 24 dishes + 3 presets (136 → 140 KB); P7 housing tiers: two rows, two blurbs, two name pools (130 → 136 KB); UX pass: blurbs + guide/needs/requirements/coach tables (was 80 KB, then 100 KB); football pass A: roster/prospect/formation/phrase tables (130 KB)
 
 const win = makeWindow();
 win.BSU_FORCE_HEADLESS = true;
@@ -204,6 +204,28 @@ ok(D.catalog.substation.effects.power.radius === 10 && D.catalog.tiger_habitat.e
   ok([...used].every(v => FB.phraseVars.includes(v)) && FB.phraseVars.every(v => used.has(v)), 'phrase placeholders are exactly the declared phraseVars');
   ok(Object.keys(D.opponents).length === 9 && Object.values(D.opponents).every(o => ['ground', 'balanced', 'air'].includes(o.style) && o.colors.length === 2) && D.opponents.magnolia.style === 'air' && D.opponents.delta.style === 'ground', 'opponents carry style/defBias and two colors (Magnolia air, Delta ground)');
   ok(D.coaches.length === 10 && D.coaches.every(c => ['ground', 'balanced', 'air'].includes(c.style)), 'every coach carries a playbook style');
+}
+
+// --- PLAN_V2 P6: the dish table and the menu presets --------------------------------------------------------
+{
+  const PM = BSU.params.econ.menu, ids = new Set(D.dishes.map(d => d.id));
+  ok(D.dishes.length === 24 && ids.size === 24, '24 dishes with unique ids');
+  const byTier = { cheap: 0, standard: 0, premium: 0 }; for (const d of D.dishes) byTier[d.tier]++;
+  ok(byTier.cheap === 8 && byTier.standard === 7 && byTier.premium === 9, `tiers 8 cheap / 7 standard / 9 premium (${JSON.stringify(byTier)})`);
+  ok(D.dishes.every(d => d.prep === PM.tier[d.tier].prep && d.appeal === PM.tier[d.tier].appeal && Math.abs(d.cost - PM.tier[d.tier].cost) <= 1.5 && typeof d.text === 'string' && d.text.length >= 8 && d.text.length <= 90 && Array.isArray(d.tags) && d.tags.length > 0), 'every dish: tier prep / appeal, cost within $1.50 of the tier, a one-liner, tags');
+  ok(['gumbo', 'jambalaya', 'red_beans', 'etouffee', 'shrimp_poboy', 'roast_beef_poboy', 'boudin', 'fried_catfish', 'muffuletta', 'beignets', 'bread_pudding', 'king_cake', 'snoballs', 'pralines', 'grillades', 'crawfish_boil', 'sweet_tea', 'chicory_coffee', 'cornbread', 'dirty_rice', 'gator_sausage', 'pecan_pie', 'sno_cone', 'plate_lunch'].every(id => ids.has(id)), 'the PLAN_V2 list is all there');
+  const kc = D.dishes.find(d => d.id === 'king_cake'), sb = D.dishes.find(d => d.id === 'snoballs'), cb = D.dishes.find(d => d.id === 'crawfish_boil');
+  ok(kc.window.start === 'Jan 1' && kc.window.end === 'Mar 10' && sb.window.start === 'Jun 1' && sb.window.end === 'Aug 10' && cb.window.start === 'Mar 1' && cb.window.end === 'Apr 10' && cb.festival === 'crawfish', 'king cake Jan–Mar, snoballs summer, the crawfish boil on the festival window');
+  ok(D.dishes.filter(d => d.window).every(d => Number.isInteger(BSU.dateToDay(d.window.start, 1)) && Number.isInteger(BSU.dateToDay(d.window.end, 1))), 'every window parses');
+  ok(D.dishes.filter(d => d.festival).length === 1, 'exactly one festival special');
+  for (const k of ['cheap', 'classic', 'chef']) { const p = D.menuPresets[k]; ok(p && p.name && p.blurb && p.dishes.length >= 1 && p.dishes.length <= PM.hallMax && new Set(p.dishes).size === p.dishes.length && p.dishes.every(id => ids.has(id) && !D.dishes.find(d => d.id === id).window), `preset ${k} (${p && p.name}) is valid, year-round and within the cap`); }
+  const prep = k => D.menuPresets[k].dishes.reduce((a, id) => a + D.dishes.find(d => d.id === id).prep, 0) / D.menuPresets[k].dishes.length;
+  ok(prep('cheap') === 1 && prep('classic') === 2 && prep('chef') === 3, `preset mean prep 1 / 2 / 3 (${prep('cheap')} ${prep('classic')} ${prep('chef')})`);
+  ok(D.menuPresets.cheap.name === 'Cheap & Fast' && D.menuPresets.classic.name === 'Campus Classic' && D.menuPresets.chef.name === "Chef's Table", 'preset names');
+  ok(D.menuDefaults.dining_hall === 'classic' && D.menuDefaults.poboy.length === PM.shackMax && D.menuDefaults.poboy.every(id => ids.has(id)), 'defaults: the hall opens on Campus Classic, the shack lists 3 dishes');
+  ok(/dishes/.test(D.catalog.dining_hall.blurb) && /menu/i.test(D.catalog.poboy.blurb), 'the hall and shack blurbs mention the menu');
+  ok(PM.hallMax === 10 && PM.shackMax === 3 && PM.tier.cheap.cost === 3 && PM.tier.standard.cost === 6 && PM.tier.premium.cost === 11 && PM.throughputMult === 2 && PM.applicantBonus === 0.06 && PM.happinessBonus === 3, 'params.econ.menu numbers');
+  ok(BSU.LEDGER_EXPENSE_KEYS.indexOf('food') === 3 && BSU.EV.BUILDING_MENU === 'building:menu', "'food' ledger key after utilities; building:menu registered");
 }
 
 console.log(`\n${passes} passed, ${failures} failed`);

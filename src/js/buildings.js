@@ -355,6 +355,85 @@
   };
 
   // ---------------------------------------------------------------------------
+  // PLAN_V2 P6: dining menus. A Dining Hall lists up to params.econ.menu.hallMax dishes, a Po'boy Shack
+  // shackMax, in data.menu (ids from data.dishes, saved verbatim). Throughput = row feeds × throughputMult
+  // / mean prep of the dishes in season today; the crawfish boil joins every hall for its festival window
+  // without counting against the cap. Cost / appeal are the plain means of the same active dishes.
+  // ---------------------------------------------------------------------------
+  function PMENU() { return PE.menu || { hallMax: 10, shackMax: 3, tier: { cheap: { cost: 3, prep: 1, appeal: 1 }, standard: { cost: 6, prep: 2, appeal: 2 }, premium: { cost: 11, prep: 3, appeal: 4 } }, throughputMult: 2, happinessBonus: 3 }; }
+  function dishList() { const d = dep.data(); return (d && Array.isArray(d.dishes)) ? d.dishes : []; }
+  function dishById(id) { const L = dishList(); for (let k = 0; k < L.length; k++) if (L[k].id === id) return L[k]; return null; }
+  function menuCap(type) { return type === 'dining_hall' ? PMENU().hallMax : type === 'poboy' ? PMENU().shackMax : 0; }
+  function defaultMenu(type) {
+    if (menuCap(type) <= 0) return null;
+    const d = dep.data(), def = d && d.menuDefaults ? d.menuDefaults[type] : null;
+    if (Array.isArray(def)) return def.slice(0, menuCap(type));
+    const pr = def && d.menuPresets ? d.menuPresets[def] : null;
+    return pr ? pr.dishes.slice(0, menuCap(type)) : [];
+  }
+  /** is the dish on the card today? no window → always; a window wraps the year (10-day months, year day = day % 120) */
+  function dishActive(dish, day) {
+    if (!dish || !dish.window) return true;
+    const s0 = BSU.dateToDay(dish.window.start, 1), e0 = BSU.dateToDay(dish.window.end, 1);
+    if (!Number.isFinite(s0) || !Number.isFinite(e0)) return true;
+    const yd = fin(day, 0) % 120;
+    return s0 <= e0 ? (yd >= s0 && yd <= e0) : (yd >= s0 || yd <= e0);
+  }
+  M.dishActive = function (state, dishId) { try { return dishActive(dishById(dishId), dayOf(state)); } catch (e) { BSU.error('buildings', 'dishActive', e); return true; } };
+  /** the menu's numbers today: {cap, menu (saved ids), active (dishes served today incl. the festival special), specials (ids joined free), meanPrep, meanCost, meanAppeal, throughput (students/day at full effectiveness), mult} */
+  function menuStats(state, b) {
+    const PMx = PMENU(), day = dayOf(state), row = catalog()[b.type] || { effects: { feeds: 0 } };
+    const cap = menuCap(b.type), menu = (b.data && Array.isArray(b.data.menu)) ? b.data.menu : [];
+    const active = [], specials = [];
+    for (let k = 0; k < menu.length; k++) { const d = dishById(menu[k]); if (d && dishActive(d, day)) active.push(d); }
+    if (b.type === 'dining_hall') for (const d of dishList()) if (d.festival && menu.indexOf(d.id) < 0 && dishActive(d, day)) { active.push(d); specials.push(d.id); }
+    let prep = 0, cost = 0, appeal = 0;
+    if (active.length) { for (const d of active) { prep += d.prep; cost += d.cost; appeal += d.appeal; } prep /= active.length; cost /= active.length; appeal /= active.length; }
+    else { const t = PMx.tier.standard; prep = t.prep; cost = t.cost; appeal = t.appeal; }   // nothing in season (or an empty card): the kitchen falls back to the standard tier
+    const mult = PMx.throughputMult / Math.max(0.5, prep);
+    return { cap: cap, menu: menu.slice(), active: active, specials: specials, meanPrep: prep, meanCost: cost, meanAppeal: appeal, mult: mult, throughput: Math.round(fin(row.effects.feeds, 0) * mult) };
+  }
+  M.menuOf = function (state, id) {
+    try { const b = M.get(state, id); if (!b || menuCap(b.type) <= 0) return null; return menuStats(state, b); }
+    catch (e) { if (BSU.SELFTEST) throw e; BSU.error('buildings', 'menuOf', e); return null; }
+  };
+  M.menuCap = function (type) { return menuCap(type); };
+  /** replace the card: unknown ids → reason; over the cap → reason; at least one dish stays; emits building:menu and dirties auras + stats */
+  M.setMenu = function (state, id, ids) {
+    try {
+      const b = M.get(state, id); if (!b) return { ok: false, reason: 'Pick a building' };
+      const cap = menuCap(b.type); if (cap <= 0) return { ok: false, reason: 'No kitchen here' };
+      const out = [];
+      for (const d of (Array.isArray(ids) ? ids : [])) { if (!dishById(d)) return { ok: false, reason: 'Unknown dish' }; if (out.indexOf(d) < 0) out.push(d); }
+      if (out.length === 0) return { ok: false, reason: 'Keep at least one dish' };
+      if (out.length > cap) return { ok: false, reason: (b.type === 'poboy' ? 'A shack lists ' : 'A hall lists ') + cap + ' dishes at most' };
+      b.data.menu = out;
+      const c = cache(state); c.aurasDirty = true; c.statsCache = null;
+      emit(EV.BUILDING_MENU, { id: id, menu: out.slice() });
+      return { ok: true, menu: out.slice() };
+    } catch (e) { if (BSU.SELFTEST) throw e; BSU.error('buildings', 'setMenu', e); return { ok: false, reason: 'Cannot set menu' }; }
+  };
+  /** add or remove one dish (the inspect panel's grid) */
+  M.toggleDish = function (state, id, dishId) {
+    try {
+      const b = M.get(state, id); if (!b || menuCap(b.type) <= 0) return { ok: false, reason: 'No kitchen here' };
+      const menu = Array.isArray(b.data.menu) ? b.data.menu.slice() : [];
+      const k = menu.indexOf(dishId);
+      if (k >= 0) menu.splice(k, 1); else menu.push(dishId);
+      return M.setMenu(state, id, menu);
+    } catch (e) { if (BSU.SELFTEST) throw e; BSU.error('buildings', 'toggleDish', e); return { ok: false, reason: 'Cannot set menu' }; }
+  };
+  /** one of data.menuPresets (cheap / classic / chef), trimmed to the building's cap */
+  M.applyMenuPreset = function (state, id, key) {
+    try {
+      const d = dep.data(), pr = d && d.menuPresets ? d.menuPresets[key] : null;
+      if (!pr) return { ok: false, reason: 'Unknown preset' };
+      const b = M.get(state, id); if (!b) return { ok: false, reason: 'Pick a building' };
+      return M.setMenu(state, id, pr.dishes.slice(0, menuCap(b.type)));
+    } catch (e) { if (BSU.SELFTEST) throw e; BSU.error('buildings', 'applyMenuPreset', e); return { ok: false, reason: 'Cannot set menu' }; }
+  };
+
+  // ---------------------------------------------------------------------------
   // canPlace — the ghost description (ARCHITECTURE §5.6 order; GDD §3.6, §0.3, §11.2)
   // ---------------------------------------------------------------------------
   function blankResult() {
@@ -817,7 +896,8 @@
         fuelDays: fin(row.effects.fuelDays, 0), stockedDay: -1, active: true,
         policies: { gatorProofDumpsters: false, nutriaBounty: false },
         boardedUntil: -1, regradeUntil: -1, dumpsterTile: -1,
-        seed: BSU.rng.hash(fin(state.seed, 0), id)
+        seed: BSU.rng.hash(fin(state.seed, 0), id),
+        menu: defaultMenu(row.id)   // P6: dish ids (null for rows that serve no food)
       }
     };
   }
@@ -1491,7 +1571,8 @@
     for (const b of M.list(state)) {
       const row = cat[b.type]; if (!row || !isComplete(b)) continue;
       const eff = M.effective(state, b.id); if (eff <= 0) continue;
-      const hp = row.effects.happiness;
+      let hp = row.effects.happiness;
+      if (menuCap(b.type) > 0 && hp.radius > 0 && hp.value > 0) { const ms = menuStats(state, b); hp = { value: hp.value + PMENU().happinessBonus * BSU.clamp((ms.meanAppeal - 1) / 3, 0, 1), radius: hp.radius }; }   // P6: + 0 … +3 by the card's mean appeal (cheap 1 → +0, premium 4 → +3)
       if (b.type === 'quad') {
         forRadius(b.tx, b.ty, b.w, b.h, hp.radius, function (i) { quad[i] = Math.min(LOCAL.quadStackCap, quad[i] + LOCAL.quadValue * eff); });
         forRadius(b.tx, b.ty, 1, 1, P.heat.oakRadius, function (i) { shadeMiss[i] *= 1 - P.heat.oakShade; });
@@ -1557,8 +1638,10 @@
       shelter: null, academicFlags: { library: false, engineering: false, coastal: false },
       roadAdjacentDorms: 0, pumpsNearDorms: 0, barriersNearDorms: 0, floodwallDormsNoOak: 0, wastewaterPlants: 0, parkingLots: 0,
       bridges: 0, buildingValue: 0, research: 0, landmarkList: [],
-      bedsEconomy: 0, bedsStandard: 0, bedsPremium: 0, parkingSpaces: 0   // P7: beds by housing tier (× effectiveness) and the parking spaces housing brings with it
+      bedsEconomy: 0, bedsStandard: 0, bedsPremium: 0, parkingSpaces: 0,   // P7: beds by housing tier (× effectiveness) and the parking spaces housing brings with it
+      menuCost: 0, menuAppeal: 0   // P6: plate-weighted mean cost per plate ($) and mean appeal (1–4) across every kitchen (weights = each one's throughput × effectiveness)
     };
+    let menuW = 0;
     const A = M.auras(state);
     let qualW = 0, housingTiles = 0, housingDining = 0;
     const list = M.list(state);
@@ -1572,7 +1655,8 @@
       const tr = tierRow(row, b);
       s.beds += row.effects.beds * eff;
       s.seats += row.effects.seats * eff;
-      s.feeds += row.effects.feeds * eff;
+      if (row.effects.feeds > 0 && menuCap(b.type) > 0) { const ms = menuStats(state, b), fw = ms.throughput * eff; s.feeds += fw; menuW += fw; s.menuCost += ms.meanCost * fw; s.menuAppeal += ms.meanAppeal * fw; }   // P6: a kitchen feeds its menu's throughput, not the row's number
+      else s.feeds += row.effects.feeds * eff;
       s.landmarks += tr ? tr.landmark : row.effects.landmark;
       s.buildingValue += row.cost + (row.tiers.slice(0, b.tier).reduce(function (a, t) { return a + t.cost; }, 0));
       if (row.effects.beds > 0) {
@@ -1604,6 +1688,7 @@
     }
     for (const v of (state.veg || [])) { if (!v) continue; if (v.type === 'oak') s.oaks++; if (v.type === 'cypress') s.cypress++; }
     s.quality = qualW > 0 ? s.quality / qualW : 0;
+    s.menuCost = menuW > 0 ? s.menuCost / menuW : 0; s.menuAppeal = menuW > 0 ? s.menuAppeal / menuW : 0;
     s.diningCovered = housingTiles > 0 ? housingDining / housingTiles : 0;
     s.parkingLots = s.lots;
     for (const m of ((state.plot && state.plot.mounds) || [])) { let reached = false; for (const n of BSU.nbr4(m)) if (isAccessSurface(tl.surface[n])) reached = true; if (reached) { s.landmarks += PE.landmarks.mounds; break; } }
@@ -1618,7 +1703,7 @@
   M.stats = function (state) {
     const c = cache(state), day = dayOf(state);
     try { if (!c.statsCache || c.statsDay !== day) { c.statsCache = computeStats(state); c.statsDay = day; } }
-    catch (e) { if (BSU.SELFTEST) throw e; BSU.error('buildings', 'stats', e); if (!c.statsCache) c.statsCache = { beds: 0, seats: 0, feeds: 0, diningCovered: 0, landmarks: 0, oaks: 0, cypress: 0, stockedPonds: 0, posts: 0, quality: 0, lots: 0, unrepaired: 0, floodedCore: false, powerRadiusHits: 0, generatorsRunning: 0, brownout: false, pumpsRunning: 0, shelter: { capacity: 0, students: 0, ok: true, lines: [] }, academicFlags: { library: false, engineering: false, coastal: false }, roadAdjacentDorms: 0, pumpsNearDorms: 0, barriersNearDorms: 0, floodwallDormsNoOak: 0, wastewaterPlants: 0, parkingLots: 0, bridges: 0, buildingValue: 0, bedsEconomy: 0, bedsStandard: 0, bedsPremium: 0, parkingSpaces: 0 }; }
+    catch (e) { if (BSU.SELFTEST) throw e; BSU.error('buildings', 'stats', e); if (!c.statsCache) c.statsCache = { beds: 0, seats: 0, feeds: 0, diningCovered: 0, landmarks: 0, oaks: 0, cypress: 0, stockedPonds: 0, posts: 0, quality: 0, lots: 0, unrepaired: 0, floodedCore: false, powerRadiusHits: 0, generatorsRunning: 0, brownout: false, pumpsRunning: 0, shelter: { capacity: 0, students: 0, ok: true, lines: [] }, academicFlags: { library: false, engineering: false, coastal: false }, roadAdjacentDorms: 0, pumpsNearDorms: 0, barriersNearDorms: 0, floodwallDormsNoOak: 0, wastewaterPlants: 0, parkingLots: 0, bridges: 0, buildingValue: 0, bedsEconomy: 0, bedsStandard: 0, bedsPremium: 0, parkingSpaces: 0, menuCost: 0, menuAppeal: 0 }; }
     return c.statsCache;
   };
   /** Σ building upkeep (tier rows; pilings +5%; post ×.5 with postUpkeepHalf) + per-tile drag upkeep + azalea $100 */
@@ -2391,6 +2476,8 @@
     const dd = { fuelDays: 0, stockedDay: -1, active: true, boardedUntil: -1, regradeUntil: -1, dumpsterTile: -1, seed: 0 };
     for (const k of Object.keys(dd)) if (b.data[k] === undefined || (typeof dd[k] === 'number' && !isNum(b.data[k]))) b.data[k] = dd[k];
     if (!b.data.policies || typeof b.data.policies !== 'object') b.data.policies = { gatorProofDumpsters: false, nutriaBounty: false };
+    if (menuCap(b.type) > 0) { if (!Array.isArray(b.data.menu)) b.data.menu = defaultMenu(b.type); else b.data.menu = b.data.menu.filter(function (d, k, arr) { return typeof d === 'string' && !!dishById(d) && arr.indexOf(d) === k; }).slice(0, menuCap(b.type)); }   // P6: old saves get the default menu; unknown / duplicate ids are dropped
+    else b.data.menu = null;
   }
   /** rebuild every cache from the new root (identical for fresh and load: everything is saved, no rng) */
   M.reset = function (state, fresh) {

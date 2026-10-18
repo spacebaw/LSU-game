@@ -287,7 +287,7 @@ events.length = 0;
   ok(E.charge(s, 750000, 'athletics', { note: 'Athletics top-up' }) === true && s.economy.cash === cash0 - 750000 && s.ledger.month.expense.athletics === 750000, 'a top-up charge lands under ledger.month.expense.athletics');
   drive(s, 1100);   // past the first month boundary
   const st = E.statement(s);
-  ok(st.expense.athletics === 750000 && Object.keys(st.expense).indexOf('athletics') === 4, 'the statement carries the Athletics top-up line in the fixed key order');
+  ok(st.expense.athletics === 750000 && Object.keys(st.expense).indexOf('athletics') === 5, 'the statement carries the Athletics top-up line in the fixed key order (after P6 food)');
   // the monthly coaching charge draws on the athletics fund first (sports.drawFund), cash pays the rest
   let fund = 150000; const draws = [];
   E._deps.sports.drawFund = (st2, due) => { const d = Math.min(fund, due); fund -= d; draws.push([due, d]); return d; };
@@ -302,6 +302,39 @@ events.length = 0;
   ok(draws[2][1] === 0 && fund === 0 && m3 === 100000, 'month 3: the fund is empty, the full $100k hits cash (' + m3 + ')');
   void before;
   delete E._deps.sports.drawFund;
+}
+
+// --- PLAN_V2 P6: dining menus — the appeal term, the food line, throughput in capacity -------------------------------
+{
+  const s = BSU.newState(12); E.init(s); E.reset(s, true);
+  const SS = stubs.stubStats, PM = BSU.params.econ.menu;
+  const bump = () => { s.tick += 7; };   // economy caches stats per (root, tick, day)
+  s.economy.students = 1000; s.economy.prestige = 20; s.economy.happiness = 60;
+  SS.feeds = 1200; SS.menuCost = 0; SS.menuAppeal = 0; bump();
+  const a0 = E.applicants(s);
+  SS.menuAppeal = 1; bump(); const a1 = E.applicants(s), f1 = E.menuAppeal(s);
+  SS.menuAppeal = 2.3; bump(); const a2 = E.applicants(s), f2 = E.menuAppeal(s);
+  SS.menuAppeal = 4; bump(); const a4 = E.applicants(s), f4 = E.menuAppeal(s);
+  ok(f1 === 0 && Math.abs(f2 - 0.026) < 1e-9 && Math.abs(f4 - 0.06) < 1e-9, `menu appeal term 0 % (cheap) / 2.6 % (Campus Classic) / 6 % (premium) (${f1} ${f2} ${f4})`);
+  ok(a1 === a0 && a2 > a1 && a4 > a2 && Math.abs(a4 - a0 * (1 + PM.applicantBonus)) <= 1, `applicants monotone in appeal and +6 % at the top (${a0} → ${a1} → ${a2} → ${a4})`);
+  SS.feeds = 0; bump(); ok(E.menuAppeal(s) === 0, 'no kitchen: no appeal term');
+  SS.feeds = 1200; SS.menuAppeal = 4; bump();
+  ok(E.breakdown(s, 'applicants').lines.some(l => l.label === 'Menu appeal (%)' && l.value === 6), 'the Applicants popover carries the Menu appeal line');
+  // food: students actually fed (min(students, throughput)) × 10 days × 1 plate × the mean cost
+  SS.menuCost = 6.5; bump();
+  let fc = E.foodCost(s);
+  ok(fc.served === 1000 && fc.plates === 10000 && fc.total === 65000, `1,000 students on a 1,200 card at $6.50: 10,000 plates, $65,000 a month (${JSON.stringify(fc)})`);
+  s.economy.students = 2000; bump(); fc = E.foodCost(s);
+  ok(fc.served === 1200 && fc.total === 78000, `2,000 students: only the 1,200 the kitchens can feed are billed ($${fc.total})`);
+  SS.feeds = 2400; SS.menuCost = 22.25 / 8; bump(); fc = E.foodCost(s);
+  ok(fc.served === 2000 && fc.total === Math.round(20000 * 22.25 / 8), `a cheap 2,400 card feeds all 2,000 at $2.78 ($${fc.total})`);
+  ok(E.capacity(s).dining === Math.round(2400 * BSU.params.econ.capacity.dining), 'the dining capacity term reads the throughput (2,400 × 1.6)');
+  // the ledger line posts on the 1st under 'food' and the statement carries it in the fixed order
+  s.economy.students = 1000; SS.feeds = 1200; SS.menuCost = 6.5; s.economy.cash = 5e6;
+  s.tick = 0; s.calendar.day = 0; drive(s, 2100);   // the 1st's charges land in the new month: two boundaries before the statement shows them
+  const st = E.statement(s);
+  ok(st.expense.food === 65000 && Object.keys(st.expense).indexOf('food') === 3, `the statement's Food line is $65,000 (after utilities): ${st.expense.food}`);
+  SS.feeds = 1200; SS.menuCost = 0; SS.menuAppeal = 0;
 }
 
 console.log(`\n${passes} passed, ${failures} failed`);

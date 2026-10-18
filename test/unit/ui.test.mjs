@@ -23,7 +23,7 @@ ok(!/innerHTML/.test(src), 'no innerHTML (every node is created and kept in M.el
 ok(!/querySelector|closest\(|matches\(|instanceof\s+(Node|HTMLInputElement|HTMLCanvasElement|Text)/.test(src), 'no querySelector/closest/matches/instanceof Node');
 ok(!/setTimeout|setInterval/.test(src.replace(/\/\/.*$/gm, '')), 'no timers for game logic');
 const css = readFileSync(join(root, 'src', 'style.css'), 'utf8');
-ok(Buffer.byteLength(css) <= 64 * 1024, `style.css ≤ 64 KB (${(Buffer.byteLength(css) / 1024).toFixed(1)} KB)`);   // UX pass: build menu + tracker + coach marks (was 25 KB); football pass D: Season panel, game HUD, summary card (was 40 KB); UI scale pass: every length in rem + scale tokens (was 48 KB)
+ok(Buffer.byteLength(css) <= 68 * 1024, `style.css ≤ 68 KB (${(Buffer.byteLength(css) / 1024).toFixed(1)} KB)`);   // P6 dining menus: the inspect Menu section (64 → 68 KB); UX pass: build menu + tracker + coach marks (was 25 KB); football pass D: Season panel, game HUD, summary card (was 40 KB); UI scale pass: every length in rem + scale tokens (was 48 KB)
 const cssNoComments = css.replace(/\/\*[\s\S]*?\*\//g, '');
 ok(!/@import|url\(/.test(cssNoComments) && /--purple:\s*#461D7C/.test(css) && /--gold:\s*#FDD023/.test(css), 'css tokens present, no @import/url()');
 
@@ -216,6 +216,43 @@ if (spot) {
   ok(U.el['insp-actions'].children.length >= 2, 'inspect actions present');
   U.closeInspect(); ok(U.state === 'IDLE' && U.el.inspect.classList.contains('hidden'), 'closeInspect');
 } else ok(false, 'findSpot(dorm) returned null');
+// --- PLAN_V2 P6: the inspect panel's Menu section for a kitchen ------------------------------------------------------
+{
+  const sp = BSU.headless.findSpot('dining_hall');
+  if (sp) {
+    s.economy.cash = 9e7;
+    const pr = BSU.headless.place('dining_hall', sp.x, sp.y);
+    const hall = BSU.buildings.list(s, 'dining_hall').slice(-1)[0];
+    ok(pr && pr.ok && hall, 'a dining hall for the menu test (' + (pr && pr.reason) + ')');
+    hall.built = 1; s.tick += 3;
+    const openOn = () => { U.inspect(s, { kind: 'building', id: hall.id }); return U.el['insp-body'].children.find((c) => c.id === 'insp-menu'); };
+    let menu = openOn();
+    ok(!!menu && menu.classList.contains('insp-menu'), 'a complete hall shows the Menu section');
+    ok(U.el['insp-body'].children.some((c) => c.children[0] && c.children[0].textContent === 'Feeds' && /^~1,200 a day \(menu\)$/.test(c.children[1].textContent)), 'the Feeds row reads the menu throughput');
+    const sum = () => menu.children[0].children[1].textContent;
+    ok(/^Serves ~1,200 students\/day · appeal ★★☆☆ · food \$[\d,.kM]+\/mo$/.test(sum()), 'summary line: ' + sum());
+    const presets = () => menu.children[1].children, cells = () => menu.children[2].children;
+    ok(presets().length === 3 && presets().map((p) => p.textContent).join('|') === "Cheap & Fast|Campus Classic|Chef's Table" && presets().find((p) => p.dataset.preset === 'classic').classList.contains('on'), 'three presets, Campus Classic lit');
+    ok(cells().length === 23 && cells().filter((c) => c.classList.contains('on')).length === 10 && cells().every((c) => /tier-(cheap|standard|premium)/.test(c.className) && c.children[1].children.length === 3), '23 dish cells (the festival special stays off the grid out of its window), 10 on, tier colour + 3 chips each');
+    ok(/of 10 dishes/.test(menu.children[3].textContent) && /×1 throughput/.test(menu.children[3].textContent), 'note line: ' + menu.children[3].textContent);
+    presets().find((p) => p.dataset.preset === 'chef').dispatchEvent({ type: 'click' });
+    menu = openOn();
+    ok(/^Serves ~800 students\/day · appeal ★★★★/.test(sum()) && presets().find((p) => p.dataset.preset === 'chef').classList.contains('on') && cells().filter((c) => c.classList.contains('on')).length === 7, "Chef's Table: 800 a day, four stars, 7 dishes on");
+    presets().find((p) => p.dataset.preset === 'cheap').dispatchEvent({ type: 'click' });
+    menu = openOn();
+    ok(/^Serves ~2,400 students\/day · appeal ★☆☆☆/.test(sum()) && cells().filter((c) => c.classList.contains('on')).length === 8, 'Cheap & Fast: 2,400 a day, one star, 8 dishes on');
+    // fill to the cap through the grid, then the eleventh answers with a reason
+    const off = () => cells().filter((c) => !c.classList.contains('on'));
+    const two = off().slice(0, 2); two[0].dispatchEvent({ type: 'click' }); two[1].dispatchEvent({ type: 'click' }); menu = openOn();
+    ok(hall.data.menu.length === 10 && cells().filter((c) => c.classList.contains('on')).length === 10, 'two clicks add two dishes → 10');
+    const n0 = U.el.notifications.children.length;
+    off()[0].dispatchEvent({ type: 'click' }); U.update(s, 16);
+    ok(hall.data.menu.length === 10 && U.el.notifications.children.length > n0 && U.el.notifications.children.some((c) => c.children.some((x) => /A hall lists 10 dishes at most/.test(x.textContent))), 'the eleventh dish is refused with a notification');
+    cells().find((c) => c.classList.contains('on')).dispatchEvent({ type: 'click' }); menu = openOn();
+    ok(hall.data.menu.length === 9, 'clicking a listed dish removes it');
+    U.closeInspect();
+  } else ok(false, 'findSpot(dining_hall) returned null');
+}
 // drag a path run through the machine
 U.selectTool(s, 'path'); U.pointer('down', 400, 300, 0, M0); ok(U.state === 'DRAGGING', 'drag row + down → DRAGGING');
 U.pointer('move', 470, 330, 0, M0); U.pointer('up', 470, 330, 0, M0); ok(U.state === 'PLACING' && s.ui.tool && s.ui.tool.id === 'path', 'up → placeRun, tool kept');

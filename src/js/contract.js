@@ -83,7 +83,7 @@
   BSU.HAPPINESS_TIMERS = freeze(['bellTower', 'wastewater', 'brownout', 'floodwallView', 'evacuation', 'unsheltered', 'boilWater', 'playThroughIt', 'austerity', 'sunbather', 'tuitionFreeze', 'homecomingBudget', 'bigBoil', 'noParking', 'nutriaBounty', 'freePermits', 'surgeBarrier', 'gatorPool', 'beads', 'hurricaneParty', 'goForIt', 'studentVoice']);
   // Ledger keys in Budget-panel print order (ARCHITECTURE §2.7).
   BSU.LEDGER_INCOME_KEYS = freeze(['tuition', 'roomFees', 'state', 'donations', 'research', 'athletics', 'tailgate', 'parking', 'festivals', 'pelts', 'grants', 'endowment', 'disaster', 'insurance', 'misc']);
-  BSU.LEDGER_EXPENSE_KEYS = freeze(['salaries', 'upkeep', 'utilities', 'coaching', 'athletics', 'interest', 'repair', 'prep', 'construction', 'demolition', 'boardCards', 'misc']);
+  BSU.LEDGER_EXPENSE_KEYS = freeze(['salaries', 'upkeep', 'utilities', 'food', 'coaching', 'athletics', 'interest', 'repair', 'prep', 'construction', 'demolition', 'boardCards', 'misc']);
   BSU.MONTHS = freeze(['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']);
   BSU.SEASONS = freeze(['spring', 'summer', 'fall', 'winter']);
   BSU.SEMESTERS = freeze(['spring', 'summer', 'fall', 'break']);
@@ -360,6 +360,15 @@
         mix: { allEconomy: -0.03, premiumShare: 0.2, premiumBonus: 0.03 }   // applicants ×(1 − 3%) when every bed is economy; ×(1 + 3%) when premium beds are ≥ 20% of all beds
       },
       festivals: { mardiGrasBase: 50000, mardiGrasPer: 5, unionMult: 2, crawfish: 20000, crawfishUnion: 10000, homecoming: 30000 },   // §5.2
+      menu: {                                // PLAN_V2 P6: dining menus (data.dishes; a dining building's data.menu is an array of dish ids)
+        hallMax: 10, shackMax: 3,            // dishes a Dining Hall / Po'boy Shack may list (festival specials join free)
+        tier: { cheap: { cost: 3, prep: 1, appeal: 1 }, standard: { cost: 6, prep: 2, appeal: 2 }, premium: { cost: 11, prep: 3, appeal: 4 } },   // $ per plate (each dish varies a little), prep units, appeal 1–4
+        throughputMult: 2,                   // hall throughput = row feeds × throughputMult / mean prep → cheap 2×, standard 1×, premium 0.67×
+        platesPerStudentDay: 1,              // plates a served student eats a day (food cost = served × days × mean cost per plate, ledger 'food')
+        applicantBonus: 0.06,                // applicants × (1 + applicantBonus × (campus mean appeal − 1) / 3): +0 % cheap … +6 % premium
+        happinessBonus: 3,                   // a dining building's happiness aura = the row's value + happinessBonus × (its mean appeal − 1) / 3: +0 cheap … +3 premium on top of the row's +3
+        skipPenalty: 1                       // a student turned away over throughput samples −1 student life until the next day
+      },
       peltPay: 500,                          // §5.2
       grant: 50000, grantObjectives: ['1', '2', '3', '4', '5', '6', '7', '9', '10', '11'],   // §5.2 tutorial grants
       endowmentYield: 0.004, endowmentStep: 1000000, endowmentFromYear: 5,   // §5.2, §10.8
@@ -788,7 +797,7 @@
   BSU.EV_LIST = freeze([
     'tile:changed',
     'building:placed', 'building:removed', 'building:complete', 'building:upgraded', 'building:flooded', 'building:dried',
-    'building:damaged', 'building:repaired', 'building:renamed',
+    'building:damaged', 'building:repaired', 'building:renamed', 'building:menu',
     'power:blackout', 'power:restored', 'coverage:changed', 'ring:changed',
     'weather:rain', 'weather:cell', 'weather:lightning', 'weather:heat', 'sky:phase',
     'calendar:day', 'calendar:month', 'calendar:semester', 'calendar:year', 'calendar:date',

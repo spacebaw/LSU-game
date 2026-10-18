@@ -519,6 +519,7 @@
     on('coverage:changed', function () { inspDirty = true; });
     on('building:placed', function () { paletteDirty = paletteDirty || false; inspDirty = true; needsAt = -1e9; bm.dirty = true; });
     on('building:complete', function () { needsAt = -1e9; bm.dirty = true; });
+    on('building:menu', function () { needsAt = -1e9; inspAt = -1e9; });   // P6: a new card moves the Dining gauge and the inspect Menu section at once
     on('coverage:changed', function () { needsAt = -1e9; });
     on('building:removed', function () { if (insp && insp.kind === 'building') { const s = stateOf(); if (s && !call('buildings', 'get', s, insp.id)) M.closeInspect(); } });
     on('ui:ticker', function () { tk.lastLen = -1; if (tk.logOpen) rebuildLog(stateOf()); });
@@ -1039,8 +1040,56 @@
   function row(k, v, cls_) { const r = el('div', 'row' + (cls_ ? ' ' + cls_ : '')); r.appendChild(el('span', 'k', k)); r.appendChild(el('span', 'v', v)); return r; }
   function action(label, fn, cls_) { return btn(null, label, 'small' + (cls_ ? ' ' + cls_ : ''), function () { const s = stateOf(); const r = fn(s); if (r && r.ok === false && r.reason) M.notify(s, { kind: 'info', text: r.reason, ttl: 4000 }); inspAt = -1e9; }); }
   function stars(n) { n = clamp(fin(n, 0) | 0, 0, 5); return '★★★★★'.slice(0, n) + '☆☆☆☆☆'.slice(0, 5 - n); }
+  /** P6: appeal 1–4 as four stars (the mean rounds) */
+  function appealStars(n) { n = clamp(Math.round(fin(n, 0)), 0, 4); return '★★★★'.slice(0, n) + '☆☆☆☆'.slice(0, 4 - n); }
+  /** P6: the inspect panel's Menu section for a kitchen: summary line, the three presets, the dish grid (tier colour, cost / prep / appeal chips, click toggles; the cap and the one-dish floor answer with a reason) */
+  function menuSection(s, b, ms) {
+    const D = BSU.data || {}, dishes = D.dishes || [], presets = D.menuPresets || {}, PM = (BSU.params.econ && BSU.params.econ.menu) || { hallMax: 10, shackMax: 3 };
+    const box = el('div', 'insp-menu'); box.id = 'insp-menu';
+    const food = call('economy', 'foodCostOf', s, b.id) || { total: 0 };
+    const head = el('div', 'menu-head'); head.appendChild(el('span', 'k', 'Menu'));
+    head.appendChild(el('span', 'menu-sum', 'Serves ~' + ms.throughput.toLocaleString('en-US') + ' students/day · appeal ' + appealStars(ms.meanAppeal) + ' · food ' + money(food.total) + '/mo'));
+    box.appendChild(head);
+    const pre = el('div', 'menu-presets');
+    for (const key of ['cheap', 'classic', 'chef']) {
+      const pr = presets[key]; if (!pr) continue;
+      const on = pr.dishes.slice(0, ms.cap).join() === ms.menu.join();
+      const pb = btn(null, pr.name, 'small preset' + (on ? ' on' : ''), function () { const st = stateOf(); const r = call('buildings', 'applyMenuPreset', st, b.id, key); if (r && r.ok === false && r.reason) M.notify(st, { kind: 'info', text: r.reason, ttl: 4000 }); inspAt = -1e9; });
+      pb.title = pr.blurb || ''; pb.dataset.preset = key; pre.appendChild(pb);
+    }
+    box.appendChild(pre);
+    const grid = el('div', 'menu-grid');
+    const order = dishes.slice().sort(function (a, c) { return (ms.specials.indexOf(c.id) >= 0 ? 1 : 0) - (ms.specials.indexOf(a.id) >= 0 ? 1 : 0); });   // the festival special leads the grid while it is on the card
+    for (const d of order) {
+      const listed = ms.menu.indexOf(d.id) >= 0, special = ms.specials.indexOf(d.id) >= 0, inSeason = call('buildings', 'dishActive', s, d.id) !== false;
+      if (d.festival && !listed && !special) continue;   // the festival special shows only while it is on the card
+      const cell = btn(null, null, 'dish tier-' + d.tier + (listed || special ? ' on' : '') + (!inSeason ? ' off-season' : '') + (special ? ' special' : ''), function () {
+        const st = stateOf(); if (special) { M.notify(st, { kind: 'info', text: d.name + ' joins every hall for the festival (free)', ttl: 4000 }); return; }
+        const r = call('buildings', 'toggleDish', st, b.id, d.id); if (r && r.ok === false && r.reason) M.notify(st, { kind: 'info', text: r.reason, ttl: 4000 }); inspAt = -1e9;
+      });
+      cell.dataset.dish = d.id; cell.title = d.text + (d.window ? ' (' + d.window.start + '–' + d.window.end + ')' : '');
+      cell.appendChild(el('span', 'nm', d.name + (special ? ' ✦' : '')));
+      const chips = el('span', 'chips');
+      chips.appendChild(el('span', 'chip-m cost', '$' + (Math.round(d.cost * 100) / 100)));
+      chips.appendChild(el('span', 'chip-m prep', 'prep ' + d.prep));
+      chips.appendChild(el('span', 'chip-m appeal', appealStars(d.appeal)));
+      cell.appendChild(chips);
+      grid.appendChild(cell);
+    }
+    box.appendChild(grid);
+    const note = ms.menu.length + ' of ' + ms.cap + ' dishes' + (ms.specials.length ? ' · festival special on the card free' : '') + (ms.active.length < ms.menu.length ? ' · ' + (ms.menu.length - ms.active.length) + ' out of season' : '') + ' · prep ' + (Math.round(ms.meanPrep * 10) / 10) + ' → ×' + (Math.round(ms.mult * 100) / 100) + ' throughput · $' + (Math.round(ms.meanCost * 100) / 100) + ' a plate';
+    box.appendChild(el('div', 'menu-note', note));
+    return box;
+  }
   function ft(v, d) { return fin(v, 0).toFixed(d == null ? 1 : d) + ' ft'; }
+  /** the half-second refresh rebuilds the body; keep the player's scroll position (the P6 Menu grid made a long body common) */
   function refreshInspect(s) {
+    if (!insp || !dom() || !s) return;
+    const body0 = E['insp-body'], keep = body0 ? fin(body0.scrollTop, 0) : 0;
+    refreshInspectBody(s);
+    if (body0 && keep > 0 && body0.scrollTop !== keep) body0.scrollTop = keep;
+  }
+  function refreshInspectBody(s) {
     if (!insp || !dom() || !s) return;
     inspAt = clock; inspDirty = false;
     const body = E['insp-body'], acts = E['insp-actions']; clear(body); clear(acts);
@@ -1053,7 +1102,8 @@
       setText(E['insp-sub'], r.name + (b.tier > 0 && r.tiers && r.tiers[b.tier - 1] ? ' · ' + (r.tiers[b.tier - 1].name || 'Tier ' + b.tier) : '') + (b.pilings ? ' · on pilings' : ''));
       call('render', 'drawIcon', spr, b.type); hasSprite = true;
       if (b.ruin) body.appendChild(row('Status', 'Ruin', 'bad')); else if (b.built < 1) body.appendChild(row('Status', 'Under construction ' + Math.round(fin(b.built, 0) * 100) + '%')); else if (b.flooded) body.appendChild(row('Status', 'Flooded', 'bad')); else if (b.blackout) body.appendChild(row('Status', 'Blackout', 'bad')); else if (b.closedUntil >= 0 && b.closedUntil > dayOf(s)) body.appendChild(row('Status', 'Closed · reopens ' + BSU.formatDate(b.closedUntil)));
-      if (ef.beds) body.appendChild(row('Beds', String(ef.beds))); if (ef.seats) body.appendChild(row('Seats', String(ef.seats))); if (ef.feeds) body.appendChild(row('Feeds', String(ef.feeds)));
+      const ms = ef.feeds ? call('buildings', 'menuOf', s, b.id) : null;   // P6: a kitchen feeds its menu's throughput
+      if (ef.beds) body.appendChild(row('Beds', String(ef.beds))); if (ef.seats) body.appendChild(row('Seats', String(ef.seats))); if (ef.feeds) body.appendChild(row('Feeds', ms ? '~' + ms.throughput.toLocaleString('en-US') + ' a day (menu)' : String(ef.feeds)));
       if (ef.quality) body.appendChild(row('Quality', stars(ef.quality)));
       body.appendChild(row('Ground', (TILE_NAMES[tl.type[i0]] || '') + ' · ' + ft(tl.elev[i0])));
       const depth = call('hydro', 'footprintDepth', s, b.id); if (Number.isFinite(depth) && depth > 0.01) body.appendChild(row('Water', ft(depth), 'water'));
@@ -1067,12 +1117,13 @@
       if (b.type === 'generator' && b.data) body.appendChild(row('Fuel', fin(b.data.fuelDays, 0) + ' days'));
       const res = (s.agents || []).find(function (a) { return a && a.home === b.id && a.state !== 'GONE'; });
       if (res) { const q = call('agents', 'inspect', s, res.id); if (q && q.quote) body.appendChild(row('A resident', '“' + q.quote + '”', 'quote')); }
+      if (ms && b.built >= 1 && !b.ruin) body.appendChild(menuSection(s, b, ms));
       acts.appendChild(action('Rename', function () { startRename(b); return null; }));
       if (!b.pilings && r.kind === 'footprint' && b.built >= 1 && !b.ruin) acts.appendChild(action('Pilings', function (st) { return call('buildings', 'retrofitPilings', st, b.id, {}); }));
       if (b.hp < 1 && !b.ruin) acts.appendChild(action('Repair', function (st) { return call('buildings', 'repair', st, b.id); }));
       if (r.tiers && r.tiers.length > fin(b.tier, 0)) acts.appendChild(action('Upgrade', function (st) { return call('buildings', 'upgrade', st, b.id); }));
       if (b.type === 'generator') acts.appendChild(action('Refuel +3 days $5k', function (st) { return call('buildings', 'refuel', st, b.id); }));
-      if (b.type === 'dining_hall') acts.appendChild(action((b.data && b.data.gatorProofDumpsters ? '✓ ' : '') + 'Gator-proof dumpsters $5k', function (st) { return call('buildings', 'setPolicy', st, b.id, 'gatorProofDumpsters', !(b.data && b.data.gatorProofDumpsters)); }));
+      if (b.type === 'dining_hall') { const gp = !!(b.data && b.data.policies && b.data.policies.gatorProofDumpsters); acts.appendChild(action((gp ? '✓ ' : '') + 'Gator-proof dumpsters $5k', function (st) { return call('buildings', 'setPolicy', st, b.id, 'gatorProofDumpsters', !gp); })); }
       if (b.type === 'wildlife_post') acts.appendChild(action((b.data && b.data.nutriaBounty ? '✓ ' : '') + 'Nutria bounty', function (st) { return call('buildings', 'setPolicy', st, b.id, 'nutriaBounty', !(b.data && b.data.nutriaBounty)); }));
       if (b.type === 'abatement') acts.appendChild(action(b.data && b.data.active === false ? 'Abatement off → on' : 'Abatement on → off', function (st) { return call('buildings', 'setPolicy', st, b.id, 'active', !(b.data && b.data.active !== false)); }));
       if ((tl.type[i0] === T.WET || tl.type[i0] === T.DRAINED) && r.kind === 'footprint') acts.appendChild(action('Re-grade', function (st) { return call('buildings', 'regrade', st, b.id); }));
@@ -1394,7 +1445,7 @@
     if (e.housingTier && e.beds) { const fee = fin(BSU.params.econ.housing && BSU.params.econ.housing.roomFee[e.housingTier], 0); add(['', 'Economy', 'Standard', 'Premium'][e.housingTier] + ' housing: ' + (fee > 0 ? 'room fee $' + fee + ' a bed each semester' : 'no room fee')); }
     if (e.parkingSpaces) add(e.parkingSpaces + ' parking spaces (they count toward the lot requirement)');
     if (e.seats) add(e.seats + ' lecture seats');
-    if (e.feeds) add('Feeds ' + e.feeds.toLocaleString('en-US') + ' students' + within(e.diningRadius));
+    if (e.feeds) add('Feeds ' + e.feeds.toLocaleString('en-US') + ' students' + within(e.diningRadius) + (row && (row.id === 'dining_hall' || row.id === 'poboy') ? ' with a standard menu (up to ' + (row.id === 'poboy' ? 3 : 10) + ' dishes: cheap feeds more, premium draws more)' : ''));
     if (e.quality) add('Housing quality ' + '★★★★★'.slice(0, clamp(e.quality | 0, 0, 5)));
     if (e.happiness && e.happiness.value) add((e.happiness.value > 0 ? '+' : '−') + Math.abs(e.happiness.value) + ' happiness' + (e.happiness.radius > 0 ? within(e.happiness.radius) : ' campus-wide'));
     if (e.landmark) add('Landmark +' + e.landmark + ' (prestige)');

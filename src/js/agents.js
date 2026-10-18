@@ -33,6 +33,8 @@
     dayPhaseTicks: BSU.SKY_TICKS[SKY.DAY],   // energy drains fully across one Day phase (params.agents.energyDrain = 1)
     energyRestoreHome: 0.01,   // per tick while inside the home
     energyPoboy: 0.5,          // restored on passing a Po'boy Shack
+    diningReach: 14,           // P6: a student turned away over throughput tries another kitchen within this many tiles (Manhattan), else skips lunch
+    skipPenalty: (BSU.params.econ.menu && BSU.params.econ.menu.skipPenalty) || 1,   // P6: the life-sample penalty of a skipped lunch (params.econ.menu.skipPenalty)
     wetGainWade: 0.01,         // per tick in ≥ .3 ft
     wetGainRain: 0.002,        // per tick outside in rain
     wetDecay: 0.005,           // per tick when dry
@@ -107,6 +109,8 @@
       lastSample: { life: 0, green: 0, mosq: 0, heat: 0, n: 0 },
       // class attendance
       assigned: 0, reached: 0, lastAttendance: 1,
+      // P6 dining throughput: agents served per kitchen today (building id → count) and the day's skips; reset at Dawn
+      served: new Map(), skips: 0, turnedAway: 0,
       // desire lines
       wornToday: new Uint8Array(N), wornList: [], reportedYesterday: new Uint8Array(N), desireLineDay: -1,
       // schedule
@@ -507,6 +511,33 @@
     }
     return best;
   }
+  /** P6: a kitchen's throughput today in AGENTS (students / day × effectiveness × agents per student; ≥ 1 when it serves anyone). buildings.menuOf → the menu's throughput; missing → the row's feeds */
+  function diningCapAgents(state, b) {
+    const B = dep('buildings');
+    let perDay = -1;
+    if (B && typeof B.menuOf === 'function') { const ms = B.menuOf(state, b.id); if (ms && Number.isFinite(ms.throughput)) perDay = ms.throughput; }
+    if (perDay < 0) { const D = dep('data'); const row = D && D.catalog ? D.catalog[b.type] : null; perDay = row && row.effects ? fin(row.effects.feeds, 0) : 0; }
+    const eff = effective(state, b); if (eff <= 0 || perDay <= 0) return 0;
+    const students = fin(state.economy && state.economy.students, 0), n = liveCount(state);
+    const ratio = students > 0 && n > 0 ? n / students : 1;
+    return Math.max(1, Math.round(perDay * eff * ratio));
+  }
+  function diningHasRoom(state, b) { return (X.served.get(b.id) || 0) < diningCapAgents(state, b); }
+  /** nearest kitchen with room today (else the nearest at all, which will turn the student away at the door); `avoid` = the id just tried, `reach` = max Manhattan tiles (−1 = any) */
+  function nearestDining(state, tx, ty, avoid, reach) {
+    let best = null, bd = 1e9, any = null, ad = 1e9;
+    const list = X.homes.dining;
+    for (let k = 0; k < list.length; k++) {
+      const b = list[k];
+      if (b.id === avoid || effective(state, b) <= 0) continue;
+      const d = nearestBuildingTile(b, tx, ty);
+      if (reach >= 0 && d > reach) continue;
+      if (d < ad || (d === ad && b.id < any.id)) { ad = d; any = b; }
+      if (!diningHasRoom(state, b)) continue;
+      if (d < bd || (d === bd && b.id < best.id)) { bd = d; best = b; }
+    }
+    return best || any;
+  }
   function nearestOf(state, list, tx, ty, needEffective) {
     let best = null, bd = 1e9;
     for (let k = 0; k < list.length; k++) {
@@ -544,7 +575,7 @@
     return {
       id: id, tx: tx, ty: ty, px: tx, py: ty, dir: 1, anim: 'idle', frame: 0,
       state: 'IDLE', goal: 'idle', target: -1, route: [], routeIdx: 0, waitTicks: 0,
-      home: home, cls: cls, mood: C.mood.base, energy: 1, wet: 0, bitten: 0,
+      home: home, cls: cls, mood: C.mood.base, energy: 1, wet: 0, bitten: 0, hungry: false,
       name: nick ? (first + ' "' + nick + '" ' + last) : (first + ' ' + last), major: major, year: year, look: look,
       prop: 'none', sample: { life: 0, green: 0, mosq: 0, heat: 0, n: 0 }, reachedClass: false,
       // private (never saved): arrival id, inside a building, timers, bookkeeping
@@ -889,11 +920,21 @@
         a.state = 'IDLE';
         settle(state, a, ctx, false);
         break;
-      case 'dining':
+      case 'dining': {
+        const hall = getBuilding(state, a.target);
+        if (hall && !diningHasRoom(state, hall)) {   // P6: the kitchen is over its menu's throughput today: wait outside in the line, then try another kitchen within reach or skip lunch
+          X.turnedAway++;
+          a.next = 'diningRetry'; a.inside = false; a.state = 'IDLE'; a.linger = false; a.waitTicks = Math.round(dwellTicks(a) * 0.6);
+          settle(state, a, ctx, false);
+          break;
+        }
+        if (hall) X.served.set(hall.id, (X.served.get(hall.id) || 0) + 1);
+        a.hungry = false;
         a.energy = Math.min(1, a.energy + 0.2);
         a.next = 'class';
         if (!startLinger(state, a, ctx)) { a.inside = true; a.state = 'IDLE'; a.waitTicks = 20 + (a.id % 10); }
         break;
+      }
       case 'home': case 'library': case 'shelter':
         a.inside = true; a.state = a.goal === 'shelter' ? 'SHELTER' : 'IDLE'; a.next = null;
         break;
@@ -934,9 +975,16 @@
     }
     if (n === 'dining') {
       refreshBuildingCaches(state);
-      const d = nearestOf(state, X.homes.dining, Math.floor(a.tx), Math.floor(a.ty), true);
+      const d = nearestDining(state, Math.floor(a.tx), Math.floor(a.ty), -1, -1);
       if (d) { setGoal(state, a, 'dining', d.id, 'class'); return; }
       setGoal(state, a, 'class', a.cls, 'dining'); return;
+    }
+    if (n === 'diningRetry') {   // P6: turned away at the door; another kitchen with room within reach, else skip lunch (−1 on this student's life sample until Dawn)
+      refreshBuildingCaches(state);
+      const tried = a.target, d = nearestDining(state, Math.floor(a.tx), Math.floor(a.ty), tried, C.diningReach);
+      if (d && diningHasRoom(state, d)) { setGoal(state, a, 'dining', d.id, 'class'); return; }
+      a.hungry = true; X.skips++;
+      assignClass(state, a); return;
     }
     if (n === 'class') { assignClass(state, a); return; }
     if (n === 'inside') { const v = getBuilding(state, a.target); if (v) setGoal(state, a, 'event', v.id, null); return; }
@@ -1291,7 +1339,7 @@
     const au = ctx.auras;
     const b = a.inside ? getBuilding(state, a.target) : null;
     const type = b ? b.type : '';
-    const life = au && au.life ? fin(au.life[i], 0) : 0;
+    const life = (au && au.life ? fin(au.life[i], 0) : 0) - (a.hungry ? C.skipPenalty : 0);   // P6: a skipped lunch samples −1 until Dawn
     const green = au && au.green ? fin(au.green[i], 0) : 0;
     const mosq = (a.inside && (type === 'rec_center' || type === 'union')) ? 0 : mosqAt(state, i);
     let heat = 0;
@@ -1802,7 +1850,7 @@
       const sp = state.setPiece ? state.setPiece.kind : null;
       const phaseChanged = ctx.phase !== X.lastPhase || game !== X.lastGame || sp !== X.lastSetPiece;
       if (phaseChanged) {
-        if (ctx.phase === SKY.DAWN && X.lastPhase !== SKY.DAWN) { X.assigned = 0; X.reached = 0; }
+        if (ctx.phase === SKY.DAWN && X.lastPhase !== SKY.DAWN) { X.assigned = 0; X.reached = 0; X.served.clear(); X.skips = 0; X.turnedAway = 0; for (let k = 0; k < A.length; k++) if (A[k]) A[k].hungry = false; }   // P6: every kitchen's count and every skipped lunch start over at Dawn
         if (ctx.phase === SKY.DUSK && X.lastPhase !== SKY.DUSK && X.lastPhase !== -1) X.lastAttendance = X.assigned ? X.reached / X.assigned : 1;
         if (game && !X.lastGame) spawnBuses(state, true, 'game');
         if (!game && X.lastGame) spawnBuses(state, false, 'game');
@@ -1894,6 +1942,9 @@
     cacheHas: function (from, to, grid) { return X.routeCache.has(routeKey(from, to, grid || 'walk')); },
     queueSize: function () { return X.queue.length; },
     counters: function () { return { assigned: X.assigned, reached: X.reached }; },
+    // P6 (tests): today's served count per kitchen, students turned away at a door and lunches skipped, and a kitchen's throughput in agents
+    dining: function (state) { const served = {}; X.served.forEach(function (v, k) { served[k] = v; }); return { served: served, turnedAway: X.turnedAway, skips: X.skips, hungry: (state && state.agents ? state.agents.filter(function (a) { return a && a.hungry; }).length : 0) }; },
+    diningCap: function (state, id) { const b = getBuilding(state, id); return b ? diningCapAgents(state, b) : 0; },
     // habitat pass (tests): the share of idle strolls a habitat draws, n idle picks, and a habitat's front / door / standing cells ([x, y, row, …])
     habShare: function () { return habShare(); },
     idleTargets: function (state, n) { const out = [], a = state.agents[0]; for (let k = 0; k < n; k++) out.push(idleSpot(state, a, BSU.rng.sim, false)); return out; },

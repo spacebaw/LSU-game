@@ -11,9 +11,9 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 
 ## BSU.B_ORDER  — enum/table, 46 keys (e.g. 0, 1, 2, 3, 4, 5, 6, 7)
 
-## BSU.EV  — enum/table, 107 keys (e.g. TILE_CHANGED, BUILDING_PLACED, BUILDING_REMOVED, BUILDING_COMPLETE, BUILDING_UPGRADED, BUILDING_FLOODED, BUILDING_DRIED, BUILDING_DAMAGED)
+## BSU.EV  — enum/table, 108 keys (e.g. TILE_CHANGED, BUILDING_PLACED, BUILDING_REMOVED, BUILDING_COMPLETE, BUILDING_UPGRADED, BUILDING_FLOODED, BUILDING_DRIED, BUILDING_DAMAGED)
 
-## BSU.EV_LIST  — enum/table, 107 keys (e.g. 0, 1, 2, 3, 4, 5, 6, 7)
+## BSU.EV_LIST  — enum/table, 108 keys (e.g. 0, 1, 2, 3, 4, 5, 6, 7)
 
 ## BSU.FLAG
 - values: WETLAND_ORIGINAL:number, PRESERVE:number, CANAL:number, DRAINED:number, FLOODGATE:number, POND_SINK:number, BAYOU:number, OPEN_WATER:number, DIRTY_CHUNK:number, DESIRE_WORN:number, DEBRIS:number, MOUND:number, RESTORING:number, JAMMED:number
@@ -22,7 +22,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - values: 0:string, 1:string, 2:string, 3:string, 4:string, 5:string, 6:string, 7:string, 8:string, 9:string, 10:string, 11:string, 12:string, 13:string, 14:string, 15:string, 16:string, 17:string, 18:string, 19:string, 20:string, 21:string
 
 ## BSU.LEDGER_EXPENSE_KEYS
-- values: 0:string, 1:string, 2:string, 3:string, 4:string, 5:string, 6:string, 7:string, 8:string, 9:string, 10:string, 11:string
+- values: 0:string, 1:string, 2:string, 3:string, 4:string, 5:string, 6:string, 7:string, 8:string, 9:string, 10:string, 11:string, 12:string
 
 ## BSU.LEDGER_INCOME_KEYS
 - values: 0:string, 1:string, 2:string, 3:string, 4:string, 5:string, 6:string, 7:string, 8:string, 9:string, 10:string, 11:string, 12:string, 13:string, 14:string
@@ -177,6 +177,12 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - buildings.unlocked(state, id)
 - buildings.constructionMult(state)
 - buildings.rename(state, id, name)
+- buildings.dishActive(state, dishId)
+- buildings.menuOf(state, id)
+- buildings.menuCap(type)
+- buildings.setMenu(state, id, ids)
+- buildings.toggleDish(state, id, dishId)
+- buildings.applyMenuPreset(state, id, key)
 - buildings.connectorFor(state, rowId, tx, ty, rot)
 - buildings.canPlace(state, id, tx, ty, opts)
 - buildings.place(state, id, tx, ty, opts)
@@ -239,7 +245,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - contract.selfTest()
 
 ## BSU.data
-- values: catalog:object, catalogList:array[46], tabs:array[10], decals:object, names:object, students:object, coaches:array[10], coachQuotes:array[12], staff:object, gatorNames:array[14], leGrand:string, stormNames:array[26], opponents:object, schedule:array[8], calendar:object, ticker:array[62], tickerKinds:object, tickerKindList:array[7], objectives:object, milestones:array[26], voiceCards:array[12], boardCards:array[8], failureCards:object, tutorial:array[7], thibodeaux:array[12], stormQuotes:array[8], overlays:array[6], keys:array[47], toastKeys:object, panKeys:object, rainKinds:object, guide:object, needs:object, requirements:object, coach:array[6], football:object
+- values: catalog:object, catalogList:array[46], tabs:array[10], decals:object, names:object, students:object, coaches:array[10], coachQuotes:array[12], staff:object, gatorNames:array[14], leGrand:string, stormNames:array[26], opponents:object, schedule:array[8], calendar:object, ticker:array[62], tickerKinds:object, tickerKindList:array[7], objectives:object, milestones:array[26], voiceCards:array[12], boardCards:array[8], failureCards:object, tutorial:array[7], thibodeaux:array[12], stormQuotes:array[8], overlays:array[6], keys:array[47], toastKeys:object, panKeys:object, rainKinds:object, guide:object, needs:object, requirements:object, coach:array[6], football:object, dishes:array[24], menuPresets:object, menuDefaults:object
 - data.selfTest()
 
 - BSU.dateToDay(str, year)
@@ -262,6 +268,9 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - economy.lotsNeeded(state)
 - economy.housingMix(state)
 - economy.roomFees(state)
+- economy.menuAppeal(state)
+- economy.foodCost(state)
+- economy.foodCostOf(state, id)
 - economy.applicants(state)
 - economy.previewApplicants(state, tuition)
 - economy.capacity(state)
@@ -926,7 +935,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 
 - BSU.worldToScreen(tx, ty, elev, cam, vw, vh)
 
-## BSU.params groups (17): time[30], terrain[59], hydro[47], storm[116], wildlife[4], subsidence[17], heat[21], weather[18], econ[63], sports[81], agents[30], build[34], render[59], ui[16], audio[6], palette[34], progress[16]
+## BSU.params groups (17): time[30], terrain[59], hydro[47], storm[116], wildlife[4], subsidence[17], heat[21], weather[18], econ[64], sports[81], agents[30], build[34], render[59], ui[16], audio[6], palette[34], progress[16]
 
 ## BSU.newState(seed) tree
 - v:number

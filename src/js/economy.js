@@ -151,7 +151,8 @@
     beds: 0, seats: 0, feeds: 0, diningCovered: 0, landmarks: 0, oaks: 0, cypress: 0, stockedPonds: 0, posts: 0, quality: 0,
     lots: 0, unrepaired: 0, floodedCore: false, brownout: false, pumpsRunning: 0, generatorsRunning: 0,
     roadAdjacentDorms: 0, pumpsNearDorms: 0, barriersNearDorms: 0, floodwallDormsNoOak: 0, wastewaterPlants: 0, parkingLots: 0, bridges: 0,
-    bedsEconomy: 0, bedsStandard: 0, bedsPremium: 0, parkingSpaces: 0   // P7: beds by housing tier and the parking spaces housing brings
+    bedsEconomy: 0, bedsStandard: 0, bedsPremium: 0, parkingSpaces: 0,   // P7: beds by housing tier and the parking spaces housing brings
+    menuCost: 0, menuAppeal: 0   // P6: plate-weighted mean cost per plate and mean appeal (1–4) across the kitchens (buildings.stats; feeds is already the menus' throughput)
   });
   /** buildings.stats() with every field defaulted; cached per (root, tick). */
   function stats(state) {
@@ -449,13 +450,41 @@
     const tuitionFactor = clamp(A.tuitionA - num(tuition, e.tuition) / A.tuitionDiv, A.tuitionMin, A.tuitionMax);
     const footballBuzz = 1 + A.buzzPerWin * sn.lastWins + (sn.bowlWon ? A.bowlBuzz : 0);
     const mix = housingMix(state);   // P7: the housing-tier mix (−3 % all economy, +3 % with ≥ 20 % premium beds)
-    const applicantsMult = (1 + tv(state, 'tuitionFreezeApplicants')) * (1 + tv(state, 'tuitionHike')) * (1 + tv(state, 'probation')) * (1 + tv(state, 'biblicalApplicants')) * (1 + mix);
+    const menu = menuAppeal(state);  // P6: the campus menu's plate-weighted mean appeal → +0 % (all cheap) … +6 % (all premium)
+    const applicantsMult = (1 + tv(state, 'tuitionFreezeApplicants')) * (1 + tv(state, 'tuitionHike')) * (1 + tv(state, 'probation')) * (1 + tv(state, 'biblicalApplicants')) * (1 + mix) * (1 + menu);
     const core = base * tuitionFactor * footballBuzz;
     const westAdd = e.westCampus ? (PE.west.applicantsMult - 1) * core : 0;
     const voiceAdd = tv(state, 'voiceApplicants');
     const total = Math.max(0, Math.round(core * Math.max(0, applicantsMult) + voiceAdd + westAdd));
-    return { base: base, tuitionFactor: tuitionFactor, footballBuzz: footballBuzz, applicantsMult: applicantsMult, applicantsAdd: voiceAdd + westAdd, housingMix: mix, total: total };
+    return { base: base, tuitionFactor: tuitionFactor, footballBuzz: footballBuzz, applicantsMult: applicantsMult, applicantsAdd: voiceAdd + westAdd, housingMix: mix, menuAppeal: menu, total: total };
   }
+  /** P6 menu appeal term: applicantBonus (6 %) × (campus mean appeal − 1) / 3, so a cheap card (appeal 1) adds nothing and a premium one (4) adds the full bonus; 0 with no kitchen */
+  function menuAppeal(state) {
+    const st = stats(state), PM = PE.menu;
+    if (!PM || !(num(st.feeds, 0) > 0) || !(num(st.menuAppeal, 0) > 0)) return 0;
+    return PM.applicantBonus * clamp((num(st.menuAppeal, 1) - 1) / 3, 0, 1);
+  }
+  M.menuAppeal = function (state) { try { return menuAppeal(state); } catch (e) { BSU.error('economy', 'menuAppeal', e); return 0; } };
+  /** P6 food bill for a month: students actually fed a day = min(students, the menus' throughput (stats.feeds)) × daysPerMonth × platesPerStudentDay plates × the plate-weighted mean cost. Built capacity beyond the students fed costs nothing */
+  M.foodCost = function (state) {
+    try {
+      const st = stats(state), PM = PE.menu || { platesPerStudentDay: 1 };
+      const served = Math.max(0, Math.min(int(state.economy.students, 0), int(st.feeds, 0)));
+      const plates = served * P.time.daysPerMonth * num(PM.platesPerStudentDay, 1);
+      return { served: served, plates: plates, meanCost: num(st.menuCost, 0), total: Math.round(plates * num(st.menuCost, 0)) };
+    } catch (e) { BSU.error('economy', 'foodCost', e); return { served: 0, plates: 0, meanCost: 0, total: 0 }; }
+  };
+  /** one kitchen's share of the month's food bill (its throughput × effectiveness over the campus throughput): {served, plates, meanCost, total} */
+  M.foodCostOf = function (state, id) {
+    try {
+      const ms = call('buildings', 'menuOf', [state, id], null); if (!ms) return { served: 0, plates: 0, meanCost: 0, total: 0 };
+      const b = call('buildings', 'get', [state, id], null), eff = b ? effective(state, b) : 0;
+      const st = stats(state), all = M.foodCost(state);
+      const share = num(st.feeds, 0) > 0 ? Math.min(1, ms.throughput * eff / num(st.feeds, 1)) : 0;
+      const served = Math.round(all.served * share), plates = Math.round(all.plates * share);
+      return { served: served, plates: plates, meanCost: ms.meanCost, total: Math.round(plates * ms.meanCost) };
+    } catch (e) { BSU.error('economy', 'foodCostOf', e); return { served: 0, plates: 0, meanCost: 0, total: 0 }; }
+  };
   M.applicants = function (state) { try { return applicantFactors(state, state.economy.tuition).total; } catch (e) { BSU.error('economy', 'applicants', e); return 0; } };
   M.previewApplicants = function (state, tuition) {
     try { return applicantFactors(state, clamp(num(tuition, state.economy.tuition), PE.tuition.min, PE.tuition.max)).total; }
@@ -819,6 +848,9 @@
     const U = PE.utilities;
     const summer = month >= U.summerMonths[0] && month <= U.summerMonths[1];
     M.charge(state, Math.round((U.perBuilding * completeList(state).length + U.perStudent * students) * (summer ? U.summerMult : 1)), 'utilities', force);
+    // PLAN_V2 P6: food — the students the menus actually fed this month × the plate-weighted mean cost per plate (ledger 'food')
+    const food = M.foodCost(state);
+    if (food.total > 0) M.charge(state, food.total, 'food', { force: true, note: 'Food' });
     // coaching
     // coaching: the athletics fund (PLAN_V2 P3: the Jan 1 top-up, sports.drawFund) pays first, cash the rest
     const coachingDue = Math.round(num(e.coaching, 0) / P.time.monthsPerYear);
@@ -1182,7 +1214,7 @@
   const LABELS = {
     tuition: 'Tuition', roomFees: 'Room fees', state: 'State funding', donations: 'Donations', research: 'Research', athletics: 'Athletics', tailgate: 'Tailgates', parking: 'Parking tickets',
     festivals: 'Festivals', pelts: 'Nutria pelts', grants: 'Grants', endowment: 'Endowment yield', disaster: 'Disaster grant', insurance: 'Insurance payout', misc: 'Other income',
-    salaries: 'Staff salaries', upkeep: 'Upkeep', utilities: 'Utilities', coaching: 'Coaching', interest: 'Loan interest', repair: 'Repairs', prep: 'Storm prep',
+    salaries: 'Staff salaries', upkeep: 'Upkeep', utilities: 'Utilities', food: 'Food', coaching: 'Coaching', interest: 'Loan interest', repair: 'Repairs', prep: 'Storm prep',
     construction: 'Construction', demolition: 'Demolition', boardCards: 'Board cards',
     housing: 'housing quality', dining: 'dining coverage', life: 'student life', green: 'green space', spirit: 'school spirit', mosquito: 'mosquitoes', flood: 'flooding',
     gator: 'gator incidents', heat: 'heat', crowd: 'crowded classes', noise: 'noise',
@@ -1252,6 +1284,7 @@
             { label: 'Modifiers', value: Math.round(f.applicantsMult * 100) / 100 }
           ];
           if (f.housingMix) lines.push({ label: f.housingMix > 0 ? 'Premium housing mix (%)' : 'All-economy housing (%)', value: Math.round(f.housingMix * 100) });
+          if (f.menuAppeal) lines.push({ label: 'Menu appeal (%)', value: Math.round(f.menuAppeal * 1000) / 10 });
           if (f.applicantsAdd) lines.push({ label: 'Extra applicants', value: Math.round(f.applicantsAdd) });
           return { value: f.total, lines: lines, next: 'Recomputed on the 1st' };
         }

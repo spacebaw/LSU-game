@@ -331,5 +331,43 @@ ok(s.agents.every(a => a.state !== 'GONE'), 'all 60 agents present after 30 days
   D.buildings = prevB;
 }
 
+// --- PLAN_V2 P6: a kitchen over its menu's throughput turns students away (they queue outside, then skip lunch: −1 life until Dawn) ------
+{
+  const D = M._deps, prevB = D.buildings;
+  let throughput = 100;
+  const dh = { id: 2, type: 'dining_hall', tx: 25, ty: 26, w: 3, h: 2, built: 1, ruin: false, flooded: false, tier: 0, hp: 1, data: { menu: ['gumbo'] } };
+  D.buildings = Object.assign({}, prevB, {
+    list(q, t) { return prevB.list(q, t).concat([dh]).filter(b => !t || b.type === t); },
+    get(q, id) { return id === 2 ? dh : prevB.get(q, id); },
+    footprint(q, id) { return id === 2 ? BSU.footprintTiles(25, 26, 3, 2) : prevB.footprint(q, id); },
+    menuOf(q, id) { return id === 2 ? { throughput: throughput, meanAppeal: 2, meanCost: 6, meanPrep: 2, cap: 10, menu: ['gumbo'], active: [], specials: [] } : null; }
+  });
+  const run = (seed) => {
+    const q = BSU.newState(seed); q.tiles.walk.fill(2); q.tiles.type.fill(BSU.T.DRY);
+    for (const b of [[20, 20], [30, 20], [25, 26]]) for (const i of BSU.footprintTiles(b[0], b[1], 3, 2)) { q.tiles.walk[i] = 0; }
+    q.economy.students = 500; q.plot.founders = { tx: 40, ty: 7 }; q.calendar.day = 10; q.__lock = 30;   // hold the sky at Day so the class → lunch chain keeps running
+    BSU.state = q; M.init(q); M.reset(q, true);
+    const t0 = process.hrtime.bigint();
+    for (let t = 0; t < 600; t++) { M.tick(q, { newDay: false, newMonth: false, newYear: false, day: 10 }); q.tick++; }
+    const ms = Number(process.hrtime.bigint() - t0) / 1e6 / 600;
+    return { q, ms, d: M._debug.dining(q) };
+  };
+  const cap = M._debug.diningCap(BSU.newState(5), 2);
+  const tight = run(21);
+  ok(M._debug.diningCap(tight.q, 2) === 12, `a 100-a-day card with 500 students and 60 agents serves 12 agents a day (${M._debug.diningCap(tight.q, 2)})`);
+  ok(tight.d.served[2] === 12, `the kitchen served exactly its throughput (${tight.d.served[2]})`);
+  ok(tight.d.turnedAway > 0 && tight.d.skips > 0 && tight.d.hungry > 0 && tight.d.skips >= tight.d.hungry, `students over throughput were turned away (${tight.d.turnedAway}), queued, then skipped lunch (${tight.d.skips}; a student can skip twice on a held Day) and stay hungry (${tight.d.hungry})`);
+  ok(tight.q.agents.filter(a => a.hungry).every(a => a.sample.life < 0) && tight.q.agents.filter(a => a.hungry).length > 0, 'a hungry student samples −1 life per tick');
+  throughput = 100000;
+  const loose = run(21);
+  ok(loose.d.turnedAway === 0 && loose.d.skips === 0 && loose.d.hungry === 0 && loose.d.served[2] >= 12, `a card with room turns nobody away (served ${loose.d.served[2]})`);
+  ok(tight.ms < 1 && Math.abs(tight.ms - loose.ms) < 0.15, `the queue costs ≤ 0.1 ms a tick (over: ${tight.ms.toFixed(3)} ms, room: ${loose.ms.toFixed(3)} ms)`);
+  // Dawn clears the counters and the hunger
+  const q = tight.q; q.__lock = 5; M.tick(q, { newDay: false, newMonth: false, newYear: false, day: 11 }); q.tick++;
+  ok(!q.agents.some(a => a.hungry), 'Dawn clears every skipped lunch');
+  delete q.__lock;
+  D.buildings = prevB; void cap;
+}
+
 console.log(`${passes} passed, ${failures} failed`);
 process.exit(failures ? 1 : 0);

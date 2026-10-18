@@ -429,6 +429,65 @@ ok(lr.length === 1 && lr[0].tiles.length === 36 && lr[0].name === 'The Great Wal
   ok(B.undo(sc).ok, 'run undone');
 }
 
+// --- PLAN_V2 P6: dining menus — default card, caps, presets, throughput, the festival special, the aura bonus ------
+{
+  const sc = BSU.newState(43);
+  for (let i = 0; i < 4096; i++) { sc.tiles.owner[i] = -1; sc.tiles.elev[i] = 6; sc.tiles.type[i] = BSU.T.DRY; sc.tiles.surface[i] = 0; sc.tiles.crest[i] = 0; sc.tiles.flags[i] = 0; }
+  sc.plot.bank0 = 57; sc.plot.founders = { tx: 50, ty: 7 }; sc.plot.highway = []; sc.plot.cove = []; sc.plot.mouth = [0, 0, 0]; sc.plot.bayou = []; sc.plot.cheniers = []; sc.plot.mounds = [];
+  sc.economy.suppressCoverage = true; sc.economy.cash = 50000000; sc.calendar.day = 60;   // Jun 1 (summer: snoballs in, king cake and the boil out)
+  BSU.state = sc; B.reset(sc, true); BSU.terrain.rewalk(sc);
+  B.place(sc, 'founders_hall', 50, 7, { ignoreCash: true, instant: true });
+  for (let x = 30; x <= 49; x++) BSU.terrain.setSurface(sc, BSU.idx(x, 7), BSU.SURF.PATH);
+  const ph = B.place(sc, 'dining_hall', 36, 8, { rot: 0, instant: true }), ps = B.place(sc, 'poboy', 32, 8, { rot: 0, instant: true });
+  ok(ph.ok && ps.ok, 'a hall and a shack place (' + ph.reason + ' / ' + ps.reason + ')');
+  const hall = B.list(sc, 'dining_hall')[0], shack = B.list(sc, 'poboy')[0], D = BSU.data, PM = BSU.params.econ.menu;
+  ok(Array.isArray(hall.data.menu) && hall.data.menu.join() === D.menuPresets.classic.dishes.join(), 'a new hall opens on Campus Classic');
+  ok(shack.data.menu.join() === D.menuDefaults.poboy.join(), 'a new shack lists its three-dish default');
+  ok(B.list(sc, 'founders_hall')[0].data.menu === null, 'rows without a kitchen carry menu null');
+  const m0 = B.menuOf(sc, hall.id);
+  ok(m0 && m0.cap === 10 && m0.menu.length === 10 && m0.active.length === 10 && m0.meanPrep === 2 && Math.abs(m0.mult - 1) < 1e-9 && m0.throughput === 1200 && Math.abs(m0.meanAppeal - 2.3) < 1e-9 && Math.abs(m0.meanCost - 6.5) < 1e-9, 'Campus Classic on a 1,200 hall: prep 2 → 1,200 a day, appeal 2.3, $6.50 a plate (' + JSON.stringify([m0.meanPrep, m0.throughput, m0.meanAppeal, m0.meanCost]) + ')');
+  ok(B.applyMenuPreset(sc, hall.id, 'cheap').ok && B.menuOf(sc, hall.id).throughput === 2400 && B.menuOf(sc, hall.id).meanAppeal === 1, 'Cheap & Fast: prep 1 → 2,400 a day, appeal 1');
+  ok(B.applyMenuPreset(sc, hall.id, 'chef').ok && B.menuOf(sc, hall.id).throughput === 800 && B.menuOf(sc, hall.id).meanAppeal === 4, "Chef's Table: prep 3 → 800 a day, appeal 4");
+  ok(B.applyMenuPreset(sc, hall.id, 'nope').ok === false && B.applyMenuPreset(sc, hall.id, 'nope').reason === 'Unknown preset', 'unknown preset refused');
+  // caps and the floor
+  const ten = D.dishes.filter(d => !d.festival).slice(0, 10).map(d => d.id), eleven = D.dishes.filter(d => !d.festival).slice(0, 11).map(d => d.id);
+  ok(B.setMenu(sc, hall.id, ten).ok && B.setMenu(sc, hall.id, eleven).ok === false && /10 dishes at most/.test(B.setMenu(sc, hall.id, eleven).reason), 'a hall lists 10 at most, with a reason');
+  const t11 = B.toggleDish(sc, hall.id, D.dishes.filter(d => !d.festival)[10].id);
+  ok(t11.ok === false && /at most/.test(t11.reason) && hall.data.menu.length === 10, 'toggling an eleventh dish refuses and leaves the card alone');
+  ok(B.toggleDish(sc, hall.id, ten[0]).ok && hall.data.menu.length === 9 && B.toggleDish(sc, hall.id, ten[0]).ok && hall.data.menu.length === 10, 'toggle removes and re-adds');
+  ok(B.setMenu(sc, shack.id, ten.slice(0, 4)).ok === false && /3 dishes at most/.test(B.setMenu(sc, shack.id, ten.slice(0, 4)).reason) && B.setMenu(sc, shack.id, ten.slice(0, 3)).ok, 'a shack lists 3 at most');
+  ok(B.setMenu(sc, hall.id, []).ok === false && B.setMenu(sc, hall.id, []).reason === 'Keep at least one dish', 'the card never empties');
+  ok(B.setMenu(sc, hall.id, ['gumbo', 'not_a_dish']).ok === false && B.setMenu(sc, hall.id, ['gumbo', 'not_a_dish']).reason === 'Unknown dish', 'unknown ids refused');
+  ok(B.setMenu(sc, hall.id, ['gumbo', 'gumbo']).ok && hall.data.menu.join() === 'gumbo', 'duplicates collapse');
+  ok(B.setMenu(sc, B.list(sc, 'founders_hall')[0].id, ['gumbo']).ok === false && B.menuOf(sc, B.list(sc, 'founders_hall')[0].id) === null, 'no kitchen → no menu');
+  // seasons and the festival special
+  ok(B.setMenu(sc, hall.id, ['king_cake', 'snoballs', 'gumbo']).ok, 'a seasonal card');
+  let m = B.menuOf(sc, hall.id);
+  ok(m.active.length === 2 && m.active.every(d => d.id !== 'king_cake') && B.dishActive(sc, 'snoballs') && !B.dishActive(sc, 'king_cake'), 'Jun 1: snoballs in season, king cake out (ignored in the means)');
+  ok(Math.abs(m.meanPrep - 2) < 1e-9 && m.specials.length === 0, 'summer: no special, the two active dishes average prep 2');
+  sc.calendar.day = BSU.dateToDay('Mar 5', 1); B.tick(sc, { newDay: true, day: sc.calendar.day });
+  m = B.menuOf(sc, hall.id);
+  ok(m.specials.join() === 'crawfish_boil' && m.active.some(d => d.id === 'crawfish_boil') && m.menu.length === 3 && m.active.length === 3, 'Mar 5: the crawfish boil joins the card free (king cake in, snoballs out, boil on)');
+  ok(Math.abs(m.meanPrep - (3 + 2 + 3) / 3) < 1e-9, 'the special counts in the means (king cake 3, gumbo 2, boil 3)');
+  ok(B.menuOf(sc, shack.id).specials.length === 0, 'the special joins halls only');
+  ok(B.setMenu(sc, hall.id, ['sweet_tea']).ok && B.menuOf(sc, hall.id).active.length === 2 && Math.abs(B.menuOf(sc, hall.id).meanPrep - 2) < 1e-9, 'a one-dish cheap card in spring: tea + the boil → prep 2');
+  sc.calendar.day = 60; B.tick(sc, { newDay: true, day: 60 });
+  // stats: feeds is the throughput; menuCost / menuAppeal are plate-weighted
+  B.applyMenuPreset(sc, hall.id, 'cheap'); B.setMenu(sc, shack.id, D.menuDefaults.poboy);
+  let st = B.stats(sc);
+  ok(st.feeds === 2400 + 200 && Math.abs(st.menuAppeal - (2400 * 1 + 200 * 2) / 2600) < 1e-9 && Math.abs(st.menuCost - (2400 * (22.25 / 8) + 200 * 6.25) / 2600) < 1e-6, 'stats: feeds 2,600 (2,400 cheap hall + 200 shack), plate-weighted appeal and cost (' + st.feeds + ' ' + st.menuAppeal.toFixed(3) + ' $' + st.menuCost.toFixed(3) + ')');
+  B.applyMenuPreset(sc, hall.id, 'chef'); st = B.stats(sc);
+  ok(st.feeds === 1000 && Math.abs(st.menuAppeal - (800 * 4 + 200 * 2) / 1000) < 1e-9, "Chef's Table: feeds 1,000, appeal 3.6");
+  // the aura bonus: +0 cheap, +3 premium, on top of the row's +3 within the dining radius
+  const i0 = BSU.idx(37, 10);
+  B.applyMenuPreset(sc, hall.id, 'cheap'); ok(Math.abs(B.auras(sc).life[i0] - 3) < 1e-6, 'cheap card: the hall keeps its +3 (' + B.auras(sc).life[i0] + ')');
+  B.applyMenuPreset(sc, hall.id, 'chef'); ok(Math.abs(B.auras(sc).life[i0] - 6) < 1e-6, "Chef's Table: +6 (" + B.auras(sc).life[i0] + ')');
+  B.applyMenuPreset(sc, hall.id, 'classic'); ok(Math.abs(B.auras(sc).life[i0] - 4.3) < 1e-6, 'Campus Classic: +4.3 (' + B.auras(sc).life[i0] + ')');
+  // heal on load: a bad menu field gets the default, junk ids are dropped, a trimmed card keeps the cap
+  hall.data.menu = 'nope'; shack.data.menu = ['gumbo', 'zzz', 'gumbo', 'jambalaya', 'boudin', 'beignets']; B.reset(sc, false);
+  ok(hall.data.menu.join() === D.menuPresets.classic.dishes.join() && shack.data.menu.join() === 'gumbo,jambalaya,boudin', 'reset heals a broken menu field and trims junk / duplicates / the overflow');
+}
+
 // --- scenario: no exceptions on garbage input -------------------------------------
 let threwAny = false;
 try {
