@@ -150,7 +150,8 @@
   const STATS_DEFAULT = Object.freeze({
     beds: 0, seats: 0, feeds: 0, diningCovered: 0, landmarks: 0, oaks: 0, cypress: 0, stockedPonds: 0, posts: 0, quality: 0,
     lots: 0, unrepaired: 0, floodedCore: false, brownout: false, pumpsRunning: 0, generatorsRunning: 0,
-    roadAdjacentDorms: 0, pumpsNearDorms: 0, barriersNearDorms: 0, floodwallDormsNoOak: 0, wastewaterPlants: 0, parkingLots: 0, bridges: 0
+    roadAdjacentDorms: 0, pumpsNearDorms: 0, barriersNearDorms: 0, floodwallDormsNoOak: 0, wastewaterPlants: 0, parkingLots: 0, bridges: 0,
+    bedsEconomy: 0, bedsStandard: 0, bedsPremium: 0, parkingSpaces: 0   // P7: beds by housing tier and the parking spaces housing brings
   });
   /** buildings.stats() with every field defaulted; cached per (root, tick). */
   function stats(state) {
@@ -257,7 +258,7 @@
   function dormsNearBarriers(state) {
     const barriers = completeList(state, 'surge_barrier');
     if (!barriers.length) return 0;
-    const homes = completeList(state, 'dorm').concat(completeList(state, 'res_tower'));
+    const homes = completeList(state, 'dorm').concat(completeList(state, 'res_tower'), completeList(state, 'bunkhouse'), completeList(state, 'suites'));
     const R = PE.happiness.noiseBarrierRadius;
     let n = 0;
     for (const d of homes) {
@@ -419,18 +420,41 @@
   // ---------------------------------------------------------------------------
   // Enrollment inputs (§5.4)
   // ---------------------------------------------------------------------------
+  /** P7: lots the campus still needs: students beyond the spaces housing already provides (Magnolia Suites' 60 each), one lot per `parkingPer` */
+  function lotsNeeded(students, st) { return Math.ceil(Math.max(0, num(students, 0) - num(st && st.parkingSpaces, 0)) / PE.parkingPer); }
+  M.lotsNeeded = function (state) {
+    try { return lotsNeeded(num(state.economy.students, 0), stats(state)); } catch (e) { BSU.error('economy', 'lotsNeeded', e); return 0; }
+  };
+  /** P7 applicant mix term: −3 % when every bed on campus is economy, +3 % when premium beds are ≥ 20 % of all beds, else 0 */
+  function housingMix(state) {
+    const st = stats(state), H = PE.housing, e = num(st.bedsEconomy, 0), p = num(st.bedsPremium, 0), tot = e + num(st.bedsStandard, 0) + p;
+    if (!(tot > 0)) return 0;
+    if (e >= tot) return H.mix.allEconomy;
+    return p / tot >= H.mix.premiumShare ? H.mix.premiumBonus : 0;
+  }
+  M.housingMix = function (state) { try { return housingMix(state); } catch (e) { BSU.error('economy', 'housingMix', e); return 0; } };
+  /** P7 room fees for one semester: occupied beds per tier × the tier's fee (economy $0, standard $150, premium $400); occupied = min(1, students / beds) of each tier */
+  M.roomFees = function (state) {
+    try {
+      const st = stats(state), H = PE.housing, beds = [0, num(st.bedsEconomy, 0), num(st.bedsStandard, 0), num(st.bedsPremium, 0)];
+      const tot = beds[1] + beds[2] + beds[3], occ = tot > 0 ? Math.min(1, num(state.economy.students, 0) / tot) : 0;
+      let total = 0; for (let t = 1; t <= 3; t++) total += beds[t] * occ * H.roomFee[t];
+      return { total: Math.round(total), occupancy: occ, beds: beds.slice(1), fees: H.roomFee.slice(1) };
+    } catch (e) { BSU.error('economy', 'roomFees', e); return { total: 0, occupancy: 0, beds: [0, 0, 0], fees: [0, 0, 0] }; }
+  };
   function applicantFactors(state, tuition) {
     const e = state.economy, A = PE.applicants;
     const sn = seasonNow(state);
     const base = A.base + A.prestige * clamp100(e.prestige) + A.happiness * clamp100(e.happiness);
     const tuitionFactor = clamp(A.tuitionA - num(tuition, e.tuition) / A.tuitionDiv, A.tuitionMin, A.tuitionMax);
     const footballBuzz = 1 + A.buzzPerWin * sn.lastWins + (sn.bowlWon ? A.bowlBuzz : 0);
-    const applicantsMult = (1 + tv(state, 'tuitionFreezeApplicants')) * (1 + tv(state, 'tuitionHike')) * (1 + tv(state, 'probation')) * (1 + tv(state, 'biblicalApplicants'));
+    const mix = housingMix(state);   // P7: the housing-tier mix (−3 % all economy, +3 % with ≥ 20 % premium beds)
+    const applicantsMult = (1 + tv(state, 'tuitionFreezeApplicants')) * (1 + tv(state, 'tuitionHike')) * (1 + tv(state, 'probation')) * (1 + tv(state, 'biblicalApplicants')) * (1 + mix);
     const core = base * tuitionFactor * footballBuzz;
     const westAdd = e.westCampus ? (PE.west.applicantsMult - 1) * core : 0;
     const voiceAdd = tv(state, 'voiceApplicants');
     const total = Math.max(0, Math.round(core * Math.max(0, applicantsMult) + voiceAdd + westAdd));
-    return { base: base, tuitionFactor: tuitionFactor, footballBuzz: footballBuzz, applicantsMult: applicantsMult, applicantsAdd: voiceAdd + westAdd, total: total };
+    return { base: base, tuitionFactor: tuitionFactor, footballBuzz: footballBuzz, applicantsMult: applicantsMult, applicantsAdd: voiceAdd + westAdd, housingMix: mix, total: total };
   }
   M.applicants = function (state) { try { return applicantFactors(state, state.economy.tuition).total; } catch (e) { BSU.error('economy', 'applicants', e); return 0; } };
   M.previewApplicants = function (state, tuition) {
@@ -509,8 +533,16 @@
     afterLock(state);
     return n;
   }
+  /** P7: room fees post at each semester lock (Aug 5, Jan 10) as ledger income 'roomFees'; nothing while the semester is cancelled */
+  function postRoomFees(state) {
+    if (state.economy.cancelledSemester) return 0;
+    const r = M.roomFees(state);
+    if (r.total > 0) M.post(state, 'roomFees', r.total, { note: 'Room fees' });
+    return r.total;
+  }
   /** the "until the next lock" one-shots are consumed here; the Board is asked to offer */
   function afterLock(state) {
+    postRoomFees(state);   // P7: the semester's room fees, on the students who just arrived
     M.consumeTimer(state, 'voiceApplicants');
     M.consumeTimer(state, 'biblicalApplicants');
     call('progress', 'offerBoard', [state], undefined);
@@ -635,7 +667,7 @@
     const spirit = H.spiritWin * homeWinsNow(state) + tv(state, 'rivalrySpirit') + festivalSpirit(state);
     const all = completeList(state);
     let flooded = 0, dormFlooded = false;
-    for (const b of all) if (b.flooded) { flooded++; if (b.type === 'dorm' || b.type === 'res_tower') dormFlooded = true; }
+    for (const b of all) if (b.flooded) { flooded++; if (b.type === 'dorm' || b.type === 'res_tower' || b.type === 'bunkhouse' || b.type === 'suites') dormFlooded = true; }
     const flood = Math.min(H.floodCap, H.floodPer * flooded) + (dormFlooded ? H.dormFlooded : 0);
     const gator = gatorPenaltyNow(state);
     const sample = sampleNow(state);
@@ -691,7 +723,7 @@
       ['wastewater', T.wastewater.value, students > PE.capacity.wastewaterBase && plants === 0],
       ['brownout', T.brownout.value, !!st.brownout],
       ['floodwallView', T.floodwallView.value * fwDorms, fwDorms > 0],
-      ['noParking', T.noParking.value, students > 0 && lots < Math.ceil(students / PE.parkingPer)],
+      ['noParking', T.noParking.value, students > 0 && lots < lotsNeeded(students, st)],   // P7: housing parking spaces count toward the requirement
       ['nutriaBounty', T.nutriaBounty.value, bounty],
       ['freePermits', T.freePermits.value, seasonNow(state).permits === 'free'],
       ['surgeBarrier', T.surgeBarrier.value * barrierDorms, barrierDorms > 0]
@@ -828,7 +860,7 @@
     if (research >= 1) M.post(state, 'research', research);
     // parking tickets
     const lots = num(st.lots) > 0 ? num(st.lots) : completeList(state, 'parking').length;
-    const parking = Math.min(lots, Math.ceil(students / PE.parkingPer)) * PE.parkingPay + tv(state, 'voiceParking');
+    const parking = Math.min(lots, lotsNeeded(students, st)) * PE.parkingPay + tv(state, 'voiceParking');
     if (parking >= 1) M.post(state, 'parking', parking);
     // po'boy shacks (misc, note "Po'boy")
     const voicePoboy = timerRow(state, 'voicePoboy');
@@ -1148,7 +1180,7 @@
   // Breakdown popovers (§11.1) — plain words, no formulas
   // ---------------------------------------------------------------------------
   const LABELS = {
-    tuition: 'Tuition', state: 'State funding', donations: 'Donations', research: 'Research', athletics: 'Athletics', tailgate: 'Tailgates', parking: 'Parking tickets',
+    tuition: 'Tuition', roomFees: 'Room fees', state: 'State funding', donations: 'Donations', research: 'Research', athletics: 'Athletics', tailgate: 'Tailgates', parking: 'Parking tickets',
     festivals: 'Festivals', pelts: 'Nutria pelts', grants: 'Grants', endowment: 'Endowment yield', disaster: 'Disaster grant', insurance: 'Insurance payout', misc: 'Other income',
     salaries: 'Staff salaries', upkeep: 'Upkeep', utilities: 'Utilities', coaching: 'Coaching', interest: 'Loan interest', repair: 'Repairs', prep: 'Storm prep',
     construction: 'Construction', demolition: 'Demolition', boardCards: 'Board cards',
@@ -1198,7 +1230,7 @@
           const lines = topN(t, 3, 1).concat(topN(t, 3, -1));
           let next = '';
           const lots = num(st.lots), plants = plantCount(state, st);
-          const parkAt = lots * PE.parkingPer;
+          const parkAt = lots * PE.parkingPer + num(st.parkingSpaces, 0);
           if (students > 0 && students <= parkAt && lots > 0) next = 'Next: −' + Math.abs(PE.timers.noParking.value) + ' no parking at ' + (parkAt + 1) + ' students';
           else if (plants === 0 && students <= PE.capacity.wastewaterBase) next = 'Next: −' + Math.abs(PE.timers.wastewater.value) + ' no wastewater plant at ' + (PE.capacity.wastewaterBase + 1) + ' students';
           else if (num(st.seats) > 0 && students <= num(st.seats)) next = 'Next: crowding above ' + int(st.seats, 0) + ' students';
@@ -1219,6 +1251,7 @@
             { label: 'Football buzz', value: Math.round(f.footballBuzz * 100) / 100 },
             { label: 'Modifiers', value: Math.round(f.applicantsMult * 100) / 100 }
           ];
+          if (f.housingMix) lines.push({ label: f.housingMix > 0 ? 'Premium housing mix (%)' : 'All-economy housing (%)', value: Math.round(f.housingMix * 100) });
           if (f.applicantsAdd) lines.push({ label: 'Extra applicants', value: Math.round(f.applicantsAdd) });
           return { value: f.total, lines: lines, next: 'Recomputed on the 1st' };
         }
@@ -1366,6 +1399,25 @@
       // 1. §5.4 worked numbers
       assert(M.applicants(s) === 700, 'applicants 700 (got ' + M.applicants(s) + ')');
       assert(M.capacity(s).capacity === 345, 'capacity 345 (got ' + M.capacity(s).capacity + ')');
+      // P7 housing tiers: the applicant mix term, room fees and the parking credit, on stubbed tier stats
+      {
+        const keep = { e: stubStats.bedsEconomy, s: stubStats.bedsStandard, p: stubStats.bedsPremium, sp: stubStats.parkingSpaces };
+        s.economy.students = 1500; stubStats.bedsEconomy = 0; stubStats.bedsStandard = 0; stubStats.bedsPremium = 0; stubStats.parkingSpaces = 0; s.tick++;
+        assert(M.housingMix(s) === 0 && M.roomFees(s).total === 0, 'no tier stats: no mix term, no room fees');
+        stubStats.bedsEconomy = 360; s.tick++;
+        assert(M.housingMix(s) === PE.housing.mix.allEconomy && M.applicants(s) === Math.round(700 * (1 + PE.housing.mix.allEconomy)) && M.roomFees(s).total === 0, 'all-economy beds: −3% applicants, economy beds pay no fee');
+        stubStats.bedsStandard = 300; s.tick++;
+        assert(M.housingMix(s) === 0 && M.roomFees(s).total === 300 * PE.housing.roomFee[2], 'economy + standard: no term, 300 beds × $150');
+        stubStats.bedsPremium = 240; stubStats.parkingSpaces = 60; s.tick++;
+        assert(M.housingMix(s) === PE.housing.mix.premiumBonus && M.roomFees(s).total === 300 * 150 + 240 * 400, 'premium ≥ 20% of beds: +3% and $400 a bed');
+        s.economy.students = 450; s.tick++;
+        assert(M.roomFees(s).occupancy === 0.5 && M.roomFees(s).total === 0.5 * (300 * 150 + 240 * 400), 'fees follow occupied beds (450 students in 900 beds)');
+        s.economy.students = 660; s.tick++;
+        assert(M.lotsNeeded(s) === 1, '660 students with 60 spaces need 1 lot');
+        stubStats.parkingSpaces = 0; s.tick++;
+        assert(M.lotsNeeded(s) === 2, '660 students without spaces need 2 lots');
+        stubStats.bedsEconomy = keep.e; stubStats.bedsStandard = keep.s; stubStats.bedsPremium = keep.p; stubStats.parkingSpaces = keep.sp; s.economy.students = 0; s.tick++;
+      }
       M.addStudents(s, 120, 'founding');
       assert(s.economy.students === 120, 'founding 120');
       s.economy.pool = 700;

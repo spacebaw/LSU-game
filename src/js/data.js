@@ -1,7 +1,7 @@
 'use strict';
 // ============================================================================
 // BAYOU STATE — data.js (module 1; immutable tables)
-// Owner: nothing at runtime. Assigns BSU.data: the 43-row building catalog (+ row 44 'bridge', bridge pass),
+// Owner: nothing at runtime. Assigns BSU.data: the 43-row building catalog (+ row 44 'bridge', bridge pass; rows 45 'bunkhouse' and 46 'suites', housing tiers pass P7),
 // tabs, decals, name pools, students/coaches/gators/storms, opponents and the
 // schedule, the calendar, the 62 ticker lines, objectives, milestones, Student
 // Voice and Board cards, failure cards, the tutorial script, overlays, the key
@@ -44,7 +44,7 @@
       teamRating: 0, noise: { value: 0, radius: 0 }, windShield: { mult: 0, radius: 0 },
       illness: { mosquito: 0, heat: 0, radius: 0 }, drainPerDay: 0, subsidenceMult: 0, subsidenceRadius: 0,
       pumpTileFt: 0, pondCapacity: 0, fuelDays: 0, crest: 0, surfaceId: 0, canal: false, gate: false,
-      capacityStudents: 0, parkingPer: 0, tickets: 0, revenueMonthly: 0, coneDays: 0, coneNarrow: 0,
+      capacityStudents: 0, parkingPer: 0, parkingSpaces: 0, housingTier: 0, tickets: 0, revenueMonthly: 0, coneDays: 0, coneNarrow: 0,
       ecologyDecayMult: 0, gatorAvoidRadius: 0, homeWinBonus: 0, attendanceSeats: 0, special: []
     };
     if (o) for (const k of Object.keys(o)) e[k] = o[k];
@@ -68,22 +68,22 @@
   }
   const NEEDS_POWER = {
     water_tower: 1, wastewater: 1, founders_hall: 1, lecture_hall: 1, library: 1, engineering: 1, coastal_institute: 1,
-    dorm: 1, res_tower: 1, greek_house: 1, dining_hall: 1, poboy: 1, stadium: 1, union: 1, rec_center: 1, health_center: 1,
+    dorm: 1, res_tower: 1, greek_house: 1, bunkhouse: 1, suites: 1, dining_hall: 1, poboy: 1, stadium: 1, union: 1, rec_center: 1, health_center: 1,
     bell_tower: 1, tiger_habitat: 1, surge_barrier: 1, marsh_restoration: 1,
     pump: 1   // decision: the Pump "needs ⚡ (stops in blackout)"; one coverage rule for buildings
   };
   const NEEDS_WATER = {
     founders_hall: 1, lecture_hall: 1, library: 1, engineering: 1, coastal_institute: 1, dorm: 1, res_tower: 1,
-    greek_house: 1, dining_hall: 1, stadium: 1, union: 1, rec_center: 1, health_center: 1, tiger_habitat: 1
+    greek_house: 1, bunkhouse: 1, suites: 1, dining_hall: 1, stadium: 1, union: 1, rec_center: 1, health_center: 1, tiger_habitat: 1
   };
-  const PATH_ADJ_ROWS = [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 24, 28, 32, 34, 39, 40, 42, 43];
+  const PATH_ADJ_ROWS = [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 24, 28, 32, 34, 39, 40, 42, 43, 45, 46];   // 45, 46 = bunkhouse, suites (P7)
   const ESSENTIALS = { path: 1, dorm: 1, dining_hall: 1, lecture_hall: 1, poboy: 1, quad: 1, live_oak: 1 };
   const NOT_DEMOLISHABLE = { founders_hall: 1, library: 1, res_tower: 1, stadium: 1, bell_tower: 1, tiger_habitat: 1, rookery: 1, surge_barrier: 1, marsh_restoration: 1 };
   const TAB_OF_ROW = function (n) {
     if (n <= 3 || n === 44) return 'paths';   // 44 = Pedestrian Bridge (bridge pass): the Paths tab after the boardwalk
     if (n <= 7) return 'utilities';
     if (n <= 12) return 'academic';
-    if (n <= 15) return 'housing';
+    if (n <= 15 || n === 45 || n === 46) return 'housing';   // 45 / 46 = Bayou Bunkhouse / Magnolia Suites (P7), ordered in the tab below
     if (n <= 17) return 'dining';
     if (n <= 19) return 'sports';
     if (n <= 24) return 'life';
@@ -109,6 +109,8 @@
     dorm: '300 beds for first-years.',
     res_tower: '900 beds on one 3×3 footprint; landmark +2.',
     greek_house: '80 beds, +3 happiness within 6 tiles, and a tailgate scene.',
+    bunkhouse: '360 cheap beds in tin-roof rows: no room fee, shared baths, −1 happiness within 4.',
+    suites: '240 premium beds, 60 parking spaces, +3 happiness within 6; room fees $400 a bed.',
     dining_hall: 'Feeds 1,200 students within 10 tiles; +3 happiness nearby.',
     poboy: 'Feeds 200 on the walk to class; +2 happiness within 5; earns $2k/mo.',
     practice_field: 'Fields a football team (rating +5). Upgrade to Bayou Field for 6,000 seats and home games.',
@@ -154,7 +156,7 @@
       buildDays: kind === 'footprint' ? 1 + Math.floor(w * h / 6) : (kind === 'upgrade' ? 1 : 0),
       unlock: o.unlock || {}, pip: o.pip || '', effects: E(o.effects), tiers: o.tiers || [], paint: o.paint,
       namePool: o.namePool || '', why: o.why, desc: o.desc, blurb: BLURB[id] || '',
-      demolishable: !NOT_DEMOLISHABLE[id], shelterOwn: id === 'dorm' || id === 'res_tower'
+      demolishable: !NOT_DEMOLISHABLE[id], shelterOwn: id === 'dorm' || id === 'res_tower' || id === 'suites'
     };
     return r;
   }
@@ -232,21 +234,21 @@
       why: 'A longer warning and a narrower cone, paid for by keeping the marsh.',
       desc: '150 seats; academic +20; research scales with ecology; cone at T−9, 30% narrower; ecology decay −50%.' }),
     row({ n: 13, name: 'Freshman Dorm', w: 3, h: 2, cost: 700000, upkeep: 9000, wr: 3,
-      effects: { beds: 300, quality: 2 },
+      effects: { beds: 300, quality: 2, housingTier: 2 },
       paint: P({ wall: ['#B87A5A', '#96604A'], floors: 4, windows: { cols: 6, rows: 4 }, decals: ['couch'], accent: PURPLE, material: 'brick', features: ['shutters', 'vents', 'gutters', 'planters', 'steps'] }),
       namePool: 'halls',
       why: 'Nobody enrolls without a bed. Beds are your enrollment ceiling.',
       desc: '300 beds; quality 2; shelters its own residents on ≥ 5-ft ground or Pilings.' }),
     row({ n: 14, name: 'Residence Tower', w: 3, h: 3, cost: 2400000, upkeep: 22000, wr: 4,
       unlock: { students: 1500 },
-      effects: { beds: 900, quality: 3, landmark: 2 },
+      effects: { beds: 900, quality: 3, housingTier: 2, landmark: 2 },
       paint: P({ floors: 12, windows: { cols: 4, rows: 12 }, decals: ['tank', 'lights'], features: ['tank', 'hvac', 'mullions', 'gutters'] }),
       namePool: 'towers',
       why: 'Nine hundred beds on one footprint. The ridge is small.',
       desc: '900 beds; quality 3; landmark +2; shelters its own residents on ≥ 5 ft or Pilings.' }),
     row({ n: 15, name: 'Greek Row House', w: 2, h: 2, cost: 350000, upkeep: 5000, wr: 2,
       unlock: { students: 600 },
-      effects: { beds: 80, quality: 3, happiness: { value: 3, radius: 6 }, gatorAttract: 2, special: ['porch', 'tailgate'] },
+      effects: { beds: 80, quality: 3, housingTier: 2, happiness: { value: 3, radius: 6 }, gatorAttract: 2, special: ['porch', 'tailgate'] },
       paint: P({ wall: ['#FFFFFF', '#EDEDED'], floors: 2, windows: { cols: 3, rows: 2 }, decals: ['columns', 'letters', 'lights'], special: 'greek_house', accent: '#2E5C2A', features: ['pediment', 'gallery', 'shutters', 'steps'] }),
       namePool: 'greek',
       why: 'Tailgates, porches, and the gators that love both.',
@@ -419,7 +421,21 @@
       effects: { surfaceId: SURF.BRIDGE },
       paint: flat(['#B8B8BC', '#8E8E94'], ['stilts', 'lights'], 'bridge'),
       why: 'Six feet up: the one crossing that stays open through a Cat 3 surge.',
-      desc: 'Walkable at path speed; water only, both ends on land; concrete piers, purple truss rails, lamps; WR 4; overtopped only above +6 ft.' })
+      desc: 'Walkable at path speed; water only, both ends on land; concrete piers, purple truss rails, lamps; WR 4; overtopped only above +6 ft.' }),
+    // housing tiers pass (P7) — rows 45 / 46: the economy and premium tiers around the Freshman Dorm (standard). Housing tab order is set below.
+    row({ n: 45, name: 'Bayou Bunkhouse', w: 3, h: 2, cost: 420000, upkeep: 6000, wr: 2,
+      effects: { beds: 360, quality: 1, housingTier: 1, happiness: { value: -1, radius: 4 } },
+      paint: P({ wall: ['#B9A57C', '#9A8662'], roof: 'gable', roofColor: '#9AA3AC', floors: 1, windows: { cols: 5, rows: 1 }, decals: [], special: 'bunkhouse', material: 'wood', accent: '#6C7A6A', features: ['vents', 'gutters'] }),
+      namePool: 'bunks',
+      why: 'The cheapest beds on campus: no frills, a little noisy next door.',
+      desc: '360 beds; quality 1; shared baths; room fee $0; −1 happiness radius 4; tin roofs and plain siding (no hurricane shelter, WR 2).' }),
+    row({ n: 46, name: 'Magnolia Suites', w: 3, h: 3, cost: 1400000, upkeep: 16000, wr: 3,
+      unlock: { students: 800 },
+      effects: { beds: 240, quality: 3, housingTier: 3, parkingSpaces: 60, happiness: { value: 3, radius: 6 } },
+      paint: P({ wall: ['#A5503C', '#843F31'], roof: 'hip', roofColor: '#4C5566', floors: 3, windows: { cols: 4, rows: 3 }, decals: [], special: 'suites', material: 'brick', trim: '#F0EBDD', accent: '#2E5C2A', features: ['gallery:both', 'shutters', 'planters', 'gutters'] }),
+      namePool: 'suites',
+      why: 'Bigger rooms, a courtyard and a parking apron. Students pay for it.',
+      desc: '240 beds; quality 3; +3 happiness radius 6; 60 parking spaces count toward the lot requirement; room fee $400 a bed a semester; shelters its own residents on ≥ 5-ft ground or Pilings.' })
   ];
   const catalog = {};
   for (const r of catalogList) catalog[r.id] = r;
@@ -429,8 +445,12 @@
   // ---------------------------------------------------------------------------
   const TAB_NAMES = [['paths', 'Paths'], ['utilities', 'Utilities'], ['academic', 'Academic'], ['housing', 'Housing'], ['dining', 'Dining'], ['sports', 'Sports'], ['life', 'Life'], ['swamp', 'Swamp'], ['grounds', 'Grounds']];
   const tabs = [{ id: 'essentials', name: 'Essentials', rows: ['path', 'dorm', 'dining_hall', 'lecture_hall', 'poboy', 'quad', 'live_oak'] }];
+  const TAB_ORDER = { housing: ['bunkhouse', 'dorm', 'suites', 'res_tower', 'greek_house'] };   // P7: cheap → premium, then the towers and the Greek row
   for (const t of TAB_NAMES) {
-    tabs.push({ id: t[0], name: t[1], rows: catalogList.filter(r => r.tab === t[0] && r.id !== 'founders_hall').map(r => r.id) });
+    const ids = catalogList.filter(r => r.tab === t[0] && r.id !== 'founders_hall').map(r => r.id);
+    const order = TAB_ORDER[t[0]];
+    if (order) ids.sort((a, b) => order.indexOf(a) - order.indexOf(b));
+    tabs.push({ id: t[0], name: t[1], rows: ids });
   }
 
   // ---------------------------------------------------------------------------
@@ -485,6 +505,8 @@
     towers: ['Pontchartrain Tower', 'Delacroix Tower'],
     dining: ['The Roux', 'Big Easy Eats', "Ma Tante's Kitchen", 'Tiger Boil', 'Étouffée Station'],
     poboy: ['Dressed & Pressed', 'Debris & Gravy', 'Fried Oyster Hut', "Tee-Boy's", "Nonc Pierre's", "Mama T's"],
+    bunks: ['Cypress Bunks', 'Pirogue Bunks', 'Crawdad Bunks', 'Egret Bunks', 'Muskrat Bunks', 'Heron Bunks', 'Gar Bunks', 'Nutria Bunks'],
+    suites: ['Magnolia Suites', 'Sweet Olive Suites', 'Camellia Suites', 'Jasmine Suites', 'Crape Myrtle Suites', 'Wisteria Suites'],
     greek: ['Kappa Gumbo Kappa', 'Delta Pirogue', 'Sigma Zydeco', 'Alpha Boudin Beta', 'Rougarou Row'],
     library: ['The Delphine Prudhomme Library'],
     union: ['Laissez Union'],
@@ -1359,8 +1381,8 @@
     try {
       const D = BSU.data, L = D.catalogList, C = D.catalog;
       // 1. row count and numbering
-      check(L.length === 44, 'catalogList.length === 44 (got ' + L.length + ')');
-      check(Object.keys(C).length === 44, 'catalog has 44 keys');
+      check(L.length === 46, 'catalogList.length === 46 (got ' + L.length + ')');
+      check(Object.keys(C).length === 46, 'catalog has 46 keys');
       for (let i = 0; i < L.length; i++) {
         check(L[i].n === i + 1, 'row ' + (i + 1) + ' has n ' + L[i].n);
         check(C[L[i].id] === L[i], 'catalog[' + L[i].id + '] is the same object as catalogList[' + i + ']');

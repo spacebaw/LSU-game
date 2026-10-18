@@ -18,7 +18,7 @@ const eq = (a, b, msg) => ok(a === b, `${msg} (got ${JSON.stringify(a)}, want ${
 const src = readFileSync(join(root, 'src', 'js', 'data.js'), 'utf8');
 ok(!/<\/script/i.test(src), 'no "</script" in source');
 ok(!/Math\.random/.test(src), 'no Math.random in source');
-ok(src.length <= 130 * 1024, `file size ${(src.length / 1024).toFixed(1)} KB ≤ 130 KB`);   // UX pass: blurbs + guide/needs/requirements/coach tables (was 80 KB, then 100 KB); football pass A: roster/prospect/formation/phrase tables (130 KB)
+ok(src.length <= 136 * 1024, `file size ${(src.length / 1024).toFixed(1)} KB ≤ 136 KB`);   // P7 housing tiers: two rows, two blurbs, two name pools (130 → 136 KB); UX pass: blurbs + guide/needs/requirements/coach tables (was 80 KB, then 100 KB); football pass A: roster/prospect/formation/phrase tables (130 KB)
 
 const win = makeWindow();
 win.BSU_FORCE_HEADLESS = true;
@@ -51,16 +51,25 @@ ok(st && st.ok === true, 'selfTest().ok === true — ' + (st && st.notes));
 ok(stMs < 50, `selfTest ran in ${stMs.toFixed(1)} ms < 50 ms`);
 
 // --- scenario 1: 43 rows, ids, order -----------------------------------------
-eq(D.catalogList.length, 44, '44 catalog rows (43 + the bridge pass row)');
-eq(Object.keys(D.catalog).length, 44, '44 catalog keys');
+eq(D.catalogList.length, 46, '46 catalog rows (43 + the bridge pass row + bunkhouse and suites)');
+eq(Object.keys(D.catalog).length, 46, '46 catalog keys');
 { const br = D.catalog.bridge; ok(br && br.n === 44 && br.kind === 'drag' && br.tab === 'paths' && br.cost === 45000 && br.upkeep === 300 && br.wr === 4 && br.placeRule === BSU.PLACE.BRIDGE && br.effects.surfaceId === BSU.SURF.BRIDGE, 'bridge row: n 44, drag, paths, $45k/tile, $300 upkeep, WR 4, PLACE.BRIDGE, SURF.BRIDGE');
   ok(br && Array.isArray(br.unlock.any) && br.unlock.any.length === 2 && br.unlock.any[0].students === 800 && br.unlock.any[1].building === 'engineering', 'bridge unlocks at 800 students or Engineering Hall');
   const paths = D.tabs.find(t => t.id === 'paths'); ok(paths && paths.rows.indexOf('bridge') === paths.rows.indexOf('boardwalk') + 1, 'bridge sits after boardwalk in the Paths tab');
   ok(!!D.requirements.place[BSU.PLACE.BRIDGE], 'requirements.place has the bridge line'); }
+// P7 housing tiers: rows 45 / 46 and the Housing tab order
+{ const bk = D.catalog.bunkhouse, su = D.catalog.suites, dm = D.catalog.dorm;
+  ok(bk && bk.n === 45 && bk.name === 'Bayou Bunkhouse' && bk.w === 3 && bk.h === 2 && bk.cost === 420000 && bk.upkeep === 6000 && bk.effects.beds === 360 && bk.effects.quality === 1 && bk.effects.housingTier === 1 && bk.effects.happiness.value === -1 && bk.effects.happiness.radius === 4 && bk.tab === 'housing' && Object.keys(bk.unlock).length === 0, 'bunkhouse row: 3x2, $420k, $6k/mo, 360 beds, quality 1, −1 happiness radius 4, housing tab, unlocked at the start');
+  ok(su && su.n === 46 && su.name === 'Magnolia Suites' && su.w === 3 && su.h === 3 && su.cost === 1400000 && su.upkeep === 16000 && su.effects.beds === 240 && su.effects.quality === 3 && su.effects.housingTier === 3 && su.effects.parkingSpaces === 60 && su.effects.happiness.value === 3 && su.effects.happiness.radius === 6 && su.unlock.students === 800, 'suites row: 3x3, $1.4M, $16k/mo, 240 beds, quality 3, 60 parking spaces, +3 happiness radius 6, unlocks at 800 students');
+  ok(dm.effects.housingTier === 2 && D.catalog.res_tower.effects.housingTier === 2 && D.catalog.greek_house.effects.housingTier === 2, 'dorm / res_tower / greek_house are the standard tier');
+  ok(bk.needsPower && bk.needsWater && su.needsPower && su.needsWater && bk.pathAdjacency && su.pathAdjacency && bk.paint.special === 'bunkhouse' && su.paint.special === 'suites', 'both rows need power, water and a path, and name their painters');
+  ok(D.tabs.find(t => t.id === 'housing').rows.join(',') === 'bunkhouse,dorm,suites,res_tower,greek_house', 'Housing tab order: bunkhouse, dorm, suites, res_tower, greek_house');
+  ok(Array.isArray(BSU.params.econ.housing.roomFee) && BSU.params.econ.housing.roomFee.join(',') === '0,0,150,400' && BSU.params.econ.housing.mix.allEconomy === -0.03 && BSU.params.econ.housing.mix.premiumShare === 0.2 && BSU.params.econ.housing.mix.premiumBonus === 0.03, 'params.econ.housing: fees 0 / 150 / 400, mix −3 % / 20 % / +3 %');
+  ok(BSU.LEDGER_INCOME_KEYS.indexOf('roomFees') === 1, "ledger income has a 'roomFees' key"); }
 ok(BSU.B_ORDER.every((id, i) => D.catalogList[i].id === id && D.catalogList[i].n === i + 1), 'catalogList matches B_ORDER and n');
 ok(D.catalogList.every(r => BSU.validateCatalogRow(r).ok), 'every row passes BSU.validateCatalogRow');
-ok(D.catalogList.every(r => typeof r.blurb === 'string' && r.blurb.length > 0 && r.blurb.split(/\s+/).length <= 18), 'all 44 rows have a plain blurb (≤ 18 words)');
-ok(D.catalogList.every(r => typeof r.why === 'string' && r.why.length > 0), 'all 44 rows have a why line');
+ok(D.catalogList.every(r => typeof r.blurb === 'string' && r.blurb.length > 0 && r.blurb.split(/\s+/).length <= 18), 'all 46 rows have a plain blurb (≤ 18 words)');
+ok(D.catalogList.every(r => typeof r.why === 'string' && r.why.length > 0), 'all 46 rows have a why line');
 ok(D.catalog.dorm.blurb === '300 beds for first-years.' && /enrollment ceiling/.test(D.catalog.dorm.why), 'dorm blurb/why read as the brief asks');
 ok(BSU.OBJECTIVE_IDS.concat(['p1', 'p2']).every(id => D.guide[id] && D.guide[id].why.length > 0 && Array.isArray(D.guide[id].build)), 'guide covers every objective');
 ok(D.guide['3'].build.join(',') === 'dorm,dining_hall' && D.guide['5'].build.join(',') === 'substation,water_tower', 'guide build lists for objectives 3 and 5');

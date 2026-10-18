@@ -119,6 +119,7 @@
   const LEDGER_INC = BSU.LEDGER_INCOME_KEYS || ['tuition', 'state', 'donations', 'research', 'athletics', 'tailgate', 'parking', 'festivals', 'pelts', 'grants', 'endowment', 'disaster', 'insurance', 'misc'];
   const LEDGER_EXP = BSU.LEDGER_EXPENSE_KEYS || ['salaries', 'upkeep', 'utilities', 'coaching', 'interest', 'repair', 'prep', 'construction', 'demolition', 'boardCards', 'misc'];
   const EXP_LABELS = { athletics: ((BSU.data && BSU.data.football && BSU.data.football.budget) || {}).ledgerLabel || 'Athletics top-up' };   // PLAN_V2 P3: the one expense key whose label is not its name
+  const INC_LABELS = { roomFees: 'Room fees' };   // P7: the one income key whose label is not its capitalised name
   function fillLedgerCol(host, map, keys, labels) {
     clear(host);
     let total = 0, any = false;
@@ -132,7 +133,7 @@
     const pr = (BSU.dayParts ? BSU.dayParts(todayOf(s)) : { month: '', date: '' });
     const titleEl = host.parentNode ? host.parentNode : null; void titleEl;
     const stm = call('economy', 'statement', s) || { income: {}, expense: {} };
-    const inc = fillLedgerCol(host._income, stm.income, LEDGER_INC);
+    const inc = fillLedgerCol(host._income, stm.income, LEDGER_INC, INC_LABELS);
     const exp = fillLedgerCol(host._expense, stm.expense, LEDGER_EXP, EXP_LABELS);
     const topUpNow = fin(s.ledger && s.ledger.month && s.ledger.month.expense && s.ledger.month.expense.athletics, 0);   // P3: a top-up moved this month shows before the month closes
     if (topUpNow > 0 && fin(stm.expense && stm.expense.athletics, 0) === 0) { const r = el('div', 'row'); r.id = 'bud-topup-now'; r.appendChild(el('span', 'k', EXP_LABELS.athletics + ' (this month)')); r.appendChild(el('span', 'v', money(topUpNow))); host._expense.appendChild(r); }

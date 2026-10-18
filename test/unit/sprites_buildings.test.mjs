@@ -179,7 +179,7 @@ eq(bad.join(','), '', 'every row x every variant combo renders');
     if (!(a && a.sw === 64 && a.sh === 64 && b && b.sw === 128 && b.sh === 128 && b.ox === -64 && b.oy === -64)) bad.push(id);
     if (!(c && c.sw === 128 && c.sh === 128)) badLock.push(id);
   }
-  eq(ids.length, 44, 'the catalog has 44 rows (every one needs an icon)');
+  eq(ids.length, 46, 'the catalog has 46 rows (every one needs an icon)');
   eq(bad.join(','), '', 'every catalog row has a 64x64 icon and a 128x128 master (anchor at the centre)');
   eq(badLock.join(','), '', 'every catalog row has a locked 128x128 icon variant');
   // plans: what each kind of row shows
@@ -255,6 +255,28 @@ eq(bad.join(','), '', 'every row x every variant combo renders');
   const pl = S.iconPlan('tiger_habitat');
   ok(pl.items.length === 1 && pl.items[0].id === 'tiger_habitat' && (pl.items[0].v & FL) && pl.foot === '3×3', 'the palette icon is the habitat painter\'s own sprite with the entrance on the lit side');
   ok(!!S.get('icon:tiger_habitat', 0, 0, 2) && !!S.get('icon:tiger_habitat', 1, 0, 2), 'the icon bakes unlocked and locked');
+}
+
+// --- P7 housing tiers: the Bayou Bunkhouse (economy) and Magnolia Suites (premium) painters ------------------------------
+{
+  const bk = BSU.data.catalog.bunkhouse, su = BSU.data.catalog.suites, e0 = BSU.errors.size;
+  const bb = S.buildingBox(bk, 0, 1), sb = S.buildingBox(su, 0, 1);
+  ok(bb.special === 'bunkhouse' && sb.special === 'suites', 'both rows resolve to their own painters');
+  ok(bb.fw === 3 && bb.fh === 2 && bb.floors === 1 && bb.w === 5 * 32 + 4 && sb.fw === 3 && sb.fh === 3 && sb.floors === 3 && sb.w === 6 * 32 + 4, 'sizes: the Bunkhouse is one low storey on 3×2, the Suites three storeys on 3×3');
+  eq(bb.oy + bb.h, 18, 'bunkhouse oy + h === 18'); eq(sb.oy + sb.h, 18, 'suites oy + h === 18');
+  const V = [0, SPR.FRONT_L, SPR.NIGHT, SPR.NIGHT | SPR.FRONT_L, SPR.DAMAGED | SPR.FRONT_L, SPR.FLOODED | SPR.FRONT_L, SPR.BOARDED, SPR.PILINGS | SPR.FRONT_L, SPR.SCAFFOLD, SPR.SCAFFOLD | SPR.FRONT_L, SPR.RUIN, SPR.DAMAGED | SPR.NIGHT | SPR.PILINGS];
+  const bad2 = [];
+  for (const id of ['bunkhouse', 'suites', 'bunkhouse:r']) for (const v of V) for (const z of [1, 2]) for (const fr of [0, 1, 2]) {
+    const e = S.get(id, v, fr, z); if (!e || !(e.sw > 0) || !(e.sh > 0)) bad2.push(id + ' v' + v + ' z' + z + ' f' + fr);
+  }
+  eq(bad2.join(','), '', 'both painters (and the rotated Bunkhouse) render every state at 1× and 2×');
+  ok(S.get('bunkhouse:r', 0, 0, 1).w === S.get('bunkhouse', 0, 0, 1).w, 'rotating the Bunkhouse keeps the canvas size (3×2 ↔ 2×3)');
+  ok(S.get('suites', SPR.PILINGS, 0, 1).h === S.get('suites', 0, 0, 1).h + 10, 'the Suites on pilings are 10 px taller');
+  ok(S.teeable(BSU.data.catalog.dorm, 0) === true && S.teeable(bk, 0) === false && S.teeable(su, 0) === false, 'the two housing rows take no path-tee connectors (porch / courtyard fronts); the dorm still does');
+  ok(S.APRON.housing.pattern === 'lawn', 'the housing tab keeps its lawn apron (the Bunkhouse stands in a gravel yard of its own)');
+  ok(!!S.get('icon:bunkhouse', 0, 0, 2) && !!S.get('icon:suites', 1, 0, 2), 'icons bake from the painters (unlocked and locked)');
+  ok(bk.paint.material === 'wood' && bk.paint.roof === 'gable' && bk.paint.special === 'bunkhouse' && su.paint.material === 'brick' && su.paint.roof === 'hip' && su.paint.special === 'suites' && su.paint.features.indexOf('gallery:both') >= 0, 'paint descriptors: tin gable + plank siding; brick hip + galleries');
+  eq(BSU.errors.size, e0, 'painting the housing rows raised no BSU.error');
 }
 
 console.log(`\n${passes} passed, ${failures} failed`);

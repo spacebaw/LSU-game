@@ -61,7 +61,7 @@
     idleWanderP: 0.02          // per-tick chance an idle agent picks a new idle spot
   };
   const ACADEMIC = ['lecture_hall', 'founders_hall', 'library', 'engineering', 'coastal_institute'];
-  const HOUSING = ['dorm', 'res_tower', 'greek_house'];
+  const HOUSING = ['dorm', 'res_tower', 'greek_house', 'bunkhouse', 'suites'];   // P7: the economy and premium tiers house students too
   const DINING = ['dining_hall', 'union', 'poboy'];
   const SPEED_BY_CLASS = [0, P.speed.path / 10, P.speed.dry / 10, P.speed.wet / 10, P.speed.wading / 10];
   const PM = P.move;                                  // movement pass (params.agents.move)

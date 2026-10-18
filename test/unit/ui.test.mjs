@@ -141,6 +141,14 @@ ok(nd2.binding.level === 'bad' && /full|no power|no water/.test(nd2.binding.text
 ok(nd2.terms[0].used === nd2.students && nd2.terms[0].cap <= nd2.students, 'beds gauge reads students / capacity and is over capacity');
 ok(U.el['needs-text'].textContent === nd2.binding.text && U.el['needs-text'].dataset.build === nd2.binding.build, 'needs strip shows the binding line');
 ok(U._ux.effectLines(BSU.data.catalog.dorm).some((l) => /300 beds/.test(l)) && U._ux.effectLines(BSU.data.catalog.stadium).some((l) => /Cauldron/.test(l)), 'effectLines: dorm beds, stadium tiers');
+// P7 housing tiers: the detail lines name the tier, the room fee and the parking spaces; a short purse points the beds fix at the economy tier
+ok(U._ux.effectLines(BSU.data.catalog.bunkhouse).some((l) => /360 beds/.test(l)) && U._ux.effectLines(BSU.data.catalog.bunkhouse).some((l) => /Economy housing: no room fee/.test(l)) && U._ux.effectLines(BSU.data.catalog.bunkhouse).some((l) => /-1 happiness within 4/.test(l) || /−1 happiness within 4/.test(l)), 'effectLines: Bunkhouse beds, economy tier, −1 happiness within 4');
+ok(U._ux.effectLines(BSU.data.catalog.suites).some((l) => /Premium housing: room fee \$400/.test(l)) && U._ux.effectLines(BSU.data.catalog.suites).some((l) => /60 parking spaces/.test(l)) && U._ux.effectLines(BSU.data.catalog.dorm).some((l) => /Standard housing: room fee \$150/.test(l)), 'effectLines: Suites premium fee + 60 parking spaces; the Dorm is the $150 standard tier');
+{ const cash0 = s.economy.cash; s.economy.cash = 200000; U.update(s, 20000); const r2 = U._ux.recommend(s);
+  ok(nd2.binding.key === 'beds' && r2.bunkhouse === 'Needed' && !r2.dorm, 'beds binding with $200k: the Needed badge moves to the economy Bunkhouse (' + JSON.stringify(r2) + ')');
+  s.economy.cash = 9000000; U.update(s, 40000); const r3 = U._ux.recommend(s);
+  ok(r3.dorm === 'Needed' && !r3.bunkhouse, 'beds binding with cash in hand: the standard Dorm keeps the badge');
+  s.economy.cash = cash0; U.update(s, 60000); }
 ok(U._ux.requirementsOf(BSU.data.catalog.dorm).length === 3 && U._ux.requirementsOf(BSU.data.catalog.wastewater).some((q) => /Road within 4/.test(q.text)), 'requirementsOf: dorm path+power+water; wastewater road within 4');
 ok(U._ux.objTarget(s, { id: '3' }) === 'dorm' && U._ux.objTarget(s, { id: '13' }) === null, 'objTarget: objective 3 → dorm, 13 → none');
 ok(U.coachStep() === -1, 'coach never starts in headless mode');

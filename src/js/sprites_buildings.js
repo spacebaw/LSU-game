@@ -292,9 +292,14 @@
     site: { base: XB.siteDirt, alt: '#6E5236', hi: '#A08560', pattern: 'gravel' }
   });
   const OWN_GROUND = { stadium: 1, practice_field: 1, quad: 1, pond: 1, parking: 1, rookery: 1, tiger_habitat: 1 };
+  const NO_TEE = { bunkhouse: 1, suites: 1 };         // P7: their porch / courtyard front has no wall to land a path connector on
+  const NO_FOUNDATION = { suites: 1 };              // P7: the L of wings paints its own contact shadows
   const OWN_STATES = { tiger_habitat: 1 };   // habitat pass: specials that dress DAMAGED / BOARDED / FLOODED themselves (the generic window / roof / wall passes would draw nothing sensible)
   M.APRON = APRON;
-  function apronOf(row) { return APRON[(row && row.tab) || ''] || APRON.life; }
+  const APRON_ROW = Object.freeze({   // P7: the economy tier stands in a sandy gravel yard (no hedge); the premium tier keeps the housing lawn and hedges
+    bunkhouse: { base: '#B3A27C', alt: '#9C8B67', hi: '#CDBE98', pattern: 'gravel' }
+  });
+  function apronOf(row) { return APRON_ROW[(row && row.id) || ''] || APRON[(row && row.tab) || ''] || APRON.life; }
   /** the footprint quad's corners in canvas px (ground level): T back, R right, B bottom (= anchor tile's bottom), L left */
   function quadOf(g) {
     return { T: [g.ax + (g.fh - g.fw) * 32, g.ay + 16 - (g.fw + g.fh) * 16], R: [g.ax + g.fh * 32, g.ay + 16 - g.fh * 16], B: [g.ax, g.ay + 16], L: [g.ax - g.fw * 32, g.ay + 16 - g.fw * 16] };
@@ -346,7 +351,7 @@
     const site = !!(variant & SPR.SCAFFOLD);
     const A = site ? APRON.site : apronOf(row);
     drawApronQuad(P, g, A, seed);
-    if (!site && !OWN_GROUND[g.special] && (g.wallH > 0 || g.special)) drawFoundation(P, g, A.base);
+    if (!site && !OWN_GROUND[g.special] && !NO_FOUNDATION[g.special] && (g.wallH > 0 || g.special)) drawFoundation(P, g, A.base);
     g.apron = A;
   }
   /** pilings: the footprint quad is water/marsh (the stilts and a plank walk come after the box) */
@@ -363,6 +368,7 @@
   }
   /** a grid of bark 3×10 stilts every 12 px under the (lifted) box base */
   function drawStilts(P, g) {
+    if (g.stiltBoxes) { for (const b of g.stiltBoxes) drawStilts(P, Object.assign({}, b, { stiltBoxes: null })); return; }
     const k = g.bk | 0, bx0 = g.bcx - (g.bw >> 1) + 2, bx1 = g.bcx + (g.bw >> 1) - 3;
     for (let x = bx0; x <= bx1; x += STILT_PITCH) {
       const yb = baseY(g.bcx, g.bcy, g.bw, g.bh, x, k);   // the lifted base edge at this column
@@ -375,6 +381,7 @@
   }
   /** the back-row posts, painted BEFORE the box so the walls hide all but what shows between the front posts (after the box they overdrew the SW wall base) */
   function drawStiltsBack(P, g) {
+    if (g.stiltBoxes) { for (const b of g.stiltBoxes) drawStiltsBack(P, Object.assign({}, b, { stiltBoxes: null })); return; }
     const k = g.bk | 0, bx0 = g.bcx - (g.bw >> 1) + 2, bx1 = g.bcx + (g.bw >> 1) - 3;
     for (let x = bx0 + 6; x <= bx1; x += STILT_PITCH * 2) { const yt = topY(g.bcx, g.bcy, g.bw, g.bh, x, k) + (g.bh >> 2); P.rect(x, yt, 2, g.lift, shade(PAL.bark, 0.7)); }
   }
@@ -508,7 +515,7 @@
   /** tee pass: can this row take path connectors (render asks once per building)? footprint, path-adjacency rows with a wall and their own apron */
   M.teeable = function (row, rot) {
     if (!row || row.kind !== 'footprint' || !row.pathAdjacency) return false;
-    if (OWN_GROUND[specialOf(row)]) return false;
+    if (OWN_GROUND[specialOf(row)] || NO_TEE[specialOf(row)]) return false;
     try { return M.buildingBox(row, 0, 1, rot).wallH > 0; } catch (e) { return false; }
   };
   M.teeCode = function (side, k, surf) { return ((surf & 3) << 6) | ((side & 1) << 4) | (k & 15); };
@@ -686,14 +693,15 @@
     let idx = 0;
     for (const face of [0, 1]) {
       const fx0 = face === 0 ? cx - (w >> 1) : split, fx1 = face === 0 ? split : cx + (w >> 1);
+      const colsF = opts.cols ? Math.max(1, opts.cols[face] | 0) : cols;   // P7: per-face column counts (opts.cols = [SW, SE]) for the long / short faces of the housing rows
       const faceW = (fx1 - fx0) - 4, x0 = fx0 + 2;
-      const cw = Math.max(1, faceW / cols);
+      const cw = Math.max(1, faceW / colsF);
       const left = face === 0;
       const sill = left ? T[3] : T[1], lintel = left ? T[2] : T[1], glassDay = left ? G[2] : G[1], glassHi = left ? G[3] : G[2];
       const shut = left ? acc[2] : acc[1], shutHi = left ? acc[3] : acc[2];
       const wallC = left ? C.left : C.right;
       for (let r = 0; r < rows; r++) {
-        for (let kk = 0; kk < cols; kk++) {
+        for (let kk = 0; kk < colsF; kk++) {
           const x = Math.round(x0 + cw * (kk + 0.5)) - 1 - (W >> 1) + 1;
           if (x < fx0 + 2 || x + W > fx1 - 2) continue;
           const yb = baseY(cx, cy, w, h, x, k);
@@ -1806,6 +1814,172 @@
     if (dmg && !front) { seg([1.0, 0.95, 0], [1.5, 0.9, 1], BARK[1]); for (let i = 0; i < 8; i++) { const p = pt(0.8 + (hash(seed + 97, i) % 60) / 100, 0.6 + (hash(seed + 98, i) % 60) / 100, FZ); P.px(p[0], p[1], OAK[(i & 1) ? 3 : 2]); } }
   }
 
+  // ---------------------------------------------------------------------------
+  // Housing tiers (PLAN_V2 P7): the Bayou Bunkhouse (economy) and Magnolia Suites (premium). Both paint sub-boxes inside the
+  // footprint. subBox() re-derives buildingBox's box fields (bl/br/bw/bh/bk/bx/by/bcx/bcy/bgcy) for a rectangle
+  // [X0,X1]×[Y0,Y1] in footprint px (X runs down-right, Y runs down-left, origin = the back corner; the SW face is the
+  // Y = Y1 side, the SE face the X = X1 side), so drawBox / drawWindows / the roof library work on any rectangle unchanged.
+  // ---------------------------------------------------------------------------
+  function subBox(g, X0, X1, Y0, Y1, floors, roofH) {
+    const bl = X1 - X0, br = Y1 - Y0, bw = bl + br, bh = bw >> 1, bk = (bl - br) >> 1;
+    const p = fpPt(g, X1 / 32, Y1 / 32, 0), byv = p[1] + g.lift, bx = p[0];
+    const s = Object.assign({}, g);
+    s.X0 = X0; s.X1 = X1; s.Y0 = Y0; s.Y1 = Y1; s.root = g.root || g;   // root = the whole-footprint geometry facePt measures from
+    s.bl = bl; s.br = br; s.bw = bw; s.bh = bh; s.bk = bk; s.bx = bx; s.by = byv - g.lift;
+    s.bcx = bx - bk; s.bcy = byv - (bh >> 1) - g.lift; s.bgcy = byv - (bh >> 1);
+    s.floors = floors; s.wallH = floors * FLOOR_PX; s.roofH = roofH;
+    s.fw = bl / 32; s.fh = br / 32;   // the roof library reads only their ratio (ridge direction)
+    s.windowCells = []; s.roofGeom = null;
+    return s;
+  }
+  /** screen point on a sub-box's face (0 = SW, 1 = SE) at parameter t along it, `up` px above the ground and `out` px out from the wall */
+  function facePt(b, face, t, up, out) {
+    const o = out || 0;
+    return fpPt(b.root, (face === 0 ? b.X0 + t * (b.X1 - b.X0) : b.X1 + o) / 32, (face === 0 ? b.Y1 + o : b.Y0 + t * (b.Y1 - b.Y0)) / 32, up || 0);
+  }
+  /** a row of vertical 1-px balusters / posts along the segment c0 → c1 (screen points), every `step` px, `h` tall rising from the segment */
+  function pickets(P, c0, c1, step, h, color) {
+    const xa = Math.min(c0[0], c1[0]), xb = Math.max(c0[0], c1[0]), dx = c1[0] - c0[0];
+    for (let x = xa; x <= xb; x += step) { const y = dx ? c0[1] + (c1[1] - c0[1]) * (x - c0[0]) / dx : c0[1]; P.vline(x, Math.round(y) - h, h, color); }
+  }
+  /** window cells of several boxes, merged on the main g (BOARDED / DAMAGED read g.windowCells) */
+  function mergeCells(g, boxes) { g.windowCells = []; for (const b of boxes) for (const c of (b.windowCells || [])) g.windowCells.push(c); }
+  /** a car on the ground at (x, y) = the centre of its footprint: body, cabin, windscreen, wheels; headlights at night */
+  function drawCar(P, x, y, color, night) {
+    const B = rampOf(color);
+    P.rect(x - 4, y - 3, 9, 3, B[2]); P.hline(x - 4, y - 3, 9, B[3]); P.hline(x - 4, y - 1, 9, B[1]);
+    P.rect(x - 2, y - 5, 5, 2, B[3]); P.hline(x - 1, y - 5, 3, B[4]); P.hline(x - 2, y - 4, 5, X.glass); P.px(x + 3, y - 4, B[1]);
+    P.px(x - 3, y, X.black); P.px(x - 2, y, X.black); P.px(x + 2, y, X.black); P.px(x + 3, y, X.black);
+    P.px(x - 4, y - 2, night ? PAL.windowGlow : X.offWhite); P.px(x + 4, y - 2, night ? PAL.windowGlow : PAL.danger);
+    if (night) { P.px(x - 5, y - 2, mix(PAL.windowGlow, '#3A3A40', 0.5)); P.px(x - 6, y - 1, mix(PAL.windowGlow, '#3A3A40', 0.7)); }
+  }
+  /** a southern magnolia standing at ground point (x, y): bark trunk, dark glossy canopy in layers, cream blossoms */
+  function drawMagnolia(P, x, y, seed, night) {
+    const G = MAT.green, Bk = rampOf(PAL.bark);
+    P.ellipse(x + 1, y + 1, 11, 4, mix(XB.lawn, '#2B2550', 0.35));   // cool ground shadow
+    P.rect(x - 1, y - 8, 3, 8, Bk[2]); P.vline(x - 1, y - 8, 8, Bk[3]); P.vline(x + 1, y - 8, 8, Bk[1]); P.hline(x - 2, y - 1, 5, Bk[1]);
+    P.ellipse(x, y - 14, 12, 8, G[0]); P.ellipse(x, y - 15, 11, 7, G[1]); P.ellipse(x - 1, y - 17, 9, 6, G[2]); P.ellipse(x - 3, y - 19, 5, 3, G[3]);
+    for (let i = 0; i < 14; i++) { const a = hash(seed, i * 3) % 360 * Math.PI / 180, r = 3 + hash(seed, i * 3 + 1) % 8; P.px(Math.round(x + Math.cos(a) * r * 1.2), Math.round(y - 16 + Math.sin(a) * r * 0.7), i & 1 ? G[3] : G[1]); }
+    const BL = night ? '#E8E0C4' : '#FFF8E6';
+    for (let i = 0; i < 6; i++) { const bx = x - 8 + (hash(seed, 40 + i) % 17), by = y - 22 + (hash(seed, 50 + i) % 11); P.rect(bx, by, 2, 2, BL); P.px(bx, by, X.white); P.px(bx + 1, by + 1, '#E9C95A'); }
+  }
+
+  // The Bayou Bunkhouse: two long tin-roofed rows under one M-shaped roof, plank siding, a breezeway (dogtrot opening) through the long face,
+  // a shared porch with a tin awning along it, a sandy yard with a clothesline.
+  function bunkRoofs(P, g, color) {
+    const X0 = g.ipx, X1 = g.fw * 32 - g.ipx, Y0 = g.ipy, Y1 = g.fh * 32 - g.ipy, longX = g.fw >= g.fh;
+    const D = longX ? Y1 - Y0 : X1 - X0, back = ((D >> 1) + 3) & ~3, RH = 11;
+    const rowA = longX ? subBox(g, X0, X1, Y0, Y0 + back, 1, RH) : subBox(g, X0, X0 + back, Y0, Y1, 1, RH);   // the back row
+    const rowB = longX ? subBox(g, X0, X1, Y0 + back, Y1, 1, RH) : subBox(g, X0 + back, X1, Y0, Y1, 1, RH);   // the front row
+    ROOF.gable(P, rowA, color); ROOF.gable(P, rowB, color);
+    g.roofGeom = rowB.roofGeom;
+    // rust: a few weathered patches on the long planes
+    const R = '#8A5A3A';
+    for (const rb of [rowA, rowB]) {
+      const pl = frontPlane(rb.roofGeom); if (!pl) continue;
+      for (let i = 0; i < 7; i++) { const c = planePt(pl, 0.06 + (hash(g.seed, i * 7 + rb.Y0) % 88) / 100, 0.12 + (hash(g.seed, i * 11 + 3) % 70) / 100); P.rect(Math.round(c[0]), Math.round(c[1]), 2, 1, i & 1 ? R : mix(R, '#B8B8BC', 0.4)); }
+    }
+    return { rowA: rowA, rowB: rowB, X0: X0, X1: X1, Y0: Y0, Y1: Y1, longX: longX };
+  }
+  /** the dogtrot opening: a 12-px gap in the wall of the long face, dark inside, daylight showing through from the yard behind */
+  function breezeway(P, g, face, night) {
+    const len = face === 0 ? g.bl : g.br, w = 12, xs = face === 0 ? g.bcx + (g.bk | 0) - g.bl + ((len - w) >> 1) : g.bcx + (g.bk | 0) + ((len - w) >> 1), C = g.colors;
+    const wall = face === 0 ? C.left : C.right, dark = mix(wall, '#1B1730', 0.78), mid = mix(wall, '#1B1730', 0.55);
+    for (let i = 0; i < w; i++) {
+      const x = xs + i, yb = baseY(g.bcx, g.bcy, g.bw, g.bh, x, g.bk | 0), edge = i === 0 || i === w - 1;
+      P.rect(x, yb - 9, 1, 10, edge ? shade(C.RL[1], 0.8) : dark);
+      if (!edge) {
+        P.px(x, yb - 9, shade(dark, 0.7));
+        if (i > 3 && i < w - 4) { for (let r = 3; r <= 6; r++) P.px(x, yb - r, night ? mix(GLOWS[0], dark, 0.5) : mix('#C9D6A4', mid, 0.25 + (6 - r) * 0.1)); P.px(x, yb - 1, night ? mix(GLOWS[2], dark, 0.5) : mix('#9CB070', dark, 0.4)); }   // daylight from the yard behind, a small hazy patch
+        else for (let r = 2; r <= 6; r++) P.px(x, yb - r, mid);
+      }
+    }
+    for (let i = 0; i < w; i++) { const x = xs + i, yb = baseY(g.bcx, g.bcy, g.bw, g.bh, x, g.bk | 0); P.px(x, yb - 10, face === 0 ? C.trim[3] : C.trim[2]); }
+    // the cypress door frame posts and a sill step
+    for (const i of [0, w - 1]) { const x = xs + i, yb = baseY(g.bcx, g.bcy, g.bw, g.bh, x, g.bk | 0); P.vline(x, yb - 10, 11, face === 0 ? MAT.wood[3] : MAT.wood[2]); }
+    for (let i = 1; i < w - 1; i++) { const x = xs + i, yb = baseY(g.bcx, g.bcy, g.bw, g.bh, x, g.bk | 0); P.px(x, yb + 1, MAT.concrete[2]); }
+    return { x0: xs, x1: xs + w };
+  }
+  /** the shared porch along the long face: a plank deck 6 px deep, cypress posts every 12 px under a level tin awning 4 px deep (it stays above the windows) */
+  function bunkPorch(P, g, face, night) {
+    const W = MAT.wood, T = MAT.tin, D = 6, A = 4, H = 13, len = face === 0 ? g.bl : g.br, left = face === 0;
+    fillPoly(P, [facePt(g, face, 0, 0, 0), facePt(g, face, 1, 0, 0), facePt(g, face, 1, 0, D), facePt(g, face, 0, 0, D)], left ? W[3] : W[2]);
+    for (let s = 2; s < D; s += 2) { const a = facePt(g, face, 0, 0, s), b = facePt(g, face, 1, 0, s); P.line(a[0], a[1], b[0], b[1], left ? W[2] : W[1]); }
+    { const a = facePt(g, face, 0, 0, D), b = facePt(g, face, 1, 0, D); P.line(a[0], a[1] + 1, b[0], b[1] + 1, W[0]); }
+    // posts at the awning's outer edge (drawn first: the awning is above them)
+    for (let i = 4; i <= len - 3; i += 12) {
+      const a = facePt(g, face, i / len, 0, A), b = facePt(g, face, i / len, H, A);
+      P.vline(a[0], b[1], a[1] - b[1] + 1, left ? W[4] : W[3]); P.px(a[0], a[1] + 1, W[0]);
+    }
+    fillPoly(P, [facePt(g, face, 0, H, 0), facePt(g, face, 1, H, 0), facePt(g, face, 1, H, A), facePt(g, face, 0, H, A)], left ? T[3] : T[2]);
+    for (let i = 8; i < len; i += 8) { const a = facePt(g, face, i / len, H, 0), b = facePt(g, face, i / len, H, A); P.line(a[0], a[1], b[0], b[1], left ? T[2] : T[1]); }
+    { const a = facePt(g, face, 0, H, A), b = facePt(g, face, 1, H, A); P.line(a[0], a[1], b[0], b[1], T[4]); P.line(a[0], a[1] + 1, b[0], b[1] + 1, T[0]); }
+    if (night) { for (let i = 10; i < len; i += 24) { const a = facePt(g, face, i / len, 8, A); P.px(a[0], a[1], GLOWS[0]); P.px(a[0], a[1] + 1, mix(GLOWS[0], W[2], 0.5)); } }   // porch bulbs
+  }
+  /** a clothesline in the yard beside the short end: two posts, a sagging line and four garments */
+  function drawClothesline(P, g, longX, night) {
+    const face = longX ? 1 : 0, o = 8;
+    const pt = (t, up) => facePt(g, face, t, up, o);
+    const a = pt(0.04, 0), b = pt(0.38, 0), ta = pt(0.04, 11), tb = pt(0.38, 11), W = MAT.wood;
+    P.vline(a[0], ta[1], 11, W[3]); P.vline(b[0], tb[1], 11, W[3]); P.px(a[0], a[1], W[0]); P.px(b[0], b[1], W[0]);
+    P.hline(ta[0] - 1, ta[1], 3, W[4]); P.hline(tb[0] - 1, tb[1], 3, W[4]);
+    const xs = Math.min(ta[0], tb[0]), xe = Math.max(ta[0], tb[0]);
+    const lineY = (x) => { const t = (x - ta[0]) / (tb[0] - ta[0] || 1); return Math.round(ta[1] + (tb[1] - ta[1]) * t + Math.sin(t * Math.PI) * 2); };
+    for (let x = xs; x <= xe; x++) P.px(x, lineY(x), '#D8D8E0');
+    const cols = [X.white, PAL.gold, PAL.purple2, '#6FA8D8', X.offWhite, '#E07A5A'];
+    for (let i = 0; i < 4; i++) {
+      const x = xs + 3 + Math.round((xe - xs - 9) * i / 3), y = lineY(x), c = cols[(hash(g.seed, i * 5) % cols.length)], tall = 2 + (hash(g.seed, i) % 3);
+      P.rect(x, y + 1, 4, tall + 1, c); P.px(x, y + 1, shade(c, 1.15)); P.px(x + 3, y + tall + 1, shade(c, 0.75));
+    }
+  }
+
+  // Magnolia Suites: an L of brick wings with two-level iron galleries around a brick courtyard (a magnolia in a lawn bed, hedges
+  // from the margins), and a small asphalt parking apron with six cars on the back-right edge of the footprint.
+  /** a two-level gallery on one face of a wing, between t0 and t1: ivory slabs, iron rails with balusters, slender iron posts to the ground */
+  /** the two wings of the L (footprint px): the back wing along X, the left wing along Y in front of it */
+  function suiteWings(g) { return [subBox(g, 12, 64, 12, 38, 3, 12), subBox(g, 12, 36, 38, 84, 3, 12)]; }
+  function suiteGallery(P, b, face, t0, t1, night) {
+    const T = (b.colors || faceColors(b.paint)).trim, I = MAT.iron, left = face === 0, d = 4, levels = b.floors - 1;
+    for (let l = 1; l <= levels; l++) {
+      const h = l * FLOOR_PX;
+      const a0 = facePt(b, face, t0, h, 0), a1 = facePt(b, face, t1, h, 0), c0 = facePt(b, face, t0, h, d), c1 = facePt(b, face, t1, h, d);
+      fillPoly(P, [a0, a1, c1, c0], left ? T[2] : T[1]);
+      P.line(c0[0], c0[1], c1[0], c1[1], left ? T[4] : T[2]); P.line(c0[0], c0[1] + 1, c1[0], c1[1] + 1, left ? T[1] : T[0]);
+      const r0 = [c0[0], c0[1] - 4], r1 = [c1[0], c1[1] - 4];
+      P.line(r0[0], r0[1], r1[0], r1[1], left ? I[3] : I[2]);
+      pickets(P, c0, c1, 3, 3, left ? I[2] : I[1]);
+      if (night && l === 1) { const m = facePt(b, face, (t0 + t1) / 2, h + 8, d); P.px(m[0], m[1], GLOWS[0]); }
+    }
+    // posts: every 12 px from the ground to the top rail
+    const top = levels * FLOOR_PX + 4, g0 = facePt(b, face, t0, 0, d), g1 = facePt(b, face, t1, 0, d), dx = g1[0] - g0[0], xa = Math.min(g0[0], g1[0]), xb = Math.max(g0[0], g1[0]);
+    for (let x = xa + 2; x <= xb - 1; x += 12) { const y = dx ? g0[1] + (g1[1] - g0[1]) * (x - g0[0]) / dx : g0[1]; P.vline(x, Math.round(y) - top, top + 1, left ? I[3] : I[2]); P.px(x, Math.round(y), I[0]); }
+  }
+  /** the wing's windows: tall shuttered cells per face (cols = [SW face, SE face]); returns the cells */
+  function wingWindows(P, w, row, cols, night, frame) {
+    const r = { n: row.n, paint: Object.assign({}, row.paint, { windows: { cols: Math.max(cols[0], cols[1]), rows: 3 } }) };
+    return drawWindows(P, w, r, { night: night, frame: frame, cols: cols, noDoor: true });
+  }
+  function suitesGround(P, g, night) {
+    const q = (X, Y) => [X / 32, Y / 32];
+    const L = (a, b, c) => fpLine(P, g, q(a[0], a[1]), q(b[0], b[1]), c);
+    // parking apron (back-right corner of the footprint): asphalt, kerbs, bay lines
+    const PX0 = 66, PX1 = 92, PY0 = 8, PY1 = 38, asph = '#3A3A40';
+    fpPoly(P, g, [q(PX0, PY0), q(PX1, PY0), q(PX1, PY1), q(PX0, PY1)], asph);
+    L([PX0, PY1], [PX1, PY1], shade(asph, 0.62)); L([PX1, PY1], [PX1, PY0], shade(asph, 0.62));
+    L([PX0, PY0], [PX0, PY1], shade(asph, 1.45)); L([PX0, PY0], [PX1, PY0], shade(asph, 1.3));
+    for (const Y of [18, 28]) L([PX0 + 1, Y], [PX1 - 1, Y], shade(asph, 1.6));
+    L([79, PY0 + 1], [79, PY1 - 1], shade(asph, 1.25));
+    // the courtyard: sandstone pavers in a running bond, a brick edge on the open sides, a round lawn bed for the magnolia
+    const CX0 = 36, CX1 = 86, CY0 = 38, CY1 = 90, pave = '#CDB894', joint = mix(pave, '#6B5A44', 0.22), brk = XB.brick;
+    fpPoly(P, g, [q(CX0, CY0), q(CX1, CY0), q(CX1, CY1), q(CX0, CY1)], pave);
+    for (let v = CX0 + 6; v < CX1; v += 6) L([v, CY0 + 1], [v, CY1 - 1], joint);
+    for (let v = CY0 + 6, r = 0; v < CY1; v += 6, r++) L([CX0 + 1 + (r & 1) * 3, v], [CX1 - 1, v], joint);
+    L([CX0, CY1], [CX1, CY1], brk); L([CX1, CY1], [CX1, CY0], brk); L([CX0, CY1 - 1], [CX1 - 1, CY1 - 1], shade(brk, 1.25)); L([CX1 - 1, CY1 - 1], [CX1 - 1, CY0], shade(brk, 1.25));
+    const bc = fpPt(g, 58 / 32, 64 / 32, 0);
+    P.ellipse(bc[0], bc[1] + 1, 14, 7, shade(brk, 1.05)); P.ellipse(bc[0], bc[1], 13, 6, shade(XB.lawn, 0.8)); P.ellipse(bc[0], bc[1] - 1, 12, 5, XB.lawn); P.ellipse(bc[0] - 2, bc[1] - 2, 7, 2, XB.lawnStripe);
+    void night;
+  }
+
   const SPECIAL = {
     tiger_habitat(ctx, P, g, row, variant, frame) { habitatPaint(ctx, P, g, row, variant, frame, 0); },
     substation(ctx, P, g, row, variant, frame) {
@@ -2018,6 +2192,56 @@
       drawStandardBox(ctx, P, g, row, variant, frame);
       const a = frontPoint(g, 0), b = frontPoint(g, 0.5);
       P.line(a.x, a.y, b.x, b.y, PAL.boardwalk); P.line(a.x, a.y + 1, b.x, b.y + 1, shade(PAL.boardwalk, 0.8));
+    },
+    bunkhouse(ctx, P, g, row, variant, frame) {
+      const paint = row.paint || {}, night = !!(variant & SPR.NIGHT), longX = g.fw >= g.fh, face = longX ? 0 : 1;
+      g.colors = drawBox(P, g, paint, { seed: g.seed });
+      const box = subBox(g, g.ipx, g.fw * 32 - g.ipx, g.ipy, g.fh * 32 - g.ipy, 1, g.roofH);
+      box.colors = g.colors;
+      drawWindows(P, g, row, { night: night, frame: frame, cols: longX ? [5, 2] : [2, 5] });
+      const cells = g.windowCells;
+      const entranceIsLong = (g.frontLeft ? 0 : 1) === face;
+      if (!entranceIsLong) drawDoor(P, g, PAL.purple, false, night);   // the short end carries the door; on the long face the breezeway is the entrance
+      const bz = breezeway(P, box, face, night);
+      g.windowCells = cells.filter((c) => c.face !== face || c.x + c.w < bz.x0 - 1 || c.x > bz.x1 + 1);
+      if (entranceIsLong) { g.doorX = (bz.x0 + bz.x1) >> 1; g.doorY = baseY(g.bcx, g.bcy, g.bw, g.bh, g.doorX, g.bk | 0); }
+      bunkPorch(P, box, face, night);
+      bunkRoofs(P, g, paint.roofColor || '#9AA3AC');
+      drawKnownDecals(ctx, P, g, row, variant, frame);
+      if (!(variant & SPR.PILINGS)) drawClothesline(P, box, longX, night);   // no yard on stilts
+    },
+    suites(ctx, P, g, row, variant, frame) {
+      const paint = row.paint || {}, night = !!(variant & SPR.NIGHT), roofColor = paint.roofColor || '#4C5566';
+      g.colors = faceColors(paint);
+      const stilts = !!(variant & SPR.PILINGS);
+      if (!stilts) suitesGround(P, g, night);   // on stilts the courtyard, apron and tree give way to water
+      const wings = suiteWings(g), back = wings[0], left = wings[1];
+      back.colors = g.colors; left.colors = g.colors;
+      // back wing (along X), then the left wing (along Y) in front of it
+      drawBox(P, back, paint, { seed: g.seed, colors: g.colors });
+      wingWindows(P, back, row, [5, 3], night, frame);
+      suiteGallery(P, back, 0, 0.46, 1, night); suiteGallery(P, back, 1, 0, 1, night);
+      ROOF.hip(P, back, roofColor);
+      drawBox(P, left, paint, { seed: g.seed + 5, colors: g.colors });
+      wingWindows(P, left, row, [2, 4], night, frame);
+      suiteGallery(P, left, 0, 0, 1, night); suiteGallery(P, left, 1, 0, 1, night);
+      // the front door on the courtyard face of the left wing: green leaf, ivory surround, a fanlight
+      { const t = 0.5, p = facePt(left, 1, t, 0, 0), x = p[0] - 2, yb = baseY(left.bcx, left.bcy, left.bw, left.bh, p[0], left.bk | 0), D = rampOf(paint.accent || '#2E5C2A'), T = g.colors.trim;
+        P.rect(x, yb - 6, 5, 7, D[2]); P.vline(x + 2, yb - 6, 7, D[1]); P.hline(x - 1, yb - 8, 7, T[3]); P.vline(x - 1, yb - 8, 9, T[2]); P.vline(x + 5, yb - 8, 9, T[1]);
+        P.hline(x, yb - 7, 5, night ? GLOWS[0] : MAT.glass[3]); P.px(x + 3, yb - 3, PAL.gold); }
+      ROOF.hip(P, left, roofColor);
+      g.roofGeom = left.roofGeom;
+      mergeCells(g, [back, left]);
+      // the entrance anchor for the margin walk: the centre of the inset box's entrance face (the walk crosses the courtyard paving)
+      { const fcx = g.frontLeft ? g.bcx + (g.bk | 0) - (g.bl >> 1) : g.bcx + (g.bk | 0) + (g.br >> 1); g.doorX = fcx; g.doorY = baseY(g.bcx, g.bcy, g.bw, g.bh, fcx, g.bk | 0); }
+      // parking: five cars in a six-bay apron, a light pole at its kerb
+      const CARS = stilts ? [] : [['#C9CDD2', 72, 13], ['#2B2B33', 85, 13], ['#B03A3A', 72, 23], ['#E8E8E8', 85, 23], ['#3D6FA8', 85, 33], ['#8A6A3A', 72, 33]];
+      for (let i = 0; i < CARS.length; i++) { if (i === 5 && (g.seed & 1)) continue; const p = fpPt(g, CARS[i][1] / 32, CARS[i][2] / 32, 0); drawCar(P, p[0], p[1], CARS[i][0], night); }
+      if (!stilts) {
+        { const p = fpPt(g, 66 / 32, 38 / 32, 0); lampPost(P, p[0], p[1], night, '#3A3A40'); }
+        { const p = fpPt(g, 46 / 32, 78 / 32, 0); lampPost(P, p[0], p[1], night, '#CDB894'); }
+        { const p = fpPt(g, 58 / 32, 64 / 32, 0); drawMagnolia(P, p[0], p[1], g.seed, night); }
+      }
     }
   };
 
@@ -2038,6 +2262,7 @@
     begin(ctx, g.w, g.h, zoom);
     const P = tonePen(pen(ctx, g.zoom), g.tone);
     if (variant & SPR.RUIN) { drawGrounds(P, g, row, SPR.SCAFFOLD, g.seed); drawRuinShape(P, g, g.seed); return { w: g.w, h: g.h, ox: g.ox, oy: g.oy }; }
+    if (g.special === 'suites') g.stiltBoxes = suiteWings(g);   // P7: stilts go under the wings, not the courtyard
     if (variant & SPR.PILINGS) drawPilingsGround(P, g, g.seed); else drawGrounds(P, g, row, variant, g.seed);
     if ((variant & SPR.PILINGS) && !(variant & SPR.SCAFFOLD)) drawStiltsBack(P, g);
     if (variant & SPR.SCAFFOLD) {

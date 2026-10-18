@@ -4,12 +4,12 @@ Loaded: contract.js, data.js, terrain.js, hydro.js, weather.js, wildlife.js, bui
 
 Read this instead of the module sources. Signatures are the real ones. See docs/ARCHITECTURE.md for semantics.
 
-## BSU.B  — enum/table, 44 keys (e.g. path, road, boardwalk, substation, water_tower, generator, wastewater, founders_hall)
+## BSU.B  — enum/table, 46 keys (e.g. path, road, boardwalk, substation, water_tower, generator, wastewater, founders_hall)
 
 ## BSU.BOARD_CARDS
 - values: 0:string, 1:string, 2:string, 3:string, 4:string, 5:string, 6:string, 7:string
 
-## BSU.B_ORDER  — enum/table, 44 keys (e.g. 0, 1, 2, 3, 4, 5, 6, 7)
+## BSU.B_ORDER  — enum/table, 46 keys (e.g. 0, 1, 2, 3, 4, 5, 6, 7)
 
 ## BSU.EV  — enum/table, 107 keys (e.g. TILE_CHANGED, BUILDING_PLACED, BUILDING_REMOVED, BUILDING_COMPLETE, BUILDING_UPGRADED, BUILDING_FLOODED, BUILDING_DRIED, BUILDING_DAMAGED)
 
@@ -25,7 +25,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - values: 0:string, 1:string, 2:string, 3:string, 4:string, 5:string, 6:string, 7:string, 8:string, 9:string, 10:string, 11:string
 
 ## BSU.LEDGER_INCOME_KEYS
-- values: 0:string, 1:string, 2:string, 3:string, 4:string, 5:string, 6:string, 7:string, 8:string, 9:string, 10:string, 11:string, 12:string, 13:string
+- values: 0:string, 1:string, 2:string, 3:string, 4:string, 5:string, 6:string, 7:string, 8:string, 9:string, 10:string, 11:string, 12:string, 13:string, 14:string
 
 ## BSU.MAP
 - values: W:number, H:number, N:number, TILE_W:number, TILE_H:number, PX_PER_FT:number, CHUNK:number, CHUNK_W:number, CHUNK_H:number
@@ -239,7 +239,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - contract.selfTest()
 
 ## BSU.data
-- values: catalog:object, catalogList:array[44], tabs:array[10], decals:object, names:object, students:object, coaches:array[10], coachQuotes:array[12], staff:object, gatorNames:array[14], leGrand:string, stormNames:array[26], opponents:object, schedule:array[8], calendar:object, ticker:array[62], tickerKinds:object, tickerKindList:array[7], objectives:object, milestones:array[26], voiceCards:array[12], boardCards:array[8], failureCards:object, tutorial:array[7], thibodeaux:array[12], stormQuotes:array[8], overlays:array[6], keys:array[47], toastKeys:object, panKeys:object, rainKinds:object, guide:object, needs:object, requirements:object, coach:array[6], football:object
+- values: catalog:object, catalogList:array[46], tabs:array[10], decals:object, names:object, students:object, coaches:array[10], coachQuotes:array[12], staff:object, gatorNames:array[14], leGrand:string, stormNames:array[26], opponents:object, schedule:array[8], calendar:object, ticker:array[62], tickerKinds:object, tickerKindList:array[7], objectives:object, milestones:array[26], voiceCards:array[12], boardCards:array[8], failureCards:object, tutorial:array[7], thibodeaux:array[12], stormQuotes:array[8], overlays:array[6], keys:array[47], toastKeys:object, panKeys:object, rainKinds:object, guide:object, needs:object, requirements:object, coach:array[6], football:object
 - data.selfTest()
 
 - BSU.dateToDay(str, year)
@@ -259,6 +259,9 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - economy.statement(state)
 - economy.buildingValue(state)
 - economy.repairBill(state)
+- economy.lotsNeeded(state)
+- economy.housingMix(state)
+- economy.roomFees(state)
 - economy.applicants(state)
 - economy.previewApplicants(state, tuition)
 - economy.capacity(state)
@@ -923,7 +926,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 
 - BSU.worldToScreen(tx, ty, elev, cam, vw, vh)
 
-## BSU.params groups (17): time[30], terrain[59], hydro[47], storm[116], wildlife[4], subsidence[17], heat[21], weather[18], econ[62], sports[81], agents[30], build[34], render[59], ui[16], audio[6], palette[34], progress[16]
+## BSU.params groups (17): time[30], terrain[59], hydro[47], storm[116], wildlife[4], subsidence[17], heat[21], weather[18], econ[63], sports[81], agents[30], build[34], render[59], ui[16], audio[6], palette[34], progress[16]
 
 ## BSU.newState(seed) tree
 - v:number
@@ -973,7 +976,7 @@ time. The ONLY window reads are inside the BSU.headlessMode try/catch (§3.5).
 'use strict';
 ============================================================================
 BAYOU STATE — data.js (module 1; immutable tables)
-Owner: nothing at runtime. Assigns BSU.data: the 43-row building catalog (+ row 44 'bridge', bridge pass),
+Owner: nothing at runtime. Assigns BSU.data: the 43-row building catalog (+ row 44 'bridge', bridge pass; rows 45 'bunkhouse' and 46 'suites', housing tiers pass P7),
 tabs, decals, name pools, students/coaches/gators/storms, opponents and the
 schedule, the calendar, the 62 ticker lines, objectives, milestones, Student
 Voice and Board cards, failure cards, the tutorial script, overlays, the key

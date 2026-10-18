@@ -1321,7 +1321,7 @@
     const mk = function (key, text, level) { return { key: key, text: text, level: level, build: (ND[key] || {}).build || null }; };
     const ww = { key: 'wastewater', used: students, cap: fin(cap.wastewater, 1500) };
     let m = terms[0]; for (const t of [terms[1], terms[2], ww]) if (t.cap - t.used < m.cap - m.used) m = t;
-    const need = Math.ceil(students / 600);
+    const need = fin(call('economy', 'lotsNeeded', s), Math.ceil(students / 600));   // P7: Magnolia Suites' parking spaces count toward the requirement
     let binding = null;
     if (m.cap <= m.used) binding = mk(m.key, labelOf(m.key) + ' full (' + m.used + ' / ' + m.cap + ') → build a ' + nameOf(m.key), 'bad');
     else if (terms[3].short > 0) binding = mk('power', terms[3].short + (terms[3].short === 1 ? ' building has' : ' buildings have') + ' no power → build a ' + nameOf('power'), 'bad');
@@ -1338,7 +1338,13 @@
     const out = {};
     const o = call('progress', 'objective', s); const t = o ? objTarget(s, o) : null; if (t) out[t] = 'Goal';
     const n = needsNow(s); const b = n && n.binding;
-    if (b && b.build && unlockOf(s, b.build).ok && !out[b.build]) out[b.build] = b.level === 'ok' ? 'Next' : 'Needed';
+    if (b && b.build) {
+      // P7 housing tiers: the beds fix is the standard Dorm unless cash is short (then the economy Bunkhouse); a parking squeeze also badges the premium Suites (60 spaces each)
+      let pick = b.build;
+      if (b.key === 'beds' && unlockOf(s, 'bunkhouse').ok && fin(s.economy && s.economy.cash, 0) < 1.5 * fin((rowOf('dorm') || {}).cost, 700000)) pick = 'bunkhouse';
+      if (unlockOf(s, pick).ok && !out[pick]) out[pick] = b.level === 'ok' ? 'Next' : 'Needed';
+      if (b.key === 'parking' && unlockOf(s, 'suites').ok && !out.suites) out.suites = 'Needed';
+    }
     return out;
   }
   function compactNum(n) { n = fin(n, 0); return n >= 10000 ? Math.round(n / 1000) + 'k' : n >= 1000 ? (Math.round(n / 100) / 10).toFixed(1).replace(/\.0$/, '') + 'k' : String(n); }
@@ -1385,10 +1391,12 @@
     const out = []; if (!row) return out; const e = row.effects || {};
     const add = function (t) { if (t) out.push(t); };
     if (e.beds) add(e.beds + ' beds');
+    if (e.housingTier && e.beds) { const fee = fin(BSU.params.econ.housing && BSU.params.econ.housing.roomFee[e.housingTier], 0); add(['', 'Economy', 'Standard', 'Premium'][e.housingTier] + ' housing: ' + (fee > 0 ? 'room fee $' + fee + ' a bed each semester' : 'no room fee')); }
+    if (e.parkingSpaces) add(e.parkingSpaces + ' parking spaces (they count toward the lot requirement)');
     if (e.seats) add(e.seats + ' lecture seats');
     if (e.feeds) add('Feeds ' + e.feeds.toLocaleString('en-US') + ' students' + within(e.diningRadius));
     if (e.quality) add('Housing quality ' + '★★★★★'.slice(0, clamp(e.quality | 0, 0, 5)));
-    if (e.happiness && e.happiness.value) add((e.happiness.value > 0 ? '+' : '') + e.happiness.value + ' happiness' + (e.happiness.radius > 0 ? within(e.happiness.radius) : ' campus-wide'));
+    if (e.happiness && e.happiness.value) add((e.happiness.value > 0 ? '+' : '−') + Math.abs(e.happiness.value) + ' happiness' + (e.happiness.radius > 0 ? within(e.happiness.radius) : ' campus-wide'));
     if (e.landmark) add('Landmark +' + e.landmark + ' (prestige)');
     if (e.academic) add('Academic +' + e.academic + ' (prestige)');
     if (e.shelter) add('Shelters ' + e.shelter.toLocaleString('en-US') + ' in a hurricane');

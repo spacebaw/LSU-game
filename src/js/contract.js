@@ -48,13 +48,13 @@
   });   // catalog placeRule (BRIDGE: bridge pass — water-only drag, both ends on land)
   BSU.SPR = freeze({ NIGHT: 1, DAMAGED: 2, PILINGS: 4, SCAFFOLD: 8, RUIN: 16, TIER_SHIFT: 5, TIER_MASK: 3 << 5, BOARDED: 128, FRONT_L: 256, FLOODED: 512 });   // FLOODED (art pass B3): waterline stain + sandbags; render.variantOf sets it from b.flooded   // building sprite variant bits (D17); FRONT_L = entrance (door, walk, lamps) on the SW face (design pass)
 
-  // The 43 catalog ids in GDD §0.3 row order (BSU.B_ORDER[n-1] is row n) + row 44 'bridge' (bridge pass).
+  // The 43 catalog ids in GDD §0.3 row order (BSU.B_ORDER[n-1] is row n) + row 44 'bridge' (bridge pass) + rows 45 'bunkhouse' / 46 'suites' (housing tiers pass, PLAN_V2 P7).
   BSU.B_ORDER = freeze([
     'path', 'road', 'boardwalk', 'substation', 'water_tower', 'generator', 'wastewater', 'founders_hall', 'lecture_hall',
     'library', 'engineering', 'coastal_institute', 'dorm', 'res_tower', 'greek_house', 'dining_hall', 'poboy', 'practice_field',
     'stadium', 'union', 'rec_center', 'health_center', 'quad', 'parking', 'levee', 'floodwall', 'canal', 'pump', 'pond',
     'pilings', 'gator_fence', 'abatement', 'bat_house', 'wildlife_post', 'preserve', 'live_oak', 'cypress', 'azalea',
-    'bell_tower', 'tiger_habitat', 'surge_barrier', 'marsh_restoration', 'rookery', 'bridge'
+    'bell_tower', 'tiger_habitat', 'surge_barrier', 'marsh_restoration', 'rookery', 'bridge', 'bunkhouse', 'suites'
   ]);
   {
     const B = {};
@@ -82,7 +82,7 @@
   // Happiness timer ids (GDD §5.6 table; the only ids progress.timers may carry for happiness).
   BSU.HAPPINESS_TIMERS = freeze(['bellTower', 'wastewater', 'brownout', 'floodwallView', 'evacuation', 'unsheltered', 'boilWater', 'playThroughIt', 'austerity', 'sunbather', 'tuitionFreeze', 'homecomingBudget', 'bigBoil', 'noParking', 'nutriaBounty', 'freePermits', 'surgeBarrier', 'gatorPool', 'beads', 'hurricaneParty', 'goForIt', 'studentVoice']);
   // Ledger keys in Budget-panel print order (ARCHITECTURE §2.7).
-  BSU.LEDGER_INCOME_KEYS = freeze(['tuition', 'state', 'donations', 'research', 'athletics', 'tailgate', 'parking', 'festivals', 'pelts', 'grants', 'endowment', 'disaster', 'insurance', 'misc']);
+  BSU.LEDGER_INCOME_KEYS = freeze(['tuition', 'roomFees', 'state', 'donations', 'research', 'athletics', 'tailgate', 'parking', 'festivals', 'pelts', 'grants', 'endowment', 'disaster', 'insurance', 'misc']);
   BSU.LEDGER_EXPENSE_KEYS = freeze(['salaries', 'upkeep', 'utilities', 'coaching', 'athletics', 'interest', 'repair', 'prep', 'construction', 'demolition', 'boardCards', 'misc']);
   BSU.MONTHS = freeze(['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']);
   BSU.SEASONS = freeze(['spring', 'summer', 'fall', 'winter']);
@@ -355,6 +355,10 @@
       research: { engineering: 12000, coastal: 10000, base: 0.5, coastalEcoDiv: 50, restorationMult: 1.25 },   // §5.2
       concessions: 12,                       // §5.2 athletics
       parkingPer: 600, parkingPay: 4000,     // §5.2
+      housing: {                             // PLAN_V2 P7: the three tiers (effects.housingTier 1 economy / 2 standard / 3 premium)
+        roomFee: [0, 0, 150, 400],           // $ per occupied bed per semester, posted at the Aug 5 and Jan 10 locks (ledger 'roomFees'); index = housingTier
+        mix: { allEconomy: -0.03, premiumShare: 0.2, premiumBonus: 0.03 }   // applicants ×(1 − 3%) when every bed is economy; ×(1 + 3%) when premium beds are ≥ 20% of all beds
+      },
       festivals: { mardiGrasBase: 50000, mardiGrasPer: 5, unionMult: 2, crawfish: 20000, crawfishUnion: 10000, homecoming: 30000 },   // §5.2
       peltPay: 500,                          // §5.2
       grant: 50000, grantObjectives: ['1', '2', '3', '4', '5', '6', '7', '9', '10', '11'],   // §5.2 tutorial grants
@@ -1273,7 +1277,7 @@
       teamRating: 'number', noise: 'object:valueRadius', windShield: 'object:multRadius', illness: 'object:illness',
       drainPerDay: 'number', subsidenceMult: 'number', subsidenceRadius: 'number', pumpTileFt: 'number', pondCapacity: 'number',
       fuelDays: 'number', crest: 'number', surfaceId: 'int', canal: 'boolean', gate: 'boolean', capacityStudents: 'number',
-      parkingPer: 'number', tickets: 'number', revenueMonthly: 'number', coneDays: 'number', coneNarrow: 'number',
+      parkingPer: 'number', parkingSpaces: 'number', housingTier: 'int', tickets: 'number', revenueMonthly: 'number', coneDays: 'number', coneNarrow: 'number',
       ecologyDecayMult: 'number', gatorAvoidRadius: 'number', homeWinBonus: 'number', attendanceSeats: 'number', special: 'array:string'
     }),
     valueRadius: freeze({ value: 'number', radius: 'number' }),
@@ -1342,7 +1346,7 @@
     BSU.SELFTEST = true;
     try {
       for (const k of ['T', 'SURF', 'FLAG', 'SKY', 'OV', 'STORM', 'STORM_PHASE', 'OBJ', 'PLACE', 'SPR', 'B', 'EV', 'MAP']) BSU.assert(Object.isFrozen(BSU[k]), k + ' frozen');
-      BSU.assert(BSU.B_ORDER.length === 44 && Object.keys(BSU.B).length === 44, '44 catalog ids');
+      BSU.assert(BSU.B_ORDER.length === 46 && Object.keys(BSU.B).length === 46, '46 catalog ids');
       BSU.assert(BSU.MILESTONES.length === 26, '26 milestones');
       BSU.assert(new Set(BSU.EV_LIST).size === BSU.EV_LIST.length, 'event names unique');
       BSU.assert(Object.keys(BSU.EV).length === BSU.EV_LIST.length, 'EV constants unique');

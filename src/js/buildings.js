@@ -29,6 +29,7 @@
     summerMonths: PE.utilities.summerMonths,            // [6, 9]
     quadStackCap: 6,                                    // Quad Lawn stacks to +6 (GDD §0.3 row 23)
     quadValue: 2,
+    negAuraCap: 3,                                      // P7: negative happiness auras (Bayou Bunkhouse −1) stack to −3 on a tile
     azaleaBloomBonus: 1,                                // +1 more in bloom (row 38)
     pondStockDays: PH.pond.stockDays,                   // 10
     floodedCoreDays: PE.prestige.blight.floodedDays,    // 3
@@ -1486,6 +1487,7 @@
     A.life.fill(0); A.green.fill(0); A.dining.fill(0); A.shade.fill(0); A.heat.fill(1); A.mosq.fill(0); A.noise.fill(0);
     const quad = new Float32Array(N);
     const shadeMiss = new Float32Array(N); shadeMiss.fill(1);
+    let neg = null;
     for (const b of M.list(state)) {
       const row = cat[b.type]; if (!row || !isComplete(b)) continue;
       const eff = M.effective(state, b.id); if (eff <= 0) continue;
@@ -1496,7 +1498,9 @@
       } else if (b.type === 'pond' || b.type === 'rookery') {
         if (hp.radius > 0) forRadius(b.tx, b.ty, b.w, b.h, hp.radius, function (i) { A.green[i] += hp.value * eff; });
       } else if (hp.radius > 0 && hp.value > 0) {
-        forRadius(b.tx, b.ty, b.w, b.h, hp.radius, function (i) { const v = hp.value * eff; if (v > A.life[i]) A.life[i] = v; });
+        forRadius(b.tx, b.ty, b.w, b.h, hp.radius, function (i) { const v = hp.value * eff; if (v > A.life[i]) A.life[i] = v; });      } else if (hp.radius > 0 && hp.value < 0) {   // P7: a negative aura (Bayou Bunkhouse −1 within 4): stacks to LOCAL.negAuraCap, subtracted from the sampled term after the positive pass
+        neg = neg || new Float32Array(N);
+        forRadius(b.tx, b.ty, b.w, b.h, hp.radius, function (i) { neg[i] = Math.min(LOCAL.negAuraCap, neg[i] - hp.value * eff); });
       }
       if (row.effects.feeds > 0 && row.effects.diningRadius > 0) forRadius(b.tx, b.ty, b.w, b.h, row.effects.diningRadius, function (i) { A.dining[i] = 1; });
       if (row.effects.heat.radius > 0 && row.effects.heat.mult > 0) forRadius(b.tx, b.ty, b.w, b.h, row.effects.heat.radius, function (i) { A.heat[i] = Math.min(A.heat[i], row.effects.heat.mult); });
@@ -1513,6 +1517,7 @@
       }
     }
     for (let i = 0; i < N; i++) { A.green[i] += quad[i]; A.shade[i] = Math.min(P.heat.shadeCap, 1 - shadeMiss[i]); }
+    if (neg) for (let i = 0; i < N; i++) if (neg[i] > 0) A.life[i] = Math.max(0, A.life[i] - neg[i]);
     c.aurasDirty = false;
   }
   /** {life, green, dining, shade, heat, mosq, noise} typed arrays; rebuilt when dirty */
@@ -1551,7 +1556,8 @@
       unrepaired: 0, floodedCore: false, powerRadiusHits: 0, generatorsRunning: c.generatorsRunning, brownout: c.brownout, pumpsRunning: 0,
       shelter: null, academicFlags: { library: false, engineering: false, coastal: false },
       roadAdjacentDorms: 0, pumpsNearDorms: 0, barriersNearDorms: 0, floodwallDormsNoOak: 0, wastewaterPlants: 0, parkingLots: 0,
-      bridges: 0, buildingValue: 0, research: 0, landmarkList: []
+      bridges: 0, buildingValue: 0, research: 0, landmarkList: [],
+      bedsEconomy: 0, bedsStandard: 0, bedsPremium: 0, parkingSpaces: 0   // P7: beds by housing tier (× effectiveness) and the parking spaces housing brings with it
     };
     const A = M.auras(state);
     let qualW = 0, housingTiles = 0, housingDining = 0;
@@ -1569,7 +1575,11 @@
       s.feeds += row.effects.feeds * eff;
       s.landmarks += tr ? tr.landmark : row.effects.landmark;
       s.buildingValue += row.cost + (row.tiers.slice(0, b.tier).reduce(function (a, t) { return a + t.cost; }, 0));
-      if (row.effects.beds > 0) { qualW += row.effects.beds * eff; s.quality += row.effects.quality * row.effects.beds * eff; }
+      if (row.effects.beds > 0) {
+        qualW += row.effects.beds * eff; s.quality += row.effects.quality * row.effects.beds * eff;   // housing quality = the bed-weighted mean of each row's tier quality (P7: 1 / 2 / 3)
+        const ht = row.effects.housingTier | 0; s[ht === 1 ? 'bedsEconomy' : ht === 3 ? 'bedsPremium' : 'bedsStandard'] += row.effects.beds * eff;
+      }
+      if (row.effects.parkingSpaces > 0) s.parkingSpaces += row.effects.parkingSpaces * eff;   // P7: Magnolia Suites' 60 spaces count toward the 1-lot-per-600-students requirement
       if (b.type === 'quad') s.oaks++;
       if (b.type === 'pond' && b.data.stockedDay >= 0 && day >= b.data.stockedDay) s.stockedPonds++;
       if (b.type === 'wildlife_post') s.posts++;
@@ -1600,6 +1610,7 @@
     if (state.economy && state.economy.westCampus) s.landmarks += PE.landmarks.west;
     for (let i = 0; i < N; i++) if ((tl.surface[i] === SURF.ROAD && (tl.flags[i] & (FLAG.BAYOU | FLAG.OPEN_WATER))) || tl.surface[i] === SURF.BRIDGE) s.bridges++;
     s.beds = Math.round(s.beds); s.seats = Math.round(s.seats); s.feeds = Math.round(s.feeds);
+    s.bedsEconomy = Math.round(s.bedsEconomy); s.bedsStandard = Math.round(s.bedsStandard); s.bedsPremium = Math.round(s.bedsPremium); s.parkingSpaces = Math.round(s.parkingSpaces);
     s.shelter = M.shelter(state);
     return s;
   }
@@ -1607,7 +1618,7 @@
   M.stats = function (state) {
     const c = cache(state), day = dayOf(state);
     try { if (!c.statsCache || c.statsDay !== day) { c.statsCache = computeStats(state); c.statsDay = day; } }
-    catch (e) { if (BSU.SELFTEST) throw e; BSU.error('buildings', 'stats', e); if (!c.statsCache) c.statsCache = { beds: 0, seats: 0, feeds: 0, diningCovered: 0, landmarks: 0, oaks: 0, cypress: 0, stockedPonds: 0, posts: 0, quality: 0, lots: 0, unrepaired: 0, floodedCore: false, powerRadiusHits: 0, generatorsRunning: 0, brownout: false, pumpsRunning: 0, shelter: { capacity: 0, students: 0, ok: true, lines: [] }, academicFlags: { library: false, engineering: false, coastal: false }, roadAdjacentDorms: 0, pumpsNearDorms: 0, barriersNearDorms: 0, floodwallDormsNoOak: 0, wastewaterPlants: 0, parkingLots: 0, bridges: 0, buildingValue: 0 }; }
+    catch (e) { if (BSU.SELFTEST) throw e; BSU.error('buildings', 'stats', e); if (!c.statsCache) c.statsCache = { beds: 0, seats: 0, feeds: 0, diningCovered: 0, landmarks: 0, oaks: 0, cypress: 0, stockedPonds: 0, posts: 0, quality: 0, lots: 0, unrepaired: 0, floodedCore: false, powerRadiusHits: 0, generatorsRunning: 0, brownout: false, pumpsRunning: 0, shelter: { capacity: 0, students: 0, ok: true, lines: [] }, academicFlags: { library: false, engineering: false, coastal: false }, roadAdjacentDorms: 0, pumpsNearDorms: 0, barriersNearDorms: 0, floodwallDormsNoOak: 0, wastewaterPlants: 0, parkingLots: 0, bridges: 0, buildingValue: 0, bedsEconomy: 0, bedsStandard: 0, bedsPremium: 0, parkingSpaces: 0 }; }
     return c.statsCache;
   };
   /** Σ building upkeep (tier rows; pilings +5%; post ×.5 with postUpkeepHalf) + per-tile drag upkeep + azalea $100 */
