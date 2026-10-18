@@ -32,7 +32,7 @@
 //   │  ├─ #notifications  .notif[data-kind]
 //   │  ├─ #decision-toast.hidden  #dt-text #dt-countdown.bar #btn-dt-yes #btn-dt-no
 //   │  ├─ #inspect.panel.side.hidden  #insp-title #insp-sub #btn-insp-close canvas#insp-sprite #insp-body #insp-actions
-//   │  ├─ #ghost-label.hidden · #tooltip.hidden · #popover.hidden(#pop-title .pop-line×4 #pop-next)
+//   │  ├─ #ghost-label.hidden · #tooltip.hidden · #popover.hidden(#pop-title .pop-line×7 #pop-next)
 //   │  ├─ #ticker  #ticker-track · #btn-ticker-log · #ticker-log.hidden
 //   │  ├─ #palette  #btn-build-menu · #palette-tabs(.tab[data-tab] .pip) · #palette-items(.item[data-id]) · #btn-bulldoze · #btn-palette-info
 //   │  ├─ #build-menu.hidden  #bm-cats(.bm-cat[data-tab]) · #bm-cards(.bm-card[data-id] .bm-badge .bm-reqs .bm-lock) · #bm-detail · #bm-foot   (UX pass; key G)
@@ -73,7 +73,7 @@
     dragThreshold: fin(PR.dragThreshold, 4), tooltipMs: fin(PR.tooltipMs, 300), tickerPxPerSec: fin(PR.tickerPxPerSec, 60),
     notifMs: fin(PR.notifMs, 12000), notifMax: fin(PR.notifMax, 3), notifTicks: 120, bubbleIdleMs: fin(PR.bubbleIdleMs, 8000),
     bubbleMs: fin(PR.bubbleMs, 6000), hintMs: 6000, hintTicks: 60, panPx: fin(PR.panPxPerFrame, 12), refreshMs: fin(PU.panelRefreshMs, 500),
-    deltaMs: 600, odoMs: 150, holdTicks: 600, logMax: fin(PU.tickerMax, 30), popLines: 4, minimapPx: fin(PR.minimapPx, 160),
+    deltaMs: 600, odoMs: 150, holdTicks: 600, logMax: fin(PU.tickerMax, 30), popLines: 7, minimapPx: fin(PR.minimapPx, 160),
     compactWidth: fin(PU.compactWidth, 1180), hudStaggerMs: fin(PT.hudStaggerMs, 100), ringThrottleMs: 50, skipAfterTick: fin(PT.skipAfterTick, 150),
     autoCardTicksPerSec: 10, toastTicks: fin(PT.toastTicks, 80), cardWords: fin(PU.cardWordsMax, 12)
   };
@@ -781,7 +781,7 @@
       case 'speed8': M.setSpeed(s, 8); return true;
       case 'budget': M.openPanel(s.ui.panel === 'budget' ? null : 'budget'); return true;
       case 'season': M.openPanel(s.ui.panel === 'season' ? null : 'season'); return true;
-      case 'storm': { if (!call('weather', 'cone', s)) return true; M.openPanel(s.ui.panel === 'storm' ? null : 'storm'); return true; }
+      case 'storm': M.openPanel(s.ui.panel === 'storm' ? null : 'storm'); return true;   // qa pass 4: no cone gate — since P4 the panel offers precautions with no storm (the topbar button never had the gate)
       case 'milestones': M.openPanel(s.ui.panel === 'milestones' ? null : 'milestones'); return true;
       case 'overlayFlood': case 'overlayWater': case 'overlayMosquito': case 'overlayPower': case 'overlayCoverage': case 'overlayEcology': {
         const ov = { overlayFlood: OV.FLOOD, overlayWater: OV.WATER, overlayMosquito: OV.MOSQUITO, overlayPower: OV.POWER, overlayCoverage: OV.COVERAGE, overlayEcology: OV.ECOLOGY }[action];
@@ -1102,6 +1102,7 @@
       setText(E['insp-sub'], r.name + (b.tier > 0 && r.tiers && r.tiers[b.tier - 1] ? ' · ' + (r.tiers[b.tier - 1].name || 'Tier ' + b.tier) : '') + (b.pilings ? ' · on pilings' : ''));
       call('render', 'drawIcon', spr, b.type); hasSprite = true;
       if (b.ruin) body.appendChild(row('Status', 'Ruin', 'bad')); else if (b.built < 1) body.appendChild(row('Status', 'Under construction ' + Math.round(fin(b.built, 0) * 100) + '%')); else if (b.flooded) body.appendChild(row('Status', 'Flooded', 'bad')); else if (b.blackout) body.appendChild(row('Status', 'Blackout', 'bad')); else if (b.closedUntil >= 0 && b.closedUntil > dayOf(s)) body.appendChild(row('Status', 'Closed · reopens ' + BSU.formatDate(b.closedUntil)));
+      else if (call('buildings', 'gatorClosed', s, b.id)) body.appendChild(row('Status', 'Closed · a gator is too close (relocate it)', 'bad'));   // qa pass 4: a gator-closed kitchen served nobody and said nothing
       const ms = ef.feeds ? call('buildings', 'menuOf', s, b.id) : null;   // P6: a kitchen feeds its menu's throughput
       if (ef.beds) body.appendChild(row('Beds', String(ef.beds))); if (ef.seats) body.appendChild(row('Seats', String(ef.seats))); if (ef.feeds) body.appendChild(row('Feeds', ms ? '~' + ms.throughput.toLocaleString('en-US') + ' a day (menu)' : String(ef.feeds)));
       if (ef.quality) body.appendChild(row('Quality', stars(ef.quality)));
@@ -1723,7 +1724,7 @@
   function issueFirstOf(s, kinds) { const I = issuesApi(); if (!I) return null; const l = I.ofKinds(s, kinds); return l.length ? l[0] : null; }
   /** which issue kinds a notification / needs line is about (used to add a 'Locate' button) */
   function locateKindsOf(spec) {
-    if (!spec) return null;
+    if (!spec || spec.milestone) return null;   // qa pass 4: 'Milestone: Gator Wrangler' matched the gator heuristic and grew a Locate button
     if (spec.locate) { const lc = spec.locate; if (typeof lc === 'string') return (issuesApi() && issuesApi().families()[lc]) || [lc]; if (Array.isArray(lc)) return lc; if (lc.kind) return [lc.kind]; if (lc.family) return (issuesApi() && issuesApi().families()[lc.family]) || null; return null; }
     const t = String(spec.text || ''); const F = issuesApi() ? issuesApi().families() : null; if (!F) return null;
     if (/gator/i.test(t)) return F.gator; if (/flood/i.test(t)) return F.flood; if (/levee/i.test(t)) return F.levee; if (/mosquito/i.test(t)) return F.mosquito;
@@ -1756,6 +1757,7 @@
   /** rows that fit between the overlay keys and the palette; < 2 → chip only ("space is tight") */
   function trayRowsFit() {
     try {
+      if (E.hud && E.hud.classList.contains('inspect-open')) return 0;   // qa pass 4: the tray is display:none beside an open inspect panel (style.css); no rows to build
       const sc = effScale || 1, px = 10 * sc, top = (5.6 + 28.4) * px, bot = (18 + 2.8 + 2 + 1) * px, head = 3.4 * px, row = 3.9 * px;
       const h = fin(window.innerHeight, 800) - top - bot - head; return clamp(Math.floor(h / row), 0, 6);
     } catch (e) { return 4; }
@@ -2050,7 +2052,7 @@
   M.panel = function () { const s = stateOf(); return s && s.ui ? s.ui.panel : null; };
   function refreshPanel(s, name) { const p = panels[name]; if (!p || !p.el) return; p.lastRefresh = clock; try { if (typeof p.refresh === 'function') p.refresh(s, p.el); } catch (e) { uerr('panel:refresh:' + name, e); } }
   /** UI scale pass: a panel wide enough to reach the docked cards (goals tracker, minimap, overlay keys, notifications, voice card) fades just the ones it overlaps, so no half-hidden text peeks out around it */
-  const FADE_IDS = ['objective-card', 'minimap-wrap', 'overlay-buttons', 'notifications', 'voice-card', 'alert-strip'];
+  const FADE_IDS = ['objective-card', 'minimap-wrap', 'overlay-buttons', 'notifications', 'voice-card', 'alert-strip', 'issues-tray', 'undo-chip'];   // qa pass 4: the tray sat crisp beside an open panel
   let fadeAt = -1e9;
   function syncPanelFade(s) {
     if (!dom() || clock - fadeAt < 250) return; fadeAt = clock;

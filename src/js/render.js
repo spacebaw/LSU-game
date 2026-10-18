@@ -1377,6 +1377,9 @@
     blit(g, ref, e.sx, e.sy, zsOf(ref));
     if (e.c) { const r = getRef('bubble', 0, (frameNo >> 3) % 3); if (r) blit(g, r, e.sx, e.sy + ref.oy * zsOf(ref) - C.bubbleLift * zoomNow, zsOf(r)); }
   }
+  /** qa pass 4: fans on the ring of tiles around a live venue are drawn at the field's scale (FB_SCALE), so they no longer tower over the half-size players */
+  function drawAgentHalf(e, g) { const ref = e.ref; if (!ref) return; blit(g, ref, e.sx, e.sy, zsOf(ref) * FB_SCALE); }
+  function fbRing(v, x, y) { return !!v && x >= v.tx - 2 && x < v.tx + v.w + 2 && y >= v.ty - 2 && y < v.ty + v.h + 2; }
   function drawParticle(e, g) {
     const col = M.particleColors[(e.variant | 0) & 15] || GOLD;
     g.fillStyle = typeof e.id === 'string' && e.id ? e.id : col;
@@ -2191,6 +2194,7 @@
         const e = pushMover('agent', a, id, fin(a.look, 0) | 0, fr, groundElev, state, true);
         if (e) {
           e.c = a.state === 'FLEE' ? 1 : 0; e.b = a; agentsDrawn++;
+          if (FB.live && fbRing(FB.venue, poseX, poseY)) e.draw = drawAgentHalf;   // qa pass 4: the tailgate ring at the field's scale during a game
           if (hbDraw.length) { const ow = t.owner[clamp(Math.floor(poseY), 0, HGT - 1) * W + clamp(Math.floor(poseX), 0, W - 1)]; if (ow >= 0) { const hk = habitatKeyOf(ow); if (hk > 0) { e.key = hk; keys[count - 1] = hk; } } }   // habitat pass: a student on the plaza stands in front of the glass
         }
         if (a.state === 'FLEE' && a.fleeGator >= 0) fleeStamp[a.fleeGator & 63] = frameNo;
@@ -2277,7 +2281,7 @@
           for (let k = 0; k < kinds.length && edge.length; k++) {
             const i = edge[hash(k, venue.id + 1) % edge.length], tx = i & 63, ty = i >> 6;
             if (!inView(tx, ty, 1)) continue;
-            const e = push('tailgate', tx, ty, fin(elev[i], 0), 2, drawSprite); e.ref = getRef(kinds[k], k & 3, (frameNo >> 3) & 1); e.id = kinds[k]; tileScreen(e);
+            const e = push('tailgate', tx, ty, fin(elev[i], 0), 2, FB.live ? drawFbSprite : drawSprite); e.ref = getRef(kinds[k], k & 3, (frameNo >> 3) & 1); e.id = kinds[k]; tileScreen(e);   // qa pass 4: tents and smokers at the field's scale during a game
           }
         }
       }

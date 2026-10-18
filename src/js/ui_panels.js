@@ -1000,7 +1000,7 @@
     show(host._prospectsK, board.length > 0); show(host._prospects, board.length > 0); show(host._recHead, board.length > 0); show(host._recEmpty, board.length === 0);
     setText(host._recEmpty, hasTeam ? (RT.boardClosed || 'The prospect board opens Dec 9.') : 'Recruiting starts with a team.');
     const lockText = daysLeft > 0 ? fill(RT.locksIn || 'locks in {d} days', { d: daysLeft }) : daysLeft === 0 ? (RT.lockedToday || 'locks today') : (RT.locks || 'Board locks Aug 5');
-    setText(host._recHead, (B ? 'Headroom ' + money(Math.max(0, headroom)) + ' of ' + money(B.total) + ' · ' : '') + fill(RT.signedCounter || 'signed {a} of {n}', { a: nSigned, n: per * 2 }) + ' (' + signedOn('offense') + ' offense, ' + signedOn('defense') + ' defense of ' + per + ' each) · ' + (RT.locks || 'Board locks Aug 5') + (daysLeft >= 0 ? ', ' + lockText : '') + ' · ' + fill(RT.boardOpen || '', { n: per }));
+    setText(host._recHead, (B ? 'Headroom ' + money(Math.max(0, headroom)) + ' of ' + money(B.total) + ' · ' : '') + fill(RT.signedCounter || 'signed {a} of {n}', { a: nSigned, n: per * 2 }) + ' (' + signedOn('offense') + ' offense, ' + signedOn('defense') + ' defense of ' + per + ' each) · ' + (daysLeft >= 0 ? 'Board ' + lockText + ' (' + ((BSU.params.sports.schedule || {}).recruitDate || 'Aug 5') + ')' : (RT.locks || 'Board locks Aug 5')) + ' · ' + fill(RT.boardOpen || '', { n: per }));
     region(host, 'prospects', JSON.stringify([board.map(function (p) { return [p.name, p.pos, p.rating, p.cost, !!p.signed]; }), !!(pb && pb.answered), Math.round(headroom / 1000), per]), host._prospects, function (box) {
       if (!board.length) return;
       ['offense', 'defense'].forEach(function (side) {

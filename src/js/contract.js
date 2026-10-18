@@ -823,7 +823,7 @@
     'setpiece:start', 'setpiece:end', 'setpiece:skip', 'speed:changed',
     'decision:open', 'decision:closed',
     'agent:flee', 'agent:desireLine', 'agent:arrive',
-    'ui:notify', 'ui:ticker', 'ui:panel', 'ui:overlay', 'ui:tool',
+    'ui:notify', 'ui:ticker', 'ui:panel', 'ui:overlay', 'ui:tool', 'ui:buildMenu',
     'camera:moved',
     'save:written', 'save:loaded',
     'error'

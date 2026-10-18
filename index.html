@@ -239,6 +239,7 @@ input.rename{width:100%;font:700 1.6rem/1.2 var(--font-title);color:var(--text);
 #ticker-track{position:absolute;left:0;top:0;height:var(--ticker-h);line-height:var(--ticker-h);white-space:nowrap;font-size:1.4rem;color:var(--text);padding-left:var(--gutter);cursor:pointer;will-change:transform}
 #ticker-track:not(:empty)::before{content:"▸ ";color:var(--gold)}
 #ticker-track[data-kind="danger"]{color:#FF9A94} #ticker-track[data-kind="water"]{color:#9ED3F4} #ticker-track[data-kind="wildlife"]{color:#8FE0B5} #ticker-track[data-kind="money"],#ticker-track[data-kind="sports"]{color:var(--gold-hi)}
+#ticker::after{content:"";position:absolute;right:0;top:0;bottom:0;width:calc(var(--gutter) * 2 + 3.2rem);background:rgb(14,18,48);z-index:1}   /* qa pass 4: the marquee ran under and past the log button */
 #btn-ticker-log{position:absolute;right:var(--gutter);top:2px;padding:0;width:3.2rem;min-width:3.2rem;height:2.4rem;min-height:2.4rem;line-height:2.2rem;z-index:1;font-size:1.4rem}
 #ticker-log{position:absolute;right:var(--side);bottom:calc(var(--ticker-h) + .8rem);width:48rem;max-height:36rem;overflow-y:auto;padding:1.2rem 1.6rem;font-size:1.3rem;line-height:1.4;z-index:5}
 .log-line{display:flex;gap:1.2rem;padding:.6rem 0;border-bottom:1px solid rgba(255,255,255,.06);cursor:pointer}
@@ -369,7 +370,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
 @keyframes bm-pulse{0%,100%{box-shadow:0 0 0 0 rgba(253,208,35,.0);transform:none} 40%{box-shadow:0 0 0 .6rem rgba(253,208,35,.45),0 0 2.4rem rgba(253,208,35,.5);transform:scale(1.03)} }
 .bm-card.pulse{animation:bm-pulse 1.3s ease-in-out 2;border-color:var(--gold)}
 #hud.bm-open #hint,#hud.bm-open #tooltip{display:none !important}
-#hud.bm-open #objective-card,#hud.bm-open #minimap-wrap,#hud.bm-open #overlay-buttons,#hud.bm-open #alert-strip,#hud.bm-open #notifications{opacity:.12;pointer-events:none;transition:opacity .2s}
+#hud.bm-open #objective-card,#hud.bm-open #minimap-wrap,#hud.bm-open #overlay-buttons,#hud.bm-open #alert-strip,#hud.bm-open #notifications,#hud.bm-open #undo-chip{opacity:.12;pointer-events:none;transition:opacity .2s}
 #objective-card,#minimap-wrap,#overlay-buttons,#notifications,#voice-card{transition-property:opacity,transform,width,padding;transition-duration:.2s}
 #hud .hud-fade{opacity:.12;pointer-events:none}
 .bm-card.reco .bm-name{padding-right:12.4rem}
@@ -475,7 +476,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
 /* issue spotlight */
 #issues-tray{position:absolute;right:var(--side);top:calc(var(--topbar-h) + 28.4rem);width:27rem;display:flex;flex-direction:column;gap:.4rem;pointer-events:auto;transition:transform .2s;z-index:3}
 #hud:has(#legend:not(.hidden)) #issues-tray{top:calc(var(--topbar-h) + 31.4rem)}
-#hud.inspect-open #issues-tray{transform:translateX(calc(-1 * var(--inspect-w) - var(--gutter)))}
+#hud.inspect-open #issues-tray{display:none}   /* qa pass 4: shifted beside the inspect panel it sat on the notification stack at every width and scale; issues stay reachable (I, minimap pips) */
 #hud.setpiece #issues-tray{opacity:0;pointer-events:none}
 #issues-head{display:flex;align-items:center;gap:.6rem;padding:.5rem .6rem .5rem 1rem;border-radius:var(--radius-sm);background:var(--panel-bg);border:1px solid var(--line);box-shadow:var(--shadow);font-size:1.3rem;line-height:1.3;cursor:pointer;min-height:3.4rem}
 #issues-head .n{font-weight:700;color:var(--gold-hi);white-space:nowrap} #issues-head.clear .n{color:var(--good)}
@@ -1361,7 +1362,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     'setpiece:start', 'setpiece:end', 'setpiece:skip', 'speed:changed',
     'decision:open', 'decision:closed',
     'agent:flee', 'agent:desireLine', 'agent:arrive',
-    'ui:notify', 'ui:ticker', 'ui:panel', 'ui:overlay', 'ui:tool',
+    'ui:notify', 'ui:ticker', 'ui:panel', 'ui:overlay', 'ui:tool', 'ui:buildMenu',
     'camera:moved',
     'save:written', 'save:loaded',
     'error'
@@ -20352,7 +20353,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     try {
       const sp = state.sports, st = staffOf(state), e = state.economy || {}, year = yearOf(state);
       const prestige = num(e.prestige, 0), max = maxStarsFor(prestige), per = Math.max(1, num(PF.starsPerPrestige, 20));
-      const view = { year: st.lastRefreshYear, prestige: prestige, maxStars: max, reachStars: Math.min(PS.starMax, max + int(PF.reachStars, 1)), nextPrestige: max >= PS.starMax ? 0 : Math.max(0, max * per - prestige),
+      const view = { year: st.lastRefreshYear, prestige: prestige, maxStars: max, reachStars: Math.min(PS.starMax, max + int(PF.reachStars, 1)), nextPrestige: max >= PS.starMax ? 0 : Math.max(0, Math.ceil(max * per - prestige - 1e-9)),   // qa pass 4: whole points (prestige is a float; the hint printed 4.6484960003)
         perStar: per, reachSalary: num(PF.reachSalary, 1.6), buyoutShare: num(PF.buyoutShare, 0.5), raiseShare: num(PF.poach.raise, 0.25), terms: staffTerms(state), candidates: {}, offers: {}, hasTeam: !!sp.hasTeam };
       for (let i = 0; i < ROLES.length; i++) {
         const r = ROLES[i], c = recordOf(state, r), sty = styleOf(r, c);
@@ -28886,6 +28887,9 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     blit(g, ref, e.sx, e.sy, zsOf(ref));
     if (e.c) { const r = getRef('bubble', 0, (frameNo >> 3) % 3); if (r) blit(g, r, e.sx, e.sy + ref.oy * zsOf(ref) - C.bubbleLift * zoomNow, zsOf(r)); }
   }
+  /** qa pass 4: fans on the ring of tiles around a live venue are drawn at the field's scale (FB_SCALE), so they no longer tower over the half-size players */
+  function drawAgentHalf(e, g) { const ref = e.ref; if (!ref) return; blit(g, ref, e.sx, e.sy, zsOf(ref) * FB_SCALE); }
+  function fbRing(v, x, y) { return !!v && x >= v.tx - 2 && x < v.tx + v.w + 2 && y >= v.ty - 2 && y < v.ty + v.h + 2; }
   function drawParticle(e, g) {
     const col = M.particleColors[(e.variant | 0) & 15] || GOLD;
     g.fillStyle = typeof e.id === 'string' && e.id ? e.id : col;
@@ -29700,6 +29704,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
         const e = pushMover('agent', a, id, fin(a.look, 0) | 0, fr, groundElev, state, true);
         if (e) {
           e.c = a.state === 'FLEE' ? 1 : 0; e.b = a; agentsDrawn++;
+          if (FB.live && fbRing(FB.venue, poseX, poseY)) e.draw = drawAgentHalf;   // qa pass 4: the tailgate ring at the field's scale during a game
           if (hbDraw.length) { const ow = t.owner[clamp(Math.floor(poseY), 0, HGT - 1) * W + clamp(Math.floor(poseX), 0, W - 1)]; if (ow >= 0) { const hk = habitatKeyOf(ow); if (hk > 0) { e.key = hk; keys[count - 1] = hk; } } }   // habitat pass: a student on the plaza stands in front of the glass
         }
         if (a.state === 'FLEE' && a.fleeGator >= 0) fleeStamp[a.fleeGator & 63] = frameNo;
@@ -29786,7 +29791,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
           for (let k = 0; k < kinds.length && edge.length; k++) {
             const i = edge[hash(k, venue.id + 1) % edge.length], tx = i & 63, ty = i >> 6;
             if (!inView(tx, ty, 1)) continue;
-            const e = push('tailgate', tx, ty, fin(elev[i], 0), 2, drawSprite); e.ref = getRef(kinds[k], k & 3, (frameNo >> 3) & 1); e.id = kinds[k]; tileScreen(e);
+            const e = push('tailgate', tx, ty, fin(elev[i], 0), 2, FB.live ? drawFbSprite : drawSprite); e.ref = getRef(kinds[k], k & 3, (frameNo >> 3) & 1); e.id = kinds[k]; tileScreen(e);   // qa pass 4: tents and smokers at the field's scale during a game
           }
         }
       }
@@ -31269,9 +31274,9 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
           else if (b.type === 'stadium' && (b.tier | 0) >= 2 && b.built >= 1 && !b.ruin && !b.blackout && game && game.home) {
             // six masts around the bowl, cones rotated toward the field
             const rx = (span) * 14 * z, ry = span * 7 * z, fy = cy - 18 * z;
-            for (let m = 0; m < 6 && lightsN < LMAX; m++) { const ang = (m / 6) * Math.PI * 2 + 0.3; const mx = cx + Math.cos(ang) * rx, my = fy + Math.sin(ang) * ry - 40 * z; pushLight('mast', mx, my, 1.9, 0.26, Math.atan2(fy - my, cx - mx) - Math.PI / 2); }   // qa pass 3: 0.42 still whited out midfield at the game camera's 2×, hiding the band and the ball   // B5: six overlapping cones used to white out the bowl; the haze below carries the glow now
-            pushLight('glow', cx, fy, 7 * span * 0.25, 0.32, 0);
-            if (FXO.haze && hazeN < 2) { hazeX[hazeN] = cx; hazeY[hazeN] = fy - 22 * z; hazeR[hazeN] = span * 38 * z * (1 + 0.15 * ((b.tier | 0) - 2)); hazeA[hazeN] = 0.9; hazeN++; }
+            for (let m = 0; m < 6 && lightsN < LMAX; m++) { const ang = (m / 6) * Math.PI * 2 + 0.3; const mx = cx + Math.cos(ang) * rx, my = fy + Math.sin(ang) * ry - 40 * z; pushLight('mast', mx, my, 1.9, 0.13, Math.atan2(fy - my, cx - mx) - Math.PI / 2); }   // qa pass 4: 0.26 × six cones + the glow still whited out midfield (fireworks vanished)   // qa pass 3: 0.42 still whited out midfield at the game camera's 2×, hiding the band and the ball   // B5: six overlapping cones used to white out the bowl; the haze below carries the glow now
+            pushLight('glow', cx, fy, 7 * span * 0.25, 0.14, 0);
+            if (FXO.haze && hazeN < 2) { hazeX[hazeN] = cx; hazeY[hazeN] = fy - 22 * z; hazeR[hazeN] = span * 38 * z * (1 + 0.15 * ((b.tier | 0) - 2)); hazeA[hazeN] = 0.5; hazeN++; }
           }
         } else if (!inScreen(e.sx, e.sy)) continue;
         else if (e.kind === 'bonfire') pushLight('fire', e.sx, e.sy - 8 * z, 1.4 + 0.3 * ((frameNo >> 1) % 3) / 2, 0.95, 0);
@@ -31545,7 +31550,8 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     if (!at) return;
     const r = rng(), ox = (r.float() - 0.5) * 90 * scale, oy = (r.float() - 0.5) * 30 * scale, zz = at.z + 90 + r.float() * 40;
     emit('confetti', at.x + ox, at.y + oy, Math.round(30 * scale), { z: zz, vx: 0, vy: 0, vz: 40, spread: 6, jitter: 1, size: 3, life: 1500 });
-    addShell(at.x + ox, at.y + oy, at.z, 150 + 60 * r.float(), 1);   // B5: a rising rocket and a trailed burst with bloom (render_fx passFireworks)
+    const zc = Math.max(1, fin(camOf(state).zoom, 1));   // qa pass 4: at the 2× game camera a 150–210 px apex burst under the top bar; scale the climb so the burst stays over the bowl
+    addShell(at.x + ox, at.y + oy, at.z, (150 + 60 * r.float()) / Math.sqrt(zc), 1);   // B5: a rising rocket and a trailed burst with bloom (render_fx passFireworks)
   }
   function subscribe() {
     if (subscribed || !BSU.events || typeof BSU.events.on !== 'function') return; subscribed = true;
@@ -31823,12 +31829,14 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
   }
   function passBeacons(state, g, view) {
     const I = issuesApi(); if (!I || !state || !state.tiles) return;
+    if (state.setPiece) return;   // qa pass 4: set pieces are cinematic (the tray already hides); beacons flashed over the stadium mid-montage
     if (I.spotlight()) return;   // the spotlight pass draws them above the dim
     const t0 = nowMs(); const issues = I.list(state), sel = I.selected(state);
     issStats.drawn = drawBeacons(state, g, view, issues, sel, t0); issStats.ms = nowMs() - t0; issStats.frames++;
   }
   function passSpotlight(state, g, view) {
     const I = issuesApi(); if (!I || !state || !state.tiles) return;
+    if (state.setPiece) return;   // qa pass 4: as passBeacons
     const t0 = nowMs(); const issues = I.list(state), sel = I.selected(state), z = (camOf(state).zoom) || 1;
     if (I.spotlight()) {
       // dim everything except the issue tiles (even-odd: the viewport minus every outline; rects deduped so stacked issues do not cancel)
@@ -31928,7 +31936,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
 //   │  ├─ #notifications  .notif[data-kind]
 //   │  ├─ #decision-toast.hidden  #dt-text #dt-countdown.bar #btn-dt-yes #btn-dt-no
 //   │  ├─ #inspect.panel.side.hidden  #insp-title #insp-sub #btn-insp-close canvas#insp-sprite #insp-body #insp-actions
-//   │  ├─ #ghost-label.hidden · #tooltip.hidden · #popover.hidden(#pop-title .pop-line×4 #pop-next)
+//   │  ├─ #ghost-label.hidden · #tooltip.hidden · #popover.hidden(#pop-title .pop-line×7 #pop-next)
 //   │  ├─ #ticker  #ticker-track · #btn-ticker-log · #ticker-log.hidden
 //   │  ├─ #palette  #btn-build-menu · #palette-tabs(.tab[data-tab] .pip) · #palette-items(.item[data-id]) · #btn-bulldoze · #btn-palette-info
 //   │  ├─ #build-menu.hidden  #bm-cats(.bm-cat[data-tab]) · #bm-cards(.bm-card[data-id] .bm-badge .bm-reqs .bm-lock) · #bm-detail · #bm-foot   (UX pass; key G)
@@ -31969,7 +31977,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     dragThreshold: fin(PR.dragThreshold, 4), tooltipMs: fin(PR.tooltipMs, 300), tickerPxPerSec: fin(PR.tickerPxPerSec, 60),
     notifMs: fin(PR.notifMs, 12000), notifMax: fin(PR.notifMax, 3), notifTicks: 120, bubbleIdleMs: fin(PR.bubbleIdleMs, 8000),
     bubbleMs: fin(PR.bubbleMs, 6000), hintMs: 6000, hintTicks: 60, panPx: fin(PR.panPxPerFrame, 12), refreshMs: fin(PU.panelRefreshMs, 500),
-    deltaMs: 600, odoMs: 150, holdTicks: 600, logMax: fin(PU.tickerMax, 30), popLines: 4, minimapPx: fin(PR.minimapPx, 160),
+    deltaMs: 600, odoMs: 150, holdTicks: 600, logMax: fin(PU.tickerMax, 30), popLines: 7, minimapPx: fin(PR.minimapPx, 160),
     compactWidth: fin(PU.compactWidth, 1180), hudStaggerMs: fin(PT.hudStaggerMs, 100), ringThrottleMs: 50, skipAfterTick: fin(PT.skipAfterTick, 150),
     autoCardTicksPerSec: 10, toastTicks: fin(PT.toastTicks, 80), cardWords: fin(PU.cardWordsMax, 12)
   };
@@ -32677,7 +32685,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
       case 'speed8': M.setSpeed(s, 8); return true;
       case 'budget': M.openPanel(s.ui.panel === 'budget' ? null : 'budget'); return true;
       case 'season': M.openPanel(s.ui.panel === 'season' ? null : 'season'); return true;
-      case 'storm': { if (!call('weather', 'cone', s)) return true; M.openPanel(s.ui.panel === 'storm' ? null : 'storm'); return true; }
+      case 'storm': M.openPanel(s.ui.panel === 'storm' ? null : 'storm'); return true;   // qa pass 4: no cone gate — since P4 the panel offers precautions with no storm (the topbar button never had the gate)
       case 'milestones': M.openPanel(s.ui.panel === 'milestones' ? null : 'milestones'); return true;
       case 'overlayFlood': case 'overlayWater': case 'overlayMosquito': case 'overlayPower': case 'overlayCoverage': case 'overlayEcology': {
         const ov = { overlayFlood: OV.FLOOD, overlayWater: OV.WATER, overlayMosquito: OV.MOSQUITO, overlayPower: OV.POWER, overlayCoverage: OV.COVERAGE, overlayEcology: OV.ECOLOGY }[action];
@@ -32998,6 +33006,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
       setText(E['insp-sub'], r.name + (b.tier > 0 && r.tiers && r.tiers[b.tier - 1] ? ' · ' + (r.tiers[b.tier - 1].name || 'Tier ' + b.tier) : '') + (b.pilings ? ' · on pilings' : ''));
       call('render', 'drawIcon', spr, b.type); hasSprite = true;
       if (b.ruin) body.appendChild(row('Status', 'Ruin', 'bad')); else if (b.built < 1) body.appendChild(row('Status', 'Under construction ' + Math.round(fin(b.built, 0) * 100) + '%')); else if (b.flooded) body.appendChild(row('Status', 'Flooded', 'bad')); else if (b.blackout) body.appendChild(row('Status', 'Blackout', 'bad')); else if (b.closedUntil >= 0 && b.closedUntil > dayOf(s)) body.appendChild(row('Status', 'Closed · reopens ' + BSU.formatDate(b.closedUntil)));
+      else if (call('buildings', 'gatorClosed', s, b.id)) body.appendChild(row('Status', 'Closed · a gator is too close (relocate it)', 'bad'));   // qa pass 4: a gator-closed kitchen served nobody and said nothing
       const ms = ef.feeds ? call('buildings', 'menuOf', s, b.id) : null;   // P6: a kitchen feeds its menu's throughput
       if (ef.beds) body.appendChild(row('Beds', String(ef.beds))); if (ef.seats) body.appendChild(row('Seats', String(ef.seats))); if (ef.feeds) body.appendChild(row('Feeds', ms ? '~' + ms.throughput.toLocaleString('en-US') + ' a day (menu)' : String(ef.feeds)));
       if (ef.quality) body.appendChild(row('Quality', stars(ef.quality)));
@@ -33619,7 +33628,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
   function issueFirstOf(s, kinds) { const I = issuesApi(); if (!I) return null; const l = I.ofKinds(s, kinds); return l.length ? l[0] : null; }
   /** which issue kinds a notification / needs line is about (used to add a 'Locate' button) */
   function locateKindsOf(spec) {
-    if (!spec) return null;
+    if (!spec || spec.milestone) return null;   // qa pass 4: 'Milestone: Gator Wrangler' matched the gator heuristic and grew a Locate button
     if (spec.locate) { const lc = spec.locate; if (typeof lc === 'string') return (issuesApi() && issuesApi().families()[lc]) || [lc]; if (Array.isArray(lc)) return lc; if (lc.kind) return [lc.kind]; if (lc.family) return (issuesApi() && issuesApi().families()[lc.family]) || null; return null; }
     const t = String(spec.text || ''); const F = issuesApi() ? issuesApi().families() : null; if (!F) return null;
     if (/gator/i.test(t)) return F.gator; if (/flood/i.test(t)) return F.flood; if (/levee/i.test(t)) return F.levee; if (/mosquito/i.test(t)) return F.mosquito;
@@ -33652,6 +33661,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
   /** rows that fit between the overlay keys and the palette; < 2 → chip only ("space is tight") */
   function trayRowsFit() {
     try {
+      if (E.hud && E.hud.classList.contains('inspect-open')) return 0;   // qa pass 4: the tray is display:none beside an open inspect panel (style.css); no rows to build
       const sc = effScale || 1, px = 10 * sc, top = (5.6 + 28.4) * px, bot = (18 + 2.8 + 2 + 1) * px, head = 3.4 * px, row = 3.9 * px;
       const h = fin(window.innerHeight, 800) - top - bot - head; return clamp(Math.floor(h / row), 0, 6);
     } catch (e) { return 4; }
@@ -33946,7 +33956,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
   M.panel = function () { const s = stateOf(); return s && s.ui ? s.ui.panel : null; };
   function refreshPanel(s, name) { const p = panels[name]; if (!p || !p.el) return; p.lastRefresh = clock; try { if (typeof p.refresh === 'function') p.refresh(s, p.el); } catch (e) { uerr('panel:refresh:' + name, e); } }
   /** UI scale pass: a panel wide enough to reach the docked cards (goals tracker, minimap, overlay keys, notifications, voice card) fades just the ones it overlaps, so no half-hidden text peeks out around it */
-  const FADE_IDS = ['objective-card', 'minimap-wrap', 'overlay-buttons', 'notifications', 'voice-card', 'alert-strip'];
+  const FADE_IDS = ['objective-card', 'minimap-wrap', 'overlay-buttons', 'notifications', 'voice-card', 'alert-strip', 'issues-tray', 'undo-chip'];   // qa pass 4: the tray sat crisp beside an open panel
   let fadeAt = -1e9;
   function syncPanelFade(s) {
     if (!dom() || clock - fadeAt < 250) return; fadeAt = clock;
@@ -35465,7 +35475,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     show(host._prospectsK, board.length > 0); show(host._prospects, board.length > 0); show(host._recHead, board.length > 0); show(host._recEmpty, board.length === 0);
     setText(host._recEmpty, hasTeam ? (RT.boardClosed || 'The prospect board opens Dec 9.') : 'Recruiting starts with a team.');
     const lockText = daysLeft > 0 ? fill(RT.locksIn || 'locks in {d} days', { d: daysLeft }) : daysLeft === 0 ? (RT.lockedToday || 'locks today') : (RT.locks || 'Board locks Aug 5');
-    setText(host._recHead, (B ? 'Headroom ' + money(Math.max(0, headroom)) + ' of ' + money(B.total) + ' · ' : '') + fill(RT.signedCounter || 'signed {a} of {n}', { a: nSigned, n: per * 2 }) + ' (' + signedOn('offense') + ' offense, ' + signedOn('defense') + ' defense of ' + per + ' each) · ' + (RT.locks || 'Board locks Aug 5') + (daysLeft >= 0 ? ', ' + lockText : '') + ' · ' + fill(RT.boardOpen || '', { n: per }));
+    setText(host._recHead, (B ? 'Headroom ' + money(Math.max(0, headroom)) + ' of ' + money(B.total) + ' · ' : '') + fill(RT.signedCounter || 'signed {a} of {n}', { a: nSigned, n: per * 2 }) + ' (' + signedOn('offense') + ' offense, ' + signedOn('defense') + ' defense of ' + per + ' each) · ' + (daysLeft >= 0 ? 'Board ' + lockText + ' (' + ((BSU.params.sports.schedule || {}).recruitDate || 'Aug 5') + ')' : (RT.locks || 'Board locks Aug 5')) + ' · ' + fill(RT.boardOpen || '', { n: per }));
     region(host, 'prospects', JSON.stringify([board.map(function (p) { return [p.name, p.pos, p.rating, p.cost, !!p.signed]; }), !!(pb && pb.answered), Math.round(headroom / 1000), per]), host._prospects, function (box) {
       if (!board.length) return;
       ['offense', 'defense'].forEach(function (side) {

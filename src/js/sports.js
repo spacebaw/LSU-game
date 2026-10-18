@@ -2969,7 +2969,7 @@
     try {
       const sp = state.sports, st = staffOf(state), e = state.economy || {}, year = yearOf(state);
       const prestige = num(e.prestige, 0), max = maxStarsFor(prestige), per = Math.max(1, num(PF.starsPerPrestige, 20));
-      const view = { year: st.lastRefreshYear, prestige: prestige, maxStars: max, reachStars: Math.min(PS.starMax, max + int(PF.reachStars, 1)), nextPrestige: max >= PS.starMax ? 0 : Math.max(0, max * per - prestige),
+      const view = { year: st.lastRefreshYear, prestige: prestige, maxStars: max, reachStars: Math.min(PS.starMax, max + int(PF.reachStars, 1)), nextPrestige: max >= PS.starMax ? 0 : Math.max(0, Math.ceil(max * per - prestige - 1e-9)),   // qa pass 4: whole points (prestige is a float; the hint printed 4.6484960003)
         perStar: per, reachSalary: num(PF.reachSalary, 1.6), buyoutShare: num(PF.buyoutShare, 0.5), raiseShare: num(PF.poach.raise, 0.25), terms: staffTerms(state), candidates: {}, offers: {}, hasTeam: !!sp.hasTeam };
       for (let i = 0; i < ROLES.length; i++) {
         const r = ROLES[i], c = recordOf(state, r), sty = styleOf(r, c);

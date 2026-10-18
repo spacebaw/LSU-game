@@ -964,9 +964,9 @@
           else if (b.type === 'stadium' && (b.tier | 0) >= 2 && b.built >= 1 && !b.ruin && !b.blackout && game && game.home) {
             // six masts around the bowl, cones rotated toward the field
             const rx = (span) * 14 * z, ry = span * 7 * z, fy = cy - 18 * z;
-            for (let m = 0; m < 6 && lightsN < LMAX; m++) { const ang = (m / 6) * Math.PI * 2 + 0.3; const mx = cx + Math.cos(ang) * rx, my = fy + Math.sin(ang) * ry - 40 * z; pushLight('mast', mx, my, 1.9, 0.26, Math.atan2(fy - my, cx - mx) - Math.PI / 2); }   // qa pass 3: 0.42 still whited out midfield at the game camera's 2×, hiding the band and the ball   // B5: six overlapping cones used to white out the bowl; the haze below carries the glow now
-            pushLight('glow', cx, fy, 7 * span * 0.25, 0.32, 0);
-            if (FXO.haze && hazeN < 2) { hazeX[hazeN] = cx; hazeY[hazeN] = fy - 22 * z; hazeR[hazeN] = span * 38 * z * (1 + 0.15 * ((b.tier | 0) - 2)); hazeA[hazeN] = 0.9; hazeN++; }
+            for (let m = 0; m < 6 && lightsN < LMAX; m++) { const ang = (m / 6) * Math.PI * 2 + 0.3; const mx = cx + Math.cos(ang) * rx, my = fy + Math.sin(ang) * ry - 40 * z; pushLight('mast', mx, my, 1.9, 0.13, Math.atan2(fy - my, cx - mx) - Math.PI / 2); }   // qa pass 4: 0.26 × six cones + the glow still whited out midfield (fireworks vanished)   // qa pass 3: 0.42 still whited out midfield at the game camera's 2×, hiding the band and the ball   // B5: six overlapping cones used to white out the bowl; the haze below carries the glow now
+            pushLight('glow', cx, fy, 7 * span * 0.25, 0.14, 0);
+            if (FXO.haze && hazeN < 2) { hazeX[hazeN] = cx; hazeY[hazeN] = fy - 22 * z; hazeR[hazeN] = span * 38 * z * (1 + 0.15 * ((b.tier | 0) - 2)); hazeA[hazeN] = 0.5; hazeN++; }
           }
         } else if (!inScreen(e.sx, e.sy)) continue;
         else if (e.kind === 'bonfire') pushLight('fire', e.sx, e.sy - 8 * z, 1.4 + 0.3 * ((frameNo >> 1) % 3) / 2, 0.95, 0);
@@ -1240,7 +1240,8 @@
     if (!at) return;
     const r = rng(), ox = (r.float() - 0.5) * 90 * scale, oy = (r.float() - 0.5) * 30 * scale, zz = at.z + 90 + r.float() * 40;
     emit('confetti', at.x + ox, at.y + oy, Math.round(30 * scale), { z: zz, vx: 0, vy: 0, vz: 40, spread: 6, jitter: 1, size: 3, life: 1500 });
-    addShell(at.x + ox, at.y + oy, at.z, 150 + 60 * r.float(), 1);   // B5: a rising rocket and a trailed burst with bloom (render_fx passFireworks)
+    const zc = Math.max(1, fin(camOf(state).zoom, 1));   // qa pass 4: at the 2× game camera a 150–210 px apex burst under the top bar; scale the climb so the burst stays over the bowl
+    addShell(at.x + ox, at.y + oy, at.z, (150 + 60 * r.float()) / Math.sqrt(zc), 1);   // B5: a rising rocket and a trailed burst with bloom (render_fx passFireworks)
   }
   function subscribe() {
     if (subscribed || !BSU.events || typeof BSU.events.on !== 'function') return; subscribed = true;
@@ -1518,12 +1519,14 @@
   }
   function passBeacons(state, g, view) {
     const I = issuesApi(); if (!I || !state || !state.tiles) return;
+    if (state.setPiece) return;   // qa pass 4: set pieces are cinematic (the tray already hides); beacons flashed over the stadium mid-montage
     if (I.spotlight()) return;   // the spotlight pass draws them above the dim
     const t0 = nowMs(); const issues = I.list(state), sel = I.selected(state);
     issStats.drawn = drawBeacons(state, g, view, issues, sel, t0); issStats.ms = nowMs() - t0; issStats.frames++;
   }
   function passSpotlight(state, g, view) {
     const I = issuesApi(); if (!I || !state || !state.tiles) return;
+    if (state.setPiece) return;   // qa pass 4: as passBeacons
     const t0 = nowMs(); const issues = I.list(state), sel = I.selected(state), z = (camOf(state).zoom) || 1;
     if (I.spotlight()) {
       // dim everything except the issue tiles (even-odd: the viewport minus every outline; rects deduped so stacked issues do not cancel)
