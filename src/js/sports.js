@@ -96,6 +96,9 @@
   // PLAN_V2 P1: the coaching staff (the head coach is state.sports.coach, mirrored as staff.hc; coordinators in state.sports.staff)
   const PF = PS.staff || { perRole: 3, starsPerPrestige: 20, reachStars: 1, reachSalary: 1.6, yearsMin: 2, yearsMax: 4, renewYears: 2, buyoutShare: 0.5, interimStarsMax: 2, ocCompositePerStar: 3, ocFit: 4, dcCompositePerStar: 3, dcTurnoverPerStar: 0.04, hcGoDist: { ground: -1, balanced: 0, air: 1 }, hcHalftimePerStar: 0.1, poach: { stars: 4, prestige: 40, p: 0.35, raise: 0.25, offerDate: 'Nov 8' } };
   const ROLES = Object.freeze(['hc', 'oc', 'dc']);
+  // PLAN_V2 P2: the roster (state.sports.roster), the depth chart, walk-ons, development, dinged starters, the prospect board
+  const PR = PS.roster || { classes: ['Fr', 'So', 'Jr', 'Sr'], eligibilityYears: 4, maxPerPos: 4, maxPerSideClass: 4, walkOn: { min: 50, max: 58 }, prospect: { perPos: 2, base: 60, perPrestige: 0.35, bonusMax: 10, sd: 8, min: 50, max: 95 }, cost: { base: 20000, perPoint: 6000, from: 60, round: 1000 }, dev: { min: 2, max: 5, perStar: 1, floor: 1, cap: 99 }, dinged: { p: 0.05, games: 1 }, gradDate: 'May 5', reminderDays: 7 };
+  const CLASSES = PR.classes;
 
   // ---------------------------------------------------------------------------
   // Dependencies (injectable, §10.6). selfTest replaces entries for its duration.
@@ -204,6 +207,7 @@
     if (!sp.seasonLines || typeof sp.seasonLines !== 'object') sp.seasonLines = newLines();
     // PLAN_V2 P3: the athletics budget (a pre-P3 save gets one from its prestige and last season; revenue starts at 0)
     if (!sp.budget || typeof sp.budget !== 'object') initBudget(state); else budgetOf(state);
+    ensureRoster(state);   // PLAN_V2 P2: the roster behind the starters (a pre-P2 save adopts its eight; backups come with the next tick)
   }
 
   // ---------------------------------------------------------------------------
@@ -279,8 +283,10 @@
         emit(EV.COACH_CHANGED, { role: 'hc', name: sp.coach.name, stars: sp.coach.stars });
       } else ensureStaff(state);   // PLAN_V2 P1: interim coordinators arrive with the team
       if (!sp.starters.length) sp.starters = drawStarters(state);
+      initRoster(state);   // PLAN_V2 P2: the eight become juniors and seniors, walk-ons back them up
       scheduleSpring(state, true);   // PLAN_FOOTBALL §2.4: the Spring Game three days after the field completes (Jan 1 – Jul 10)
     }
+    if (sp.hasTeam && !sp.rosterInit && sp.starters.length) initRoster(state);   // P2: a pre-P2 save with a team gets its backups on the first tick
     if (!sp.hasTeam && hadTeam) {
       // the field is gone (ruin/demolition): remaining games are cancelled, the rating collapses
       for (let i = 0; i < sp.schedule.length; i++) { const e = sp.schedule[i]; if (e && !e.played) { e.played = true; e.result = null; e.cancelled = true; } }
@@ -372,12 +378,174 @@
     let s = 0; for (let i = 0; i < st.length; i++) s += num(st[i].rating, PS.starterBase);
     return s / st.length;
   }
-  /** May 5: each starter leaves with seniorLeaveP and is redrawn at the same position. */
-  function seniorsLeave(state) {
-    const st = state.sports.starters;
-    let n = 0;
-    for (let i = 0; i < st.length; i++) if (R.chance(PS.seniorLeaveP)) { st[i] = drawStarter(state, st[i].pos); n++; }
-    return n;
+  /** May 5 (pre-P2 name, kept for the hook): the P2 graduation — classes advance, seniors leave, walk-ons fill the empty slots → the number who left */
+  function seniorsLeave(state) { return graduate(state).left.length; }
+
+  // ---------------------------------------------------------------------------
+  // PLAN_V2 P2: the roster you build. state.sports.roster holds every player {name, pos, rating, classYear, class,
+  // hometown, signedYear, cost (per year), dinged (games), walkOn}; state.sports.starters stays the eight-slot view
+  // the engine, the records and the UI read (the same objects, re-derived by pickStarters after every roster change;
+  // an outside write to sp.starters — a load's copies, a test's override — is adopted by reconcile).
+  // ---------------------------------------------------------------------------
+  function unitSide(pos) { return POS.indexOf(pos) < POS.length / 2 ? 'offense' : 'defense'; }
+  function classIdx(c) { return CLASSES.indexOf(c); }
+  function rosterOf(sp) { if (!Array.isArray(sp.roster)) sp.roster = []; return sp.roster; }
+  function byRating(a, b) { return (b.rating - a.rating) || (classIdx(b.classYear) - classIdx(a.classYear)) || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0); }
+  /** finite-guard a player record in place (classYear canonical; `class` mirrors it for the pre-P2 readers) */
+  function normPlayer(p, year, i) {
+    if (!p || typeof p !== 'object') return null;
+    p.name = String(p.name || 'Walk-on'); if (POS.indexOf(p.pos) < 0) p.pos = POS[0];
+    p.hometown = String(p.hometown || 'Houma');
+    p.rating = clamp(int(p.rating, PS.starterBase), 1, int(PR.dev.cap, 99));
+    let c = p.classYear || p.class; if (classIdx(c) < 0) c = CLASSES[2 + (int(i, 0) % 2)];
+    p.classYear = c; p.class = c;
+    p.signedYear = int(p.signedYear, year); p.cost = Math.max(0, int(p.cost, 0)); p.dinged = Math.max(0, int(p.dinged, 0)); p.walkOn = !!p.walkOn;
+    if (p.title !== undefined && typeof p.title !== 'string') delete p.title;
+    return p;
+  }
+  function playersAt(sp, pos) { const out = [], r = rosterOf(sp); for (let i = 0; i < r.length; i++) if (r[i] && r[i].pos === pos) out.push(r[i]); out.sort(byRating); return out; }
+  /** the roster array exists and is sane; outside writes to sp.starters are adopted */
+  function ensureRoster(state) {
+    const sp = state.sports, year = yearOf(state);
+    if (!Array.isArray(sp.roster)) { sp.roster = []; sp.rosterInit = false; }
+    const r = sp.roster;
+    for (let i = r.length - 1; i >= 0; i--) if (!normPlayer(r[i], year, i)) r.splice(i, 1);
+    if (typeof sp.rosterInit !== 'boolean') sp.rosterInit = r.length > 0;
+    reconcile(state);
+  }
+  /** relink sp.starters to the roster: a copy (a load) by name + position, a new object (a test, pre-P2 code) joins as that position's starter */
+  function reconcile(state) {
+    const sp = state.sports, r = rosterOf(sp), st = sp.starters, year = yearOf(state);
+    if (!Array.isArray(st)) { sp.starters = []; return; }
+    for (let i = 0; i < st.length; i++) {
+      const x = st[i]; if (!x || typeof x !== 'object' || r.indexOf(x) >= 0) continue;
+      normPlayer(x, year, i);
+      let twin = null; for (let j = 0; j < r.length; j++) if (r[j].name === x.name && r[j].pos === x.pos) { twin = r[j]; break; }
+      if (twin) { twin.rating = x.rating; twin.classYear = x.classYear; twin.class = x.classYear; twin.hometown = x.hometown; twin.dinged = x.dinged; st[i] = twin; }
+      else { r.push(x); cutToCap(state, x.pos, x); }
+    }
+  }
+  /** a free walk-on at pos (fixed draw order: name, hometown, rating, class) */
+  function addWalkOn(state, pos) {
+    const w = PR.walkOn, lo = int(w.min, 50), hi = int(w.max, 58);
+    const p = { name: fbName(), pos: pos, hometown: drawHometown(), rating: lo + R.int(Math.max(1, hi - lo + 1)), classYear: drawClass(), signedYear: yearOf(state), cost: 0, dinged: 0, walkOn: true };
+    normPlayer(p, yearOf(state), 0); rosterOf(state.sports).push(p);
+    return p;
+  }
+  /** at most maxPerPos bodies at pos: the weakest other than `keep` are released (→ the cut players) */
+  function cutToCap(state, pos, keep) {
+    const sp = state.sports, out = [];
+    let ps = playersAt(sp, pos);
+    while (ps.length > int(PR.maxPerPos, 4)) {
+      let k = ps.length - 1; while (k >= 0 && ps[k] === keep) k--; if (k < 0) break;
+      const p = ps[k]; removePlayer(sp, p); out.push(p); ps = playersAt(sp, pos);
+    }
+    return out;
+  }
+  function removePlayer(sp, p) { const r = rosterOf(sp), i = r.indexOf(p); if (i >= 0) r.splice(i, 1); const k = sp.starters.indexOf(p); if (k >= 0) sp.starters.splice(k, 1); }
+  /** the eight starters from the roster: the best healthy body per position (a dinged starter sits; all dinged → the best plays); an empty slot gets a walk-on */
+  function pickStarters(state) {
+    const sp = state.sports, out = [];
+    const bodies = rosterOf(sp).length > 0 || sp.hasTeam;
+    for (let i = 0; i < POS.length; i++) {
+      const ps = playersAt(sp, POS[i]);
+      if (!ps.length) { if (!bodies) continue; ps.push(addWalkOn(state, POS[i])); }
+      let k = 0; for (let j = 0; j < ps.length; j++) if (!ps[j].dinged) { k = j; break; }
+      out.push(ps[k]);
+    }
+    sp.starters = out;
+    return out;
+  }
+  /** the first team / a pre-P2 save: the eight starters become juniors and seniors, every position gets a walk-on backup */
+  function initRoster(state) {
+    const sp = state.sports; reconcile(state);
+    const r = rosterOf(sp);
+    for (let i = 0; i < r.length; i++) if (!r[i].walkOn) { r[i].classYear = CLASSES[2 + (i % 2)]; r[i].class = r[i].classYear; }
+    for (let i = 0; i < POS.length; i++) while (playersAt(sp, POS[i]).length < 2) addWalkOn(state, POS[i]);
+    sp.rosterInit = true;
+    pickStarters(state);
+  }
+  function addPlayer(state, p) {
+    const sp = state.sports; normPlayer(p, yearOf(state), 0); rosterOf(sp).push(p);
+    const cut = cutToCap(state, p.pos, p); pickStarters(state);
+    return { player: p, cut: cut };
+  }
+  function nameList(ps) { return ps.map(function (p) { return p.pos + ' ' + p.name; }).join(', '); }
+  /** gradDate: every class advances, seniors leave (a ticker line names them), a walk-on fills any starter slot left empty → {left[], walkOns} */
+  function graduate(state) {
+    const sp = state.sports; reconcile(state);
+    const r = rosterOf(sp), left = [];
+    for (let i = r.length - 1; i >= 0; i--) {
+      const p = r[i], k = classIdx(p.classYear);
+      if (k >= CLASSES.length - 1) { left.push(p); r.splice(i, 1); }
+      else { p.classYear = CLASSES[k + 1]; p.class = p.classYear; }
+    }
+    left.reverse();
+    const before = r.length;
+    sp.starters = [];
+    pickStarters(state);
+    const walkOns = r.length - before;
+    if (left.length) ticker(state, 'Graduation: ' + nameList(left) + (left.length > 1 ? ' leave' : ' leaves') + ' the ' + L.bsuNick + (walkOns ? '; ' + walkOns + ' walk-on' + (walkOns > 1 ? 's' : '') + ' step' + (walkOns > 1 ? '' : 's') + ' in' : '') + '.', {});
+    return { left: left, walkOns: walkOns };
+  }
+  function coordinatorStars(state, side) { const st = state.sports.staff, c = st && st[side === 'offense' ? 'oc' : 'dc']; return num(c && c.stars, PS.coachStarBase); }
+  /** season end: every underclassman gains dev.min..dev.max (by name hash, no draws) + dev.perStar per coordinator star over base, never below dev.floor */
+  function develop(state) {
+    const sp = state.sports, r = rosterOf(sp), year = yearOf(state), D = PR.dev;
+    let total = 0, n = 0, best = null;
+    for (let i = 0; i < r.length; i++) {
+      const p = r[i]; if (classIdx(p.classYear) >= CLASSES.length - 1) { p.dinged = 0; continue; }
+      const span = Math.max(1, int(D.max, 5) - int(D.min, 2) + 1), base = int(D.min, 2) + (BSU.strHash(p.name + '|' + p.pos + '|' + year) % span);
+      const gain = Math.max(int(D.floor, 1), Math.round(base + num(D.perStar, 1) * (coordinatorStars(state, unitSide(p.pos)) - PS.coachStarBase)));
+      const b0 = p.rating; p.rating = clamp(p.rating + gain, 1, int(D.cap, 99)); p.dinged = 0;
+      total += p.rating - b0; n++;
+      if (!best || p.rating - b0 > best.gain) best = { name: p.name, pos: p.pos, gain: p.rating - b0, rating: p.rating };
+    }
+    pickStarters(state);
+    if (n) ticker(state, 'Off-season workouts: ' + n + ' underclassmen gain +' + (total / n).toFixed(1) + ' on average' + (best ? '; ' + best.pos + ' ' + best.name + ' +' + best.gain + ' to ' + best.rating : '') + '.', {});
+    return { players: n, avg: n ? total / n : 0, best: best };
+  }
+  /** after a real game: last week's dinged starters return; each starter who played is dinged with dinged.p (by hash: no draws) and sits dinged.games */
+  function dingAfterGame(state, g) {
+    const sp = state.sports, r = rosterOf(sp), D = PR.dinged, year = yearOf(state), key = int(g && g.day, today(state));
+    for (let i = 0; i < r.length; i++) if (r[i].dinged > 0) r[i].dinged--;
+    const st = sp.starters, out = [];
+    for (let i = 0; i < st.length; i++) {
+      const p = st[i]; if (!p || r.indexOf(p) < 0) continue;
+      if ((BSU.strHash(p.name + '|' + p.pos + '|' + year + '|' + key) % 1000) < num(D.p, 0.05) * 1000) { p.dinged = Math.max(1, int(D.games, 1)); out.push(p); }
+    }
+    pickStarters(state);
+    if (out.length) {
+      const subs = out.map(function (p) { const b = sp.starters[POS.indexOf(p.pos)]; return p.pos + ' ' + p.name + (b && b !== p ? ' (' + b.name + ' starts)' : ''); }).join(', ');
+      ticker(state, 'Dinged: ' + subs + '. Back after a week.', {});
+    }
+    return out;
+  }
+  function costPerYear(rating) { const C = PR.cost, rnd = Math.max(1, int(C.round, 1000)); return Math.round((int(C.base, 20000) + int(C.perPoint, 6000) * Math.max(0, rating - int(C.from, 60))) / rnd) * rnd; }
+  function headroomShare(state) { const b = refreshBudget(state, null); return b.total > 0 ? clamp((b.total - b.committed) / b.total, 0, 1) : 0; }
+  function prospectMean(state, bonus) { const Q = PR.prospect; return num(Q.base, 60) + num(state.economy && state.economy.prestige, 10) * num(Q.perPrestige, 0.35) + num(bonus, 0); }
+  /** the player-facing roster: depth per position (starter · backup · others), seniors leaving, empty backups, walk-on starters, scholarships */
+  function rosterView(state) {
+    const sp = state.sports, r = rosterOf(sp), year = yearOf(state), tpl = ((data().football || {}).roster || {}).template || {};
+    const view = function (p, depth) { return { name: p.name, pos: p.pos, side: unitSide(p.pos), rating: p.rating, classYear: p.classYear, hometown: p.hometown, cost: p.cost, dinged: p.dinged, walkOn: p.walkOn, signedYear: p.signedYear, title: p.title || '', depth: depth, starter: depth === 1 }; };
+    const rows = function (side) {
+      return POS.filter(function (p) { return unitSide(p) === side; }).map(function (pos) {
+        const ps = playersAt(sp, pos); let starter = null;
+        for (let i = 0; i < sp.starters.length; i++) if (sp.starters[i] && sp.starters[i].pos === pos && ps.indexOf(sp.starters[i]) >= 0) { starter = sp.starters[i]; break; }
+        if (!starter) starter = ps[0] || null;
+        const rest = ps.filter(function (x) { return x !== starter; });
+        return { pos: pos, label: (tpl[pos] && tpl[pos].label) || pos, starter: starter ? view(starter, 1) : null, backup: rest[0] ? view(rest[0], 2) : null, others: rest.slice(1).map(function (x) { return view(x, 3); }), count: ps.length };
+      });
+    };
+    const off = rows('offense'), def = rows('defense'), all = off.concat(def);
+    const counts = {}; for (let i = 0; i < CLASSES.length; i++) counts[CLASSES[i]] = 0;
+    let scholarships = 0; const seniors = [], dinged = [];
+    for (let i = 0; i < r.length; i++) { const p = r[i]; counts[p.classYear] = int(counts[p.classYear], 0) + 1; scholarships += p.cost; if (classIdx(p.classYear) === CLASSES.length - 1) seniors.push(view(p, 0)); if (p.dinged > 0) dinged.push(view(p, 0)); }
+    seniors.sort(function (a, b) { return POS.indexOf(a.pos) - POS.indexOf(b.pos); });
+    const grad = dayOfDate(PR.gradDate || 'May 5', year), nextGrad = grad >= today(state) ? grad : dayOfDate(PR.gradDate || 'May 5', year + 1);
+    return { players: r.map(function (p) { return view(p, 0); }), offense: off, defense: def, seniors: seniors, emptyBackups: all.filter(function (x) { return x.count < 2; }).map(function (x) { return x.pos; }),
+      walkOnStarters: all.filter(function (x) { return x.starter && x.starter.walkOn; }).map(function (x) { return x.pos; }), dinged: dinged, scholarships: scholarships, counts: counts, size: r.length,
+      maxPerPos: int(PR.maxPerPos, 4), classes: CLASSES.slice(), nextGrad: nextGrad, daysToGrad: nextGrad - today(state) };
   }
   // ---------------------------------------------------------------------------
   // PLAN_V2 P1: the coaching staff — head coach (state.sports.coach, the same object as staff.hc), offensive
@@ -1654,6 +1822,7 @@
     updateRecords(state, g, sum);
     addSeasonLines(sp, g.lines);
     logSeasonGame(sp, g, sum);
+    dingAfterGame(state, g);   // P2: last week's dinged return, this week's starters roll (the backup starts next game)
     // ticker lines 43/44 and the recap 60 (the MVP's real stat line)
     const on = oppName(g.opp);
     if (won) ticker(state, 43, { w: bsuPts, opp: on, l: oppPts }); else ticker(state, 44, { opp: on, w: oppPts, l: bsuPts });
@@ -1945,7 +2114,7 @@
     else body.push('No bowl: ' + PS.bowlWins + ' wins are needed for the Sugar Cane Bowl.');
     if (rs.mvp) body.push('Season MVP: ' + rs.mvp.pos + ' ' + rs.mvp.name + ' (' + rs.mvp.hometown + ') · ' + rs.mvp.line);
     if (rs.hof.length) body.push('Hall of Fame: ' + rs.hof.map(function (h) { return h.pos + ' ' + h.name + ' (' + h.why + ')'; }).join('; '));
-    body.push('Off-season: the prospect board opens tomorrow; the coaching budget sets its size and quality.');
+    body.push('Off-season: the recruiting board opens tomorrow — two prospects per position, up to 4 offense and 4 defense on four-year scholarships (P2).');
     call('progress', 'sportsCard', state, { id: 'seasonRecap', kicker: 'Season ' + year + ' · final', title: (undefeated ? 'Undefeated. ' : '') + L.bsuNick + ' ' + regWins + '–' + regLosses + (bowlWon ? ' · bowl champions' : ''), body: body });
     if (rs.mvp) ticker(state, 'Season MVP: ' + rs.mvp.pos + ' ' + rs.mvp.name + ', ' + rs.mvp.line + '.', {});
     for (let i = 0; i < rs.hof.length; i++) { const h = rs.hof[i]; ticker(state, h.pos + ' ' + h.name + ' enters the Hall of Fame: ' + h.why + '.', {}); call('ui', 'notify', state, { text: 'Hall of Fame: ' + h.pos + ' ' + h.name + ' (' + h.line + ').', kind: 'sports', ttl: 9000 }); }
@@ -1955,6 +2124,7 @@
       if (regLosses > regWins) sp.losingSeasons++; else sp.losingSeasons = 0;
       if (sp.losingSeasons >= PS.starDriftLosing) { sp.coach.stars = Math.max(PS.starMin, num(sp.coach.stars, 2) - 1); sp.losingSeasons = 0; }
     }
+    develop(state);   // PLAN_V2 P2: the underclassmen's off-season growth (this season's coordinators, before any poaching)
     offseasonStaff(state);   // PLAN_V2 P1: contracts tick down / renew, then the poaching roll (a newsflash per coach lost)
     rollBudget(state);   // PLAN_V2 P3: next year's athletics budget from this season's gate, wins and prestige
     sp.seasonDone = true;
@@ -2110,57 +2280,71 @@
     let k = 0; for (let i = 0; i < tiers.length; i++) if (c >= tiers[i]) k = i + 1;
     return Math.max(1, int(sizes[Math.min(k, sizes.length - 1)], 3));
   }
-  /** One prospect (fixed draw order: position weight, archetype, rating noise, name, hometown). Quality follows the coaching budget and the coach's stars. */
-  function drawProspect(state) {
-    const RC = PE.recruit, FB = data().football || {}, PR = FB.prospects || {}, arch = PR.archetypes || [], w = PR.posWeights || {};
-    let total = 0; for (let i = 0; i < POS.length; i++) total += Math.max(0, num(w[POS[i]], 1));
-    let r = R.range(0, total), pos = POS[POS.length - 1];
-    for (let i = 0; i < POS.length; i++) { r -= Math.max(0, num(w[POS[i]], 1)); if (r <= 0) { pos = POS[i]; break; } }
+  /** P2: one prospect at pos (fixed draw order: archetype, rating noise, name, hometown); rating ~ N(mean + archetype bias, sd) clamped; cost per year for eligibilityYears */
+  function drawProspect(state, pos, mean) {
+    const Q = PR.prospect, arch = ((data().football || {}).prospects || {}).archetypes || [];
     const cands = arch.filter(function (a) { return a && a.pos === pos; });
-    const a = cands.length ? R.pick(cands) : { id: 'walkOn', title: 'Walk-on', blurb: '', ratingBias: 0, costMult: 1 };
-    const c = num(state.economy && state.economy.coaching, 0), stars = num(state.sports.coach && state.sports.coach.stars, PS.coachStarBase);
-    const q = RC.ratingMin + num(RC.qualityBase, 8) + num(RC.qualityPerTier, 6) * clamp(c / Math.max(1, num((RC.boardCoachingTiers || [])[1], 1000000)), 0, 1.5)
-      + num(RC.qualityPerStar, 2) * (stars - PS.coachStarBase) + num(a.ratingBias, 0) + R.range(-num(RC.qualityNoise, 6), num(RC.qualityNoise, 6));
-    const rating = clamp(Math.round(q), RC.ratingMin, RC.ratingMax);
-    const span = Math.max(1, RC.ratingMax - RC.ratingMin), round = Math.max(1, int(RC.costRound, 10000));
-    const cost = Math.round((RC.costMin + (RC.costMax - RC.costMin) * (rating - RC.ratingMin) / span) * num(a.costMult, 1) / round) * round;
-    return { name: fbName(), pos: pos, hometown: drawHometown(), rating: rating, cost: clamp(cost, RC.costMin, RC.costMax), archetype: String(a.id || ''), title: String(a.title || ''), blurb: String(a.blurb || ''), signed: false };
+    const a = cands.length ? R.pick(cands) : { id: '', title: '', blurb: '', ratingBias: 0 };
+    const rating = clamp(Math.round(num(mean, 60) + num(a.ratingBias, 0) + R.gauss() * num(Q.sd, 8)), int(Q.min, 50), int(Q.max, 95));
+    return { name: fbName(), pos: pos, side: unitSide(pos), hometown: drawHometown(), rating: rating, cost: costPerYear(rating), years: int(PR.eligibilityYears, 4), archetype: String(a.id || ''), title: String(a.title || ''), blurb: String(a.blurb || ''), signed: false };
   }
+  /** Dec 9: the board — prospect.perPos at every position; the mean follows prestige and the athletics headroom share (the recruiting bonus) */
   function drawProspects(state) {
-    const sp = state.sports, n = boardSize(state), list = [];
-    for (let i = 0; i < n; i++) list.push(drawProspect(state));
-    sp.prospects = { year: yearOf(state), offeredDay: today(state), list: list, signed: 0, answered: false, offered: false };
+    const sp = state.sports, year = yearOf(state);
+    const bonus = Math.round(num(PR.prospect.bonusMax, 10) * headroomShare(state) * 10) / 10, mean = prospectMean(state, bonus), list = [];
+    for (let i = 0; i < POS.length; i++) for (let k = 0; k < int(PR.prospect.perPos, 2); k++) list.push(drawProspect(state, POS[i], mean));
+    sp.prospects = { year: year, offeredDay: today(state), lockDay: dayOfDate(PS.schedule.recruitDate, year + 1), list: list, signed: 0, answered: false, offered: false, reminded: false, bonus: bonus, mean: Math.round(mean) };
     return sp.prospects;
   }
-  /** Dec 9: the board is offered once — the card through progress → ui.card; a notify when progress lacks the card. */
+  function signedOn(b, side) { let n = 0; if (b && Array.isArray(b.list)) for (let i = 0; i < b.list.length; i++) { const p = b.list[i]; if (p && p.signed && unitSide(p.pos) === side) n++; } return n; }
+  function lockDayOf(state, b) { return int(b && b.lockDay, dayOfDate(PS.schedule.recruitDate, int(b && b.year, yearOf(state)) + 1)); }
+  /** the board card (ui_panels' 'recruitboard' when the ui has it, a notify otherwise); why = 'open' | 'closing' */
+  function boardCard(state, why, daysLeft) {
+    const b = state.sports.prospects; if (!b) return false;
+    const payload = { why: why, year: b.year, n: b.list.length, perSide: int(PR.maxPerSideClass, 4), signed: { offense: signedOn(b, 'offense'), defense: signedOn(b, 'defense') }, daysLeft: int(daysLeft, 0), lockDay: lockDayOf(state, b), mean: int(b.mean, 0), bonus: num(b.bonus, 0) };
+    const ui = dep('ui');
+    if (ui && typeof ui.card === 'function' && ui.cards && typeof ui.cards.recruitboard === 'function') { call('ui', 'card', state, 'recruitboard', payload); return true; }
+    call('ui', 'notify', state, { text: why === 'open' ? 'Recruiting board: ' + b.list.length + ' prospects, 2 per position. Sign up to ' + payload.perSide + ' offense and ' + payload.perSide + ' defense on the Recruiting tab before Aug 5.' : 'The recruiting board locks in ' + payload.daysLeft + ' days (Aug 5): ' + (payload.signed.offense + payload.signed.defense) + ' signed.', kind: 'sports', ttl: 12000 });
+    return false;
+  }
+  /** Dec 9: the board is offered once — a ticker line and the board card */
   function offerProspects(state) {
     const sp = state.sports, b = sp.prospects;
     if (!b || b.offered) return false;
     b.offered = true;
-    ticker(state, 'Recruiting season: ' + b.list.length + ' prospects on the board. Sign up to ' + int(PE.recruit.maxSignings, 2) + ' before Aug 5.', {});
-    const delivered = call('progress', 'offerProspects', state);
-    if (delivered !== true) {
-      const money = function (n) { return BSU.formatMoney ? BSU.formatMoney(n) : '$' + n; };
-      call('ui', 'notify', state, { text: 'Prospect board: ' + b.list.map(function (p) { return p.pos + ' ' + p.name + ' (' + p.rating + ', ' + money(p.cost) + ')'; }).join(' · ') + '. Sign up to ' + int(PE.recruit.maxSignings, 2) + ' in the Season panel.', kind: 'sports', ttl: 12000 });
-    }
+    ticker(state, 'Recruiting season: ' + b.list.length + ' prospects on the board, 2 per position. Sign up to ' + int(PR.maxPerSideClass, 4) + ' offense and ' + int(PR.maxPerSideClass, 4) + ' defense before Aug 5.', {});
+    boardCard(state, 'open', lockDayOf(state, b) - today(state));
     return true;
   }
-  /** Aug 5: every signed prospect replaces the starter at that position (the money was charged at signing). */
+  /** reminderDays before the lock: one reminder card while the board is open */
+  function remindBoard(state, day) {
+    const b = state.sports.prospects; if (!b || b.reminded) return;
+    const lock = lockDayOf(state, b), left = lock - day;
+    if (left > int(PR.reminderDays, 7) || left <= 0) return;
+    b.reminded = true;
+    boardCard(state, 'closing', left);
+  }
+  /** Aug 5: every signed prospect joins the roster as a freshman (the first year's scholarship was paid at signing); a full position releases its weakest; the board closes */
   function applyProspects(state) {
     const sp = state.sports, b = sp.prospects;
     if (!b) return;
-    if (sp.starters.length < POS.length) fillStarters(state);
+    const year = yearOf(state);
     for (let i = 0; i < b.list.length; i++) {
       const p = b.list[i]; if (!p || !p.signed) continue;
-      let k = NONE; for (let j = 0; j < sp.starters.length; j++) if (sp.starters[j].pos === p.pos) { k = j; break; }
-      if (k < 0) k = Math.max(0, POS.indexOf(p.pos));
-      const old = sp.starters[k];
-      sp.starters[k] = { name: p.name, pos: p.pos, hometown: p.hometown, rating: p.rating, class: L.recruitClass };
-      if (sp.records && Array.isArray(sp.records.recruits)) { sp.records.recruits.push({ year: yearOf(state), name: p.name, pos: p.pos, hometown: p.hometown, rating: p.rating, cost: int(p.cost, 0), title: String(p.title || '') }); while (sp.records.recruits.length > PB.recruitsMax) sp.records.recruits.shift(); }   // P3: Records tab
-      call('ui', 'notify', state, { text: p.pos + ' ' + p.name + ' (' + p.hometown + ') arrives rated ' + p.rating + (old ? ', replacing ' + old.name + ' (' + old.rating + ')' : '') + '.', kind: 'sports', ttl: 9000 });
-      ticker(state, p.pos + ' ' + p.name + ' reports for fall camp.' + (p.blurb ? ' ' + p.blurb : ''), {});
+      const added = addPlayer(state, { name: p.name, pos: p.pos, hometown: p.hometown, rating: p.rating, classYear: L.recruitClass, class: L.recruitClass, signedYear: year, cost: int(p.cost, 0), dinged: 0, walkOn: false, title: String(p.title || '') });
+      if (sp.records && Array.isArray(sp.records.recruits)) { sp.records.recruits.push({ year: year, name: p.name, pos: p.pos, hometown: p.hometown, rating: p.rating, cost: int(p.cost, 0), title: String(p.title || '') }); while (sp.records.recruits.length > PB.recruitsMax) sp.records.recruits.shift(); }   // P3: the Records tab's recruiting history
+      const cut = added.cut.length ? ', ' + nameList(added.cut) + ' released' : '';
+      call('ui', 'notify', state, { text: p.pos + ' ' + p.name + ' (' + p.hometown + ') arrives rated ' + p.rating + cut + '.', kind: 'sports', ttl: 9000 });
+      ticker(state, p.pos + ' ' + p.name + ' reports for fall camp.' + (p.blurb ? ' ' + p.blurb : '') + cut + '.', {});
     }
     sp.prospects = null;
+  }
+  /** Aug 5: the returning scholarship players' year (fund first, then cash — a commitment, so it posts even when cash is short) */
+  function chargeScholarships(state, year) {
+    const r = rosterOf(state.sports); let due = 0, n = 0;
+    for (let i = 0; i < r.length; i++) if (r[i].cost > 0 && r[i].signedYear < year) { due += r[i].cost; n++; }
+    if (due > 0) { athleticsCharge(state, due, 'coaching', { note: 'Scholarships ' + year + ' (' + n + ' players)', force: true }); refreshBudget(state, 'scholarships'); }
+    return due;
   }
 
   // ---------------------------------------------------------------------------
@@ -2189,7 +2373,7 @@
       for (let i = 0; i < sp.starters.length; i++) if (sp.starters[i].pos === pos) { k = i; break; }
       if (sp.starters.length < POS.length) { fillStarters(state); k = NONE; for (let i = 0; i < sp.starters.length; i++) if (sp.starters[i].pos === pos) { k = i; break; } }
       if (k < 0) k = Math.max(0, POS.indexOf(pos));
-      sp.starters[k] = { name: rc.name, pos: pos, hometown: rc.hometown, rating: PS.recruitRating, class: 'Fr' };
+      addPlayer(state, { name: rc.name, pos: pos, hometown: rc.hometown, rating: PS.recruitRating, classYear: 'Fr', class: 'Fr', signedYear: yearOf(state), cost: 0, dinged: 0, walkOn: false });   // P2: joins the roster (the NIL price was the whole fee)
       call('ui', 'notify', state, { text: pos + ' ' + rc.name + ' (' + rc.hometown + ') signs. Rated ' + PS.recruitRating + '.', kind: 'sports' });
     }
     sp.recruit = null;
@@ -2207,7 +2391,8 @@
       // the roster: three starters (drawn here the first time; May 5 turns seniors over), then the recruit lands
       if (sp.starters.length < POS.length) fillStarters(state);
       applyRecruit(state);
-      applyProspects(state);   // pass C: signed prospects replace their position's starter at the lock
+      applyProspects(state);   // P2: signed prospects join the roster as freshmen at the lock; the board closes
+      chargeScholarships(state, year);   // P2: the returning scholarship players' year
       if (sp.seasonYear !== year) buildSchedule(state, year);
       if (call('buildings', 'has', state, 'stadium') === true) drawRecruit(state);
     }
@@ -2218,8 +2403,10 @@
       const aug5 = dayOfDate(PS.schedule.recruitDate, year), dec8 = dayOfDate(PS.schedule.seasonEnd, year);
       if (day > aug5 && day < dec8) { if (!sp.starters.length) sp.starters = drawStarters(state); buildSchedule(state, year); }
     }
-    // May 5: seniors leave
-    if (sp.hasTeam && sp.starters.length && day === dayOfDate('May 5', year)) seniorsLeave(state);
+    // May 5 (P2 gradDate): classes advance, seniors leave, walk-ons fill the empty starter slots
+    if (sp.hasTeam && sp.starters.length && day === dayOfDate(PR.gradDate || 'May 5', year)) graduate(state);
+    // P2: the board's lock reminder, reminderDays before Aug 5
+    if (sp.hasTeam && sp.prospects) remindBoard(state, day);
     // PLAN_V2 P1: Nov 8 — raise offers for coaches other programs are circling (above 4★ at prestige < 40)
     if (sp.hasTeam && day === dayOfDate(PF.poach.offerDate, year)) offerRaises(state);
     // Dec 9: the offseason hire card and the prospect board (pass C: offered once per off-season); P1: candidates for all three roles
@@ -2351,6 +2538,8 @@
     lines.push({ key: 'coaching', label: T.coaching || 'Coaching spend', amount: Math.max(0, int(e.coaching, 0)) });
     let sign = 0; const b = sp.prospects; if (b && Array.isArray(b.list)) for (let i = 0; i < b.list.length; i++) if (b.list[i] && b.list[i].signed) sign += Math.max(0, int(b.list[i].cost, 0));
     lines.push({ key: 'signings', label: T.signings || 'Signed prospects', amount: sign });
+    let players = 0; const ro = sp.roster; if (Array.isArray(ro)) for (let i = 0; i < ro.length; i++) if (ro[i]) players += Math.max(0, int(ro[i].cost, 0));   // P2: the roster's scholarships per year
+    lines.push({ key: 'players', label: T.players || 'Player scholarships', amount: players });
     lines.push({ key: 'upkeep', label: T.upkeep || 'Venue upkeep share', amount: sp.hasTeam ? Math.round(venueUpkeepYear(state) * PB.upkeepShare) : 0 });
     lines.push({ key: 'homecoming', label: T.homecoming || 'Homecoming', amount: Math.max(0, int(sp.homecomingBudget, 0)) });
     return lines;
@@ -2620,17 +2809,18 @@
       spc.tick = Math.max(num(spc.tick, 0), num(spc.len, PT.gameTicks) - 1);
     } catch (e) { BSU.error('sports', 'skipToFinal', e); }
   };
-  /** PLAN_FOOTBALL pass C: the prospect board {year, offeredDay, maxSignings, signed, answered, open, list[{index, name, pos, hometown, rating, cost, title, blurb, signed}]} or null outside the off-season. */
+  /** PLAN_V2 P2: the prospect board {year, offeredDay, lockDay, daysLeft, maxPerSide, maxSignings, signed, signedSide{offense, defense}, open, answered, bonus, mean, list[{index, side, name, pos, hometown, rating, cost (per year), years, title, blurb, signed}], offense[], defense[]} or null outside the off-season */
   M.prospects = function (state) {
     try {
       if (!state || !state.sports) return null;
       const b = state.sports.prospects; if (!b || !Array.isArray(b.list)) return null;
-      const max = int(PE.recruit.maxSignings, 2);
-      return { year: b.year, offeredDay: b.offeredDay, maxSignings: max, signed: int(b.signed, 0), answered: !!b.answered, open: int(b.signed, 0) < max,
-        list: b.list.map(function (p, i) { return { index: i, name: p.name, pos: p.pos, hometown: p.hometown, rating: p.rating, cost: p.cost, title: p.title, blurb: p.blurb, archetype: p.archetype, signed: !!p.signed }; }) };
+      const per = int(PR.maxPerSideClass, 4), so = signedOn(b, 'offense'), sd = signedOn(b, 'defense'), lock = lockDayOf(state, b);
+      const list = b.list.map(function (p, i) { return { index: i, side: unitSide(p.pos), name: p.name, pos: p.pos, hometown: p.hometown, rating: p.rating, cost: p.cost, years: int(p.years, PR.eligibilityYears), title: p.title, blurb: p.blurb, archetype: p.archetype, signed: !!p.signed }; });
+      return { year: b.year, offeredDay: b.offeredDay, lockDay: lock, daysLeft: lock - today(state), maxPerSide: per, maxSignings: per * 2, signed: so + sd, signedSide: { offense: so, defense: sd }, open: so < per || sd < per, answered: !!b.answered, bonus: num(b.bonus, 0), mean: int(b.mean, 0),
+        list: list, offense: list.filter(function (p) { return p.side === 'offense'; }), defense: list.filter(function (p) { return p.side === 'defense'; }) };
     } catch (e) { BSU.error('sports', 'prospects', e); return null; }
   };
-  /** Sign prospect idx: charges the cost now (coaching ledger); the player arrives at the Aug 5 lock → {ok, cost, name, pos, reason}. */
+  /** Sign prospect idx: up to maxPerSideClass per side per class, the first year's scholarship now (fund first); the player arrives at the Aug 5 lock → {ok, cost, name, pos, rating, side, signed, reason} */
   M.signProspect = function (state, idx) {
     try {
       const sp = state.sports, b = sp.prospects;
@@ -2638,17 +2828,21 @@
       const p = b.list[int(idx, NONE)];
       if (!p) return { ok: false, cost: 0, reason: 'No such prospect' };
       if (p.signed) return { ok: false, cost: 0, reason: p.name + ' already signed' };
-      const max = int(PE.recruit.maxSignings, 2);
-      if (int(b.signed, 0) >= max) return { ok: false, cost: p.cost, reason: 'Only ' + max + ' signings per off-season' };
-      if (b.list.some(function (q) { return q !== p && q.signed && q.pos === p.pos; })) return { ok: false, cost: p.cost, reason: 'A ' + p.pos + ' is already signed' };
+      const side = unitSide(p.pos), per = int(PR.maxPerSideClass, 4);
+      if (signedOn(b, side) >= per) return { ok: false, cost: p.cost, reason: per + ' ' + side + ' signings already in this class' };
       const ca = canAffordAthletics(state, p.cost);   // P3: the athletics budget's headroom, then cash (the fund first)
       if (!ca.ok) return { ok: false, cost: p.cost, reason: ca.reason };
       if (!athleticsCharge(state, p.cost, 'coaching', { note: 'signing ' + p.name })) return { ok: false, cost: p.cost, reason: 'Cannot afford the signing' };
-      p.signed = true; b.signed = int(b.signed, 0) + 1;
-      ticker(state, p.pos + ' ' + p.name + ' (' + p.hometown + ') signs with the ' + L.bsuNick + '. Rated ' + p.rating + '; arrives Aug 5.', {});
+      p.signed = true; b.signed = signedOn(b, 'offense') + signedOn(b, 'defense');
+      ticker(state, p.pos + ' ' + p.name + ' (' + p.hometown + ') signs with the ' + L.bsuNick + '. Rated ' + p.rating + ', ' + (BSU.formatMoney ? BSU.formatMoney(p.cost) : '$' + p.cost) + ' a year; arrives Aug 5.', {});
       refreshBudget(state, 'sign');
-      return { ok: true, cost: p.cost, name: p.name, pos: p.pos, rating: p.rating, reason: '' };
+      return { ok: true, cost: p.cost, name: p.name, pos: p.pos, rating: p.rating, side: side, signed: { offense: signedOn(b, 'offense'), defense: signedOn(b, 'defense') }, reason: '' };
     } catch (e) { BSU.error('sports', 'signProspect', e); return { ok: false, cost: 0, reason: 'error' }; }
+  };
+  /** PLAN_V2 P2: the roster view {players[], offense[{pos, label, starter, backup, others[], count}], defense[], seniors[], emptyBackups[], walkOnStarters[], dinged[], scholarships, counts{Fr..Sr}, size, nextGrad, daysToGrad} */
+  M.roster = function (state) {
+    try { if (!state || !state.sports) return null; if (S !== state || !pv) { rebind(state); } ensureKeys(state); return rosterView(state); }
+    catch (e) { BSU.error('sports', 'roster', e); return null; }
   };
   /** Pass on the board (it stays readable in the Season panel until Aug 5). */
   M.passProspects = function (state) { try { const b = state.sports.prospects; if (b) b.answered = true; return { ok: !!b }; } catch (e) { BSU.error('sports', 'passProspects', e); return { ok: false }; } };
@@ -2891,6 +3085,12 @@
   M._computeRating = computeRating;
   M._drawStarters = function (state) { return drawStarters(state); };
   M._seniorsLeave = function (state) { return seniorsLeave(state); };
+  M._graduate = function (state) { return graduate(state); };
+  M._develop = function (state) { return develop(state); };
+  M._ding = function (state, g) { return dingAfterGame(state, g || state.sports.game || { day: today(state) }); };
+  M._drawBoard = function (state) { return drawProspects(state); };
+  M._costPerYear = costPerYear;
+  M._addPlayer = function (state, p) { return addPlayer(state, p); };
   M._probFor = probFor;
   M._venueInfo = venueInfo;
   // PLAN_V2 P1 hooks: force a raise offer / a poaching / the off-season staff step; the engine inputs and staff terms for a synthetic game

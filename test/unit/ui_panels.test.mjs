@@ -38,7 +38,7 @@ ok(!!U && typeof U.registerPanel === 'function', 'BSU.ui loaded');
 // --- registration -------------------------------------------------------------------
 // (the panel registry itself is private to ui.js; openPanel()'s host build below proves
 // each name was actually registered with a working build/refresh)
-for (const id of ['newsflash', 'wetfeet', 'failure', 'damage', 'hire', 'raiseoffer', 'poached'])
+for (const id of ['newsflash', 'wetfeet', 'failure', 'damage', 'hire', 'raiseoffer', 'poached', 'recruitboard'])
   ok(typeof U.cards[id] === 'function', 'card registered: ' + id);
 
 BSU.session.newGame({ seed: 2024, skipTutorial: true });
@@ -134,8 +134,8 @@ const sl = byId(host, 'sl-coaching-sea'); sl.value = '1800000'; sl.dispatchEvent
 ok(s2.economy.coaching === 1800000, 'coaching slider → economy.setCoaching');
 const rAfter = BSU.sports.rating(s2).rating;
 ok(rAfter > rBefore && textOf(byId(host, 'sea-ratingline')).indexOf('Team rating ' + Math.round(rAfter)) >= 0, 'the resulting team rating is shown live (' + Math.round(rBefore) + ' → ' + Math.round(rAfter) + '): ' + textOf(byId(host, 'sea-ratingline')));
-const rows = findAll(byId(host, 'sea-starters'), (e) => e.dataset && e.dataset.pos);
-ok(rows.length === 8 && rows.map((r) => r.dataset.pos).join() === 'QB,RB,WR,OL,DL,LB,DB,K', 'starters table: the 8 positions in order');
+const rows = findAll(byId(host, 'sea-starters'), (e) => e.dataset && e.dataset.pos && e.dataset.depth === '1');
+ok(rows.length === 8 && rows.map((r) => r.dataset.pos).join() === 'QB,RB,WR,OL,DL,LB,DB,K', 'starters table: the 8 positions in order (depth 1; P2 adds backups under each)');
 ok(textOf(byId(host, 'sea-starters')).indexOf(s2.sports.starters[0].name) >= 0, 'starters table shows the QB name');
 ok(textOf(byId(host, 'sea-next')).indexOf('win chance') >= 0 || textOf(byId(host, 'sea-next')).indexOf('Your win') >= 0, 'next-game block shows the live win probability');
 ok(findAll(byId(host, 'sea-schedule'), (e) => /fb-sc/.test(e.className)).length === s2.sports.schedule.length, 'schedule rows = ' + s2.sports.schedule.length);
@@ -367,7 +367,7 @@ ok(st && st.ok, 'ui.selfTest ok (includes ui_panels pushed tests) ' + (st && st.
   ok(/No team yet/.test(textOf(byId(host, 'sea-record'))) && /Starters arrive/.test(textOf(byId(host, 'sea-starters'))), 'no-team copy in the header and the roster');
   ok(host._staffGrid && host._staffGrid.slots.length === 3 && host._staffGrid.slots[0].dataset.role === 'hc' && host._staffGrid.slots[1].dataset.role === 'oc' && host._staffGrid.slots[2].dataset.role === 'dc' && /No offensive coordinator yet/.test(textOf(host._staffGrid.slots[1])), 'Staff: host._staffGrid has the HC / OC / DC cards (no team: empty)');
   const B0 = BSU.sports.budget(s0);
-  ok(textOf(byId(host, 'sea-budget-total')).indexOf(money(B0.total)) >= 0 && findAll(byId(host, 'sea-budget-sources'), (e) => e.dataset && e.dataset.key).length === 5 && findAll(byId(host, 'sea-budget-lines'), (e) => e.dataset && e.dataset.key).length === 7, 'budget bar on a fresh game: the total, five sources, five lines');
+  ok(textOf(byId(host, 'sea-budget-total')).indexOf(money(B0.total)) >= 0 && findAll(byId(host, 'sea-budget-sources'), (e) => e.dataset && e.dataset.key).length === 5 && findAll(byId(host, 'sea-budget-lines'), (e) => e.dataset && e.dataset.key).length === 8, 'budget bar on a fresh game: the total, five sources, five lines');
   U.openPanel(null);
   // a team, a stadium, then a jump to the season's end: revenue exists and the budget rolled
   BSU.economy.post(s0, 'misc', 9e6); BSU.economy.addStudents(s0, 700, 'test');
@@ -389,7 +389,7 @@ ok(st && st.ok, 'ui.selfTest ok (includes ui_panels pushed tests) ' + (st && st.
   const srcRows = findAll(byId(host, 'sea-budget-sources'), (e) => e.dataset && e.dataset.key);
   ok(srcRows.length === 5 && B1.sources.every((x, i) => srcRows[i].dataset.key === x.key && textOf(srcRows[i]).indexOf(money(x.amount)) >= 0), 'the five sources carry their amounts');
   const lineRows = findAll(byId(host, 'sea-budget-lines'), (e) => e.dataset && e.dataset.key);
-  ok(lineRows.length === 7 && B1.lines.every((x, i) => lineRows[i].dataset.key === x.key && textOf(lineRows[i]).indexOf(money(x.amount)) >= 0), 'the seven committed lines carry their amounts (P1 adds the coordinators)');
+  ok(lineRows.length === 8 && B1.lines.every((x, i) => lineRows[i].dataset.key === x.key && textOf(lineRows[i]).indexOf(money(x.amount)) >= 0), 'the eight committed lines carry their amounts (P1 adds the coordinators, P2 the players)');
   ok(byId(host, 'sea-budget-bar').children[0].style.width === Math.round(Math.min(1, B1.committed / B1.total) * 100) + '%', 'the bar fill is committed / total');
   // the top-up slider → sports.setTopUp, reflected in the Budget panel's expenses this month
   const tu = byId(host, 'sl-topup'); ok(!!tu && tu.max === '150' && tu.step === '10' && tu.value === '0', 'top-up slider 0–150% in steps of 10');
@@ -416,7 +416,7 @@ ok(st && st.ok, 'ui.selfTest ok (includes ui_panels pushed tests) ' + (st && st.
   // Roster: two tables, eight starters in order (P2 hook)
   click(byId(host, 'tab-roster')); U.update(s0, 600);
   const tables = findAll(byId(host, 'sea-starters'), (e) => /fb-roster/.test(e.className) && e.dataset && e.dataset.side);
-  const rows = findAll(byId(host, 'sea-starters'), (e) => e.dataset && e.dataset.pos);
+  const rows = findAll(byId(host, 'sea-starters'), (e) => e.dataset && e.dataset.pos && e.dataset.depth === '1');
   ok(tables.length === 2 && tables[0].dataset.side === 'offense' && tables[1].dataset.side === 'defense' && rows.length === 8 && rows.map((r) => r.dataset.pos).join() === 'QB,RB,WR,OL,DL,LB,DB,K', 'Roster: offense | defense tables, eight starter rows in order');
   // Staff: the head coach card shows the salary from sports.coachSalary; Records shows the season history
   click(byId(host, 'tab-staff')); U.update(s0, 600);
@@ -458,6 +458,92 @@ ok(st && st.ok, 'ui.selfTest ok (includes ui_panels pushed tests) ' + (st && st.
   ok(findAll(byId(host, 'sea-schedule'), (e) => /fb-sc/.test(e.className)).length === s0.sports.schedule.length && !!byId(host, 'btn-upgrade') && !!byId(host, 'seg-permits') && !!byId(host, 'seg-homecoming'), 'Schedule: the results list, the venue Upgrade, permits and Homecoming');
   U.openPanel(null);
   ok((BSU.errors ? BSU.errors.size : 0) === errs0, 'no BSU.error through the P3 tour');
+}
+
+// --- PLAN_V2 P2: the Roster tab (depth chart, chips, the seniors line, after a graduation) and the Recruiting tab (the 16-prospect board in two groups,
+//     x/4 counters, the headroom line + lock countdown, a Sign refused inline, a Sign that signs, the history), the recruitboard card -------------------
+{
+  const walk = (e, fn) => { fn(e); for (const c of (e.children || [])) walk(c, fn); };
+  const byId = (root, id) => { let f = null; walk(root, (e) => { if (e.id === id && !f) f = e; }); return f; };
+  const findAll = (root, pred) => { const out = []; walk(root, (e) => { if (e && e.tagName && pred(e)) out.push(e); }); return out; };
+  const click = (b) => b.dispatchEvent({ type: 'click' });
+  const textOf = (e) => { let t = String(e.textContent || ''); for (const c of (e.children || [])) t += ' ' + textOf(c); return t; };
+  const visible = (e) => !!e && !e.classList.contains('hidden');
+  const money = (n) => BSU.formatMoney(n);
+  const H = BSU.headless, B = BSU.buildings, SP = BSU.sports;
+  BSU.session.newGame({ seed: 42, skipTutorial: true });
+  const s = BSU.state; const errs0 = BSU.errors ? BSU.errors.size : 0;
+  BSU.economy.post(s, 'misc', 9e6); BSU.economy.addStudents(s, 700, 'test');
+  const scan = (id) => { for (let y = 2; y < 60; y++) for (let x = 2; x < 60; x++) { const c = B.canPlace(s, id, x, y, { ignoreCash: true }); if (c && c.ok) return [x, y]; } return null; };
+  const psp = scan('practice_field'); H.place('practice_field', psp[0], psp[1]); H.tick(2500);
+  const pf = s.buildings.find((x) => x && x.type === 'practice_field'); B.upgrade(s, pf.id); H.tick(2500);
+  const ssp = scan('stadium'); H.place('stadium', ssp[0], ssp[1]); H.tick(2500);
+  SP.setAutoSim(s, true);
+  U.openPanel('season'); U.update(s, 600);
+  const host = U.el['panel-season'];
+  // Roster, fresh team
+  click(byId(host, 'tab-roster')); U.update(s, 600); U.update(s, 600);
+  const RV = SP.roster(s);
+  const d1 = findAll(byId(host, 'sea-starters'), (e) => e.dataset && e.dataset.pos && e.dataset.depth === '1'), d2 = findAll(byId(host, 'sea-starters'), (e) => e.dataset && e.dataset.pos && e.dataset.depth === '2');
+  ok(RV && RV.size === 16 && d1.length === 8 && d2.length === 8 && d1.map((r) => r.dataset.pos).join() === 'QB,RB,WR,OL,DL,LB,DB,K' && d2.every((r, i) => r.classList.contains('backup') && r.dataset.pos === d1[i].dataset.pos), 'Roster: 8 starter rows, each followed by its backup row');
+  ok(d1.every((r, i) => { const st = RV.offense.concat(RV.defense)[i].starter; return textOf(r).indexOf(st.name) >= 0 && textOf(r).indexOf(st.classYear) >= 0 && textOf(r).indexOf(String(st.rating)) >= 0 && textOf(r).indexOf(st.hometown) >= 0; }), 'starter rows: name, class, rating, hometown');
+  ok(d2.every((r) => /walk-on/.test(textOf(r)) && /free/.test(textOf(r))) && d1.every((r) => !/\/yr/.test(textOf(r))), 'backup rows read walk-on · free; the first squad is on no scholarship (no cost/yr)');
+  const chips = textOf(byId(host, 'sea-roster-chips'));
+  ok(/Players\s*16/.test(chips) && /Scholarships/.test(chips) && /Leaving next May\s*\d+/.test(chips) && /Jr \d+/.test(chips) && /Sr \d+/.test(chips), 'chips: players, class counts, scholarships, seniors leaving: ' + chips.replace(/\s+/g, ' ').trim().slice(0, 120));
+  ok(/Leaving next May/.test(textOf(byId(host, 'sea-roster-sum'))) && RV.seniors.every((p) => textOf(byId(host, 'sea-roster-sum')).indexOf(p.name) >= 0), 'the seniors line names everyone leaving next May');
+  // a dinged starter shows the chip and the backup starts
+  const qb = s.sports.starters[0]; qb.dinged = 2; SP._ding(s, { day: 1 }); U.update(s, 600); U.update(s, 600);
+  const rowsNow = findAll(byId(host, 'sea-starters'), (e) => e.dataset && e.dataset.pos === 'QB');
+  ok(rowsNow.length >= 2 && textOf(rowsNow[0]).indexOf(qb.name) < 0 && /dinged/.test(textOf(rowsNow[1])) && textOf(rowsNow[1]).indexOf(qb.name) >= 0 && /Dinged/.test(textOf(byId(host, 'sea-roster-chips'))), 'a dinged QB drops to the backup row with the chip; the chip row says so');
+  s.sports.roster.forEach((p) => { p.dinged = 0; }); SP._ding(s, { day: 2 });
+  // after a season + the May graduation: seniors gone, walk-ons start, the Roster refreshes; the board is open
+  s.calendar.day = BSU.dateToDay('Dec 7', 1); for (let i = 0; i < 6 * BSU.params.time.ticksPerDay && !(s.sports.seasonDone); i++) H.tick(1);
+  while (s.setPiece) H.tick(1);
+  const seniors = RV.seniors.map((p) => p.name);
+  for (let i = 0; i < 4 * BSU.params.time.ticksPerDay; i++) H.tick(1);   // Dec 9 passes: the board is drawn
+  const board0 = SP.prospects(s);
+  ok(s.sports.seasonDone && board0 && board0.list.length === 16, 'P2 setup: a finished season and a 16-prospect board');
+  const jump = (day) => { s.calendar.day = day - 1; while (s.calendar.day < day) { H.tick(BSU.params.time.ticksPerDay); while (s.setPiece) H.tick(1); } H.tick(1); };   // the calendar jumps as the P3 block does; a late Spring Game may freeze a day, so loop until the daily hooks fired on `day`
+  jump(BSU.dateToDay('May 5', 2));
+  U.update(s, 600); U.update(s, 600);
+  const RV2 = SP.roster(s);
+  ok(seniors.every((n) => !s.sports.roster.some((p) => p.name === n)) && RV2.walkOnStarters.length >= 1 && /Walk-ons starting at/.test(textOf(byId(host, 'sea-roster-chips'))) && findAll(byId(host, 'sea-starters'), (e) => e.dataset && e.dataset.depth === '1').length === 8, 'after the May graduation: the seniors are gone, walk-ons start (' + RV2.walkOnStarters.join(' ') + '), eight starter rows');
+  ok(findAll(byId(host, 'sea-starters'), (e) => e.dataset && e.dataset.depth === '2' && e.classList.contains('empty')).length === RV2.emptyBackups.length, 'positions without a backup show an empty backup row (' + RV2.emptyBackups.length + ')');
+  // Recruiting: the board in two groups with counters, the headroom + lock line, Sign refused inline, a Sign that signs
+  click(byId(host, 'tab-recruiting')); U.update(s, 600); U.update(s, 600);
+  const groups = findAll(byId(host, 'sea-prospects'), (e) => e.dataset && e.dataset.side);
+  const pRows = findAll(byId(host, 'sea-prospects'), (e) => /fb-pr/.test(e.className) && !/fb-th/.test(e.className));
+  ok(groups.length === 2 && groups[0].dataset.side === 'offense' && groups[1].dataset.side === 'defense' && pRows.length === 16 && /signed 0 of 4/.test(textOf(groups[0])) && /signed 0 of 4/.test(textOf(groups[1])), 'the board: offense | defense groups of 8 with 0 of 4 counters');
+  const headLine = textOf(byId(host, 'sea-recruit-head'));
+  ok(/Headroom/.test(headLine) && /signed 0 of 8/.test(headLine) && /locks in \d+ days/.test(headLine), 'the head line: headroom, 0 of 8, the lock countdown: ' + headLine.slice(0, 140));
+  const notes = []; const prevNotify = U.notify; U.notify = (st, spec) => notes.push(spec.text);
+  const headroom = SP.budget(s).headroom; const rich = board0.list.slice().sort((a, b) => b.cost - a.cost)[0];
+  BSU.economy.setCoaching(s, 3000000); U.update(s, 600); U.update(s, 600);
+  const rowOf = (p) => findAll(byId(host, 'sea-prospects'), (e) => /fb-pr/.test(e.className) && e.dataset && e.dataset.idx === String(p.index))[0];
+  const overRow = rowOf(rich); click(findAll(overRow, (e) => e.tagName === 'BUTTON' && e.textContent === 'Sign')[0]);
+  ok(notes.length === 1 && /headroom/.test(notes[0]) && visible(byId(host, 'sea-recruit-note')) && /refused/.test(textOf(byId(host, 'sea-recruit-note'))) && !SP.prospects(s).list[rich.index].signed, 'a Sign over the headroom is refused inline: ' + textOf(byId(host, 'sea-recruit-note')).slice(0, 120));
+  BSU.economy.setCoaching(s, 0); U.update(s, 600); U.update(s, 600);
+  const cheap = board0.offense.slice().sort((a, b) => a.cost - b.cost)[0];
+  click(findAll(rowOf(cheap), (e) => e.tagName === 'BUTTON' && e.textContent === 'Sign')[0]); U.update(s, 600);
+  const P2 = SP.prospects(s);
+  ok(P2.list[cheap.index].signed === true && P2.signedSide.offense === 1 && /signed 1 of 4/.test(textOf(findAll(byId(host, 'sea-prospects'), (e) => e.dataset && e.dataset.side === 'offense')[0])) && /signed 1 of 8/.test(textOf(byId(host, 'sea-recruit-head'))) && /signs/.test(textOf(byId(host, 'sea-recruit-note'))) && /arrives Aug 5/.test(textOf(rowOf(cheap))), 'a Sign inside the headroom signs: counters 1 of 4 / 1 of 8, the row reads signed');
+  U.notify = prevNotify; void headroom;
+  // the recruitboard card (open + closing) builds with two actions; the first opens the Recruiting tab
+  U.openPanel(null); click(byId(host, 'tab-overview'));
+  const co = U.cards.recruitboard(s, { why: 'open', n: 16, perSide: 4, signed: { offense: 1, defense: 0 }, daysLeft: 200, lockDay: BSU.dateToDay('Aug 5', 2), mean: 68, bonus: 4 });
+  ok(co && /recruiting board is open/i.test(co.title) && co.actions.length === 2 && /Recruiting tab/.test(co.actions[0].label) && co.body.some((l) => /16 prospects/.test(l) && /68/.test(l)) && co.body.some((l) => /Aug 5/.test(l)), 'the recruitboard card builds with two actions, the numbers and the lock date');
+  co.actions[0].fn(s); U.update(s, 600);
+  ok(U.panel() === 'season' && visible(byId(host, 'sea-tab-recruiting')), 'its first action opens the Season panel on the Recruiting tab');
+  const cc = U.cards.recruitboard(s, { why: 'closing', n: 16, perSide: 4, signed: { offense: 1, defense: 0 }, daysLeft: 7, lockDay: BSU.dateToDay('Aug 5', 2) });
+  ok(cc && /locks in 7 days/.test(cc.title) && cc.body.some((l) => /1 signed/.test(l)), 'the closing card counts down and reports the signings');
+  // Aug 5: the signing arrives; the history lists it on the Recruiting tab
+  U.openPanel(null); jump(BSU.dateToDay('Aug 5', 2));
+  U.openPanel('season'); click(byId(host, 'tab-recruiting')); U.update(s, 600); U.update(s, 600);
+  ok(s.sports.records.recruits.some((r) => r.name === cheap.name) && textOf(byId(host, 'sea-recruit-history')).indexOf(cheap.name) >= 0 && visible(byId(host, 'sea-recruit-empty')), 'after the lock: the history lists the arrival, the board is closed');
+  click(byId(host, 'tab-roster')); U.update(s, 600);
+  ok(textOf(byId(host, 'sea-starters')).indexOf(cheap.name) >= 0 && /Fr/.test(textOf(findAll(byId(host, 'sea-starters'), (e) => e.dataset && e.dataset.pos === cheap.pos)[0]) + textOf(findAll(byId(host, 'sea-starters'), (e) => e.dataset && e.dataset.pos === cheap.pos)[1] || '')), 'the freshman is on the depth chart');
+  ok((BSU.errors ? BSU.errors.size : 0) === errs0, 'no BSU.error through the P2 tour');
+  U.openPanel(null);
 }
 
 console.log(`\n${passes} passed, ${failures} failed`);

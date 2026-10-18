@@ -590,6 +590,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - sports.skipToFinal(state)
 - sports.prospects(state)
 - sports.signProspect(state, idx)
+- sports.roster(state)
 - sports.passProspects(state)
 - sports.spring(state)
 - sports.startSpringGame(state)
@@ -621,6 +622,12 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - sports._computeRating(state)
 - sports._drawStarters(state)
 - sports._seniorsLeave(state)
+- sports._graduate(state)
+- sports._develop(state)
+- sports._ding(state, g)
+- sports._drawBoard(state)
+- sports._costPerYear(rating)
+- sports._addPlayer(state, p)
 - sports._probFor(state, team, oppRating, night, home)
 - sports._venueInfo(state)
 - sports._offerRaise(state, role)
@@ -916,7 +923,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 
 - BSU.worldToScreen(tx, ty, elev, cam, vw, vh)
 
-## BSU.params groups (17): time[30], terrain[59], hydro[47], storm[116], wildlife[4], subsidence[17], heat[21], weather[18], econ[62], sports[80], agents[30], build[34], render[59], ui[16], audio[6], palette[34], progress[16]
+## BSU.params groups (17): time[30], terrain[59], hydro[47], storm[116], wildlife[4], subsidence[17], heat[21], weather[18], econ[62], sports[81], agents[30], build[34], render[59], ui[16], audio[6], palette[34], progress[16]
 
 ## BSU.newState(seed) tree
 - v:number
@@ -941,7 +948,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - wildlife:{nutria:number, leGrandDay:number, leGrand:null, officers:array[0], relocations:number, incidents:array[0], ecology:number, ecologyTerms:object, foggerPenalty:number, mosqIndex:number, mosqWarnedDay:number, biblicalDays:number, campusMask:null, fireflies:number, birds:object, wetlandOriginal:number}
 - economy:{cash:number, students:number, alumni:number, prestige:number, happiness:number, happinessRaw:number, ecology:number, tuition:number, quality:string, selectivity:string, coaching:number, ticket:number, autoRepair:boolean, interestPaid:number, loanLimit:number, negMonths:number, insurance:boolean, endowment:number, westCampus:boolean, pool:number, applicants:number, capacity:number, capacityTerms:object, targets:object, happyTerms:object, attendanceCycles:array[0], sick:number, suspendCapPenalties:boolean, suppressCoverage:boolean, runway:object}
 - ledger:{month:object, last:object, year:object, history:array[0]}
-- sports:{hasTeam:boolean, venue:string, seasonYear:number, schedule:array[0], record:object, lastSeason:object, coach:object, candidates:array[0], starters:array[0], recruit:null, rating:number, ratingTerms:object, nightToggle:boolean, autoSim:boolean, permits:string, homecomingBudget:number, rivalryLossStreak:number, game:null, firstHomeGameDay:number, firstNightGameDay:number, scriptedNightDay:number, playbook:string, aggression:string, watchFull:boolean, lastSummary:null, records:object, springDay:number, springYear:number, lastSpring:null, prospects:null, seasonLog:array[0], seasonLines:null, staff:null, budget:null}
+- sports:{hasTeam:boolean, venue:string, seasonYear:number, schedule:array[0], record:object, lastSeason:object, coach:object, candidates:array[0], starters:array[0], recruit:null, rating:number, ratingTerms:object, nightToggle:boolean, autoSim:boolean, permits:string, homecomingBudget:number, rivalryLossStreak:number, game:null, firstHomeGameDay:number, firstNightGameDay:number, scriptedNightDay:number, playbook:string, aggression:string, watchFull:boolean, lastSummary:null, records:object, springDay:number, springYear:number, lastSpring:null, prospects:null, seasonLog:array[0], seasonLines:null, staff:null, roster:null, budget:null}
 - progress:{tutorialStage:number, objectives:object, card:null, background:null, interruptQueue:array[0], backgroundQueue:array[0], milestones:object, timers:array[0], voiceCards:array[0], boardCards:array[0], failure:object, setPiecesSeen:object, firsts:object, recap:null, achievementsWhileDebug:boolean, hints:object}
 - ticker:array[0]
 - ui:{camera:object, overlay:number, speed:number, speedBefore:number, tool:null, panel:null, paletteTab:string, tabsSeen:object, newPips:object, tabsIntroduced:object, settings:object, perfMode:boolean}

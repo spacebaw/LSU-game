@@ -464,6 +464,20 @@
       // PLAN_V2 P3: the athletics budget (a salary cap that grows with success; sports.budget / canAfford / setTopUp)
       budget: { base: 2000000, revenueShare: 0.35, prestigePer10: 50000, boosters: 500000, boosterWins: 7, topUpMax: 1.5, topUpStep: 0.1, salaryPerStar2: 150000, coordinatorShare: 0.55, upkeepShare: 0.1, transferDate: 'Jan 1', recruitsMax: 40 },
       starterGrad: 0.4, starterRating: { min: 60, max: 99, base: 55, prestigeDiv: 2, perStar: 5 }, recruitRating: 95, seniorLeaveP: 0.4,
+      // PLAN_V2 P2: the roster you build — depth chart (starter + backup per position), class years, walk-ons, development,
+      // dinged starters, the 16-prospect board. The plan's numbers (prospect 40 + prestige × 0.35, walk-ons 35–45, cost
+      // $20k + $6k × (rating − 40)) sit on a scale whose league average is 55; the engine's is starterBase 75, so each
+      // anchor is shifted +20 (prospect base 60, walk-ons 50–58, cost from 60) and the plan's spreads are kept as written.
+      roster: {
+        classes: ['Fr', 'So', 'Jr', 'Sr'], eligibilityYears: 4,
+        maxPerPos: 4, maxPerSideClass: 4,      // at most 4 bodies per position; up to 4 offense + 4 defense signed per class
+        walkOn: { min: 50, max: 58 },          // a free walk-on fills an empty starter slot (plan: 35–45, +20 on the engine scale)
+        prospect: { perPos: 2, base: 60, perPrestige: 0.35, bonusMax: 10, sd: 8, min: 50, max: 95 },   // rating ~ N(base + prestige × 0.35 + bonusMax × headroom share, 8), clamped
+        cost: { base: 20000, perPoint: 6000, from: 60, round: 1000 },   // $/yr = base + perPoint × max(0, rating − from), for eligibilityYears (plan: from 40)
+        dev: { min: 2, max: 5, perStar: 1, floor: 1, cap: 99 },         // off-season +2..+5 for Fr/So/Jr, + perStar × (coordinator stars − coachStarBase), never below floor
+        dinged: { p: 0.05, games: 1 },         // a starter is dinged 5 % per game played and sits the next game (the backup starts)
+        gradDate: 'May 5', reminderDays: 7     // classes advance / seniors leave on gradDate; the board's lock reminder lands reminderDays before Aug 5
+      },
       playThroughHappiness: 10, playThroughPrestige: 3, playThroughMaxCat: 1,
       resiliencePrestige: 4, rivalryPrestige: 3, rivalryDonation: 1.3, rivalryLossFire: 3, undefeatedDonation: 1.5, undefeatedWins: 7,
       autoSimTicks: 50, halftimeTick: 400, kickoffTick: 200, quarterTicks: 100, finalTick: 600, exitTick: 700,
@@ -1199,6 +1213,7 @@
         records: { allTime: { wins: 0, losses: 0 }, bestWin: null, longestPlay: null, seasonBests: {}, book: {}, seasons: [], hof: [] },
         springDay: -1, springYear: 0, lastSpring: null, prospects: null, seasonLog: [], seasonLines: null,   // PLAN_FOOTBALL pass C: spring game, prospect board, the season's game log and stat lines
         staff: null,   // PLAN_V2 P1: the coaching staff {hc, oc, dc, candidates: {hc, oc, dc}, lastRefreshYear, offers} (sports.ensureKeys builds it lazily; hc is state.sports.coach)
+        roster: null,   // PLAN_V2 P2: the full roster [{name, pos, rating, classYear, class, hometown, signedYear, cost, dinged, walkOn}] (sports.ensureKeys builds it from the starters)
         budget: null   // PLAN_V2 P3: the athletics budget {year, base, fromRevenue, fromPrestige, boosters, topUpShare, topUp, total, committed, lines, fund, ...} (sports.ensureKeys builds it lazily)
       },
       progress: {

@@ -476,7 +476,7 @@ if (existsSync(join(root, 'index.html'))) {
 
   ok(a.len === 750 && a.tOff <= 120, 'highlights fit the 750-tick set piece (+ pause ' + a.tOff + ' ≤ 120)');
   const f = watch(32, true);
-  ok(f.g.mode === 'full' && f.len >= 1900 && f.len <= 2600, 'watch full game: a ~2,200-tick set piece (' + f.len + ')');
+  ok(f.g.mode === 'full' && f.len >= 1900 && f.len <= 2800, 'watch full game: a ~2,200-tick set piece (' + f.len + '; decision pauses add 80 each)');
   ok(f.g.plays.length >= 120 && f.g.plays.length <= 190 && f.animated === f.g.plays.length && f.g.finalized && f.s.sports.schedule.some(e => e.played && e.home), 'full mode animated every play (' + f.animated + ' of ' + f.g.plays.length + ') to a final');
   ok(!f.s.setPiece && !f.s.sports.game, 'the full-mode set piece ended after the final');
   ok(SP.summary(f.s) && SP.summary(f.s).mvp && SP.summary(f.s).yards.total.length === 2 && SP.summary(f.s).topText.every(x => /^\d+:\d\d$/.test(x)) && Number.isFinite(SP.summary(f.s).revenue.total), 'summary(): yards, time of possession, MVP, revenue after the game');
@@ -570,39 +570,110 @@ if (existsSync(join(root, 'index.html'))) {
   ok(R1.seasons.length === 2 && R1.hof.length === hof0 + 1 && R1.hof[R1.hof.length - 1].pos === 'QB' && /2500/.test(R1.hof[R1.hof.length - 1].why), 'a 2,500-yard QB season enters the Hall of Fame');
 }
 
-// --- PLAN_FOOTBALL pass C: the prospect board (Dec 9, once), signing, the Aug 5 arrival; hire/fire untouched ----------------------
+// --- PLAN_V2 P2: the roster you build — first team + walk-on backups, the 16-prospect board (Dec 9, once), 4/4 caps, cost math, the headroom,
+//     graduation / walk-ons, the Aug 5 arrival on scholarships, the weakest released at a full position, development monotone in the coordinators,
+//     dinged substitution, migration from a pre-P2 save, six seasons of churn on seed 42 (with and without signings); hire/fire untouched -----------
 {
+  const PR = BSU.params.sports.roster, POSN = ['QB', 'RB', 'WR', 'OL', 'DL', 'LB', 'DB', 'K'];
   const s = newGame(24); rec.notifies.length = 0; rec.tickers.length = 0;
   run(s, 100);
-  const dec9 = BSU.dateToDay('Dec 9', 1);
-  runUntilDay(s, dec9 - 1); while (s.setPiece) tick1(s);
+  const R0 = s.sports.roster;
+  ok(Array.isArray(R0) && R0.length === 16 && s.sports.rosterInit === true && R0.filter(p => p.walkOn).length === 8, 'the first team: 8 starters + 8 walk-on backups (' + (R0 && R0.length) + ')');
+  ok(s.sports.starters.length === 8 && s.sports.starters.every(p => R0.indexOf(p) >= 0 && (p.classYear === 'Jr' || p.classYear === 'Sr') && p.class === p.classYear && !p.walkOn && p.cost === 0 && p.dinged === 0), 'the eight starters are roster objects: juniors and seniors, no dings');
+  ok(R0.filter(p => p.walkOn).every(p => p.rating >= PR.walkOn.min && p.rating <= PR.walkOn.max && p.cost === 0 && ['Fr', 'So', 'Jr', 'Sr'].indexOf(p.classYear) >= 0), 'walk-ons rated ' + PR.walkOn.min + '–' + PR.walkOn.max + ', free');
+  const RV0 = SP.roster(s);
+  ok(RV0 && RV0.offense.length === 4 && RV0.defense.length === 4 && RV0.offense.concat(RV0.defense).every(r => r.starter && r.backup && r.backup.walkOn && r.starter.rating >= r.backup.rating && r.count === 2) && RV0.seniors.length >= 4 && RV0.seniors.length === s.sports.roster.filter(p => p.classYear === 'Sr').length && RV0.scholarships === 0 && RV0.size === 16 && RV0.emptyBackups.length === 0, 'sports.roster: starter + walk-on backup per position, ' + RV0.seniors.length + ' seniors leaving (4 starters + walk-ons), no scholarships yet');
+  const dec9 = BSU.dateToDay('Dec 9', 1), dec8 = BSU.dateToDay('Dec 8', 1);
+  runUntilDay(s, dec8 - 1); while (s.setPiece) tick1(s);
+  const before = s.sports.roster.map(p => [p.name, p.rating, p.classYear]);
   eq(SP.prospects(s), null, 'no board before Dec 9');
   runUntilDay(s, dec9); run(s, 2);
+  // season end: development for everyone but the seniors
+  const grew = s.sports.roster.map(p => { const b = before.find(x => x[0] === p.name); return b ? [p.rating - b[1], b[2]] : null; }).filter(x => x);
+  ok(grew.length >= 12 && grew.every(g => (g[1] === 'Sr' ? g[0] === 0 : (g[0] >= 1 && g[0] <= PR.dev.max + 3))) && grew.some(g => g[1] !== 'Sr' && g[0] >= 2), 'Dec 8: underclassmen developed (+' + Math.min(...grew.filter(g => g[1] !== 'Sr').map(g => g[0])) + '..+' + Math.max(...grew.map(g => g[0])) + '), seniors did not');
+  ok(rec.tickers.some(t => /^Off-season workouts/.test(String(t.line))), 'the growth is a ticker line');
   const board = SP.prospects(s);
-  ok(board && board.list.length === 3 && board.maxSignings === 2 && board.signed === 0 && board.open === true, 'Dec 9: a 3-prospect board at $200k coaching');
-  ok(board.list.every(p => ['QB', 'RB', 'WR', 'OL', 'DL', 'LB', 'DB', 'K'].indexOf(p.pos) >= 0 && p.rating >= 70 && p.rating <= 95 && p.cost >= 150000 && p.cost <= 900000 && p.cost % 10000 === 0 && p.name && p.hometown && p.title), 'prospects: position, rating 70–95, cost $150k–$900k (rounded to $10k), archetype');
-  ok(rec.notifies.filter(t => /Prospect board/.test(t)).length === 1 && s.sports.prospects.offered === true, 'offered once (the notify fallback when progress lacks the card)');
-  run(s, 300); ok(rec.notifies.filter(t => /Prospect board/.test(t)).length === 1, 'not re-offered on later days');
-  const p0 = board.list[0];
-  const r1 = SP.signProspect(s, 0);
-  ok(r1.ok === true && r1.cost === p0.cost && SP.prospects(s).list[0].signed === true && SP.prospects(s).signed === 1, 'signProspect charges the cost and marks the prospect (' + p0.pos + ' ' + p0.name + ')');
-  ok(SP.signProspect(s, 0).ok === false, 'cannot sign the same prospect twice');
-  const same = board.list.findIndex((p, i) => i > 0 && p.pos === p0.pos);
-  if (same > 0) ok(SP.signProspect(s, same).ok === false, 'one signing per position');
-  ok(SP.signProspect(s, 99).ok === false && SP.passProspects(s).ok === true && SP.prospects(s).answered === true, 'bad index refused; Pass marks the board answered');
-  // a bigger coaching budget → a bigger board, better prospects on average
-  const s5 = newGame(25); s5.economy.coaching = 1500000; run(s5, 100); runUntilDay(s5, dec9); run(s5, 2);
-  const b5 = SP.prospects(s5);
-  ok(b5 && b5.list.length === 5, 'a $1.5M coaching budget draws a 5-prospect board');
-  const avg = (b) => b.list.reduce((a, p) => a + p.rating, 0) / b.list.length;
-  ok(avg(b5) > avg(board) - 4, 'quality follows the coaching budget (' + avg(board).toFixed(1) + ' → ' + avg(b5).toFixed(1) + ')');
-  // Aug 5 Y2: the signed prospect replaces the starter at that position
-  const before = s.sports.starters.find(x => x.pos === p0.pos);
+  ok(board && board.list.length === 16 && POSN.every(p => board.list.filter(x => x.pos === p).length === 2) && board.maxPerSide === 4 && board.maxSignings === 8 && board.signed === 0 && board.open === true && board.offense.length === 8 && board.defense.length === 8, 'Dec 9: 16 prospects, 2 per position, 4 + 4 per class');
+  ok(board.list.every(p => p.rating >= PR.prospect.min && p.rating <= PR.prospect.max && p.cost === SP._costPerYear(p.rating) && p.cost === PR.cost.base + PR.cost.perPoint * Math.max(0, p.rating - PR.cost.from) && p.years === 4 && p.name && p.hometown && p.title && p.side === (POSN.indexOf(p.pos) < 4 ? 'offense' : 'defense')), 'prospects: rating ' + PR.prospect.min + '–' + PR.prospect.max + ', cost/yr = $20k + $6k × (rating − ' + PR.cost.from + '), four years, archetype titles');
+  ok(board.lockDay === BSU.dateToDay('Aug 5', 2) && board.daysLeft === board.lockDay - s.calendar.day && board.mean >= 60 && board.bonus >= 0 && board.bonus <= PR.prospect.bonusMax, 'the board locks Aug 5 Y2; mean ' + board.mean + ' with a headroom bonus of ' + board.bonus);
+  ok(rec.notifies.filter(t => /Recruiting board/.test(t)).length === 1 && s.sports.prospects.offered === true, 'offered once (the notify fallback without the card)');
+  run(s, 300); ok(rec.notifies.filter(t => /Recruiting board/.test(t)).length === 1, 'not re-offered on later days');
+  // quality follows prestige
+  { const hi = newGame(25); hi.economy.prestige = 80; run(hi, 100); runUntilDay(hi, dec9); run(hi, 2); const bh = SP.prospects(hi); const avg = (b) => b.list.reduce((a, p) => a + p.rating, 0) / b.list.length;
+    ok(bh && bh.list.length === 16 && avg(bh) > avg(board) + 8, 'prestige 80 draws a far better board than 16 (' + avg(board).toFixed(1) + ' → ' + avg(bh).toFixed(1) + ')'); }
+  // sign four offense; the fifth is refused; the costs are per-year commitments against the headroom
+  const head0 = SP.budget(s).headroom, off = board.offense.slice().sort((a, b) => b.rating - a.rating), signed = [];
+  for (let i = 0; i < 4; i++) { const r = SP.signProspect(s, off[i].index); ok(r.ok === true && r.cost === off[i].cost && r.side === 'offense' && r.signed.offense === i + 1, 'signs ' + off[i].pos + ' ' + off[i].name + ' (' + off[i].rating + ') at ' + off[i].cost + '/yr'); signed.push(off[i]); }
+  const r5 = SP.signProspect(s, off[4].index); ok(r5.ok === false && /4 offense/.test(r5.reason) && !SP.prospects(s).list[off[4].index].signed, 'a fifth offensive signing is refused: ' + r5.reason);
+  ok(SP.signProspect(s, off[0].index).ok === false && SP.signProspect(s, 99).ok === false, 'already signed / bad index refused');
+  const P1 = SP.prospects(s); ok(P1.signedSide.offense === 4 && P1.signedSide.defense === 0 && P1.signed === 4 && P1.open === true, 'counters 4 offense / 0 defense; the class is still open');
+  const sumCost = signed.reduce((a, p) => a + p.cost, 0);
+  ok(SP.budget(s).lines.find(l => l.key === 'signings').amount === sumCost && SP.budget(s).headroom === head0 - sumCost, 'the signed prospects commit their per-year cost (' + sumCost + ')');
+  s.economy.coaching = 5000000; const rr = SP.signProspect(s, board.defense[0].index); ok(rr.ok === false && /headroom/.test(rr.reason), 'over the headroom → refused: ' + rr.reason); s.economy.coaching = 200000;
+  const rd = SP.signProspect(s, board.defense[0].index); ok(rd.ok === true && rd.side === 'defense', 'a defensive signing inside the headroom');
+  ok(SP.passProspects(s).ok === true && SP.prospects(s).answered === true, 'Pass marks the board answered');
+  // the lock reminder 7 days before Aug 5, once
+  rec.notifies.length = 0; runUntilDay(s, BSU.dateToDay('Aug 5', 2) - 7); run(s, 2);
+  ok(s.sports.prospects && s.sports.prospects.reminded === true && rec.notifies.filter(t => /board locks in 7 days/.test(t)).length === 1, 'the lock reminder lands 7 days before Aug 5 (notify fallback): ' + rec.notifies.find(t => /locks/.test(t)));
+  // May 5 Y2 already passed: the seniors graduated with a ticker line, every slot kept a body
+  const sen = before.filter(x => x[2] === 'Sr').map(x => x[0]);
+  ok(sen.length >= 4 && sen.every(n => !s.sports.roster.some(p => p.name === n)) && rec.tickers.some(t => /^Graduation:/.test(String(t.line))) && s.sports.starters.length === 8 && POSN.every(p => s.sports.roster.some(x => x.pos === p)) && s.sports.roster.every(p => p.classYear !== 'Fr' || p.walkOn), 'May 5: ' + sen.length + ' seniors graduated with a ticker line; walk-ons keep every slot filled');
+  // Aug 5 Y2: the five signings arrive as freshmen on their scholarships; the board closes; the history and the players line
   runUntilDay(s, BSU.dateToDay('Aug 6', 2)); while (s.setPiece) tick1(s);
-  const after = s.sports.starters.find(x => x.pos === p0.pos);
-  ok(after && after.name === p0.name && after.rating === p0.rating && after.class === 'Fr' && (!before || before.name !== p0.name), 'Aug 5: ' + p0.pos + ' ' + p0.name + ' replaced ' + (before && before.name) + ' (' + (before && before.rating) + ' → ' + after.rating + ')');
-  ok(s.sports.prospects === null && s.sports.starters.length === 8, 'the board closes at the lock; eight starters');
-  ok(rec.notifies.some(t => t.indexOf(p0.name) >= 0 && /arrives/.test(t)), 'the arrival is a notify');
+  const arrived = signed.concat([board.defense[0]]);
+  ok(arrived.every(p => s.sports.roster.some(x => x.name === p.name && x.pos === p.pos && x.classYear === 'Fr' && x.class === 'Fr' && x.cost === p.cost && x.signedYear === 2 && !x.walkOn)), 'Aug 5: the five signings join the roster as freshmen on their scholarships');
+  ok(s.sports.prospects === null && s.sports.starters.length === 8 && s.sports.records.recruits.length === 5 && s.sports.records.recruits.every(r => r.year === 2 && r.cost > 0), 'the board closes at the lock; eight starters; five in the recruiting history');
+  ok(SP.budget(s).lines.find(l => l.key === 'players').amount === arrived.reduce((a, p) => a + p.cost, 0) && SP.budget(s).lines.find(l => l.key === 'signings').amount === 0, 'the roster\'s scholarships are the players line; the signings line is empty again');
+  ok(rec.notifies.some(t => t.indexOf(arrived[0].name) >= 0 && /arrives/.test(t)), 'an arrival is a notify');
+  ok(s.sports.starters.every(p => s.sports.roster.indexOf(p) >= 0) && POSN.every((p, i) => s.sports.starters[i].pos === p && s.sports.roster.filter(x => x.pos === p).every(x => x.rating <= s.sports.starters[i].rating || x.dinged > 0)), 'the starters are the best healthy body per position');
+  // a full position releases its weakest when a recruit arrives (never the recruit)
+  { const t = newGame(27); run(t, 100); const sp = t.sports; const qbs = () => sp.roster.filter(p => p.pos === 'QB');
+    while (qbs().length < PR.maxPerPos) sp.roster.push({ name: 'Extra QB ' + qbs().length, pos: 'QB', rating: 61 + qbs().length, classYear: 'So', hometown: 'Houma', cost: 10000 });
+    SP.roster(t);
+    const weakest = qbs().slice().sort((a, b) => a.rating - b.rating)[0];
+    const r = SP._addPlayer(t, { name: 'Rookie QB', pos: 'QB', rating: 40, classYear: 'Fr', hometown: 'Eunice', cost: 20000 });
+    ok(qbs().length === PR.maxPerPos && r.cut.length === 1 && r.cut[0] === weakest && qbs().some(p => p.name === 'Rookie QB'), 'a fifth QB releases the weakest (' + weakest.name + ' ' + weakest.rating + '), never the arriving recruit (40)'); }
+  // dinged: a dinged starter sits, the backup plays, he returns after a week; the hash roll lands near 5 % per starter per game
+  { const t = newGame(28); run(t, 100); const sp = t.sports; const qb0 = sp.starters[0], qbBackup = sp.roster.filter(p => p.pos === 'QB' && p !== qb0)[0];
+    qb0.dinged = 2; SP._ding(t, { day: 1 });
+    ok(sp.starters[0] === qbBackup && qb0.dinged === 1 && SP.roster(t).offense[0].starter.name === qbBackup.name && SP.roster(t).dinged.some(p => p.name === qb0.name), 'a dinged QB sits: the backup starts (' + qbBackup.name + ')');
+    SP._ding(t, { day: 2 });
+    ok(sp.starters[0] === qb0 && qb0.dinged === 0, 'he returns the week after');
+    let dings = 0, games = 0; for (let d = 10; d < 410; d++) { sp.roster.forEach(p => { p.dinged = 0; }); SP._ding(t, { day: d }); games++; dings += sp.roster.filter(p => p.dinged > 0).length; }
+    const rate = dings / (games * 8);
+    ok(rate >= 0.03 && rate <= 0.07, 'dinged about 5% per starter per game (' + (rate * 100).toFixed(1) + '%)');
+    sp.roster.forEach(p => { p.dinged = 0; }); }
+  // development is monotone in the coordinators' stars (OC for the offense, DC for the defense)
+  { const gains = (oc, dc) => { const t = newGame(29); run(t, 100); t.sports.staff.oc.stars = oc; t.sports.staff.dc.stars = dc; const b = t.sports.roster.map(p => p.rating); const r = SP._develop(t); return { r, g: t.sports.roster.map((p, i) => [p.rating - b[i], p.classYear, p.pos]) }; };
+    const g1 = gains(1, 1), g2 = gains(2, 2), g5 = gains(5, 5), gMix = gains(5, 1);
+    const under = (g) => g.g.filter(x => x[1] !== 'Sr');
+    ok(under(g2.g ? g2 : g2).every(x => x[0] >= PR.dev.min && x[0] <= PR.dev.max) && g2.g.filter(x => x[1] === 'Sr').every(x => x[0] === 0), '2★ coordinators: +' + PR.dev.min + '..+' + PR.dev.max + ' for underclassmen, 0 for seniors');
+    ok(under(g5).every((x, i) => x[0] >= under(g2)[i][0]) && g5.r.avg > g2.r.avg + 2 && under(g1).every((x, i) => x[0] <= under(g2)[i][0] && x[0] >= PR.dev.floor) && g1.r.avg < g2.r.avg, 'development is monotone in stars (1★ ' + g1.r.avg.toFixed(1) + ' < 2★ ' + g2.r.avg.toFixed(1) + ' < 5★ ' + g5.r.avg.toFixed(1) + ')');
+    const offMix = gMix.g.filter(x => x[1] !== 'Sr' && POSN.indexOf(x[2]) < 4), defMix = gMix.g.filter(x => x[1] !== 'Sr' && POSN.indexOf(x[2]) >= 4);
+    ok(offMix.length && defMix.length && offMix.reduce((a, x) => a + x[0], 0) / offMix.length > defMix.reduce((a, x) => a + x[0], 0) / defMix.length + 2, 'a 5★ OC with a 1★ DC: the offense grows faster than the defense'); }
+  // migration: a pre-P2 save (eight plain starters, no roster) gets its roster, juniors/seniors, walk-on backups; records.recruits survive
+  { const t = newGame(30); run(t, 100); const plain = POSN.map((p, i) => ({ name: 'Old ' + p, pos: p, hometown: 'Houma', rating: 70 + i, class: 'Fr' }));
+    t.sports.roster = undefined; delete t.sports.rosterInit; t.sports.starters = plain; t.sports.records.recruits = [{ year: 1, name: 'Kept', pos: 'QB', hometown: 'Houma', rating: 80, cost: 1, title: '' }];
+    SP.reset(t); run(t, 1);
+    ok(Array.isArray(t.sports.roster) && t.sports.roster.length === 16 && t.sports.rosterInit === true && plain.every(p => t.sports.roster.indexOf(p) >= 0 && (p.classYear === 'Jr' || p.classYear === 'Sr') && p.class === p.classYear) && t.sports.starters.length === 8 && t.sports.starters.every((p, i) => p === plain[i]) && t.sports.roster.filter(p => p.walkOn).length === 8 && t.sports.records.recruits.length === 1, 'a pre-P2 save migrates: the eight become Jr/Sr with walk-on backups; records.recruits kept');
+    const saved = JSON.parse(JSON.stringify(t)); saved.rng = { sim: BSU.rng.sim.state }; SP.reset(saved); SP.roster(saved);
+    ok(saved.sports.starters.every(p => saved.sports.roster.indexOf(p) >= 0) && saved.sports.roster.length === 16, 'a load relinks the starters to the roster objects'); }
+  // six seasons of churn on seed 42: without signings the roster drains to walk-ons yet stays playable; signing the board every off-season keeps it strong
+  const churn = (sign) => {
+    const t = newGame(42); run(t, 100); const rows = [];
+    for (let y = 1; y <= 6; y++) {
+      runUntilDay(t, BSU.dateToDay('Dec 10', y)); while (t.setPiece) tick1(t);
+      const sp = t.sports, st = sp.starters, bad = /NaN|Infinity/.test(JSON.stringify(sp.roster));
+      rows.push({ y, size: sp.roster.length, mean: Math.round(st.reduce((a, p) => a + p.rating, 0) / st.length), walkOns: st.filter(p => p.walkOn).length, cls: ['Fr', 'So', 'Jr', 'Sr'].map(c => sp.roster.filter(p => p.classYear === c).length).join('/'), sch: Math.round(sp.roster.reduce((a, p) => a + p.cost, 0) / 1000), rec: sp.lastSeason.wins + '-' + sp.lastSeason.losses, ok: st.length === 8 && POSN.every((p, i) => st[i].pos === p && sp.roster.indexOf(st[i]) >= 0) && !bad && sp.roster.length >= 8 && sp.roster.length <= 32 });
+      if (sign) { const b = SP.prospects(t); if (b) { b.list.slice().sort((a, c) => c.rating - a.rating).forEach(p => { SP.signProspect(t, p.index); }); } }
+    }
+    return rows;
+  };
+  const noSign = churn(false), withSign = churn(true);
+  const line = (rows) => rows.map(r => 'Y' + r.y + ' ' + r.size + 'p mean ' + r.mean + ' wo ' + r.walkOns + ' [' + r.cls + '] $' + r.sch + 'k ' + r.rec).join(' | ');
+  ok(noSign.every(r => r.ok) && noSign[5].walkOns >= 4 && noSign[5].size >= 8, 'six seasons without signings stay playable (walk-ons start): ' + line(noSign));
+  ok(withSign.every(r => r.ok) && withSign[5].mean > noSign[5].mean + 10 && withSign.slice(1).every(r => r.walkOns <= 4 && r.size >= 12 && r.size <= 32) && withSign.slice(1, 5).every(r => r.mean >= 75), 'six seasons of signings keep the roster strong until the flat test budget caps the scholarships: ' + line(withSign));
+  console.log('churn seed 42 (no signings): ' + line(noSign)); console.log('churn seed 42 (signing the board): ' + line(withSign));
   // hire/fire still work with a board open
   const s6 = newGame(26); run(s6, 100); runUntilDay(s6, dec9); run(s6, 2);
   const fired = SP.fireCoach(s6); ok(fired.ok === true && s6.sports.candidates.length === 3, 'fireCoach works in the off-season');
@@ -635,7 +706,7 @@ if (existsSync(join(root, 'index.html'))) {
   rec.posts.length = 0;   // the recorder is shared by every block above
   const b0 = SP.budget(s);
   ok(b0 && b0.year === 1 && b0.base === 2000000 && b0.fromPrestige === 80000 && b0.fromRevenue === 0 && b0.boosters === 0 && b0.topUp === 0 && b0.total === 2080000, 'a new game: base + $50k × prestige/10 (' + JSON.stringify([b0 && b0.total, b0 && b0.fromPrestige]) + ')');
-  ok(b0.sources.length === 5 && b0.sources.map(x => x.key).join() === 'base,revenue,prestige,boosters,topUp' && b0.lines.map(x => x.key).join() === 'coach,oc,dc,coaching,signings,upkeep,homecoming', 'five sources and seven committed lines in a fixed order (P1 adds the coordinators)');
+  ok(b0.sources.length === 5 && b0.sources.map(x => x.key).join() === 'base,revenue,prestige,boosters,topUp' && b0.lines.map(x => x.key).join() === 'coach,oc,dc,coaching,signings,players,upkeep,homecoming', 'five sources and eight committed lines in a fixed order (P1 adds the coordinators, P2 the players)');
   ok(b0.committed === 200000 && b0.headroom === b0.total - b0.committed, 'before the team only the coaching spend is committed (' + b0.committed + ')');
   run(s, 100);   // the field → Coach Cheramie 2★
   const b1 = SP.budget(s);

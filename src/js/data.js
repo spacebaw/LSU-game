@@ -657,6 +657,22 @@
       },
       classes: ['Fr', 'So', 'Jr', 'Sr'],
       classWeights: [0.15, 0.25, 0.3, 0.3],
+      // PLAN_V2 P2: the Roster / Recruiting tabs' copy (sports.roster / sports.prospects supply the numbers)
+      text: {
+        sides: { offense: 'Offense', defense: 'Defense' },
+        walkOn: 'walk-on', dinged: 'dinged', backup: 'backup', starter: 'starter', free: 'free',
+        noTeam: 'Starters arrive with the team: build a Practice Field.',
+        seniors: 'Leaving next May', noSeniors: 'No seniors on the roster: nobody graduates next May.',
+        emptyBackups: 'No backup at', walkOnStarters: 'Walk-ons starting at', dingedLine: 'Dinged this week',
+        scholarships: 'Scholarships', perYear: '/yr', classLine: 'Roster by class',
+        boardClosed: 'The recruiting board opens Dec 9: two prospects per position, up to 4 offense and 4 defense per class, each on a 4-year scholarship paid out of the athletics budget.',
+        boardOpen: 'Sign up to {n} offense and {n} defense; they report Aug 5 as freshmen and a full position releases its weakest.',
+        locks: 'Board locks Aug 5', locksIn: 'locks in {d} days', lockedToday: 'locks today',
+        signedCounter: 'signed {a} of {n}', full: 'class full', history: 'Recruiting history', noHistory: 'No signings have arrived yet: sign prospects in December, they report Aug 5.',
+        cardOpen: { kicker: 'Recruiting · off-season', title: 'The recruiting board is open', body: '{n} prospects, two per position, rated around {mean}. Sign up to {per} offense and {per} defense before Aug 5; each costs its scholarship every year for four years.' },
+        cardClosing: { kicker: 'Recruiting · last call', title: 'The board locks in {d} days', body: '{signed} signed so far ({off} offense, {def} defense of {per} each). Unsigned prospects go elsewhere at the Aug 5 lock.' },
+        open: 'Open the Recruiting tab', later: 'Later'
+      },
       template: {
         QB: { label: 'Quarterback', plural: 'Quarterbacks', jersey: [1, 19], field: 1, depth: 2, build: 'lean', blurb: 'Reads the defense, takes the blame.' },
         RB: { label: 'Running back', plural: 'Running backs', jersey: [20, 49], field: 2, depth: 3, build: 'stock', blurb: 'Hits the hole like a pirogue hits a dock.' },
@@ -892,7 +908,7 @@
       tabs: [['overview', 'Overview'], ['staff', 'Staff'], ['roster', 'Roster'], ['recruiting', 'Recruiting'], ['schedule', 'Schedule'], ['records', 'Records']],
       title: 'Athletics budget',
       sources: { base: 'Base allocation', revenue: 'Share of last season\'s gate', prestige: 'Prestige', boosters: 'Booster donations', topUp: 'University top-up' },
-      lines: { coach: 'Head coach salary', oc: 'Offensive coordinator', dc: 'Defensive coordinator', coaching: 'Coaching spend', signings: 'Signed prospects', upkeep: 'Venue upkeep share', homecoming: 'Homecoming' },
+      lines: { coach: 'Head coach salary', oc: 'Offensive coordinator', dc: 'Defensive coordinator', coaching: 'Coaching spend', signings: 'Signed prospects', players: 'Player scholarships', upkeep: 'Venue upkeep share', homecoming: 'Homecoming' },
       topUpFx: 'Moves university cash to athletics each Jan 1 (raising it mid-year moves the difference now). Athletics spends draw on that fund first.',
       boostersFx: 'Boosters give after a season of 7 wins or more.',
       overBudget: 'Over budget: cut the coaching spend or raise the top-up.',

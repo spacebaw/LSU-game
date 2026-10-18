@@ -500,3 +500,8 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
 .fb-cand .nm{font-weight:600} .fb-cand .btn.over{opacity:.55} .btn.armed{background:linear-gradient(180deg,#B33A33,#7A2622);color:#fff}
 .fb-note.ok{color:var(--good);border-color:rgba(120,220,140,.35);background:rgba(120,220,140,.08)}
 @media (max-width:1365px){.fb-cand-groups{grid-template-columns:1fr}}
+
+/* roster */
+.fb-ro.backup .nm,.fb-ro.backup .ovr,.fb-ro.backup .cl,.fb-ro.backup .ht{opacity:.72} .fb-ro.empty .nm{font-style:italic;color:var(--text-dim)} .fb-ro .nm .dim,.fb-pr .nm .dim{font-size:1.15rem}
+.fb-ding{display:inline-block;margin-left:.5rem;padding:0 .5rem;border-radius:.6rem;font-size:1rem;letter-spacing:.06em;text-transform:uppercase;color:#fff;background:#B33A33;vertical-align:middle}
+.fb-pr .btn.over{opacity:.55} #sea-roster-sum{margin-top:.2rem}
