@@ -496,6 +496,18 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
 #needs-locate{flex:0 0 auto;padding:0 .8rem;min-height:2.4rem;height:2.4rem;line-height:2.2rem;font-size:1.15rem;border-color:var(--gold)}
 .notif .locate{border-color:var(--gold);color:var(--gold-hi)}
 
+/* staff */
+.fb-starbar{display:inline-block;color:var(--gold);font-size:1.3rem;letter-spacing:.06em;margin-left:.6rem;vertical-align:middle}
+.fb-staff-card{padding:1rem 1.4rem} .fb-staff-card .fb-staff-meta .row{padding:.25rem 0} .fb-staff-card .fb-coach-rep{margin-bottom:.4rem} .fb-staff-card .card-actions{margin-top:.6rem}
+.fb-stars{color:var(--gold);letter-spacing:.05em}
+.fb-reach{display:inline-block;margin-left:.5rem;padding:.1rem .5rem;border-radius:.6rem;font-size:1.05rem;letter-spacing:.08em;text-transform:uppercase;color:var(--purple-shadow);background:var(--g-gold);vertical-align:middle}
+.fb-staff-card.interim .fb-coach{color:var(--text-dim)} .fb-staff-card.interim{border-style:dashed}
+.fb-staff-hint{margin:1rem 0 .4rem;padding:.6rem 1rem;border-left:3px solid var(--gold);background:rgba(253,208,35,.06)}
+.fb-cand-groups{display:grid;grid-template-columns:1.5fr 1fr 1fr;gap:1rem 2rem} .fb-cand-group{min-width:0} #panels .panel .fb-cand-group>.card-kicker{margin-top:.4rem}
+.fb-cand .nm{font-weight:600} .fb-cand .btn.over{opacity:.55} .btn.armed{background:linear-gradient(180deg,#B33A33,#7A2622);color:#fff}
+.fb-note.ok{color:var(--good);border-color:rgba(120,220,140,.35);background:rgba(120,220,140,.08)}
+@media (max-width:1365px){.fb-cand-groups{grid-template-columns:1fr}}
+
 </style>
 </head>
 <body>
@@ -940,7 +952,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     },
     sports: {                                // GDD §8
       ratingBase: 20, practiceField: 5, coachingPer100k: 1, coachingCap: 30, recruitingDiv: 4, recruitingCap: 25,
-      moraleDiv: 10, moraleCap: 10, roux: 3, heatPenalty: 8, coachPerStar: 4, coachStarBase: 2, starterDiv: 5, starterBase: 75,
+      moraleDiv: 10, moraleCap: 10, roux: 3, heatPenalty: 8, coachPerStar: 2, coachStarBase: 2, starterDiv: 5, starterBase: 75,   // PLAN_V2 P1: coachPerStar 4 → 2 (the head coach is +2 team rating per star over 2; the coordinators carry the unit terms)
       homeDay: 6, homeNight: 14, stadium3Opp: 5, elo: 25,
       fanbase: { students: 2.5, alumni: 0.6, prestige: 300 },
       hype: { base: 0.7, winPct: 0.4, rivalry: 0.3, night: 0.15, rain: -0.1 },
@@ -953,6 +965,19 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
       oppNoise: 8, oppPerYear: 7, oppScaleFromFlagship: 3,
       coachSign: 300000, coachFee: 100000, buyout: 500000, candidates: 3, candidateStarDiv: 20, candidateStarAdd: 1,
       starDriftLosing: 2, starMax: 5, starMin: 1,
+      // PLAN_V2 P1: the coaching staff (head coach + offensive / defensive coordinators; sports.staff / hireStaff / fireStaff / answerRaise)
+      staff: {
+        perRole: 3, starsPerPrestige: 20,          // 3 candidates per role each off-season; max stars = 1 + floor(prestige / 20)
+        reachStars: 1, reachSalary: 1.6,           // one 'reach' candidate a star above the gate asks +60 %
+        yearsMin: 2, yearsMax: 4, renewYears: 2,   // contract length; an expired contract renews at the market salary for renewYears
+        buyoutShare: 0.5,                          // buyout = 50 % of the remaining salary (salary × years left)
+        interimStarsMax: 2,                        // interim coordinators are 1–2★ at 1★ salary
+        ocCompositePerStar: 3, ocFit: 4,           // OC: offense composites +3 per star over coachStarBase, +4 when the OC's style matches the playbook
+        dcCompositePerStar: 3, dcTurnoverPerStar: 0.04,   // DC: defense composites +3 per star over base; the opponent's turnover rate +4 % per star over base
+        hcGoDist: { ground: -1, balanced: 0, air: 1 },    // HC style nudges the 4th-down default distance (never below 0; conservative stays 'never')
+        hcHalftimePerStar: 0.1,                    // the halftime adjustment's magnitude = 1 + 0.1 × (HC stars − base)
+        poach: { stars: 4, prestige: 40, p: 0.35, raise: 0.25, offerDate: 'Nov 8' }   // a coach above 4★ at prestige < 40 leaves with p each off-season unless the Nov 8 raise (+25 %) was paid
+      },
       // PLAN_V2 P3: the athletics budget (a salary cap that grows with success; sports.budget / canAfford / setTopUp)
       budget: { base: 2000000, revenueShare: 0.35, prestigePer10: 50000, boosters: 500000, boosterWins: 7, topUpMax: 1.5, topUpStep: 0.1, salaryPerStar2: 150000, coordinatorShare: 0.55, upkeepShare: 0.1, transferDate: 'Jan 1', recruitsMax: 40 },
       starterGrad: 0.4, starterRating: { min: 60, max: 99, base: 55, prestigeDiv: 2, perStar: 5 }, recruitRating: 95, seniorLeaveP: 0.4,
@@ -1275,7 +1300,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     'gator:spawn', 'gator:campus', 'gator:incident', 'gator:relocated',
     'mosquito:warning', 'ecology:changed',
     'festival:start', 'festival:end',
-    'game:scheduled', 'game:kickoff', 'game:score', 'game:halftime', 'game:final', 'season:end', 'coach:changed',
+    'game:scheduled', 'game:kickoff', 'game:score', 'game:halftime', 'game:final', 'season:end', 'coach:changed', 'staff:offer', 'staff:poached',
     'game:play', 'game:drive', 'game:decision',   // PLAN_FOOTBALL pass B: the drive/play engine (sports.js)
     'game:spring',                                 // PLAN_FOOTBALL pass C: the Purple & Gold Spring Game final (sports.js)
     'budget:changed',                              // PLAN_V2 P3: the athletics budget was recomputed, topped up or re-committed (sports.js)
@@ -1690,6 +1715,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
         playbook: 'balanced', aggression: 'normal', watchFull: false, lastSummary: null,   // PLAN_FOOTBALL pass B (sports.ensureKeys fills records)
         records: { allTime: { wins: 0, losses: 0 }, bestWin: null, longestPlay: null, seasonBests: {}, book: {}, seasons: [], hof: [] },
         springDay: -1, springYear: 0, lastSpring: null, prospects: null, seasonLog: [], seasonLines: null,   // PLAN_FOOTBALL pass C: spring game, prospect board, the season's game log and stat lines
+        staff: null,   // PLAN_V2 P1: the coaching staff {hc, oc, dc, candidates: {hc, oc, dc}, lastRefreshYear, offers} (sports.ensureKeys builds it lazily; hc is state.sports.coach)
         budget: null   // PLAN_V2 P3: the athletics budget {year, base, fromRevenue, fromPrestige, boosters, topUpShare, topUp, total, committed, lines, fund, ...} (sports.ensureKeys builds it lazily)
       },
       progress: {
@@ -2438,6 +2464,61 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     'A gator on the fifty is a home-field advantage.',
     "Night game. Lights on. Swamp quiet. Then it isn't."
   ];
+  // PLAN_V2 P1: the coaching staff — name pools per role (30 each; surnames repeat across roles on purpose), six styles,
+  // ten reps and ten quotes per role. Candidates draw a name, a style, stars and a contract (sports.refreshCandidates).
+  const staff = {
+    roleNames: { hc: 'Head coach', oc: 'Offensive coordinator', dc: 'Defensive coordinator' },
+    roleShort: { hc: 'HC', oc: 'OC', dc: 'DC' },
+    roleStyles: { hc: ['ground', 'balanced', 'air'], oc: ['ground', 'balanced', 'air'], dc: ['stout', 'aggressive', 'bend'] },
+    styles: {
+      ground: { name: 'Ground', desc: 'Runs it between the tackles and bleeds the clock.' },
+      balanced: { name: 'Balanced', desc: 'Takes what the defense gives, run or pass.' },
+      air: { name: 'Air Raid', desc: 'Four wide, throws on first down, lives with the picks.' },
+      stout: { name: 'Stout', desc: 'Stops the run first and makes you throw into the heat.' },
+      aggressive: { name: 'Blitz-happy', desc: 'Brings pressure every down and hunts turnovers.' },
+      bend: { name: "Bend-don't-break", desc: 'Gives up the short stuff, never the big play.' }
+    },
+    interim: { hc: 'Interim Staff', oc: 'Interim OC', dc: 'Interim DC' },
+    poachers: ['Magnolia State', 'a Big Money program out west', 'the Crescent City pros', 'a dry-field school up north', 'Delta Tech', 'the Gulf Coast conference champion'],
+    names: {
+      hc: ['Bobby Cheramie', 'Delphine Arceneaux', 'T-Boy Guidry', 'Marcus Batiste', 'Hollis Duplantis', 'Renée Fontenot', 'Cedric Malveaux', 'Octave Robichaux', 'Imani Sonnier', 'Wade Terrebonne',
+        'Beau Thibodeaux', 'Clovis Landry', 'Jermaine Broussard', 'Odile Hebert', 'Russ Boudreaux', 'Darnell LeBlanc', 'Pierre Melancon', 'Tasha Breaux', 'Alcide Richard', 'Monroe Picou',
+        'Celestine Dugas', 'Junior Naquin', 'Lionel Toups', 'Yvette Comeaux', 'Hank Pellerin', 'Marcel Trahan', 'Rufus Babineaux', 'Lorena Champagne', 'Dewey Benoit', 'Ernest Savoie'],
+      oc: ['Blaise Theriot', 'Kenny Bergeron', 'Simone Boudreaux', 'Anthony LeBlanc', 'Chase Fontenot', 'Rhett Guillory', 'Dominique Landry', 'Terrell Richard', 'Jolie Thibodeaux', 'Pete Cormier',
+        'Mason Arceneaux', 'Lance Hebert', 'Desmond Guidry', 'Nolan Broussard', 'Camille Duplantis', 'Reggie Sonnier', 'Travis Melancon', 'Ashton Breaux', 'Leon Robichaux', 'Felix Dugas',
+        'Gabe Pellerin', 'Isaiah Malveaux', 'Wyatt Trahan', 'Kirby Naquin', 'Sam Babineaux', 'Trey Comeaux', 'Louis Picou', 'Odette Savoie', 'Dale Champagne', 'Mitch Toups'],
+      dc: ['Ray Thibodeaux', 'Darius Broussard', 'Joe Fontenot', 'Earl Guidry', 'Tommy Landry', 'Andre Richard', 'Buster LeBlanc', 'Vance Hebert', 'Lamar Boudreaux', 'Otis Arceneaux',
+        'Cleo Malveaux', 'Jules Robichaux', 'Nate Duplantis', 'Perry Sonnier', 'Hollis Melancon', 'Ike Breaux', 'Rocky Dugas', 'Lucas Pellerin', 'Virgil Trahan', 'Amos Naquin',
+        'Curtis Babineaux', 'Floyd Comeaux', 'Theo Picou', 'Marlon Savoie', 'Dub Champagne', 'Gus Toups', 'Sidney Cormier', 'Bernard Guillory', 'Hank Theriot', 'Elroy Bergeron']
+    },
+    reps: {
+      hc: ['has played in worse', 'runs the option and the boosters', 'recruits the bayou by pirogue', 'defense, gumbo, in that order', 'a clipboard and a grudge',
+        'won a bowl somewhere dry', 'special teams evangelist', 'older than the levee', 'the analytics one', 'yells in two languages'],
+      oc: ['never met a screen pass he did not like', 'draws plays on po-boy wrappers', 'turned a walk-on into a 3,000-yard passer', 'has a trick play named after a gator', 'the tempo is the message',
+        'calls the game from the box in a sweat towel', 'runs the counter until it works', 'scripted the first 15 at a high school powerhouse', 'quarterback whisperer, allegedly', 'believes in the fullback'],
+      dc: ['blitzes on third and short out of spite', 'coaches tackling like a church sermon', 'the Marsh Mob chants his name', 'has not allowed a kick return since 2019', 'bends but swears he never breaks',
+        'teaches the swim move at the boat launch', 'turnover chain made of crawfish', 'film room at 5 a.m., every day', 'two gaps, no excuses', 'quiet man, loud defense']
+    },
+    quotes: {
+      hc: ["We don't rebuild. We re-grade.", "We've played in worse.", 'The humidity is undefeated. We are not the humidity.', 'Special teams is a mindset. So is the levee.', "Magnolia State declines to host. We'll host.",
+        'Defense wins championships. Pumps win Septembers.', "The field is dry. That's the game plan.", 'I recruit by pirogue. The good ones live on the water.', 'We go for it on fourth. The Marsh Mob insists.', 'A gator on the fifty is a home-field advantage.'],
+      oc: ['First down is a passing down. So is second.', 'If the box is loaded, the box is wrong.', 'Tempo is a weapon. So is a fullback.', 'We score in the rain. The rain can watch.', 'Every play is a touchdown that ran out of field.',
+        'The quarterback is the offense. Protect him like a levee.', 'I do not punt on purpose.', 'Run the counter until they cry, then run it again.', 'Screens are free yards. We take free yards.', 'The clock is a myth until the fourth quarter.'],
+      dc: ['Stop the run, then stop the pass, then stop the band.', 'Pressure finds the ball.', 'Bend all you want. Breaking is a choice.', 'Tackling is a courtesy we extend to the offense.', 'Third and long is my favorite restaurant.',
+        'The ball belongs to us. They are borrowing it.', 'Two gaps, no excuses, no mercy.', 'We practice in the heat so the heat practices on them.', 'Every turnover is a crawfish on the chain.', 'Eleven hats on the ball. Then the ball is ours.']
+    },
+    text: {
+      whyNo5: 'Why no 5★? Candidates top out at one star per 20 prestige (plus one reach candidate a star above who asks +60%). ',
+      hint: 'At prestige {prestige}: up to {max}★ ({next} more prestige unlocks the next star).',
+      hintMax: 'At prestige {prestige}: every star is on the table.',
+      interim: 'Interim staff: no scheme, no contract, no buyout. Hire a coordinator below.',
+      reach: 'reach', hireRefused: 'Hire refused — ', fireRefused: 'Fire refused — ',
+      confirmFire: 'Click Fire again to confirm: {name} leaves, the buyout is {buyout} (50% of the remaining contract).',
+      ocFit: 'Scheme fit: a {style} coordinator runs your {playbook} playbook (+{fit} to both offense units)', ocNoFit: 'No fit: coordinator runs {style}, your playbook is {playbook} ({perStar} per star over 2 still applies)',
+      dcLine: 'Defense units {def} · the opponent coughs it up {to} more often',
+      candidates: 'Candidates refresh each off-season (Dec 9) and after a firing.'
+    }
+  };
   const gatorNames = ['Big Al', 'Beignet', 'Marie', 'Chomp Chomp', "Ol' Frontenac", 'Tabasco', 'Professor Snaps', 'Étouffée', 'Tante Lou', 'Boudreaux Jr.', 'Mudbug', 'Sazerac', 'Gumbo', 'Praline'];
   const leGrand = 'Le Grand';
   const stormNames = ['Amélie', 'Boudin', 'Célestine', 'Delphine', 'Étienne', 'Fifolet', 'Gaspard', 'Hébert', 'Isidore', 'Josephine', 'Kingcake', 'Landry', 'Mirliton', 'Narcisse', 'Odile', 'Praline', 'Quenelle', 'Rémy', 'Satsuma', 'Thibodeaux', 'Ulysse', 'Violette', 'Wilhelmina', 'Xavier', 'Yvette', 'Zéphyrine'];
@@ -2723,7 +2804,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
       tabs: [['overview', 'Overview'], ['staff', 'Staff'], ['roster', 'Roster'], ['recruiting', 'Recruiting'], ['schedule', 'Schedule'], ['records', 'Records']],
       title: 'Athletics budget',
       sources: { base: 'Base allocation', revenue: 'Share of last season\'s gate', prestige: 'Prestige', boosters: 'Booster donations', topUp: 'University top-up' },
-      lines: { coach: 'Head coach salary', coaching: 'Coaching spend', signings: 'Signed prospects', upkeep: 'Venue upkeep share', homecoming: 'Homecoming' },
+      lines: { coach: 'Head coach salary', oc: 'Offensive coordinator', dc: 'Defensive coordinator', coaching: 'Coaching spend', signings: 'Signed prospects', upkeep: 'Venue upkeep share', homecoming: 'Homecoming' },
       topUpFx: 'Moves university cash to athletics each Jan 1 (raising it mid-year moves the difference now). Athletics spends draw on that fund first.',
       boostersFx: 'Boosters give after a season of 7 wins or more.',
       overBudget: 'Over budget: cut the coaching spend or raise the top-up.',
@@ -3150,7 +3231,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
   // ---------------------------------------------------------------------------
   const data = {
     catalog: catalog, catalogList: catalogList, tabs: tabs, decals: decals, names: names, students: students,
-    coaches: coaches, coachQuotes: coachQuotes, gatorNames: gatorNames, leGrand: leGrand, stormNames: stormNames,
+    coaches: coaches, coachQuotes: coachQuotes, staff: staff, gatorNames: gatorNames, leGrand: leGrand, stormNames: stormNames,
     opponents: opponents, schedule: schedule, calendar: calendar, ticker: ticker, tickerKinds: tickerKinds,
     tickerKindList: TICKER_KIND_LIST, objectives: objectives, milestones: milestones, voiceCards: voiceCards,
     boardCards: boardCards, failureCards: failureCards, tutorial: tutorial, thibodeaux: thibodeaux,
@@ -3233,6 +3314,8 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
       check(D.gatorNames.length === 14 && D.leGrand === 'Le Grand', '14 gator names + Le Grand');
       check(D.coaches.length === 10 && D.coaches[0].name === 'Bobby Cheramie', '10 coaches, Cheramie first');
       check(D.coachQuotes.length === 12, '12 coach quotes');
+      for (const r of ['hc', 'oc', 'dc']) { check(D.staff.names[r].length === 30 && new Set(D.staff.names[r]).size === 30, '30 unique ' + r + ' names'); check(D.staff.quotes[r].length === 10 && D.staff.reps[r].length === 10, '10 quotes and reps for ' + r); check(D.staff.roleStyles[r].every(k => D.staff.styles[k] && D.staff.styles[k].name && D.staff.styles[k].desc), r + ' styles described'); }
+      check(Object.keys(D.staff.styles).length === 6 && D.staff.names.hc.slice(0, 10).join() === D.coaches.map(c => c.name).join(), '6 staff styles; the ten named coaches lead the HC pool');
       check(D.names.halls.length === 20 && D.names.towers.length === 2 && D.names.dining.length === 5 && D.names.poboy.length === 6 && D.names.greek.length === 5 && D.names.stadium.length === 4, 'name pool sizes');
       check(D.students.firstCajun.length === 56 && D.students.firstModern.length === 24 && D.students.last.length === 55 && D.students.nicknames.length === 16 && D.students.majors.length === 14 && D.students.hometowns.length === 18 && D.students.quotes.length >= 12, 'student table sizes');
       check(D.students.modernShare === 0.25 && D.students.nicknameShare === 0.12, 'student shares');
@@ -13843,7 +13926,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     const salaries = students * PE.salaryPerStudent * num(PE.qualityMult[e.quality], 1);
     const utilities = PE.utilities.perBuilding * completeList(state).length + PE.utilities.perStudent * students;
     const upkeep = num(call('buildings', 'upkeepTotal', [state], 0), 0);
-    return Math.max(0, Math.round(salaries + utilities + upkeep + num(e.coaching, 0) / P.time.monthsPerYear + (num(st.pumpsRunning) * L.pumpRunPerDay + num(st.generatorsRunning) * L.generatorRunPerDay) * DAYS_PER_MONTH));
+    return Math.max(0, Math.round(salaries + utilities + upkeep + num(e.coaching, 0) / P.time.monthsPerYear + num(call('sports', 'staffSalaryMonthly', [state], 0), 0) + (num(st.pumpsRunning) * L.pumpRunPerDay + num(st.generatorsRunning) * L.generatorRunPerDay) * DAYS_PER_MONTH));
   }
   M.runway = function (state) {
     try {
@@ -13887,6 +13970,9 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     const coachingDue = Math.round(num(e.coaching, 0) / P.time.monthsPerYear);
     const fromFund = Math.max(0, int(call('sports', 'drawFund', [state, coachingDue], 0), 0));
     M.charge(state, coachingDue - fromFund, 'coaching', force);
+    // PLAN_V2 P1: the coaching staff's salaries (head coach + coordinators, sports.staffSalaryMonthly): the fund first, cash the rest, on the 'coaching' line
+    const staffDue = Math.max(0, int(call('sports', 'staffSalaryMonthly', [state], 0), 0));
+    if (staffDue > 0) { const staffFund = Math.max(0, int(call('sports', 'drawFund', [state, staffDue], 0), 0)); M.charge(state, staffDue - staffFund, 'coaching', { force: true, note: 'Coaching staff salaries' }); }
     // interest on a negative balance
     if (e.cash < 0) { const interest = Math.round(-e.cash * PE.interest); M.charge(state, interest, 'interest', force); e.interestPaid = int(e.interestPaid, 0) + interest; }
     // insurance premium while the policy exists
@@ -17014,6 +17100,9 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
   const PE = PS.engine;                       // PLAN_FOOTBALL §2.1 engine tables (pass A)
   const POS = PE.positions;                   // the eight rated positions in slot order
   const BSU_T = 0, OPP_T = 1;                 // engine team index (0 = BSU, 1 = the opponent)
+  // PLAN_V2 P1: the coaching staff (the head coach is state.sports.coach, mirrored as staff.hc; coordinators in state.sports.staff)
+  const PF = PS.staff || { perRole: 3, starsPerPrestige: 20, reachStars: 1, reachSalary: 1.6, yearsMin: 2, yearsMax: 4, renewYears: 2, buyoutShare: 0.5, interimStarsMax: 2, ocCompositePerStar: 3, ocFit: 4, dcCompositePerStar: 3, dcTurnoverPerStar: 0.04, hcGoDist: { ground: -1, balanced: 0, air: 1 }, hcHalftimePerStar: 0.1, poach: { stars: 4, prestige: 40, p: 0.35, raise: 0.25, offerDate: 'Nov 8' } };
+  const ROLES = Object.freeze(['hc', 'oc', 'dc']);
 
   // ---------------------------------------------------------------------------
   // Dependencies (injectable, §10.6). selfTest replaces entries for its duration.
@@ -17093,6 +17182,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     if (!Array.isArray(sp.starters)) sp.starters = [];
     if (!Array.isArray(sp.candidates)) sp.candidates = [];
     if (!sp.coach || typeof sp.coach !== 'object') sp.coach = { name: '', stars: 0, hiredYear: 0, quote: '', rep: '' };
+    ensureStaff(state);   // PLAN_V2 P1: staff.hc IS sp.coach; a pre-P1 save gets interim coordinators and its candidates under staff.candidates.hc
     if (!sp.lastSeason || typeof sp.lastSeason !== 'object') sp.lastSeason = { wins: 0, losses: 0, bowlWon: false, undefeated: false };
     if (!sp.ratingTerms || typeof sp.ratingTerms !== 'object') sp.ratingTerms = {};
     sp.rating = num(sp.rating, 0);
@@ -17190,10 +17280,11 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     sp.clubOnly = sp.venue === 'none';
     if (sp.hasTeam && !hadTeam) {
       if (!sp.coach || !sp.coach.name) {
-        const c = (data().coaches || [])[L.firstCoach] || { name: 'Bobby Cheramie', rep: 'has played in worse' };
-        sp.coach = { name: c.name, stars: L.firstCoachStars, hiredYear: yearOf(state), quote: coachQuote(c.name), rep: c.rep };
-        emit(EV.COACH_CHANGED, { name: sp.coach.name, stars: sp.coach.stars });
-      }
+        const c = (data().coaches || [])[L.firstCoach] || { name: 'Bobby Cheramie', rep: 'has played in worse', style: 'balanced' };
+        sp.coach = { name: c.name, role: 'hc', stars: L.firstCoachStars, style: c.style || 'balanced', salary: coachSalary(L.firstCoachStars, 'hc'), years: Math.max(1, int(PF.yearsMax, 4) - 1), hiredYear: yearOf(state), quote: coachQuote(c.name), rep: c.rep, reach: false, interim: false };
+        ensureStaff(state);
+        emit(EV.COACH_CHANGED, { role: 'hc', name: sp.coach.name, stars: sp.coach.stars });
+      } else ensureStaff(state);   // PLAN_V2 P1: interim coordinators arrive with the team
       if (!sp.starters.length) sp.starters = drawStarters(state);
       scheduleSpring(state, true);   // PLAN_FOOTBALL §2.4: the Spring Game three days after the field completes (Jan 1 – Jul 10)
     }
@@ -17295,19 +17386,185 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     for (let i = 0; i < st.length; i++) if (R.chance(PS.seniorLeaveP)) { st[i] = drawStarter(state, st[i].pos); n++; }
     return n;
   }
-  /** Dec 9 (and the fire-the-coach path): three candidates not named like the current coach. */
-  function drawCandidates(state) {
-    const sp = state.sports;
-    const pool = (data().coaches || []).filter(function (c) { return c.name !== sp.coach.name; });
-    const out = [];
-    const prestige = num(state.economy && state.economy.prestige, 10);
-    for (let k = 0; k < PS.candidates && pool.length; k++) {
-      const c = pool.splice(R.int(pool.length), 1)[0];
-      const stars = clamp(Math.round(R.gauss() + prestige / PS.candidateStarDiv + PS.candidateStarAdd), PS.starMin, PS.starMax);
-      out.push({ name: c.name, stars: stars, quote: coachQuote(c.name), rep: c.rep });
+  // ---------------------------------------------------------------------------
+  // PLAN_V2 P1: the coaching staff — head coach (state.sports.coach, the same object as staff.hc), offensive
+  // and defensive coordinators (staff.oc / staff.dc), prestige-gated candidates per role (staff.candidates,
+  // sp.candidates IS staff.candidates.hc), contracts, buyouts, the Nov 8 raise offer and the off-season poaching
+  // roll. A record: {name, role, stars, style, salary, years, hiredYear, quote, rep, reach, interim}; interim
+  // staff have no scheme (style null), no contract (years 0) and cannot be fired. Read through M.staff(state).
+  // ---------------------------------------------------------------------------
+  function fmtMoney(n) { return BSU.formatMoney ? BSU.formatMoney(n) : '$' + n; }
+  function staffData() { return data().staff || {}; }
+  function roleStyles(role) { const rs = staffData().roleStyles || {}; return rs[role] || (role === 'dc' ? ['stout', 'aggressive', 'bend'] : ['ground', 'balanced', 'air']); }
+  function roleLabel(role) { return (staffData().roleNames || {})[role] || role; }
+  function pickBy(list, key) { return (list && list.length) ? list[BSU.strHash(String(key)) % list.length] : ''; }
+  function roleQuote(role, name) { const q = (staffData().quotes || {})[role]; return q && q.length ? pickBy(q, name) : (role === 'hc' ? coachQuote(name) : ''); }
+  function roleRep(role, name) { if (role === 'hc') { const cs = data().coaches || []; for (let i = 0; i < cs.length; i++) if (cs[i] && cs[i].name === name) return cs[i].rep || ''; } return pickBy((staffData().reps || {})[role], name); }
+  /** a coach's scheme: the record's style, else (pre-P1 saves) data.coaches by name, else null (interim / unknown: no fit either way) */
+  function styleOf(role, c) {
+    if (!c || !c.name || c.interim) return null;
+    if (c.style && roleStyles(role).indexOf(c.style) >= 0) return c.style;
+    if (role === 'hc') { const cs = data().coaches || []; for (let i = 0; i < cs.length; i++) if (cs[i] && cs[i].name === c.name) return cs[i].style || 'balanced'; }
+    return null;
+  }
+  function hireFee(role, stars) { return Math.round(PS.coachFee * clamp(int(stars, 0), 0, PS.starMax) * (role === 'hc' ? 1 : PB.coordinatorShare)); }
+  function interimRecord(role, year) {
+    const nm = (staffData().interim || {})[role] || (role === 'hc' ? L.interimCoach.name : 'Interim ' + role.toUpperCase());
+    const stars = role === 'hc' ? L.interimCoach.stars : 1 + (BSU.strHash(role + ':' + year) % Math.max(1, int(PF.interimStarsMax, 2)));
+    return { name: nm, role: role, stars: stars, style: null, salary: coachSalary(1, role), years: 0, hiredYear: year, quote: '', rep: role === 'hc' ? L.interimCoach.rep : 'holding the clipboard', reach: false, interim: true };
+  }
+  /** finite-guard one record in place (a pre-P1 head coach lacks style / salary / years) */
+  function fixRecord(role, c, year) {
+    c.role = role;
+    c.name = String(c.name || '');
+    c.stars = clamp(int(c.stars, 0), 0, PS.starMax);
+    if (typeof c.interim !== 'boolean') c.interim = !!c.name && (c.name === L.interimCoach.name || /^Interim /.test(c.name));
+    if (c.style !== null && roleStyles(role).indexOf(c.style) < 0) c.style = c.interim ? null : styleOf(role, { name: c.name, stars: c.stars });
+    c.salary = c.name ? Math.max(0, int(c.salary, c.interim ? coachSalary(1, role) : coachSalary(c.stars, role))) : 0;
+    c.years = Math.max(0, int(c.years, c.interim || !c.name ? 0 : int(PF.renewYears, 2)));
+    c.hiredYear = int(c.hiredYear, year);
+    c.quote = String(c.quote || ''); c.rep = String(c.rep || '');
+    c.reach = !!c.reach;
+    return c;
+  }
+  function fixCandidate(role, c) {
+    if (!c || typeof c !== 'object') return null;
+    c.role = role; c.name = String(c.name || ''); c.stars = clamp(int(c.stars, 1), PS.starMin, PS.starMax);
+    if (roleStyles(role).indexOf(c.style) < 0) c.style = roleStyles(role)[1];
+    c.reach = !!c.reach;
+    c.salary = Math.max(0, int(c.salary, Math.round(coachSalary(c.stars, role) * (c.reach ? num(PF.reachSalary, 1.6) : 1))));
+    c.years = clamp(int(c.years, int(PF.yearsMin, 2)), 1, int(PF.yearsMax, 4));
+    c.quote = String(c.quote || ''); c.rep = String(c.rep || '');
+    return c;
+  }
+  /** build / relink / finite-guard state.sports.staff (every reset, and whenever a link is found broken) */
+  function ensureStaff(state) {
+    const sp = state.sports, year = yearOf(state);
+    if (!sp.staff || typeof sp.staff !== 'object') sp.staff = { hc: null, oc: null, dc: null, candidates: { hc: [], oc: [], dc: [] }, lastRefreshYear: 0, offers: {} };
+    const st = sp.staff;
+    if (!sp.coach || typeof sp.coach !== 'object') sp.coach = { name: '', stars: 0, hiredYear: 0, quote: '', rep: '' };
+    fixRecord('hc', sp.coach, year);
+    st.hc = sp.coach;
+    for (let i = 1; i < ROLES.length; i++) { const r = ROLES[i]; if (st[r] && typeof st[r] === 'object') fixRecord(r, st[r], year); else st[r] = sp.hasTeam ? interimRecord(r, year) : null; }
+    if (!st.candidates || typeof st.candidates !== 'object') st.candidates = { hc: [], oc: [], dc: [] };
+    for (let i = 0; i < ROLES.length; i++) { const r = ROLES[i]; if (!Array.isArray(st.candidates[r])) st.candidates[r] = []; }
+    if (!Array.isArray(sp.candidates)) sp.candidates = [];
+    if (sp.candidates !== st.candidates.hc) { if (sp.candidates.length && !st.candidates.hc.length) st.candidates.hc = sp.candidates; sp.candidates = st.candidates.hc; }
+    for (let i = 0; i < ROLES.length; i++) { const r = ROLES[i], list = st.candidates[r]; for (let k = list.length - 1; k >= 0; k--) if (!fixCandidate(r, list[k])) list.splice(k, 1); }
+    st.lastRefreshYear = int(st.lastRefreshYear, 0);
+    if (!st.offers || typeof st.offers !== 'object') st.offers = {};
+    return st;
+  }
+  function staffOf(state) { const sp = state.sports; if (!sp.staff || sp.staff.hc !== sp.coach || sp.candidates !== sp.staff.candidates.hc) ensureStaff(state); return sp.staff; }
+  function recordOf(state, role) { const st = staffOf(state); return role === 'hc' ? state.sports.coach : st[role]; }
+  function maxStarsFor(prestige) { return clamp(1 + Math.floor(num(prestige, 0) / Math.max(1, num(PF.starsPerPrestige, 20))), PS.starMin, PS.starMax); }
+  function candidatePool(state, role) {
+    const names = (staffData().names || {})[role] || (role === 'hc' ? (data().coaches || []).map(function (c) { return c.name; }) : []);
+    const used = {}, st = staffOf(state);
+    for (let i = 0; i < ROLES.length; i++) {
+      const c = recordOf(state, ROLES[i]); if (c && c.name) used[c.name] = true;
+      if (ROLES[i] !== role) { const cl = st.candidates[ROLES[i]]; for (let k = 0; k < cl.length; k++) used[cl[k].name] = true; }
     }
-    sp.candidates = out;
+    return names.filter(function (n) { return !used[n]; });
+  }
+  /** perRole candidates for one role (fixed draw order per candidate: name, stars (regular ones), style, years); the last is the reach */
+  function drawRoleCandidates(state, role) {
+    const st = staffOf(state), pool = candidatePool(state, role), out = st.candidates[role];
+    const max = maxStarsFor(num(state.economy && state.economy.prestige, 10));
+    out.length = 0;
+    const n = Math.max(1, int(PF.perRole, 3));
+    for (let k = 0; k < n && pool.length; k++) {
+      const name = pool.splice(R.int(pool.length), 1)[0];
+      let stars, reach = false;
+      if (k === n - 1) { stars = Math.min(PS.starMax, max + int(PF.reachStars, 1)); reach = stars > max; }
+      else stars = clamp(max - R.int(2), PS.starMin, PS.starMax);
+      const style = R.pick(roleStyles(role));
+      const years = int(PF.yearsMin, 2) + R.int(Math.max(1, int(PF.yearsMax, 4) - int(PF.yearsMin, 2) + 1));
+      out.push({ name: name, role: role, stars: stars, style: style, salary: Math.round(coachSalary(stars, role) * (reach ? num(PF.reachSalary, 1.6) : 1)), years: years, reach: reach, rep: roleRep(role, name), quote: roleQuote(role, name) });
+    }
     return out;
+  }
+  /** Dec 9 (and after a firing / a poaching): fresh candidates for one role, or all three in order hc, oc, dc */
+  function drawCandidates(state, role) {
+    const st = staffOf(state);
+    if (role) drawRoleCandidates(state, role); else for (let i = 0; i < ROLES.length; i++) drawRoleCandidates(state, ROLES[i]);
+    st.lastRefreshYear = yearOf(state);
+    return st.candidates;
+  }
+  /** 50 % of the remaining contract (salary × years left); the head coach's is waived after three straight rivalry losses (§8) */
+  function buyoutOf(state, role, c) {
+    if (!c || !c.name || c.interim) return 0;
+    if (role === 'hc' && state.sports.rivalryLossStreak >= PS.rivalryLossFire) return 0;
+    return Math.round(Math.max(0, int(c.salary, 0)) * Math.max(0, int(c.years, 0)) * num(PF.buyoutShare, 0.5));
+  }
+  function staffSalaryYear(state) { const sp = state.sports; if (!sp.hasTeam) return 0; let t = 0; for (let i = 0; i < ROLES.length; i++) { const c = recordOf(state, ROLES[i]); if (c && c.name) t += Math.max(0, int(c.salary, 0)); } return t; }
+  /** the engine's staff terms (0 / 1 at coachStarBase; the opponent has none): offense/defense composite adds, the opponent's turnover multiplier, the HC's 4th-down nudge and halftime magnitude */
+  function staffTerms(state) {
+    const sp = state.sports, base = PS.coachStarBase;
+    const hc = recordOf(state, 'hc'), oc = recordOf(state, 'oc'), dc = recordOf(state, 'dc');
+    const hcStars = hc && hc.name ? hc.stars : base, ocStars = oc && oc.name ? oc.stars : base, dcStars = dc && dc.name ? dc.stars : base;
+    const ocStyle = styleOf('oc', oc), hcStyle = styleOf('hc', hc);
+    const ocFit = !!(ocStyle && ocStyle === sp.playbook);
+    return {
+      off: num(PF.ocCompositePerStar, 3) * (ocStars - base) + (ocFit ? num(PF.ocFit, 4) : 0),
+      def: num(PF.dcCompositePerStar, 3) * (dcStars - base),
+      toMult: Math.max(0.5, 1 + num(PF.dcTurnoverPerStar, 0.04) * (dcStars - base)),
+      goDist: hcStyle ? int((PF.hcGoDist || {})[hcStyle], 0) : 0,
+      halftime: Math.max(0.5, 1 + num(PF.hcHalftimePerStar, 0.1) * (hcStars - base)),
+      ocFit: ocFit, hcStars: hcStars, ocStars: ocStars, dcStars: dcStars
+    };
+  }
+  function qualifiesPoach(state, c) { const e = state.economy || {}; return !!(c && c.name && !c.interim && c.stars > int(PF.poach.stars, 4) && num(e.prestige, 0) < num(PF.poach.prestige, 40)); }
+  /** Nov 8: a raise offer for every coach other programs are circling (staff:offer → the decision card; unanswered = declined); force = a role to offer regardless */
+  function offerRaises(state, force) {
+    const st = staffOf(state), year = yearOf(state), out = [];
+    for (let i = 0; i < ROLES.length; i++) {
+      const r = ROLES[i], c = recordOf(state, r);
+      if (!c || !c.name || c.interim || !(force === r || qualifiesPoach(state, c))) continue;
+      const o = st.offers[r]; if (o && o.year === year) continue;
+      const raise = Math.round(int(c.salary, 0) * num(PF.poach.raise, 0.25));
+      st.offers[r] = { year: year, answered: false, accepted: false, raise: raise };
+      const p = { role: r, label: roleLabel(r), name: c.name, stars: c.stars, salary: c.salary, raise: raise, newSalary: c.salary + raise, years: c.years, year: year };
+      ticker(state, c.name + ' (' + c.stars + '★) is taking calls: a ' + Math.round(num(PF.poach.raise, 0.25) * 100) + '% raise keeps them (Season panel → Staff).', {});
+      emit(EV.STAFF_OFFER, p);
+      out.push(p);
+    }
+    return out;
+  }
+  /** the poaching: the coach leaves for another program, an interim takes over, that role's candidates draw at once (staff:poached → the newsflash card) */
+  function poachCoach(state, role, why) {
+    const sp = state.sports, st = staffOf(state), c = recordOf(state, role), year = yearOf(state);
+    if (!c || !c.name || c.interim) return null;
+    const poachers = staffData().poachers || ['Magnolia State'];
+    const by = poachers[BSU.strHash(c.name + ':' + year) % poachers.length];
+    const interim = interimRecord(role, year);
+    if (role === 'hc') { sp.coach = interim; st.hc = interim; } else st[role] = interim;
+    delete st.offers[role];
+    drawCandidates(state, role);
+    const p = { role: role, label: roleLabel(role), name: c.name, stars: c.stars, salary: c.salary, poacher: by, why: why || 'poached', year: year, interim: interim.name };
+    ticker(state, 'Poached: ' + c.name + ' (' + c.stars + '★ ' + roleLabel(role).toLowerCase() + ') leaves for ' + by + '.', {});
+    emit(EV.STAFF_POACHED, p);
+    emit(EV.COACH_CHANGED, { role: role, name: interim.name, stars: interim.stars });
+    storeRating(state);
+    return p;
+  }
+  /** season end (after the star drift, before the budget roll): contracts tick down (an expired one renews at the market rate), then the poaching roll per role (hc, oc, dc) */
+  function offseasonStaff(state) {
+    const st = staffOf(state), year = yearOf(state), poached = [];
+    for (let i = 0; i < ROLES.length; i++) {
+      const r = ROLES[i], c = recordOf(state, r);
+      if (!c || !c.name || c.interim) continue;
+      c.years = Math.max(0, int(c.years, 0) - 1);
+      if (c.years <= 0) { c.years = Math.max(1, int(PF.renewYears, 2)); c.salary = coachSalary(c.stars, r); c.reach = false; ticker(state, c.name + ' re-ups for ' + c.years + ' years at ' + fmtMoney(c.salary) + '.', {}); }
+    }
+    for (let i = 0; i < ROLES.length; i++) {
+      const r = ROLES[i], c = recordOf(state, r);
+      if (!qualifiesPoach(state, c)) continue;
+      const o = st.offers[r];
+      if (o && o.year === year && o.accepted) continue;
+      if (R.chance(num(PF.poach.p, 0.35))) { const p = poachCoach(state, r); if (p) poached.push(p); }
+    }
+    return poached;
   }
 
   // ---------------------------------------------------------------------------
@@ -17392,12 +17649,12 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
   }
   function composite(pr, w) { let s = 0; for (const p in w) s += w[p] * num(pr[p], PS.starterBase); return s; }
   /** unit = clamp(composite + (strength − 50)/teamModDiv, unitMin, unitMax) for the four units (+ raw K/QB). */
-  function unitsFor(pr, strength) {
-    const mod = (num(strength, 50) - 50) / PE.teamModDiv, C = PE.composite;
-    const u = function (w) { return clamp(composite(pr, w) + mod, PE.unitMin, PE.unitMax); };
-    return { offRun: u(C.offRun), offPass: u(C.offPass), defRun: u(C.defRun), defPass: u(C.defPass), K: num(pr.K, PS.starterBase), QB: num(pr.QB, PS.starterBase) };
+  function unitsFor(pr, strength, stf) {
+    const mod = (num(strength, 50) - 50) / PE.teamModDiv, C = PE.composite, off = stf ? num(stf.off, 0) : 0, def = stf ? num(stf.def, 0) : 0;   // P1: the coordinators' adds
+    const u = function (w, add) { return clamp(composite(pr, w) + mod + add, PE.unitMin, PE.unitMax); };
+    return { offRun: u(C.offRun, off), offPass: u(C.offPass, off), defRun: u(C.defRun, def), defPass: u(C.defPass, def), K: num(pr.K, PS.starterBase), QB: num(pr.QB, PS.starterBase) };
   }
-  function coachStyle(sp) { const cs = data().coaches || []; const nm = sp.coach && sp.coach.name; for (let i = 0; i < cs.length; i++) if (cs[i] && cs[i].name === nm) return cs[i].style || 'balanced'; return null; }   // null: an interim/unknown staff has no scheme (no coach fit either way)
+  function coachStyle(sp) { return styleOf('hc', sp.coach); }   // null: an interim/unknown staff has no scheme (no coach fit either way)
   function lastName(n) { const s = String(n || '').replace(/"[^"]*"\s*/, '').trim().split(' '); return s[s.length - 1] || 'Tiger'; }
   /** Per-game engine inputs (plain JSON on the game): units per side, home advantage, styles, coach fit, weather, the elo-scale edge. */
   function engineFor(state, g) {
@@ -17407,11 +17664,12 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     let advB = 0, advO = 0;
     const k = g.origKind || g.kind;
     const boosts = { marshMob: 0, homecoming: 0, homeField: 0 };
+    const stf = staffTerms(state);   // PLAN_V2 P1: OC/DC composite adds, the DC's turnover multiplier on the opponent, the HC's 4th-down nudge and halftime magnitude
     if (g.kind === 'spring') {
       // PLAN_FOOTBALL §2.1 Spring Game: intrasquad — Gold = the starters − goldHandicap with the same scheme, no home field, no weather
       const pb = sp.playbook, pos = bsuPositions(sp), gold = {};
       for (let i = 0; i < POS.length; i++) gold[POS[i]] = pos[POS[i]] - num(PE.spring.goldHandicap, 6);
-      return { units: [unitsFor(pos, sBsu), unitsFor(gold, sBsu)], adv: [0, 0], strength: [sBsu, sBsu], style: [pb, pb], aggression: [sp.aggression, 'normal'], coachStyle: coachStyle(sp), fit: { comp: 0, runYds: 0 }, rain: false, wind: false, edge: 0, boosts: boosts };
+      return { units: [unitsFor(pos, sBsu, stf), unitsFor(gold, sBsu, stf)], adv: [0, 0], strength: [sBsu, sBsu], style: [pb, pb], aggression: [sp.aggression, 'normal'], coachStyle: coachStyle(sp), fit: { comp: 0, runYds: 0 }, toMult: [stf.toMult, stf.toMult], goDist: [stf.goDist, stf.goDist], halftime: stf.halftime, staff: stf, rain: false, wind: false, edge: 0, boosts: boosts };
     }
     if (g.home) {
       const seats = venueInfo(state).seats; const fill = seats > 0 ? clamp(num(g.attendance, 0) / seats, 0, 1) : 0;
@@ -17431,9 +17689,10 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     // home advantage is on the rating scale (as in winProb's elo term): it enters the units through teamMod, not the edge directly
     sBsu += advB; sOpp += advO;
     return {
-      units: [unitsFor(pos, sBsu), unitsFor(oppPositions(g.opp), sOpp)],
+      units: [unitsFor(pos, sBsu, stf), unitsFor(oppPositions(g.opp), sOpp)],
       adv: [advB, advO], strength: [sBsu, sOpp],
       style: [pb, o.style || 'balanced'], aggression: [sp.aggression, 'normal'], coachStyle: cst, fit: fit,
+      toMult: [1, stf.toMult], goDist: [stf.goDist, 0], halftime: stf.halftime, staff: stf,
       rain: !!(g.home && raining(state)), wind: !!(wind && num(wind.speed, 0) >= PE.weather.windThreshold),
       edge: (sBsu - sOpp) / PE.edgeDiv, boosts: boosts
     };
@@ -17475,6 +17734,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     return (att - def) / PE.edgeDiv;
   }
   function adjOf(g, t) { return t === BSU_T ? g.adj : L.noAdj; }
+  function toMultOf(g, t) { const m = g.eng && g.eng.toMult; return m ? Math.max(0.5, num(m[t], 1)) : 1; }   // P1: the defending DC's turnover rate (a pre-P1 game in a save: 1)
   function firstAndTen(g) { g.down = 1; g.dist = Math.min(PE.clock.firstDownYds, toGoal(g)); }
   function newDrive(g) { g.drive = { team: g.poss, start: ownYd(g), plays: 0, yds: 0, q: g.quarter, secs: 0, pts: 0 }; }
   function driveText(g, d) {
@@ -17616,13 +17876,13 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     let yds = Math.round(R.gauss() * Rn.ydsSd + Rn.ydsBase + Rn.ydsEdge * e + pb.runYdsAdd + (t === BSU_T ? g.eng.fit.runYds : 0));
     if (yds < Rn.ydsFloor) yds = Rn.ydsFloor;
     if (R.chance(clamp(Rn.breakawayP * (1 + Rn.breakawayEdge * e) * adj.big, 0, 0.5))) yds += Rn.breakawayAdd + R.int(Rn.breakawayRand);
-    const fumble = R.chance(clamp(Rn.fumbleP * (1 - Rn.fumbleEdge * e) * pb.fumbleMult * (g.eng.rain ? PE.weather.rainFumbleMult : 1) * adj.to, 0, 0.5));
+    const fumble = R.chance(clamp(Rn.fumbleP * (1 - Rn.fumbleEdge * e) * pb.fumbleMult * (g.eng.rain ? PE.weather.rainFumbleMult : 1) * adj.to * toMultOf(g, t), 0, 0.5));
     return { type: 'run', yds: yds, fumble: fumble };
   }
   function playPass(g) {
     const t = g.poss, e = edgeFor(g, 'pass'), pb = PE.playbook[g.eng.style[t]] || PE.playbook.balanced, Pp = PE.pass, W = PE.weather, adj = adjOf(g, t);
     if (R.chance(clamp(Pp.sackP * (1 - Pp.sackEdge * e), 0, 0.5))) return { type: 'sack', yds: Pp.sackYds };
-    if (R.chance(clamp(Pp.intP * (1 - Pp.intEdge * e) * pb.intMult * adj.to, 0, 0.5))) { const ret = Math.max(0, Math.round(Pp.intReturnMean + R.gauss() * Pp.intReturnSd)); return { type: 'int', yds: 0, ret: ret }; }
+    if (R.chance(clamp(Pp.intP * (1 - Pp.intEdge * e) * pb.intMult * adj.to * toMultOf(g, t), 0, 0.5))) { const ret = Math.max(0, Math.round(Pp.intReturnMean + R.gauss() * Pp.intReturnSd)); return { type: 'int', yds: 0, ret: ret }; }
     let comp = Pp.compBase + Pp.compEdge * e + pb.compAdj + (t === BSU_T ? g.eng.fit.comp : 0) + (g.eng.rain ? W.rainComp : 0) + (g.eng.wind ? W.windComp : 0);
     comp = clamp(comp, Pp.compMin, Pp.compMax);
     if (!R.chance(comp)) return { type: 'pass', yds: 0, inc: true };
@@ -17805,7 +18065,8 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     const tg = toGoal(g), own = 100 - tg, m = margin(g, t);
     const fgOk = tg + PE.fg.snapDist <= PE.fg.maxDist;
     if (!g.ot && g.clock <= 20 && (g.quarter === 2 || g.quarter === C.quarters) && fgOk && (g.quarter === 2 || m >= -3)) return 'fg';
-    let go = A.goDist > 0 && g.dist <= A.goDist && own >= A.goSpot;
+    const goDist = A.goDist > 0 ? Math.max(1, A.goDist + (g.eng.goDist ? int(g.eng.goDist[t], 0) : 0)) : 0;   // P1: an air HC goes a yard longer, a ground HC a yard shorter
+    let go = goDist > 0 && g.dist <= goDist && own >= A.goSpot;
     if (g.ot) { if (m < -3 || (m < 0 && !fgOk)) go = true; else if (!fgOk && g.dist <= 4) go = true; }
     else if (g.quarter === C.quarters) {
       const late = g.clock <= PE.decision.fourthTrailSec;
@@ -17839,13 +18100,14 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
   function applyHalftime(state, g, choice) {
     const sp = state.sports, D = PE.decision;
     g.halftimeAnswered = true; g.halftimeChoice = choice;
+    const hm = Math.max(0.5, num(g.eng && g.eng.halftime, 1));   // P1: the HC's halftime adjustment magnitude (1 at 2★)
     if (choice === 'open') {
-      g.adj = { runShare: -D.openPass, big: D.openBigPlay, to: D.openTurnover, clockAdd: 0 };
+      g.adj = { runShare: -D.openPass * hm, big: 1 + (D.openBigPlay - 1) * hm, to: D.openTurnover, clockAdd: 0 };
       g.wentForIt = true;
       ticker(state, 61, { coach: sp.coach && sp.coach.name ? sp.coach.name : 'Cheramie' });
       if (watched(g)) call('ui', 'notify', state, { text: 'Coach ' + (sp.coach && sp.coach.name ? sp.coach.name : '') + ' opens it up: more passes, more big plays, more risk.', kind: 'sports', ttl: 6000 });
     } else if (choice === 'pound') {
-      g.adj = { runShare: D.poundRun, big: 1, to: 1, clockAdd: D.poundClockAdd };
+      g.adj = { runShare: D.poundRun * hm, big: 1, to: 1, clockAdd: Math.round(D.poundClockAdd * hm) };
       if (watched(g)) call('ui', 'notify', state, { text: 'Coach ' + (sp.coach && sp.coach.name ? sp.coach.name : '') + ' pounds the rock: the clock bleeds.', kind: 'sports', ttl: 6000 });
     } else g.adj = noAdj();
   }
@@ -18700,6 +18962,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
       if (regLosses > regWins) sp.losingSeasons++; else sp.losingSeasons = 0;
       if (sp.losingSeasons >= PS.starDriftLosing) { sp.coach.stars = Math.max(PS.starMin, num(sp.coach.stars, 2) - 1); sp.losingSeasons = 0; }
     }
+    offseasonStaff(state);   // PLAN_V2 P1: contracts tick down / renew, then the poaching roll (a newsflash per coach lost)
     rollBudget(state);   // PLAN_V2 P3: next year's athletics budget from this season's gate, wins and prestige
     sp.seasonDone = true;
     sp.homeWins = 0;
@@ -18750,7 +19013,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     const mvp = seasonMvp(sp);
     const row = { year: info.year, wins: info.wins, losses: info.losses, pf: pf, pa: pa,
       bowl: info.bowl ? { opp: info.bowlOpp, oppName: oppName(info.bowlOpp), score: info.bowlScore, won: !!info.bowlWon } : null, bowlWon: !!info.bowlWon, undefeated: !!info.undefeated,
-      coach: sp.coach ? String(sp.coach.name || '') : '', stars: num(sp.coach && sp.coach.stars, 0), playbook: sp.playbook, mvp: mvp ? { name: mvp.name, pos: mvp.pos, hometown: mvp.hometown, line: mvp.line } : null, games: sp.seasonLog.length };
+      coach: sp.coach ? String(sp.coach.name || '') : '', stars: num(sp.coach && sp.coach.stars, 0), oc: sp.staff && sp.staff.oc ? String(sp.staff.oc.name || '') : '', dc: sp.staff && sp.staff.dc ? String(sp.staff.dc.name || '') : '', playbook: sp.playbook, mvp: mvp ? { name: mvp.name, pos: mvp.pos, hometown: mvp.hometown, line: mvp.line } : null, games: sp.seasonLog.length };
     r.seasons.push(row);
     while (r.seasons.length > num(RC.seasonsMax, 50)) r.seasons.shift();
     const hof = [];
@@ -18964,7 +19227,9 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     }
     // May 5: seniors leave
     if (sp.hasTeam && sp.starters.length && day === dayOfDate('May 5', year)) seniorsLeave(state);
-    // Dec 9: the offseason hire card and the prospect board (pass C: offered once per off-season)
+    // PLAN_V2 P1: Nov 8 — raise offers for coaches other programs are circling (above 4★ at prestige < 40)
+    if (sp.hasTeam && day === dayOfDate(PF.poach.offerDate, year)) offerRaises(state);
+    // Dec 9: the offseason hire card and the prospect board (pass C: offered once per off-season); P1: candidates for all three roles
     if (sp.hasTeam && day === dayOfDate(PS.schedule.offseasonStart, year)) { drawCandidates(state); drawProspects(state); offerProspects(state); }
     // PLAN_V2 P3: Jan 1 — the university's top-up moves into the athletics fund (once per year, with a team)
     if (sp.hasTeam && day > 0 && day === dayOfDate(PB.transferDate, year)) yearlyTopUp(state, year);
@@ -19037,7 +19302,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
   //   total     = base + revenueShare × last season's athletics revenue (gate, concessions, tailgates, club pay,
   //               bowl purse, Spring Game concessions) + prestigePer10 × prestige/10 + boosters (a season of
   //               ≥ boosterWins) + the university top-up (topUpShare × base, 0–150 %)
-  //   committed = head coach salary (coachSalary: $150k × stars²) + signed prospects + upkeepShare × the venue's
+  //   committed = head coach + coordinator salaries (coachSalary: $150k × stars², ×0.55 for OC/DC; P1) + signed prospects + upkeepShare × the venue's
   //               annual upkeep + the coaching spend + the Homecoming tier
   //   headroom  = total − committed; every sports spend asks canAfford(state, amount) before cash.
   //   The top-up is real money: it moves each Jan 1 (ledger expense 'athletics' → "Athletics top-up"; raising
@@ -19087,7 +19352,9 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
   function committedLines(state) {
     const sp = state.sports, e = state.economy || {}, T = budgetText().lines || {};
     const lines = [];
-    lines.push({ key: 'coach', label: T.coach || 'Head coach salary', amount: sp.coach && sp.coach.name ? coachSalary(sp.coach.stars, 'hc') : 0 });
+    const hc = sp.coach;
+    lines.push({ key: 'coach', label: T.coach || 'Head coach salary', amount: hc && hc.name ? Math.max(0, int(hc.salary, coachSalary(hc.stars, 'hc'))) : 0 });
+    for (let i = 1; i < ROLES.length; i++) { const r = ROLES[i], c = sp.staff && sp.staff[r]; lines.push({ key: r, label: T[r] || roleLabel(r), amount: c && c.name ? Math.max(0, int(c.salary, 0)) : 0 }); }   // P1: the coordinators
     lines.push({ key: 'coaching', label: T.coaching || 'Coaching spend', amount: Math.max(0, int(e.coaching, 0)) });
     let sign = 0; const b = sp.prospects; if (b && Array.isArray(b.list)) for (let i = 0; i < b.list.length; i++) if (b.list[i] && b.list[i].signed) sign += Math.max(0, int(b.list[i].cost, 0));
     lines.push({ key: 'signings', label: T.signings || 'Signed prospects', amount: sign });
@@ -19446,45 +19713,91 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
       return { ok: true, cost: cost };
     } catch (e) { BSU.error('sports', 'setHomecomingBudget', e); return { ok: false, reason: 'error' }; }
   };
-  /** sign candidate idx: needs coaching ≥ 300k × stars and cash ≥ 100k × stars; signing fee charged (coaching) */
-  M.hireCoach = function (state, idx) {
+  /** PLAN_V2 P1: sign candidate idx for a role against the athletics budget (the fee plus the salary step up must fit the headroom; the fund pays first) */
+  M.hireStaff = function (state, role, idx) {
     try {
-      const sp = state.sports, e = state.economy || {};
-      const c = sp.candidates[idx];
+      if (ROLES.indexOf(role) < 0) return { ok: false, cost: 0, reason: 'No such role' };
+      const sp = state.sports, st = staffOf(state);
+      const c = st.candidates[role][int(idx, -1)];
       if (!c) return { ok: false, cost: 0, reason: 'No such candidate' };
-      const fee = PS.coachFee * c.stars;
-      if (num(e.coaching, 0) < PS.coachSign * c.stars) return { ok: false, cost: fee, reason: 'Coaching budget must be at least ' + BSU.formatMoney(PS.coachSign * c.stars) + '/yr' };
-      // P3: the fee plus the salary step up must fit the athletics budget's headroom (the fund pays the fee first)
-      const ca = canAffordAthletics(state, fee + Math.max(0, coachSalary(c.stars, 'hc') - (sp.coach && sp.coach.name ? coachSalary(sp.coach.stars, 'hc') : 0)));
+      if (!sp.hasTeam) return { ok: false, cost: 0, reason: 'No team yet' };
+      const cur = recordOf(state, role), fee = hireFee(role, c.stars);
+      const ca = canAffordAthletics(state, fee + Math.max(0, int(c.salary, 0) - (cur && cur.name ? int(cur.salary, 0) : 0)));
       if (!ca.ok) return { ok: false, cost: fee, reason: ca.reason };
       if (!athleticsCharge(state, fee, 'coaching', { note: 'signing ' + c.name })) return { ok: false, cost: fee, reason: 'Cannot afford the signing fee' };
-      sp.coach = { name: c.name, stars: c.stars, hiredYear: yearOf(state), quote: c.quote || coachQuote(c.name), rep: c.rep || '' };
-      sp.candidates = [];
-      emit(EV.COACH_CHANGED, { name: sp.coach.name, stars: sp.coach.stars });
+      const rec = { name: c.name, role: role, stars: c.stars, style: c.style, salary: Math.max(0, int(c.salary, coachSalary(c.stars, role))), years: Math.max(1, int(c.years, int(PF.yearsMin, 2))), hiredYear: yearOf(state), quote: c.quote || roleQuote(role, c.name), rep: c.rep || roleRep(role, c.name), reach: !!c.reach, interim: false };
+      if (role === 'hc') { sp.coach = rec; st.hc = rec; } else st[role] = rec;
+      st.candidates[role].length = 0;
+      delete st.offers[role];
+      emit(EV.COACH_CHANGED, { role: role, name: rec.name, stars: rec.stars });
       storeRating(state);
       refreshBudget(state, 'hire');
-      return { ok: true, cost: fee, reason: '' };
-    } catch (e) { BSU.error('sports', 'hireCoach', e); return { ok: false, cost: 0, reason: 'error' }; }
+      return { ok: true, cost: fee, reason: '', role: role, name: rec.name };
+    } catch (e) { BSU.error('sports', 'hireStaff', e); return { ok: false, cost: 0, reason: 'error' }; }
   };
-  /** $500k buyout (waived after 3 straight rivalry losses); an interim staff holds the clipboard; candidates drawn at once */
-  M.fireCoach = function (state) {
+  /** the head-coach shorthand (the hire card, pass C callers) */
+  M.hireCoach = function (state, idx) { return M.hireStaff(state, 'hc', idx); };
+  /** PLAN_V2 P1: fire a role's coach — the buyout (50 % of the remaining contract; waived for the HC after three straight rivalry losses) against the headroom net of the salary it frees; an interim holds the clipboard; candidates draw if none are listed */
+  M.fireStaff = function (state, role) {
     try {
-      const sp = state.sports;
-      if (!sp.hasTeam || !sp.coach || !sp.coach.name) return { ok: false, cost: 0, reason: 'No coach' };
-      const cost = sp.rivalryLossStreak >= PS.rivalryLossFire ? 0 : PS.buyout;
-      if (cost > 0) {   // P3: the buyout against the headroom, net of the salary the firing frees
-        const ca = canAffordAthletics(state, cost - Math.max(0, coachSalary(sp.coach.stars, 'hc') - coachSalary(L.interimCoach.stars, 'hc')));
+      if (ROLES.indexOf(role) < 0) return { ok: false, cost: 0, reason: 'No such role' };
+      const sp = state.sports, st = staffOf(state), c = recordOf(state, role);
+      if (!sp.hasTeam || !c || !c.name) return { ok: false, cost: 0, reason: 'No coach' };
+      if (c.interim) return { ok: false, cost: 0, reason: 'Interim staff cannot be fired: hire a replacement instead' };
+      const cost = buyoutOf(state, role, c), interim = interimRecord(role, yearOf(state));
+      if (cost > 0) {
+        const ca = canAffordAthletics(state, cost - Math.max(0, int(c.salary, 0) - interim.salary));
         if (!ca.ok) return { ok: false, cost: cost, reason: ca.reason };
-        if (!athleticsCharge(state, cost, 'coaching', { note: 'buyout ' + sp.coach.name })) return { ok: false, cost: cost, reason: 'Cannot afford the buyout' };
+        if (!athleticsCharge(state, cost, 'coaching', { note: 'buyout ' + c.name })) return { ok: false, cost: cost, reason: 'Cannot afford the buyout' };
       }
-      sp.coach = { name: L.interimCoach.name, stars: L.interimCoach.stars, hiredYear: yearOf(state), quote: '', rep: L.interimCoach.rep };
-      drawCandidates(state);
-      emit(EV.COACH_CHANGED, { name: sp.coach.name, stars: sp.coach.stars });
+      if (role === 'hc') { sp.coach = interim; st.hc = interim; } else st[role] = interim;
+      delete st.offers[role];
+      if (!st.candidates[role].length) drawCandidates(state, role);
+      emit(EV.COACH_CHANGED, { role: role, name: interim.name, stars: interim.stars });
       storeRating(state);
       refreshBudget(state, 'fire');
-      return { ok: true, cost: cost };
-    } catch (e) { BSU.error('sports', 'fireCoach', e); return { ok: false, cost: 0, reason: 'error' }; }
+      return { ok: true, cost: cost, role: role, name: c.name };
+    } catch (e) { BSU.error('sports', 'fireStaff', e); return { ok: false, cost: 0, reason: 'error' }; }
   };
+  M.fireCoach = function (state) { return M.fireStaff(state, 'hc'); };
+  /** the Nov 8 raise offer: accept pays +25 % a year (against the headroom) and keeps the coach through the poaching roll; decline / unanswered leaves it to the dice */
+  M.answerRaise = function (state, role, accept) {
+    try {
+      const st = staffOf(state), c = recordOf(state, role), o = st.offers[role], year = yearOf(state);
+      if (!c || !c.name || !o || o.year !== year) return { ok: false, reason: 'No raise offer on the table' };
+      if (o.answered) return { ok: false, reason: 'Already answered' };
+      if (accept) {
+        const ca = canAffordAthletics(state, o.raise);
+        if (!ca.ok) return { ok: false, reason: ca.reason, raise: o.raise };
+        c.salary = int(c.salary, 0) + o.raise; o.accepted = true;
+        ticker(state, c.name + ' stays: ' + fmtMoney(c.salary) + ' a year.', {});
+      } else ticker(state, c.name + ' turned down the raise talk. Expect calls in December.', {});
+      o.answered = true;
+      refreshBudget(state, 'raise');
+      return { ok: true, accepted: !!accept, raise: o.raise, salary: c.salary };
+    } catch (e) { BSU.error('sports', 'answerRaise', e); return { ok: false, reason: 'error' }; }
+  };
+  /** the player-facing staff view: records per role (with scheme, buyout, fit), candidates per role (with idx and fee), the prestige gate, this year's offers, the engine terms */
+  M.staff = function (state) {
+    try {
+      const sp = state.sports, st = staffOf(state), e = state.economy || {}, year = yearOf(state);
+      const prestige = num(e.prestige, 0), max = maxStarsFor(prestige), per = Math.max(1, num(PF.starsPerPrestige, 20));
+      const view = { year: st.lastRefreshYear, prestige: prestige, maxStars: max, reachStars: Math.min(PS.starMax, max + int(PF.reachStars, 1)), nextPrestige: max >= PS.starMax ? 0 : Math.max(0, max * per - prestige),
+        perStar: per, reachSalary: num(PF.reachSalary, 1.6), buyoutShare: num(PF.buyoutShare, 0.5), raiseShare: num(PF.poach.raise, 0.25), terms: staffTerms(state), candidates: {}, offers: {}, hasTeam: !!sp.hasTeam };
+      for (let i = 0; i < ROLES.length; i++) {
+        const r = ROLES[i], c = recordOf(state, r), sty = styleOf(r, c);
+        view[r] = c && c.name ? { name: c.name, role: r, stars: c.stars, style: sty, salary: int(c.salary, 0), years: int(c.years, 0), hiredYear: int(c.hiredYear, 0), quote: c.quote, rep: c.rep, reach: !!c.reach, interim: !!c.interim,
+          buyout: buyoutOf(state, r, c), fit: r === 'oc' ? view.terms.ocFit : (r === 'hc' ? !!(sty && sty === sp.playbook) : false), poachable: qualifiesPoach(state, c) } : null;
+        view.candidates[r] = st.candidates[r].map(function (cd, idx) { return { idx: idx, role: r, name: cd.name, stars: cd.stars, style: cd.style, salary: cd.salary, years: cd.years, reach: !!cd.reach, rep: cd.rep, quote: cd.quote, fee: hireFee(r, cd.stars), fit: r !== 'dc' && cd.style === sp.playbook }; });
+        const o = st.offers[r]; view.offers[r] = o && o.year === year ? { year: o.year, answered: !!o.answered, accepted: !!o.accepted, raise: int(o.raise, 0) } : null;
+      }
+      return view;
+    } catch (e) { BSU.error('sports', 'staff', e); return null; }
+  };
+  /** redraw the candidates (Dec 9 does this on its own; a role, or all three) */
+  M.refreshCandidates = function (state, role) { try { return drawCandidates(state, ROLES.indexOf(role) >= 0 ? role : undefined); } catch (e) { BSU.error('sports', 'refreshCandidates', e); return null; } };
+  /** economy's monthly staff charge: the three salaries / 12 while a team exists (fund first through drawFund, then cash) */
+  M.staffSalaryMonthly = function (state) { try { return Math.round(staffSalaryYear(state) / Math.max(1, num(PT.monthsPerYear, 12))); } catch (e) { BSU.error('sports', 'staffSalaryMonthly', e); return 0; } };
   /** the recruiting card: accept pays the NIL price now (the building prices are checked next Aug 5) */
   M.answerRecruit = function (state, accept) {
     try {
@@ -19566,6 +19879,8 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     homeWinsThisSeason: function () { return 0; }, winPctLast4: function () { return L.neutralWinPct; },
     playHome: function () { return { ok: false, reason: 'No game state' }; }, simGame: function () { return null; },
     hireCoach: function () { return { ok: false, cost: 0, reason: 'No game state' }; }, fireCoach: function () { return { ok: false, cost: 0, reason: 'No game state' }; },
+    hireStaff: function () { return { ok: false, cost: 0, reason: 'No game state' }; }, fireStaff: function () { return { ok: false, cost: 0, reason: 'No game state' }; }, answerRaise: function () { return { ok: false, reason: 'No game state' }; },
+    staff: function () { return null; }, refreshCandidates: function () { return null; }, staffSalaryMonthly: function () { return 0; },
     setHomecomingBudget: function () { return { ok: false, reason: 'No game state' }; },
     halftime: function () {}, skipToFinal: function () {}, setNight: function () {}, setAutoSim: function () {}, setPermits: function () {},
     decide: function () { return { ok: false, reason: 'No game state' }; }, setPlaybook: function () {}, setAggression: function () {}, setWatchFull: function () {},
@@ -19585,6 +19900,12 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
   M._seniorsLeave = function (state) { return seniorsLeave(state); };
   M._probFor = probFor;
   M._venueInfo = venueInfo;
+  // PLAN_V2 P1 hooks: force a raise offer / a poaching / the off-season staff step; the engine inputs and staff terms for a synthetic game
+  M._offerRaise = function (state, role) { return offerRaises(state, role); };
+  M._poach = function (state, role) { return poachCoach(state, role, 'forced'); };
+  M._offseasonStaff = function (state) { return offseasonStaff(state); };
+  M._staffTerms = function (state) { return staffTerms(state); };
+  M._engineFor = function (state, g) { if (S !== state || !pv) { rebind(state); ensureKeys(state); } return engineFor(state, g); };
   M._liveProb = function (state, team, o) { const g = state && state.sports && state.sports.game; return g ? liveProb(g, team === undefined ? BSU_T : team, o) : 0.5; };
   /** Calibration hook: play one silent game with explicit ratings/venue (no finalize side effects). opts: {opp, oppRating, rating, home, night, kind, attendance, mode} → the game struct. */
   M._playGame = function (state, opts) {
@@ -19823,7 +20144,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
         const f = M.fireCoach(s);
         A(f.ok && f.cost === 0, 'fireCoach cost 0 after the streak');
         s.sports.rivalryLossStreak = 0; s.sports.coach = { name: 'Bobby Cheramie', stars: 2, hiredYear: 1, quote: '', rep: '' };
-        A(M.fireCoach(s).cost === PS.buyout, 'buyout $500k otherwise');
+        A(M.fireCoach(s).cost === Math.round(600000 * 2 * PF.buyoutShare), 'buyout = 50% of the remaining contract otherwise (2★ at $600k × 2 years → $600k)');
         A(tickers.indexOf(42) >= 0 && tickers.indexOf(44) >= 0, 'ticker lines 42/44 on the losses');
       }
 
@@ -19928,9 +20249,9 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
         s.sports.coach = { name: 'Bobby Cheramie', stars: 2, hiredYear: 1, quote: '', rep: '' };
         drawCandidates(s);
         const c0 = s.sports.candidates[0];
-        s.economy.coaching = 0; s.economy.cash = 1e7;
-        A(!M.hireCoach(s, 0).ok, 'hire refused without the coaching budget');
-        s.economy.coaching = PS.coachSign * c0.stars;
+        s.economy.coaching = 3000000; s.economy.cash = 1e7;
+        A(!M.hireCoach(s, 0).ok, 'hire refused over the athletics budget (a $3M coaching spend eats the headroom)');
+        s.economy.coaching = 0;
         M.setTopUp(s, PB.topUpMax);   // P3: a 3★ hire needs the headroom the max top-up gives (the fee plus the salary step)
         const h = M.hireCoach(s, 0);
         A(h.ok && h.cost === PS.coachFee * c0.stars && s.sports.coach.name === c0.name && log.some(function (x) { return x.name === EV.COACH_CHANGED; }), 'hire signs the candidate');
@@ -33793,6 +34114,52 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
   function oppOf(key) { return (BSU.data && BSU.data.opponents && BSU.data.opponents[key]) || { name: key || 'Opponent', nick: '', rating: 50, style: 'balanced' }; }
   function styleOfCoach(name) { const cs = (BSU.data && BSU.data.coaches) || []; for (let i = 0; i < cs.length; i++) if (cs[i] && cs[i].name === name) return cs[i].style || 'balanced'; return null; }
 
+  // PLAN_V2 P1: staff helpers (data.staff text / styles; the Season panel's Staff tab reads sports.staff(state))
+  const PF = PSP.staff || {};
+  function staffData() { return (BSU.data && BSU.data.staff) || {}; }
+  function staffText() { return staffData().text || {}; }
+  function roleLabel(role) { return (staffData().roleNames || {})[role] || (role === 'oc' ? 'Offensive coordinator' : role === 'dc' ? 'Defensive coordinator' : 'Head coach'); }
+  function styleName(k) { const st = (staffData().styles || {})[k]; return (st && st.name) || STYLE_NAME[k] || (k ? String(k) : 'No scheme'); }
+  function styleDesc(k) { const st = (staffData().styles || {})[k]; return (st && st.desc) || ''; }
+  function fill(tpl, vars) { return String(tpl || '').replace(/\{(\w+)\}/g, function (m, k) { return vars[k] !== undefined ? String(vars[k]) : m; }); }
+  function pct(v) { return (v >= 0 ? '+' : '') + Math.round(v * 100) + '%'; }
+  /** the fit / effect line under each staff card */
+  function fitLine(role, c, V, playbook) {
+    const T = staffText(), t = (V && V.terms) || {};
+    if (c.interim) return T.interim || 'Interim staff: no scheme, no contract, no buyout. Hire a replacement below.';
+    if (role === 'hc') return coachFitFx(c.style, playbook) + ' · team rating ' + signed(fin(PSP.coachPerStar, 2) * (c.stars - fin(PSP.coachStarBase, 2)), 0) + ' (' + c.stars + '★)';
+    if (role === 'oc') return (c.fit ? fill(T.ocFit || 'Scheme fit: {style} runs your {playbook} playbook (+{fit} to both offense units)', { style: styleName(c.style), playbook: styleName(playbook), fit: fin(PF.ocFit, 4) })
+      : fill(T.ocNoFit || 'No fit: coordinator runs {style}, your playbook is {playbook} ({perStar} per star over 2 still applies)', { style: styleName(c.style), playbook: styleName(playbook), perStar: '+' + fin(PF.ocCompositePerStar, 3) })) + ' · offense units ' + signed(fin(t.off, 0), 0);
+    return fill(T.dcLine || 'Defense units {def} · the opponent coughs it up {to} more often', { def: signed(fin(t.def, 0), 0), to: pct(fin(t.toMult, 1) - 1) }) + (c.style ? ' · ' + styleDesc(c.style) : '');
+  }
+  function gateHint(V) {
+    const T = staffText();
+    return (T.whyNo5 || 'Why no 5★? Candidates top out at one star per 20 prestige (plus one reach candidate a star above who asks +60%). ') +
+      fill(V.nextPrestige > 0 ? (T.hint || 'At prestige {prestige}: up to {max}★ ({next} more prestige unlocks the next star).') : (T.hintMax || 'At prestige {prestige}: every star is on the table.'), { prestige: Math.round(fin(V.prestige, 0)), max: V.maxStars, next: V.nextPrestige });
+  }
+  function hireClick(host, role, idx) {
+    const s = stateFor(host), T = staffText(); host._fireArm = null;
+    const r = call('sports', 'hireStaff', s, role, idx);
+    const okk = !!(r && r.ok);
+    if (r && !r.ok) { notify(s, r.reason, 'sports'); noteOn(host._staffNote, (T.hireRefused || 'Hire refused — ') + r.reason); }
+    else noteOn(host._staffNote, okk ? r.name + ' signs as ' + roleLabel(role).toLowerCase() + ' (fee ' + money(r.cost) + ').' : '');
+    cls(host._staffNote, 'ok', okk);
+    refreshSeason(s, host);
+  }
+  /** Fire is a two-click confirm: the first click arms the button and prints the buyout, the second fires */
+  function fireClick(host, role) {
+    const s = stateFor(host), T = staffText(), V = has('sports', 'staff') ? call('sports', 'staff', s) : null, c = V && V[role];
+    if (!c) return;
+    if (host._fireArm !== role) { host._fireArm = role; noteOn(host._staffNote, fill(T.confirmFire || 'Click Fire again to confirm: {name} leaves, the buyout is {buyout} (50% of the remaining contract).', { name: c.name, buyout: money(c.buyout) })); cls(host._staffNote, 'ok', false); refreshSeason(s, host); return; }
+    host._fireArm = null;
+    const r = call('sports', 'fireStaff', s, role);
+    const okk = !!(r && r.ok);
+    if (r && !r.ok) { notify(s, r.reason, 'sports'); noteOn(host._staffNote, (T.fireRefused || 'Fire refused — ') + r.reason); }
+    else noteOn(host._staffNote, okk ? c.name + ' is out; the buyout was ' + money(r.cost) + '. An interim holds the clipboard.' : '');
+    cls(host._staffNote, 'ok', okk);
+    refreshSeason(s, host);
+  }
+
   // --- one-line effects (pure; numbers come from params so the panel never lies) -------------------------------
   function playbookFx(style) {
     const pbs = PEN.playbook || {}, pb = pbs[style]; if (!pb) return '';
@@ -33859,7 +34226,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
   // 110 rem (P5), tabs across the top: Overview · Staff · Roster · Recruiting · Schedule · Records. Every engine setter
   // call, control id and list id of pass D survives inside the tabs (tests click them by id); the tabs remember the
   // last one open (ui settings.seasonTab) and ←/→ switch them while the panel has focus. Hooks for the next passes:
-  //   P1 → host._staffGrid.slots[0..2] (head coach card, two 'Coordinators coming soon' placeholders), sports.coachSalary
+  //   P1 (done) → host._staffGrid.slots[0..2] are the HC / OC / DC cards (host._staffCards[role]); #sea-candidates holds a .fb-cand-group per role; sports.coachSalary
   //   P2 → #sea-starters holds two .fb-roster tables (data-side offense | defense) of .fb-tr.fb-ro[data-pos] rows;
   //        backups go in as .fb-tr.fb-ro.backup[data-pos] right after their starter; sports.canAfford gates signings.
   const TABS_FALLBACK = [['overview', 'Overview'], ['staff', 'Staff'], ['roster', 'Roster'], ['recruiting', 'Recruiting'], ['schedule', 'Schedule'], ['records', 'Records']];
@@ -33954,25 +34321,30 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     host._fxTopUp = el('div', 'fb-fx hidden'); host._fxTopUp.id = 'fx-topup'; bud.appendChild(host._fxTopUp);
 
 
-    // ---- Staff: the head coach card + two coordinator slots (P1 fills them) ----
-    const stf = page('staff'); const grid = el('div', 'fb-staff'); grid.id = 'sea-staff'; stf.appendChild(grid); host._staffGrid = grid; grid.slots = [];
-    const slot = function (label, role) { const c = el('div', 'fb-staff-card'); c.dataset.role = role; c.appendChild(el('div', 'card-kicker', label)); grid.appendChild(c); grid.slots.push(c); return c; };
-    const hc = slot(budgetText().hcLabel || 'Head coach', 'hc'); hc.classList.add('hc');
-    host._coach = el('div', 'fb-coach'); host._coach.id = 'sea-coach'; hc.appendChild(host._coach);
-    host._coachRep = el('div', 'fb-coach-rep'); hc.appendChild(host._coachRep);
-    host._coachMeta = el('div', 'fb-staff-meta'); hc.appendChild(host._coachMeta);
-    host._coachStyle = kv(host._coachMeta, 'Style', ''); host._coachSalary = kv(host._coachMeta, 'Salary', '', 'sea-coach-salary'); host._coachSince = kv(host._coachMeta, 'Hired', '');
-    host._coachFx = el('div', 'fb-fx'); host._coachFx.id = 'fx-coachfit'; hc.appendChild(host._coachFx);
-    host._candidatesK = el('div', 'card-kicker', 'Candidates'); hc.appendChild(host._candidatesK);
-    host._candidates = el('div'); host._candidates.id = 'sea-candidates'; hc.appendChild(host._candidates);
-    host._staffNote = el('div', 'fb-note hidden'); host._staffNote.id = 'sea-staff-note'; hc.appendChild(host._staffNote);
-    const coachActs = el('div', 'card-actions');
-    // #btn-hire stands in only when no candidates are drawn yet; once they are (offseason, or a 3-game rivalry
-    // losing streak) the per-candidate buttons are the real hire action and this one hides.
-    host._hire = btn('btn-hire', 'Hire', 'small', function () { notify(stateFor(host), 'No candidates yet', 'sports'); });
-    host._fire = btn('btn-fire', 'Fire ($500k)', 'small danger', function () { const r = call('sports', 'fireCoach', stateFor(host)); if (r && !r.ok) { notify(stateFor(host), r.reason, 'sports'); noteOn(host._staffNote, 'Fire refused — ' + r.reason); } else noteOn(host._staffNote, ''); refreshSeason(stateFor(host), host); });
-    coachActs.appendChild(host._hire); coachActs.appendChild(host._fire); hc.appendChild(coachActs);
-    [['oc', budgetText().ocLabel || 'Offensive coordinator'], ['dc', budgetText().dcLabel || 'Defensive coordinator']].forEach(function (r) { const c = slot(r[1], r[0]); c.classList.add('empty'); c.appendChild(el('div', 'fb-empty', budgetText().comingSoon || 'Coordinators coming soon')); });
+    // ---- Staff (PLAN_V2 P1): HC / OC / DC cards from sports.staff, the prestige-gate hint, the candidates per role ----
+    const stf = page('staff'); const grid = el('div', 'fb-staff'); grid.id = 'sea-staff'; stf.appendChild(grid); host._staffGrid = grid; grid.slots = []; host._staffCards = {}; host._fireArm = null;
+    [['hc', budgetText().hcLabel || roleLabel('hc')], ['oc', budgetText().ocLabel || roleLabel('oc')], ['dc', budgetText().dcLabel || roleLabel('dc')]].forEach(function (r) {
+      const role = r[0], c = el('div', 'fb-staff-card'); c.dataset.role = role; if (role === 'hc') c.classList.add('hc'); c.appendChild(el('div', 'card-kicker', r[1])); grid.appendChild(c); grid.slots.push(c);
+      const k = {};
+      k.name = el('div', 'fb-coach'); if (role === 'hc') k.name.id = 'sea-coach'; c.appendChild(k.name);
+      k.nameText = el('span', 'nm'); k.name.appendChild(k.nameText);
+      k.starBar = el('span', 'fb-starbar'); k.starBar.id = 'sea-' + role + '-stars'; k.name.appendChild(k.starBar);
+      k.rep = el('div', 'fb-coach-rep'); c.appendChild(k.rep);
+      const meta = el('div', 'fb-staff-meta'); c.appendChild(meta);
+      k.style = kv(meta, 'Style', '', 'sea-' + role + '-style'); k.salary = kv(meta, 'Salary', '', role === 'hc' ? 'sea-coach-salary' : 'sea-' + role + '-salary'); k.years = kv(meta, 'Contract', '', 'sea-' + role + '-years');
+      k.fx = el('div', 'fb-fx'); k.fx.id = role === 'hc' ? 'fx-coachfit' : 'fx-' + role + 'fit'; c.appendChild(k.fx);
+      const acts = el('div', 'card-actions');
+      k.fire = btn(role === 'hc' ? 'btn-fire' : 'btn-fire-' + role, 'Fire', 'small danger', function () { fireClick(host, role); });
+      acts.appendChild(k.fire); c.appendChild(acts);
+      host._staffCards[role] = k;
+    });
+    host._coach = host._staffCards.hc.name; host._coachSalary = host._staffCards.hc.salary; host._coachFx = host._staffCards.hc.fx; host._fire = host._staffCards.hc.fire;
+    host._staffHint = el('div', 'fb-fx fb-staff-hint'); host._staffHint.id = 'sea-staff-hint'; stf.appendChild(host._staffHint);
+    host._staffNote = el('div', 'fb-note hidden'); host._staffNote.id = 'sea-staff-note'; stf.appendChild(host._staffNote);
+    host._candidatesK = el('div', 'card-kicker', 'Candidates'); stf.appendChild(host._candidatesK);
+    host._candidates = el('div', 'fb-cand-groups'); host._candidates.id = 'sea-candidates'; stf.appendChild(host._candidates);
+    // #btn-hire stands in only while no candidates exist at all (a pre-team panel); the per-candidate buttons are the real hire action
+    host._hire = btn('btn-hire', 'Hire', 'small hidden', function () { notify(stateFor(host), 'No candidates yet', 'sports'); }); stf.appendChild(host._hire);
 
     // ---- Roster: the eight starters in two tables (offense | defense); P2 adds backups and class years ----
     const ros = page('roster');
@@ -34119,29 +34491,44 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
       setText(host._fxTopUp, tuFx); if (host._topUpK.title !== tuFx) { host._topUpK.title = tuFx; host._topUp.title = tuFx; }
     }
 
-    // ---- Staff: the head coach card and the candidates ----
-    const coach = sp.coach || { name: '', stars: 0, rep: '' }, cstyle = styleOfCoach(coach.name);
-    setText(host._coach, (coach.name ? coach.name : 'No head coach') + ' ' + stars(coach.stars));
-    setText(host._coachRep, coach.rep ? '"' + coach.rep + '"' : ''); show(host._coachRep, !!coach.rep);
-    setText(host._coachStyle, cstyle ? (STYLE_NAME[cstyle] || cstyle) : (coach.name ? 'No scheme' : '—'));
-    const salary = has('sports', 'coachSalary') ? fin(call('sports', 'coachSalary', coach.stars, 'hc'), 0) : 0;
-    setText(host._coachSalary, coach.name ? money(salary) + '/yr' : '—');
-    setText(host._coachSince, coach.name && fin(coach.hiredYear, 0) > 0 ? 'Year ' + fin(coach.hiredYear, 0) : '—');
-    setText(host._coachFx, coach.name ? coachFitFx(cstyle, playbook) : 'Hire a coach in the offseason.');
-    const candidates = sp.candidates || [];
-    const coachFee = fin(PSP.coachFee, 100000), coachSign = fin(PSP.coachSign, 300000);
-    show(host._candidatesK, candidates.length > 0);
-    region(host, 'candidates', JSON.stringify(candidates.map(function (c) { return [c.name, c.stars]; }).concat([Math.round(headroom / 1000)])), host._candidates, function (box) {
-      candidates.forEach(function (c, i) {
-        const r = el('div', 'row fb-cand'); const st = fin(c.stars, 0), cs = styleOfCoach(c.name);
-        const sal = has('sports', 'coachSalary') ? fin(call('sports', 'coachSalary', st, 'hc'), 0) : 0;
-        const k = el('span', 'k', c.name + ' ' + '★'.repeat(st)); k.appendChild(el('span', 'dim', (cs ? ' · ' + (STYLE_NAME[cs] || cs) : '') + ' · ' + money(sal) + '/yr · needs ' + money(coachSign * st) + ' coaching'));
-        r.appendChild(k);
-        const b = btn(null, 'Hire ' + money(coachFee * st), 'small', function () { const res = call('sports', 'hireCoach', stateFor(host), i); if (res && !res.ok) { notify(stateFor(host), res.reason, 'sports'); noteOn(host._staffNote, 'Hire refused — ' + res.reason); } else noteOn(host._staffNote, ''); refreshSeason(stateFor(host), host); });
-        r.appendChild(b); box.appendChild(r);
+    // ---- Staff (P1): the three cards, the prestige-gate hint, the candidates per role with the headroom check ----
+    const V = has('sports', 'staff') ? call('sports', 'staff', s) : null, ST = staffText(), ROLES = ['hc', 'oc', 'dc'];
+    ROLES.forEach(function (role, ri) {
+      const k = host._staffCards[role], c = V && V[role], card = host._staffGrid.slots[ri];
+      cls(card, 'interim', !!(c && c.interim)); cls(card, 'empty', !c);
+      setText(k.nameText, c ? c.name : (hasTeam ? 'Vacant' : 'No ' + roleLabel(role).toLowerCase() + ' yet'));
+      setText(k.starBar, c ? stars(c.stars) : ''); k.starBar.title = c ? c.stars + ' of 5 stars' : '';
+      setText(k.rep, c && c.rep ? '"' + c.rep + '"' : ''); show(k.rep, !!(c && c.rep));
+      setText(k.style, c ? (c.style ? styleName(c.style) : (c.interim ? 'No scheme' : 'Unknown')) : '—'); k.style.title = c && c.style ? styleDesc(c.style) : '';
+      setText(k.salary, c ? money(c.salary) + '/yr' + (c.reach ? ' · reach hire' : '') : '—');
+      setText(k.years, c ? (c.interim ? 'none (interim)' : c.years + (c.years === 1 ? ' year left' : ' years left') + (fin(c.hiredYear, 0) > 0 ? ' · since Y' + fin(c.hiredYear, 0) : '')) : '—');
+      setText(k.fx, c ? fitLine(role, c, V, playbook) : (hasTeam ? 'Hire from the candidates below.' : 'Staff arrive with the team.'));
+      show(k.fire, !!(c && !c.interim));
+      const armed = host._fireArm === role;
+      setText(k.fire, c ? (armed ? 'Confirm fire · ' + money(c.buyout) : 'Fire · buyout ' + money(c.buyout)) : 'Fire'); cls(k.fire, 'armed', armed);
+    });
+    setText(host._staffHint, V ? gateHint(V) : ''); show(host._staffHint, !!V);
+    region(host, 'candidates', V ? JSON.stringify(ROLES.map(function (r) { return V.candidates[r].map(function (c) { return [c.name, c.stars, c.salary, c.fit]; }); }).concat([Math.round(headroom / 1000), hasTeam, ROLES.map(function (r) { return V[r] ? V[r].salary : 0; })])) : 'none', host._candidates, function (box) {
+      if (!V) return;
+      ROLES.forEach(function (role) {
+        const list = V.candidates[role], g = el('div', 'fb-cand-group'); g.dataset.role = role;
+        g.appendChild(el('div', 'card-kicker', roleLabel(role) + ' candidates'));
+        if (!list.length) { g.appendChild(el('div', 'fb-empty', ST.candidates || 'Candidates refresh each off-season (Dec 9) and after a firing.')); box.appendChild(g); return; }
+        list.forEach(function (c) {
+          const r = el('div', 'row fb-cand'); r.dataset.role = role; r.dataset.idx = String(c.idx);
+          const kk = el('span', 'k'); kk.appendChild(el('span', 'nm', c.name + ' ')); kk.appendChild(el('span', 'fb-stars', stars(c.stars)));
+          if (c.reach) kk.appendChild(el('span', 'fb-reach', ST.reach || 'reach'));
+          kk.appendChild(el('span', 'dim', ' · ' + styleName(c.style) + (c.fit ? ' ✓ fit' : '') + ' · ' + money(c.salary) + '/yr · ' + c.years + ' yrs'));
+          kk.title = (c.rep ? c.rep + ' · ' : '') + (c.quote ? '"' + c.quote + '"' : ''); r.appendChild(kk);
+          const need = c.fee + Math.max(0, c.salary - (V[role] ? V[role].salary : 0));
+          const b = btn(null, 'Hire · ' + money(c.fee), 'small' + (need > headroom ? ' over' : ''), function () { hireClick(host, role, c.idx); });
+          b.title = 'Signing fee ' + money(c.fee) + '; the budget must carry the fee plus the salary step (' + money(need) + ' of ' + money(Math.max(0, headroom)) + ' headroom)';
+          r.appendChild(b); g.appendChild(r);
+        });
+        box.appendChild(g);
       });
     });
-    show(host._hire, candidates.length === 0); show(host._fire, !!(coach && coach.name));
+    show(host._candidatesK, !!V); show(host._hire, false);
 
     // ---- Roster: offense | defense, each pos · name · hometown · class · rating · star bar ----
     const order = positions(), byPos = {}; (sp.starters || []).forEach(function (st) { if (st && st.pos) byPos[st.pos] = st; });
@@ -34707,6 +35094,25 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     actions.push({ label: 'Decide later', primary: true });
     return { id: 'hire', kicker: 'Coaching search', title: 'Three candidates', body: body.length ? body : ['No candidates yet.'], actions: actions };
   });
+  // PLAN_V2 P1: the Nov 8 raise offer (a decision: Pay / Let them go) and the poaching newsflash (staff:offer / staff:poached from sports)
+  UI.registerCard('raiseoffer', function (s, p) {
+    p = p || {}; const role = p.role || 'hc', label = roleLabel(role), share = Math.round(fin(PF.poach && PF.poach.raise, 0.25) * 100), pp = Math.round(fin(PF.poach && PF.poach.p, 0.35) * 100);
+    return {
+      id: 'raiseoffer-' + role, kicker: 'Coaching staff · ' + label, title: (p.name || 'Your coach') + ' is taking calls',
+      body: [(p.name || 'The coach') + ' (' + fin(p.stars, 0) + '★ ' + label.toLowerCase() + ') has other programs on the line. A ' + share + '% raise, ' + money(p.salary) + ' → ' + money(p.newSalary) + ' a year, keeps them through the off-season.',
+        'Let them go and there is a ' + pp + '% chance they leave in December; an interim holds the clipboard until you hire.'],
+      actions: [{ label: 'Pay · ' + money(p.newSalary) + '/yr', primary: true, fn: function (st) { const r = call('sports', 'answerRaise', st, role, true); if (r && !r.ok) notify(st, r.reason, 'sports'); else notify(st, (p.name || 'The coach') + ' stays.', 'sports'); } },
+        { label: 'Let them go', fn: function (st) { call('sports', 'answerRaise', st, role, false); } }]
+    };
+  });
+  UI.registerCard('poached', function (s, p) {
+    p = p || {}; const role = p.role || 'hc', label = roleLabel(role);
+    return {
+      id: 'poached-' + role, kicker: 'Breaking', title: (p.name || 'Your coach') + ' poached by ' + (p.poacher || 'a rival program'),
+      body: [fin(p.stars, 0) + '★ ' + label.toLowerCase() + ', ' + money(p.salary) + ' a year, gone. ' + (p.interim || 'Interim staff') + ' holds the clipboard.', 'Three candidates are waiting on the Staff tab.'],
+      actions: [{ label: 'Open the Staff tab', primary: true, fn: function () { UI.openPanel('season'); const h = UI.el && UI.el['panel-season']; if (h && h._tabBtns) setTab(h, 'staff', true); } }, { label: 'Later' }]
+    };
+  });
 
   // ===========================================================================
   // Card openers (D44: one opener per card). ui.js leaves these subscriptions to
@@ -34716,6 +35122,8 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
   function on(name, fn) { try { BSU.events.on(name, function (p) { try { fn(p || {}); } catch (e) { BSU.error('ui_panels', 'on:' + name, e); } }, 'ui_panels'); } catch (e) { BSU.error('ui_panels', 'subscribe:' + name, e); } }
   on('storm:report', function (p) { const s = BSU.state; if (s) UI.card(s, 'damage', { report: p.report }); });
   on('storm:named', function (p) { const s = BSU.state; if (s) UI.card(s, 'newsflash', p); });
+  on('staff:offer', function (p) { const s = BSU.state; if (s) UI.card(s, 'raiseoffer', p); });
+  on('staff:poached', function (p) { const s = BSU.state; if (s) UI.card(s, 'poached', p); });
   on('board:offered', function (p) { const s = BSU.state; if (s) UI.card(s, 'board', { cards: p.cards }); });
   on('econ:card', function (p) { const s = BSU.state; if (s) UI.card(s, 'failure', { kind: p.kind, options: p.options }); });
   on('milestone:earned', function (p) { const s = BSU.state; if (s && p.id === 'wetFeet') UI.card(s, 'wetfeet', {}); });
@@ -34730,7 +35138,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     for (const name of ['budget', 'storm', 'season', 'milestones', 'almanac']) {
       A(typeof UI.registerPanel === 'function', 'registerPanel exists');
     }
-    for (const id of ['newsflash', 'wetfeet', 'failure', 'damage', 'hire', 'obj8', 'board', 'recap', 'charter', 'versionMismatch']) {
+    for (const id of ['newsflash', 'wetfeet', 'failure', 'damage', 'hire', 'raiseoffer', 'poached', 'obj8', 'board', 'recap', 'charter', 'versionMismatch']) {
       A(typeof UI.cards[id] === 'function', 'card registered: ' + id);
     }
     const synGaps = { gaps: [{ name: 'cove mouth', len: 4, tiles: [], cx: 0, cy: 0 }], weak: [{ i: 19 * 64 + 44, integrity: 60 }, { i: 10 * 64 + 10, integrity: 65 }], gates: [{ i: 33 * 64 + 41, jammed: false }] };

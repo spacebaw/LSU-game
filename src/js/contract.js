@@ -435,7 +435,7 @@
     },
     sports: {                                // GDD §8
       ratingBase: 20, practiceField: 5, coachingPer100k: 1, coachingCap: 30, recruitingDiv: 4, recruitingCap: 25,
-      moraleDiv: 10, moraleCap: 10, roux: 3, heatPenalty: 8, coachPerStar: 4, coachStarBase: 2, starterDiv: 5, starterBase: 75,
+      moraleDiv: 10, moraleCap: 10, roux: 3, heatPenalty: 8, coachPerStar: 2, coachStarBase: 2, starterDiv: 5, starterBase: 75,   // PLAN_V2 P1: coachPerStar 4 → 2 (the head coach is +2 team rating per star over 2; the coordinators carry the unit terms)
       homeDay: 6, homeNight: 14, stadium3Opp: 5, elo: 25,
       fanbase: { students: 2.5, alumni: 0.6, prestige: 300 },
       hype: { base: 0.7, winPct: 0.4, rivalry: 0.3, night: 0.15, rain: -0.1 },
@@ -448,6 +448,19 @@
       oppNoise: 8, oppPerYear: 7, oppScaleFromFlagship: 3,
       coachSign: 300000, coachFee: 100000, buyout: 500000, candidates: 3, candidateStarDiv: 20, candidateStarAdd: 1,
       starDriftLosing: 2, starMax: 5, starMin: 1,
+      // PLAN_V2 P1: the coaching staff (head coach + offensive / defensive coordinators; sports.staff / hireStaff / fireStaff / answerRaise)
+      staff: {
+        perRole: 3, starsPerPrestige: 20,          // 3 candidates per role each off-season; max stars = 1 + floor(prestige / 20)
+        reachStars: 1, reachSalary: 1.6,           // one 'reach' candidate a star above the gate asks +60 %
+        yearsMin: 2, yearsMax: 4, renewYears: 2,   // contract length; an expired contract renews at the market salary for renewYears
+        buyoutShare: 0.5,                          // buyout = 50 % of the remaining salary (salary × years left)
+        interimStarsMax: 2,                        // interim coordinators are 1–2★ at 1★ salary
+        ocCompositePerStar: 3, ocFit: 4,           // OC: offense composites +3 per star over coachStarBase, +4 when the OC's style matches the playbook
+        dcCompositePerStar: 3, dcTurnoverPerStar: 0.04,   // DC: defense composites +3 per star over base; the opponent's turnover rate +4 % per star over base
+        hcGoDist: { ground: -1, balanced: 0, air: 1 },    // HC style nudges the 4th-down default distance (never below 0; conservative stays 'never')
+        hcHalftimePerStar: 0.1,                    // the halftime adjustment's magnitude = 1 + 0.1 × (HC stars − base)
+        poach: { stars: 4, prestige: 40, p: 0.35, raise: 0.25, offerDate: 'Nov 8' }   // a coach above 4★ at prestige < 40 leaves with p each off-season unless the Nov 8 raise (+25 %) was paid
+      },
       // PLAN_V2 P3: the athletics budget (a salary cap that grows with success; sports.budget / canAfford / setTopUp)
       budget: { base: 2000000, revenueShare: 0.35, prestigePer10: 50000, boosters: 500000, boosterWins: 7, topUpMax: 1.5, topUpStep: 0.1, salaryPerStar2: 150000, coordinatorShare: 0.55, upkeepShare: 0.1, transferDate: 'Jan 1', recruitsMax: 40 },
       starterGrad: 0.4, starterRating: { min: 60, max: 99, base: 55, prestigeDiv: 2, perStar: 5 }, recruitRating: 95, seniorLeaveP: 0.4,
@@ -770,7 +783,7 @@
     'gator:spawn', 'gator:campus', 'gator:incident', 'gator:relocated',
     'mosquito:warning', 'ecology:changed',
     'festival:start', 'festival:end',
-    'game:scheduled', 'game:kickoff', 'game:score', 'game:halftime', 'game:final', 'season:end', 'coach:changed',
+    'game:scheduled', 'game:kickoff', 'game:score', 'game:halftime', 'game:final', 'season:end', 'coach:changed', 'staff:offer', 'staff:poached',
     'game:play', 'game:drive', 'game:decision',   // PLAN_FOOTBALL pass B: the drive/play engine (sports.js)
     'game:spring',                                 // PLAN_FOOTBALL pass C: the Purple & Gold Spring Game final (sports.js)
     'budget:changed',                              // PLAN_V2 P3: the athletics budget was recomputed, topped up or re-committed (sports.js)
@@ -1185,6 +1198,7 @@
         playbook: 'balanced', aggression: 'normal', watchFull: false, lastSummary: null,   // PLAN_FOOTBALL pass B (sports.ensureKeys fills records)
         records: { allTime: { wins: 0, losses: 0 }, bestWin: null, longestPlay: null, seasonBests: {}, book: {}, seasons: [], hof: [] },
         springDay: -1, springYear: 0, lastSpring: null, prospects: null, seasonLog: [], seasonLines: null,   // PLAN_FOOTBALL pass C: spring game, prospect board, the season's game log and stat lines
+        staff: null,   // PLAN_V2 P1: the coaching staff {hc, oc, dc, candidates: {hc, oc, dc}, lastRefreshYear, offers} (sports.ensureKeys builds it lazily; hc is state.sports.coach)
         budget: null   // PLAN_V2 P3: the athletics budget {year, base, fromRevenue, fromPrestige, boosters, topUpShare, topUp, total, committed, lines, fund, ...} (sports.ensureKeys builds it lazily)
       },
       progress: {

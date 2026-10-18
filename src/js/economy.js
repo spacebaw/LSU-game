@@ -748,7 +748,7 @@
     const salaries = students * PE.salaryPerStudent * num(PE.qualityMult[e.quality], 1);
     const utilities = PE.utilities.perBuilding * completeList(state).length + PE.utilities.perStudent * students;
     const upkeep = num(call('buildings', 'upkeepTotal', [state], 0), 0);
-    return Math.max(0, Math.round(salaries + utilities + upkeep + num(e.coaching, 0) / P.time.monthsPerYear + (num(st.pumpsRunning) * L.pumpRunPerDay + num(st.generatorsRunning) * L.generatorRunPerDay) * DAYS_PER_MONTH));
+    return Math.max(0, Math.round(salaries + utilities + upkeep + num(e.coaching, 0) / P.time.monthsPerYear + num(call('sports', 'staffSalaryMonthly', [state], 0), 0) + (num(st.pumpsRunning) * L.pumpRunPerDay + num(st.generatorsRunning) * L.generatorRunPerDay) * DAYS_PER_MONTH));
   }
   M.runway = function (state) {
     try {
@@ -792,6 +792,9 @@
     const coachingDue = Math.round(num(e.coaching, 0) / P.time.monthsPerYear);
     const fromFund = Math.max(0, int(call('sports', 'drawFund', [state, coachingDue], 0), 0));
     M.charge(state, coachingDue - fromFund, 'coaching', force);
+    // PLAN_V2 P1: the coaching staff's salaries (head coach + coordinators, sports.staffSalaryMonthly): the fund first, cash the rest, on the 'coaching' line
+    const staffDue = Math.max(0, int(call('sports', 'staffSalaryMonthly', [state], 0), 0));
+    if (staffDue > 0) { const staffFund = Math.max(0, int(call('sports', 'drawFund', [state, staffDue], 0), 0)); M.charge(state, staffDue - staffFund, 'coaching', { force: true, note: 'Coaching staff salaries' }); }
     // interest on a negative balance
     if (e.cash < 0) { const interest = Math.round(-e.cash * PE.interest); M.charge(state, interest, 'interest', force); e.interestPaid = int(e.interestPaid, 0) + interest; }
     // insurance premium while the policy exists

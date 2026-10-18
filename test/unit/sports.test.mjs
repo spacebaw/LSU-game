@@ -127,6 +127,8 @@ function tick1(s) {
 }
 function run(s, n) { for (let k = 0; k < n; k++) tick1(s); }
 function runUntilDay(s, day) { let guard = 0; while (s.calendar.day < day && guard++ < 200000) tick1(s); }
+/** PLAN_V2 P1: 2★ coordinators with no scheme → zero staff terms ("equal staff": the opponent has none either) */
+function neutralStaff(s) { SP.staff(s); for (const r of ['oc', 'dc']) s.sports.staff[r] = { name: r.toUpperCase() + ' Neutral', role: r, stars: 2, style: null, salary: 0, years: 1, hiredYear: 1, quote: '', rep: '', reach: false, interim: false }; }
 
 // --- scenario 1: a full isolation season ------------------------------------------------------
 {
@@ -423,7 +425,7 @@ if (existsSync(join(root, 'index.html'))) {
 // --- PLAN_FOOTBALL pass B: engine calibration (silent games through the _playGame hook) -----------------------------
 {
   const s = newGame(30); run(s, 100);
-  s.sports.coach = { name: 'x', stars: 2, hiredYear: 1, quote: '', rep: '' };   // no scheme → no coach fit (a clean rating comparison)
+  s.sports.coach = { name: 'x', stars: 2, hiredYear: 1, quote: '', rep: '' }; neutralStaff(s);   // no scheme → no coach fit, 2★ coordinators (a clean rating comparison)
   s.sports.starters = s.sports.starters.map(x => Object.assign({}, x, { rating: 75 }));
   // a symmetric opponent (balanced, defBias 0) injected through the data dep: a clean rating-gap comparison
   SP._deps.data = Object.assign({}, BSU.data, { opponents: Object.assign({}, BSU.data.opponents, { neutral: { name: 'Neutral University', nick: 'Neutrals', rating: 60, colors: ['#888888', '#ffffff'], rival: false, crosstown: false, style: 'balanced', defBias: 0 } }) });
@@ -610,7 +612,7 @@ if (existsSync(join(root, 'index.html'))) {
 // --- PLAN_FOOTBALL pass C: playbook calibration — air ≈ ground at equal ratings (home field still +2 to +5.5 above) ------------------
 {
   const s = newGame(27); run(s, 100);
-  s.sports.coach = { name: 'x', stars: 2, hiredYear: 1, quote: '', rep: '' };
+  s.sports.coach = { name: 'x', stars: 2, hiredYear: 1, quote: '', rep: '' }; neutralStaff(s);
   s.sports.starters = s.sports.starters.map(x => Object.assign({}, x, { rating: 75 }));
   SP._deps.data = Object.assign({}, BSU.data, { opponents: Object.assign({}, BSU.data.opponents, { neutral: { name: 'Neutral University', nick: 'Neutrals', rating: 60, colors: ['#888888', '#ffffff'], rival: false, crosstown: false, style: 'balanced', defBias: 0 } }) });
   const pb = (style, n) => { s.sports.playbook = style; BSU.rng.sim.state = 4242; let w = 0, py = 0, ints = 0; for (let i = 0; i < n; i++) { const g = SP._playGame(s, { opp: 'neutral', oppRating: 60, rating: 60, home: false, kind: 'bowl' }); if (g.score[0] > g.score[1]) w++; py += g.box[0].passYds; ints += g.box[0].ints; } return { win: w / n, py: py / n, ints: ints / n }; };
@@ -633,12 +635,12 @@ if (existsSync(join(root, 'index.html'))) {
   rec.posts.length = 0;   // the recorder is shared by every block above
   const b0 = SP.budget(s);
   ok(b0 && b0.year === 1 && b0.base === 2000000 && b0.fromPrestige === 80000 && b0.fromRevenue === 0 && b0.boosters === 0 && b0.topUp === 0 && b0.total === 2080000, 'a new game: base + $50k × prestige/10 (' + JSON.stringify([b0 && b0.total, b0 && b0.fromPrestige]) + ')');
-  ok(b0.sources.length === 5 && b0.sources.map(x => x.key).join() === 'base,revenue,prestige,boosters,topUp' && b0.lines.map(x => x.key).join() === 'coach,coaching,signings,upkeep,homecoming', 'five sources and five committed lines in a fixed order');
+  ok(b0.sources.length === 5 && b0.sources.map(x => x.key).join() === 'base,revenue,prestige,boosters,topUp' && b0.lines.map(x => x.key).join() === 'coach,oc,dc,coaching,signings,upkeep,homecoming', 'five sources and seven committed lines in a fixed order (P1 adds the coordinators)');
   ok(b0.committed === 200000 && b0.headroom === b0.total - b0.committed, 'before the team only the coaching spend is committed (' + b0.committed + ')');
   run(s, 100);   // the field → Coach Cheramie 2★
   const b1 = SP.budget(s);
   const upkeepLine = b1.lines.find(l => l.key === 'upkeep');
-  ok(b1.lines.find(l => l.key === 'coach').amount === 600000 && upkeepLine.amount === Math.round((3000 + 4000) * 12 * PB.upkeepShare) && b1.committed === 600000 + 200000 + upkeepLine.amount, 'with the team: the 2★ salary, 10% of Bayou Field\'s annual upkeep ($3k + $4k a month) and the coaching spend are committed (' + b1.committed + ')');
+  ok(b1.lines.find(l => l.key === 'coach').amount === 600000 && upkeepLine.amount === Math.round((3000 + 4000) * 12 * PB.upkeepShare) && b1.committed === 600000 + 2 * SP.coachSalary(1, 'oc') + 200000 + upkeepLine.amount, 'with the team: the 2★ salary, two interim coordinators at 1★, 10% of Bayou Field\'s annual upkeep ($3k + $4k a month) and the coaching spend are committed (' + b1.committed + ')');
   // headroom checks
   const ca0 = SP.canAfford(s, b1.headroom); ok(ca0.ok === true && ca0.headroom === b1.headroom, 'canAfford: exactly the headroom is ok');
   const ca1 = SP.canAfford(s, b1.headroom + 1); ok(ca1.ok === false && /headroom/.test(ca1.reason) && ca1.total === b1.total, 'canAfford: one dollar over the headroom is refused with the budget line (' + ca1.reason + ')');
@@ -698,6 +700,111 @@ if (existsSync(join(root, 'index.html'))) {
   ok(mb && mb.fromPrestige === 200000 && mb.boosters === 500000 && mb.fromRevenue === 0 && mb.year === BSU.dayParts(old.calendar.day).year && Number.isFinite(mb.total), 'an old save: budget rebuilt from prestige 40 and a 9-win season (revenue unknown → 0)');
   ok(JSON.stringify(s.sports.budget).indexOf('null') < 0 && Object.values(s.sports.budget).every(v => Array.isArray(v) || Number.isFinite(v)), 'every stored budget field is finite');
   econ.charge = prevCharge; econ.canAfford = prevAfford; BSU.events.clear('test');
+}
+
+// --- PLAN_V2 P1: the coaching staff — gating by prestige, the reach, salary math, hiring/firing against the budget, buyouts, raise offers, poaching, engine deltas, migration ----
+{
+  const PF = BSU.params.sports.staff, PB = BSU.params.sports.budget;
+  const s = newGame(41); run(s, 100);   // the field → Cheramie 2★ + interim coordinators
+  const st = s.sports.staff;
+  ok(st && st.hc === s.sports.coach && s.sports.candidates === st.candidates.hc, 'staff.hc IS sports.coach and sports.candidates IS staff.candidates.hc');
+  ok(s.sports.coach.style === 'balanced' && s.sports.coach.salary === 600000 && s.sports.coach.years === 3 && s.sports.coach.interim === false, 'Cheramie: balanced, $600k, 3 years');
+  ok(['oc', 'dc'].every(r => st[r] && st[r].interim && st[r].stars >= 1 && st[r].stars <= 2 && st[r].salary === SP.coachSalary(1, r) && st[r].style === null && st[r].years === 0), 'interim coordinators: 1–2★ at 1★ salary, no scheme, no contract');
+  // gating by prestige: max stars = 1 + floor(prestige / 20); one reach candidate a star above at +60 %
+  const draw = (prestige) => { s.economy.prestige = prestige; SP.refreshCandidates(s); return SP.staff(s); };
+  const v10 = draw(10);
+  ok(v10.maxStars === 1 && v10.reachStars === 2 && ['hc', 'oc', 'dc'].every(r => v10.candidates[r].length === 3), 'prestige 10: 3 candidates per role, gate 1★, reach 2★');
+  ok(['hc', 'oc', 'dc'].every(r => v10.candidates[r].slice(0, 2).every(c => c.stars === 1 && !c.reach) && v10.candidates[r][2].stars === 2 && v10.candidates[r][2].reach), 'prestige 10: two 1★ regulars and a 2★ reach per role');
+  ok(v10.candidates.hc[2].salary === Math.round(SP.coachSalary(2, 'hc') * PF.reachSalary) && v10.candidates.oc[2].salary === Math.round(SP.coachSalary(2, 'oc') * PF.reachSalary), 'the reach asks +60% (' + v10.candidates.hc[2].salary + ')');
+  ok(['hc', 'oc', 'dc'].every(r => v10.candidates[r].every(c => c.years >= PF.yearsMin && c.years <= PF.yearsMax && typeof c.style === 'string' && c.name && c.rep && c.quote)), 'every candidate has a 2–4 year ask, a style, a rep and a quote');
+  ok(v10.candidates.dc.every(c => ['stout', 'aggressive', 'bend'].includes(c.style)) && v10.candidates.oc.every(c => ['ground', 'balanced', 'air'].includes(c.style)), 'DC styles are stout / aggressive / bend; OC styles match the playbooks');
+  const v60 = draw(60);
+  ok(v60.maxStars === 4 && v60.reachStars === 5 && ['hc', 'oc', 'dc'].every(r => v60.candidates[r].slice(0, 2).every(c => c.stars >= 3 && c.stars <= 4) && v60.candidates[r][2].stars === 5 && v60.candidates[r][2].reach), 'prestige 60: 3–4★ regulars and a 5★ reach');
+  const v85 = draw(85);
+  ok(v85.maxStars === 5 && v85.candidates.hc[2].stars === 5 && !v85.candidates.hc[2].reach && v85.nextPrestige === 0, 'prestige 85: every star on the table, no reach premium');
+  const names = [].concat(v85.candidates.hc, v85.candidates.oc, v85.candidates.dc).map(c => c.name);
+  ok(new Set(names).size === names.length && !names.includes(s.sports.coach.name), 'nine distinct candidate names, none the sitting coach');
+  ok(SP.coachSalary(3, 'hc') === 1350000 && SP.coachSalary(3, 'oc') === Math.round(1350000 * PB.coordinatorShare) && SP.coachSalary(5, 'dc') === Math.round(3750000 * PB.coordinatorShare), 'salary = $150k × stars² (coordinators 55%)');
+  // hiring against the budget: a refusal names the headroom; with the headroom the signing lands, the line commits, that role's candidates clear
+  draw(40);   // 3★ gate
+  const econ = SP._deps.economy, prevCharge = econ.charge, prevAfford = econ.canAfford;
+  econ.charge = () => true; econ.canAfford = () => true;
+  s.economy.coaching = 3000000;
+  const refused = SP.hireStaff(s, 'oc', 0);
+  ok(refused.ok === false && /headroom/.test(refused.reason), 'hire refused over the athletics budget (' + refused.reason + ')');
+  s.economy.coaching = 0; SP.setTopUp(s, PB.topUpMax);
+  const cand = SP.staff(s).candidates.oc[0];
+  const hired = SP.hireStaff(s, 'oc', 0);
+  ok(hired.ok === true && hired.cost === Math.round(BSU.params.sports.coachFee * cand.stars * PB.coordinatorShare) && s.sports.staff.oc.name === cand.name && s.sports.staff.oc.salary === cand.salary && s.sports.staff.oc.years === cand.years && !s.sports.staff.oc.interim, 'a coordinator signs: fee = $100k × stars × 55%; the asking salary and years land on the record');
+  ok(SP.staff(s).candidates.oc.length === 0 && SP.budget(s).lines.find(l => l.key === 'oc').amount === cand.salary, 'the OC candidates clear and the OC salary is a committed line');
+  const oc = s.sports.staff.oc, buyout = Math.round(oc.salary * oc.years * PF.buyoutShare);
+  ok(SP.staff(s).oc.buyout === buyout, 'buyout = 50% of salary × years left (' + buyout + ')');
+  const fired = SP.fireStaff(s, 'oc');
+  ok(fired.ok === true && fired.cost === buyout && s.sports.staff.oc.interim && SP.staff(s).candidates.oc.length === 3, 'fire pays the buyout; an interim holds the clipboard; fresh OC candidates');
+  ok(SP.fireStaff(s, 'oc').ok === false && /Interim/.test(SP.fireStaff(s, 'oc').reason), 'an interim cannot be fired');
+  ok(SP.hireStaff(s, 'qb', 0).ok === false && SP.hireStaff(s, 'dc', 9).ok === false, 'bad role / bad index refused');
+  const hcCand = SP.staff(s).candidates.hc[0]; const hh = SP.hireCoach(s, 0);
+  ok(hh.ok === true && s.sports.coach.name === hcCand.name && s.sports.staff.hc === s.sports.coach && s.sports.coach.style === hcCand.style, 'hireCoach(idx) hires the HC candidate; staff.hc follows');
+  s.sports.rivalryLossStreak = 3; ok(SP.staff(s).hc.buyout === 0 && SP.fireCoach(s).cost === 0 && s.sports.coach.interim, 'three rivalry losses waive the HC buyout'); s.sports.rivalryLossStreak = 0;
+  ok(SP.staffSalaryMonthly(s) === Math.round((s.sports.coach.salary + s.sports.staff.oc.salary + s.sports.staff.dc.salary) / 12), 'staffSalaryMonthly = the three salaries / 12');
+  econ.charge = prevCharge; econ.canAfford = prevAfford;
+  // engine terms monotone in stars (exact, through _engineFor), the OC fit, the DC turnover multiplier, the HC nudges
+  const setStars = (role, stars, style) => { s.sports.staff[role] = { name: role + stars, role, stars, style: style === undefined ? null : style, salary: 0, years: 1, hiredYear: 1, quote: '', rep: '', reach: false, interim: false }; if (role === 'hc') s.sports.coach = s.sports.staff.hc; };
+  s.sports.rating = 60; s.sports.playbook = 'balanced';
+  const eng = () => SP._engineFor(s, { opp: 'crescent', kind: 'bowl', home: false, oppRating: 60 });
+  const offAt = [], defAt = [], toAt = [];
+  for (const k of [1, 2, 3, 4, 5]) { setStars('oc', k); setStars('dc', k); const e = eng(); offAt.push(e.units[0].offPass); defAt.push(e.units[0].defRun); toAt.push(e.toMult[1]); }
+  ok(offAt.every((v, i) => i === 0 || v === offAt[i - 1] + PF.ocCompositePerStar) && defAt.every((v, i) => i === 0 || v === defAt[i - 1] + PF.dcCompositePerStar), 'offense/defense units climb +3 per coordinator star (' + offAt.join(' < ') + ')');
+  ok(toAt.every((v, i) => i === 0 || v > toAt[i - 1]) && Math.abs(toAt[4] - (1 + 3 * PF.dcTurnoverPerStar)) < 1e-9 && Math.abs(toAt[1] - 1) < 1e-9, 'the opponent\'s turnover multiplier climbs +4% per DC star over 2 (' + toAt.map(v => v.toFixed(2)).join(' < ') + ')');
+  setStars('oc', 3, 'balanced'); const fit = eng(); setStars('oc', 3, 'air'); const nofit = eng();
+  ok(fit.units[0].offRun === nofit.units[0].offRun + PF.ocFit && fit.staff.ocFit === true && nofit.staff.ocFit === false, 'an OC whose style matches the playbook adds +4 to the offense units');
+  setStars('hc', 4, 'air'); const hcAir = eng(); setStars('hc', 1, 'ground'); const hcGround = eng();
+  ok(hcAir.goDist[0] === 1 && hcGround.goDist[0] === -1 && hcAir.halftime > 1 && hcGround.halftime < 1 && hcAir.units[1].offRun === hcGround.units[1].offRun, 'HC style nudges the 4th-down distance, HC stars the halftime magnitude; the opponent is untouched');
+  // win share monotone in staff stars (silent games at equal ratings)
+  SP._deps.data = Object.assign({}, BSU.data, { opponents: Object.assign({}, BSU.data.opponents, { neutral: { name: 'Neutral University', nick: 'Neutrals', rating: 60, colors: ['#888888', '#ffffff'], rival: false, crosstown: false, style: 'balanced', defBias: 0 } }) });
+  s.sports.starters = s.sports.starters.map(x => Object.assign({}, x, { rating: 75 })); setStars('hc', 2);
+  const share = (k, n) => { setStars('oc', k); setStars('dc', k); BSU.rng.sim.state = 1234; let w = 0; for (let i = 0; i < n; i++) { const g = SP._playGame(s, { opp: 'neutral', oppRating: 60, rating: 60, home: false, kind: 'bowl' }); if (g.score[0] > g.score[1]) w++; } return w / n; };
+  const w1 = share(1, 150), w2 = share(2, 300), w5 = share(5, 150);
+  ok(w1 < w2 && w2 < w5 && Math.abs(w2 - 0.5) <= 0.08 && w5 >= 0.7, 'win share climbs with staff stars and sits near 50% with neutral 2★ staff (' + [w1, w2, w5].map(v => v.toFixed(2)).join(' < ') + ')');
+  delete SP._deps.data;
+  // raise offers and poaching: a 5★ coach at prestige < 40 leaves with p = 35 % per off-season unless the raise was paid
+  setStars('oc', 2); setStars('dc', 2);
+  const poachAt = (prestige, n, pay) => { s.economy.prestige = prestige; let lost = 0; BSU.rng.sim.state = 77; for (let i = 0; i < n; i++) { setStars('hc', 5, 'balanced'); setStars('oc', 2); setStars('dc', 2); s.sports.coach.salary = 3750000; s.sports.coach.years = 3; s.sports.staff.offers = {}; if (pay) { SP._offerRaise(s, 'hc'); SP.answerRaise(s, 'hc', true); } if (SP._offseasonStaff(s).length) lost++; } return lost / n; };
+  const p20 = poachAt(20, 200, false), p60 = poachAt(60, 200, false), p20paid = poachAt(20, 200, true);
+  ok(p20 >= 0.25 && p20 <= 0.45 && p60 === 0 && p20paid === 0, 'poaching over 200 off-seasons: ≈35% at prestige 20 (' + p20.toFixed(2) + '), none at prestige 60 (' + p60 + '), none after the raise (' + p20paid + ')');
+  s.economy.prestige = 20; setStars('hc', 5, 'balanced'); setStars('oc', 2); setStars('dc', 2); s.sports.coach.salary = 3750000; s.sports.coach.years = 3; s.sports.staff.offers = {};
+  const offers = []; BSU.events.on('staff:offer', p => offers.push(p), 'test');
+  const off = SP._offerRaise(s, 'hc');
+  ok(off.length === 1 && offers.length === 1 && offers[0].role === 'hc' && offers[0].raise === Math.round(3750000 * PF.poach.raise) && SP.staff(s).offers.hc && !SP.staff(s).offers.hc.answered, 'the raise offer: staff:offer carries role and raise (+25%) and lands in staff.offers');
+  const ans = SP.answerRaise(s, 'hc', true);
+  ok(ans.ok === true && s.sports.coach.salary === 3750000 + Math.round(3750000 * PF.poach.raise) && SP.answerRaise(s, 'hc', true).ok === false, 'accepting raises the salary 25%; a second answer is refused');
+  const poached = []; BSU.events.on('staff:poached', p => poached.push(p), 'test');
+  const pp = SP._poach(s, 'hc');
+  ok(pp && poached.length === 1 && poached[0].name === pp.name && poached[0].poacher && s.sports.coach.interim && s.sports.staff.hc === s.sports.coach && SP.staff(s).candidates.hc.length === 3, 'a poaching: staff:poached names the coach and the poacher; an interim holds the clipboard; HC candidates draw');
+  BSU.events.clear('test');
+  // the Nov 8 offer fires in the calendar for a qualifying coach; Dec 9 refreshes every role; contracts tick down at season end
+  const s2 = newGame(43); run(s2, 100); s2.economy.prestige = 20; s2.sports.coach.stars = 5; s2.sports.coach.years = 2;
+  const offers2 = []; BSU.events.on('staff:offer', p => offers2.push(p), 'test');
+  runUntilDay(s2, BSU.dateToDay('Nov 9', 1));
+  ok(offers2.length === 1 && offers2[0].role === 'hc' && s2.sports.staff.offers.hc.year === 1, 'Nov 8: the calendar offers the raise for a 5★ coach at prestige 20');
+  runUntilDay(s2, BSU.dateToDay('Dec 10', 1)); run(s2, 2);
+  const after = SP.staff(s2);
+  ok(['hc', 'oc', 'dc'].every(r => after.candidates[r].length === 3) && after.year === 1, 'Dec 9: three candidates per role');
+  ok(s2.sports.coach.interim || s2.sports.coach.years === 1, 'season end: the contract ticked down (or the coach was poached: ' + s2.sports.coach.name + ')');
+  const row = s2.sports.records.seasons[0];
+  ok(row && typeof row.coach === 'string' && typeof row.oc === 'string' && typeof row.dc === 'string', 'the season row keeps the HC (and coordinator) names');
+  BSU.events.clear('test');
+  // save / load round trip and the migration from a single-coach save
+  const json = JSON.stringify(s2); const back = JSON.parse(json); BSU.rng.sim.state = back.rng.sim; SP.reset(back, false);
+  ok(back.sports.staff.hc === back.sports.coach && back.sports.candidates === back.sports.staff.candidates.hc && JSON.stringify(SP.staff(back)) === JSON.stringify(SP.staff(s2)), 'save/load: the links are rebuilt and the staff view is identical');
+  const old = JSON.parse(json); delete old.sports.staff; old.sports.coach = { name: 'Bobby Cheramie', stars: 3, hiredYear: 1, quote: '', rep: 'has played in worse' }; old.sports.candidates = [{ name: 'Imani Sonnier', stars: 2, quote: '', rep: 'the analytics one' }];
+  BSU.rng.sim.state = old.rng.sim; SP.reset(old, false);
+  const mv = SP.staff(old);
+  ok(mv.hc.name === 'Bobby Cheramie' && mv.hc.stars === 3 && mv.hc.style === 'balanced' && mv.hc.salary === SP.coachSalary(3, 'hc') && mv.hc.years === PF.renewYears && !mv.hc.interim, 'migration: the single coach becomes the HC with his scheme, market salary and a renew-length contract');
+  ok(mv.oc && mv.oc.interim && mv.dc && mv.dc.interim && mv.candidates.hc.length === 1 && mv.candidates.hc[0].name === 'Imani Sonnier' && mv.candidates.hc[0].style && mv.candidates.hc[0].salary === SP.coachSalary(2, 'hc') && old.sports.candidates === old.sports.staff.candidates.hc, 'migration: interim coordinators; the old candidate list becomes staff.candidates.hc with filled fields');
+  const finite = (v) => typeof v === 'number' ? Number.isFinite(v) : (v && typeof v === 'object' ? Object.values(v).every(finite) : true);
+  ok(finite(old.sports.staff) && finite(s2.sports.staff), 'every staff field is finite');
+  s.economy.prestige = 16;
 }
 
 console.log(`\n${passes} passed, ${failures} failed`);

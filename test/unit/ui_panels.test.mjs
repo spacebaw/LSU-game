@@ -38,7 +38,7 @@ ok(!!U && typeof U.registerPanel === 'function', 'BSU.ui loaded');
 // --- registration -------------------------------------------------------------------
 // (the panel registry itself is private to ui.js; openPanel()'s host build below proves
 // each name was actually registered with a working build/refresh)
-for (const id of ['newsflash', 'wetfeet', 'failure', 'damage', 'hire'])
+for (const id of ['newsflash', 'wetfeet', 'failure', 'damage', 'hire', 'raiseoffer', 'poached'])
   ok(typeof U.cards[id] === 'function', 'card registered: ' + id);
 
 BSU.session.newGame({ seed: 2024, skipTutorial: true });
@@ -365,9 +365,9 @@ ok(st && st.ok, 'ui.selfTest ok (includes ui_panels pushed tests) ' + (st && st.
   host.dispatchEvent({ type: 'keydown', key: 'ArrowLeft' }); ok(visible(byId(host, 'sea-tab-records')), 'ArrowLeft goes back');
   click(byId(host, 'tab-overview'));
   ok(/No team yet/.test(textOf(byId(host, 'sea-record'))) && /Starters arrive/.test(textOf(byId(host, 'sea-starters'))), 'no-team copy in the header and the roster');
-  ok(host._staffGrid && host._staffGrid.slots.length === 3 && host._staffGrid.slots[0].dataset.role === 'hc' && /Coordinators coming soon/.test(textOf(host._staffGrid.slots[1])) && /Coordinators coming soon/.test(textOf(host._staffGrid.slots[2])), 'Staff: host._staffGrid has the head-coach slot and two coordinator placeholders (P1 hook)');
+  ok(host._staffGrid && host._staffGrid.slots.length === 3 && host._staffGrid.slots[0].dataset.role === 'hc' && host._staffGrid.slots[1].dataset.role === 'oc' && host._staffGrid.slots[2].dataset.role === 'dc' && /No offensive coordinator yet/.test(textOf(host._staffGrid.slots[1])), 'Staff: host._staffGrid has the HC / OC / DC cards (no team: empty)');
   const B0 = BSU.sports.budget(s0);
-  ok(textOf(byId(host, 'sea-budget-total')).indexOf(money(B0.total)) >= 0 && findAll(byId(host, 'sea-budget-sources'), (e) => e.dataset && e.dataset.key).length === 5 && findAll(byId(host, 'sea-budget-lines'), (e) => e.dataset && e.dataset.key).length === 5, 'budget bar on a fresh game: the total, five sources, five lines');
+  ok(textOf(byId(host, 'sea-budget-total')).indexOf(money(B0.total)) >= 0 && findAll(byId(host, 'sea-budget-sources'), (e) => e.dataset && e.dataset.key).length === 5 && findAll(byId(host, 'sea-budget-lines'), (e) => e.dataset && e.dataset.key).length === 7, 'budget bar on a fresh game: the total, five sources, five lines');
   U.openPanel(null);
   // a team, a stadium, then a jump to the season's end: revenue exists and the budget rolled
   BSU.economy.post(s0, 'misc', 9e6); BSU.economy.addStudents(s0, 700, 'test');
@@ -389,7 +389,7 @@ ok(st && st.ok, 'ui.selfTest ok (includes ui_panels pushed tests) ' + (st && st.
   const srcRows = findAll(byId(host, 'sea-budget-sources'), (e) => e.dataset && e.dataset.key);
   ok(srcRows.length === 5 && B1.sources.every((x, i) => srcRows[i].dataset.key === x.key && textOf(srcRows[i]).indexOf(money(x.amount)) >= 0), 'the five sources carry their amounts');
   const lineRows = findAll(byId(host, 'sea-budget-lines'), (e) => e.dataset && e.dataset.key);
-  ok(lineRows.length === 5 && B1.lines.every((x, i) => lineRows[i].dataset.key === x.key && textOf(lineRows[i]).indexOf(money(x.amount)) >= 0), 'the five committed lines carry their amounts');
+  ok(lineRows.length === 7 && B1.lines.every((x, i) => lineRows[i].dataset.key === x.key && textOf(lineRows[i]).indexOf(money(x.amount)) >= 0), 'the seven committed lines carry their amounts (P1 adds the coordinators)');
   ok(byId(host, 'sea-budget-bar').children[0].style.width === Math.round(Math.min(1, B1.committed / B1.total) * 100) + '%', 'the bar fill is committed / total');
   // the top-up slider → sports.setTopUp, reflected in the Budget panel's expenses this month
   const tu = byId(host, 'sl-topup'); ok(!!tu && tu.max === '150' && tu.step === '10' && tu.value === '0', 'top-up slider 0–150% in steps of 10');
@@ -421,6 +421,37 @@ ok(st && st.ok, 'ui.selfTest ok (includes ui_panels pushed tests) ' + (st && st.
   // Staff: the head coach card shows the salary from sports.coachSalary; Records shows the season history
   click(byId(host, 'tab-staff')); U.update(s0, 600);
   ok(textOf(byId(host, 'sea-coach-salary')).indexOf(money(BSU.sports.coachSalary(s0.sports.coach.stars))) >= 0, 'Staff: the head coach salary line (' + textOf(byId(host, 'sea-coach-salary')) + ')');
+  // PLAN_V2 P1: three staff cards, candidates per role, the gate hint, a Hire refused by the headroom then one that signs, a two-click Fire with the buyout, the two cards
+  {
+    const V0 = BSU.sports.staff(s0);
+    ok(/★★☆☆☆/.test(textOf(byId(host, 'sea-hc-stars'))) && /Interim OC/.test(textOf(host._staffGrid.slots[1])) && /Interim DC/.test(textOf(host._staffGrid.slots[2])) && byId(host, 'btn-fire-oc').classList.contains('hidden') && !byId(host, 'btn-fire').classList.contains('hidden'), 'Staff: the HC star bar, interim coordinators (no Fire on an interim), Fire on the HC');
+    ok(/Why no 5★/.test(textOf(byId(host, 'sea-staff-hint'))) && new RegExp('up to ' + V0.maxStars + '★').test(textOf(byId(host, 'sea-staff-hint'))), 'the "Why no 5★?" hint names the gate (' + textOf(byId(host, 'sea-staff-hint')).slice(0, 60) + '…)');
+    BSU.sports.refreshCandidates(s0); U.update(s0, 600);
+    const groups = findAll(byId(host, 'sea-candidates'), (e) => /\bfb-cand-group\b/.test(e.className));
+    const rows = findAll(byId(host, 'sea-candidates'), (e) => /\bfb-cand\b/.test(e.className) && e.dataset && e.dataset.idx);
+    ok(groups.length === 3 && groups.map((g) => g.dataset.role).join() === 'hc,oc,dc' && rows.length === 9 && rows.filter((r) => r.dataset.role === 'dc').length === 3, 'Candidates: a group per role, three rows each');
+    ok(findAll(byId(host, 'sea-candidates'), (e) => /fb-reach/.test(e.className)).length === 3 && rows.every((r) => /★/.test(textOf(r)) && /\/yr/.test(textOf(r)) && / yrs/.test(textOf(r)) && findAll(r, (e) => e.tagName === 'BUTTON').length === 1), 'every row: stars, salary/yr, years, a Hire button; one reach badge per role');
+    const ocRow = rows.find((r) => r.dataset.role === 'oc' && r.dataset.idx === '0'); const hireBtn = findAll(ocRow, (e) => e.tagName === 'BUTTON')[0];
+    BSU.economy.setCoaching(s0, 3000000); U.update(s0, 600);
+    click(hireBtn); U.update(s0, 600);
+    const note = byId(host, 'sea-staff-note');
+    ok(visible(note) && /Hire refused/.test(textOf(note)) && /headroom/.test(textOf(note)) && s0.sports.staff.oc.interim, 'a Hire over the headroom is refused inline (' + textOf(note).slice(0, 70) + '…)');
+    BSU.economy.setCoaching(s0, 0); BSU.sports.setTopUp(s0, 1.5); U.update(s0, 600);
+    const cand = BSU.sports.staff(s0).candidates.oc[0];
+    const hireBtn2 = findAll(findAll(byId(host, 'sea-candidates'), (e) => /\bfb-cand\b/.test(e.className) && e.dataset && e.dataset.role === 'oc' && e.dataset.idx === '0')[0], (e) => e.tagName === 'BUTTON')[0];
+    click(hireBtn2); U.update(s0, 600);
+    ok(s0.sports.staff.oc.name === cand.name && textOf(host._staffGrid.slots[1]).indexOf(cand.name) >= 0 && textOf(byId(host, 'sea-oc-salary')).indexOf(money(cand.salary)) >= 0 && note.classList.contains('ok') && !byId(host, 'btn-fire-oc').classList.contains('hidden'), 'with the headroom the OC signs: the card shows the name and salary, Fire appears');
+    ok(findAll(byId(host, 'sea-candidates'), (e) => /\bfb-cand\b/.test(e.className) && e.dataset && e.dataset.role === 'oc' && e.dataset.idx).length === 0, 'the OC candidate rows clear after the hire');
+    const buyout = BSU.sports.staff(s0).oc.buyout; const fireOc = byId(host, 'btn-fire-oc');
+    ok(textOf(fireOc).indexOf(money(buyout)) >= 0, 'the Fire button shows the buyout (' + textOf(fireOc) + ')');
+    click(fireOc); U.update(s0, 600);
+    ok(/Click Fire again/.test(textOf(note)) && /Confirm fire/.test(textOf(fireOc)) && !s0.sports.staff.oc.interim, 'the first click arms the Fire (confirm text, nothing fired)');
+    click(fireOc); U.update(s0, 600);
+    ok(s0.sports.staff.oc.interim && /is out/.test(textOf(note)) && BSU.sports.staff(s0).candidates.oc.length === 3, 'the second click fires: an interim returns, the buyout is noted, OC candidates redraw');
+    const ro = U.cards.raiseoffer(s0, { role: 'hc', name: 'Test Coach', stars: 5, salary: 3750000, raise: 937500, newSalary: 4687500 });
+    const po = U.cards.poached(s0, { role: 'dc', name: 'Test DC', stars: 5, salary: 2000000, poacher: 'Magnolia State', interim: 'Interim DC' });
+    ok(ro && ro.actions.length === 2 && /Pay/.test(ro.actions[0].label) && /Let them go/.test(ro.actions[1].label) && /taking calls/.test(ro.title) && po && po.kicker === 'Breaking' && /poached by Magnolia State/.test(po.title) && po.actions.length === 2, 'the raise-offer card (Pay / Let them go) and the poaching newsflash build');
+  }
   click(byId(host, 'tab-records')); U.update(s0, 600);
   ok(/Season history/.test(textOf(byId(host, 'sea-records'))) && /Year 1/.test(textOf(byId(host, 'sea-records'))) && !!byId(host, 'sea-recruits'), 'Records: season history and the recruiting history list');
   click(byId(host, 'tab-schedule')); U.update(s0, 600);

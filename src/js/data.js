@@ -552,6 +552,61 @@
     'A gator on the fifty is a home-field advantage.',
     "Night game. Lights on. Swamp quiet. Then it isn't."
   ];
+  // PLAN_V2 P1: the coaching staff — name pools per role (30 each; surnames repeat across roles on purpose), six styles,
+  // ten reps and ten quotes per role. Candidates draw a name, a style, stars and a contract (sports.refreshCandidates).
+  const staff = {
+    roleNames: { hc: 'Head coach', oc: 'Offensive coordinator', dc: 'Defensive coordinator' },
+    roleShort: { hc: 'HC', oc: 'OC', dc: 'DC' },
+    roleStyles: { hc: ['ground', 'balanced', 'air'], oc: ['ground', 'balanced', 'air'], dc: ['stout', 'aggressive', 'bend'] },
+    styles: {
+      ground: { name: 'Ground', desc: 'Runs it between the tackles and bleeds the clock.' },
+      balanced: { name: 'Balanced', desc: 'Takes what the defense gives, run or pass.' },
+      air: { name: 'Air Raid', desc: 'Four wide, throws on first down, lives with the picks.' },
+      stout: { name: 'Stout', desc: 'Stops the run first and makes you throw into the heat.' },
+      aggressive: { name: 'Blitz-happy', desc: 'Brings pressure every down and hunts turnovers.' },
+      bend: { name: "Bend-don't-break", desc: 'Gives up the short stuff, never the big play.' }
+    },
+    interim: { hc: 'Interim Staff', oc: 'Interim OC', dc: 'Interim DC' },
+    poachers: ['Magnolia State', 'a Big Money program out west', 'the Crescent City pros', 'a dry-field school up north', 'Delta Tech', 'the Gulf Coast conference champion'],
+    names: {
+      hc: ['Bobby Cheramie', 'Delphine Arceneaux', 'T-Boy Guidry', 'Marcus Batiste', 'Hollis Duplantis', 'Renée Fontenot', 'Cedric Malveaux', 'Octave Robichaux', 'Imani Sonnier', 'Wade Terrebonne',
+        'Beau Thibodeaux', 'Clovis Landry', 'Jermaine Broussard', 'Odile Hebert', 'Russ Boudreaux', 'Darnell LeBlanc', 'Pierre Melancon', 'Tasha Breaux', 'Alcide Richard', 'Monroe Picou',
+        'Celestine Dugas', 'Junior Naquin', 'Lionel Toups', 'Yvette Comeaux', 'Hank Pellerin', 'Marcel Trahan', 'Rufus Babineaux', 'Lorena Champagne', 'Dewey Benoit', 'Ernest Savoie'],
+      oc: ['Blaise Theriot', 'Kenny Bergeron', 'Simone Boudreaux', 'Anthony LeBlanc', 'Chase Fontenot', 'Rhett Guillory', 'Dominique Landry', 'Terrell Richard', 'Jolie Thibodeaux', 'Pete Cormier',
+        'Mason Arceneaux', 'Lance Hebert', 'Desmond Guidry', 'Nolan Broussard', 'Camille Duplantis', 'Reggie Sonnier', 'Travis Melancon', 'Ashton Breaux', 'Leon Robichaux', 'Felix Dugas',
+        'Gabe Pellerin', 'Isaiah Malveaux', 'Wyatt Trahan', 'Kirby Naquin', 'Sam Babineaux', 'Trey Comeaux', 'Louis Picou', 'Odette Savoie', 'Dale Champagne', 'Mitch Toups'],
+      dc: ['Ray Thibodeaux', 'Darius Broussard', 'Joe Fontenot', 'Earl Guidry', 'Tommy Landry', 'Andre Richard', 'Buster LeBlanc', 'Vance Hebert', 'Lamar Boudreaux', 'Otis Arceneaux',
+        'Cleo Malveaux', 'Jules Robichaux', 'Nate Duplantis', 'Perry Sonnier', 'Hollis Melancon', 'Ike Breaux', 'Rocky Dugas', 'Lucas Pellerin', 'Virgil Trahan', 'Amos Naquin',
+        'Curtis Babineaux', 'Floyd Comeaux', 'Theo Picou', 'Marlon Savoie', 'Dub Champagne', 'Gus Toups', 'Sidney Cormier', 'Bernard Guillory', 'Hank Theriot', 'Elroy Bergeron']
+    },
+    reps: {
+      hc: ['has played in worse', 'runs the option and the boosters', 'recruits the bayou by pirogue', 'defense, gumbo, in that order', 'a clipboard and a grudge',
+        'won a bowl somewhere dry', 'special teams evangelist', 'older than the levee', 'the analytics one', 'yells in two languages'],
+      oc: ['never met a screen pass he did not like', 'draws plays on po-boy wrappers', 'turned a walk-on into a 3,000-yard passer', 'has a trick play named after a gator', 'the tempo is the message',
+        'calls the game from the box in a sweat towel', 'runs the counter until it works', 'scripted the first 15 at a high school powerhouse', 'quarterback whisperer, allegedly', 'believes in the fullback'],
+      dc: ['blitzes on third and short out of spite', 'coaches tackling like a church sermon', 'the Marsh Mob chants his name', 'has not allowed a kick return since 2019', 'bends but swears he never breaks',
+        'teaches the swim move at the boat launch', 'turnover chain made of crawfish', 'film room at 5 a.m., every day', 'two gaps, no excuses', 'quiet man, loud defense']
+    },
+    quotes: {
+      hc: ["We don't rebuild. We re-grade.", "We've played in worse.", 'The humidity is undefeated. We are not the humidity.', 'Special teams is a mindset. So is the levee.', "Magnolia State declines to host. We'll host.",
+        'Defense wins championships. Pumps win Septembers.', "The field is dry. That's the game plan.", 'I recruit by pirogue. The good ones live on the water.', 'We go for it on fourth. The Marsh Mob insists.', 'A gator on the fifty is a home-field advantage.'],
+      oc: ['First down is a passing down. So is second.', 'If the box is loaded, the box is wrong.', 'Tempo is a weapon. So is a fullback.', 'We score in the rain. The rain can watch.', 'Every play is a touchdown that ran out of field.',
+        'The quarterback is the offense. Protect him like a levee.', 'I do not punt on purpose.', 'Run the counter until they cry, then run it again.', 'Screens are free yards. We take free yards.', 'The clock is a myth until the fourth quarter.'],
+      dc: ['Stop the run, then stop the pass, then stop the band.', 'Pressure finds the ball.', 'Bend all you want. Breaking is a choice.', 'Tackling is a courtesy we extend to the offense.', 'Third and long is my favorite restaurant.',
+        'The ball belongs to us. They are borrowing it.', 'Two gaps, no excuses, no mercy.', 'We practice in the heat so the heat practices on them.', 'Every turnover is a crawfish on the chain.', 'Eleven hats on the ball. Then the ball is ours.']
+    },
+    text: {
+      whyNo5: 'Why no 5★? Candidates top out at one star per 20 prestige (plus one reach candidate a star above who asks +60%). ',
+      hint: 'At prestige {prestige}: up to {max}★ ({next} more prestige unlocks the next star).',
+      hintMax: 'At prestige {prestige}: every star is on the table.',
+      interim: 'Interim staff: no scheme, no contract, no buyout. Hire a coordinator below.',
+      reach: 'reach', hireRefused: 'Hire refused — ', fireRefused: 'Fire refused — ',
+      confirmFire: 'Click Fire again to confirm: {name} leaves, the buyout is {buyout} (50% of the remaining contract).',
+      ocFit: 'Scheme fit: a {style} coordinator runs your {playbook} playbook (+{fit} to both offense units)', ocNoFit: 'No fit: coordinator runs {style}, your playbook is {playbook} ({perStar} per star over 2 still applies)',
+      dcLine: 'Defense units {def} · the opponent coughs it up {to} more often',
+      candidates: 'Candidates refresh each off-season (Dec 9) and after a firing.'
+    }
+  };
   const gatorNames = ['Big Al', 'Beignet', 'Marie', 'Chomp Chomp', "Ol' Frontenac", 'Tabasco', 'Professor Snaps', 'Étouffée', 'Tante Lou', 'Boudreaux Jr.', 'Mudbug', 'Sazerac', 'Gumbo', 'Praline'];
   const leGrand = 'Le Grand';
   const stormNames = ['Amélie', 'Boudin', 'Célestine', 'Delphine', 'Étienne', 'Fifolet', 'Gaspard', 'Hébert', 'Isidore', 'Josephine', 'Kingcake', 'Landry', 'Mirliton', 'Narcisse', 'Odile', 'Praline', 'Quenelle', 'Rémy', 'Satsuma', 'Thibodeaux', 'Ulysse', 'Violette', 'Wilhelmina', 'Xavier', 'Yvette', 'Zéphyrine'];
@@ -837,7 +892,7 @@
       tabs: [['overview', 'Overview'], ['staff', 'Staff'], ['roster', 'Roster'], ['recruiting', 'Recruiting'], ['schedule', 'Schedule'], ['records', 'Records']],
       title: 'Athletics budget',
       sources: { base: 'Base allocation', revenue: 'Share of last season\'s gate', prestige: 'Prestige', boosters: 'Booster donations', topUp: 'University top-up' },
-      lines: { coach: 'Head coach salary', coaching: 'Coaching spend', signings: 'Signed prospects', upkeep: 'Venue upkeep share', homecoming: 'Homecoming' },
+      lines: { coach: 'Head coach salary', oc: 'Offensive coordinator', dc: 'Defensive coordinator', coaching: 'Coaching spend', signings: 'Signed prospects', upkeep: 'Venue upkeep share', homecoming: 'Homecoming' },
       topUpFx: 'Moves university cash to athletics each Jan 1 (raising it mid-year moves the difference now). Athletics spends draw on that fund first.',
       boostersFx: 'Boosters give after a season of 7 wins or more.',
       overBudget: 'Over budget: cut the coaching spend or raise the top-up.',
@@ -1264,7 +1319,7 @@
   // ---------------------------------------------------------------------------
   const data = {
     catalog: catalog, catalogList: catalogList, tabs: tabs, decals: decals, names: names, students: students,
-    coaches: coaches, coachQuotes: coachQuotes, gatorNames: gatorNames, leGrand: leGrand, stormNames: stormNames,
+    coaches: coaches, coachQuotes: coachQuotes, staff: staff, gatorNames: gatorNames, leGrand: leGrand, stormNames: stormNames,
     opponents: opponents, schedule: schedule, calendar: calendar, ticker: ticker, tickerKinds: tickerKinds,
     tickerKindList: TICKER_KIND_LIST, objectives: objectives, milestones: milestones, voiceCards: voiceCards,
     boardCards: boardCards, failureCards: failureCards, tutorial: tutorial, thibodeaux: thibodeaux,
@@ -1347,6 +1402,8 @@
       check(D.gatorNames.length === 14 && D.leGrand === 'Le Grand', '14 gator names + Le Grand');
       check(D.coaches.length === 10 && D.coaches[0].name === 'Bobby Cheramie', '10 coaches, Cheramie first');
       check(D.coachQuotes.length === 12, '12 coach quotes');
+      for (const r of ['hc', 'oc', 'dc']) { check(D.staff.names[r].length === 30 && new Set(D.staff.names[r]).size === 30, '30 unique ' + r + ' names'); check(D.staff.quotes[r].length === 10 && D.staff.reps[r].length === 10, '10 quotes and reps for ' + r); check(D.staff.roleStyles[r].every(k => D.staff.styles[k] && D.staff.styles[k].name && D.staff.styles[k].desc), r + ' styles described'); }
+      check(Object.keys(D.staff.styles).length === 6 && D.staff.names.hc.slice(0, 10).join() === D.coaches.map(c => c.name).join(), '6 staff styles; the ten named coaches lead the HC pool');
       check(D.names.halls.length === 20 && D.names.towers.length === 2 && D.names.dining.length === 5 && D.names.poboy.length === 6 && D.names.greek.length === 5 && D.names.stadium.length === 4, 'name pool sizes');
       check(D.students.firstCajun.length === 56 && D.students.firstModern.length === 24 && D.students.last.length === 55 && D.students.nicknames.length === 16 && D.students.majors.length === 14 && D.students.hometowns.length === 18 && D.students.quotes.length >= 12, 'student table sizes');
       check(D.students.modernShare === 0.25 && D.students.nicknameShare === 0.12, 'student shares');

@@ -488,3 +488,15 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
 .needs-row{display:flex;align-items:center;gap:.6rem} .needs-row #needs-text{flex:1 1 auto;min-width:0}
 #needs-locate{flex:0 0 auto;padding:0 .8rem;min-height:2.4rem;height:2.4rem;line-height:2.2rem;font-size:1.15rem;border-color:var(--gold)}
 .notif .locate{border-color:var(--gold);color:var(--gold-hi)}
+
+/* staff */
+.fb-starbar{display:inline-block;color:var(--gold);font-size:1.3rem;letter-spacing:.06em;margin-left:.6rem;vertical-align:middle}
+.fb-staff-card{padding:1rem 1.4rem} .fb-staff-card .fb-staff-meta .row{padding:.25rem 0} .fb-staff-card .fb-coach-rep{margin-bottom:.4rem} .fb-staff-card .card-actions{margin-top:.6rem}
+.fb-stars{color:var(--gold);letter-spacing:.05em}
+.fb-reach{display:inline-block;margin-left:.5rem;padding:.1rem .5rem;border-radius:.6rem;font-size:1.05rem;letter-spacing:.08em;text-transform:uppercase;color:var(--purple-shadow);background:var(--g-gold);vertical-align:middle}
+.fb-staff-card.interim .fb-coach{color:var(--text-dim)} .fb-staff-card.interim{border-style:dashed}
+.fb-staff-hint{margin:1rem 0 .4rem;padding:.6rem 1rem;border-left:3px solid var(--gold);background:rgba(253,208,35,.06)}
+.fb-cand-groups{display:grid;grid-template-columns:1.5fr 1fr 1fr;gap:1rem 2rem} .fb-cand-group{min-width:0} #panels .panel .fb-cand-group>.card-kicker{margin-top:.4rem}
+.fb-cand .nm{font-weight:600} .fb-cand .btn.over{opacity:.55} .btn.armed{background:linear-gradient(180deg,#B33A33,#7A2622);color:#fff}
+.fb-note.ok{color:var(--good);border-color:rgba(120,220,140,.35);background:rgba(120,220,140,.08)}
+@media (max-width:1365px){.fb-cand-groups{grid-template-columns:1fr}}
