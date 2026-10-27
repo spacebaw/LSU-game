@@ -193,6 +193,7 @@
     if (sp.playbook !== 'ground' && sp.playbook !== 'air') sp.playbook = 'balanced';
     if (sp.aggression !== 'conservative' && sp.aggression !== 'aggressive') sp.aggression = 'normal';
     if (typeof sp.watchFull !== 'boolean') sp.watchFull = false;
+    if (typeof sp.autoSign !== 'boolean') sp.autoSign = !(PR.autoSign && PR.autoSign.on === false);   // roster cliff pass: the staff signs for an idle player at the Aug 5 lock (default on)
     if (sp.lastSummary === undefined || (sp.lastSummary !== null && typeof sp.lastSummary !== 'object')) sp.lastSummary = null;
     if (!sp.records || typeof sp.records !== 'object') sp.records = {};
     ensureRecords(sp.records);
@@ -425,10 +426,16 @@
       else { r.push(x); cutToCap(state, x.pos, x); }
     }
   }
-  /** a free walk-on at pos (fixed draw order: name, hometown, rating, class) */
-  function addWalkOn(state, pos) {
-    const w = PR.walkOn, lo = int(w.min, 50), hi = int(w.max, 58);
-    const p = { name: fbName(), pos: pos, hometown: drawHometown(), rating: lo + R.int(Math.max(1, hi - lo + 1)), classYear: drawClass(), signedYear: yearOf(state), cost: 0, dinged: 0, walkOn: true };
+  /** roster cliff pass: the walk-on rating floor rises with prestige — min + prestige × perPrestige, capped at floorCap (a neglected program is mediocre, not hopeless) */
+  function walkOnFloor(state) {
+    const w = PR.walkOn, lo = int(w.min, 50);
+    return clamp(Math.floor(lo + Math.max(0, num(state.economy && state.economy.prestige, 0)) * num(w.perPrestige, 0.15)), lo, Math.max(lo, int(w.floorCap, 65)));
+  }
+  /** a free walk-on at pos (fixed draw order: name, hometown, rating, class); rated floor..floor + (max − min); classYear (the legacy class, the first squad's backups) overrides the drawn class */
+  function addWalkOn(state, pos, classYear) {
+    const w = PR.walkOn, lo = walkOnFloor(state), span = Math.max(0, int(w.max, 58) - int(w.min, 50));
+    const p = { name: fbName(), pos: pos, hometown: drawHometown(), rating: lo + R.int(span + 1), classYear: drawClass(), signedYear: yearOf(state), cost: 0, dinged: 0, walkOn: true };
+    if (classIdx(classYear) >= 0) p.classYear = classYear;   // the draw stays (the stream's shape is unchanged); the class is dealt
     normPlayer(p, yearOf(state), 0); rosterOf(state.sports).push(p);
     return p;
   }
@@ -456,12 +463,13 @@
     sp.starters = out;
     return out;
   }
-  /** the first team / a pre-P2 save: the eight starters become juniors and seniors, every position gets a walk-on backup */
+  /** the first team / a pre-P2 save: the starters are dealt initClasses.starters (Jr/Sr-heavy), every position gets a walk-on backup dealt initClasses.backups (Fr/So-heavy) → 4 Fr / 4 So / 4 Jr / 4 Sr, so at most ~5 graduate a May (roster cliff pass; P2 dealt 15 of 16 upperclassmen) */
   function initRoster(state) {
     const sp = state.sports; reconcile(state);
-    const r = rosterOf(sp);
-    for (let i = 0; i < r.length; i++) if (!r[i].walkOn) { r[i].classYear = CLASSES[2 + (i % 2)]; r[i].class = r[i].classYear; }
-    for (let i = 0; i < POS.length; i++) while (playersAt(sp, POS[i]).length < 2) addWalkOn(state, POS[i]);
+    const r = rosterOf(sp), IC = PR.initClasses || {}, stc = IC.starters || [], bkc = IC.backups || [];
+    let k = 0;
+    for (let i = 0; i < r.length; i++) if (!r[i].walkOn) { const c = stc[k % Math.max(1, stc.length)]; r[i].classYear = classIdx(c) >= 0 ? c : CLASSES[2 + (k % 2)]; r[i].class = r[i].classYear; k++; }
+    for (let i = 0; i < POS.length; i++) while (playersAt(sp, POS[i]).length < Math.max(1, int(PR.minPerPos, 2))) addWalkOn(state, POS[i], bkc[i % Math.max(1, bkc.length)]);
     sp.rosterInit = true;
     pickStarters(state);
   }
@@ -471,7 +479,7 @@
     return { player: p, cut: cut };
   }
   function nameList(ps) { return ps.map(function (p) { return p.pos + ' ' + p.name; }).join(', '); }
-  /** gradDate: every class advances, seniors leave (a ticker line names them), a walk-on fills any starter slot left empty → {left[], walkOns} */
+  /** gradDate: every class advances, seniors leave (a ticker line names them), the 'legacy' walk-on class (freshmen) tops every position back up to minPerPos, a walk-on fills any starter slot left empty → {left[], walkOns} */
   function graduate(state) {
     const sp = state.sports; reconcile(state);
     const r = rosterOf(sp), left = [];
@@ -482,6 +490,7 @@
     }
     left.reverse();
     const before = r.length;
+    for (let i = 0; i < POS.length; i++) while (playersAt(sp, POS[i]).length < Math.max(1, int(PR.minPerPos, 2))) addWalkOn(state, POS[i], CLASSES[0]);   // roster cliff pass: the legacy class keeps 16 bodies
     sp.starters = [];
     pickStarters(state);
     const walkOns = r.length - before;
@@ -545,7 +554,7 @@
     const grad = dayOfDate(PR.gradDate || 'May 5', year), nextGrad = grad >= today(state) ? grad : dayOfDate(PR.gradDate || 'May 5', year + 1);
     return { players: r.map(function (p) { return view(p, 0); }), offense: off, defense: def, seniors: seniors, emptyBackups: all.filter(function (x) { return x.count < 2; }).map(function (x) { return x.pos; }),
       walkOnStarters: all.filter(function (x) { return x.starter && x.starter.walkOn; }).map(function (x) { return x.pos; }), dinged: dinged, scholarships: scholarships, counts: counts, size: r.length,
-      maxPerPos: int(PR.maxPerPos, 4), classes: CLASSES.slice(), nextGrad: nextGrad, daysToGrad: nextGrad - today(state) };
+      maxPerPos: int(PR.maxPerPos, 4), classes: CLASSES.slice(), nextGrad: nextGrad, daysToGrad: nextGrad - today(state), autoSign: sp.autoSign !== false, autoSignPerSide: autoSignPerSide(), walkOnFloor: walkOnFloor(state) };
   }
   // ---------------------------------------------------------------------------
   // PLAN_V2 P1: the coaching staff — head coach (state.sports.coach, the same object as staff.hc), offensive
@@ -880,6 +889,15 @@
   function setOwn(g, own) { own = clamp(own, 1, 99); g.spot = g.poss === BSU_T ? own : 100 - own; }
   function advance(g, yds) { g.spot = clamp(g.spot + (g.poss === BSU_T ? yds : -yds), 0, 100); }
   function margin(g, t) { return g.score[t] - g.score[1 - t]; }
+  /** roster cliff pass: team t's blowout tier — +1/+2 leading by ≥ blowout.margin / margin2, −1/−2 trailing by as much, 0 otherwise (never in overtime) */
+  function blowoutTier(g, t) {
+    const B = PE.blowout; if (!B || g.ot) return 0;
+    const m = margin(g, t), a = Math.abs(m);
+    if (a < num(B.margin, 24)) return 0;
+    const tier = a >= num(B.margin2, 42) ? 2 : 1;
+    return m > 0 ? tier : -tier;
+  }
+  function blowoutVal(key, tier, dflt) { const B = PE.blowout, v = B && B[key]; return Array.isArray(v) ? num(v[Math.min(v.length - 1, tier - 1)], dflt) : num(v, dflt); }
   function twoMinute(g) { return !g.ot && (g.quarter === 2 || g.quarter === 4) && g.clock <= PE.clock.twoMinSec; }
   function remainingSec(g) { return g.ot ? L.otRemSec : Math.max(0, (PE.clock.quarters - g.quarter) * PE.clock.quarterSec + g.clock); }
   function watched(g) { return !g.quiet && (g.mode === 'highlights' || g.mode === 'full'); }
@@ -892,7 +910,10 @@
   function edgeFor(g, kind) {
     const t = g.poss, A = g.eng.units[t], D = g.eng.units[1 - t];
     const att = kind === 'run' ? A.offRun : A.offPass, def = kind === 'run' ? D.defRun : D.defPass;
-    return (att - def) / PE.edgeDiv;
+    const e = (att - def) / PE.edgeDiv, bt = blowoutTier(g, t);
+    if (bt > 0) return Math.min(e, blowoutVal('leadEdgeCap', bt, 0.4));        // the leader's second string
+    if (bt < 0) return Math.max(e, blowoutVal('trailEdgeFloor', -bt, -0.8));   // garbage time against the reserves
+    return e;
   }
   function adjOf(g, t) { return t === BSU_T ? g.adj : L.noAdj; }
   function toMultOf(g, t) { const m = g.eng && g.eng.toMult; return m ? Math.max(0.5, num(m[t], 1)) : 1; }   // P1: the defending DC's turnover rate (a pre-P1 game in a save: 1)
@@ -1012,7 +1033,7 @@
       if (twoMinute(g) && res !== 'td' && res !== 'safety' && (p.type === 'run' || p.type === 'sack' || (p.type === 'pass' && !p.inc))) {
         const off = g.pre.poss;
         const want = margin(g, off) <= 0 ? off : (margin(g, 1 - off) < 0 ? 1 - off : -1);
-        if (want >= 0 && g.timeouts[want] > 0) { g.timeouts[want]--; used = L.timeoutSec; p.timeout = want; }
+        if (want >= 0 && g.timeouts[want] > 0 && blowoutTier(g, want) === 0) { g.timeouts[want]--; used = L.timeoutSec; p.timeout = want; }   // roster cliff pass: nobody stops the clock in a blowout
       }
       used = Math.min(used, g.clock);
       g.clock -= used;
@@ -1024,8 +1045,12 @@
 
   // --- play calling and resolution ----------------------------------------------
   function callPlay(g) {
-    const t = g.poss, pb = PE.playbook[g.eng.style[t]] || PE.playbook.balanced, S = PE.situational, m = margin(g, t);
+    const t = g.poss, pb = PE.playbook[g.eng.style[t]] || PE.playbook.balanced, S = PE.situational, m = margin(g, t), bt = blowoutTier(g, t);
     if (!g.ot && g.quarter === PE.clock.quarters && m > 0 && g.clock <= PE.clock.twoMinSec && g.timeouts[1 - t] === 0 && g.clock <= PE.clock.kneelSec * (5 - g.down)) return 'kneel';
+    if (bt > 0) {   // roster cliff pass: a blowout lead drains the clock — kneel-downs late in Q4, a ground-heavy call sheet otherwise
+      if (!g.ot && g.quarter === PE.clock.quarters && g.clock <= blowoutVal('kneelSec', bt, 240)) return 'kneel';
+      return R.chance(clamp(blowoutVal('runShare', bt, 0.85), 0.05, 0.95)) ? 'run' : 'pass';
+    }
     let share = pb.runShare + adjOf(g, t).runShare;
     if (g.down === 3 && g.dist >= S.longPassDist) share = 1 - S.longPassShare;
     else if (twoMinute(g) && m <= 0) share = 1 - S.twoMinPassShare;
@@ -1036,7 +1061,8 @@
     const t = g.poss, e = edgeFor(g, 'run'), pb = PE.playbook[g.eng.style[t]] || PE.playbook.balanced, Rn = PE.run, adj = adjOf(g, t);
     let yds = Math.round(R.gauss() * Rn.ydsSd + Rn.ydsBase + Rn.ydsEdge * e + pb.runYdsAdd + (t === BSU_T ? g.eng.fit.runYds : 0));
     if (yds < Rn.ydsFloor) yds = Rn.ydsFloor;
-    if (R.chance(clamp(Rn.breakawayP * (1 + Rn.breakawayEdge * e) * adj.big, 0, 0.5))) yds += Rn.breakawayAdd + R.int(Rn.breakawayRand);
+    const bt = blowoutTier(g, t), bigMult = bt > 0 ? blowoutVal('bigMult', bt, 0.35) : 1;   // roster cliff pass: the leader's reserves break nothing long
+    if (R.chance(clamp(Rn.breakawayP * (1 + Rn.breakawayEdge * e) * adj.big * bigMult, 0, 0.5))) yds += Rn.breakawayAdd + R.int(Rn.breakawayRand);
     const fumble = R.chance(clamp(Rn.fumbleP * (1 - Rn.fumbleEdge * e) * pb.fumbleMult * (g.eng.rain ? PE.weather.rainFumbleMult : 1) * adj.to * toMultOf(g, t), 0, 0.5));
     return { type: 'run', yds: yds, fumble: fumble };
   }
@@ -1049,7 +1075,8 @@
     if (!R.chance(comp)) return { type: 'pass', yds: 0, inc: true };
     let yds = Math.round(R.gauss() * Pp.ydsSd * pb.passVar + Pp.ydsBase + Pp.ydsEdge * e + (g.eng.rain ? W.rainPassYds : 0));
     if (yds < Pp.ydsFloor) yds = Pp.ydsFloor;
-    if (R.chance(clamp(Pp.bigP * adj.big, 0, 0.5))) yds += Pp.bigAdd + R.int(Pp.bigRand);
+    const bt = blowoutTier(g, t), bigMult = bt > 0 ? blowoutVal('bigMult', bt, 0.35) : 1;   // roster cliff pass: no deep shots with a blowout lead
+    if (R.chance(clamp(Pp.bigP * adj.big * bigMult, 0, 0.5))) yds += Pp.bigAdd + R.int(Pp.bigRand);
     return { type: 'pass', yds: yds };
   }
   function lineOf(g, t) { return t === BSU_T ? g.lines : null; }
@@ -1100,6 +1127,7 @@
       if (g.drive) g.drive.yds += yds;
     }
     if (res === 'gain' && p.fumble) { box.fumbles++; box.to++; res = 'fumble'; sec = C.turnoverSec; }
+    else if (p.type !== 'int' && !g.ot && blowoutTier(g, t) > 0) sec += blowoutVal('clockAdd', blowoutTier(g, t), 10);   // roster cliff pass: the leader milks the play clock
     if (res === 'td') {
       if (p.type === 'run' || p.type === 'kneel') box.tdRush++; else box.tdPass++;
       scoreTd(state, g, t, p, p.type);
@@ -1224,7 +1252,8 @@
   function fourthDefault(g, t) {
     const A = PE.aggression[g.eng.aggression[t]] || PE.aggression.normal, C = PE.clock;
     const tg = toGoal(g), own = 100 - tg, m = margin(g, t);
-    const fgOk = tg + PE.fg.snapDist <= PE.fg.maxDist;
+    const fgOk = tg + PE.fg.snapDist <= PE.fg.maxDist, bt = blowoutTier(g, t);
+    if (bt > 0) return (fgOk && bt < 2) ? 'fg' : 'punt';   // roster cliff pass: a blowout lead never goes for it; past margin2 it does not even kick
     if (!g.ot && g.clock <= 20 && (g.quarter === 2 || g.quarter === C.quarters) && fgOk && (g.quarter === 2 || m >= -3)) return 'fg';
     const goDist = A.goDist > 0 ? Math.max(1, A.goDist + (g.eng.goDist ? int(g.eng.goDist[t], 0) : 0)) : 0;   // P1: an air HC goes a yard longer, a ground HC a yard shorter
     let go = goDist > 0 && g.dist <= goDist && own >= A.goSpot;
@@ -2324,6 +2353,41 @@
     b.reminded = true;
     boardCard(state, 'closing', left);
   }
+  function autoSignPerSide() { return Math.max(0, int(PR.autoSign && PR.autoSign.perSide, 2)); }
+  /** the one signing path (the Recruiting tab's Sign and the staff's auto-sign): the class cap, the headroom, the first year's charge → {ok, cost, reason, ...} */
+  function signOne(state, b, p, who) {
+    const side = unitSide(p.pos), per = int(PR.maxPerSideClass, 4);
+    if (signedOn(b, side) >= per) return { ok: false, cost: p.cost, reason: per + ' ' + side + ' signings already in this class' };
+    const ca = canAffordAthletics(state, p.cost);   // P3: the athletics budget's headroom, then cash (the fund first)
+    if (!ca.ok) return { ok: false, cost: p.cost, reason: ca.reason };
+    if (!athleticsCharge(state, p.cost, 'coaching', { note: 'signing ' + p.name })) return { ok: false, cost: p.cost, reason: 'Cannot afford the signing' };
+    p.signed = true; b.signed = signedOn(b, 'offense') + signedOn(b, 'defense');
+    ticker(state, p.pos + ' ' + p.name + ' (' + p.hometown + ') signs with the ' + L.bsuNick + (who ? ' — ' + who : '') + '. Rated ' + p.rating + ', ' + (BSU.formatMoney ? BSU.formatMoney(p.cost) : '$' + p.cost) + ' a year; arrives Aug 5.', {});
+    return { ok: true, cost: p.cost, name: p.name, pos: p.pos, rating: p.rating, side: side, signed: { offense: signedOn(b, 'offense'), defense: signedOn(b, 'defense') }, reason: '' };
+  }
+  /** roster cliff pass — the Aug 5 lock with nobody signed and sp.autoSign on (and the board not Passed): the staff signs up to autoSign.perSide affordable prospects a side, best first, within the headroom → the signed list (a newsflash when any) */
+  function autoSignBoard(state) {
+    const sp = state.sports, b = sp.prospects, out = [];
+    if (!b || !Array.isArray(b.list) || sp.autoSign === false || b.answered || autoSignPerSide() <= 0) return out;
+    if (signedOn(b, 'offense') + signedOn(b, 'defense') > 0) return out;
+    const sides = ['offense', 'defense'];
+    for (let k = 0; k < sides.length; k++) {
+      const cands = b.list.filter(function (p) { return p && !p.signed && unitSide(p.pos) === sides[k]; }).sort(byRating);
+      let n = 0;
+      for (let i = 0; i < cands.length && n < autoSignPerSide(); i++) { const r = signOne(state, b, cands[i], 'the staff\'s call'); if (r.ok) { out.push(cands[i]); n++; } else if (!/headroom|cash|afford/i.test(r.reason)) break; }
+    }
+    if (out.length) {
+      b.autoSigned = out.map(function (p) { return p.name; });
+      const T = ((data().football || {}).roster || {}).text || {}, A = T.autoSign || {};
+      const names = nameList(out), cost = out.reduce(function (a, p) { return a + int(p.cost, 0); }, 0), money = BSU.formatMoney ? BSU.formatMoney(cost) : '$' + cost;
+      const body = String(A.body || '{names} signed on the staff\'s call: {cost} a year in scholarships. Sign your own class in December, or switch the staff\'s signings off on the Recruiting tab.').replace('{names}', names).replace('{cost}', money).replace('{n}', String(out.length));
+      ticker(state, (A.title || 'Coach signed the class for you') + ': ' + names + '.', {});
+      call('ui', 'notify', state, { text: (A.title || 'Coach signed the class for you') + ': ' + names + ' (' + money + '/yr).', kind: 'sports', ttl: 12000 });
+      call('progress', 'sportsCard', state, { id: 'autoSign', kicker: A.kicker || 'Newsflash · Recruiting', title: A.title || 'Coach signed the class for you', body: [body] });
+      refreshBudget(state, 'sign');
+    }
+    return out;
+  }
   /** Aug 5: every signed prospect joins the roster as a freshman (the first year's scholarship was paid at signing); a full position releases its weakest; the board closes */
   function applyProspects(state) {
     const sp = state.sports, b = sp.prospects;
@@ -2391,6 +2455,7 @@
       // the roster: three starters (drawn here the first time; May 5 turns seniors over), then the recruit lands
       if (sp.starters.length < POS.length) fillStarters(state);
       applyRecruit(state);
+      autoSignBoard(state);    // roster cliff pass: an idle player's class is signed by the staff (sp.autoSign, default on)
       applyProspects(state);   // P2: signed prospects join the roster as freshmen at the lock; the board closes
       chargeScholarships(state, year);   // P2: the returning scholarship players' year
       if (sp.seasonYear !== year) buildSchedule(state, year);
@@ -2816,7 +2881,7 @@
       const b = state.sports.prospects; if (!b || !Array.isArray(b.list)) return null;
       const per = int(PR.maxPerSideClass, 4), so = signedOn(b, 'offense'), sd = signedOn(b, 'defense'), lock = lockDayOf(state, b);
       const list = b.list.map(function (p, i) { return { index: i, side: unitSide(p.pos), name: p.name, pos: p.pos, hometown: p.hometown, rating: p.rating, cost: p.cost, years: int(p.years, PR.eligibilityYears), title: p.title, blurb: p.blurb, archetype: p.archetype, signed: !!p.signed }; });
-      return { year: b.year, offeredDay: b.offeredDay, lockDay: lock, daysLeft: lock - today(state), maxPerSide: per, maxSignings: per * 2, signed: so + sd, signedSide: { offense: so, defense: sd }, open: so < per || sd < per, answered: !!b.answered, bonus: num(b.bonus, 0), mean: int(b.mean, 0),
+      return { year: b.year, offeredDay: b.offeredDay, lockDay: lock, daysLeft: lock - today(state), maxPerSide: per, maxSignings: per * 2, signed: so + sd, signedSide: { offense: so, defense: sd }, open: so < per || sd < per, answered: !!b.answered, bonus: num(b.bonus, 0), mean: int(b.mean, 0), autoSign: state.sports.autoSign !== false, autoSignPerSide: autoSignPerSide(),
         list: list, offense: list.filter(function (p) { return p.side === 'offense'; }), defense: list.filter(function (p) { return p.side === 'defense'; }) };
     } catch (e) { BSU.error('sports', 'prospects', e); return null; }
   };
@@ -2828,15 +2893,9 @@
       const p = b.list[int(idx, NONE)];
       if (!p) return { ok: false, cost: 0, reason: 'No such prospect' };
       if (p.signed) return { ok: false, cost: 0, reason: p.name + ' already signed' };
-      const side = unitSide(p.pos), per = int(PR.maxPerSideClass, 4);
-      if (signedOn(b, side) >= per) return { ok: false, cost: p.cost, reason: per + ' ' + side + ' signings already in this class' };
-      const ca = canAffordAthletics(state, p.cost);   // P3: the athletics budget's headroom, then cash (the fund first)
-      if (!ca.ok) return { ok: false, cost: p.cost, reason: ca.reason };
-      if (!athleticsCharge(state, p.cost, 'coaching', { note: 'signing ' + p.name })) return { ok: false, cost: p.cost, reason: 'Cannot afford the signing' };
-      p.signed = true; b.signed = signedOn(b, 'offense') + signedOn(b, 'defense');
-      ticker(state, p.pos + ' ' + p.name + ' (' + p.hometown + ') signs with the ' + L.bsuNick + '. Rated ' + p.rating + ', ' + (BSU.formatMoney ? BSU.formatMoney(p.cost) : '$' + p.cost) + ' a year; arrives Aug 5.', {});
-      refreshBudget(state, 'sign');
-      return { ok: true, cost: p.cost, name: p.name, pos: p.pos, rating: p.rating, side: side, signed: { offense: signedOn(b, 'offense'), defense: signedOn(b, 'defense') }, reason: '' };
+      const r = signOne(state, b, p, '');
+      if (r.ok) refreshBudget(state, 'sign');
+      return r;
     } catch (e) { BSU.error('sports', 'signProspect', e); return { ok: false, cost: 0, reason: 'error' }; }
   };
   /** PLAN_V2 P2: the roster view {players[], offense[{pos, label, starter, backup, others[], count}], defense[], seniors[], emptyBackups[], walkOnStarters[], dinged[], scholarships, counts{Fr..Sr}, size, nextGrad, daysToGrad} */
@@ -2845,6 +2904,8 @@
     catch (e) { BSU.error('sports', 'roster', e); return null; }
   };
   /** Pass on the board (it stays readable in the Season panel until Aug 5). */
+  /** roster cliff pass: the staff's lock-day signings on/off (default on) → {ok, autoSign} */
+  M.setAutoSign = function (state, on) { try { if (!state || !state.sports) return { ok: false, autoSign: true }; state.sports.autoSign = on !== false; return { ok: true, autoSign: state.sports.autoSign }; } catch (e) { BSU.error('sports', 'setAutoSign', e); return { ok: false, autoSign: true }; } };
   M.passProspects = function (state) { try { const b = state.sports.prospects; if (b) b.answered = true; return { ok: !!b }; } catch (e) { BSU.error('sports', 'passProspects', e); return { ok: false }; } };
   /** The Spring Game's calendar: {scheduledDay, daysUntil, playedYear, last} (pass C). */
   M.spring = function (state) {
@@ -3091,6 +3152,10 @@
   M._drawBoard = function (state) { return drawProspects(state); };
   M._costPerYear = costPerYear;
   M._addPlayer = function (state, p) { return addPlayer(state, p); };
+  M._addWalkOn = function (state, pos, cls) { return addWalkOn(state, pos, cls); };
+  M._walkOnFloor = function (state) { return walkOnFloor(state); };
+  M._autoSign = function (state) { return autoSignBoard(state); };
+  M._blowoutTier = function (g, t) { return blowoutTier(g, t); };
   M._probFor = probFor;
   M._venueInfo = venueInfo;
   // PLAN_V2 P1 hooks: force a raise offer / a poaching / the off-season staff step; the engine inputs and staff terms for a synthetic game

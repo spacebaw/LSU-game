@@ -484,7 +484,10 @@
       roster: {
         classes: ['Fr', 'So', 'Jr', 'Sr'], eligibilityYears: 4,
         maxPerPos: 4, maxPerSideClass: 4,      // at most 4 bodies per position; up to 4 offense + 4 defense signed per class
-        walkOn: { min: 50, max: 58 },          // a free walk-on fills an empty starter slot (plan: 35–45, +20 on the engine scale)
+        walkOn: { min: 50, max: 58, perPrestige: 0.15, floorCap: 65 },   // a free walk-on fills an empty starter slot (plan: 35–45, +20 on the engine scale); roster cliff pass: the floor rises min + prestige × perPrestige (cap floorCap), the span (max − min) stays
+        minPerPos: 2,                          // roster cliff pass: every May the 'legacy' walk-on class tops each position back up to minPerPos bodies (16 on the roster)
+        initClasses: { starters: ['Sr', 'Jr', 'Sr', 'Jr', 'Sr', 'Jr', 'Sr', 'So'], backups: ['Fr', 'So', 'Fr', 'So', 'Fr', 'So', 'Fr', 'Jr'] },   // roster cliff pass: the first squad / a migrated save deals 4 Fr / 4 So / 4 Jr / 4 Sr (starters skew Jr/Sr, backups Fr/So) so at most ~5 graduate a May
+        autoSign: { on: true, perSide: 2 },    // roster cliff pass: with nobody signed at the Aug 5 lock the staff signs up to perSide affordable prospects a side (state.sports.autoSign, default `on`; the Recruiting tab can switch it off)
         prospect: { perPos: 2, base: 60, perPrestige: 0.35, bonusMax: 10, sd: 8, min: 50, max: 95 },   // rating ~ N(base + prestige × 0.35 + bonusMax × headroom share, 8), clamped
         cost: { base: 20000, perPoint: 6000, from: 60, round: 1000 },   // $/yr = base + perPoint × max(0, rating − from), for eligibilityYears (plan: from 40)
         dev: { min: 2, max: 5, perStar: 1, floor: 1, cap: 99 },         // off-season +2..+5 for Fr/So/Jr, + perStar × (coordinator stars − coachStarBase), never below floor
@@ -521,6 +524,15 @@
           ground:   { runShare: 0.66, passShare: 0.34, passVar: 1,   intMult: 1,    compAdj: 0,     runYdsAdd: 0.1, clockAdd: 4, fumbleMult: 1.3 },
           balanced: { runShare: 0.52, passShare: 0.48, passVar: 1,   intMult: 1,    compAdj: 0,     runYdsAdd: 0,   clockAdd: 0, fumbleMult: 1 },
           air:      { runShare: 0.36, passShare: 0.64, passVar: 1.3, intMult: 1,    compAdj: 0.03,  runYdsAdd: 0,   clockAdd: 0, fumbleMult: 1 }
+        },
+        blowout: {                           // roster cliff pass: blowout damping (one rule set for watched, montage and silent games)
+          margin: 24, margin2: 42,           // a lead ≥ margin → tier 1 (ground-heavy, clock-draining, reserves in); ≥ margin2 → tier 2 (run everything, kneel through Q4, no field goals)
+          runShare: [0.85, 0.95],            // the leader's run share per tier (over the playbook and the situational shares)
+          clockAdd: [10, 14],                // extra seconds the leader's snaps burn per tier
+          bigMult: [0.35, 0.1],              // the leader's breakaway / big-play chance multiplier per tier (no deep shots)
+          leadEdgeCap: [0.4, 0],             // the leader's attacking edge is capped per tier (second string in)
+          trailEdgeFloor: [-0.8, -0.5],      // the trailer's attacking edge is floored per tier (garbage-time yardage against the reserves)
+          kneelSec: [240, 900]               // leading in Q4 inside this clock → kneel-downs (tier 2: the whole quarter)
         },
         situational: {                       // PLAN_FOOTBALL §2.1 overrides of the base run share
           longPassDist: 7, longPassShare: 0.85,        // 3rd & ≥ 7 → pass 85 %
@@ -1225,6 +1237,7 @@
         playbook: 'balanced', aggression: 'normal', watchFull: false, lastSummary: null,   // PLAN_FOOTBALL pass B (sports.ensureKeys fills records)
         records: { allTime: { wins: 0, losses: 0 }, bestWin: null, longestPlay: null, seasonBests: {}, book: {}, seasons: [], hof: [] },
         springDay: -1, springYear: 0, lastSpring: null, prospects: null, seasonLog: [], seasonLines: null,   // PLAN_FOOTBALL pass C: spring game, prospect board, the season's game log and stat lines
+        autoSign: true,   // roster cliff pass: the staff signs up to params.sports.roster.autoSign.perSide prospects a side at the Aug 5 lock when the player signed nobody (sports.setAutoSign)
         staff: null,   // PLAN_V2 P1: the coaching staff {hc, oc, dc, candidates: {hc, oc, dc}, lastRefreshYear, offers} (sports.ensureKeys builds it lazily; hc is state.sports.coach)
         roster: null,   // PLAN_V2 P2: the full roster [{name, pos, rating, classYear, class, hometown, signedYear, cost, dinged, walkOn}] (sports.ensureKeys builds it from the starters)
         budget: null   // PLAN_V2 P3: the athletics budget {year, base, fromRevenue, fromPrestige, boosters, topUpShare, topUp, total, committed, lines, fund, ...} (sports.ensureKeys builds it lazily)

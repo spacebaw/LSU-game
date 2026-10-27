@@ -11,9 +11,9 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 
 ## BSU.B_ORDER  — enum/table, 46 keys (e.g. 0, 1, 2, 3, 4, 5, 6, 7)
 
-## BSU.EV  — enum/table, 108 keys (e.g. TILE_CHANGED, BUILDING_PLACED, BUILDING_REMOVED, BUILDING_COMPLETE, BUILDING_UPGRADED, BUILDING_FLOODED, BUILDING_DRIED, BUILDING_DAMAGED)
+## BSU.EV  — enum/table, 109 keys (e.g. TILE_CHANGED, BUILDING_PLACED, BUILDING_REMOVED, BUILDING_COMPLETE, BUILDING_UPGRADED, BUILDING_FLOODED, BUILDING_DRIED, BUILDING_DAMAGED)
 
-## BSU.EV_LIST  — enum/table, 108 keys (e.g. 0, 1, 2, 3, 4, 5, 6, 7)
+## BSU.EV_LIST  — enum/table, 109 keys (e.g. 0, 1, 2, 3, 4, 5, 6, 7)
 
 ## BSU.FLAG
 - values: WETLAND_ORIGINAL:number, PRESERVE:number, CANAL:number, DRAINED:number, FLOODGATE:number, POND_SINK:number, BAYOU:number, OPEN_WATER:number, DIRTY_CHUNK:number, DESIRE_WORN:number, DEBRIS:number, MOUND:number, RESTORING:number, JAMMED:number
@@ -603,6 +603,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - sports.prospects(state)
 - sports.signProspect(state, idx)
 - sports.roster(state)
+- sports.setAutoSign(state, on)
 - sports.passProspects(state)
 - sports.spring(state)
 - sports.startSpringGame(state)
@@ -640,6 +641,10 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - sports._drawBoard(state)
 - sports._costPerYear(rating)
 - sports._addPlayer(state, p)
+- sports._addWalkOn(state, pos, cls)
+- sports._walkOnFloor(state)
+- sports._autoSign(state)
+- sports._blowoutTier(g, t)
 - sports._probFor(state, team, oppRating, night, home)
 - sports._venueInfo(state)
 - sports._offerRaise(state, role)
@@ -831,6 +836,9 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - ui.lockTool(a, b)
 - ui.inspect(state, target)
 - ui.closeInspect()
+- ui.openMenuEditor(id)
+- ui.closeMenuEditor()
+- ui.menuEditorOpen()
 - ui.introduceTab(state, tab)
 - ui.refreshPalette(state)
 - ui.openBuildMenu(state, opts)
@@ -960,7 +968,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - wildlife:{nutria:number, leGrandDay:number, leGrand:null, officers:array[0], relocations:number, incidents:array[0], ecology:number, ecologyTerms:object, foggerPenalty:number, mosqIndex:number, mosqWarnedDay:number, biblicalDays:number, campusMask:null, fireflies:number, birds:object, wetlandOriginal:number}
 - economy:{cash:number, students:number, alumni:number, prestige:number, happiness:number, happinessRaw:number, ecology:number, tuition:number, quality:string, selectivity:string, coaching:number, ticket:number, autoRepair:boolean, interestPaid:number, loanLimit:number, negMonths:number, insurance:boolean, endowment:number, westCampus:boolean, pool:number, applicants:number, capacity:number, capacityTerms:object, targets:object, happyTerms:object, attendanceCycles:array[0], sick:number, suspendCapPenalties:boolean, suppressCoverage:boolean, runway:object}
 - ledger:{month:object, last:object, year:object, history:array[0]}
-- sports:{hasTeam:boolean, venue:string, seasonYear:number, schedule:array[0], record:object, lastSeason:object, coach:object, candidates:array[0], starters:array[0], recruit:null, rating:number, ratingTerms:object, nightToggle:boolean, autoSim:boolean, permits:string, homecomingBudget:number, rivalryLossStreak:number, game:null, firstHomeGameDay:number, firstNightGameDay:number, scriptedNightDay:number, playbook:string, aggression:string, watchFull:boolean, lastSummary:null, records:object, springDay:number, springYear:number, lastSpring:null, prospects:null, seasonLog:array[0], seasonLines:null, staff:null, roster:null, budget:null}
+- sports:{hasTeam:boolean, venue:string, seasonYear:number, schedule:array[0], record:object, lastSeason:object, coach:object, candidates:array[0], starters:array[0], recruit:null, rating:number, ratingTerms:object, nightToggle:boolean, autoSim:boolean, permits:string, homecomingBudget:number, rivalryLossStreak:number, game:null, firstHomeGameDay:number, firstNightGameDay:number, scriptedNightDay:number, playbook:string, aggression:string, watchFull:boolean, lastSummary:null, records:object, springDay:number, springYear:number, lastSpring:null, prospects:null, seasonLog:array[0], seasonLines:null, autoSign:boolean, staff:null, roster:null, budget:null}
 - progress:{tutorialStage:number, objectives:object, card:null, background:null, interruptQueue:array[0], backgroundQueue:array[0], milestones:object, timers:array[0], voiceCards:array[0], boardCards:array[0], failure:object, setPiecesSeen:object, firsts:object, recap:null, achievementsWhileDebug:boolean, hints:object}
 - ticker:array[0]
 - ui:{camera:object, overlay:number, speed:number, speedBefore:number, tool:null, panel:null, paletteTab:string, tabsSeen:object, newPips:object, tabsIntroduced:object, settings:object, perfMode:boolean}

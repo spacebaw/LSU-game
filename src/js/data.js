@@ -692,7 +692,11 @@
         locks: 'Board locks Aug 5', locksIn: 'locks in {d} days', lockedToday: 'locks today',
         signedCounter: 'signed {a} of {n}', full: 'class full', history: 'Recruiting history', noHistory: 'No signings have arrived yet: sign prospects in December, they report Aug 5.',
         cardOpen: { kicker: 'Recruiting · off-season', title: 'The recruiting board is open', body: '{n} prospects, two per position, rated around {mean}. Sign up to {per} offense and {per} defense before Aug 5; each costs its scholarship every year for four years.' },
-        cardClosing: { kicker: 'Recruiting · last call', title: 'The board locks in {d} days', body: '{signed} signed so far ({off} offense, {def} defense of {per} each). Unsigned prospects go elsewhere at the Aug 5 lock.' },
+        cardClosing: { kicker: 'Recruiting · last call', title: 'The board locks in {d} days', body: '{signed} signed so far ({off} offense, {def} defense of {per} each). Unsigned prospects go elsewhere at the Aug 5 lock; sign nobody and the staff signs a class for you unless you switch that off.' },
+        // roster cliff pass: the staff's lock-day signings (sports.autoSignBoard) and the Recruiting tab's toggle copy
+        autoSign: { kicker: 'Newsflash · Recruiting', title: 'Coach signed the class for you', body: '{names} signed on the staff\'s call: {cost} a year in scholarships. Sign your own class in December, or switch the staff\'s signings off on the Recruiting tab.',
+          toggle: 'Let the staff sign a class if I sign nobody', toggleOn: 'Staff signs up to {n} a side at the lock', toggleOff: 'Nobody signs unless you do' },
+        walkOnFloor: 'Walk-ons rate at least {floor} at this prestige',
         open: 'Open the Recruiting tab', later: 'Later'
       },
       template: {

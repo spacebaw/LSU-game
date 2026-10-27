@@ -435,9 +435,9 @@ if (existsSync(join(root, 'index.html'))) {
   const gaps = [-20, -10, 0, 10, 20], shares = [];
   let ptsAll = 0, snapsAll = 0, toAll = 0, nanAll = 0, games = 0;
   for (const gap of gaps) { const r = play(gap === 20 || gap === 0 ? 400 : 160, { opp: 'neutral', oppRating: 60, rating: 60 + gap, home: false, kind: 'bowl' }); shares.push(r.win); ptsAll += r.pts * r.games; snapsAll += r.snaps * r.games; toAll += r.to * r.games; nanAll += r.nan; games += r.games; }
-  const neutral = play(500, { opp: 'neutral', oppRating: 60, rating: 60, home: false, kind: 'bowl' });
-  const homeDay = play(500, { opp: 'neutral', oppRating: 60, rating: 60, home: true });
-  games += 1000; ptsAll += (neutral.pts + homeDay.pts) * 500; snapsAll += (neutral.snaps + homeDay.snaps) * 500; toAll += (neutral.to + homeDay.to) * 500; nanAll += neutral.nan + homeDay.nan;
+  const neutral = play(1000, { opp: 'neutral', oppRating: 60, rating: 60, home: false, kind: 'bowl' });
+  const homeDay = play(1000, { opp: 'neutral', oppRating: 60, rating: 60, home: true });
+  games += 2000; ptsAll += (neutral.pts + homeDay.pts) * 1000; snapsAll += (neutral.snaps + homeDay.snaps) * 1000; toAll += (neutral.to + homeDay.to) * 1000; nanAll += neutral.nan + homeDay.nan;
   const ms = performance.now() - t0;
   ok(games >= 500 && nanAll === 0, games + ' silent games: no NaN, no ties, every game over (' + ms.toFixed(0) + ' ms)');
   ok(shares.every((w, i) => i === 0 || w > shares[i - 1]), 'win share is monotone in the rating gap (' + shares.map(w => w.toFixed(2)).join(' < ') + ')');
@@ -579,8 +579,9 @@ if (existsSync(join(root, 'index.html'))) {
   run(s, 100);
   const R0 = s.sports.roster;
   ok(Array.isArray(R0) && R0.length === 16 && s.sports.rosterInit === true && R0.filter(p => p.walkOn).length === 8, 'the first team: 8 starters + 8 walk-on backups (' + (R0 && R0.length) + ')');
-  ok(s.sports.starters.length === 8 && s.sports.starters.every(p => R0.indexOf(p) >= 0 && (p.classYear === 'Jr' || p.classYear === 'Sr') && p.class === p.classYear && !p.walkOn && p.cost === 0 && p.dinged === 0), 'the eight starters are roster objects: juniors and seniors, no dings');
-  ok(R0.filter(p => p.walkOn).every(p => p.rating >= PR.walkOn.min && p.rating <= PR.walkOn.max && p.cost === 0 && ['Fr', 'So', 'Jr', 'Sr'].indexOf(p.classYear) >= 0), 'walk-ons rated ' + PR.walkOn.min + '–' + PR.walkOn.max + ', free');
+  ok(s.sports.starters.length === 8 && s.sports.starters.every(p => R0.indexOf(p) >= 0 && ['So', 'Jr', 'Sr'].indexOf(p.classYear) >= 0 && p.class === p.classYear && !p.walkOn && p.cost === 0 && p.dinged === 0) && s.sports.starters.filter(p => p.classYear === 'Jr' || p.classYear === 'Sr').length >= 6, 'the eight starters are roster objects: mostly juniors and seniors (roster cliff pass: one sophomore), no dings');
+  const wlo = SP._walkOnFloor(s), whi = wlo + PR.walkOn.max - PR.walkOn.min;
+  ok(wlo === 52 && R0.filter(p => p.walkOn).every(p => p.rating >= wlo && p.rating <= whi && p.cost === 0 && ['Fr', 'So', 'Jr', 'Sr'].indexOf(p.classYear) >= 0), 'walk-ons rated ' + wlo + '–' + whi + ' at prestige 16 (the floor rises with prestige), free');
   const RV0 = SP.roster(s);
   ok(RV0 && RV0.offense.length === 4 && RV0.defense.length === 4 && RV0.offense.concat(RV0.defense).every(r => r.starter && r.backup && r.backup.walkOn && r.starter.rating >= r.backup.rating && r.count === 2) && RV0.seniors.length >= 4 && RV0.seniors.length === s.sports.roster.filter(p => p.classYear === 'Sr').length && RV0.scholarships === 0 && RV0.size === 16 && RV0.emptyBackups.length === 0, 'sports.roster: starter + walk-on backup per position, ' + RV0.seniors.length + ' seniors leaving (4 starters + walk-ons), no scholarships yet');
   const dec9 = BSU.dateToDay('Dec 9', 1), dec8 = BSU.dateToDay('Dec 8', 1);
@@ -655,29 +656,92 @@ if (existsSync(join(root, 'index.html'))) {
   { const t = newGame(30); run(t, 100); const plain = POSN.map((p, i) => ({ name: 'Old ' + p, pos: p, hometown: 'Houma', rating: 70 + i, class: 'Fr' }));
     t.sports.roster = undefined; delete t.sports.rosterInit; t.sports.starters = plain; t.sports.records.recruits = [{ year: 1, name: 'Kept', pos: 'QB', hometown: 'Houma', rating: 80, cost: 1, title: '' }];
     SP.reset(t); run(t, 1);
-    ok(Array.isArray(t.sports.roster) && t.sports.roster.length === 16 && t.sports.rosterInit === true && plain.every(p => t.sports.roster.indexOf(p) >= 0 && (p.classYear === 'Jr' || p.classYear === 'Sr') && p.class === p.classYear) && t.sports.starters.length === 8 && t.sports.starters.every((p, i) => p === plain[i]) && t.sports.roster.filter(p => p.walkOn).length === 8 && t.sports.records.recruits.length === 1, 'a pre-P2 save migrates: the eight become Jr/Sr with walk-on backups; records.recruits kept');
+    ok(Array.isArray(t.sports.roster) && t.sports.roster.length === 16 && t.sports.rosterInit === true && plain.every(p => t.sports.roster.indexOf(p) >= 0 && ['So', 'Jr', 'Sr'].indexOf(p.classYear) >= 0 && p.class === p.classYear) && plain.filter(p => p.classYear !== 'So').length >= 6 && t.sports.starters.length === 8 && t.sports.starters.every((p, i) => p === plain[i]) && t.sports.roster.filter(p => p.walkOn).length === 8 && t.sports.records.recruits.length === 1, 'a pre-P2 save migrates: the eight become (mostly) Jr/Sr with walk-on backups; records.recruits kept');
     const saved = JSON.parse(JSON.stringify(t)); saved.rng = { sim: BSU.rng.sim.state }; SP.reset(saved); SP.roster(saved);
     ok(saved.sports.starters.every(p => saved.sports.roster.indexOf(p) >= 0) && saved.sports.roster.length === 16, 'a load relinks the starters to the roster objects'); }
-  // six seasons of churn on seed 42: without signings the roster drains to walk-ons yet stays playable; signing the board every off-season keeps it strong
-  const churn = (sign) => {
-    const t = newGame(42); run(t, 100); const rows = [];
+  // six seasons of churn on seed 42 (roster cliff pass): 'none' = the staff's signings off and nobody signed (the legacy walk-on class keeps 16 bodies, ≤ 6 graduate a May,
+  // the program is mediocre not hopeless); 'auto' = the player signs nobody and the staff signs 2 a side at every lock; 'board' = the whole board signed greedily each December
+  const churn = (mode) => {
+    const t = newGame(42); run(t, 100); const rows = []; if (mode === 'none') SP.setAutoSign(t, false);
     for (let y = 1; y <= 6; y++) {
+      let grad = 0;
+      if (y > 1) { runUntilDay(t, BSU.dateToDay('May 4', y)); while (t.setPiece) tick1(t); const names = t.sports.roster.map(p => p.name + '|' + p.pos); runUntilDay(t, BSU.dateToDay('May 6', y)); while (t.setPiece) tick1(t); grad = names.filter(n => !t.sports.roster.some(p => p.name + '|' + p.pos === n)).length; }
       runUntilDay(t, BSU.dateToDay('Dec 10', y)); while (t.setPiece) tick1(t);
       const sp = t.sports, st = sp.starters, bad = /NaN|Infinity/.test(JSON.stringify(sp.roster));
-      rows.push({ y, size: sp.roster.length, mean: Math.round(st.reduce((a, p) => a + p.rating, 0) / st.length), walkOns: st.filter(p => p.walkOn).length, cls: ['Fr', 'So', 'Jr', 'Sr'].map(c => sp.roster.filter(p => p.classYear === c).length).join('/'), sch: Math.round(sp.roster.reduce((a, p) => a + p.cost, 0) / 1000), rec: sp.lastSeason.wins + '-' + sp.lastSeason.losses, ok: st.length === 8 && POSN.every((p, i) => st[i].pos === p && sp.roster.indexOf(st[i]) >= 0) && !bad && sp.roster.length >= 8 && sp.roster.length <= 32 });
-      if (sign) { const b = SP.prospects(t); if (b) { b.list.slice().sort((a, c) => c.rating - a.rating).forEach(p => { SP.signProspect(t, p.index); }); } }
+      const pts = sp.seasonLog ? sp.seasonLog.reduce((a, e) => ({ f: a.f + (e.bsu !== undefined ? e.bsu : 0), a: a.a + (e.opp !== undefined ? e.opp : 0) }), { f: 0, a: 0 }) : { f: 0, a: 0 };
+      rows.push({ y, grad, size: sp.roster.length, mean: Math.round(st.reduce((a, p) => a + p.rating, 0) / st.length), walkOns: st.filter(p => p.walkOn).length, cls: ['Fr', 'So', 'Jr', 'Sr'].map(c => sp.roster.filter(p => p.classYear === c).length).join('/'), sch: Math.round(sp.roster.reduce((a, p) => a + p.cost, 0) / 1000), rec: sp.lastSeason.wins + '-' + sp.lastSeason.losses, ok: st.length === 8 && POSN.every((p, i) => st[i].pos === p && sp.roster.indexOf(st[i]) >= 0) && !bad && sp.roster.length >= 8 && sp.roster.length <= 32 });
+      if (mode === 'board') { const b = SP.prospects(t); if (b) { b.list.slice().sort((a, c) => c.rating - a.rating).forEach(p => { SP.signProspect(t, p.index); }); } }
     }
     return rows;
   };
-  const noSign = churn(false), withSign = churn(true);
-  const line = (rows) => rows.map(r => 'Y' + r.y + ' ' + r.size + 'p mean ' + r.mean + ' wo ' + r.walkOns + ' [' + r.cls + '] $' + r.sch + 'k ' + r.rec).join(' | ');
-  ok(noSign.every(r => r.ok) && noSign[5].walkOns >= 4 && noSign[5].size >= 8, 'six seasons without signings stay playable (walk-ons start): ' + line(noSign));
-  ok(withSign.every(r => r.ok) && withSign[5].mean > noSign[5].mean + 10 && withSign.slice(1).every(r => r.walkOns <= 4 && r.size >= 12 && r.size <= 32) && withSign.slice(1, 5).every(r => r.mean >= 75), 'six seasons of signings keep the roster strong until the flat test budget caps the scholarships: ' + line(withSign));
-  console.log('churn seed 42 (no signings): ' + line(noSign)); console.log('churn seed 42 (signing the board): ' + line(withSign));
+  const noSign = churn('none'), autoSign = churn('auto'), withSign = churn('board');
+  const line = (rows) => rows.map(r => 'Y' + r.y + ' ' + r.size + 'p mean ' + r.mean + ' wo ' + r.walkOns + ' [' + r.cls + '] grad ' + r.grad + ' $' + r.sch + 'k ' + r.rec).join(' | ');
+  ok(noSign.every(r => r.ok && r.size >= 16 && r.grad <= 6 && r.sch === 0) && noSign.slice(3).every(r => r.walkOns === 8) && noSign[5].mean >= 60, 'six seasons with no signings at all: the legacy class keeps 16 bodies, at most 6 graduate a May, all-walk-on starters by Y4 rate ≥ 60 (mediocre, not hopeless): ' + line(noSign));
+  ok(autoSign.every(r => r.ok && r.size >= 16 && r.size <= 32) && autoSign.slice(1).every(r => r.sch > 0 && r.sch <= 2500) && autoSign[5].mean >= noSign[5].mean + 5 && autoSign.slice(2).every(r => r.walkOns <= 6), 'six seasons of the staff\'s signings (the player signs nobody): 2 a side at every lock within the headroom, stronger than nothing: ' + line(autoSign));
+  ok(withSign.every(r => r.ok) && withSign[5].mean > noSign[5].mean + 10 && withSign.slice(1).every(r => r.walkOns <= 4 && r.size >= 12 && r.size <= 32) && withSign.slice(1, 5).every(r => r.mean >= 72), 'six seasons of signing the board keep the roster strong until the flat test budget caps the scholarships: ' + line(withSign));
+  console.log('churn seed 42 (no signings, staff off): ' + line(noSign)); console.log('churn seed 42 (staff signs 2 a side): ' + line(autoSign)); console.log('churn seed 42 (signing the board): ' + line(withSign));
   // hire/fire still work with a board open
   const s6 = newGame(26); run(s6, 100); runUntilDay(s6, dec9); run(s6, 2);
   const fired = SP.fireCoach(s6); ok(fired.ok === true && s6.sports.candidates.length === 3, 'fireCoach works in the off-season');
   const hired = SP.hireCoach(s6, 0); ok(hired.ok === true || /budget|fee/i.test(hired.reason), 'hireCoach answers (' + (hired.ok ? 'hired' : hired.reason) + ')');
+}
+
+// --- roster cliff pass: the first squad's class mix, the walk-on floor by prestige, the staff's lock-day signings, blowout damping ----------------
+{
+  const PR = BSU.params.sports.roster, PBL = BSU.params.sports.engine.blowout, POSN = ['QB', 'RB', 'WR', 'OL', 'DL', 'LB', 'DB', 'K'];
+  const counts = (r) => ['Fr', 'So', 'Jr', 'Sr'].map(c => r.filter(p => p.classYear === c).length);
+  const s = newGame(44); run(s, 100);
+  const c0 = counts(s.sports.roster);
+  ok(s.sports.roster.length === 16 && c0.every(n => n >= 3 && n <= 5) && c0.reduce((a, b) => a + b, 0) === 16, 'the first squad deals ' + c0.join('/') + ' Fr/So/Jr/Sr across the 16');
+  ok(s.sports.starters.filter(p => p.classYear === 'Jr' || p.classYear === 'Sr').length >= 6 && s.sports.roster.filter(p => p.walkOn && (p.classYear === 'Fr' || p.classYear === 'So')).length >= 6, 'starters skew Jr/Sr, the walk-on backups Fr/So');
+  { const t = newGame(45); run(t, 100); const plain = POSN.map((p, i) => ({ name: 'Old ' + p, pos: p, hometown: 'Houma', rating: 70 + i, class: 'Fr' }));
+    t.sports.roster = undefined; delete t.sports.rosterInit; t.sports.starters = plain; SP.reset(t); run(t, 1); const c = counts(t.sports.roster);
+    ok(t.sports.roster.length === 16 && c.every(n => n >= 3 && n <= 5), 'a migrated pre-P2 save deals the same mix (' + c.join('/') + ')'); }
+  // graduation never removes more than 6 in a May; the legacy class (freshman walk-ons) keeps 16 bodies
+  { const t = newGame(46); run(t, 100); SP.setAutoSign(t, false); let maxLeft = 0; const sizes = []; let legacy = true;
+    for (let y = 2; y <= 5; y++) {
+      runUntilDay(t, BSU.dateToDay('May 4', y)); while (t.setPiece) tick1(t); const names = t.sports.roster.map(p => p.name + '|' + p.pos);
+      runUntilDay(t, BSU.dateToDay('May 6', y)); while (t.setPiece) tick1(t);
+      maxLeft = Math.max(maxLeft, names.filter(n => !t.sports.roster.some(p => p.name + '|' + p.pos === n)).length); sizes.push(t.sports.roster.length);
+      const fresh = t.sports.roster.filter(p => p.walkOn && p.signedYear === y); if (!fresh.length || !fresh.every(p => p.classYear === 'Fr')) legacy = false;
+    }
+    ok(maxLeft <= 6 && sizes.every(n => n >= 16) && legacy && POSN.every(p => t.sports.roster.filter(x => x.pos === p).length >= 2), 'graduation removes at most 6 a May (' + maxLeft + '); the legacy walk-on class arrives as freshmen and keeps 16 bodies (' + sizes.join(', ') + ')'); }
+  // the walk-on floor rises with prestige: 50 + prestige × 0.15, cap 65
+  { const floors = [0, 16, 50, 100, 200].map(pr => { s.economy.prestige = pr; return SP._walkOnFloor(s); }); s.economy.prestige = 16;
+    ok(floors.join() === '50,52,57,65,65', 'walk-on floor 50 + prestige × 0.15, capped at 65 (' + floors.join(' / ') + ')');
+    s.economy.prestige = 100; const ws = []; for (let i = 0; i < 12; i++) ws.push(SP._addWalkOn(s, 'K', 'Fr')); s.economy.prestige = 16;
+    ok(ws.every(w => w.rating >= 65 && w.rating <= 65 + (PR.walkOn.max - PR.walkOn.min) && w.classYear === 'Fr' && w.walkOn && w.cost === 0) && SP.roster(s).walkOnFloor === 52, 'at prestige 100 walk-ons rate 65–73 and take the class dealt; the roster view carries the floor');
+    s.sports.roster = s.sports.roster.filter(p => ws.indexOf(p) < 0); SP.roster(s); }
+  // the staff's lock-day signings: only when enabled and nobody signed (Pass opts out); within the headroom
+  const lockRun = (mode) => { const t = newGame(47); run(t, 100); runUntilDay(t, BSU.dateToDay('Dec 9', 1)); run(t, 2); rec.notifies.length = 0; const b = SP.prospects(t);
+    if (mode === 'off') SP.setAutoSign(t, false); if (mode === 'one') SP.signProspect(t, b.offense[0].index); if (mode === 'pass') SP.passProspects(t); if (mode === 'broke') t.economy.coaching = 5000000;
+    runUntilDay(t, BSU.dateToDay('Aug 6', 2)); while (t.setPiece) tick1(t); t.economy.coaching = 200000;
+    return { t, b, n: t.sports.records.recruits.length, flash: rec.notifies.filter(x => /Coach signed the class for you/.test(x)).length }; };
+  const auto = lockRun('on');
+  ok(auto.b.autoSign === true && auto.b.autoSignPerSide === 2 && auto.n >= 2 && auto.n <= 4 && auto.flash === 1 && SP.prospects(auto.t) === null && auto.t.sports.roster.filter(p => p.classYear === 'Fr' && !p.walkOn && p.cost > 0 && p.signedYear === 2).length === auto.n && ['offense', 'defense'].every(sd => auto.t.sports.records.recruits.filter(r => (POSN.indexOf(r.pos) < 4 ? 'offense' : 'defense') === sd).length <= 2), 'nobody signed → the staff signs up to 2 a side at the lock with one newsflash (' + auto.n + ' signed: ' + auto.t.sports.records.recruits.map(r => r.pos + ' ' + r.rating).join(', ') + ')');
+  ok(SP.budget(auto.t).lines.find(l => l.key === 'players').amount === auto.t.sports.roster.reduce((a, p) => a + p.cost, 0) && SP.budget(auto.t).lines.find(l => l.key === 'players').amount > 0, 'their scholarships post on the players line');
+  const off = lockRun('off'); ok(off.n === 0 && off.flash === 0 && SP.roster(off.t).autoSign === false, 'switched off (setAutoSign false) → nobody signs, no newsflash');
+  const one = lockRun('one'); ok(one.n === 1 && one.flash === 0, 'the player signed one → the staff stays out');
+  const passed = lockRun('pass'); ok(passed.n === 0 && passed.flash === 0, 'Pass → the staff stays out');
+  const broke = lockRun('broke'); ok(broke.n === 0 && broke.flash === 0, 'no headroom → nobody affordable, no newsflash');
+  ok(SP.setAutoSign(auto.t, true).autoSign === true && SP.roster(auto.t).autoSign === true && SP.roster(auto.t).autoSignPerSide === 2 && SP.setAutoSign(null, true).ok === false, 'setAutoSign / the roster view carry the flag');
+  // blowout damping: 1,000 silent games in the walk-on regime (starters 55 vs 75, rating 20 vs 60 — the Y3 no-signing program away)
+  { const t = newGame(48); run(t, 100); t.sports.coach = { name: 'x', stars: 2, hiredYear: 1, quote: '', rep: '' }; neutralStaff(t);
+    t.sports.starters = t.sports.starters.map(x => Object.assign({}, x, { rating: 55 }));
+    SP._deps.data = Object.assign({}, BSU.data, { opponents: Object.assign({}, BSU.data.opponents, { neutral: { name: 'Neutral University', nick: 'Neutrals', rating: 60, colors: ['#888888', '#ffffff'], rival: false, crosstown: false, style: 'balanced', defBias: 0 } }) });
+    BSU.rng.sim.state = 4040;
+    let over70 = 0, m50 = 0, maxM = 0, maxPts = 0, bsu7 = 0, sumO = 0, sumB = 0, nan = 0, q4runs = 0, q4plays = 0, kneels = 0, tier = 0;
+    for (let i = 0; i < 1000; i++) {
+      const g = SP._playGame(t, { opp: 'neutral', oppRating: 60, rating: 20, home: false, kind: 'bowl' }); const b = g.score[0], o = g.score[1];
+      if (!g.over || /NaN|Infinity/.test(JSON.stringify(g.score))) nan++; if (b > 70 || o > 70) over70++; if (o - b > 50) m50++; maxM = Math.max(maxM, o - b); maxPts = Math.max(maxPts, o, b); if (b >= 7) bsu7++; sumO += o; sumB += b;
+      if (o - b >= PBL.margin) { tier++; const q4 = g.plays.filter(p => p.q === 4 && p.poss === 1 && (p.type === 'run' || p.type === 'pass' || p.type === 'kneel' || p.type === 'sack')); q4plays += q4.length; q4runs += q4.filter(p => p.type === 'run' || p.type === 'kneel').length; kneels += q4.filter(p => p.type === 'kneel').length; }
+    }
+    ok(nan === 0 && over70 === 0 && maxPts <= 70, '1,000 games at a −40 gap on a walk-on roster: no final above 70 (max ' + maxPts + ')');
+    ok(m50 / 1000 <= 0.05 && maxM <= 60, 'losing margins mostly ≤ 50 (' + (m50 / 10).toFixed(1) + '% above; max ' + maxM + ')');
+    ok(sumO / 1000 >= 25 && sumO / 1000 <= 45 && bsu7 / 1000 >= 0.3, 'the walk-on program loses about ' + (sumB / 1000).toFixed(1) + '–' + (sumO / 1000).toFixed(1) + ' and scores a touchdown in ' + (bsu7 / 10).toFixed(0) + '% of games');
+    ok(tier >= 500 && q4runs / q4plays >= 0.8 && kneels / tier >= 1, 'with a blowout lead (' + tier + ' of 1,000 games) the opponent runs ' + (100 * q4runs / q4plays).toFixed(0) + '% of its Q4 snaps and kneels ' + (kneels / tier).toFixed(1) + ' times a game');
+    ok(SP._blowoutTier({ score: [30, 0], ot: null }, 0) === 1 && SP._blowoutTier({ score: [30, 0], ot: null }, 1) === -1 && SP._blowoutTier({ score: [0, 45], ot: null }, 0) === -2 && SP._blowoutTier({ score: [23, 0], ot: null }, 0) === 0 && SP._blowoutTier({ score: [30, 0], ot: { round: 1 } }, 0) === 0, 'blowout tiers: ±1 past ' + PBL.margin + ', ±2 past ' + PBL.margin2 + ', never in overtime');
+    delete SP._deps.data; }
 }
 
 // --- PLAN_FOOTBALL pass C: playbook calibration — air ≈ ground at equal ratings (home field still +2 to +5.5 above) ------------------
