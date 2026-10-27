@@ -31,7 +31,7 @@
 //   │  ├─ #milestones-card.hidden  .ms-row×3
 //   │  ├─ #notifications  .notif[data-kind]
 //   │  ├─ #decision-toast.hidden  #dt-text #dt-countdown.bar #btn-dt-yes #btn-dt-no
-//   │  ├─ #inspect.panel.side.hidden  #insp-title #insp-sub #btn-insp-close canvas#insp-sprite #insp-body #insp-actions
+//   │  ├─ #inspect.panel.side.hidden  #insp-title #insp-sub #btn-insp-close canvas#insp-sprite #insp-body #insp-actions  (a kitchen's #insp-menu = summary + #btn-edit-menu)
 //   │  ├─ #ghost-label.hidden · #tooltip.hidden · #popover.hidden(#pop-title .pop-line×7 #pop-next)
 //   │  ├─ #ticker  #ticker-track · #btn-ticker-log · #ticker-log.hidden
 //   │  ├─ #palette  #btn-build-menu · #palette-tabs(.tab[data-tab] .pip) · #palette-items(.item[data-id]) · #btn-bulldoze · #btn-palette-info
@@ -139,6 +139,7 @@
   const gameDecs = {};   // football pass D: game:decision payloads (options with win probabilities) by decision id, consumed by the toast
   let card = null; const cardQueue = [];
   let insp = null, inspAt = -1e9, inspDirty = false, renaming = null;
+  let menuEdit = null, menuReason = { text: '', until: 0 }, menuSig = '';   // menu layout pass: the Edit menu overlay ({id} while open, never saved), its inline refusal line, the dish-grid signature (cells are rebuilt only when the set changes)
   let tk = { x: 0, line: null, seen: 0, w: 0, lastLen: 0, logOpen: false };
   const odo = { cash: NaN, students: NaN, shownStudents: NaN, holdUntil: -1, lastStudents: NaN, deltaUntil: 0 };
   const held = { up: false, down: false, left: false, right: false };
@@ -349,7 +350,22 @@
     t.appendChild(box);
     E.title = t; E['title-name'] = name; E['title-tag'] = tag; E['btn-charter'] = charter; E['btn-continue'] = cont; E['title-seed'] = seed; E['btn-title-settings'] = ts; E['btn-title-mute'] = tm; E['title-campus'] = campus; E['title-size'] = sz; E['title-size-note'] = szn; return t;
   }
-  function buildPanelsHost() { const p = el('div'); p.id = 'panels'; E.panels = p; return p; }
+  function buildPanelsHost() { const p = el('div'); p.id = 'panels'; E.panels = p; p.appendChild(buildMenuOverlay()); return p; }
+  /** menu layout pass: the Edit menu overlay (a 64-rem panel centred over the map, the existing panel chrome + close button): title, live summary, presets, "x / cap" count, the inline reason line, the dish grid, the note. Built once; syncMenuOverlay updates it in place */
+  function buildMenuOverlay() {
+    const p = el('div', 'panel menu-overlay hidden'); p.id = 'menu-overlay';
+    const head = el('div', 'panel-head'); const x = btn('btn-menu-close', '✕', 'icon', function () { M.closeMenuEditor(); }); x.title = 'Close (Esc)'; head.appendChild(x);
+    const title = el('div', 'panel-title', 'Menu'); title.id = 'menu-title';
+    const sum = el('div', 'menu-sum', ''); sum.id = 'menu-sum';
+    const bar = el('div', 'mo-bar'); const pre = el('div', 'menu-presets'); pre.id = 'menu-presets';
+    const count = el('div', 'mo-count', ''); count.id = 'menu-count';
+    bar.appendChild(pre); bar.appendChild(count);
+    const reason = el('div', 'mo-reason', ''); reason.id = 'menu-reason';
+    const grid = el('div', 'menu-grid'); grid.id = 'menu-grid';
+    const note = el('div', 'menu-note', ''); note.id = 'menu-note';
+    p.appendChild(head); p.appendChild(title); p.appendChild(sum); p.appendChild(bar); p.appendChild(reason); p.appendChild(grid); p.appendChild(note);
+    E['menu-overlay'] = p; E['btn-menu-close'] = x; E['menu-title'] = title; E['menu-sum'] = sum; E['menu-presets'] = pre; E['menu-count'] = count; E['menu-reason'] = reason; E['menu-grid'] = grid; E['menu-note'] = note; return p;
+  }
   function buildChips() {
     const perf = el('div', 'chip hidden', ''); perf.id = 'perf-chip'; const pm = el('div', 'chip hidden', 'Performance mode'); pm.id = 'perfmode-chip';
     const h = el('div', 'hidden'); h.id = 'hint'; const ht = el('span', null, ''); const ha = btn('btn-hint-action', '', 'small hidden', function () { if (hint && hint.action && typeof hint.action.fn === 'function') { hint.action.fn(stateOf()); } hideHint(); }); h.appendChild(ht); h.appendChild(ha);
@@ -749,6 +765,7 @@
       // (4) the map
       if (isBackquote) { toggleDebug(s); return true; }
       if (key === 'Escape') {
+        if (menuEdit) { M.closeMenuEditor(); return true; }   // menu layout pass: Esc closes the Edit menu overlay before anything else
         if (bm.open) { M.closeBuildMenu(); return true; }
         if (mcStep(live, { type: 'key', key: 'Escape', px: lastPx, py: lastPy })) return true;
         if (!E.popover.classList.contains('hidden')) { show(E.popover, false); return true; }
@@ -1036,50 +1053,115 @@
     } catch (e) { uerr('inspect', e); }
   };
   M.closeInspect = function () { closeInspectDom(); if (live.state === 'INSPECTING') mcSet(live, 'IDLE'); };
-  function closeInspectDom() { insp = null; renaming = null; if (focusedInput && focusedInput !== E['title-seed']) focusedInput = null; if (dom()) { show(E.inspect, false); cls(E.hud, 'inspect-open', false); } }
+  function closeInspectDom() { insp = null; renaming = null; if (menuEdit) M.closeMenuEditor(); if (focusedInput && focusedInput !== E['title-seed']) focusedInput = null; if (dom()) { show(E.inspect, false); cls(E.hud, 'inspect-open', false); } }
   function row(k, v, cls_) { const r = el('div', 'row' + (cls_ ? ' ' + cls_ : '')); r.appendChild(el('span', 'k', k)); r.appendChild(el('span', 'v', v)); return r; }
   function action(label, fn, cls_) { return btn(null, label, 'small' + (cls_ ? ' ' + cls_ : ''), function () { const s = stateOf(); const r = fn(s); if (r && r.ok === false && r.reason) M.notify(s, { kind: 'info', text: r.reason, ttl: 4000 }); inspAt = -1e9; }); }
   function stars(n) { n = clamp(fin(n, 0) | 0, 0, 5); return '★★★★★'.slice(0, n) + '☆☆☆☆☆'.slice(0, 5 - n); }
   /** P6: appeal 1–4 as four stars (the mean rounds) */
   function appealStars(n) { n = clamp(Math.round(fin(n, 0)), 0, 4); return '★★★★'.slice(0, n) + '☆☆☆☆'.slice(0, 4 - n); }
-  /** P6: the inspect panel's Menu section for a kitchen: summary line, the three presets, the dish grid (tier colour, cost / prep / appeal chips, click toggles; the cap and the one-dish floor answer with a reason) */
+  /** the preset whose dishes (its first `cap`, any order) are exactly the card, or null */
+  function menuPresetKey(ms) {
+    const presets = (BSU.data && BSU.data.menuPresets) || {}, have = ms.menu.slice().sort().join();
+    for (const key of ['cheap', 'classic', 'chef']) { const pr = presets[key]; if (pr && pr.dishes.slice(0, ms.cap).sort().join() === have) return key; }
+    return null;
+  }
+  /** menu layout pass: the one-line summary the inspect panel and the overlay share — "Serves ~1,200/day · appeal ★★☆☆ · food $78k/mo · Campus Classic" */
+  function menuSummary(s, b, ms) {
+    const presets = (BSU.data && BSU.data.menuPresets) || {}, key = menuPresetKey(ms), food = call('economy', 'foodCostOf', s, b.id) || { total: 0 };
+    const nb = function (t) { return t.replace(/ /g, '\u00a0'); }, segs = ['Serves ~' + ms.throughput.toLocaleString('en-US') + '/day', 'appeal ' + appealStars(ms.meanAppeal), 'food ' + money(food.total) + '/mo', key ? presets[key].name : 'Custom menu'];
+    return segs.map(nb).join('\u00a0· ');   // no-break spaces keep each segment (and its dot) whole when the line wraps
+  }
+  /** P6 + menu layout pass: the inspect panel's Menu section for a kitchen — kicker + "x / cap", the one-line summary, and the Edit menu button (the presets and the dish grid live in the overlay) */
   function menuSection(s, b, ms) {
-    const D = BSU.data || {}, dishes = D.dishes || [], presets = D.menuPresets || {}, PM = (BSU.params.econ && BSU.params.econ.menu) || { hallMax: 10, shackMax: 3 };
     const box = el('div', 'insp-menu'); box.id = 'insp-menu';
-    const food = call('economy', 'foodCostOf', s, b.id) || { total: 0 };
-    const head = el('div', 'menu-head'); head.appendChild(el('span', 'k', 'Menu'));
-    head.appendChild(el('span', 'menu-sum', 'Serves ~' + ms.throughput.toLocaleString('en-US') + ' students/day · appeal ' + appealStars(ms.meanAppeal) + ' · food ' + money(food.total) + '/mo'));
+    const open = !!(menuEdit && menuEdit.id === b.id);
+    const head = el('div', 'menu-head'); const ttl = el('span', 'menu-ttl'); ttl.appendChild(el('span', 'k', 'Menu')); ttl.appendChild(el('span', 'menu-count', ms.menu.length + ' / ' + ms.cap));
+    head.appendChild(ttl);
+    const eb = btn('btn-edit-menu', open ? 'Close editor' : 'Edit menu', 'small primary' + (open ? ' on' : ''), function () { if (menuEdit && menuEdit.id === b.id) M.closeMenuEditor(); else M.openMenuEditor(b.id); });
+    eb.title = 'Pick dishes and presets (Esc closes)'; head.appendChild(eb);
     box.appendChild(head);
-    const pre = el('div', 'menu-presets');
-    for (const key of ['cheap', 'classic', 'chef']) {
+    box.appendChild(el('div', 'menu-sum', menuSummary(s, b, ms)));
+    return box;
+  }
+  /** open the Edit menu overlay for a kitchen (default: the inspected one); false when it has no kitchen / is not built */
+  M.openMenuEditor = function (id) {
+    try {
+      const s = stateOf(); if (!s) return false;
+      const bid = id != null ? fin(id, -1) : (insp && insp.kind === 'building' ? insp.id : -1);
+      const b = bid >= 0 ? call('buildings', 'get', s, bid) : null, ms = b ? call('buildings', 'menuOf', s, bid) : null;
+      if (!b || !ms || b.ruin || b.built < 1) return false;
+      if (!insp || insp.kind !== 'building' || insp.id !== bid) M.inspect(s, { kind: 'building', id: bid });
+      menuEdit = { id: bid }; menuReason = { text: '', until: 0 }; menuSig = ''; fadeAt = -1e9;
+      if (dom()) {
+        if (s.ui && s.ui.panel) M.openPanel(null);
+        if (bm.open) M.closeBuildMenu();
+        cls(E.hud, 'menu-open', true); show(E['menu-overlay'], true); syncMenuOverlay(s); inspAt = -1e9;
+      }
+      return true;
+    } catch (e) { uerr('openMenuEditor', e); return false; }
+  };
+  M.closeMenuEditor = function () {
+    if (!menuEdit) return false;
+    menuEdit = null; menuSig = ''; fadeAt = -1e9; inspAt = -1e9;
+    if (dom()) { show(E['menu-overlay'], false); cls(E.hud, 'menu-open', false); }
+    return true;
+  };
+  M.menuEditorOpen = function () { return !!menuEdit; };
+  /** a refusal's reason (cap, one-dish floor, unknown dish) shows on the overlay's own reason line for 5 s */
+  function menuFlash(text) { menuReason = { text: String(text || ''), until: clock + 5000 }; }
+  /** build or update the overlay in place from the live card: the presets, the dish cells (class / title only; rebuilt only when the shown set changes, so scroll and focus stay), the count, the reason, the note */
+  function syncMenuOverlay(s) {
+    if (!dom() || !menuEdit || !E['menu-overlay']) return;
+    const D = BSU.data || {}, dishes = D.dishes || [], presets = D.menuPresets || {};
+    const b = call('buildings', 'get', s, menuEdit.id), ms = b && !b.ruin && b.built >= 1 ? call('buildings', 'menuOf', s, b.id) : null;
+    if (!b || !ms) { M.closeMenuEditor(); return; }
+    const r = rowOf(b.type) || { name: b.type };
+    setText(E['menu-title'], (b.name || r.name) + ' · Menu'); setText(E['menu-sum'], menuSummary(s, b, ms));
+    // presets (built once)
+    const pre = E['menu-presets'];
+    if (!pre.children.length) for (const key of ['cheap', 'classic', 'chef']) {
       const pr = presets[key]; if (!pr) continue;
-      const on = pr.dishes.slice(0, ms.cap).join() === ms.menu.join();
-      const pb = btn(null, pr.name, 'small preset' + (on ? ' on' : ''), function () { const st = stateOf(); const r = call('buildings', 'applyMenuPreset', st, b.id, key); if (r && r.ok === false && r.reason) M.notify(st, { kind: 'info', text: r.reason, ttl: 4000 }); inspAt = -1e9; });
+      const pb = btn(null, pr.name, 'small preset', function () { const st = stateOf(); if (!menuEdit) return; const rr = call('buildings', 'applyMenuPreset', st, menuEdit.id, key); if (rr && rr.ok === false && rr.reason) menuFlash(rr.reason); inspAt = -1e9; syncMenuOverlay(st); });
       pb.title = pr.blurb || ''; pb.dataset.preset = key; pre.appendChild(pb);
     }
-    box.appendChild(pre);
-    const grid = el('div', 'menu-grid');
-    const order = dishes.slice().sort(function (a, c) { return (ms.specials.indexOf(c.id) >= 0 ? 1 : 0) - (ms.specials.indexOf(a.id) >= 0 ? 1 : 0); });   // the festival special leads the grid while it is on the card
-    for (const d of order) {
-      const listed = ms.menu.indexOf(d.id) >= 0, special = ms.specials.indexOf(d.id) >= 0, inSeason = call('buildings', 'dishActive', s, d.id) !== false;
-      if (d.festival && !listed && !special) continue;   // the festival special shows only while it is on the card
-      const cell = btn(null, null, 'dish tier-' + d.tier + (listed || special ? ' on' : '') + (!inSeason ? ' off-season' : '') + (special ? ' special' : ''), function () {
-        const st = stateOf(); if (special) { M.notify(st, { kind: 'info', text: d.name + ' joins every hall for the festival (free)', ttl: 4000 }); return; }
-        const r = call('buildings', 'toggleDish', st, b.id, d.id); if (r && r.ok === false && r.reason) M.notify(st, { kind: 'info', text: r.reason, ttl: 4000 }); inspAt = -1e9;
-      });
-      cell.dataset.dish = d.id; cell.title = d.text + (d.window ? ' (' + d.window.start + '–' + d.window.end + ')' : '');
-      cell.appendChild(el('span', 'nm', d.name + (special ? ' ✦' : '')));
-      const chips = el('span', 'chips');
-      chips.appendChild(el('span', 'chip-m cost', '$' + (Math.round(d.cost * 100) / 100)));
-      chips.appendChild(el('span', 'chip-m prep', 'prep ' + d.prep));
-      chips.appendChild(el('span', 'chip-m appeal', appealStars(d.appeal)));
-      cell.appendChild(chips);
-      grid.appendChild(cell);
+    const pk = menuPresetKey(ms);
+    for (const pb of pre.children) cls(pb, 'on', pb.dataset.preset === pk);
+    // dish grid
+    const order = dishes.slice().sort(function (a, c) { return (ms.specials.indexOf(c.id) >= 0 ? 1 : 0) - (ms.specials.indexOf(a.id) >= 0 ? 1 : 0); }).filter(function (d) { return !d.festival || ms.menu.indexOf(d.id) >= 0 || ms.specials.indexOf(d.id) >= 0; });   // the festival special leads the grid while it is on the card and shows only then
+    const sig = order.map(function (d) { return d.id; }).join(','), grid = E['menu-grid'];
+    if (sig !== menuSig) {
+      const keep = fin(E['menu-overlay'].scrollTop, 0); menuSig = sig; clear(grid);
+      for (const d of order) {
+        const cell = btn(null, null, 'dish tier-' + d.tier, function () {
+          const st = stateOf(); if (!menuEdit) return; const sp = (call('buildings', 'menuOf', st, menuEdit.id) || { specials: [] }).specials.indexOf(d.id) >= 0;
+          if (sp) menuFlash(d.name + ' joins every hall for the festival (free)');
+          else { const rr = call('buildings', 'toggleDish', st, menuEdit.id, d.id); if (rr && rr.ok === false && rr.reason) menuFlash(rr.reason); else menuReason = { text: '', until: 0 }; }
+          inspAt = -1e9; syncMenuOverlay(st);
+        });
+        cell.dataset.dish = d.id; cell.title = d.text + (d.window ? ' (' + d.window.start + '–' + d.window.end + ')' : '');
+        cell.appendChild(el('span', 'nm', d.name));
+        const chips = el('span', 'chips');
+        chips.appendChild(el('span', 'chip-m cost', '$' + (Math.round(d.cost * 100) / 100)));
+        chips.appendChild(el('span', 'chip-m prep', 'prep ' + d.prep));
+        chips.appendChild(el('span', 'chip-m appeal', '★' + clamp(Math.round(fin(d.appeal, 1)), 1, 4)));   // "★4": narrow enough for four columns
+        cell.appendChild(chips); grid.appendChild(cell);
+      }
+      if (keep > 0) E['menu-overlay'].scrollTop = keep;
     }
-    box.appendChild(grid);
-    const note = ms.menu.length + ' of ' + ms.cap + ' dishes' + (ms.specials.length ? ' · festival special on the card free' : '') + (ms.active.length < ms.menu.length ? ' · ' + (ms.menu.length - ms.active.length) + ' out of season' : '') + ' · prep ' + (Math.round(ms.meanPrep * 10) / 10) + ' → ×' + (Math.round(ms.mult * 100) / 100) + ' throughput · $' + (Math.round(ms.meanCost * 100) / 100) + ' a plate';
-    box.appendChild(el('div', 'menu-note', note));
-    return box;
+    for (const cell of grid.children) {
+      const d = dishes.find(function (x) { return x.id === cell.dataset.dish; }); if (!d) continue;
+      const listed = ms.menu.indexOf(d.id) >= 0, special = ms.specials.indexOf(d.id) >= 0, inSeason = call('buildings', 'dishActive', s, d.id) !== false;
+      const c = 'btn dish tier-' + d.tier + (listed || special ? ' on' : '') + (!inSeason ? ' off-season' : '') + (special ? ' special' : '');
+      if (cell.className !== c) cell.className = c;
+      const nm = cell.children[0]; setText(nm, d.name + (special ? ' ✦' : ''));
+    }
+    // count + inline reason
+    const full = ms.menu.length >= ms.cap;
+    setText(E['menu-count'], ms.menu.length + ' / ' + ms.cap); cls(E['menu-count'], 'full', full);
+    const flash = menuReason.text && clock < menuReason.until;
+    setText(E['menu-reason'], flash ? menuReason.text : full ? 'Menu is full (' + ms.cap + ' of ' + ms.cap + ') — remove a dish to add another' : 'Click a dish to add or remove it · ' + ms.cap + ' at most');
+    cls(E['menu-reason'], 'flash', !!flash); cls(E['menu-reason'], 'full', !flash && full);
+    setText(E['menu-note'], (ms.specials.length ? 'Festival special on the card, free · ' : '') + (ms.active.length < ms.menu.length ? (ms.menu.length - ms.active.length) + ' out of season · ' : '') + 'prep ' + (Math.round(ms.meanPrep * 10) / 10) + ' → ×' + (Math.round(ms.mult * 100) / 100) + ' throughput · $' + (Math.round(ms.meanCost * 100) / 100) + ' a plate');
   }
   function ft(v, d) { return fin(v, 0).toFixed(d == null ? 1 : d) + ' ft'; }
   /** the half-second refresh rebuilds the body; keep the player's scroll position (the P6 Menu grid made a long body common) */
@@ -1095,6 +1177,7 @@
     const body = E['insp-body'], acts = E['insp-actions']; clear(body); clear(acts);
     const spr = E['insp-sprite']; let hasSprite = false;
     const kind = insp.kind;
+    if (menuEdit && !(kind === 'building' && insp.id === menuEdit.id)) M.closeMenuEditor();   // the overlay belongs to the inspected kitchen
     if (kind === 'building') {
       const b = call('buildings', 'get', s, insp.id); if (!b) { closeInspectDom(); return; }
       const r = rowOf(b.type) || { name: b.type, effects: {}, wr: 0, tiers: [] }, ef = r.effects || {}, i0 = b.ty * W + b.tx, tl = s.tiles;
@@ -1104,6 +1187,7 @@
       if (b.ruin) body.appendChild(row('Status', 'Ruin', 'bad')); else if (b.built < 1) body.appendChild(row('Status', 'Under construction ' + Math.round(fin(b.built, 0) * 100) + '%')); else if (b.flooded) body.appendChild(row('Status', 'Flooded', 'bad')); else if (b.blackout) body.appendChild(row('Status', 'Blackout', 'bad')); else if (b.closedUntil >= 0 && b.closedUntil > dayOf(s)) body.appendChild(row('Status', 'Closed · reopens ' + BSU.formatDate(b.closedUntil)));
       else if (call('buildings', 'gatorClosed', s, b.id)) body.appendChild(row('Status', 'Closed · a gator is too close (relocate it)', 'bad'));   // qa pass 4: a gator-closed kitchen served nobody and said nothing
       const ms = ef.feeds ? call('buildings', 'menuOf', s, b.id) : null;   // P6: a kitchen feeds its menu's throughput
+      if (ms && b.built >= 1 && !b.ruin) body.appendChild(menuSection(s, b, ms));   // menu layout pass: first in the body, so the summary and Edit menu never need scrolling to
       if (ef.beds) body.appendChild(row('Beds', String(ef.beds))); if (ef.seats) body.appendChild(row('Seats', String(ef.seats))); if (ef.feeds) body.appendChild(row('Feeds', ms ? '~' + ms.throughput.toLocaleString('en-US') + ' a day (menu)' : String(ef.feeds)));
       if (ef.quality) body.appendChild(row('Quality', stars(ef.quality)));
       body.appendChild(row('Ground', (TILE_NAMES[tl.type[i0]] || '') + ' · ' + ft(tl.elev[i0])));
@@ -1118,7 +1202,6 @@
       if (b.type === 'generator' && b.data) body.appendChild(row('Fuel', fin(b.data.fuelDays, 0) + ' days'));
       const res = (s.agents || []).find(function (a) { return a && a.home === b.id && a.state !== 'GONE'; });
       if (res) { const q = call('agents', 'inspect', s, res.id); if (q && q.quote) body.appendChild(row('A resident', '“' + q.quote + '”', 'quote')); }
-      if (ms && b.built >= 1 && !b.ruin) body.appendChild(menuSection(s, b, ms));
       acts.appendChild(action('Rename', function () { startRename(b); return null; }));
       if (!b.pilings && r.kind === 'footprint' && b.built >= 1 && !b.ruin) acts.appendChild(action('Pilings', function (st) { return call('buildings', 'retrofitPilings', st, b.id, {}); }));
       if (b.hp < 1 && !b.ruin) acts.appendChild(action('Repair', function (st) { return call('buildings', 'repair', st, b.id); }));
@@ -1184,6 +1267,7 @@
       setText(E['insp-title'], insp.kind); setText(E['insp-sub'], '');
     }
     show(spr, hasSprite);
+    if (menuEdit) syncMenuOverlay(s);
   }
   function startRename(b) {
     if (!dom()) return;
@@ -1519,7 +1603,8 @@
   M.openBuildMenu = function (state, opts) {
     try {
       const s = state || stateOf(); if (!s || !s.ui || titleOn || s.setPiece) return; opts = opts || {};
-      if (!visibleTabs(s).length) return;   // tutorial stages 1–3: no tab yet, the objective hands the tool over
+      if (!visibleTabs(s).length) return;
+      if (menuEdit) M.closeMenuEditor();   // tutorial stages 1–3: no tab yet, the objective hands the tool over
       bm.open = true;
       if (opts.focus && rowOf(opts.focus)) { const t = tabFor(s, opts.focus); if (t) setTab(s, t); bm.selected = opts.focus; bm.pulseId = opts.pulse ? opts.focus : null; bm.pulseUntil = clock + 2600; bm.focusUntil = clock + 2600; }
       else if (opts.tab) setTab(s, opts.tab);
@@ -2035,6 +2120,7 @@
     try {
       const s = stateOf(); if (!s || !s.ui) return;
       const prev = s.ui.panel;
+      if (name && menuEdit) M.closeMenuEditor();   // one centred overlay at a time
       if (prev && prev !== name) { const pp = panels[prev]; if (pp && pp.el && dom()) show(pp.el, false); if (pp && typeof pp.close === 'function') { try { pp.close(s); } catch (e) { uerr('panel:close', e); } } if (prev === 'debug' && name !== 'debug') { M.debug.open = false; call('progress', 'debugOpen', s, false); } }
       if (!name) { s.ui.panel = null; if (prev) emit('ui:panel', { panel: null }); return; }
       const p = panels[name]; if (!p) { s.ui.panel = null; M.notify(s, { kind: 'info', text: (PANEL_KEYS[name] || name) + ' panel is not available yet', ttl: 3000 }); return; }
@@ -2052,16 +2138,17 @@
   M.panel = function () { const s = stateOf(); return s && s.ui ? s.ui.panel : null; };
   function refreshPanel(s, name) { const p = panels[name]; if (!p || !p.el) return; p.lastRefresh = clock; try { if (typeof p.refresh === 'function') p.refresh(s, p.el); } catch (e) { uerr('panel:refresh:' + name, e); } }
   /** UI scale pass: a panel wide enough to reach the docked cards (goals tracker, minimap, overlay keys, notifications, voice card) fades just the ones it overlaps, so no half-hidden text peeks out around it */
-  const FADE_IDS = ['objective-card', 'minimap-wrap', 'overlay-buttons', 'notifications', 'voice-card', 'alert-strip', 'issues-tray', 'undo-chip'];   // qa pass 4: the tray sat crisp beside an open panel
+  const FADE_IDS = ['objective-card', 'minimap-wrap', 'overlay-buttons', 'notifications', 'voice-card', 'alert-strip', 'issues-tray', 'undo-chip', 'inspect'];   // 'inspect' fades only under the Edit menu overlay (menu layout pass)   // qa pass 4: the tray sat crisp beside an open panel
   let fadeAt = -1e9;
   function syncPanelFade(s) {
     if (!dom() || clock - fadeAt < 250) return; fadeAt = clock;
     try {
-      const name = s && s.ui ? s.ui.panel : null; const host = name && panels[name] ? panels[name].el : null;
+      const name = s && s.ui ? s.ui.panel : null; let host = name && panels[name] ? panels[name].el : null;
+      if (menuEdit && E['menu-overlay']) host = E['menu-overlay'];
       let p = null; if (host && !host.classList.contains('hidden') && typeof host.getBoundingClientRect === 'function') p = host.getBoundingClientRect();
       for (const id of FADE_IDS) {
         const e = E[id]; if (!e) continue; let over = false;
-        if (p && p.width > 0 && !e.classList.contains('hidden')) { const r = e.getBoundingClientRect(); over = r.width > 0 && r.left < p.right && r.right > p.left && r.top < p.bottom && r.bottom > p.top; }
+        if (p && p.width > 0 && !e.classList.contains('hidden') && (id !== 'inspect' || menuEdit)) { const r = e.getBoundingClientRect(); over = r.width > 0 && r.left < p.right && r.right > p.left && r.top < p.bottom && r.bottom > p.top; }
         cls(e, 'hud-fade', over);
       }
     } catch (e) { /* stub */ }

@@ -119,6 +119,14 @@ ok(U.el['stat-cash-value'].textContent === BSU.formatMoney(s.economy.cash) || /^
 ok(/Y1/.test(U.el['stat-date-text'].textContent), 'date text: ' + U.el['stat-date-text'].textContent);
 ok(U.el['sky-glyph'].textContent.length > 0, 'sky glyph set');
 const M0 = { ctrl: false, shift: false, meta: false, alt: false };
+// --- menu layout pass: the CSS the Edit menu overlay and the inspect body rely on ---------------------------------------
+{
+  const cssM = css.slice(css.indexOf('/* menu (P6)'));
+  ok(/#panels #menu-overlay\{[^}]*width:64rem/.test(cssM), 'the Edit menu overlay is a 64-rem panel in the centring #panels host');
+  ok(/\.menu-grid\{[^}]*grid-template-columns:repeat\(auto-fill,minmax\(13\.\d+rem,1fr\)\)/.test(cssM), 'the dish grid packs 3-4 columns (auto-fill, 13.x-rem minimum)');
+  ok(/\.btn\.dish\.tier-cheap\{[^}]*\}[^]*tier-standard[^]*tier-premium/.test(cssM) && /\.mo-reason\.flash\{/.test(cssM) && /\.mo-count\.full\{/.test(cssM), 'tier colours, the inline reason and the full count are styled');
+  ok(/#insp-body\{[^}]*flex:1 1 0[^}]*min-height:0[^}]*overflow-y:auto/.test(css) && /#inspect\{[^}]*top:calc\(var\(--topbar-h\) \+ 1\.6rem\);bottom:var\(--bot\)/.test(css), 'the inspect body takes the panel height left after the head and actions (panel pinned between the top bar and the palette) and scrolls only past it');
+}
 // --- UX pass: goals tracker, needs strip, build menu, coach helpers ----------------------
 for (const id of ['issues-tray', 'issues-head', 'issues-count', 'issues-spot', 'issues-list', 'issues-more', 'needs-locate']) ok(U.el[id] && U.el[id].id === id, 'issue spotlight skeleton #' + id);   // issue spotlight pass: the Issues tray under the minimap + the needs-strip Locate
 ok(/#issues-tray\{position:absolute;right:var\(--side\)/.test(css) && /\.issue-row\{display:grid/.test(css) && /#hud\.inspect-open #issues-tray/.test(css), 'tray CSS docked right, shifts with inspect');
@@ -216,7 +224,7 @@ if (spot) {
   ok(U.el['insp-actions'].children.length >= 2, 'inspect actions present');
   U.closeInspect(); ok(U.state === 'IDLE' && U.el.inspect.classList.contains('hidden'), 'closeInspect');
 } else ok(false, 'findSpot(dorm) returned null');
-// --- PLAN_V2 P6: the inspect panel's Menu section for a kitchen ------------------------------------------------------
+// --- PLAN_V2 P6 + menu layout pass: the inspect panel's Menu summary and the Edit menu overlay ----------------------
 {
   const sp = BSU.headless.findSpot('dining_hall');
   if (sp) {
@@ -224,33 +232,76 @@ if (spot) {
     const pr = BSU.headless.place('dining_hall', sp.x, sp.y);
     const hall = BSU.buildings.list(s, 'dining_hall').slice(-1)[0];
     ok(pr && pr.ok && hall, 'a dining hall for the menu test (' + (pr && pr.reason) + ')');
+    const nb = (t) => String(t).replace(/ /g, ' ');
+    const U_ = U.el, ov = U_['menu-overlay'];
+    ok(!!ov && ov.classList.contains('panel') && ov.classList.contains('hidden') && !U.menuEditorOpen() && ['btn-menu-close', 'menu-title', 'menu-sum', 'menu-presets', 'menu-count', 'menu-reason', 'menu-grid', 'menu-note'].every((id) => U_[id] && U_[id].id === id), 'the Edit menu overlay skeleton exists and starts closed');
+    // a hall still under construction has no Menu section and cannot open the editor
+    hall.built = 0.4; U.inspect(s, { kind: 'building', id: hall.id });
+    ok(!U_['insp-body'].children.some((c) => c.id === 'insp-menu') && U.openMenuEditor(hall.id) === false && !U.menuEditorOpen(), 'an unfinished hall shows no Menu section and the editor refuses');
     hall.built = 1; s.tick += 3;
-    const openOn = () => { U.inspect(s, { kind: 'building', id: hall.id }); return U.el['insp-body'].children.find((c) => c.id === 'insp-menu'); };
+    const openOn = () => { U.inspect(s, { kind: 'building', id: hall.id }); return U_['insp-body'].children.find((c) => c.id === 'insp-menu'); };
     let menu = openOn();
-    ok(!!menu && menu.classList.contains('insp-menu'), 'a complete hall shows the Menu section');
-    ok(U.el['insp-body'].children.some((c) => c.children[0] && c.children[0].textContent === 'Feeds' && /^~1,200 a day \(menu\)$/.test(c.children[1].textContent)), 'the Feeds row reads the menu throughput');
-    const sum = () => menu.children[0].children[1].textContent;
-    ok(/^Serves ~1,200 students\/day · appeal ★★☆☆ · food \$[\d,.kM]+\/mo$/.test(sum()), 'summary line: ' + sum());
-    const presets = () => menu.children[1].children, cells = () => menu.children[2].children;
-    ok(presets().length === 3 && presets().map((p) => p.textContent).join('|') === "Cheap & Fast|Campus Classic|Chef's Table" && presets().find((p) => p.dataset.preset === 'classic').classList.contains('on'), 'three presets, Campus Classic lit');
-    ok(cells().length === 23 && cells().filter((c) => c.classList.contains('on')).length === 10 && cells().every((c) => /tier-(cheap|standard|premium)/.test(c.className) && c.children[1].children.length === 3), '23 dish cells (the festival special stays off the grid out of its window), 10 on, tier colour + 3 chips each');
-    ok(/of 10 dishes/.test(menu.children[3].textContent) && /×1 throughput/.test(menu.children[3].textContent), 'note line: ' + menu.children[3].textContent);
+    ok(!!menu && menu.classList.contains('insp-menu') && U_['insp-body'].children[0] === menu, 'a complete hall shows the Menu section first in the body');
+    ok(U_['insp-body'].children.some((c) => c.children[0] && c.children[0].textContent === 'Feeds' && /^~1,200 a day \(menu\)$/.test(c.children[1].textContent)), 'the Feeds row reads the menu throughput');
+    const sum = () => nb(menu.children[1].textContent), editBtn = () => menu.children[0].children[1];
+    ok(/^Serves ~1,200\/day · appeal ★★☆☆ · food \$[\d,.kM]+\/mo · Campus Classic$/.test(sum()), 'summary line: ' + sum());
+    ok(editBtn().id === 'btn-edit-menu' && editBtn().textContent === 'Edit menu' && menu.children[0].children[0].children[1].textContent === '10 / 10', 'Edit menu button + the 10 / 10 count in the head');
+    ok(menu.children.length === 2 && !U_['insp-body'].children.some((c) => c.classList && c.classList.contains('menu-grid')), 'the dish grid is not in the inspect body any more (summary + button only)');
+    // open the overlay
+    editBtn().dispatchEvent({ type: 'click' });
+    ok(U.menuEditorOpen() && !ov.classList.contains('hidden') && U_.hud.classList.contains('menu-open') && /Menu$/.test(U_['menu-title'].textContent), 'Edit menu opens the overlay (' + U_['menu-title'].textContent + ')');
+    ok(nb(U_['menu-sum'].textContent) === sum(), 'the overlay carries the same live summary line');
+    const presets = () => U_['menu-presets'].children, cells = () => U_['menu-grid'].children, on = () => cells().filter((c) => c.classList.contains('on'));
+    const dishes = BSU.data.dishes.filter((d) => !d.festival);
+    ok(presets().length === 3 && presets().map((p) => p.textContent).join('|') === "Cheap & Fast|Campus Classic|Chef's Table" && presets().find((p) => p.dataset.preset === 'classic').classList.contains('on'), 'overlay: three presets, Campus Classic lit');
+    ok(cells().length === dishes.length && cells().length === 23 && dishes.every((d) => cells().some((c) => c.dataset.dish === d.id)), 'the grid shows every dish (23; the festival special stays off out of its window)');
+    ok(on().length === 10 && cells().every((c) => /tier-(cheap|standard|premium)/.test(c.className) && c.children[1].children.length === 3 && /^\$/.test(c.children[1].children[0].textContent) && /^prep \d$/.test(c.children[1].children[1].textContent) && /^★\d$/.test(c.children[1].children[2].textContent)), '10 on; tier colour + cost / prep / appeal chips on every cell');
+    ok(U_['menu-count'].textContent === '10 / 10' && U_['menu-count'].classList.contains('full') && /Menu is full \(10 of 10\)/.test(U_['menu-reason'].textContent), 'count "10 / 10" and the full-card reason inline: ' + U_['menu-reason'].textContent);
+    ok(/×1 throughput/.test(U_['menu-note'].textContent) && /a plate/.test(U_['menu-note'].textContent), 'note line: ' + U_['menu-note'].textContent);
+    // cells are updated in place across the half-second refresh (focus / scroll survive)
+    const keepCell = cells()[3], keepScroll = (ov.scrollTop = 77);
+    U_['insp-body'].scrollTop = 33; U.update(s, 600);
+    ok(cells()[3] === keepCell && cells().length === 23 && ov.scrollTop === keepScroll && !ov.classList.contains('hidden'), 'a refresh keeps the same cells, the overlay open and its scroll');
+    menu = openOn(); ok(U.menuEditorOpen() && menu.children[0].children[1].textContent === 'Close editor', 'the section knows the editor is open ("Close editor")');
     presets().find((p) => p.dataset.preset === 'chef').dispatchEvent({ type: 'click' });
-    menu = openOn();
-    ok(/^Serves ~800 students\/day · appeal ★★★★/.test(sum()) && presets().find((p) => p.dataset.preset === 'chef').classList.contains('on') && cells().filter((c) => c.classList.contains('on')).length === 7, "Chef's Table: 800 a day, four stars, 7 dishes on");
+    ok(/^Serves ~800\/day · appeal ★★★★/.test(nb(U_['menu-sum'].textContent)) && presets().find((p) => p.dataset.preset === 'chef').classList.contains('on') && on().length === 7 && U_['menu-count'].textContent === '7 / 10' && !U_['menu-count'].classList.contains('full'), "Chef's Table: 800 a day, four stars, 7 dishes on, 7 / 10");
+    menu = openOn(); ok(/^Serves ~800\/day · appeal ★★★★ · food \$[\d,.kM]+\/mo · Chef's Table$/.test(sum()), 'the inspect summary follows: ' + sum());
     presets().find((p) => p.dataset.preset === 'cheap').dispatchEvent({ type: 'click' });
-    menu = openOn();
-    ok(/^Serves ~2,400 students\/day · appeal ★☆☆☆/.test(sum()) && cells().filter((c) => c.classList.contains('on')).length === 8, 'Cheap & Fast: 2,400 a day, one star, 8 dishes on');
-    // fill to the cap through the grid, then the eleventh answers with a reason
+    ok(/^Serves ~2,400\/day · appeal ★☆☆☆/.test(nb(U_['menu-sum'].textContent)) && on().length === 8 && /Cheap & Fast$/.test(nb(U_['menu-sum'].textContent)), 'Cheap & Fast: 2,400 a day, one star, 8 dishes on');
+    // fill to the cap through the grid, then the eleventh answers with a reason on the overlay's own line
     const off = () => cells().filter((c) => !c.classList.contains('on'));
-    const two = off().slice(0, 2); two[0].dispatchEvent({ type: 'click' }); two[1].dispatchEvent({ type: 'click' }); menu = openOn();
-    ok(hall.data.menu.length === 10 && cells().filter((c) => c.classList.contains('on')).length === 10, 'two clicks add two dishes → 10');
-    const n0 = U.el.notifications.children.length;
-    off()[0].dispatchEvent({ type: 'click' }); U.update(s, 16);
-    ok(hall.data.menu.length === 10 && U.el.notifications.children.length > n0 && U.el.notifications.children.some((c) => c.children.some((x) => /A hall lists 10 dishes at most/.test(x.textContent))), 'the eleventh dish is refused with a notification');
-    cells().find((c) => c.classList.contains('on')).dispatchEvent({ type: 'click' }); menu = openOn();
-    ok(hall.data.menu.length === 9, 'clicking a listed dish removes it');
+    const two = off().slice(0, 2); two[0].dispatchEvent({ type: 'click' }); two[1].dispatchEvent({ type: 'click' });
+    ok(hall.data.menu.length === 10 && on().length === 10 && /Custom menu$/.test(nb(U_['menu-sum'].textContent)), 'two clicks add two dishes → 10, "Custom menu"');
+    const n0 = U_.notifications.children.length;
+    off()[0].dispatchEvent({ type: 'click' });
+    ok(hall.data.menu.length === 10 && /A hall lists 10 dishes at most/.test(U_['menu-reason'].textContent) && U_['menu-reason'].classList.contains('flash') && U_.notifications.children.length === n0, 'the eleventh dish is refused with the cap reason inline: ' + U_['menu-reason'].textContent);
+    on()[0].dispatchEvent({ type: 'click' });
+    ok(hall.data.menu.length === 9 && !U_['menu-reason'].classList.contains('flash') && U_['menu-count'].textContent === '9 / 10', 'clicking a listed dish removes it (9 / 10, the refusal clears)');
+    // the one-dish floor answers inline too
+    BSU.buildings.setMenu(s, hall.id, [hall.data.menu[0]]); U.update(s, 600);
+    ok(on().length === 1, 'one dish left on the card'); on()[0].dispatchEvent({ type: 'click' });
+    ok(hall.data.menu.length === 1 && /Keep at least one dish/.test(U_['menu-reason'].textContent), 'the last dish stays: ' + U_['menu-reason'].textContent);
+    // Esc peels the overlay first, then the inspect panel; the ✕ closes it too
+    presets().find((p) => p.dataset.preset === 'classic').dispatchEvent({ type: 'click' });
+    ok(U.keydown('Escape', M0) === true && !U.menuEditorOpen() && ov.classList.contains('hidden') && !U_.hud.classList.contains('menu-open') && !U_.inspect.classList.contains('hidden') && U.state === 'INSPECTING', 'Esc #1 closes the Edit menu overlay and leaves the inspect panel');
+    ok(U.keydown('Escape', M0) === true && U_.inspect.classList.contains('hidden') && U.state === 'IDLE', 'Esc #2 closes the inspect panel');
+    openOn(); U.openMenuEditor(); ok(U.menuEditorOpen(), 'openMenuEditor() opens the inspected kitchen');
+    U_['btn-menu-close'].dispatchEvent({ type: 'click' }); ok(!U.menuEditorOpen() && ov.classList.contains('hidden'), 'the ✕ button closes it');
+    U.openMenuEditor(hall.id); ok(U.menuEditorOpen(), 'open again by id');
+    U.inspect(s, { kind: 'tile', i: 5 * 64 + 5 }); ok(!U.menuEditorOpen() && ov.classList.contains('hidden'), 'inspecting something else closes the overlay');
+    U.openPanel('budget'); U.openMenuEditor(hall.id); ok(U.menuEditorOpen() && s.ui.panel === null, 'opening the editor closes an open panel'); U.openPanel('budget'); ok(!U.menuEditorOpen() && s.ui.panel === 'budget', 'opening a panel closes the editor'); U.openPanel(null);
     U.closeInspect();
+    // a Po'boy Shack: cap 3, its own reason
+    const sp2 = BSU.headless.findSpot('poboy');
+    if (sp2) {
+      BSU.headless.place('poboy', sp2.x, sp2.y); const shack = BSU.buildings.list(s, 'poboy').slice(-1)[0]; shack.built = 1; s.tick += 3;
+      U.inspect(s, { kind: 'building', id: shack.id }); U.openMenuEditor(shack.id);
+      const offs = cells().filter((c) => !c.classList.contains('on'));
+      ok(U.menuEditorOpen() && /^3 \/ 3$/.test(U_['menu-count'].textContent) && on().length === 3, 'a shack opens its editor at 3 / 3 (' + U_['menu-count'].textContent + ')');
+      offs[0].dispatchEvent({ type: 'click' });
+      ok(shack.data.menu.length === 3 && /A shack lists 3 dishes at most/.test(U_['menu-reason'].textContent), 'the shack cap reason: ' + U_['menu-reason'].textContent);
+      U.closeInspect(); ok(!U.menuEditorOpen(), 'closing the inspect closes the editor');
+    } else ok(false, 'findSpot(poboy) returned null');
   } else ok(false, 'findSpot(dining_hall) returned null');
 }
 // drag a path run through the machine
