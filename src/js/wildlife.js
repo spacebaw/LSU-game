@@ -147,6 +147,21 @@
     if (!Array.isArray(wl.officers)) wl.officers = [];
     if (!Array.isArray(wl.incidents)) wl.incidents = [];
     if (!Array.isArray(state.gators)) state.gators = [];
+    if (!Array.isArray(wl.callOuts)) wl.callOuts = [];          // gator pass: pending Parish Wildlife call-outs {gatorId, day (arrival), fee}
+    if (!Array.isArray(wl.pressRestore)) wl.pressRestore = [];  // gator pass: bad-press prestige dips to give back {day, amount}
+    for (let k = 0; k < state.gators.length; k++) ensureGatorKeys(state.gators[k]);
+  }
+  /** gator pass: per-visit bookkeeping on the gator struct (all finite; a pre-pass save gets them lazily). */
+  function ensureGatorKeys(g) {
+    if (!g) return;
+    if (!isNum(g.visitDay)) g.visitDay = -1;          // day the gator stepped onto campus (−1 off campus)
+    if (!isNum(g.delayed)) g.delayed = 0;             // students delayed (fled / rerouted) since Dawn (agent:flee)
+    if (!isNum(g.delayedVisit)) g.delayedVisit = 0;   // … over the whole campus visit
+    if (!isNum(g.cost)) g.cost = 0;                   // $ this visit has cost (mischief, tailgate refunds, the call-out fee)
+    if (!isNum(g.badPressDay)) g.badPressDay = -1;    // day the bad-press prestige dip was applied (−1 none)
+    if (!isNum(g.blocked)) g.blocked = 0;             // escalation bits already raised this visit: 1 path, 2 building closed, 4 game day
+    if (!isNum(g.closes)) g.closes = -1;              // id of the kitchen / pool this gator keeps closed (−1 none)
+    if (typeof g.onPath !== 'boolean') g.onPath = false;   // standing on or beside a path / road / boardwalk tile
   }
 
   // ---------------------------------------------------------------------------
@@ -326,7 +341,8 @@
       tx: (i & 63) + 0.5, ty: (i >> 6) + 0.5, px: 0, py: 0, dir: 0,
       state: 'SUN', size: size || (R.chance(PG.bigShare) ? 'big' : 'juvenile'),
       den: nearestDen(state, i), target: -1, route: [], ri: 0, lounge: 0,
-      onCampus: false, lastIncidentDay: -1, tag: 0
+      onCampus: false, lastIncidentDay: -1, tag: 0,
+      visitDay: -1, delayed: 0, delayedVisit: 0, cost: 0, badPressDay: -1, blocked: 0, closes: -1, onPath: false   // gator pass (ensureGatorKeys)
     };
     g.px = g.tx; g.py = g.ty;
     return g;
@@ -557,14 +573,133 @@
     const on = campusOf(state)[i] === 1;
     if (on !== g.onCampus) {
       g.onCampus = on; g.tag = PG.tagTicks;
+      if (on) { g.visitDay = day; g.delayed = 0; g.delayedVisit = 0; g.cost = 0; g.badPressDay = -1; g.blocked = 0; g.closes = -1; if (g.lastIncidentDay !== day) sighting(state, g, i); }   // one sighting line per gator per day (a gator on the mask edge can flip in and out)
+      else { g.visitDay = -1; g.closes = -1; g.onPath = false; }
       emit(BSU.EV.GATOR_CAMPUS, { id: g.id, name: g.name, i: i, enter: on, target: g.target });
     }
+    if (on) watchGator(state, g, i);
     if (on && g.lastIncidentDay !== day) {
       g.lastIncidentDay = day;
       const wl = state.wildlife;
-      wl.incidents.push({ day: day, gatorId: g.id, tile: i });
-      emit(BSU.EV.GATOR_INCIDENT, { id: g.id, name: g.name, i: i, kind: incidentKind(state, i) });
+      const kind = incidentKind(state, i);
+      const row = { day: day, gatorId: g.id, tile: i };
+      mischief(state, g, row, day);
+      wl.incidents.push(row);
+      emit(BSU.EV.GATOR_INCIDENT, { id: g.id, name: g.name, i: i, kind: kind });
+      if (kind === 'field' && state.sports && state.sports.game) gameDayDelay(state, g, i);
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // gator pass: consequences that are real and legible (Josh: "why does a gator on campus matter?")
+  // ---------------------------------------------------------------------------
+  const CLOSABLE = { dining_hall: 'dining hall', poboy: "po'boy shack", rec_center: 'pool' };   // buildings.gatorClosed shuts these within closeRadius
+  function ticker(state, text, kind, i) { const Pr = dep('progress'); const tk = fn(Pr, 'ticker'); if (tk) tk(state, text, null, kind || 'wildlife', isNum(i) ? i : undefined); }
+  function bump(state, stat, delta, why) {
+    const Ec = dep('economy'); const f = fn(Ec, 'bump');
+    if (f) f(state, stat, delta, why); else if (state.economy && isNum(state.economy[stat])) state.economy[stat] += delta;
+  }
+  /** charges a gator's bill (ledger 'misc', forced: a reimbursement is not optional) and remembers it on the gator */
+  function chargeGator(state, g, amount, note) {
+    if (!(amount > 0)) return;
+    const Ec = dep('economy'); const f = fn(Ec, 'charge');
+    if (f) f(state, amount, 'misc', { note: 'gator:' + note, force: true, i: gatorTile(g) }); else if (state.economy && isNum(state.economy.cash)) state.economy.cash -= amount;
+    g.cost += amount;
+  }
+  /** nearest complete building within 3 of a tile → {id, name} (sightings, the inspect line) */
+  function nearBuilding(state, i) {
+    const tx = i & 63, ty = i >> 6, owner = state.tiles.owner, blds = state.buildings || [];
+    let best = null, bd = 99;
+    for (let y = Math.max(0, ty - 3); y <= Math.min(H - 1, ty + 3); y++) for (let x = Math.max(0, tx - 3); x <= Math.min(W - 1, tx + 3); x++) {
+      const o = owner[y * W + x]; if (o < 0 || !blds[o] || !isComplete(blds[o])) continue;
+      const d = BSU.chebyshev(tx, ty, x, y); if (d < bd) { bd = d; best = blds[o]; }
+    }
+    return best ? { id: best.id, name: best.name || best.type } : null;
+  }
+  /** routine sighting → the ticker only (the ui's chip and notifications decide on their own what deserves attention) */
+  function sighting(state, g, i) {
+    const nb = nearBuilding(state, i);
+    ticker(state, g.name + ' spotted ' + (nb ? 'near ' + nb.name : 'on the bank') + '.', 'wildlife', i);
+  }
+  /** every 10 ticks per on-campus gator: is it on / beside a path, which kitchen or pool it closes, and the escalations (gator:blocked once per kind per visit) */
+  function watchGator(state, g, i) {
+    if ((((state.tick | 0) + g.id) % 10) !== 0) return;
+    const tx = i & 63, ty = i >> 6, surf = state.tiles.surface, owner = state.tiles.owner, blds = state.buildings || [], r = PG.closeRadius;
+    let onPath = false, closes = -1, bd = 99;
+    for (let y = Math.max(0, ty - r); y <= Math.min(H - 1, ty + r); y++) for (let x = Math.max(0, tx - r); x <= Math.min(W - 1, tx + r); x++) {
+      const j = y * W + x, d = BSU.chebyshev(tx, ty, x, y);
+      if (d <= 1 && surf[j] >= SURF.PATH && surf[j] !== SURF.FENCE) onPath = true;
+      const o = owner[j]; if (o < 0 || !blds[o] || !CLOSABLE[blds[o].type] || !isComplete(blds[o])) continue;
+      if (d < bd) { bd = d; closes = blds[o].id; }
+    }
+    g.onPath = onPath; g.closes = closes;
+    if (onPath && g.delayed >= PG.blockTraffic && !(g.blocked & 1)) { g.blocked |= 1; emit(BSU.EV.GATOR_BLOCKED, { id: g.id, name: g.name, i: i, what: 'path', delayed: g.delayed }); }
+    if (closes >= 0 && !(g.blocked & 2)) { g.blocked |= 2; const b = blds[closes]; emit(BSU.EV.GATOR_BLOCKED, { id: g.id, name: g.name, i: i, what: 'closed', buildingId: closes, building: (b && (b.name || b.type)) || '', kind: CLOSABLE[b ? b.type : ''] || 'building' }); }
+  }
+  /** comic incident with a small bill on some campus days (a hash, not an rng draw: the sim stream stays as it was; selfTest 9 counts rows) */
+  function mischief(state, g, row, day) {
+    if (!(state.economy && isNum(state.economy.students) && state.economy.students > 0)) return;   // nobody to rob on an empty campus
+    if (((g.id * 7919 + day * 104729) % 1000) / 1000 >= PG.mischiefChance) return;
+    const bike = ((g.id + day) & 1) === 1, cost = bike ? PG.bikeCost : PG.backpackCost;
+    row.kind = bike ? 'bike' : 'backpack'; row.cost = cost;
+    chargeGator(state, g, cost, row.kind);
+    const nb = nearBuilding(state, row.tile);
+    ticker(state, bike ? g.name + ' eats a bicycle' + (nb ? ' outside ' + nb.name : '') + '. Replacement ' + BSU.formatMoney(cost) + '.'
+      : g.name + ' makes off with a backpack' + (nb ? ' at ' + nb.name : '') + '. Reimbursed ' + BSU.formatMoney(cost) + '.', 'money', row.tile);
+  }
+  /** game day: a gator on the field delays kickoff (the 'sunbather' event in progress) and refunds part of the tailgate take */
+  function gameDayDelay(state, g, i) {
+    if (g.blocked & 4) return; g.blocked |= 4;
+    const game = state.sports.game, PS = BSU.params.sports || {};
+    const take = Math.max(isNum(game.tailgate) ? game.tailgate : 0, (isNum(PS.tailgatePer) ? PS.tailgatePer : 3) * (isNum(game.attendance) ? game.attendance : 0));
+    const loss = Math.max(PG.gameDayMinLoss, Math.round(take * PG.gameDayTailgateLoss));
+    chargeGator(state, g, loss, 'kickoff');
+    ticker(state, 'Kickoff delayed: ' + g.name + ' is sunning on the 50-yard line. Tailgate refunds ' + BSU.formatMoney(loss) + '.', 'event', i);
+    emit(BSU.EV.GATOR_BLOCKED, { id: g.id, name: g.name, i: i, what: 'game', cost: loss });
+  }
+  /** daily: Parish trucks that arrive, bad press after badPressDays unaddressed, prestige given back after the week */
+  function gatorDaily(state, day) {
+    const wl = state.wildlife, gs = state.gators;
+    for (let k = wl.callOuts.length - 1; k >= 0; k--) {
+      const c = wl.callOuts[k];
+      if (!c || !isNum(c.day)) { wl.callOuts.splice(k, 1); continue; }
+      if (c.day > day) continue;
+      wl.callOuts.splice(k, 1);
+      const g = findGator(state, c.gatorId);
+      if (g) { ticker(state, 'Parish Wildlife relocates ' + g.name + '.', 'wildlife', gatorTile(g)); relocate(state, g.id, false); }
+      emit(BSU.EV.GATOR_CALLOUT, { id: c.gatorId, name: g ? g.name : '', arrived: true, fee: isNum(c.fee) ? c.fee : 0 });
+    }
+    for (let k = 0; k < gs.length; k++) {
+      const g = gs[k];
+      if (!g.onCampus || g.visitDay < 0 || g.badPressDay >= 0 || day - g.visitDay <= PG.badPressDays) continue;
+      g.badPressDay = day;
+      bump(state, 'prestige', -PG.badPressPrestige, 'gatorPress');
+      wl.pressRestore.push({ day: day + PG.badPressWeek, amount: PG.badPressPrestige });
+      ticker(state, 'Bad press: ' + g.name + ' has had the run of campus for ' + (day - g.visitDay) + ' days. Prestige −' + PG.badPressPrestige + ' for a week.', 'danger', gatorTile(g));
+    }
+    for (let k = wl.pressRestore.length - 1; k >= 0; k--) {
+      const r = wl.pressRestore[k];
+      if (r && isNum(r.day) && r.day > day) continue;
+      wl.pressRestore.splice(k, 1);
+      if (r && isNum(r.amount)) bump(state, 'prestige', r.amount, 'gatorPress');
+    }
+  }
+  /** agent:flee → one more student delayed by that gator (since Dawn, and over the visit while it is on campus) */
+  function noteDelay(state, gatorId, n) {
+    const g = findGator(state, gatorId); if (!g) return;
+    ensureGatorKeys(g);
+    const k = isNum(n) ? n : 1;
+    g.delayed += k; if (g.onCampus) g.delayedVisit += k;
+  }
+  /** a complete Wildlife Officer Post within officerRadius of the gator → the officer wrangles for free */
+  function postInRange(state, g) {
+    const i = gatorTile(g), tx = i & 63, ty = i >> 6, os = state.wildlife.officers || [], blds = state.buildings || [];
+    for (let k = 0; k < os.length; k++) {
+      const o = os[k], b = blds[o.post];
+      if (!b || !isComplete(b)) continue;
+      if (BSU.chebyshev(tx, ty, b.tx, b.ty) <= PG.officerRadius) return o;
+    }
+    return null;
   }
   /** 'pool' | 'field' | 'dumpster' | 'building' | 'tile' (brief §4; pool = within 1 of a Rec Center, decision). */
   function incidentKind(state, i) {
@@ -588,6 +723,7 @@
   function onPhaseChange(state, phase) {
     const retreating = stormRetreat(state);
     const gs = state.gators;
+    if (phase === SKY.DAWN) for (let k = 0; k < gs.length; k++) gs[k].delayed = 0;   // gator pass: "students delayed" counts per sky cycle (Dawn → Dawn)
     if (phase === SKY.DAY) {
       for (let k = 0; k < gs.length; k++) {
         const g = gs[k];
@@ -1168,6 +1304,7 @@
     for (let k = 0; k < gs.length; k++) { const g = gs[k]; if (!isNum(g.den) || g.den < 0 || g.den >= N || !isWaterType(type[g.den])) g.den = nearestDen(state, gatorTile(g)); }
     topUp(state);
     waveStep(state, day);
+    gatorDaily(state, day);
     // incidents: keep the last 10 days
     const inc = state.wildlife.incidents;
     for (let k = inc.length - 1; k >= 0; k--) if (!inc[k] || !isNum(inc[k].day) || inc[k].day <= day - PG.incidentDays) inc.splice(k, 1);
@@ -1195,6 +1332,7 @@
     on(BSU.EV.FESTIVAL_START, (p) => { if (p.id === 'mardiGras') { const s = BSU.state || state; trashUntilDay = s ? dayOf(s, PG.trashDays[1]) : -1; } });
     on(BSU.EV.FESTIVAL_END, (p) => { if (p.id === 'mardiGras') { /* trash lingers until Feb 10 by rule */ } });
     on(BSU.EV.GAME_KICKOFF, () => { const s = BSU.state || state; gameDay = s ? today(s) : -1; });
+    on(BSU.EV.AGENT_FLEE, (p) => { const s = BSU.state || state; if (s && s.gators) noteDelay(s, p.gatorId, 1); });   // gator pass: students delayed per gator
   });
 
   M.reset = safe('reset', function (state, fresh) {
@@ -1339,14 +1477,65 @@
     if (Math.abs(target - prev) >= 1) emit(BSU.EV.ECOLOGY_CHANGED, { value: target, prev: prev });
     birdsStep(state);
   });
-  /** min(15, 3 × incidents in the last 10 days) — economy's `gator` happiness term. */
+  /** economy's `gator` happiness term: min(15, 3 × incidents in the last 10 days) + the students-delayed term (≤ delayHappinessCap) + the closure term (≤ closureCap). */
   M.gatorPenalty = safe('gatorPenalty', function (state) {
     if (!state || !state.wildlife || !Array.isArray(state.wildlife.incidents)) return 0;
-    const day = today(state); let n = 0;
+    const day = today(state); let n = 0, delayed = 0, closed = 0;
     const inc = state.wildlife.incidents;
     for (let k = 0; k < inc.length; k++) if (inc[k] && isNum(inc[k].day) && inc[k].day > day - PG.incidentDays) n++;
-    return Math.min(PG.incidentCap, PG.incidentPenalty * n);
+    const gs = state.gators || [];
+    for (let k = 0; k < gs.length; k++) { const g = gs[k]; if (!g) continue; if (isNum(g.delayed)) delayed += g.delayed; if (isNum(g.closes) && g.closes >= 0 && g.onCampus) closed++; }
+    return Math.min(PG.incidentCap, PG.incidentPenalty * n) + Math.min(PG.delayHappinessCap, PG.delayHappinessPer * delayed) + Math.min(PG.closureCap, PG.closurePenalty * closed);
   }, 0);
+  /** gator pass: Σ students delayed by gators since Dawn (agent:flee, one per student per flee) */
+  M.delayedToday = safe('delayedToday', function (state) { let n = 0; const gs = (state && state.gators) || []; for (let k = 0; k < gs.length; k++) if (gs[k] && isNum(gs[k].delayed)) n += gs[k].delayed; return n; }, 0);
+  /** gator pass: the class-attendance dent economy subtracts at Dusk: min(delayAttendanceCap, delayAttendancePer × delayedToday) */
+  M.attendanceDent = safe('attendanceDent', function (state) { return Math.min(PG.delayAttendanceCap, PG.delayAttendancePer * M.delayedToday(state)); }, 0);
+  /** gator pass: the on-campus gator keeping this kitchen / pool closed, or null */
+  M.closedBy = safe('closedBy', function (state, buildingId) { const gs = (state && state.gators) || []; for (let k = 0; k < gs.length; k++) { const g = gs[k]; if (g && g.onCampus && g.closes === buildingId) return g; } return null; }, null);
+  /** gator pass: test / agents hook — n more students delayed by gator `gatorId` */
+  M.noteDelay = safe('noteDelay', function (state, gatorId, n) { if (state && state.gators) noteDelay(state, gatorId, n); });
+  /** gator pass: true when a complete Wildlife Officer Post is within officerRadius of the gator (relocation is free) */
+  M.canWrangle = safe('canWrangle', function (state, gatorId) { const g = state && findGator(state, gatorId); return !!(g && postInRange(state, g)); }, false);
+  /** gator pass: the pending Parish Wildlife call-out for a gator ({gatorId, day, fee}) or null */
+  M.callOutPending = safe('callOutPending', function (state, gatorId) { ensureKeys(state); const cs = state.wildlife.callOuts; for (let k = 0; k < cs.length; k++) if (cs[k] && cs[k].gatorId === gatorId) return cs[k]; return null; }, null);
+  /** gator pass: the one-click Fix. Free when a Wildlife Officer Post is in range (the officer is sent now), else a Parish Wildlife call-out:
+   *  callOutFee charged now, the truck relocates the gator callOutDays later (gator:callout). → {ok, free?, fee?, arrivalDay?, reason?} */
+  M.callOut = safe('callOut', function (state, gatorId) {
+    heal(state); ensureKeys(state);
+    const g = findGator(state, gatorId);
+    if (!g) return { ok: false, reason: 'That gator has moved on' };
+    const o = postInRange(state, g);
+    if (o) {
+      o.cooldown = 0;
+      if (o.state === 'IDLE' || o.state === 'RETURN') { o.state = 'WALK'; o.target = g.id; o.route = []; o.ri = 0; }
+      return { ok: true, free: true, officer: o.post };
+    }
+    if (M.callOutPending(state, gatorId)) return { ok: false, reason: 'Parish Wildlife is already on the way for ' + g.name };
+    const Ec = dep('economy'); const ch = fn(Ec, 'charge');
+    const fee = PG.callOutFee, day = today(state);
+    if (ch) { if (!ch(state, fee, 'misc', { note: 'gator:callout', i: gatorTile(g) })) return { ok: false, reason: 'Not enough cash for the ' + BSU.formatMoney(fee) + ' call-out' }; }
+    else if (state.economy && isNum(state.economy.cash)) { if (state.economy.cash < fee) return { ok: false, reason: 'Not enough cash' }; state.economy.cash -= fee; }
+    g.cost += fee;
+    const arrivalDay = day + PG.callOutDays;
+    state.wildlife.callOuts.push({ gatorId: g.id, day: arrivalDay, fee: fee });
+    ticker(state, 'Parish Wildlife called for ' + g.name + ': ' + BSU.formatMoney(fee) + ', the truck arrives ' + (PG.callOutDays === 1 ? 'tomorrow' : 'in ' + PG.callOutDays + ' days') + '.', 'money', gatorTile(g));
+    emit(BSU.EV.GATOR_CALLOUT, { id: g.id, name: g.name, arrived: false, fee: fee, arrivalDay: arrivalDay });
+    return { ok: true, free: false, fee: fee, arrivalDay: arrivalDay };
+  }, { ok: false, reason: 'Wildlife is unavailable' });
+  /** gator pass: everything the inspect panel / notifications print about one gator (null when unknown) */
+  M.gatorStatus = safe('gatorStatus', function (state, gatorId) {
+    const g = state && findGator(state, gatorId); if (!g) return null;
+    ensureGatorKeys(g);
+    const i = gatorTile(g), blds = state.buildings || [], cb = g.closes >= 0 ? blds[g.closes] : null;
+    return {
+      id: g.id, name: g.name, size: g.size, state: g.state, onCampus: !!g.onCampus, onPath: !!g.onPath, tile: i,
+      delayed: g.delayed, delayedVisit: g.delayedVisit, cost: g.cost, blocked: g.blocked,
+      visitDays: g.onCampus && g.visitDay >= 0 ? Math.max(0, today(state) - g.visitDay) : 0,
+      closes: g.closes, closesName: cb ? (cb.name || cb.type) : '', closesKind: cb ? (CLOSABLE[cb.type] || 'building') : '',
+      near: nearBuilding(state, i), canWrangle: !!postInRange(state, g), callOut: M.callOutPending(state, gatorId), fee: PG.callOutFee, callOutDays: PG.callOutDays
+    };
+  }, null);
   /** ui: +1 prestige once per year via economy.bump. */
   M.photographLeGrand = safe('photographLeGrand', function (state) {
     if (!state || !state.wildlife || !state.wildlife.leGrand) return;

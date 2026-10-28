@@ -108,13 +108,29 @@ if (list.length >= 2) {
   ok(tray && !tray.classList.contains('hidden') && /\d+ issues?/.test(U.el['issues-count'].textContent), 'tray shown: ' + U.el['issues-count'].textContent);
   const rows = U.el['issues-list'].children;
   ok(rows.length >= 1 && rows.length <= 6 && rows[0].dataset.id === list[0].id, `tray rows (${rows.length}) start with the top issue`);
-  ok(rows[0].children.length === 4 && rows[0].children[2].textContent === 'Fix' && rows[0].children[3].textContent === 'Locate', 'row = glyph, title, Fix, Locate');
+  ok((rows[0].children.length === 4 || (rows[0].children.length === 5 && rows[0].children[4].className === 'why')) && rows[0].children[2].textContent === 'Fix' && rows[0].children[3].textContent === 'Locate', 'row = glyph, title, Fix, Locate (+ a why-line for gators)');   // gator pass
   ok(U.issues.locate(s, list[0].id) === true && I.selectedId() === list[0].id, 'ui.issues.locate selects + pans');
   if (s.setPiece) H.tick(700);   // the arrival set piece keeps the build menu shut
   const upIt = list.find((it) => it.kind === 'unpowered');
   const fr = upIt ? U.issues.fix(s, upIt.id) : null; ok(fr && fr.ok !== false && U.buildMenuOpen() === true && I.selectedId() === upIt.id, 'ui.issues.fix(unpowered) opens the build menu on the Substation card and selects the issue'); U.closeBuildMenu();
   const gIt = list.find((it) => it.kind === 'gatorOnCampus');
-  if (gIt) { const rl0 = (s.wildlife && s.wildlife.relocations) | 0; const gr = U.issues.fix(s, gIt.id); ok(gr && gr.ok !== false && ((s.wildlife && s.wildlife.relocations) | 0) === rl0 + 1 && I.selectedId() === null, 'ui.issues.fix(gator) relocates it (wildlife.relocations +1, selection cleared)'); }
+  if (gIt) {   // gator pass: Fix = the Parish call-out confirm line (no Wildlife Officer Post in range), then the truck relocates it the next day
+    const PG = BSU.params.wildlife.gator, fee = BSU.formatMoney(PG.callOutFee);
+    ok(/why|attendance|happiness/i.test(gIt.why) && /Parish Wildlife call-out/.test(gIt.fix) && gIt.fix.indexOf(fee) >= 0 && /Preserve/.test(gIt.fix) && gIt.action.free === false, 'gator issue: why-line, paid fix text with the fee, the fence / Preserve suggestions');
+    const rl0 = (s.wildlife && s.wildlife.relocations) | 0, cash0 = s.economy.cash;
+    const gr = U.issues.fix(s, gIt.id);
+    const txt = (e) => e ? (e.textContent || '') + Array.from(e.children || []).map(txt).join('') : '';   // the DOM stub's textContent is not recursive
+    const cn = Array.from(U.el.notifications.children).find((c) => /Parish Wildlife call-out/.test(txt(c)));
+    ok(gr && gr.ok === true && gr.pending === true && cn && s.economy.cash === cash0, 'ui.issues.fix(gator) opens a confirm line and charges nothing yet');
+    const cb = cn ? Array.from(cn.children).find((c) => c.textContent === 'Confirm ' + fee) : null;
+    ok(!!cb && Array.from(cn.children).some((c) => c.className.indexOf('notif-why') >= 0), 'the confirm notification has a Confirm button and a why-line');
+    if (cb) cb.dispatchEvent({ type: 'click' });
+    const pend = BSU.wildlife.callOutPending(s, gIt.action.relocate);
+    ok(s.economy.cash === cash0 - PG.callOutFee && pend && pend.day === s.calendar.day + PG.callOutDays, 'Confirm charges the fee and books the truck for tomorrow');
+    H.tick(220);
+    ok(((s.wildlife && s.wildlife.relocations) | 0) === rl0 + 1 && BSU.wildlife.callOutPending(s, gIt.action.relocate) === null, 'the truck relocates the gator the next day (wildlife.relocations +1)');
+    ok(U.el['issues-list'].children.length === 0 || Array.from(U.el['issues-list'].children).every((r) => r.dataset.kind !== 'gatorOnCampus' || (r.children.length === 5 && r.children[4].className === 'why')), 'tray rows for gators carry the why-line as a fifth, full-width child');
+  }
   // needs strip Locate button follows the binding line
   U.update(s, 600); const nl = U.el['needs-locate']; ok(!!nl, '#needs-locate exists (hidden=' + (nl && nl.classList.contains('hidden')) + ')');
   // a notification about power gains Locate

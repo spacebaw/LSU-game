@@ -11,9 +11,9 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 
 ## BSU.B_ORDER  — enum/table, 46 keys (e.g. 0, 1, 2, 3, 4, 5, 6, 7)
 
-## BSU.EV  — enum/table, 109 keys (e.g. TILE_CHANGED, BUILDING_PLACED, BUILDING_REMOVED, BUILDING_COMPLETE, BUILDING_UPGRADED, BUILDING_FLOODED, BUILDING_DRIED, BUILDING_DAMAGED)
+## BSU.EV  — enum/table, 111 keys (e.g. TILE_CHANGED, BUILDING_PLACED, BUILDING_REMOVED, BUILDING_COMPLETE, BUILDING_UPGRADED, BUILDING_FLOODED, BUILDING_DRIED, BUILDING_DAMAGED)
 
-## BSU.EV_LIST  — enum/table, 109 keys (e.g. 0, 1, 2, 3, 4, 5, 6, 7)
+## BSU.EV_LIST  — enum/table, 111 keys (e.g. 0, 1, 2, 3, 4, 5, 6, 7)
 
 ## BSU.FLAG
 - values: WETLAND_ORIGINAL:number, PRESERVE:number, CANAL:number, DRAINED:number, FLOODGATE:number, POND_SINK:number, BAYOU:number, OPEN_WATER:number, DIRTY_CHUNK:number, DESIRE_WORN:number, DEBRIS:number, MOUND:number, RESTORING:number, JAMMED:number
@@ -245,7 +245,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - contract.selfTest()
 
 ## BSU.data
-- values: catalog:object, catalogList:array[46], tabs:array[10], decals:object, names:object, students:object, coaches:array[10], coachQuotes:array[12], staff:object, gatorNames:array[14], leGrand:string, stormNames:array[26], opponents:object, schedule:array[8], calendar:object, ticker:array[62], tickerKinds:object, tickerKindList:array[7], objectives:object, milestones:array[26], voiceCards:array[12], boardCards:array[8], failureCards:object, tutorial:array[7], thibodeaux:array[12], stormQuotes:array[8], overlays:array[6], keys:array[47], toastKeys:object, panKeys:object, rainKinds:object, guide:object, needs:object, requirements:object, coach:array[6], football:object, dishes:array[24], menuPresets:object, menuDefaults:object
+- values: gatorText:object, catalog:object, catalogList:array[46], tabs:array[10], decals:object, names:object, students:object, coaches:array[10], coachQuotes:array[12], staff:object, gatorNames:array[14], leGrand:string, stormNames:array[26], opponents:object, schedule:array[8], calendar:object, ticker:array[62], tickerKinds:object, tickerKindList:array[7], objectives:object, milestones:array[26], voiceCards:array[12], boardCards:array[8], failureCards:object, tutorial:array[7], thibodeaux:array[12], stormQuotes:array[8], overlays:array[6], keys:array[47], toastKeys:object, panKeys:object, rainKinds:object, guide:object, needs:object, requirements:object, coach:array[6], football:object, dishes:array[24], menuPresets:object, menuDefaults:object
 - data.selfTest()
 
 - BSU.dateToDay(str, year)
@@ -515,6 +515,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - render.fieldVenue(state, forDrill)
 - render.fbInfo()
 - render.fbNotify(kind, p)
+- render.stadiumGeom(b)
 - render.minimap(state)
 - render.renderInto(g, w, h, state, camOverride)
 - render.postcard(state, caption)
@@ -719,6 +720,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - sprites.rampOf(hex)
 - sprites.noiseAt(x, y, seed)
 - sprites.placeDecal(ctx, g, name, anchor, frame)
+- sprites.stadiumGeom(tier, fw, fh)
 - sprites.habitatWorld(tx, ty, frontLeft, X, Y)
 - sprites.habitatPool(lx, ly)
 - sprites.habitatPoint(frontLeft, X, Y, z)
@@ -846,6 +848,9 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - ui.buildMenuOpen()
 - ui.startCoach(state)
 - ui.coachStep()
+- ui.closeAlert()
+- ui.dismissNotifs()
+- ui.gatorAlerts()
 - ui.notify(state, spec)
 - ui.hint(state, id, text, opts)
 - ui.decision(state, spec)
@@ -935,6 +940,14 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - wildlife.forceMosquito()
 - wildlife.forceEcology()
 - wildlife.gatorPenalty()
+- wildlife.delayedToday()
+- wildlife.attendanceDent()
+- wildlife.closedBy()
+- wildlife.noteDelay()
+- wildlife.canWrangle()
+- wildlife.callOutPending()
+- wildlife.callOut()
+- wildlife.gatorStatus()
 - wildlife.photographLeGrand()
 - wildlife.applyEcologyOnce()
 - wildlife.critters()

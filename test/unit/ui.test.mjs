@@ -23,7 +23,7 @@ ok(!/innerHTML/.test(src), 'no innerHTML (every node is created and kept in M.el
 ok(!/querySelector|closest\(|matches\(|instanceof\s+(Node|HTMLInputElement|HTMLCanvasElement|Text)/.test(src), 'no querySelector/closest/matches/instanceof Node');
 ok(!/setTimeout|setInterval/.test(src.replace(/\/\/.*$/gm, '')), 'no timers for game logic');
 const css = readFileSync(join(root, 'src', 'style.css'), 'utf8');
-ok(Buffer.byteLength(css) <= 68 * 1024, `style.css ≤ 68 KB (${(Buffer.byteLength(css) / 1024).toFixed(1)} KB)`);   // P6 dining menus: the inspect Menu section (64 → 68 KB); UX pass: build menu + tracker + coach marks (was 25 KB); football pass D: Season panel, game HUD, summary card (was 40 KB); UI scale pass: every length in rem + scale tokens (was 48 KB)
+ok(Buffer.byteLength(css) <= 70 * 1024, `style.css ≤ 70 KB (${(Buffer.byteLength(css) / 1024).toFixed(1)} KB)`);   // gator pass: the chip ✕, the relocated strip beside an open inspect, Dismiss all, why-lines (68 → 70 KB);   // P6 dining menus: the inspect Menu section (64 → 68 KB); UX pass: build menu + tracker + coach marks (was 25 KB); football pass D: Season panel, game HUD, summary card (was 40 KB); UI scale pass: every length in rem + scale tokens (was 48 KB)
 const cssNoComments = css.replace(/\/\*[\s\S]*?\*\//g, '');
 ok(!/@import|url\(/.test(cssNoComments) && /--purple:\s*#461D7C/.test(css) && /--gold:\s*#FDD023/.test(css), 'css tokens present, no @import/url()');
 
@@ -384,7 +384,7 @@ U.wheel(640, 360, 0, 120, true); ok(s.ui.camera.zoom === 0.5, 'ctrl+wheel down �
 U.selectTool(s, 'dorm'); U.lockTool(s, true); U.keydown('Escape', M0); ok(s.ui.tool && s.ui.tool.id === 'dorm', 'locked tool survives Escape'); U.lockTool(false); U.selectTool(s, null);
 // notification onClose exactly once
 let closes = 0; U.notify(s, { kind: 'info', text: 'n1', onClose: () => closes++ }); U.notify(s, { kind: 'info', text: 'n2' }); U.notify(s, { kind: 'info', text: 'n3' }); U.notify(s, { kind: 'info', text: 'n4' }); U.notify(s, { kind: 'info', text: 'n5' });
-ok(U.el.notifications.children.length === 3 && closes === 1, 'max 3 notifications; replaced one closed exactly once');
+ok(U.el.notifications.children.filter((c) => c.id !== 'notif-dismiss').length === 3 && closes === 1, 'max 3 notifications; replaced one closed exactly once');   // gator pass: the Dismiss-all button is a child too
 // decision default on timeout (tick-based)
 U.decision(s, { id: 'd2', text: 'x', ticks: 10 }); BSU.headless.tick(12); BSU.headless.render();
 ok(U.el['decision-toast'].classList.contains('hidden'), 'toast defaults after its ticks');
@@ -396,5 +396,67 @@ ok(per < 1.5, `update ≈ ${per.toFixed(3)} ms per frame (< 1.5 ms on the stub)`
 ok(BSU.errors.size === errors0, 'no BSU.error during the unit run' + (BSU.errors.size !== errors0 ? ': ' + [...BSU.errors.keys()].join(' | ') : ''));
 BSU.SELFTEST = true; let st; try { st = U.selfTest(); } catch (e) { st = { ok: false, notes: e.message }; } finally { BSU.SELFTEST = false; }
 ok(st && st.ok, 'ui.selfTest ok ' + (st && st.notes ? '(' + st.notes + ')' : ''));
+
+// --- gator pass: the chip (✕, 12 s, 3-day cooldown, mute), escalation notifications (Locate + Fix + why), Dismiss all, Esc, the inspect rows ----
+try {
+  const PG = BSU.params.wildlife.gator, H = BSU.headless;
+  const txt = (e) => e ? (e.textContent || '') + Array.from(e.children || []).map(txt).join('') : '';   // the DOM stub's textContent is not recursive
+  const cm = BSU.wildlife.campusMask(s); let ci = -1; for (let i = 0; i < cm.length; i++) if (cm[i]) { ci = i; break; }
+  s.ui.tool = null; s.ui.panel = null; U.closeInspect(); U.closeBuildMenu(); U.closeCard(); U.dismissNotifs(); U.settings().muteGators = false;
+  const savedGators = s.gators.slice(); s.gators.length = 0;   // the seed-11 game may already have a visitor whose den sits inside the campus mask: park the wild ones
+  H.tick(2); for (const k in U.gatorAlerts()) delete U.gatorAlerts()[k]; U.closeAlert();
+  const g = BSU.wildlife.spawnGator(s, ci, 'Chippy'); g.tx = ci % 64 + 0.5; g.ty = ((ci / 64) | 0) + 0.5; g.state = 'LOUNGE'; g.lounge = 100000;
+  H.tick(12); U.update(s, 600); U.update(s, 600);
+  const strip = U.el['alert-strip'];
+  ok(!strip.classList.contains('hidden') && /Chippy/.test(U.el['alert-gator'].textContent) && U.el['alert-close'] && !U.el['alert-close'].classList.contains('hidden') && /Fix|Relocate/.test(U.el['alert-action'].textContent), 'gator chip: name, Fix, ✕ (' + U.el['alert-gator'].textContent + ')');
+  const ga = U.gatorAlerts()[g.id]; ok(ga && ga.cooldownDay === s.calendar.day + PG.alertCooldownDays, 'the chip books a 3-day cooldown for that gator');
+  U.el['alert-close'].dispatchEvent({ type: 'click' }); U.update(s, 600); U.update(s, 600);
+  ok(strip.classList.contains('hidden') && U.gatorAlerts()[g.id].until === 0, '✕ closes the chip and expires it');
+  // a second gator gets its own chip; the first does not re-fire (cooldown)
+  let cj = -1; for (let i = cm.length - 1; i >= 0; i--) if (cm[i]) { cj = i; break; }
+  const g2 = BSU.wildlife.spawnGator(s, cj, 'Nibbles'); g2.tx = cj % 64 + 0.5; g2.ty = ((cj / 64) | 0) + 0.5; g2.state = 'LOUNGE'; g2.lounge = 100000;
+  H.tick(12); U.update(s, 600); U.update(s, 600);
+  ok(!strip.classList.contains('hidden') && /Nibbles/.test(U.el['alert-gator'].textContent), 'the next gator gets its own chip; the closed one stays quiet');
+  U.closeAlert();
+  // auto-dismiss after alertMs
+  const g3i = ci + 1; const g3 = BSU.wildlife.spawnGator(s, g3i, 'Sleepy'); g3.tx = g3i % 64 + 0.5; g3.ty = ((g3i / 64) | 0) + 0.5; g3.state = 'LOUNGE'; g3.lounge = 100000;
+  H.tick(12); U.update(s, 600); U.update(s, 600); const upSleepy = !strip.classList.contains('hidden') && /Sleepy/.test(U.el['alert-gator'].textContent);
+  U.update(s, PG.alertMs + 100); U.update(s, 600);
+  ok(upSleepy && (strip.classList.contains('hidden') || !/Sleepy/.test(U.el['alert-gator'].textContent)), 'the chip auto-dismisses after alertMs');
+  // mute: sightings go to the ticker only
+  U.settings().muteGators = true; U.closeAlert(); for (const k in U.gatorAlerts()) delete U.gatorAlerts()[k];
+  U.update(s, 600); U.update(s, 600);
+  ok(strip.classList.contains('hidden') || !/🐊/.test(U.el['alert-icon'].textContent), 'Mute gator sightings: no chip');
+  U.openPanel('settings'); const chk = win.document.getElementById('chk-gators');
+  ok(chk && chk.textContent === 'On', 'Settings has the "Mute gator sightings" toggle (On)');
+  if (chk) chk.dispatchEvent({ type: 'click' }); ok(U.settings().muteGators === false && chk.textContent === 'Off', 'the toggle flips the setting');
+  U.openPanel(null);
+  // escalation → a notification with Locate, Fix and the why-line; one per gator (replaced, not stacked)
+  U.dismissNotifs();
+  BSU.events.emit(BSU.EV.GATOR_BLOCKED, { id: g.id, name: 'Chippy', i: ci, what: 'path', delayed: 7 });
+  BSU.events.emit(BSU.EV.GATOR_BLOCKED, { id: g.id, name: 'Chippy', i: ci, what: 'closed', buildingId: 0, building: 'Tiger Dining', kind: 'dining hall' });
+  const nn = Array.from(U.el.notifications.children).filter((c) => c.className.indexOf('notif') === 0 && c.id !== 'notif-dismiss');
+  const nb = nn.length === 1 ? Array.from(nn[0].children).map((c) => c.textContent) : [];
+  ok(nn.length === 1 && /Chippy is keeping Tiger Dining closed/.test(txt(nn[0])) && nb.indexOf('Fix') >= 0 && nb.indexOf('Locate') >= 0 && Array.from(nn[0].children).some((c) => c.className.indexOf('notif-why') >= 0), 'gator:blocked → one notification per gator with Fix, Locate and the why-line (' + nn.length + ')');
+  // Dismiss all appears at 3 stacked; Esc clears the stack (after the issue selection)
+  U.notify(s, { kind: 'info', text: 'g-a' }); U.notify(s, { kind: 'info', text: 'g-b' }); U.update(s, 20);
+  ok(!U.el['notif-dismiss'].classList.contains('hidden'), '"Dismiss all" shows once three notifications are stacked');
+  U.el['notif-dismiss'].dispatchEvent({ type: 'click' }); U.update(s, 20);
+  ok(U.el.notifications.children.length === 0 && U.el['notif-dismiss'].classList.contains('hidden') && U.el['notif-dismiss'].parentNode === U.el.hud, 'Dismiss all clears the stack (the button is a hud child above it)');
+  U.notify(s, { kind: 'info', text: 'g-c' }); U.notify(s, { kind: 'info', text: 'g-d' });
+  s.ui.tool = null; s.ui.panel = null; U.closeInspect(); U.closeBuildMenu(); U.closeCard(); BSU.issues.select(null);
+  const escR = U.keydown('Escape', M0); ok(escR === true && U.el.notifications.children.length === 0, `Esc clears the notification stack (last layer) (${escR}, ${U.el.notifications.children.length}, tool ${!!s.ui.tool}, panel ${s.ui.panel}, bm ${U.buildMenuOpen()}, popover ${U.el.popover.classList.contains('hidden')}, sel ${BSU.issues.selectedId()}, spot ${U.issues.spotlight()})`);
+  // name tags only when selected / located
+  U.update(s, 600);
+  ok(U.el.tooltip.classList.contains('hidden') || !/Chippy|Nibbles|Sleepy/.test(txt(U.el.tooltip)), 'no 3-second name tag on campus entry');
+  // the inspect panel: doing / cost / why / the Fix
+  U.inspect(s, { kind: 'gator', id: g.id }); U.update(s, 600);
+  const body = txt(U.el['insp-body']), acts = Array.from(U.el['insp-actions'].children).map((c) => c.textContent);
+  ok(/Doing/.test(body) && /Cost so far/.test(body) && /Why it matters/.test(body) && /On campus/.test(body), 'gator inspect: Doing, On campus, Cost so far, Why it matters rows');
+  ok(acts.some((a) => /Call Parish Wildlife · \$15k|Relocate · Officer/.test(a)) && acts.indexOf('Fence this bank') >= 0 && acts.indexOf('Build a Preserve') >= 0, 'gator inspect actions: the Fix, Fence this bank, Build a Preserve (' + acts.join(' | ') + ')');
+    U.closeInspect(); U.dismissNotifs(); U.closeAlert();
+  s.gators.length = 0; for (const x of savedGators) s.gators.push(x); BSU.issues.invalidate();
+} catch (e) { ok(false, 'gator pass ui: ' + (e.stack || e)); }
+
 console.log(`\n${passes} passed, ${failures} failed`);
 process.exit(failures ? 1 : 0);

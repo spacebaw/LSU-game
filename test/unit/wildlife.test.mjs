@@ -247,5 +247,81 @@ try {
 ok(robust, 'public functions never throw on bad input');
 ok(!scanNumbers(s), 'state still finite after the bad-input calls');
 
+
+// --- gator pass: delays, closures, escalations, the Parish call-out, the free wrangle, mischief, bad press, game day ----
+const savedDeps = { economy: M._deps.economy, progress: M._deps.progress };
+M._deps.economy = { charge(st, amt) { st.economy.cash -= amt; return true; }, bump(st, stat, d) { st.economy[stat] += d; } }; M._deps.progress = null;   // selfTest left no-op stubs behind (and BSU.economy is a recording stub here): a cash / prestige ledger for the block
+try {
+  const PG = BSU.params.wildlife.gator;
+  const rec = []; for (const n of ['gator:blocked', 'gator:callout']) BSU.events.on(n, (p) => rec.push({ n, p }), 'wtest-gator');
+  // (a) a dining hall on the dry patch, a path strip south of it, a gator lounging on the path
+  const sg = synthetic(23); const hall = building(sg, 'dining_hall', 10, 10, 3, 2);
+  for (let x = 10; x < 15; x++) sg.tiles.surface[13 * 64 + x] = BSU.SURF.PATH;
+  M.reset(sg, true); sg.gators.length = 0; sg.wildlife.officers.length = 0;
+  const g = M.spawnGator(sg, 13 * 64 + 12, 'Testy'); g.state = 'LOUNGE'; g.lounge = 100000;
+  run(sg, 12);
+  ok(g.onCampus === true && g.visitDay === sg.calendar.day && g.onPath === true && g.closes === hall.id, `on campus: onPath, closes the hall (onPath ${g.onPath}, closes ${g.closes})`);
+  ok(M.closedBy(sg, hall.id) === g, 'closedBy(hall) names the gator (the visible reason)');
+  ok(rec.some(r => r.n === 'gator:blocked' && r.p.what === 'closed' && r.p.buildingId === hall.id && r.p.kind === 'dining hall'), 'gator:blocked{closed} escalation once');
+  const st0 = M.gatorStatus(sg, g.id);
+  ok(st0 && st0.onCampus && st0.closesName === 'dining_hall' && st0.closesKind === 'dining hall' && st0.near && st0.near.id === hall.id && st0.canWrangle === false && st0.fee === PG.callOutFee, 'gatorStatus: closes, near, no post in range, the fee');
+  // (b) students delayed → the happiness term, the attendance dent, the path escalation
+  M.noteDelay(sg, g.id, 12); run(sg, 10);
+  ok(M.delayedToday(sg) === 12 && g.delayedVisit === 12, 'noteDelay: 12 students delayed today and this visit');
+  ok(Math.abs(M.attendanceDent(sg) - Math.min(PG.delayAttendanceCap, PG.delayAttendancePer * 12)) < 1e-9, `attendanceDent = ${M.attendanceDent(sg)} (delayAttendancePer × 12)`);
+  ok(M.gatorPenalty(sg) === PG.incidentPenalty * 1 + PG.delayHappinessPer * 12 + PG.closurePenalty * 1, `gatorPenalty = incidents + delays + closure (${M.gatorPenalty(sg)})`);
+  ok(rec.some(r => r.n === 'gator:blocked' && r.p.what === 'path' && r.p.id === g.id), 'gator:blocked{path} once the delayed count passes blockTraffic');
+  M.noteDelay(sg, g.id, 1000); ok(M.attendanceDent(sg) === PG.delayAttendanceCap && M.gatorPenalty(sg) <= PG.incidentCap + PG.delayHappinessCap + PG.closureCap, 'both terms cap');
+  // (c) Dawn resets the per-cycle count, the visit total stays
+  run(sg, 300 - (sg.tick % 300)); run(sg, 1);
+  ok(g.delayed === 0 && g.delayedVisit === 1012, `Dawn resets delayed (${g.delayed}), delayedVisit stays (${g.delayedVisit})`);
+  // (d) the Parish call-out: fee now, truck tomorrow, relocation on arrival
+  const cash0 = sg.economy.cash, day0 = sg.calendar.day;
+  const r1 = M.callOut(sg, g.id);
+  ok(r1 && r1.ok === true && r1.free === false && r1.fee === PG.callOutFee && r1.arrivalDay === day0 + PG.callOutDays, 'callOut without a post: paid, arrives in callOutDays');
+  ok(sg.economy.cash === cash0 - PG.callOutFee && g.cost >= PG.callOutFee, 'the fee is charged and remembered on the gator');
+  const pend = M.callOutPending(sg, g.id); ok(pend && pend.day === r1.arrivalDay && pend.fee === PG.callOutFee, 'callOutPending');
+  const r1b = M.callOut(sg, g.id); ok(r1b && r1b.ok === false && /already/.test(r1b.reason), 'a second call-out for the same gator is refused');
+  ok(rec.some(r => r.n === 'gator:callout' && r.p.arrived === false && r.p.fee === PG.callOutFee), 'gator:callout{arrived:false}');
+  run(sg, 100 - (sg.tick % 100)); run(sg, 2);
+  ok(sg.wildlife.relocations === 1 && g.onCampus === false && M.callOutPending(sg, g.id) === null && rec.some(r => r.n === 'gator:callout' && r.p.arrived === true), 'the truck relocates the gator the next day');
+  ok(sg.economy.cash >= cash0 - PG.callOutFee - PG.backpackCost - PG.bikeCost, 'no second fee on arrival');
+  // (e) a Wildlife Officer Post in range → free, the officer is sent
+  const s2 = synthetic(29); building(s2, 'dining_hall', 10, 10, 3, 2); const post = building(s2, 'wildlife_post', 14, 10, 1, 1);
+  M.reset(s2, true); s2.gators.length = 0;
+  const g2 = M.spawnGator(s2, 13 * 64 + 12, 'Freebie'); g2.state = 'LOUNGE'; g2.lounge = 100000; run(s2, 2);
+  ok(s2.wildlife.officers.length === 1 && M.canWrangle(s2, g2.id) === true, 'canWrangle with a post within officerRadius');
+  const c2 = s2.economy.cash, r2 = M.callOut(s2, g2.id);
+  ok(r2 && r2.ok === true && r2.free === true && r2.officer === post.id && s2.economy.cash === c2 && s2.wildlife.officers[0].target === g2.id, 'callOut with a post: free, the officer walks');
+  // (f) mischief: a hashed campus day bills a backpack or a bike (row.kind / row.cost, cash)
+  let md = -1; for (let d = 30; d < 400; d++) if (((g2.id * 7919 + d * 104729) % 1000) / 1000 < PG.mischiefChance) { md = d; break; }
+  ok(md > 0, `a mischief day exists for gator ${g2.id} (${md})`);
+  s2.calendar.day = md; g2.lastIncidentDay = -1; const c3 = s2.economy.cash; M.tick(s2, {});
+  const rowm = s2.wildlife.incidents.find(r => r.day === md && r.gatorId === g2.id);
+  ok(rowm && (rowm.kind === 'bike' || rowm.kind === 'backpack') && rowm.cost === (rowm.kind === 'bike' ? PG.bikeCost : PG.backpackCost) && s2.economy.cash === c3 - rowm.cost, `mischief: ${rowm && rowm.kind} billed ${rowm && rowm.cost}`);
+  s2.calendar.day = md + 1; g2.lastIncidentDay = -1; const c4 = s2.economy.cash; M.tick(s2, {});
+  const rown = s2.wildlife.incidents.find(r => r.day === md + 1 && r.gatorId === g2.id); ok(rown && !rown.kind && s2.economy.cash === c4 || (rown && rown.kind), 'a plain incident row has no bill');
+  // (g) bad press after badPressDays unaddressed, restored a week later
+  const s3 = synthetic(31); building(s3, 'dining_hall', 10, 10, 3, 2); M.reset(s3, true); s3.gators.length = 0; s3.wildlife.officers.length = 0;
+  const g3 = M.spawnGator(s3, 13 * 64 + 12, 'Loafer'); g3.state = 'LOUNGE'; g3.lounge = 100000;
+  const pr0 = s3.economy.prestige; run(s3, 100 * PG.badPressDays + 1);
+  ok(g3.badPressDay < 0 && s3.economy.prestige === pr0, `no bad press within badPressDays (${PG.badPressDays})`);
+  run(s3, 100);
+  ok(g3.badPressDay === s3.calendar.day && s3.economy.prestige === pr0 - PG.badPressPrestige && s3.wildlife.pressRestore.length === 1, `bad press: prestige dips once the gator is unaddressed for more than badPressDays (day ${s3.calendar.day}, visitDay ${g3.visitDay}, badPressDay ${g3.badPressDay}, on ${g3.onCampus}, prestige ${pr0} → ${s3.economy.prestige}, restore ${s3.wildlife.pressRestore.length})`);
+  run(s3, 100 * PG.badPressWeek);
+  ok(s3.economy.prestige === pr0 && s3.wildlife.pressRestore.length === 0, 'the dip is given back after badPressWeek');
+  // (h) game day: a gator on the stadium turf delays kickoff and refunds part of the tailgate take
+  const s4 = synthetic(37); const stad = building(s4, 'stadium', 10, 10, 4, 4); M.reset(s4, true); s4.gators.length = 0;
+  s4.sports.game = { tailgate: 40000, attendance: 1000, kind: 'home', home: true };
+  const g4 = M.spawnGator(s4, 11 * 64 + 11, 'Sunbather'); g4.state = 'LOUNGE'; g4.lounge = 100000; g4.lastIncidentDay = -1;
+  const c5 = s4.economy.cash; M.tick(s4, {});
+  const loss = Math.max(PG.gameDayMinLoss, Math.round(40000 * PG.gameDayTailgateLoss));
+  ok(g4.onCampus && (g4.blocked & 4) === 4 && s4.economy.cash === c5 - loss && g4.cost === loss && rec.some(r => r.n === 'gator:blocked' && r.p.what === 'game' && r.p.cost === loss), `game day: tailgate refund ${loss} billed once (stadium ${stad.id})`);
+  M.tick(s4, {}); ok(s4.economy.cash === c5 - loss, 'not billed twice');
+  ok(!scanNumbers(sg) && !scanNumbers(s2) && !scanNumbers(s3) && !scanNumbers(s4), 'gator-pass states stay finite');
+  ok((BSU.errors ? BSU.errors.size : 0) === 0, 'no BSU.errors from the gator pass');
+} catch (e) { ok(false, 'gator pass: ' + (e.stack || e)); }
+M._deps.economy = savedDeps.economy; M._deps.progress = savedDeps.progress;
+
 console.log(`\n${passes} passed, ${failures} failed`);
 process.exit(failures ? 1 : 0);

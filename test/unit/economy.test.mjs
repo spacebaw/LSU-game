@@ -337,5 +337,27 @@ events.length = 0;
   SS.feeds = 1200; SS.menuCost = 0; SS.menuAppeal = 0;
 }
 
+
+// --- gator pass: the gator happiness term reads the extended cap; the Dusk attendance sample carries the gator dent ----
+try {
+  const st = installStubs();
+  const PG = BSU.params.wildlife.gator;
+  st.wildlife.gatorPenalty = () => 20; st.wildlife.attendanceDent = () => 0.1;
+  E._deps.agents = { sample() { return { life: 0, green: 0, mosq: 0, heat: 0, n: 0 }; }, classAttendance() { return 0.85; } };
+  const s = BSU.newState(41); E.init(s); E.reset(s, true);
+  BSU.events.emit(BSU.EV.SKY_PHASE, { phase: BSU.SKY.DUSK, prev: BSU.SKY.DAY });
+  E.tick(s, { newDay: false, newMonth: false, newYear: false, day: s.calendar.day });
+  const cyc = s.economy.attendanceCycles;
+  ok(cyc.length === 1 && Math.abs(cyc[0] - 0.75) < 1e-9, `Dusk attendance sample = classAttendance − wildlife.attendanceDent (${cyc[0]})`);
+  s.calendar.day++; E.tick(s, { newDay: true, newMonth: false, newYear: false, day: s.calendar.day });
+  const ht = E.happyTerms(s);
+  ok(ht && ht.gator === -20, `the gator term carries delays + closures past incidentCap 15 (${ht && ht.gator})`);
+  st.wildlife.gatorPenalty = () => 99; s.calendar.day++; E.tick(s, { newDay: true, newMonth: false, newYear: false, day: s.calendar.day });
+  ok(E.happyTerms(s).gator === -(PG.incidentCap + PG.delayHappinessCap + PG.closureCap), 'and clamps at incidentCap + delayHappinessCap + closureCap');
+  st.wildlife.attendanceDent = () => 5; BSU.events.emit(BSU.EV.SKY_PHASE, { phase: BSU.SKY.DUSK, prev: BSU.SKY.DAY }); E.tick(s, { newDay: false, newMonth: false, newYear: false, day: s.calendar.day });
+  ok(s.economy.attendanceCycles[s.economy.attendanceCycles.length - 1] === 0, 'an absurd dent floors the sample at 0');
+  installStubs();
+} catch (e) { ok(false, 'gator pass economy: ' + (e.stack || e)); }
+
 console.log(`\n${passes} passed, ${failures} failed`);
 process.exit(failures ? 1 : 0);

@@ -126,11 +126,11 @@
     pump: 'Pumps 15 tile-ft a day out of its canal network. Needs power.',
     pond: 'Holds 20 tile-ft of runoff; once stocked, mosquitoes −80% within 4.',
     pilings: 'Lifts one building 3 ft above the flood line (+40% of its cost).',
-    gator_fence: 'A fence gators cannot cross. Students walk right through.',
+    gator_fence: 'A fence gators cannot cross; students walk through. Keeps gators off paths and out of your halls.',   // gator pass
     abatement: 'A fogger truck: mosquitoes −70% along paths within 8. Costs ecology.',
     bat_house: 'Bats and martins: mosquitoes −30% within 4 (stacks to −60%); +0.5 ecology.',
-    wildlife_post: 'An officer who relocates gators within 14, stops nutria and clears debris; +3 ecology.',
-    preserve: 'Protects a tile as wetland: +0.5 ecology each, and it slows the surge.',
+    wildlife_post: 'An officer who relocates gators within 14 for free (else a $15k Parish call-out); stops nutria; +3 ecology.',   // gator pass
+    preserve: 'Protects a tile as wetland: +0.5 ecology, slows the surge, and gators lounge here instead of campus.',   // gator pass
     live_oak: '+1 happiness within 4; shade cuts heat −30%; wind damage −30% within 2.',
     cypress: 'Roots drink 0.05 ft of water a day and halve sinking next door; +0.5 ecology.',
     azalea: '+1 happiness within 3; +1 more while it blooms in March.',
@@ -1403,8 +1403,16 @@
   // ---------------------------------------------------------------------------
   // Assemble, deep-freeze, self-test
   // ---------------------------------------------------------------------------
+  /** gator pass: the one-line rationale the issues tray, the notifications and the inspect panel carry ({fee}/{days} filled by issues.js) */
+  const gatorText = {
+    why: "Students won't walk past a gator: class attendance and happiness drop until it is moved.",
+    whyClosed: 'A gator within 2 tiles closes the kitchen or pool: nobody eats or swims until it is moved.',
+    whyGame: 'A gator on the field delays kickoff and refunds part of the tailgate take.',
+    fixFree: 'Fix: the Wildlife Officer wrangles it (free). Or fence this bank, or build a Preserve so it lounges there instead.',
+    fixPaid: 'Fix: Parish Wildlife call-out {fee}, arrives in {days}. Or fence this bank, or build a Preserve so it lounges there instead.'
+  };
   const data = {
-    catalog: catalog, catalogList: catalogList, tabs: tabs, decals: decals, names: names, students: students,
+    gatorText: gatorText, catalog: catalog, catalogList: catalogList, tabs: tabs, decals: decals, names: names, students: students,
     coaches: coaches, coachQuotes: coachQuotes, staff: staff, gatorNames: gatorNames, leGrand: leGrand, stormNames: stormNames,
     opponents: opponents, schedule: schedule, calendar: calendar, ticker: ticker, tickerKinds: tickerKinds,
     tickerKindList: TICKER_KIND_LIST, objectives: objectives, milestones: milestones, voiceCards: voiceCards,

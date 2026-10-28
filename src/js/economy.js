@@ -202,7 +202,7 @@
   }
   function gatorPenaltyNow(state) {
     const v = call('wildlife', 'gatorPenalty', [state], null);
-    if (typeof v === 'number' && isFinite(v)) return clamp(v, 0, P.wildlife.gator.incidentCap);
+    if (typeof v === 'number' && isFinite(v)) return clamp(v, 0, P.wildlife.gator.incidentCap + num(P.wildlife.gator.delayHappinessCap, 0) + num(P.wildlife.gator.closureCap, 0));   // gator pass: incidents + students delayed + closures
     const inc = (state.wildlife && Array.isArray(state.wildlife.incidents)) ? state.wildlife.incidents : [];
     const day = today(state);
     let n = 0;
@@ -1217,7 +1217,7 @@
     salaries: 'Staff salaries', upkeep: 'Upkeep', utilities: 'Utilities', food: 'Food', coaching: 'Coaching', interest: 'Loan interest', repair: 'Repairs', prep: 'Storm prep',
     construction: 'Construction', demolition: 'Demolition', boardCards: 'Board cards',
     housing: 'housing quality', dining: 'dining coverage', life: 'student life', green: 'green space', spirit: 'school spirit', mosquito: 'mosquitoes', flood: 'flooding',
-    gator: 'gator incidents', heat: 'heat', crowd: 'crowded classes', noise: 'noise',
+    gator: 'gators (incidents, students delayed, closed halls)', heat: 'heat',   // gator pass crowd: 'crowded classes', noise: 'noise',
     academic: 'academic quality', faculty: 'faculty', happiness: 'happiness', football: 'football', landmarks: 'landmarks', ecology: 'ecology', selectivity: 'selectivity', blight: 'blight', rookery: 'the rookery'
   };
   function label(k) { return LABELS[k] || k; }
@@ -1376,7 +1376,8 @@
       if (pendingAttendance) {
         pendingAttendance = false;
         const a = call('agents', 'classAttendance', [state], 1);
-        if (Array.isArray(state.economy.attendanceCycles)) state.economy.attendanceCycles.push(clamp(num(a, 1), 0, 1));
+        const dent = clamp(num(call('wildlife', 'attendanceDent', [state], 0), 0), 0, 1);   // gator pass: students delayed by gators since Dawn skip or arrive late (params.wildlife.gator.delayAttendancePer / Cap)
+        if (Array.isArray(state.economy.attendanceCycles)) state.economy.attendanceCycles.push(clamp(num(a, 1) - dent, 0, 1));
       }
       if (newDay) {
         if (newYear) yearlyStep(state);

@@ -534,3 +534,11 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
 .menu-grid .btn.dish .chips{display:flex;gap:.3rem;flex-wrap:nowrap} .menu-grid .chip-m{font-size:1.1rem;line-height:1.3;padding:.05rem .4rem;border-radius:.6rem;background:rgba(26,18,48,.85);border:1px solid rgba(253,208,35,.25);color:var(--text-dim);white-space:nowrap}
 .menu-grid .chip-m.appeal{color:var(--gold)} .menu-grid .chip-m.cost{color:#D9F0FF}
 #menu-overlay .menu-note{margin-top:.9rem;font-size:1.2rem;color:var(--text-dim)}
+/* gators */
+#alert-close{margin-left:.2rem;opacity:.7}#alert-close:hover{opacity:1}
+#hud.inspect-open #alert-strip{top:calc(var(--topbar-h) + 28.4rem);left:calc(var(--side) + 36rem + (100vw - 2 * var(--side) - 36rem - var(--inspect-w) - var(--gutter)) / 2);max-width:clamp(24rem,calc(100vw - 2 * var(--side) - 36rem - var(--inspect-w) - 4rem),60rem)}   /* qa pass 4: beside an open inspect the strip drops under the shifted overlay keys, centred between the goal card and the panel (clear of the minimap at 1280) */
+#notif-dismiss{position:absolute;right:calc(50% - min(44rem,var(--mid)) / 2);bottom:calc(var(--bot) + 14.8rem);z-index:3}#hud:has(#hint:not(.hidden)) #notif-dismiss{bottom:calc(var(--bot) + 20.8rem)}#hud.setpiece #notif-dismiss{opacity:0;pointer-events:none}
+.notif-why{order:4;flex:1 1 100%;font-size:1.25rem;line-height:1.3;opacity:.72}
+#notif-dismiss{pointer-events:auto;opacity:.85}
+.issue-row .why{grid-column:1 / -1;min-width:0;font-size:1.15rem;line-height:1.25;opacity:.7;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#inspect .row.why .v{white-space:normal;text-align:left;opacity:.8}

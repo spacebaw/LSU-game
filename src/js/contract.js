@@ -285,7 +285,27 @@
         bigShare: 0.4,                       // §6.3
         poolCloseDays: 1, kickoffDelayDays: 1,   // §6.3
         firstGatorDate: 'Feb 9',             // §9.2
-        tagTicks: 30                         // name tag shown 3 s on campus entry (§6.3)
+        tagTicks: 30,                        // name tag shown 3 s on campus entry (§6.3)
+        // gator pass (Josh: "why does a gator on campus matter?"): legible, parameterised consequences
+        delayHappinessPer: 0.25,             // happiness points per student delayed (fled / rerouted) by a gator since Dawn
+        delayHappinessCap: 6,                // cap of that happiness term (all gators together)
+        delayAttendancePer: 0.004,           // class-attendance dent per delayed student at Dusk (12 delayed → −4.8 %)
+        delayAttendanceCap: 0.25,            // cap of the attendance dent
+        closurePenalty: 2,                   // happiness per building a gator keeps closed (dining hall, shack, pool)
+        closureCap: 6,                       // cap of the closure term
+        blockTraffic: 3,                     // students delayed before a gator on a path counts as "blocking" (escalation)
+        callOutFee: 15000,                   // Parish Wildlife call-out when no Wildlife Officer Post is in range
+        callOutDays: 1,                      // the Parish truck arrives this many days after the call
+        mischiefChance: 0.15,                // per gator per campus day: a comic incident with a small bill
+        backpackCost: 2000,                  // 'stolen backpack' reimbursement
+        bikeCost: 800,                       // 'eaten bike' replacement
+        badPressDays: 3,                     // a gator on campus for more than this many days unaddressed → bad press
+        badPressPrestige: 1,                 // the bad-press prestige dip …
+        badPressWeek: 7,                     // … restored after this many days
+        gameDayTailgateLoss: 0.25,           // share of the tailgate take refunded when a gator delays kickoff
+        gameDayMinLoss: 5000,                // … never less than this (the gator can arrive before the tailgate take is known)
+        alertCooldownDays: 3,                // ui: the top chip does not re-fire for the same gator for this many days
+        alertMs: 12000                       // ui: the top chip auto-dismisses after this long
       },
       mosq: {
         standDays: 2, stand: 0.12, standFlooded: 0.24,   // §6.4
@@ -820,6 +840,7 @@
     'gate:closed', 'gate:opened',
     'marsh:drained', 'marsh:reverted', 'marsh:restored',
     'gator:spawn', 'gator:campus', 'gator:incident', 'gator:relocated',
+    'gator:blocked', 'gator:callout',   // gator pass: a gator blocks a path / closes a building / delays kickoff; a Parish Wildlife call-out is placed or arrives
     'mosquito:warning', 'ecology:changed',
     'festival:start', 'festival:end',
     'game:scheduled', 'game:kickoff', 'game:score', 'game:halftime', 'game:final', 'season:end', 'coach:changed', 'staff:offer', 'staff:poached',

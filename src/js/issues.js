@@ -75,7 +75,8 @@
     out.push({
       id: id, kind: kind, severity: clamp(fin(o.severity, K.severity) | 0, 1, 3), title: String(o.title || K.label), fix: String(o.fix || ''),
       tiles: o.tiles || [], rect: o.rect || null, anchor: o.anchor || tileAnchor(o.tiles && o.tiles.length ? o.tiles[0] : 0),
-      buildingId: Number.isFinite(o.buildingId) ? o.buildingId : null, action: o.action || null, since: 0, color: K.color, glyph: K.glyph
+      buildingId: Number.isFinite(o.buildingId) ? o.buildingId : null, action: o.action || null, since: 0, color: K.color, glyph: K.glyph,
+      why: String(o.why || '')   // gator pass: the one-line "why it matters" the tray row and the notification carry
     });
   }
   function isAccess(sf) { return ACCESS.indexOf(sf) >= 0; }
@@ -190,7 +191,13 @@
       for (const g of gs) {
         if (!g) continue;
         const i = clamp(Math.floor(fin(g.ty, 0)), 0, H - 1) * W + clamp(Math.floor(fin(g.tx, 0)), 0, W - 1);
-        mk(out, 'gatorOnCampus', 'gator:' + fin(g.id, i), { severity: 3, title: (g.name || 'A gator') + ' is on campus', fix: 'Gator on campus: click Fix to have Wildlife relocate it; a Gator Fence along the water keeps them out', tiles: [i], anchor: tileAnchor(i), action: { relocate: g.id } });
+        // gator pass: Fix = relocate (free with a Wildlife Officer Post in range, else the Parish call-out); the why-line and the secondary suggestions come from data.gatorText
+        const GT = (BSU.data && BSU.data.gatorText) || {}, PG = (BSU.params.wildlife && BSU.params.wildlife.gator) || {};
+        const free = !!call('wildlife', 'canWrangle', state, g.id), st = call('wildlife', 'gatorStatus', state, g.id);
+        const fee = BSU.formatMoney(fin(PG.callOutFee, 15000)), days = fin(PG.callOutDays, 1) === 1 ? '1 day' : fin(PG.callOutDays, 1) + ' days';
+        const fix = free ? (GT.fixFree || 'Fix: the Wildlife Officer relocates it (free)') : String(GT.fixPaid || 'Fix: Parish Wildlife call-out {fee}, arrives in {days}').replace('{fee}', fee).replace('{days}', days);
+        const why = st && st.closes >= 0 ? (GT.whyClosed || '') : (GT.why || '');
+        mk(out, 'gatorOnCampus', 'gator:' + fin(g.id, i), { severity: 3, title: (g.name || 'A gator') + ' is on campus' + (st && st.closes >= 0 && st.closesName ? ' · ' + st.closesName + ' closed' : (st && st.delayedVisit > 0 ? ' · ' + st.delayedVisit + ' students rerouted' : '')), fix: fix, why: why, tiles: [i], anchor: tileAnchor(i), action: { relocate: g.id, free: free } });
       }
     } catch (e) { ierr('gators', e); }
     // mosquito hotspots: the top campus tiles over the "Biblical" band, clustered
