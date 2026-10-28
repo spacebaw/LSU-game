@@ -1118,7 +1118,7 @@
     if (lv && lv.active) {
       if (lv.phase === 'halftime') return 'Halftime';
       if (lv.phase === 'pregame' || !g.kickedOff) return 'Kickoff';
-      if (lv.mode === 'montage') return 'Q' + clamp(int(g.quarter, 1), 1, 4);
+      if (lv.mode === 'montage') return 'Q' + clamp(int(g.quarter, 1), 1, 4) + (lv.clockText ? ' · ' + String(lv.clockText) : '');   // montage pass: the highlight's quarter and the clock it was snapped at
       return (lv.quarter > 4 ? '' : 'Q' + clamp(int(lv.quarter, 1), 1, 4) + ' · ') + String(lv.clockText || '');
     }
     return gameClock(s, g);

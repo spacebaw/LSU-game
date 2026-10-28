@@ -400,6 +400,7 @@ s.setPiece = { kind: 'x', cameraTouched: false }; R.panBy(1, 0, true); ok(s.setP
   H.render(); H.render();
   fi = R.fbInfo();
   ok(fi.active && fi.players === 22 && fi.drawn >= 22 + 1 + 6 + 3 + 1, 'football layer draws 22 players + ball/officials/sideline/crowd (' + fi.drawn + ' entries, ' + fi.players + ' players)');
+  ok(fi.letterbox === false && fi.cut === false && fi.wide === false, 'montage pass: no HIGHLIGHTS letterbox, cut or wide shot during a watched game');
   const qf = R.fieldQuad(fld);
   ok(fi.minX >= qf.x0 - 0.01 && fi.maxX <= qf.x1 + 0.01 && fi.minY >= qf.y0 - 0.01 && fi.maxY <= qf.y1 + 0.01, 'every drawn player maps inside the painted field quad: X ' + fi.minX.toFixed(2) + '-' + fi.maxX.toFixed(2) + ' in [' + qf.x0 + ',' + qf.x1 + '], Y ' + fi.minY.toFixed(2) + '-' + fi.maxY.toFixed(2) + ' in [' + qf.y0 + ',' + qf.y1 + ']');
   ok(s.setPiece && s.setPiece.kind === 'game' && fi.camera && s.ui.camera.zoom === 2 && s.setPiece.cameraTouched === false, 'the game camera took over at 2x for Bayou Field without touching cameraTouched (zoom ' + s.ui.camera.zoom + ')');
@@ -418,6 +419,47 @@ s.setPiece = { kind: 'x', cameraTouched: false }; R.panBy(1, 0, true); ok(s.setP
   H.render();
   ok(!s.setPiece && R.fbInfo().camera === false, 'after the skip the set piece ended and the game camera let go (zoom stays ' + s.ui.camera.zoom + ' because the player touched it)');
   void zoomBefore; void drill;
+}
+
+// --- montage pass: the auto-sim reel's camera (a hard cut to each highlight's line of scrimmage, the ball through the play, the wide bowl on the final beat) and the HIGHLIGHTS letterbox (montage only) ----
+{
+  const H = BSU.headless;
+  H.render();
+  ok(R.fbInfo().letterbox === false && R.fbInfo().camera === false, 'no letterbox and no game camera between games');
+  BSU.sports.setAutoSim(s, true);
+  const zoom0 = s.ui.camera.zoom;
+  const ph = BSU.sports.playHome(s);
+  ok(ph && ph.ok && s.setPiece && s.setPiece.kind === 'montage' && s.setPiece.len === 100, 'auto-sim after a seen game: playHome starts a 100-tick montage: ' + JSON.stringify(ph));
+  H.tick(1);   // tick 0 resolves the game and cuts the reel
+  const reel = BSU.sports.montage(s);
+  ok(reel && reel.total >= 4 && reel.total <= 6, 'the reel has 4–6 picks (' + (reel && reel.total) + ')');
+  let frames = 0, lb = 0, cutOk = 0, cutBad = 0, liveOk = 0, liveBad = 0, wideEarly = 0, finalOk = 0, zoom2 = 0, crowd = 0, snapOk = 0, snapBad = 0;
+  const seenCut = new Set();
+  while (s.setPiece) {
+    H.render(); frames++;
+    const fi = R.fbInfo(), lv = BSU.sports.live(s), cam = s.ui.camera;
+    if (fi.letterbox) lb++;
+    if (cam.zoom === 2) zoom2++;
+    if (R.drawList.some((e) => e && e.kind === 'fbcrowd')) crowd++;
+    if (lv.phase === 'final') { if (fi.wide && cam.zoom === 1 && fi.camU === 50 && !fi.cut) finalOk++; }
+    else {
+      if (fi.wide) wideEarly++;
+      if (lv.cut && lv.anim) {
+        if (fi.cut && Math.abs(fi.camU - Math.max(0, Math.min(100, lv.anim.los))) < 1e-6) cutOk++; else cutBad++;
+        if (!seenCut.has(lv.anim.n)) { seenCut.add(lv.anim.n); if (cam.x === cam.tx && cam.y === cam.ty) snapOk++; else snapBad++; }   // the first frame of a cut lands the camera (no ease)
+      } else if (lv.phase === 'live') { if (!fi.cut && Math.abs(fi.camU - Math.max(-10, Math.min(110, lv.ball.x))) < 1e-6) liveOk++; else liveBad++; }
+    }
+    H.tick(1);
+  }
+  H.render();
+  ok(frames === 99 && lb === 99 && R.fbInfo().letterbox === false, 'the HIGHLIGHTS letterbox is drawn on every montage frame (' + lb + ' of ' + frames + ') and gone after it');
+  ok(cutOk >= reel.total * 3 && cutBad === 0, 'on every cut tick the camera targets the highlight\'s line of scrimmage (' + cutOk + ' ticks, ' + cutBad + ' off)');
+  ok(snapOk === reel.total && snapBad === 0, 'each cut lands the camera on its first frame — a hard cut, not an ease (' + snapOk + ' of ' + reel.total + ')');
+  ok(liveOk >= reel.total * 5 && liveBad === 0, 'through each play the camera follows the ball (' + liveOk + ' ticks, ' + liveBad + ' off)');
+  ok(finalOk >= 9 && wideEarly === 0, 'the final beat frames the bowl at 1x on the field centre for its frames (' + finalOk + ' ≥ 9) and never before (' + wideEarly + ')');
+  ok(zoom2 >= 80 && s.setPiece === null && s.ui.camera.zoom === zoom0 && R.fbInfo().camera === false, 'the reel runs at the 2x game zoom (' + zoom2 + ' ticks) and the zoom is handed back after the set piece (' + s.ui.camera.zoom + ' = ' + zoom0 + ')');
+  ok(crowd >= 90 && s.setPiece === null && !s.sports.game && s.sports.schedule.some((e) => e.played && e.home), 'the crowd entry is drawn on every montage frame (' + crowd + ') and the game is recorded');
+  BSU.sports.setAutoSim(s, false);
 }
 
 // --- selfTest under the harness flag ---------------------------------------------------

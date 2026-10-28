@@ -134,7 +134,7 @@
   const bolt = new Float32Array(24); let boltN = 0, flashUntil = 0, boltUntil = 0, boltTipX = 0, boltTipY = 0;
   const fogBlobs = []; for (let k = 0; k < 8; k++) fogBlobs.push({ x: 0, y: 0, r: 1, vx: 0, ph: 0 });
   let fogSprite = null, fogSpriteTried = false, lightsCtx = null, lightsCanvasRef = null;
-  let stormPhase = -1, godRayUntil = -1, goldFlash = 0, burstsPending = 0, burstTimer = 0, perfChipUntil = 0, subscribed = false, inited = false;
+  let stormPhase = -1, godRayUntil = -1, goldFlash = 0, burstsPending = 0, burstTimer = 0, burstGap = 22, mtVolley = null, perfChipUntil = 0, subscribed = false, inited = false;
   let frameNo = 0, lastFrameNo = -1;
   const overtop = new Map();   // tile → frames left of trickle
   const lightRefs = {};        // kind → SpriteRef (refreshed per frame)
@@ -777,7 +777,12 @@
       for (const [i, left] of overtop) { if (left <= 0) { overtop.delete(i); continue; } overtop.set(i, left - 1); const tx = i & 63, ty = i >> 6; if (tx >= x0 && tx <= x1 && ty >= y0 && ty <= y1) emit('sheet', tileWorldX(tx, ty), tileWorldY(tx, ty), 2, { spread: 14, z: elevPx(state, i) + fin(t.crest ? t.crest[i] : 0, 0) * PXFT, vz: -20, vy: 20 }); }
     }
     // fireworks queue (game:final)
-    if (burstsPending > 0 && --burstTimer <= 0) { burstTimer = 22; burstsPending--; fireworks(state, 1.2); }
+    if (burstsPending > 0 && --burstTimer <= 0) { burstTimer = burstGap; burstsPending--; fireworks(state, mtVolley ? 1 : 1.2, mtVolley ? 2.6 : 1); }
+    // montage pass: a home win's volley launches 7 ticks before the final beat (a shell climbs 650 ms) so the bursts open over the bowl as the wide shot cuts in
+    const mSpc = state.setPiece, mG = state.sports && state.sports.game;
+    if (mSpc && mSpc.kind === 'montage' && mG && mG.home && mG.mode === 'montage' && mG.reel && Array.isArray(mG.score) && mG.score[0] > mG.score[1]) {
+      if (mtVolley !== mG && fin(mSpc.tick, 0) >= fin(mG.reel.finalAt, 90) - 6) { mtVolley = mG; burstsPending = 3; burstTimer = 1; burstGap = 10; }
+    } else if (mtVolley && !(mSpc && mSpc.kind === 'montage')) mtVolley = null;
     if (milePending > 0 && --mileTimer <= 0) { mileTimer = 20; milePending--; viewShell(state); }
   }
 
@@ -954,7 +959,7 @@
         if (e.kind === 'building' && e.b) {
           const b = e.b, v = e.variant | 0, span = (b.w | 0) + (b.h | 0);
           const cx = e.sx + ((b.h | 0) - (b.w | 0)) * 16 * z, cy = e.sy - (span - 2) * 8 * z;
-          if (v & SPR.NIGHT) { const L = pushLight('window', cx, cy - (10 + span * 3) * z, 1.6 + 0.7 * span, 0.9, 0); if (L) L.d = 1; if (v & SPR.PILINGS) pushReflection(cx, cy + (span * 4) * z, z, 0.3); else if (FXO.reflect && state.tiles && state.tiles.depth) windowReflections(state, b, span, cam, view, 0.34); }
+          if ((v & SPR.NIGHT) && !(b.type === 'stadium' && game && game.home)) { const L = pushLight('window', cx, cy - (10 + span * 3) * z, 1.6 + 0.7 * span, 0.9, 0); if (L) L.d = 1; if (v & SPR.PILINGS) pushReflection(cx, cy + (span * 4) * z, z, 0.3); else if (FXO.reflect && state.tiles && state.tiles.depth) windowReflections(state, b, span, cam, view, 0.34); }
           if (b.type === 'bell_tower' && b.built >= 1 && !b.ruin) pushLight('beacon', cx, cy - 78 * z, 2.2 + 0.4 * Math.sin(frameNo * 0.05), prestige, 0);
           else if (b.type === 'water_tower' && b.built >= 1 && !b.ruin && (((frameNo / 60) | 0) & 1) === 0) pushLight('blink', cx, cy - 64 * z, 1.5, 1, 0);
           else if (b.type === 'substation' && (v & SPR.NIGHT) && (frameNo % 180) < 6) pushLight('arc', cx, cy - 10 * z, 2.5, 1, 0);
@@ -1237,8 +1242,9 @@
     const H = 110 + 40 * r.float(), sx = view.vw * (0.3 + 0.4 * r.float()), sy = view.vh * (0.2 + 0.18 * r.float());
     addShell((sx - view.vw / 2) / z + cam.x, (sy - view.vh / 2) / z + cam.y + H, 0, H, 1);
   }
-  function fireworks(state, scale) {
+  function fireworks(state, scale, spread) {   // montage pass: `spread` widens the launch offsets (the final beat's volley opens as separate bursts instead of one bloom)
     state = state || stateLive(); if (!state) return;
+    spread = Math.max(1, fin(spread, 1));
     let at = null;
     let vb = null; try { vb = typeof R.fieldVenue === 'function' ? R.fieldVenue(state, false) : null; } catch (e) { vb = null; }   // football pass F: the venue the game is played at
     if (vb) at = footprintCenter(vb);
@@ -1247,7 +1253,7 @@
     if (!at) return;
     let rim = 0;   // stadium scale pass: the shells climb past the new far rim (tier II 66 px, III 112) so the burst opens above the decks, the confetti over the crown
     if (vb && vb.type === 'stadium') { try { const Sp = mod('sprites'); const SG = Sp && typeof Sp.stadiumGeom === 'function' ? Sp.stadiumGeom(vb.tier | 0, vb.w | 0, vb.h | 0) : null; rim = SG ? fin(SG.farRim, 0) : 0; } catch (e) { rim = 0; } }
-    const r = rng(), ox = (r.float() - 0.5) * 90 * scale, oy = (r.float() - 0.5) * 30 * scale, zz = at.z + 90 + rim * 0.6 + r.float() * 40;
+    const r = rng(), ox = (r.float() - 0.5) * 90 * scale * spread, oy = (r.float() - 0.5) * 30 * scale * spread, zz = at.z + 90 + rim * 0.6 + r.float() * 40;
     emit('confetti', at.x + ox, at.y + oy, Math.round(30 * scale), { z: zz, vx: 0, vy: 0, vz: 40, spread: 6, jitter: 1, size: 3, life: 1500 });
     const zc = Math.max(1, fin(camOf(state).zoom, 1));   // qa pass 4: at the 2× game camera a 150–210 px apex burst under the top bar; scale the climb so the burst stays over the bowl
     addShell(at.x + ox, at.y + oy, at.z, (150 + 60 * r.float()) / Math.sqrt(zc) + rim * 0.7, 1);   // B5: a rising rocket and a trailed burst with bloom (render_fx passFireworks)
@@ -1275,8 +1281,8 @@
     // football pass F: crowd reactions (render.fbNotify), the gold flash on home scores, a shake on big hits, audio stings
     const fbTell = (kind, p) => { try { if (typeof R.fbNotify === 'function') R.fbNotify(kind, p); } catch (e) { ferr('fbNotify', e); } };
     const sting = (name, opts) => { try { const A = BSU.audio; if (A && typeof A.play === 'function') A.play(name, opts); } catch (e) { ferr('sting', e); } };
-    on(EV.GAME_SCORE, (p) => { fbTell('score', p); if (p.side !== 'home') return; fireworks(stateLive(), 1); goldFlash = Math.max(goldFlash, 4); R.shake(PR.shakeMs ? PR.shakeMs.score : 150); });
-    on(EV.GAME_FINAL, (p) => { fbTell('final', p); if (!p.won) return; burstsPending = 3; burstTimer = 1; goldFlash = 6; });
+    on(EV.GAME_SCORE, (p) => { fbTell('score', p); if (p.side !== 'home') return; if (p.montage) { goldFlash = Math.max(goldFlash, 3); return; } fireworks(stateLive(), 1); goldFlash = Math.max(goldFlash, 4); R.shake(PR.shakeMs ? PR.shakeMs.score : 150); });   // montage pass: a reel's scoring highlight waves the crowd and flashes gold; the shells wait for the final beat
+    on(EV.GAME_FINAL, (p) => { fbTell('final', p); if (!p.won) return; const mt = p.mode === 'montage'; burstsPending = mt ? (mtVolley ? 2 : 4) : 3; burstTimer = mt ? 12 : 1; burstGap = mt ? 12 : 22; goldFlash = 6; });   // montage pass: the final beat is 10 ticks — the pre-rolled volley gets a second wave 12 frames apart
     on(EV.GAME_KICKOFF || 'game:kickoff', (p) => { fbTell('kickoff', p); });
     on(EV.GAME_HALFTIME || 'game:halftime', (p) => { fbTell('halftime', p); if (p.mode === 'highlights' || p.mode === 'full') sting('whistle', { gain: 0.5 }); });
     on(EV.GAME_PLAY || 'game:play', (p) => {

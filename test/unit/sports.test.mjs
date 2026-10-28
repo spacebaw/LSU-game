@@ -387,7 +387,7 @@ function neutralStaff(s) { SP.staff(s); for (const r of ['oc', 'dc']) s.sports.s
 
 // --- PLAN_FOOTBALL pass A hotfix, whole game: setPiecesSeen.game gates Skip ▸ and the auto-sim montage -----------------
 // Built index.html + real session/progress/ui: the first home game is a full unskippable 750-tick watch; once it ends the
-// next home game is skippable (Skip works at tick 200), and with Auto-sim on the one after that is a 50-tick montage.
+// next home game is skippable (Skip works at tick 200), and with Auto-sim on the one after that is a 100-tick montage (montage pass).
 if (existsSync(join(root, 'index.html'))) {
   const { win: gw } = loadGame();
   const B = gw.BSU, H = B.headless;
@@ -418,7 +418,7 @@ if (existsSync(join(root, 'index.html'))) {
   ok(g2.kind === 'game' && g2.skippableAtStart === true, 'second home game is skippable from the start (Skip ▸ available)');
   ok(g2.skippedAt200 === true && g2.ticks < 260, `Skip at tick 200 ends the game immediately (${g2.ticks} ticks, not 750)`);
   const g3 = nextGame(true, false);
-  ok(g3.kind === 'montage' && g3.len === 50 && g3.ticks <= 52, `with Auto-sim the next home game is a ${g3.len}-tick montage (5 s, ran ${g3.ticks} ticks) instead of 75 s`);
+  ok(g3.kind === 'montage' && g3.len === 100 && g3.ticks <= 102, `with Auto-sim the next home game is a ${g3.len}-tick montage (10 s, ran ${g3.ticks} ticks) instead of 75 s`);
   ok(s.sports.schedule.filter(e => e.played).length >= 3, 'all three games were scored and recorded');
 }
 
@@ -482,14 +482,50 @@ if (existsSync(join(root, 'index.html'))) {
   ok(SP.summary(f.s) && SP.summary(f.s).mvp && SP.summary(f.s).yards.total.length === 2 && SP.summary(f.s).topText.every(x => /^\d+:\d\d$/.test(x)) && Number.isFinite(SP.summary(f.s).revenue.total), 'summary(): yards, time of possession, MVP, revenue after the game');
   const rp = SP.recentPlays(f.s, 5); ok(Array.isArray(rp) && rp.length === 0, 'recentPlays() is empty between games');
   ok(SP.live(f.s).active === false && SP.playState(f.s) === null, 'live()/playState() inactive between games');
-  // montage (auto-sim after the first game was seen): resolves at tick 5, quarters reveal 10/20/30/40, final at 45
-  const m = f.s; rec.seen = true; SP.setAutoSim(m, true); SP.setWatchFull(m, false);
-  const next = m.sports.schedule.find(e => e.home && !e.played); runUntilDay(m, next.day);
-  ok(m.setPiece && m.setPiece.kind === 'montage' && m.sports.game.mode === 'montage', 'auto-sim → montage');
-  const mg = m.sports.game; let shownAt10 = null;
-  while (m.setPiece) { tick1(m); if (m.setPiece && m.setPiece.tick === 12) shownAt10 = mg.homePts + mg.awayPts; }
-  ok(mg.over && mg.finalized && next.played && shownAt10 !== null && shownAt10 <= mg.homePts + mg.awayPts, 'the montage resolved the whole game instantly and revealed the score quarter by quarter');
-  rec.seen = false;
+  // montage pass (auto-sim after the first game was seen): tick 0 resolves the game and cuts a ≤ 6-pick highlight reel over 100 ticks
+  // (every scoring play when they fit, then the biggest gains, in game order), each pick = a cut + the play at the live state + a hold,
+  // the score bug advancing after each pick, a 10-tick final beat; Skip ends it at any tick; the same seed cuts the same reel.
+  const montage = (seed, skipAt) => {
+    const s = newGame(seed); run(s, 100); rec.seen = true; SP.setAutoSim(s, true); SP.setWatchFull(s, false);
+    const op = s.sports.schedule.find(e => e.home); runUntilDay(s, op.day);
+    const g = s.sports.game, out = { s, g, kind: s.setPiece && s.setPiece.kind, len: s.setPiece && s.setPiece.len, ticks: 0, bad: [], cuts: 0, live: 0, finals: 0, shown: [], fp: [], reel: null, skipTick: -1, scoresBefore: events.length };
+    while (s.setPiece) {
+      const t = s.setPiece.tick;
+      if (skipAt >= 0 && t === skipAt) { SP.skipToFinal(s); out.skipTick = s.setPiece ? s.setPiece.tick : -1; }
+      if (!out.reel) out.reel = SP.montage(s);
+      const lv = SP.live(s);   // the frame shown at this tick (the module ticked at t − 1)
+      if (!lv.active || lv.mode !== 'montage' || !lv.montage || typeof lv.cut !== 'boolean' || !Array.isArray(lv.players) || lv.players.length !== 22 || !lv.players.every(p => Number.isFinite(p.x) && Number.isFinite(p.y) && typeof p.state === 'string') || !Number.isFinite(lv.ball.x) || !Number.isFinite(lv.ball.y) || !Number.isFinite(lv.homePts + lv.awayPts)) out.bad.push(t);
+      if (lv.cut) out.cuts++;
+      if (lv.phase === 'live' && lv.anim) out.live++;
+      if (lv.phase === 'final') out.finals++;
+      out.shown.push(lv.homePts + lv.awayPts);
+      if (Array.isArray(lv.players)) out.fp.push(lv.phase + ':' + (lv.anim ? lv.anim.n : '-') + ':' + lv.players.map(p => Math.round(p.x * 10) + ',' + Math.round(p.y * 10)).join(';'));
+      tick1(s); out.ticks++;
+    }
+    out.scores = events.slice(out.scoresBefore).filter(e => e.name === 'game:score' && e.p.montage);
+    rec.seen = false;
+    return out;
+  };
+  const m1 = montage(33, -1);
+  ok(m1.kind === 'montage' && m1.g.mode === 'montage' && m1.len === 100 && m1.ticks >= 99 && m1.ticks <= 100, 'auto-sim → a 100-tick montage set piece (' + m1.kind + ', len ' + m1.len + ', ran ' + m1.ticks + ')');
+  const R1 = m1.reel, P1 = m1.g.plays, scoringN = P1.filter(e => e.res === 'td' || e.res === 'safety' || ((e.type === 'fg' || e.type === 'two') && e.res === 'good')).length;
+  ok(R1 && R1.total >= 4 && R1.total <= 6 && R1.picks.length === R1.total, 'the reel picks 4–6 highlights (' + (R1 && R1.total) + ' of ' + P1.length + ' plays; ' + scoringN + ' scoring plays)');
+  const pickN = R1 ? R1.picks.map(p => p.n) : [];
+  ok(pickN.every((n, i) => i === 0 || n > pickN[i - 1]), 'the picks run in game order: ' + pickN.join(', '));
+  const scoringPicked = P1.filter(e => (e.res === 'td' || e.res === 'safety' || ((e.type === 'fg' || e.type === 'two') && e.res === 'good'))).filter(e => pickN.indexOf(e.n) >= 0).length;
+  ok(scoringN <= 6 ? scoringPicked === scoringN : scoringPicked === 6, 'every scoring play is in the reel when ≤ 6 fit (' + scoringPicked + ' of ' + scoringN + ')');
+  ok(R1 && R1.finalAt === 90 && R1.len === 100 && R1.picks[0].t0 === 0 && R1.picks.every((p, i) => p.tc - p.t0 >= 3 && p.tc - p.t0 <= 4 && p.t1 - p.tc >= 6 && p.t1 - p.tc <= 15 && p.th >= p.t1 + 1 && (i === 0 || p.t0 === R1.picks[i - 1].th)) && R1.picks[R1.picks.length - 1].th === 90, 'cuts of 3–4 ticks + plays of 6–15 ticks tile the 90 ticks before the final beat: ' + (R1 ? R1.picks.map(p => p.t0 + '/' + p.tc + '/' + p.t1 + '/' + p.th).join(' ') : '-'));
+  ok(m1.bad.length === 0, 'the live state is valid on every montage tick (22 finite players, a ball, cut + montage {index, total}); bad ticks: ' + m1.bad.join(','));
+  ok(m1.cuts >= R1.total * 3 && m1.live >= R1.total * 6 && m1.finals >= 9, 'cut ticks ' + m1.cuts + ' ≥ 3 × picks, live ticks ' + m1.live + ' ≥ 6 × picks, the 10-tick final beat shows ≥ 9 frames (' + m1.finals + ')');
+  const finalPts = m1.g.score[0] + m1.g.score[1];
+  const picksScoring = R1 ? R1.picks.filter(p => p.pts > 0).length : -1, steps = new Set(m1.shown).size;
+  ok(m1.shown.every((v, i) => i === 0 || v >= m1.shown[i - 1]) && m1.shown[0] === 0 && m1.shown[m1.shown.length - 1] === finalPts && m1.shown[m1.shown.length - 9] === finalPts && steps >= Math.min(4, picksScoring + 1), 'the score bug climbs pick by pick from 0–0 to the final (' + m1.g.score.join('–') + ', ' + steps + ' steps for ' + picksScoring + ' scoring picks) and the final beat posts it');
+  ok(m1.scores.length === picksScoring && m1.scores.every(e => e.p.montage === true && (e.p.side === 'home' || e.p.side === 'away') && e.p.pts > 0), 'one game:score {montage: true} per scoring pick (' + m1.scores.length + ' of ' + picksScoring + ')');
+  ok(m1.g.finalized && m1.g.summary && m1.s.sports.schedule.find(e => e.home).played && !m1.s.setPiece && !m1.s.sports.game, 'the montage finalized the game with a summary, recorded it and ended');
+  const m2 = montage(33, -1);
+  ok(m2.reel && JSON.stringify(m2.reel.picks) === JSON.stringify(R1.picks) && m2.fp.join('|') === m1.fp.join('|') && m2.g.score.join('-') === m1.g.score.join('-'), 'the same seed cuts the same reel and replays the same live frames (deterministic)');
+  const m3 = montage(34, 37);
+  ok(m3.skipTick === 99 && m3.g.finalized && m3.ticks <= 38 && m3.finals >= 1 && !m3.s.setPiece && m3.s.sports.schedule.find(e => e.home).played, 'Skip at montage tick 37 posts the final and ends the set piece (' + m3.ticks + ' ticks)');
 }
 
 // --- PLAN_FOOTBALL pass C: the Spring Game (3 days after the field, deferred by a busy day), no record, the live state ----------------

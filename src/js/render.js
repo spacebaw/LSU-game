@@ -1765,8 +1765,9 @@
     px: new Float32Array(22), py: new Float32Array(22), cx: new Float32Array(22), cy: new Float32Array(22), team: new Int8Array(22), face: new Int8Array(22),
     bpx: 50, bpy: 0, bcx: 50, bcy: 0, crewU: 50, gainU: 60, refU: 50, refV: 18,
     warm: 0, warmZoom: 0, crowdUp: 0, waveAt: -1e9, scoreAt: -1e9, keyAt: -1e9, hitAt: -1e9, sigAt: -1e9, bellsAt: -1e9,
-    cam: { active: false, zoomBefore: 1, touched: false },
-    drawn: 0, players: 0, fans: 0, minX: 0, maxX: 0, minY: 0, maxY: 0, crowdFrame: -1
+    cam: { active: false, zoomBefore: 1, touched: false, cutN: -1, wide: false, montage: null },
+    drawn: 0, players: 0, fans: 0, minX: 0, maxX: 0, minY: 0, maxY: 0, crowdFrame: -1,
+    mtN: -1, mtHit: -1, lb: false, cut: false, camU: NaN, camV: NaN, hudTop: 56, hudBot: 28, hudAt: -1e9   // montage pass: the reel's crowd cues, the letterbox, the camera target of the last frame (tests)
   };
   /** the painted field's footprint rect {x0, y0, x1, y1, fw, fh} (tiles; X along +tx, Y along +ty) exactly as the stadium / practice-field painters draw it */
   M.fieldQuad = function (b) {
@@ -1803,7 +1804,7 @@
     return pick;
   };
   /** test/debug view of the football layer: what the last frame drew */
-  M.fbInfo = function () { return { drawn: FB.drawn, players: FB.players, fans: FB.fans, active: !!FB.live, drill: !!FB.drill, venue: FB.venue ? FB.venue.id : -1, minX: FB.minX, maxX: FB.maxX, minY: FB.minY, maxY: FB.maxY, camera: FB.cam.active, crowdUp: FB.crowdUp }; };
+  M.fbInfo = function () { return { drawn: FB.drawn, players: FB.players, fans: FB.fans, active: !!FB.live, drill: !!FB.drill, venue: FB.venue ? FB.venue.id : -1, minX: FB.minX, maxX: FB.maxX, minY: FB.minY, maxY: FB.maxY, camera: FB.cam.active, crowdUp: FB.crowdUp, letterbox: FB.lb, cut: FB.cut, camU: FB.camU, camV: FB.camV, wide: FB.cam.wide, zoom: zoomNow }; };
   /** game events forwarded by render_fx (score / play / kickoff / halftime / final) → crowd reactions */
   M.fbNotify = function (kind, p) {
     p = p || {};
@@ -1835,11 +1836,12 @@
   function fbCamera(state, cam) {
     if (M.fbEnabled === false) return;   // frozen, not released (perf A/B keeps the same view)
     const spc = state.setPiece, kind = spc ? spc.kind : '';
-    const on = !!(spc && (kind === 'game' || kind === 'spring') && FB.live && FB.venue);
+    const on = !!(spc && (kind === 'game' || kind === 'spring' || kind === 'montage') && FB.live && FB.venue);
     const C = FB.cam;
+    FB.camU = NaN; FB.camV = NaN; FB.cut = false;
     if (!on) {
-      if (C.active) { C.active = false; if (!C.touched && cam.zoom !== C.zoomBefore) setZoomCam(cam, C.zoomBefore, vw / 2, vh / 2, vw, vh); cam.hasTarget = false; markMoved(false); }
-      if (kind === 'montage' && C.montage !== spc && !spc.cameraTouched) {   // qa pass 3: the auto-sim montage eases the camera onto the venue once (no zoom change; a user pan still wins)
+      if (C.active) { C.active = false; C.cutN = -1; C.wide = false; if (!C.touched && cam.zoom !== C.zoomBefore) setZoomCam(cam, C.zoomBefore, vw / 2, vh / 2, vw, vh); cam.hasTarget = false; markMoved(false); }
+      if (kind === 'montage' && C.montage !== spc && !spc.cameraTouched) {   // qa pass 3: a montage without a live view (no venue) still eases the camera onto the field once (no zoom change; a user pan wins)
         C.montage = spc;
         const vb = M.fieldVenue(state, false), q = vb ? M.fieldQuad(vb) : null, wc = q ? M.fieldToWorld(vb, 50, FB_YD_V / 2, 0, q) : null;
         if (wc) { cam.tx = wc.x; cam.ty = wc.y; cam.hasTarget = true; }
@@ -1848,18 +1850,31 @@
     }
     const b = FB.venue, q = M.fieldQuad(b); if (!q) return;
     if (!C.active) {
-      C.active = true; C.zoomBefore = cam.zoom; C.touched = !!spc.cameraTouched;
+      C.active = true; C.zoomBefore = cam.zoom; C.touched = !!spc.cameraTouched; C.cutN = -1; C.wide = false; C.montage = spc;
       if (!spc.cameraTouched) { const z = FB_ZOOM[b.type] || 1; if (cam.zoom !== z) setZoomCam(cam, z, vw / 2, vh / 2, vw, vh); markMoved(false); }
     }
     if (spc.cameraTouched) { C.touched = true; return; }
-    const lv = FB.live, ph = lv.phase;
-    let u = 50, v = FB_YD_V / 2;
-    if (ph === 'live' || ph === 'snap') { u = clamp(fin(lv.ball && lv.ball.x, 50), -10, 110); v = FB_YD_V / 2 + clamp(fin(lv.ball && lv.ball.y, 0), -26.6, 26.6) * 0.4; }
-    else if (ph === 'huddle' || ph === 'decision' || ph === 'pregame') u = clamp(fin(lv.anim ? lv.anim.end : lv.spot, 50), 0, 100);
+    const lv = FB.live, ph = lv.phase, mt = kind === 'montage' && lv.mode === 'montage';
+    const SG = b.type === 'stadium' ? fbStadiumGeom(b) : null;
+    let u = 50, v = FB_YD_V / 2, snap = false, lift = 0;
+    if (mt && ph === 'final') {   // montage pass: the final beat frames the bowl — the wide 1× shot on the field centre, lifted toward the far decks
+      if (!C.wide) { C.wide = true; if (cam.zoom !== 1) setZoomCam(cam, 1, vw / 2, vh / 2, vw, vh); markMoved(false); snap = true; }
+      if (SG) lift = SG.farRim * 0.3;
+    } else {
+      if (mt && lv.cut) {   // montage pass: the cut lands on the highlight's line of scrimmage (a hard cut, not an ease), then the play is followed like a watched game
+        u = clamp(fin(lv.anim ? lv.anim.los : lv.spot, 50), 0, 100);
+        const n = lv.anim ? fin(lv.anim.n, -1) : -1;
+        if (n !== C.cutN) { C.cutN = n; snap = true; }
+        FB.cut = true;
+      }
+      else if (ph === 'live' || ph === 'snap') { u = clamp(fin(lv.ball && lv.ball.x, 50), -10, 110); v = FB_YD_V / 2 + clamp(fin(lv.ball && lv.ball.y, 0), -26.6, 26.6) * 0.4; }
+      else if (ph === 'huddle' || ph === 'decision' || ph === 'pregame') u = clamp(fin(lv.anim ? lv.anim.end : lv.spot, 50), 0, 100);
+      if (SG) lift = SG.farRim * (cam.zoom >= 2 ? 0.45 : 0.3);   // stadium scale pass: the far decks and masts tower over the field, so the frame slides toward them (world px; the near sideline and its low stand keep the lower half of the view)
+    }
     const w = M.fieldToWorld(b, u, v, 0, q); if (!w) return;
-    let lift = 0;   // stadium scale pass: the far decks and masts tower over the field, so the frame slides toward them (world px; the near sideline and its low stand keep the lower half of the view)
-    if (b.type === 'stadium') { const SG = fbStadiumGeom(b); if (SG) lift = SG.farRim * (cam.zoom >= 2 ? 0.45 : 0.3); }
+    FB.camU = u; FB.camV = v;
     cam.tx = w.x; cam.ty = w.y - lift; cam.hasTarget = true;     // eased by the camera LERP below
+    if (snap) { cam.x = cam.tx; cam.y = cam.ty; clampCam(cam); markMoved(false); }
   }
   // -- entity helpers -----------------------------------------------------------------------
   const fbScr = { x: 0, y: 0 };
@@ -1983,14 +1998,15 @@
     const a = lv ? lv.anim : null, t = fin(lv ? lv.frac : dr.frac, 0), ph = lv ? lv.phase : 'drill';
     const type = a ? String(a.type) : '', res = a ? String(a.res) : '', poss = lv ? (a ? a.poss : lv.possession) : 0, dir = poss === 0 ? 1 : -1;
     const liveNow = ph === 'live' || ph === 'snap' || ph === 'drill';
-    const t0 = a ? a.t0 : -1;
-    if (t0 !== FB.playT0) { FB.playT0 = t0; for (let i = 0; i < 22; i++) FB.face[i] = -1; }
+    const t0 = a ? a.t0 : -1, newPlay = t0 !== FB.playT0;
+    if (newPlay) { FB.playT0 = t0; for (let i = 0; i < 22; i++) FB.face[i] = -1; }
     if (tick !== FB.tickSeen) {
       FB.tickSeen = tick; FB.px.set(FB.cx); FB.py.set(FB.cy); FB.bpx = FB.bcx; FB.bpy = FB.bcy;
       for (let i = 0; i < n; i++) { const p = P[i]; FB.cx[i] = fin(p.x, 50); FB.cy[i] = fin(p.y, 0); if (FB.team[i] !== (p.team | 0) || FB.n !== n) { FB.px[i] = FB.cx[i]; FB.py[i] = FB.cy[i]; } FB.team[i] = p.team | 0; }
       FB.n = n;
       const bl = lv ? lv.ball : dr.ball; FB.bcx = fin(bl && bl.x, 50); FB.bcy = fin(bl && bl.y, 0);
       if (!liveNow || Math.abs(FB.bcx - FB.bpx) > 15) { FB.bpx = FB.bcx; FB.bpy = FB.bcy; }
+      if (newPlay && lv && (lv.mode === 'montage' || lv.cut)) { FB.px.set(FB.cx); FB.py.set(FB.cy); FB.bpx = FB.bcx; FB.bpy = FB.bcy; }   // montage pass: a cut jumps the whole formation across the field — no smear
     }
     if (ph === 'huddle' || ph === 'decision') { if (FB.huddleAt < 0) FB.huddleAt = frameNo; } else FB.huddleAt = -1;
     const huddleAge = FB.huddleAt >= 0 ? frameNo - FB.huddleAt : 0;
@@ -2132,8 +2148,14 @@
     const G = fbGeom(state, b, q);
     if (!inView(G.ax, G.ay, 8) || !G.sp || typeof G.sp.fbVariant !== 'function') return;
     if (lv) {
-      if (FB.game !== state.sports.game) { FB.game = state.sports.game; FB.warm = 0; FB.crewU = fin(lv.spot, 50); FB.gainU = FB.crewU + 10; FB.refU = FB.crewU; }
+      if (FB.game !== state.sports.game) { FB.game = state.sports.game; FB.warm = 0; FB.crewU = fin(lv.spot, 50); FB.gainU = FB.crewU + 10; FB.refU = FB.crewU; FB.mtN = -1; FB.mtHit = -1; }
       fbWarmStep(G, lv);
+      if (lv.mode === 'montage') {   // montage pass: no game:play events reach the crowd during a montage — the reel's cues come from the live state (a score's wave rides game:score through fbNotify)
+        const a = lv.anim, n = a ? fin(a.n, -1) : -1;
+        if (lv.phase === 'final') { if (FB.mtN !== -2) { FB.mtN = -2; FB.crowdUp = Math.max(FB.crowdUp, 200); } }
+        else if (n !== FB.mtN) { FB.mtN = n; FB.mtHit = -1; if (n >= 0) FB.crowdUp = Math.max(FB.crowdUp, 90); }
+        if (a && n >= 0 && fin(lv.frac, 0) >= 0.8 && FB.mtHit !== n && (String(a.type) === 'sack' || String(a.res) === 'fumble' || String(a.res) === 'int')) { FB.mtHit = n; FB.hitAt = frameNo; }
+      }
       if (lv.home && (b.type === 'stadium' || fin(b.tier, 0) >= 1)) {   // a bare Practice Field (the first Spring Game) has no stands to fill
         const seats = Math.max(1, fin(mod('sports') && mod('sports').venueSeats ? mod('sports').venueSeats(state) : 0, 0) || 15000);
         const e = push('fbcrowd', G.ax, G.ay, G.el, 0.4, drawFbCrowd); tileScreen(e);
@@ -2402,9 +2424,68 @@
     g.globalAlpha = 1;
   }
   function builtinHud(state) { if (minimapEl && (frameNo % 6) === 0) M.minimap(state); }
+  /** montage pass: the DOM top bar / ticker heights so the letterbox bands sit inside the visible canvas (re-read every 2 s; headless keeps the fallbacks) */
+  function fbHudLayout() {
+    if (frameNo - FB.hudAt < 120) return;
+    FB.hudAt = frameNo;
+    try {
+      const tb = document.getElementById('topbar'), tk = document.getElementById('ticker');
+      if (tb && Number.isFinite(tb.offsetHeight) && tb.offsetHeight > 0) FB.hudTop = tb.offsetHeight;
+      if (tk && Number.isFinite(tk.offsetHeight)) FB.hudBot = tk.offsetHeight;
+    } catch (e) { /* headless */ }
+  }
+  function fbEllipsis(g, text, maxW) {
+    text = String(text || '');
+    if (g.measureText(text).width <= maxW) return text;
+    let lo = 0, hi = text.length;
+    while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (g.measureText(text.slice(0, mid) + '…').width <= maxW) lo = mid; else hi = mid - 1; }
+    return text.slice(0, lo).replace(/\s+$/, '') + '…';
+  }
+  /** montage pass: the HIGHLIGHTS letterbox — two black bands (top: the label, pick n / N, the quarter and clock; bottom: the play's one line), a dip to black on each cut, the final's score and MVP on the final beat; only while a montage set piece runs with a live view */
+  function fbMontageHud(state, g) {
+    FB.lb = false;
+    const lv = FB.live, spc = state.setPiece;
+    if (!lv || lv.mode !== 'montage' || !spc || spc.kind !== 'montage' || !FB.venue) return;
+    fbHudLayout();
+    const bh = clamp(Math.round(vh * 0.07), 30, 56), y0 = FB.hudTop, y1 = vh - FB.hudBot - bh;
+    if (y1 <= y0 + bh) return;
+    const final = lv.phase === 'final', mt = lv.montage || { index: 0, total: 0 };
+    g.globalAlpha = 1; g.fillStyle = '#000';
+    g.fillRect(0, y0, vw, bh); g.fillRect(0, y1, vw, bh);
+    if (lv.cut && lv.anim) {   // the cut: the field dips toward black and lifts into the snap
+      const left = clamp(fin(lv.anim.t0, 0) - fin(spc.tick, 0), 0, 4);
+      g.globalAlpha = clamp(0.2 * left, 0, 0.55); g.fillRect(0, y0 + bh, vw, y1 - y0 - bh); g.globalAlpha = 1;
+    }
+    g.fillStyle = GOLD; g.fillRect(0, y0 + bh - 1, vw, 1); g.fillRect(0, y1, vw, 1);
+    // the bottom band carries the words (the DOM score bug and cards sit on the top band): label · the play's line …… n / N · Qn · clock
+    const px = clamp(Math.round(bh * 0.4), 12, 20), cy1 = y1 + bh / 2;
+    const opps = (BSU.data && BSU.data.opponents) || {}, oi = opps[lv.opp], oppN = String((oi && oi.name) || lv.oppAbbr || lv.opp || '').toUpperCase();
+    const bsu = lv.home ? fin(lv.homePts, 0) : fin(lv.awayPts, 0), opp = lv.home ? fin(lv.awayPts, 0) : fin(lv.homePts, 0);
+    g.textBaseline = 'middle'; g.textAlign = 'right';
+    g.font = Math.max(11, px - 2) + 'px system-ui, sans-serif'; g.fillStyle = GOLD;
+    const meta = final ? ('BSU ' + bsu + ' – ' + opp + ' ' + oppN + (lv.ot ? ' · OT' : '')) : ((mt.total > 0 ? Math.min(mt.index + 1, mt.total) + ' / ' + mt.total + ' · ' : '') + 'Q' + clamp(lv.quarter | 0, 1, 5) + ' · ' + String(lv.clockText || ''));
+    g.fillText(meta, vw - 16, cy1);
+    const mw = g.measureText(meta).width;
+    g.textAlign = 'left';
+    g.font = 'bold ' + px + 'px Georgia, serif'; g.fillStyle = GOLD;
+    const label = final ? 'FINAL' : 'HIGHLIGHTS';
+    g.fillText(label, 16, cy1);
+    const lw = g.measureText(label).width;
+    let line = '';
+    if (final) {
+      let sum = null; try { const sp = mod('sports'); sum = sp && typeof sp.summary === 'function' ? sp.summary(state) : null; } catch (e) { sum = null; }
+      const mvp = sum && sum.mvp;
+      line = (bsu > opp ? 'Bayou State wins' : (bsu < opp ? oppN.charAt(0) + oppN.slice(1).toLowerCase() + ' wins' : 'Tied')) + (mvp && mvp.name ? ' · MVP ' + mvp.name + (mvp.pos ? ' (' + mvp.pos + ')' : '') + (mvp.line ? ' · ' + mvp.line : '') : '');
+    } else line = lv.lastPlay ? String(lv.lastPlay.text || '') : '';
+    g.font = px + 'px system-ui, sans-serif'; g.fillStyle = PAL.text || '#F4EEE2';
+    const x0 = 16 + lw + 14, maxW = vw - 16 - mw - 24 - x0;
+    if (line && maxW > 40) g.fillText(fbEllipsis(g, line, maxW), x0, cy1);
+    FB.lb = true;
+  }
   M.registerPass('tint', builtinTint, 6, true);
   M.registerPass('overlays', builtinOverlays, 9, true);
   M.registerPass('hud', builtinHud, 10, true);
+  M.registerPass('fbhud', function (s, g) { try { fbMontageHud(s, g); } catch (e) { rerr('fbhud', e); } finally { g.globalAlpha = 1; g.textAlign = 'left'; g.textBaseline = 'alphabetic'; } }, 10.2, true);   // montage pass: the HIGHLIGHTS letterbox (after the hud fallback, before render_fx's fxhud)
 
   // ---------------------------------------------------------------------------
   // Minimap (fallback; render_fx may replace M.minimap)

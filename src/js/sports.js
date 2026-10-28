@@ -58,7 +58,7 @@
     seatsFallback: Object.freeze({ none: 0, bayou_field: 6000, stadium1: 15000, stadium2: 45000, stadium3: 80000 }),   // §0.3 rows 18–19 (data tiers win)
     nightVenues: Object.freeze({ stadium2: true, stadium3: true }),   // §8: night games from Stadium II
     scoreOffsets: Object.freeze([30, 70]),    // brief §4: home scores at +30, away at +70 within a 100-tick quarter
-    montage: Object.freeze({ kickoff: 5, quarters: Object.freeze([10, 20, 30, 40]), halftime: 20, halftimeTicks: 20, final: 45 }),   // brief §4 (the toast's 30 ticks are cut to 20 so it resolves before Q3/Q4 and the 45 final)
+    montage: Object.freeze({ len: 100, picks: 6, minPicks: 4, finalTicks: 10, cutTicks: 3, cutTicksFew: 4, playTicksMax: 15, playTicksMin: 6 }),   // montage pass: the 100-tick auto-sim highlight reel (≤ 6 picks × cut + play, a 10-tick final beat)
     makeupDays: 5,                            // §6.2: a makeup within 5 days is the Resilience Bowl; none within 5 → cancelled
     wordUnderdog: 0.35, wordFavored: 0.65,    // brief §4: 'Underdog' < .35, 'Even' < .65, else 'Favored'
     firstCoach: 0, firstCoachStars: 2,        // §8: Coach Bobby Cheramie, 2★, comes with the field
@@ -1016,7 +1016,7 @@
   function record(g, p, res, yds) {
     const pre = g.pre, t = pre.poss;
     g.n++;
-    const e = { n: g.n, q: pre.q, clk: g.clock, poss: p.poss !== undefined ? p.poss : t, down: pre.down, dist: pre.dist, spot: pre.spot, end: g.spot, type: p.type, res: res, yds: int(yds, 0), fourth: !!p.fourth, key: false, text: '' };
+    const e = { n: g.n, q: pre.q, clk: g.clock, poss: p.poss !== undefined ? p.poss : t, down: pre.down, dist: pre.dist, spot: pre.spot, end: g.spot, type: p.type, res: res, yds: int(yds, 0), fourth: !!p.fourth, key: false, text: '', sc: g.score.slice() };   // montage pass: sc = the score after the play
     e.key = res === 'td' || res === 'int' || res === 'fumble' || res === 'safety' || res === 'downs' || e.fourth || e.type === 'fg' || e.type === 'two' || (e.type === 'sack') || (e.yds >= PE.highlights.keyGain && e.type !== 'punt' && e.type !== 'kickoff') || (pre.twoMin && e.type !== 'kickoff' && e.type !== 'xp');
     e.text = playText(g, e, p);
     if (p.timeout !== undefined) e.timeout = p.timeout;
@@ -1658,7 +1658,10 @@
     if (g.decision) phase = 'decision';
     if (g.finalized) phase = 'final';
     else if (g.phase === 'half' && !g.halfDone) phase = 'halftime';
-    const play = a || { type: g.phase === 'kickoff' ? 'kickoff' : (g.phase === 'try' ? 'xp' : 'run'), poss: g.phase === 'kickoff' ? g.kickTeam : g.poss, los: g.spot, yds: 0, res: '', end: g.spot };
+    const montage = g.mode === 'montage', cut = montage && !!a && tg <= a.t0;   // montage pass: the 3–4 ticks before a highlight's snap are the cut (the camera lands, the formation is set)
+    if (cut) { phase = 'snap'; f = 0; }
+    let play = a || { type: g.phase === 'kickoff' ? 'kickoff' : (g.phase === 'try' ? 'xp' : 'run'), poss: g.phase === 'kickoff' ? g.kickTeam : g.poss, los: g.spot, yds: 0, res: '', end: g.spot };
+    if (montage && phase === 'final') play = { type: 'kneel', poss: BSU_T, los: 50, yds: 0, res: '', end: 50 };   // the final beat: the victory set at midfield while the bowl is framed
     const lp = livePlayers(g, play, f, phase === 'live' || phase === 'snap' ? 'live' : (phase === 'huddle' ? 'huddle' : 'set'));
     const last = g.lastPlay;
     return {
@@ -1666,9 +1669,10 @@
       down: g.down, distance: g.dist, spot: g.spot, possession: g.poss, score: g.score.slice(), homePts: g.homePts, awayPts: g.awayPts, timeouts: g.timeouts.slice(),
       phase: phase, frac: f, over: !!g.over, finalized: !!g.finalized, ot: !!g.ot,
       lastPlay: last ? { n: last.n, type: last.type, res: last.res, yards: last.yds, text: last.text, poss: last.poss, key: last.key } : null,
-      anim: a ? { type: a.type, res: a.res, yds: a.yds, poss: a.poss, los: a.los, end: a.end, t0: a.t0, dur: a.dur } : null,
+      anim: a ? { n: a.n, type: a.type, res: a.res, yds: a.yds, poss: a.poss, los: a.los, end: a.end, t0: a.t0, dur: a.dur } : null,   // montage pass: n (the play number) rides along so the renderer can tell one cut from the next
       formation: lp.formation, players: lp.players, ball: lp.ball,
       drive: g.drive ? { team: g.drive.team, plays: g.drive.plays, yds: g.drive.yds, start: g.drive.start } : null,
+      cut: cut, montage: montage ? { index: Math.max(0, int(g.mtIdx, 0)), total: g.reel && g.reel.picks ? g.reel.picks.length : 0 } : null,
       decision: g.decision ? { id: g.decision.id, kind: g.decision.kind, text: g.decision.text, options: g.decision.options, ticksLeft: Math.max(0, g.decision.openedAt + g.decision.ticks - t), def: g.decision.def } : null
     };
   }
@@ -1781,7 +1785,7 @@
       // engine state (PLAN_FOOTBALL §2.1): 0 = BSU, 1 = the opponent; spot 0 = BSU's own goal line
       score: [0, 0], qpts: [[0, 0, 0, 0, 0], [0, 0, 0, 0, 0]], clock: C.quarterSec, poss: BSU_T, down: 1, dist: C.firstDownYds, spot: C.driveStartSpot,
       timeouts: [C.timeoutsPerHalf, C.timeoutsPerHalf], phase: 'kickoff', kickTeam: OPP_T, openingReceiver: BSU_T, freeKick: false, ot: null, over: false,
-      eng: null, adj: noAdj(), halftimeChoice: null, halfDone: false, revealDone: false, revealed: 0,
+      eng: null, adj: noAdj(), halftimeChoice: null, halfDone: false, revealDone: false, revealed: 0, reel: null, mtIdx: NONE, mtShown: 0,   // montage pass: the highlight reel, the current pick, picks whose score the bug shows
       n: 0, plays: [], drives: [], drive: null, box: [newBox(), newBox()], lines: newLines(), names: [{}, {}], lastPlay: null, pre: null,
       decision: null, decisionN: 0, toasts: 0, pendingCall: null, pendingTry: null, anim: null, hl: { next: 0, budget: 0, target: null }, finalAt: NONE, summary: null
     };
@@ -1919,7 +1923,7 @@
     const montage = !!sp.autoSim && seen;
     const mode = montage ? 'montage' : (sp.watchFull ? 'full' : 'highlights');
     const kind = montage ? 'montage' : 'game';
-    const len = montage ? PS.autoSimTicks : (mode === 'full' ? fullLen() : PT.gameTicks);
+    const len = montage ? L.montage.len : (mode === 'full' ? fullLen() : PT.gameTicks);
     const g = makeGame(state, e, idx, mode);
     g.len0 = len;
     sp.game = g;
@@ -2036,24 +2040,87 @@
     const p = step(state, g);
     if (p) g.anim = animFor(g, p, tg, F.animTicks);
   }
-  /** The 50-tick montage (auto-sim): the engine resolves the whole game at tick 5; quarters reveal at 10/20/30/40; final 45. */
-  function montageTick(state, g, t) {
-    const MT = L.montage;
-    if (t >= MT.kickoff && !g.kickedOff) { kickoff(state, g); runSilent(state, g); }
-    if (!g.kickedOff) return;
-    for (let q = 0; q < 4; q++) {
-      if (t >= MT.quarters[q] && g.revealed <= q) {
-        g.revealed = q + 1; g.quarter = q + 1;
-        for (let side = 0; side < 2; side++) {
-          let pts = g.qpts[side][q]; if (q === 3) pts += g.qpts[side][4];
-          if (pts <= 0) continue;
-          if (g.home) { if (side === BSU_T) g.homePts += pts; else g.awayPts += pts; } else { if (side === BSU_T) g.awayPts += pts; else g.homePts += pts; }
-          emit(EV.GAME_SCORE, scorePayload(g, { quarter: q + 1, side: sideOf(g, side), team: side, pts: pts, montage: true }));
-        }
-      }
+  // --- the auto-sim montage (montage pass): a 10-second highlight reel cut from the resolved play log ---------------------
+  function scoredBy(e) { return e.res === 'td' || e.res === 'safety' || ((e.type === 'fg' || e.type === 'two') && e.res === 'good'); }
+  /** ≤ picks highlight plays: every scoring play (TD > FG > two/safety, BSU first on ties) when they fit, then the biggest gains / turnovers; returned in game order (indices into g.plays). */
+  function pickHighlights(g) {
+    const P = g.plays || [], MT = L.montage, max = Math.max(1, int(MT.picks, 6));
+    const scoring = [], rest = [];
+    for (let i = 0; i < P.length; i++) {
+      const e = P[i]; if (!e) continue;
+      if (scoredBy(e)) scoring.push(i);
+      else if (e.type !== 'xp' && e.type !== 'kneel' && e.type !== 'kickoff' && e.type !== 'two') rest.push(i);
     }
-    if (t >= MT.final && !g.finalized) { finalize(state, g, false); busesOff(state, g); }
+    const sw = function (i) { const e = P[i]; return (e.res === 'td' ? 300 : (e.type === 'fg' ? 200 : 150)) + (e.poss === BSU_T ? 10 : 0) + Math.abs(num(e.yds, 0)); };
+    const gw = function (i) { const e = P[i]; return Math.abs(num(e.yds, 0)) + (e.res === 'int' || e.res === 'fumble' ? 25 : 0) + (e.res === 'downs' ? 15 : 0) + (e.type === 'sack' ? 8 : 0) + (e.key ? 5 : 0); };
+    scoring.sort(function (a, b) { return sw(b) - sw(a) || a - b; });
+    rest.sort(function (a, b) { return gw(b) - gw(a) || a - b; });
+    const out = scoring.slice(0, max);
+    for (let k = 0; k < rest.length && out.length < max; k++) out.push(rest[k]);
+    out.sort(function (a, b) { return a - b; });
+    return out;
   }
+  /** The reel schedule over L.montage.len ticks: N picks share the ticks before the final beat (slot = cut + play + hold); sc = the score the bug shows once the pick has played (a try right after a TD folds in). */
+  function buildReel(g) {
+    const MT = L.montage, P = g.plays || [], idx = pickHighlights(g), N = idx.length;
+    const len = Math.max(20, int(MT.len, 100)), finalAt = len - Math.max(1, int(MT.finalTicks, 10));
+    const out = { picks: [], finalAt: finalAt, len: len };
+    if (N === 0) return out;
+    const slot = Math.floor(finalAt / N), cut = N >= 6 ? int(MT.cutTicks, 3) : int(MT.cutTicksFew, 4);
+    const play = clamp(slot - cut - 1, int(MT.playTicksMin, 6), int(MT.playTicksMax, 15));   // ≥ 1 tick of hold on the tackle / celebration before the next cut
+    let prev = [0, 0];
+    for (let k = 0; k < N; k++) {
+      const i = idx[k], e = P[i];
+      const t0 = k * slot, tc = t0 + cut, t1 = Math.min(tc + play, finalAt), th = k === N - 1 ? finalAt : (k + 1) * slot;
+      let sc = Array.isArray(e.sc) ? e.sc.slice() : prev.slice();
+      const nx = P[i + 1];
+      if (nx && (nx.type === 'xp' || nx.type === 'two') && Array.isArray(nx.sc)) sc = nx.sc.slice();
+      const team = sc[BSU_T] !== prev[BSU_T] ? BSU_T : (sc[OPP_T] !== prev[OPP_T] ? OPP_T : NONE);
+      out.picks.push({ i: i, n: e.n, t0: t0, tc: tc, t1: t1, th: th, sc: sc, team: team, pts: team >= 0 ? sc[team] - prev[team] : 0, q: clamp(int(e.q, 1), 1, 5) });
+      prev = sc;
+    }
+    return out;
+  }
+  /** The montage sky: night games are shown under the lights from the first cut, day games under the day sky. */
+  function montageSky(state, g, t) {
+    const len = Math.max(1, g.reel ? g.reel.len : L.montage.len);
+    call('weather', 'scriptSky', state, g.night ? SKY.NIGHT : SKY.DAY, clamp(t / len, 0, 1));
+  }
+  /** The 100-tick montage (auto-sim): tick 0 resolves the whole game and cuts the reel; each pick = a cut (formation set, camera lands), the play at the engine's per-tick live state, a hold on the tackle / celebration; the score bug advances after each pick; the final beat (last 10 ticks) posts the final with the summary. */
+  function montageTick(state, g, t) {
+    if (!g.kickedOff) { kickoff(state, g); runSilent(state, g); g.reel = buildReel(g); g.mtIdx = NONE; g.mtShown = 0; g.quarter = 1; g.clock = PE.clock.quarterSec; }
+    if (!g.reel || !Array.isArray(g.reel.picks)) g.reel = buildReel(g);   // a save from before the reel
+    montageSky(state, g, t);
+    const Rl = g.reel, picks = Rl.picks;
+    if (t >= Rl.finalAt || picks.length === 0) {
+      if (!g.finalized) { g.anim = null; finalize(state, g, false); busesOff(state, g); }
+      return;
+    }
+    let k = 0;
+    for (let j = 0; j < picks.length; j++) { if (t >= picks[j].t0) k = j; }
+    const p = picks[k], e = g.plays[p.i];
+    if (k !== g.mtIdx && e) {   // the cut: the next highlight's play, its down and spot for the bug, the clock it was snapped at
+      g.mtIdx = k;
+      g.anim = { t0: p.tc, dur: Math.max(1, p.t1 - p.tc), n: e.n, type: e.type, res: e.res, yds: e.yds, poss: e.poss, los: e.spot, end: e.end, phase: 'live' };
+      g.lastPlay = e; g.quarter = p.q; g.clock = num(e.clk, 0); g.spot = e.spot; g.down = e.down; g.dist = e.dist; g.poss = e.poss;
+    }
+    if (g.anim && t >= g.anim.t0 + g.anim.dur) g.anim.phase = 'huddle';
+    // every pick whose play has ended (the frame after tick t shows t + 1) posts its score on the bug; a scoring pick waves the crowd (game:score, montage: true)
+    for (let j = Math.max(0, int(g.mtShown, 0)); j < picks.length && t + 1 >= picks[j].t1; j++) {
+      const pj = picks[j], ej = g.plays[pj.i], sc = pj.sc;
+      g.mtShown = j + 1;
+      if (g.home) { g.homePts = sc[BSU_T]; g.awayPts = sc[OPP_T]; } else { g.homePts = sc[OPP_T]; g.awayPts = sc[BSU_T]; }
+      if (pj.team >= 0 && pj.pts > 0) emit(EV.GAME_SCORE, scorePayload(g, { quarter: pj.q, side: sideOf(g, pj.team), team: pj.team, pts: pj.pts, play: ej ? ej.type : null, score: sc.slice(), montage: true }));
+    }
+  }
+  /** read-only view of the montage reel for the renderer / tests: {index, total, finalAt, len, picks[{n, t0, tc, t1, th, sc, team, pts, q}]} | null */
+  M.montage = function (state) {
+    try {
+      const g = state && state.sports && state.sports.game;
+      if (!g || g.mode !== 'montage' || !g.reel) return null;
+      return { index: Math.max(0, int(g.mtIdx, 0)), total: g.reel.picks.length, finalAt: g.reel.finalAt, len: g.reel.len, shown: int(g.mtShown, 0), picks: g.reel.picks.map(function (p) { return { n: p.n, t0: p.t0, tc: p.tc, t1: p.t1, th: p.th, sc: p.sc.slice(), team: p.team, pts: p.pts, q: p.q }; }) };
+    } catch (e) { BSU.error('sports', 'montage', e); return null; }
+  };
 
   // ---------------------------------------------------------------------------
   // Postponement, makeups (GDD §6.2), Play Through It (§8)
@@ -3481,9 +3548,10 @@
         s.sports.autoSim = true;
         s.sports.schedule.push(makeEntry(s.calendar.day, 'sabine', true, 'regular', 2, 45));
         const st = startHome(s, 1);
-        A(st.ok && s.setPiece.kind === 'montage' && s.setPiece.len === PS.autoSimTicks, 'auto-sim + seen → montage');
-        for (let t = 0; t < 50; t++) { s.setPiece.tick = t; M.tick(s, { newDay: false, day: s.calendar.day }); }
-        A(s.sports.game.finalized && s.sports.schedule[1].played, 'montage resolves by tick 45');
+        A(st.ok && s.setPiece.kind === 'montage' && s.setPiece.len === L.montage.len, 'auto-sim + seen → montage');
+        let mtPlayed = 0;
+        for (let t = 0; t < L.montage.len; t++) { s.setPiece.tick = t; M.tick(s, { newDay: false, day: s.calendar.day }); const lv = liveState(s); if (lv.phase === 'live' && lv.anim) mtPlayed++; }
+        A(s.sports.game.finalized && s.sports.schedule[1].played && s.sports.game.reel.picks.length >= 1 && mtPlayed >= 10, 'montage cuts a reel, plays it and posts the final by the final beat');
         s.sports.game = null; s.setPiece = null;
         M._deps.progress = progress;
         // club-only: no venue → away club schedule, $20k each
