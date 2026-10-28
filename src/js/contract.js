@@ -742,6 +742,14 @@
       zoomSteps: [0.5, 0.65, 0.8, 1, 1.25, 1.5, 1.75, 2, 2.5],   // hud + zoom pass: the player's zoom steps (+ / − / wheel); render.zooms stay the three MASTER zooms the atlas and chunks are baked at
       hudModes: ['full', 'compact', 'hidden']   // hud + zoom pass: H cycles, Shift+H → full (ui.setHudMode)
     },
+    art: {                                   // docs/PLAN_HD_ART.md (H0 pipeline pass): the HD brush pipeline
+      hd: {
+        chromeAtlasMB: 96, chromeChunkMB: 120, safariAtlasMB: 64, safariChunkMB: 80,   // byte caps for master-2 atlas entries / HD chunk canvases (sprites.hdCaps feature-detects Safari); over a cap → fall back to master 1
+        bakeSliceMs: 4,                      // an HD (master 2) chunk bake runs only when the previous frame left this much headroom; one per frame
+        masters: [1, 2], masterAt: 1.5,      // master 2 when zoom × dpr ≥ masterAt (or the sprite master is already 2); master 4 is a config line for a later pass
+        chunkW: 1024, chunkH: 832            // the master-2 chunk canvas (render.chunkW/H × 2; 3.4 MB each)
+      }
+    },
     audio: { voices: 12, ambienceDb: -12, duckDb: -6, thunderDelay: [0.3, 2], zydecoBpm: 120, defaultVolume: 0.5 },   // GDD §13
     palette: {                               // GDD §12.2 (defined once here)
       purple: '#461D7C', purple2: '#5E2CA5', purpleHi: '#7F5BC5', purpleShadow: '#2B1246', panel: '#1A1230',

@@ -1,9 +1,10 @@
 # Bayou State — art style guide (Track B, written in pass B1)
 
 Every later art pass (B2 vegetation, B3 buildings, B4 characters, B5 effects, B6 icons) follows this file. The
-mechanisms it names live in `src/js/sprites.js` (`BSU.sprites.ramp`, `vnoise`, `pnoise`, `toneAt`, `bayer`, the pen)
-and `src/js/render.js` (`bakeChunk`, `groundTone`, `waterPass`). Read `docs/INTEGRATION_NOTES.md` "## art pass B1"
-for what B1 changed and measured.
+mechanisms it names live in `src/js/sprites.js` (`BSU.sprites.ramp`, `vnoise`, `pnoise`, `toneAt`, `bayer`, the pen),
+`src/js/brush.js` (`BSU.brush`, the HD brush of passes H0–H6: §2–§3 and "## Brush API" below) and `src/js/render.js`
+(`bakeChunk`, `groundTone`, `waterPass`). Read `docs/INTEGRATION_NOTES.md` "## art pass B1" for what B1 changed and measured
+and "## H0 pipeline pass" for the HD pipeline (masters, `registerHD`, chunk HD mode, caps).
 
 ## 1. Light
 
@@ -18,16 +19,21 @@ for what B1 changed and measured.
 - Canopies already shade from the upper-left (`sprites.js canopy`). B2 keeps that; B3 keeps the wall swap; B4 lights
   faces from the viewer's left.
 
-## 2. Material ramps (5 tones)
+## 2. Material ramps (continuous, five knots) — rewritten in pass H0
 
-Every material is a 5-tone ramp: **0 deep shadow, 1 shadow, 2 base, 3 light, 4 highlight**. `BSU.sprites.ramp(name)`
-returns it; `BSU.sprites.makeRamp(baseHex)` builds one for a new material. Shadows lean **cool** (toward `#2B2550`:
-deep = `mix(shade(base, .52), cool, .30)`, shadow = `mix(shade(base, .74), cool, .16)`), highlights lean **warm**
-(toward `#FFE0A0`: light = `mix(shade(base, 1.16), warm, .12)`, highlight = `mix(shade(base, 1.34), warm, .28)`).
-Never hand-pick a fourth green: pick a tone index. The ramps B1 uses (base = the palette colour where one exists):
+Every material is one base colour and a **continuous ramp** `BSU.brush.tone(base, t, alpha)` with t ∈ [−1, 1]:
+**−1 deep shadow, −.5 shadow, 0 base, .5 light, 1 highlight.** The five knots carry exactly `makeRamp`'s coefficients
+(shadows lean **cool** toward `#2B2550`: deep = `mix(shade(base, .52), cool, .30)`, shadow = `mix(shade(base, .74), cool, .16)`;
+highlights lean **warm** toward `#FFE0A0`: light = `mix(shade(base, 1.16), warm, .12)`, highlight = `mix(shade(base, 1.34), warm, .28)`),
+so `tone(c, −1 | −.5 | 0 | .5 | 1)` equals tones 0–4 of `BSU.sprites.ramp(name)` (≤ 2/255) and every hex in the table below stays
+valid; between the knots the shade factor and the tint amount interpolate linearly. Only the *mechanism* changed: gradients and
+orbs sample the ramp continuously instead of picking a dithered tone index. Style C saturates the base by 1.12 before ramping
+(`brush.tone`); `brush.toneArr` is the raw ramp. Pen painters not yet converted keep reading `ramp(name)[k]` (unchanged).
 
-| material     | 0 deep  | 1 shadow | 2 base  | 3 light | 4 highlight |
-|--------------|---------|----------|---------|---------|-------------|
+Base colours (`BSU.sprites.RAMP_BASES`, `BSU.brush.ramp(name)`; the knots below are what `tone` returns at −1 … 1):
+
+| material     | −1 deep | −.5 shadow | 0 base  | .5 light | 1 highlight |
+|--------------|---------|------------|---------|----------|-------------|
 | grass (Dry)  | #353F2E | #4B5E32  | #6E8F3C | #8EAC50 | #B1C866 |
 | highGrass    | #3B4631 | #556B38  | #7FA347 | #A0C15B | #C2DC71 |
 | wet ground   | #2D322D | #3E4830  | #5A6B3A | #7A884E | #9EA664 |
@@ -49,26 +55,83 @@ Never hand-pick a fourth green: pick a tone index. The ramps B1 uses (base = the
 | azalea bloom | #612946 | #963A5C  | #E75480 | #FF7095 | #FF8FA8 |
 | moss         | #45494A | #676F62  | #9BAA8A | #BCC8A0 | #DCE2B1 |
 
-(The last seven are B2's vegetation ramps: `oakLeaf`, `cypressLeaf`, `cypressRust`, `palmLeaf`, `azaleaLeaf`, `azaleaBloom`, `moss`.)
+Rules for every HD painter (H1–H6):
 
-Distribution on a flat surface: mostly 2 with islands of 3, threads of 1, a few px of 0 and 4
-(`TH_GROUND = [0.14, 0.36, 0.70, 0.90]` over a noise value in [0, 1)).
+- **Never hand-pick a colour**: pick a base (a ramp name, a palette key or the catalog hex) and a t. Faces carry fixed t
+  offsets in the brush (`top` +.05, `sw` −.10 lit, `se` −.48 shadow, roofs `nw` +.30 / `ne` −.18 / `sw` +.08 / `se` −.50) so a
+  building's `wallTones` become one base colour per material, not three hexes. Add `o.t` for a material-level nudge only.
+- **Light is a gradient, not a tone pick**: `plane` runs base+amp → base−amp across the quad (amp .14 stucco/stone/wood, .22
+  cloth, .30 metal); `orb` runs t+.75 at the upper-left to t−.65 at the rim; roofs run eave (t−.2) → ridge (t+.45). Pass t, never a
+  second colour.
+- **Silhouette information lives at t ≥ 0** on lit tops and crowns (the night tint still multiplies the frame; a shape whose
+  only contrast is at t ≤ −.5 vanishes at night, §5).
+- The accent pair (§4) is unchanged: purple / gold are decal and cloth materials, never terrain, water, bark or stone.
 
-## 3. Outlines, dither, noise
+## 3. Shading, bevels, seams and noise (no outlines, no dither) — rewritten in pass H0
 
-- **1-px darker outline** on every silhouette that stands against sky or water: tone 0 of its own ramp (not black),
-  on the shadow side and the bottom; the lit top edge gets tone 3 or 4 instead. Ground tiles have **no** rims (the old
-  per-tile NW/SE facet rims were the tile grid) — height reads from faces, terrace bands, the lit lip on the south
-  terrace edge and `groundTone`.
-- **Dither, never bands**: flat areas and gradients choose tones through `toneAt(n, x, y, thresholds, amp)`, which
-  adds a 4×4 Bayer offset (`bayer(x, y)`, ±0.47 × amp) before thresholding, so adjacent tones interleave over a band
-  of ~amp instead of meeting on a hard line. Use amp 0.08–0.12 for ground, 0.15–0.2 for skies and large walls.
-- **Noise**: `vnoise(seed, x, y, cell)` is smooth value noise (bilinear + smoothstep); stack two octaves (e.g. cell 13
-  at .55 + cell 5 at .30) plus .15 of hash grain. Iso surfaces sample `y × 2` so the blobs come out 2:1. Where tiles
-  must join without a seam use `pnoise(seed, x, y, cellX, cellY, perX, perY)` with the sprite's map position
-  (`variant` bits 4–9 = `tx & 7 | (ty & 7) << 3`, screen-space origin `((px − py)·32 + 256, (px + py)·16)`, periods
-  256 × 128): marsh pools do this and cross tile edges. Ground types without position bits pull the outer 16 % of the
-  diamond toward the base tone instead (`ed > 0.84`), which is what makes two random variants meet invisibly.
+- **Bevel instead of outline.** HD shapes have no 1-px outline. A `plane` classifies each edge against the key light
+  (upper-left): edges facing it get a light inner line (t+.7 at .55 alpha, 1.6 px), the others a cool rim `#B8C8FF` (.28 alpha,
+  1.1 px). `orb` adds a rim arc on its lower-right and an optional specular dot (`spec` = alpha) at the upper-left; roofs get
+  course lines (7, or 4 at lod 1), a specular band near the ridge on the lit planes and an eave shadow (multiply) on the walls
+  below. Contact comes from **AO**, not lines: every non-top face fades to `rgba(30,25,70,.25)` over its bottom 10 px, columns
+  over their bottom 8, trees sit in a soft `#1E1946` ellipse, and `shadow` (multiply, `rgba(40,34,90)`) casts the long shape.
+- **Gradients instead of dither.** Flat areas are a diagonal gradient (`groundTile`: t +.22 → −.10 plus a ±.13 world-noise
+  drift per tile) with `softEllipse` patches and small `orb` tufts; never `toneAt` / `bayer` in an HD painter, and never a
+  hand-written `createLinearGradient` in a painter — every gradient is one of the brush calls (PLAN_HD_ART §5 "Style drift").
+  Banding cannot occur because the ramp is continuous; if a surface reads flat, raise `amp`, do not add tones.
+- **Noise is world-anchored.** `brush.vnoise / fbm(seed, x, y, cell)` are sampled at `cx + env.originX`, `cy + env.originY`
+  (the context's world origin: the chunk origin for the chunk bake, 0 for a standalone sprite), so two tiles or two chunks
+  never show a seam or a repeat; the position bits of `variant` (4–9) are no longer needed for that. `microGrain` (a 64²
+  periodic luminance texture at `overlay`, .18–.35 alpha) is the one texture, applied to stucco, stone, ground and faces, and
+  it is skipped at lod 1. `pnoise(seed, x, y, cell, per)` builds any new tileable texture.
+- **Seams.** Antialiased diamonds leave a hairline between neighbours; every ground and water diamond is stroked with its own
+  fill at `brush.seamWidth(env)` = **0.9 device px** (0.9 art px at master 1, 0.45 at master 2), round joins. Any new tiled
+  primitive must do the same (`brush.seamStroke`). Elevations stay whole pixels (`round(elev·6)`).
+- **Masters and LOD.** A painter draws once in 1× art units; the context is pre-scaled to the master (1 = today's art pixels,
+  2 = HD, 1 art px = 2 device px of detail) with image smoothing on. `env.lod` is 0 at master 2 (everything) and 1 at master
+  1 (no grain, half the dabs / glints / moss strands, 4 roof courses): 0.5× is a smoothed downscale of master 1, so keep the
+  shape-from-shading (bevel + AO) strong enough to survive it, and darker contact shadows under small objects.
+- **Night** is unchanged (§5): paint day materials; `material: 'glow'` only for a lit pane in the base pass; everything that
+  glows registers a `light:` sprite baked from `brush.light` (additive) — still scaled by `nightAmount`, reflections still
+  the stretched copy. Water glints switch to silver `#C9D8FF` through `env.night`.
+- **Pen painters** not yet converted keep the B1 rules (1-px tone-0 outline, `toneAt` dither, `pnoise` with position bits);
+  they bake at master 1 through the pen and are pixel-doubled at 2, exactly as before H0.
+
+## Brush API
+
+`BSU.brush` (src/js/brush.js, style C "soft rendered diorama") is the only painter API for HD families. All coordinates are
+1× art px on a context already scaled to the master; `env` comes from `spec.env` (sprites.bake) or `brush.env(master, o)`.
+An HD painter: `BSU.sprites.registerHD(family, (ctx, spec) => { const g = BSU.brush.begin(ctx, w, h, spec); …draw with
+brush calls using g.env…; return { w, h, ox, oy }; })`. Anchors are unchanged (ARCH §6.1: tiles at the diamond centre, trees
+at the trunk base, decals bottom-centre, lights centre).
+
+| call | signature | use it for |
+|---|---|---|
+| `begin` | `begin(ctx, w, h, spec) → {w, h, S, env}` | first line of every HD painter: sizes the canvas w×h art px × master, pre-scales, smoothing on |
+| `env` | `env(master, {night, dpr, lod, originX, originY}) → env` | a hand-built env (chunk bake, tests); `master` 1 or 2, `lod` 0 full / 1 reduced |
+| `tone` | `tone(base, t, alpha?) → 'rgba()'` | every colour: base = ramp name, palette key or hex; t ∈ [−1, 1] (style C saturation applied) |
+| `toneArr` | `toneArr(base, t) → [r, g, b]` | the raw continuous ramp (no saturation), for mixing |
+| `css` / `mix` / `sat` / `ramp` | `css(c, a)`, `mix(a, b, t)`, `sat(c, k)`, `ramp(name) → hex` | colour plumbing; `ramp` resolves a material name, a palette key or a hex |
+| `rng` / `vnoise` / `fbm` / `pnoise` | `rng(seed) → () ⇒ [0, 1)`, `vnoise(seed, x, y, cell)`, `fbm(seed, x, y, cell, oct)`, `pnoise(seed, x, y, cell, per)` | deterministic jitter and world-space noise (sample at `x + env.originX`) |
+| `poly` / `bbox` / `centroid` / `diamond` / `smoothPath` / `ellipse` / `lerp` | `poly(ctx, pts)`, `bbox(pts) → {x0, y0, x1, y1, w, h}`, `diamond(cx, cy) → 4 pts`, `smoothPath(ctx, pts)` (Catmull-Rom) | geometry helpers; `pts` are `[[x, y], …]` |
+| `seamWidth` / `seamStroke` | `seamWidth(env) → px`, `seamStroke(ctx, pts, fillStyle, env)` | close the AA hairline of every tiled diamond with its own fill (0.9 device px) |
+| `plane` | `plane(ctx, pts, color, t, {vert, amp, rim, spec})` | the lit, bevelled quad behind every face; prefer `fillQuadShaded` unless you need the raw knobs |
+| `orb` | `orb(ctx, x, y, rx, ry, color, t, {spec, noRim})` | spheres: foliage clusters, heads, tufts, gravel, lamp heads |
+| `softEllipse` | `softEllipse(ctx, x, y, rx, ry, color, alpha, plateau)` | radial fades: AO, patches, specular bands, halos |
+| `microGrain` | `microGrain(ctx, pts, alpha, env)` | the one surface texture (overlay), world-anchored, skipped at lod 1 |
+| `fillQuadShaded` | `fillQuadShaded(ctx, pts, color, {face: top/sw/se, material: stucco/stone/wood/cloth/paint/metal/glass/glow, t, noAO}, env)` | walls, plinths, stairs, doors, banners, windows, lantern panes (the building primitive) |
+| `roofPlane` | `roofPlane(ctx, pts, color, {facing: nw/ne/sw/se, noShadow}, env)` | hip / gable planes; `pts[0]→pts[1]` is the eave; courses, ridge specular, eave shadow |
+| `column` | `column(ctx, x, yBase, h, r, color, env)` | porch columns, posts, lamp shafts, piers |
+| `groundTile` | `groundTile(ctx, {cx, cy, kind: grass/high/marsh/wet/dirt, seed, dropS, dropE, pool}, env)` | one land diamond with its S / E terrace faces (drops in ft) |
+| `waterTile` | `waterTile(ctx, {cx, cy, seed, shore: {n, e, s, w}, deep, dropS, dropE}, env)` | one water diamond: shallows at the shore edges, caustic rings, glints (silver at night) |
+| `path` | `path(ctx, screenPts, widthPx, env, {material: gravel/asphalt/boardwalk})` | smooth polylines: paths, roads, boardwalk decks (same call, other material) |
+| `tree` | `tree(ctx, x, y, kind: liveOak/cypress, {seed, inWater, stage, autumn}, env)` | trees at the trunk base; stage scales 0.55 / 0.8 / 1 |
+| `figure` | `figure(ctx, x, y, {facing, walk, shirt, trim, skin, hair, pants, seed}, env)` | the body kit (students, Roux, gators, players): bake per facing × gait frame |
+| `shadow` | `shadow(ctx, {x, y, rx, ry, a} or {poly, soft, a}, env)` | contact + cast shadows (multiply, down-right) |
+| `light` | `light(ctx, {x, y, r, color, a, firefly} or {quad, color, halo} or {x, y, rx, ry, pool, color, a}, env)` | additive glow for `light:` sprites: lamps, windows, pools, fireflies, beacons |
+| `glow` | `glow(ctx, pts, color, env)` | a lit pane in the BASE pass (window at night, lantern): `fillQuadShaded` with `glow` |
+| `decal` | `decal(ctx, {x, y, w, h, color, trim, shape: rect/disc/diamond, face}, env)` | emblems on faces: banners, signs, stripes, crests (bottom-centre anchored) |
+| `cube` | `cube(ctx, x, y, size, color, env)` | the H0 proof shape (three faces + decal + shadow); a reference composition, not for art |
 
 ## 4. Accent colours
 

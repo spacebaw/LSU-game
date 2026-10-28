@@ -172,5 +172,44 @@ eq(S.get('boom', 0, 0, 1), null, '…and is cached as null (fails once, not ever
 const n0 = S.count(); S.reset(BSU.newState(2), true); S.reset(BSU.newState(3), false);
 eq(S.count(), n0, 'reset(fresh true/false) keeps every atlas entry');
 
+// --- H0 pipeline pass: HD painters, master selection, byte caps and fallback -----------------
+try {
+  for (const fn of ['registerHD', 'unregisterPainter', 'isHD', 'hdCount', 'hdFamilies', 'beginHD', 'hdCaps', 'hdMemoryMB']) ok(typeof S[fn] === 'function', 'H0 public function ' + fn);
+  const caps = S.hdCaps();
+  ok(caps.safari === false && caps.atlasMB === 96 && caps.chunkMB === 120 && caps.sliceMs === 4 && caps.masterAt === 1.5, 'hdCaps(): Chrome pair (96 / 120 MB), 4 ms slice, master 2 at zoom × dpr ≥ 1.5 (no Safari in Node)');
+  eq(S.hdCount(), 0, 'no HD family is registered by default (the shipped game bakes through the pen)');
+  const seen = [];
+  S.registerHD('hdtest', (c, spec) => { const g = S.beginHD(c, 40, 30, spec); seen.push({ master: spec.master, zoom: spec.zoom, hd: spec.hd, env: g.env, S: g.S, cw: c.canvas.width, ch: c.canvas.height }); return { w: 40, h: 30, ox: -20, oy: -30 }; });
+  ok(S.hdCount() === 1 && S.hdFamilies().join() === 'hdtest' && S.isHD('hdtest:a') === true && S.isHD('tile:4') === false && S.isHD('nope') === false, 'registerHD marks the family; isHD(id) resolves the id\'s family');
+  const h1 = S.get('hdtest:a', 0, 0, 1), h2 = S.get('hdtest:a', 0, 0, 2), h05 = S.get('hdtest:a', 0, 0, 0.5);
+  ok(h1 && h1.zoom === 1 && h1.sw === 40 && h1.sh === 30 && h1.ox === -20 && h1.oy === -30 && h1.hd === true, 'HD entry at zoom 1: master 1, art-px size and anchors');
+  ok(h2 && h2.zoom === 2 && h2.sw === 80 && h2.sh === 60 && h2.ox === -40 && h2.oy === -60 && h2.hd === true, 'HD entry at zoom 2: master 2, doubled size and anchors (same key rule as the pen painters)');
+  ok(h05 === h1, 'zoom 0.5 reads the master-1 entry (as today)');
+  ok(seen.length === 2 && seen[0].master === 1 && seen[0].zoom === 1 && seen[0].hd === true && seen[0].env.master === 1 && seen[0].env.lod === 1 && seen[0].S === 1 && seen[0].cw === 40 && seen[0].ch === 30, 'the HD painter saw spec.master 1, spec.hd, env {master 1, lod 1}; beginHD sized the canvas 40×30');
+  ok(seen[1].master === 2 && seen[1].env.master === 2 && seen[1].env.lod === 0 && seen[1].S === 2 && seen[1].cw === 80 && seen[1].ch === 60, 'at master 2 the painter saw env {master 2, lod 0} and beginHD sized the canvas 80×60 (pre-scaled context)');
+  ok(Math.abs(S.hdMemoryMB() - (80 * 60 * 4) / 1048576) < 1e-9, 'hdMemoryMB counts the master-2 HD canvases only');
+  let legacySpec = null; S.registerPainter('pentest', (c, spec) => { legacySpec = spec; S.begin(c, 6, 6, spec.zoom); return { w: 6, h: 6, ox: -3, oy: -3 }; });
+  S.get('pentest', 0, 0, 2);
+  ok(legacySpec && legacySpec.hd === false && legacySpec.master === 2 && legacySpec.env === null && S.isHD('pentest') === false, 'a pen painter is untouched: spec.hd false, no env, pixel-doubled at 2 through the pen');
+  // byte cap → fallback to master 1 (the entry\'s zoom says 1; the key at 2 is not written)
+  const hdp = BSU.params.art.hd, saveAtlas = hdp.chromeAtlasMB;
+  hdp.chromeAtlasMB = 0.0001;
+  const before = S.count(); S.get('hdtest:b', 0, 0, 2);
+  ok(S.hdFallback === true, 'an HD bake over the atlas cap latches hdFallback');
+  const fb = S.get('hdtest:c', 0, 0, 2);
+  ok(fb && fb.zoom === 1 && fb.sw === 40 && S.count() === before + 2, 'under the fallback get(id, v, f, 2) of an HD family serves the master-1 entry (ref.zoom 1) and writes no |2 key');
+  ok(S.get('tile:4', 0, 0, 2).zoom === 2, 'pen families still bake at 2 under the HD fallback');
+  hdp.chromeAtlasMB = saveAtlas; S.gc(1e9);
+  ok(S.hdFallback === false, 'gc below 80 % of the cap clears the fallback');
+  ok(S.get('hdtest:d', 0, 0, 2).zoom === 2, 'after the fallback clears HD families bake at master 2 again');
+  const nAll = S.count();
+  ok(S.unregisterPainter('hdtest') === true && S.hdCount() === 0 && S.isHD('hdtest:a') === false && S.count() < nAll && S.hdMemoryMB() === 0, 'unregisterPainter drops the family, its entries and its HD bytes');
+  S._quiet = true; const gone = S.get('hdtest:a', 0, 0, 1); S._quiet = false;
+  ok(gone === null, 'an unregistered family resolves to null again');
+  S.registerHD('hdtest', (c, spec) => { S.beginHD(c, 8, 8, spec); return { w: 8, h: 8 }; }); S.registerPainter('hdtest', (c, spec) => { S.begin(c, 8, 8, spec.zoom); return { w: 8, h: 8 }; });
+  ok(S.isHD('hdtest') === false && S.hdCount() === 0, 'a pen painter re-registered over an HD family takes it back to the pen');
+  S.unregisterPainter('hdtest'); S.unregisterPainter('pentest');
+} catch (e) { ok(false, 'H0 sprites: ' + (e.stack || e)); }
+
 console.log(`\n${passes} passed, ${failures} failed`);
 process.exit(failures ? 1 : 0);

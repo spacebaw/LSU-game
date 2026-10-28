@@ -57,7 +57,12 @@
   const chunks = new Array(NCH);
   const dirtyBits = new Uint8Array(NCH);
   let frameNo = 0, alphaNow = 0, zoomNow = 1, atlasZoom = 1, frameSmooth = false, firstFrame = true, bakesThisFrame = 0;   // hud + zoom pass: zoomNow is the EXACT live zoom (every screen↔world transform uses it); atlasZoom is the master the sprites / tees / sheets are fetched at; frameSmooth = zoomNow !== atlasZoom
-  let frameDt = 1 / 60, simSpeed = 1, poseX = 0, poseY = 0;   // movement pass: last frame's real seconds, the game speed (≥ 1) and the drawn position poseAgent leaves for pushMover
+  let frameDt = 1 / 60, simSpeed = 1, poseX = 0, poseY = 0;
+  // H0 pipeline pass: hdOn = at least one HD family is registered (sprites.registerHD); hdMaster = the master HD families are
+  // fetched at (2 when zoom × dpr ≥ params.art.hd.masterAt or the sprite master is already 2, else 1); hdChunkWant = the master the
+  // chunk bake targets (2 only while hdOn && hdMaster === 2 && no cap tripped — so the shipped game bakes 1× chunks exactly as before)
+  let hdOn = false, hdMaster = 1, hdChunkWant = 1, hdFallbackChunks = false, hdBakesThisFrame = 0, bakeM = 1, debugHDOn = false, debugTile = -1, lastUpgrade = -1;
+  const FRAME_MS = 1000 / 60;   // movement pass: last frame's real seconds, the game speed (≥ 1) and the drawn position poseAgent leaves for pushMover
   const view = { vw: 1280, vh: 720, dpr: 1, x0: 0, y0: 0, x1: 63, y1: 63 };
   let shakeUntil = 0, shakePx = 0, hitStopUntilMs = 0;
   const flashes = [];
@@ -110,7 +115,17 @@
   /** the master zoom (0.5 / 1 / 2) whose baked sprites and chunks a live zoom draws from: the nearest master ≥ the zoom (2 for 1.25–2.5, 1 for 0.65–1, 0.5 at 0.5) */
   function masterOf(z) { z = fin(z, 1); return z <= 0.5 ? 0.5 : z <= 1 ? 1 : 2; }
   /** the ONE place the live zoom changes: keeps the atlas master and the smoothing flag in step */
-  function setZoomNow(z) { zoomNow = fin(z, 1); atlasZoom = masterOf(zoomNow); frameSmooth = zoomNow !== atlasZoom; }
+  function setZoomNow(z) { zoomNow = fin(z, 1); atlasZoom = masterOf(zoomNow); frameSmooth = zoomNow !== atlasZoom; hdRefresh(); }
+  /** H0: recompute the HD masters from the live zoom, the dpr and the registered HD families (cheap; every zoom change and resize) */
+  function hdRefresh() {
+    const sp = S(); const n = sp && typeof sp.hdCount === 'function' ? sp.hdCount() : 0;
+    hdOn = n > 0;
+    const caps = hdOn && typeof sp.hdCaps === 'function' ? sp.hdCaps() : null;
+    const at = caps ? caps.masterAt : 1.5;
+    hdMaster = !hdOn ? (atlasZoom >= 2 ? 2 : 1) : ((atlasZoom >= 2 || zoomNow * dpr >= at) ? 2 : 1);
+    hdChunkWant = (hdOn && hdMaster === 2 && !hdFallbackChunks && !sp.hdFallback) ? 2 : 1;
+  }
+  M.hdMasterOf = function (z, d) { const az = masterOf(z); return (az >= 2 || fin(z, 1) * fin(d, 1) >= ((S() && S().hdCaps) ? S().hdCaps().masterAt : 1.5)) ? 2 : 1; };
   /** clamp x,y into the world extents ± cameraMargin/zoom; repairs non-finite numbers */
   function clampCam(cam) {
     const z = STEPS.indexOf(cam.zoom) >= 0 ? cam.zoom : snapZoom(cam.zoom);
@@ -241,6 +256,7 @@
       if (c.height !== ch) c.height = ch;
     }
     view.vw = vw; view.vh = vh; view.dpr = dpr;
+    hdRefresh();   // H0: the HD master follows zoom × dpr
   };
   function checkResize() {
     if (!app) return;
@@ -255,11 +271,11 @@
   function allocChunks() {
     for (let k = 0; k < NCH; k++) {
       const cx = k & 7, cy = k >> 3, o = chunkOrigin(cx, cy);
-      chunks[k] = { cx: cx, cy: cy, ox: o.ox, oy: o.oy, canvas: null, ctx: null, dirty: 1, lastSeen: -1 };
+      chunks[k] = { cx: cx, cy: cy, ox: o.ox, oy: o.oy, canvas: null, ctx: null, dirty: 1, lastSeen: -1, vis: 0, master: 0, bytes: 0 };
       dirtyBits[k] = 1;
     }
   }
-  function dropChunk(ch) { if (ch.canvas) { try { ch.canvas.width = 1; ch.canvas.height = 1; } catch (e) { /* stub */ } } ch.canvas = null; ch.ctx = null; ch.dirty = 1; dirtyBits[ch.cx + ch.cy * 8] = 1; dropDeck(ch); }
+  function dropChunk(ch) { if (ch.canvas) { try { ch.canvas.width = 1; ch.canvas.height = 1; } catch (e) { /* stub */ } } ch.canvas = null; ch.ctx = null; ch.dirty = 1; ch.master = 0; ch.bytes = 0; dirtyBits[ch.cx + ch.cy * 8] = 1; dropDeck(ch); }
   function liveChunks() { let n = 0; for (let k = 0; k < NCH; k++) if (chunks[k] && chunks[k].canvas) n++; return n; }
   /** mark chunk i (0–63) dirty */
   M.dirtyChunk = function (i) { i = i | 0; if (i >= 0 && i < NCH) { dirtyBits[i] = 1; if (chunks[i]) chunks[i].dirty = 1; } };
@@ -284,7 +300,12 @@
     if ((tx & 7) >= 6 && cx < 7) M.dirtyChunk(cx + 1 + cy * 8);
     if ((ty & 7) >= 6 && cy < 7) M.dirtyChunk(cx + (cy + 1) * 8);
   }
-  function blit1(g, ref, x, y) { g.drawImage(ref.canvas, ref.sx, ref.sy, ref.sw, ref.sh, x + ref.ox, y + ref.oy, ref.sw, ref.sh); drawCalls++; }
+  function blit1(g, ref, x, y) { const k = ref.zoom === 2 ? 0.5 : 1; g.drawImage(ref.canvas, ref.sx, ref.sy, ref.sw, ref.sh, x + ref.ox * k, y + ref.oy * k, ref.sw * k, ref.sh * k); drawCalls++; }   // H0: a master-2 ref lands at half its device size in 1× units (1 art px = 1 device px under the master-scaled chunk transform)
+  /** H0: the chunk / deck contexts carry their bake scale in g._bs (1 today, 2 for an HD chunk); every transform reset in the bake path goes through these */
+  function tfIdent(g) { const s = g._bs || 1; g.setTransform(s, 0, 0, s, 0, 0); }
+  function tfIso(g, tx, ty) { const s = g._bs || 1; g.setTransform(32 * s, 16 * s, -32 * s, 16 * s, tx * s, ty * s); }
+  /** H0: a tile-layer sprite for the chunk bake — HD families at the chunk's master, pen families at 1× (pixel-doubled by the transform) */
+  function tref(id, variant, frame) { const sp = S(); return sp.get(id, variant, frame, (bakeM === 2 && sp.isHD(id)) ? 2 : 1); }
   function sameMask(arr, i, tx, ty, val) {
     let m = 0;
     if (ty > 0 && arr[i - W] === val) m |= 1;
@@ -667,11 +688,11 @@
     const e = CLIP_EPS, px = (x, y) => (x - y) * 32 - ch.ox, py = (x, y) => (x + y) * 16 - ep - ch.oy;
     const Tx = px(tx - 0.5, ty - 0.5), Ty = py(tx - 0.5, ty - 0.5), Rx = px(tx + 0.5 + e, ty - 0.5), Ry = py(tx + 0.5 + e, ty - 0.5);
     const Bx = px(tx + 0.5 + e, ty + 0.5 + e), By = py(tx + 0.5 + e, ty + 0.5 + e), Lx = px(tx - 0.5, ty + 0.5 + e), Ly = py(tx - 0.5, ty + 0.5 + e);
-    g.setTransform(1, 0, 0, 1, 0, 0); g.beginPath();
+    tfIdent(g); g.beginPath();
     g.moveTo(Tx, Ty - up); g.lineTo(Rx, Ry - up); g.lineTo(Rx, Ry + down); g.lineTo(Bx, By + down); g.lineTo(Lx, Ly + down); g.lineTo(Lx, Ly - up); g.closePath(); g.clip();
   }
   /** ground units → chunk px at elevation ep (the brief's affine: round joins and caps squash with the iso view) */
-  function groundTransform(g, ch, ep) { g.setTransform(32, 16, -32, 16, -ch.ox, -ep - ch.oy); }
+  function groundTransform(g, ch, ep) { tfIso(g, -ch.ox, -ep - ch.oy); }
   /** build one path from the tile's ranges that match (stub?, kind); returns the number of subpaths */
   function buildPath(g, cv, list, stub, kind, offset) {
     let n = 0;
@@ -727,7 +748,7 @@
   }
   /** posts under a boardwalk's viewer-side edge (every other smoothed point ≈ 0.25 tile) */
   function boardwalkPosts(g, C, ch, cv, list, ep) {
-    g.setTransform(1, 0, 0, 1, 0, 0);
+    tfIdent(g);
     for (let r = 0; r < list.length; r++) {
       const rg = list[r], P = cv.polys[rg.p]; if (P.stub || P.kind !== SURF.BOARDWALK) continue;
       const pts = P.pts, np = pts.length >> 1, off = P.w * 0.5 + 0.03;
@@ -745,7 +766,7 @@
   function clipHex(g, ch, tx, ty, topEp, botEp, up, down) {
     const e = CLIP_EPS, px = (x, y) => (x - y) * 32 - ch.ox, py = (x, y, ep) => (x + y) * 16 - ep - ch.oy;
     const Tx = px(tx - 0.5, ty - 0.5), Rx = px(tx + 0.5 + e, ty - 0.5), Bx = px(tx + 0.5 + e, ty + 0.5 + e), Lx = px(tx - 0.5, ty + 0.5 + e);
-    g.setTransform(1, 0, 0, 1, 0, 0); g.beginPath();
+    tfIdent(g); g.beginPath();
     g.moveTo(Tx, py(tx - 0.5, ty - 0.5, topEp) - up); g.lineTo(Rx, py(tx + 0.5 + e, ty - 0.5, topEp) - up);
     g.lineTo(Rx, py(tx + 0.5 + e, ty - 0.5, botEp)); g.lineTo(Bx, py(tx + 0.5 + e, ty + 0.5 + e, botEp) + down); g.lineTo(Lx, py(tx - 0.5, ty + 0.5 + e, botEp));
     g.lineTo(Lx, py(tx - 0.5, ty + 0.5 + e, topEp) - up); g.closePath(); g.clip();
@@ -753,7 +774,7 @@
   /** stilts (boardwalk: 2-px cypress posts every ≈ 0.25 tile on the viewer-side edge) or piers (road / bridge: 4-px concrete columns
    *  every ≈ 2 tiles under both edges) from the deck down to botEp, with a waterline mark where they enter the water */
   function deckStilts(g, C, ch, cv, list, kind, deckEp, waterEp, botEp, wetAt) {
-    g.setTransform(1, 0, 0, 1, 0, 0);
+    tfIdent(g);
     const pier = kind !== SURF.BOARDWALK, off = CURVE_W[kind] * 0.5 + (pier ? -0.03 : 0.03);
     for (let r = 0; r < list.length; r++) {
       const rg = list[r], P = cv.polys[rg.p]; if (P.stub || P.kind !== kind) continue;
@@ -776,7 +797,7 @@
   /** rails along both deck edges: a low cypress rail on a boardwalk; purple truss rails with gold caps on a road bridge / Pedestrian Bridge */
   function deckRails(g, C, ch, cv, list, kind, deckEp) {
     const wood = kind === SURF.BOARDWALK, h = wood ? 5 : 8, off = CURVE_W[kind] * 0.5 - 0.04;
-    g.setTransform(1, 0, 0, 1, 0, 0);
+    tfIdent(g);
     for (let r = 0; r < list.length; r++) {
       const rg = list[r], P = cv.polys[rg.p]; if (P.stub || P.kind !== kind) continue;
       const pts = P.pts, np = pts.length >> 1, prev = [null, null];
@@ -801,7 +822,7 @@
   }
   /** a lamp post on the deck's viewer-side edge (lit at night by render_fx through curves.lamps) */
   function deckLamp(g, C, ch, L, kind, deckEp) {
-    g.setTransform(1, 0, 0, 1, 0, 0);
+    tfIdent(g);
     const sx = Math.round((L.x - L.y) * 32 - ch.ox), sy = Math.round((L.x + L.y) * 16 - deckEp - ch.oy), wood = kind === SURF.BOARDWALK, H = wood ? 11 : 14;
     g.fillStyle = wood ? C.post : C.lampPost; g.fillRect(sx, sy - H, 1, H); g.fillRect(sx - 1, sy - 1, 3, 1);
     g.fillStyle = C.lampCap; g.fillRect(sx - 1, sy - H - 3, 3, 1);
@@ -816,7 +837,7 @@
     const C = curveColors(), w = CURVE_W[sf];
     if (list) {
       g.save(); clipTile(g, ch, tx, ty, waterEp, 0, 0);   // the shadow stays on the water
-      g.setTransform(32, 16, -32, 16, -ch.ox + 6, -waterEp - ch.oy + 4); g.lineJoin = 'round'; g.lineCap = 'round'; g.setLineDash(EMPTY_DASH);
+      tfIso(g, -ch.ox + 6, -waterEp - ch.oy + 4); g.lineJoin = 'round'; g.lineCap = 'round'; g.setLineDash(EMPTY_DASH);
       for (let pass = 0; pass < 2; pass++) if (buildPath(g, cv, list, pass === 0, sf, 0)) { g.lineWidth = (pass ? w : STUB_W) + 0.08; g.strokeStyle = C.shadow; g.stroke(); drawCalls++; }
       g.restore();
       g.save(); clipHex(g, ch, tx, ty, deckEp, full ? bedEp : waterEp, DECK_UP, 2);
@@ -844,7 +865,7 @@
     if (x1 > x0 && yb > ya) ch.deckTiles.push({ i: i, sf: sf, x: x0, y: ya, w: x1 - x0, h: yb - ya });
   }
   function culvertPipes(g, C, wx, wy) {   // (the old bed-level piers / bridgeRails are gone: decks over water are drawDeckAt's)
-    g.setTransform(1, 0, 0, 1, 0, 0);
+    tfIdent(g);
     for (let s = -1; s <= 1; s += 2) { const x = wx + s * 14 - 2, y = wy + 6; g.fillStyle = C.steelDark; g.fillRect(x, y, 4, 4); g.fillStyle = C.black; g.fillRect(x + 1, y + 1, 2, 2); g.fillStyle = C.steelDk2; g.fillRect(x, y + 4, 4, 1); drawCalls += 3; }
   }
   /** the surface pieces that touch tile i, drawn at its elevation (called for every non-fence tile; cheap when none);
@@ -869,7 +890,7 @@
   function drawStep(g, C, ch, cv, st) {
     const P = cv.polys[st.p], pts = P.pts, hw = st.w * 0.5, d = st.d;
     const px = (x, y) => (x - y) * 32 - ch.ox, py = (x, y, e) => (x + y) * 16 - e - ch.oy;
-    g.setTransform(1, 0, 0, 1, 0, 0); g.setLineDash(EMPTY_DASH); g.lineWidth = 1; g.lineJoin = 'miter'; g.lineCap = 'butt';
+    tfIdent(g); g.setLineDash(EMPTY_DASH); g.lineWidth = 1; g.lineJoin = 'miter'; g.lineCap = 'butt';
     const S = [];
     const quad = (k0, e0, k1, e1, fill, grow) => {   // the curve strip between samples k0 and k1 (indices into S), corners at levels e0/e1
       const hg = hw + (grow || 0);
@@ -934,12 +955,16 @@
     deckOf: (i) => (curves && curves.deck && i >= 0 && i < N) ? curves.deck[i] : NaN, decksDrawn: () => decksDrawn, deckChunks: deckChunks, clearance: DECK_KIND_FT, overtopped: (i) => overtoppedNow.has(i),
     deckStats: () => Object.assign({ chunks: chunks.filter((c) => c && c.deck).map((c) => [c.cx, c.cy, c.deckTiles ? c.deckTiles.length : -1, c.dirty]) }, deckStats) };
   /** bake chunk (cx, cy) at 1× into its canvas (ARCHITECTURE §6.3 step 2) */
-  function bakeChunk(ch, state) {
+  /** bake chunk ch at `master` (1 = today's 512×416; 2 = the HD 1024×832 canvas, H0: the same layers through a 2× transform, HD families at master 2) */
+  function bakeChunk(ch, state, master) {
     const sp = S();
-    if (!ch.canvas) { ch.canvas = makeCanvas(CW, CHH); ch.ctx = ctx2d(ch.canvas); }
-    const g = ch.ctx;
-    g.setTransform(1, 0, 0, 1, 0, 0);
-    g.globalAlpha = 1; g.globalCompositeOperation = 'source-over';
+    const m = master === 2 ? 2 : 1, pw = CW * m, ph = CHH * m;
+    if (!ch.canvas) { ch.canvas = makeCanvas(pw, ph); ch.ctx = ctx2d(ch.canvas); }
+    else if (ch.canvas.width !== pw || ch.canvas.height !== ph) { ch.canvas.width = pw; ch.canvas.height = ph; }
+    const g = ch.ctx, tb = nowMs();
+    g._bs = m; bakeM = m; ch.master = m; ch.bytes = pw * ph * 4;
+    tfIdent(g);
+    g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; g.imageSmoothingEnabled = false;   // pen sprites pixel-double crisply under the 2× transform; brush calls set smoothing themselves
     g.clearRect(0, 0, CW, CHH);
     const t = state.tiles, elev = t.elev, type = t.type, fl = t.flags, surf = t.surface, crest = t.crest, integ = t.integrity, depth = t.depth;
     markCypress(state);
@@ -955,40 +980,41 @@
         const wx = (tx - ty) * 32 - ch.ox, wy = (tx + ty) * 16 - ep - ch.oy;
         // (a) ground (art pass B1: 8 noise variants; water beds carry bit 8 when shallow, so the cove bed reads sandy)
         const isWaterTy = waterTypeAt(t, i);
-        let ref = sp.get('tile:' + ty8, sp.tileVariant(tx, ty) | (isWaterTy && fin(depth[i], 0) < 1.5 ? 8 : 0) | (ty8 === T.MARSH ? ((tx & 7) | ((ty & 7) << 3)) << 4 : 0), 0, 1);   // marsh: position bits → pools cross tile edges
+        let ref = tref('tile:' + ty8, sp.tileVariant(tx, ty) | (isWaterTy && fin(depth[i], 0) < 1.5 ? 8 : 0) | (ty8 === T.MARSH ? ((tx & 7) | ((ty & 7) << 3)) << 4 : 0), 0, 1);   // marsh: position bits → pools cross tile edges
         if (ref) blit1(g, ref, wx, wy);
         if (!isWaterTy) {   // (a2) ground tint: world noise + height + slope, a warm or cool diamond at a small alpha
           const k = groundTone(t, i, tx, ty, e), ka = Math.min(TONE_K.max, Math.abs(k));
-          if (ka > 0.015) { ref = sp.get(k > 0 ? 'tone:warm' : 'tone:cool', 0, 0, 1); if (ref) { g.globalAlpha = ka; blit1(g, ref, wx, wy); g.globalAlpha = 1; } }
+          if (ka > 0.015) { ref = tref(k > 0 ? 'tone:warm' : 'tone:cool', 0, 0, 1); if (ref) { g.globalAlpha = ka; blit1(g, ref, wx, wy); g.globalAlpha = 1; } }
         }
+        if (debugHDOn && i === debugTile) { ref = tref('debug:hdtest', 0, 0); if (ref) blit1(g, ref, wx, wy); }   // H0 proof: the chunk path draws the HD cube at the debug tile (BSU.render.debugHD)
         // (b) faces toward the S (lower-left edge) and E (lower-right edge) neighbours: ≥ 1 ft → the cliff sprite,
         //     smaller steps → a thin dark terrace band exactly as tall as the pixel step (no background shows through)
-        if (ty < HGT - 1) { const d = ep - Math.round(fin(elev[i + W], 0) * PXFT); if (d >= 1) { if (d >= C.cliffMin) { ref = sp.get('cliff', clamp(d, C.cliffMin, C.cliffMax), 0, 1); if (ref) blit1(g, ref, wx, wy); } else stepFace(g, wx, wy, d, false, ty8); } }
-        if (tx < W - 1) { const d = ep - Math.round(fin(elev[i + 1], 0) * PXFT); if (d >= 1) { if (d >= C.cliffMin) { ref = sp.get('cliff', clamp(d, C.cliffMin, C.cliffMax), 1, 1); if (ref) blit1(g, ref, wx, wy); } else stepFace(g, wx, wy, d, true, ty8); } }
+        if (ty < HGT - 1) { const d = ep - Math.round(fin(elev[i + W], 0) * PXFT); if (d >= 1) { if (d >= C.cliffMin) { ref = tref('cliff', clamp(d, C.cliffMin, C.cliffMax), 0, 1); if (ref) blit1(g, ref, wx, wy); } else stepFace(g, wx, wy, d, false, ty8); } }
+        if (tx < W - 1) { const d = ep - Math.round(fin(elev[i + 1], 0) * PXFT); if (d >= 1) { if (d >= C.cliffMin) { ref = tref('cliff', clamp(d, C.cliffMin, C.cliffMax), 1, 1); if (ref) blit1(g, ref, wx, wy); } else stepFace(g, wx, wy, d, true, ty8); } }
         // (j) static faint water highlight on water tiles (always baked; pass 3 animates on top at 1×/2×)
-        if ((f & WATER_FLAGS) || ty8 === T.OPEN_WATER || ty8 === T.BAYOU) { ref = sp.get('water', 0, 0, 1); if (ref) { g.globalAlpha = 0.35; blit1(g, ref, wx, wy); g.globalAlpha = 1; } }
+        if ((f & WATER_FLAGS) || ty8 === T.OPEN_WATER || ty8 === T.BAYOU) { ref = tref('water', 0, 0, 1); if (ref) { g.globalAlpha = 0.35; blit1(g, ref, wx, wy); g.globalAlpha = 1; } }
         // (c) art pass B1 shorelines: a land tile beside water gets a bank along the shared edges (sand / shell on the cove,
         //     mud elsewhere); a water tile beside land gets static ripples under the live water
-        if (isWaterTy) { const lm = nbrMask(t, i, tx, ty, landAt); if (lm) { ref = sp.get('shore:ripple', lm, 0, 1); if (ref) { g.globalAlpha = 0.7; blit1(g, ref, wx, wy); g.globalAlpha = 1; } } }
+        if (isWaterTy) { const lm = nbrMask(t, i, tx, ty, landAt); if (lm) { ref = tref('shore:ripple', lm, 0, 1); if (ref) { g.globalAlpha = 0.7; blit1(g, ref, wx, wy); g.globalAlpha = 1; } } }
         else if (ty8 !== T.MARSH) {
           const cv8 = coveOf(state);
-          if (cv8[i]) { ref = sp.get('shore:beach', 0, 0, 1); if (ref) { g.globalAlpha = 0.9; blit1(g, ref, wx, wy); g.globalAlpha = 1; } }   // the cove floor is a shell-sand beach
+          if (cv8[i]) { ref = tref('shore:beach', 0, 0, 1); if (ref) { g.globalAlpha = 0.9; blit1(g, ref, wx, wy); g.globalAlpha = 1; } }   // the cove floor is a shell-sand beach
           const wm = nbrMask(t, i, tx, ty, waterTypeAt);
-          if (wm) { const sandy = cv8[i] || (wm & 1 && cv8[i - W]) || (wm & 2 && cv8[i + 1]) || (wm & 4 && cv8[i + W]) || (wm & 8 && cv8[i - 1]); ref = sp.get(sandy ? 'shore:sand' : 'shore:mud', wm, 0, 1); if (ref) blit1(g, ref, wx, wy); }
+          if (wm) { const sandy = cv8[i] || (wm & 1 && cv8[i - W]) || (wm & 2 && cv8[i + 1]) || (wm & 4 && cv8[i + W]) || (wm & 8 && cv8[i - 1]); ref = tref(sandy ? 'shore:sand' : 'shore:mud', wm, 0, 1); if (ref) blit1(g, ref, wx, wy); }
         }
         // (d) decorations
-        if (ty8 === T.MARSH && (hash(tx, ty) % 100) < C.reedPct) { ref = sp.get('reeds', 0, hash(ty, tx) & 1, 1); if (ref) blit1(g, ref, wx + (hash(tx, ty + 9) % 24) - 12, wy + (hash(tx + 3, ty) % 8) - 4); }
-        if (ty8 === T.MARSH && surf[i] === 0 && t.owner[i] < 0 && (hash(tx + 5, ty + 2) % 100) < C.shrubPct && marshEdge(t, i, tx, ty)) { const hs = hash(tx + 11, ty + 7); ref = sp.get('shrub', hs & 3, 0, 1); if (ref) blit1(g, ref, wx + ((hs >> 2) % 28) - 14, wy + ((hs >> 7) % 10) - 2); }   // art pass B2: understory shrubs on the marsh edge
+        if (ty8 === T.MARSH && (hash(tx, ty) % 100) < C.reedPct) { ref = tref('reeds', 0, hash(ty, tx) & 1, 1); if (ref) blit1(g, ref, wx + (hash(tx, ty + 9) % 24) - 12, wy + (hash(tx + 3, ty) % 8) - 4); }
+        if (ty8 === T.MARSH && surf[i] === 0 && t.owner[i] < 0 && (hash(tx + 5, ty + 2) % 100) < C.shrubPct && marshEdge(t, i, tx, ty)) { const hs = hash(tx + 11, ty + 7); ref = tref('shrub', hs & 3, 0, 1); if (ref) blit1(g, ref, wx + ((hs >> 2) % 28) - 14, wy + ((hs >> 7) % 10) - 2); }   // art pass B2: understory shrubs on the marsh edge
         if ((ty8 === T.DRY || ty8 === T.HIGH) && surf[i] === 0 && t.owner[i] < 0) {   // art pass B1: tufts, patches, wear beside paths
           const hv = hash(tx * 3 + 1, ty * 5 + 2);
-          if ((hv % 100) < C.tuftPct) { const dx = ((hv >> 4) % 33) - 16, dy = ((hv >> 10) % 11) - 6; if (Math.abs(dx) / 32 + Math.abs(dy) / 16 <= 0.62) { ref = sp.get(ty8 === T.HIGH ? 'tuft:high' : 'tuft', hv & 3, 0, 1); if (ref) blit1(g, ref, wx + dx, wy + dy); } }
-          if ((hv % 100) >= 100 - C.patchPct) { const dx = ((hv >> 6) % 21) - 10, dy = ((hv >> 12) % 7) - 3; ref = sp.get(ty8 === T.HIGH ? (((hv >> 3) & 1) ? 'patch:lime' : 'patch:dirt') : (((hv >> 3) & 1) ? 'patch:clover' : 'patch:dirt'), (hv >> 5) & 3, 0, 1); if (ref) blit1(g, ref, wx + dx, wy + dy); }
-          if (nbrMask(t, i, tx, ty, surfAt)) { ref = sp.get('worn', 4 | (hv & 3), 0, 1); if (ref) { g.globalAlpha = 0.35; blit1(g, ref, wx, wy); g.globalAlpha = 1; } }
+          if ((hv % 100) < C.tuftPct) { const dx = ((hv >> 4) % 33) - 16, dy = ((hv >> 10) % 11) - 6; if (Math.abs(dx) / 32 + Math.abs(dy) / 16 <= 0.62) { ref = tref(ty8 === T.HIGH ? 'tuft:high' : 'tuft', hv & 3, 0, 1); if (ref) blit1(g, ref, wx + dx, wy + dy); } }
+          if ((hv % 100) >= 100 - C.patchPct) { const dx = ((hv >> 6) % 21) - 10, dy = ((hv >> 12) % 7) - 3; ref = tref(ty8 === T.HIGH ? (((hv >> 3) & 1) ? 'patch:lime' : 'patch:dirt') : (((hv >> 3) & 1) ? 'patch:clover' : 'patch:dirt'), (hv >> 5) & 3, 0, 1); if (ref) blit1(g, ref, wx + dx, wy + dy); }
+          if (nbrMask(t, i, tx, ty, surfAt)) { ref = tref('worn', 4 | (hv & 3), 0, 1); if (ref) { g.globalAlpha = 0.35; blit1(g, ref, wx, wy); g.globalAlpha = 1; } }
         }
-        if (ty8 >= T.MARSH && ty8 !== T.POND && (nearCypress(i, tx, ty) || cypStamp[i] === cypGen) && (fin(depth[i], 0) > 0.05 || ty8 === T.MARSH)) { ref = sp.get('knees', (tx & 7) | ((ty & 7) << 3), 0, 1); if (ref) blit1(g, ref, wx, wy); }   // art pass B2: a tile overlay keyed by position, knees on the pool rims
-        if (f & FLAG.DESIRE_WORN) { ref = sp.get('worn', 0, 0, 1); if (ref) blit1(g, ref, wx, wy); }
+        if (ty8 >= T.MARSH && ty8 !== T.POND && (nearCypress(i, tx, ty) || cypStamp[i] === cypGen) && (fin(depth[i], 0) > 0.05 || ty8 === T.MARSH)) { ref = tref('knees', (tx & 7) | ((ty & 7) << 3), 0, 1); if (ref) blit1(g, ref, wx, wy); }   // art pass B2: a tile overlay keyed by position, knees on the pool rims
+        if (f & FLAG.DESIRE_WORN) { ref = tref('worn', 0, 0, 1); if (ref) blit1(g, ref, wx, wy); }
         // (f) canal cut (open gate variant baked; pass 3 overlays the live gate frame)
-        if (f & FLAG.CANAL) { let v = flagMask(fl, i, tx, ty, FLAG.CANAL, false); if (surf[i] > 0) v |= 16; ref = sp.get('canal', v, 0, 1); if (ref) blit1(g, ref, wx, wy); }
+        if (f & FLAG.CANAL) { let v = flagMask(fl, i, tx, ty, FLAG.CANAL, false); if (surf[i] > 0) v |= 16; ref = tref('canal', v, 0, 1); if (ref) blit1(g, ref, wx, wy); }
         // (e) surfaces: fences stay auto-tiled stamps; paths / roads / boardwalks are stroked centrelines (smoothing pass),
         //     drawn for every non-fence tile the curves touch (a curve may spill into a neighbour at a corner)
         const sf = surf[i], wet = (f & WATER_FLAGS) !== 0 || ty8 === T.OPEN_WATER || ty8 === T.BAYOU || ty8 === T.POND;
@@ -999,26 +1025,30 @@
           if (wet) v |= 16;
           if (sf === SURF.FENCE && (hash(tx, ty) % 6) === 0) v |= 32;
           if (f & FLAG.CANAL) v |= 64;
-          ref = sp.get('surf:' + sf, v, 0, 1); if (ref) blit1(g, ref, wx, wy);
+          ref = tref('surf:' + sf, v, 0, 1); if (ref) blit1(g, ref, wx, wy);
         }
         // (g) levee berms / floodwall panels
         const cr = crest[i];
         if (cr > 0) {
           let v = sameMask(crest, i, tx, ty, cr);
           if (integ[i] < 50) v |= 16;
-          ref = sp.get(cr >= 12 ? 'floodwall' : 'levee', v, 0, 1); if (ref) blit1(g, ref, wx, wy);
-          if (t.sandbag && t.sandbag[i] > 0) { ref = sp.get('decal:sandbags', 0, 0, 1); if (ref) blit1(g, ref, wx, wy - 10); }
+          ref = tref(cr >= 12 ? 'floodwall' : 'levee', v, 0, 1); if (ref) blit1(g, ref, wx, wy);
+          if (t.sandbag && t.sandbag[i] > 0) { ref = tref('decal:sandbags', 0, 0, 1); if (ref) blit1(g, ref, wx, wy - 10); }
         }
         // (h) preserve posts, (i) mounds
-        if (f & FLAG.PRESERVE) { const v = flagMask(fl, i, tx, ty, FLAG.PRESERVE, true); if (v) { ref = sp.get('preservePost', v, 0, 1); if (ref) blit1(g, ref, wx, wy); } }
-        if (f & FLAG.MOUND) { ref = sp.get('mound', 0, 0, 1); if (ref) blit1(g, ref, wx, wy); }
-        if (f & FLAG.DEBRIS) { ref = sp.get('decal:debris', 0, hash(tx, ty) & 3, 1); if (ref) blit1(g, ref, wx, wy); }
+        if (f & FLAG.PRESERVE) { const v = flagMask(fl, i, tx, ty, FLAG.PRESERVE, true); if (v) { ref = tref('preservePost', v, 0, 1); if (ref) blit1(g, ref, wx, wy); } }
+        if (f & FLAG.MOUND) { ref = tref('mound', 0, 0, 1); if (ref) blit1(g, ref, wx, wy); }
+        if (f & FLAG.DEBRIS) { ref = tref('decal:debris', 0, hash(tx, ty) & 3, 1); if (ref) blit1(g, ref, wx, wy); }
         if (isDeck && cv) { try { bakeDeckTile(ch, g, cv, i, tx, ty, sf, ep, state); } catch (err) { rerr('deck:bake', err); } }
       }
     }
     if (ch.deck && !ch.deckTiles.length) dropDeck(ch);
-    ch.dirty = 0; dirtyBits[ch.cx + ch.cy * 8] = 0; ch.lastSeen = frameNo;
+    ch.dirty = 0; dirtyBits[ch.cx + ch.cy * 8] = 0; ch.lastSeen = frameNo; bakeM = 1;
+    const bs = bakeStat[m]; bs.n++; bs.ms += nowMs() - tb;
+    if (m === 2) hdCapCheck();
   }
+  const bakeStat = { 1: { n: 0, ms: 0 }, 2: { n: 0, ms: 0 } };   // H0: chunk bake counts / ms per master since load (hdInfo().bake; tests and the H0/H7 gates)
+  M.bakeStatReset = function () { bakeStat[1].n = 0; bakeStat[1].ms = 0; bakeStat[2].n = 0; bakeStat[2].ms = 0; };
   function evictChunks() {
     let mem = 0;
     try { const sp = S(); mem = typeof sp.totalMemoryMB === 'function' ? sp.totalMemoryMB() : sp.memoryMB(); } catch (e) { mem = 0; }
@@ -1031,6 +1061,26 @@
       if (!victim) break;
       dropChunk(victim); mem -= C.chunkMB;
     }
+    if (hdChunkCount() > 0 || hdFallbackChunks) hdCapCheck();   // H0: the HD chunk cap (and the fallback latch, which clears once the bytes drop under 60 % of the cap)
+  }
+  // H0: actual chunk canvas bytes and the master-2 count (perf / hdInfo)
+  function chunkBytes() { let b = 0; for (let k = 0; k < NCH; k++) { const ch = chunks[k]; if (ch && ch.canvas) b += ch.bytes | 0; } return b; }
+  function hdChunkCount() { let n = 0; for (let k = 0; k < NCH; k++) { const ch = chunks[k]; if (ch && ch.canvas && ch.master === 2) n++; } return n; }
+  /** H0: the HD chunk byte cap (params.art.hd, Safari pair when detected): evict the least-recently-seen chunk NOT drawn this frame
+   *  (LRU, no idle wait — a 3.4 MB canvas is worth more than a pan back); if only this frame's chunks remain and the cap is still
+   *  exceeded, latch the fallback: the chunk bake targets master 1 and the master-2 canvases are re-baked at 1 as they come up */
+  function hdCapCheck() {
+    const sp = S(); const caps = typeof sp.hdCaps === 'function' ? sp.hdCaps() : { chunkMB: 120 };
+    const cap = caps.chunkMB * 1048576;
+    let b = chunkBytes();
+    while (b > cap) {
+      let victim = null;
+      for (let k = 0; k < NCH; k++) { const ch = chunks[k]; if (ch.canvas && ch.lastSeen < frameNo && (!victim || ch.lastSeen < victim.lastSeen)) victim = ch; }
+      if (!victim) break;
+      b -= victim.bytes | 0; dropChunk(victim);
+    }
+    if (b > cap && !hdFallbackChunks) { hdFallbackChunks = true; for (let k = 0; k < NCH; k++) { const ch = chunks[k]; if (ch.canvas && ch.master === 2) ch.dirty = 1; } hdRefresh(); }
+    else if (hdFallbackChunks && b < cap * 0.6) { hdFallbackChunks = false; hdRefresh(); }
   }
 
   // ---------------------------------------------------------------------------
@@ -1115,7 +1165,10 @@
     try { const sp = S(); mem = typeof sp.totalMemoryMB === 'function' ? sp.totalMemoryMB() : sp.memoryMB(); } catch (e) { mem = 0; }
     mem += liveChunks() * C.chunkMB + (canvas ? (canvas.width * canvas.height * 12) / 1048576 : 0) + teeBytes / 1048576;
     let parts = 0; try { parts = M.particles && typeof M.particles.count === 'function' ? fin(M.particles.count(), 0) : 0; } catch (e) { parts = 0; }
-    return { frameMs: fin(frameMs, 0), drawCalls: drawCalls | 0, particles: parts, agentsDrawn: agentsDrawn | 0, hydroActive: hydroActive, chunks: liveChunks(), memMB: Math.round(mem * 100) / 100, tees: teeCache.size, water: waterDrawn | 0, frameNo: frameNo, zoom: zoomNow, atlasZoom: atlasZoom, smooth: frameSmooth, perfMode: !!(root && root.ui && root.ui.perfMode) };
+    let atlasMB = 0, hdAtlasMB = 0; try { const sp = S(); atlasMB = fin(sp.memoryMB(), 0); hdAtlasMB = typeof sp.hdMemoryMB === 'function' ? fin(sp.hdMemoryMB(), 0) : 0; } catch (e) { atlasMB = 0; }
+    return { frameMs: fin(frameMs, 0), drawCalls: drawCalls | 0, particles: parts, agentsDrawn: agentsDrawn | 0, hydroActive: hydroActive, chunks: liveChunks(), memMB: Math.round(mem * 100) / 100, tees: teeCache.size, water: waterDrawn | 0, frameNo: frameNo, zoom: zoomNow, atlasZoom: atlasZoom, smooth: frameSmooth, perfMode: !!(root && root.ui && root.ui.perfMode),
+      // H0 pipeline pass: HD state and real byte counts (chunkMB = every live chunk canvas at its own master; the legacy memMB keeps its 0.85 MB-per-chunk estimate)
+      hd: hdOn, hdMaster: hdMaster, chunkMaster: hdChunkWant, hdChunks: hdChunkCount(), chunkMB: Math.round(chunkBytes() / 10485.76) / 100, atlasMB: Math.round(atlasMB * 100) / 100, hdAtlasMB: Math.round(hdAtlasMB * 100) / 100, hdFallback: hdFallbackChunks || !!(S() && S().hdFallback), hdBakes: hdBakesThisFrame, dpr: dpr };
   };
   /** render_fx / ui register or replace a named pass: order 5 weather, 6 tint, 7 lights, 8 fog, 9 overlays, 10 hud */
   M.registerPass = function (name, fn, order_, builtin) {
@@ -2525,11 +2578,11 @@
         bg.putImageData(mmImg, 0, 0);
       }
       const s = mw / (W * 2);                                         // 64 tiles → the diamond width
-      g.setTransform(1, 0, 0, 1, 0, 0); g.globalAlpha = 1; g.fillStyle = BG; g.fillRect(0, 0, mw, mh);
+      tfIdent(g); g.globalAlpha = 1; g.fillStyle = BG; g.fillRect(0, 0, mw, mh);
       g.imageSmoothingEnabled = false;
       g.setTransform(s, s / 2, -s, s / 2, mw / 2, mh / 2 - (HGT * s) / 2);
       g.drawImage(mmBase, 0, 0);
-      g.setTransform(1, 0, 0, 1, 0, 0);
+      tfIdent(g);
       if (camera) {                                                     // camera rect: the 4 screen corners → tile coords → minimap px
         g.strokeStyle = GOLD_HI; g.lineWidth = 1; g.beginPath();
         for (let c = 0; c < 4; c++) {
@@ -2612,7 +2665,7 @@
     const lk = el._icLock !== undefined ? el._icLock : !!(el.closest && el.closest('.locked'));
     if (el._icDone && el._icPx === px && el._icK === lk && el._icId === el._icShown) return;
     if (el.width !== px || el.height !== px) { el.width = px; el.height = px; }
-    const g = ctx2d(el); g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, px, px);
+    const g = ctx2d(el); tfIdent(g); g.clearRect(0, 0, px, px);
     const ref = S().get('icon:' + el._icId, lk ? 1 : 0, 0, 2); if (!ref) return;
     try { g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high'; } catch (e) { /* stub */ }
     g.drawImage(ref.canvas, ref.sx, ref.sy, ref.sw, ref.sh, 0, 0, px, px);
@@ -2631,7 +2684,7 @@
     if (!el) return;
     try {
       const g = ctx2d(el), w = el.width || 48, h = el.height || 48;
-      g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, w, h);
+      tfIdent(g); g.clearRect(0, 0, w, h);
       const ref = S().get(id, variant, frame, 1); if (!ref) return;
       const sc = Math.max(1, Math.floor(Math.min(w / ref.sw, h / ref.sh)));
       g.drawImage(ref.canvas, ref.sx, ref.sy, ref.sw, ref.sh, Math.round((w - ref.sw * sc) / 2), Math.round((h - ref.sh * sc) / 2), ref.sw * sc, ref.sh * sc);
@@ -2641,32 +2694,84 @@
   // ---------------------------------------------------------------------------
   // Frame pipeline
   // ---------------------------------------------------------------------------
+  // H0 pipeline pass: the bake is time-sliced and progressive. Legacy (hdChunkWant 1): exactly today's rule — dirty visible chunks in
+  // diagonal order, chunkRebakesPerFrame per frame (the first frame gets firstBakeMs). HD (hdChunkWant 2): visible dirty chunks are
+  // baked at master 1 first (cheap, nearest the view centre first), then ONE master-2 bake per frame when the previous frame left
+  // ≥ params.art.hd.bakeSliceMs of headroom: a dirty chunk that already had an HD canvas, else the nearest visible master-1 chunk
+  // (the upgrade), else a master-1 pre-bake of the ring of chunks just outside the view. Every chunk draws at its own master.
+  const candI = new Int32Array(NCH), candD = new Float64Array(NCH);
+  let hdStarve = 0; const HD_STARVE_EVERY = 30;
   function chunkPass(state, g) {
     const z = zoomNow, cw = CW * z, chh = CHH * z, hw = vw / 2, hh = vh / 2, camx = camera.x, camy = camera.y;
     const t0 = nowMs(); const timeBudget = firstFrame ? C.firstBakeMs : 0;
     const maxBakes = PR.chunkRebakesPerFrame || 2;
-    bakesThisFrame = 0;
+    bakesThisFrame = 0; hdBakesThisFrame = 0;
+    const want = hdChunkWant, hd = want === 2;
+    hdStarve = hd && frameMs > FRAME_MS - hdSliceMs() ? hdStarve + 1 : 0;
+    const headroom = hd && (frameMs <= FRAME_MS - hdSliceMs() || (hdStarve % HD_STARVE_EVERY) === HD_STARVE_EVERY - 1);   // H0: a frame with ≥ bakeSliceMs headroom, or (a machine that never has it) one upgrade every HD_STARVE_EVERY frames so HD still arrives
     const smooth = (z < 1 && !info.perfMode) || frameSmooth;   // art pass B1: a filtered 2:1 downsample at 0.5× (nearest sparkled the noisy ground); off in perf mode. hud + zoom pass: on at every non-master step (the 1× chunks scale by a non-integer)
-    if (smooth) g.imageSmoothingEnabled = true;
+    let smoothOn = false;
+    if (smooth) { g.imageSmoothingEnabled = true; smoothOn = true; }
     if (curves && !curvesDirty && (frameNo % 30) === 7 && curves.deckCount > 0 && stageRefOf(state) !== curves.stageRef) { curvesDirty = true; M.dirtyAll(); }
+    // 1. bakes: collect the visible dirty chunks (diagonal order = today's order), nearest-first only in HD mode
+    let nCand = 0;
+    for (let s = 0; s <= 14; s++) {
+      for (let cx = Math.max(0, s - 7); cx <= Math.min(7, s); cx++) {
+        const cy = s - cx, k = cx + cy * 8, ch = chunks[k];
+        const dx = (ch.ox - camx) * z + hw, dy = (ch.oy - camy) * z + hh;
+        if (dx > vw || dy > vh || dx + cw < 0 || dy + chh < 0) { ch.vis = 0; continue; }
+        ch.vis = 1;
+        if (!ch.canvas || ch.dirty || dirtyBits[k]) { candI[nCand] = k; const ex = dx + cw / 2 - hw, ey = dy + chh / 2 - hh; candD[nCand] = ex * ex + ey * ey; nCand++; }
+      }
+    }
+    for (let n = 0; n < nCand; n++) {
+      let pick = n;
+      if (hd) { for (let q = n + 1; q < nCand; q++) if (candD[q] < candD[pick]) pick = q; if (pick !== n) { const ti = candI[n], td = candD[n]; candI[n] = candI[pick]; candD[n] = candD[pick]; candI[pick] = ti; candD[pick] = td; } }
+      const ch = chunks[candI[n]];
+      const allowed = firstFrame ? (nowMs() - t0 < timeBudget || bakesThisFrame < maxBakes) : bakesThisFrame < maxBakes;
+      if (!allowed) continue;
+      let m = 1;
+      if (hd && ch.canvas && ch.master === 2 && headroom && hdBakesThisFrame < 1) m = 2;   // keep an HD chunk HD when the frame can afford it
+      try { bakeChunk(ch, state, m); bakesThisFrame++; if (m === 2) hdBakesThisFrame++; } catch (e) { rerr('bake', e); ch.dirty = 0; }
+    }
+    // 2. HD upgrade (one per frame with headroom): the visible master-1 chunk nearest the view centre
+    if (hd && headroom && hdBakesThisFrame < 1) {
+      let best = null, bd = Infinity;
+      for (let k = 0; k < NCH; k++) { const ch = chunks[k]; if (!ch.vis || !ch.canvas || ch.master === 2 || ch.dirty) continue; const ex = (ch.ox - camx) * z + hw + cw / 2 - hw, ey = (ch.oy - camy) * z + hh + chh / 2 - hh; const d = ex * ex + ey * ey; if (d < bd) { bd = d; best = ch; } }
+      if (best) { try { bakeChunk(best, state, 2); bakesThisFrame++; hdBakesThisFrame++; lastUpgrade = best.cx + best.cy * 8; } catch (e) { rerr('bake:hd', e); best.dirty = 0; } }
+      else if (bakesThisFrame === 0) {   // 3. nothing visible pending: pre-bake (master 1) one chunk of the ring just outside the view, so a pan shows ground at once
+        for (let k = 0; k < NCH && bakesThisFrame === 0; k++) {
+          const ch = chunks[k]; if (ch.vis || ch.canvas) continue;
+          const dx = (ch.ox - camx) * z + hw, dy = (ch.oy - camy) * z + hh;
+          if (dx > vw + cw || dy > vh + chh || dx + cw < -cw || dy + chh < -chh) continue;
+          try { bakeChunk(ch, state, 1); bakesThisFrame++; } catch (e) { rerr('bake:ring', e); ch.dirty = 0; }
+        }
+      }
+    }
+    // 4. draw every visible chunk at its own master
     for (let s = 0; s <= 14; s++) {
       for (let cx = Math.max(0, s - 7); cx <= Math.min(7, s); cx++) {
         const cy = s - cx, ch = chunks[cx + cy * 8];
+        if (!ch.vis || !ch.canvas) continue;
         const dx = (ch.ox - camx) * z + hw, dy = (ch.oy - camy) * z + hh;
-        if (dx > vw || dy > vh || dx + cw < 0 || dy + chh < 0) continue;
-        if (!ch.canvas || ch.dirty || dirtyBits[cx + cy * 8]) {
-          const allowed = firstFrame ? (nowMs() - t0 < timeBudget || bakesThisFrame < maxBakes) : bakesThisFrame < maxBakes;
-          if (allowed) { try { bakeChunk(ch, state); bakesThisFrame++; } catch (e) { rerr('bake', e); ch.dirty = 0; } }
-          if (!ch.canvas) continue;
-        }
         ch.lastSeen = frameNo;
-        if (frameSmooth) g.drawImage(ch.canvas, 0, 0, CW, CHH, dx, dy, cw, chh); else g.drawImage(ch.canvas, 0, 0, CW, CHH, Math.round(dx), Math.round(dy), Math.round(cw), Math.round(chh));   // hud + zoom pass: sub-pixel placement while smoothing (rounding each chunk separately left hairline seams at 0.65 / 1.25)
+        const m = ch.master === 2 ? 2 : 1;
+        if (m === 1) {
+          if (smoothOn !== smooth) { g.imageSmoothingEnabled = smooth; smoothOn = smooth; }
+          if (frameSmooth) g.drawImage(ch.canvas, 0, 0, CW, CHH, dx, dy, cw, chh); else g.drawImage(ch.canvas, 0, 0, CW, CHH, Math.round(dx), Math.round(dy), Math.round(cw), Math.round(chh));   // hud + zoom pass: sub-pixel placement while smoothing (rounding each chunk separately left hairline seams at 0.65 / 1.25)
+        } else {
+          const exact = Math.abs(z * dpr / 2 - 1) < 1e-6;   // the master lands 1 art px = 1 device px (zoom 2 at dpr 1, zoom 1 at dpr 2): snap to device px, no resample
+          const sm = !exact;
+          if (smoothOn !== sm) { g.imageSmoothingEnabled = sm; smoothOn = sm; }
+          if (exact) g.drawImage(ch.canvas, 0, 0, CW * 2, CHH * 2, Math.round(dx * dpr) / dpr, Math.round(dy * dpr) / dpr, cw, chh); else g.drawImage(ch.canvas, 0, 0, CW * 2, CHH * 2, dx, dy, cw, chh);
+        }
         drawCalls++;
       }
     }
     g.imageSmoothingEnabled = frameSmooth;   // the passes after the chunks draw sprites scaled from their master: smooth only at a non-master step
     if ((frameNo % 60) === 0) evictChunks();
   }
+  function hdSliceMs() { const sp = S(); return sp && typeof sp.hdCaps === 'function' ? sp.hdCaps().sliceMs : 4; }
   /** passes 2–9 on context g (shared by frame and renderInto) */
   function runWorld(state, g, alpha, dtMs, withRegistered) {
     try { chunkPass(state, g); } catch (e) { rerr('chunks', e); }
@@ -2762,6 +2867,53 @@
   }
 
   // ---------------------------------------------------------------------------
+  // H0 pipeline pass — the throwaway proof painter: `debug:hdtest`, a brush cube registered as an HD family only while
+  // BSU.render.debugHD(true) is on (console / headless). Registering it is what switches the HD chunk mode on (hdOn), so it is
+  // also the switch the H0 gates measure with. Drawn twice: live through the entity path at the camera-centre tile (every frame,
+  // getRef at hdMaster) and baked into the chunk at the tile two steps east of where it was switched on. No shipped family changes.
+  // ---------------------------------------------------------------------------
+  function debugPainter(ctx, spec) {
+    const B = BSU.brush; if (!B) return null;
+    const g = S().beginHD(ctx, 64, 72, spec);
+    B.cube(ctx, 32, 58, 22, PAL.purple, g.env);
+    return { w: 64, h: 72, ox: -32, oy: -58 };
+  }
+  /** the nearest open land tile (no owner, no surface, not water) to tile i within 6 steps, scanning east first so it sits beside the live cube; i itself when none */
+  function freeTileNear(i) {
+    if (i < 0 || !root || !root.tiles) return i;
+    const t = root.tiles, tx0 = i % W, ty0 = (i / W) | 0;
+    for (let r = 1; r <= 6; r++) for (let dy = -r; dy <= r; dy++) for (let dx = r; dx >= -r; dx--) {
+      if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+      const tx = tx0 + dx, ty = ty0 + dy; if (tx < 0 || ty < 0 || tx >= W || ty >= HGT) continue;
+      const j = ty * W + tx; if (t.owner[j] >= 0 || t.surface[j] > 0 || t.type[j] <= T.MARSH || (t.flags[j] & WATER_FLAGS)) continue;
+      return j;
+    }
+    return i;
+  }
+  function centreTile() { const t = M.screenToTile(vw / 2, vh / 2); return t ? clamp(t.tx | 0, 0, W - 1) + clamp(t.ty | 0, 0, HGT - 1) * W : -1; }
+  M.debugHD = function (on) {
+    const sp = S(); on = on === undefined ? !debugHDOn : !!on;
+    if (on && !debugHDOn) { if (typeof sp.registerHD === 'function') sp.registerHD('debug', debugPainter); debugTile = freeTileNear(centreTile()); }
+    else if (!on && debugHDOn) { if (typeof sp.unregisterPainter === 'function') sp.unregisterPainter('debug'); debugTile = -1; }
+    debugHDOn = on; hdRefresh(); M.dirtyAll();
+    return debugHDOn;
+  };
+  /** H0 state for tests / the console: masters, chunk counts and bytes, caps, the last upgraded chunk */
+  M.hdInfo = function () {
+    const sp = S(); const caps = sp && typeof sp.hdCaps === 'function' ? sp.hdCaps() : null;
+    return { on: hdOn, debug: debugHDOn, debugTile: debugTile, master: hdMaster, chunkMaster: hdChunkWant, atlasZoom: atlasZoom, zoom: zoomNow, dpr: dpr, chunks: liveChunks(), hdChunks: hdChunkCount(), chunkMB: Math.round(chunkBytes() / 10485.76) / 100, hdAtlasMB: sp && typeof sp.hdMemoryMB === 'function' ? Math.round(sp.hdMemoryMB() * 100) / 100 : 0, fallback: hdFallbackChunks, atlasFallback: !!(sp && sp.hdFallback), caps: caps, lastUpgrade: lastUpgrade, bake: { n1: bakeStat[1].n, ms1: Math.round(bakeStat[1].ms * 100) / 100, n2: bakeStat[2].n, ms2: Math.round(bakeStat[2].ms * 100) / 100 }, families: sp && typeof sp.hdFamilies === 'function' ? sp.hdFamilies() : [] };
+  };
+  /** H0: every chunk's master (0 = no canvas) — tests */
+  M.chunkMasters = function () { const a = []; for (let k = 0; k < NCH; k++) a.push(chunks[k] && chunks[k].canvas ? (chunks[k].master | 0) : 0); return a; };
+  M.registerPass('hddebug', function (state, g) {
+    if (!debugHDOn) return;
+    const i = centreTile(); if (i < 0) return;
+    const r = getRef('debug:hdtest', 0, 0); if (!r) return;
+    const p = M.tileToScreen(i % W, (i / W) | 0);
+    g.globalAlpha = 1; blit(g, r, p.x, p.y, zsOf(r));
+  }, 4.5, true);
+
+  // ---------------------------------------------------------------------------
   // init / reset
   // ---------------------------------------------------------------------------
   function bind(state) {
@@ -2810,12 +2962,13 @@
   M.reset = function (state, fresh) {
     if (!state) return;
     bind(state);
-    for (let k = 0; k < NCH; k++) if (chunks[k]) dropChunk(chunks[k]); else { const o = chunkOrigin(k & 7, k >> 3); chunks[k] = { cx: k & 7, cy: k >> 3, ox: o.ox, oy: o.oy, canvas: null, ctx: null, dirty: 1, lastSeen: -1 }; }
+    for (let k = 0; k < NCH; k++) if (chunks[k]) dropChunk(chunks[k]); else { const o = chunkOrigin(k & 7, k >> 3); chunks[k] = { cx: k & 7, cy: k >> 3, ox: o.ox, oy: o.oy, canvas: null, ctx: null, dirty: 1, lastSeen: -1, vis: 0, master: 0, bytes: 0 }; }
     dirtyBits.fill(1); curvesDirty = true; curves = null;
     flashes.length = 0; ghostSpec = null; gates.clear(); shakeUntil = 0; shakePx = 0; hitStopUntilMs = 0;
     for (const k in M.squash) delete M.squash[k];
     perfRing.fill(0); perfI = 0; perfFilled = false; perfTripped = false;
     birdTiles = null; firstFrame = true; count = 0; list.length = 0; teeClear(); hbRoux.clear(); hbDraw.length = 0;
+    hdFallbackChunks = false; lastUpgrade = -1; if (debugHDOn) debugTile = -1; hdRefresh();
     if (fresh === true && state.plot && state.plot.founders && Number.isFinite(state.plot.founders.tx)) {
       camera.zoom = 1; M.panToTile(state.plot.founders.tx + 1, state.plot.founders.ty + 1, false);
     }
@@ -2847,6 +3000,7 @@
     void before;
     ok(snapZoom(1.3) === 1.25 && snapZoom(1.6) === 1.5 && snapZoom(0.1) === 0.5 && snapZoom(NaN) === 1 && snapZoom(9) === STEPS[STEPS.length - 1], 'zoom snaps to the nearest step (' + STEPS.join('/') + ')');
     ok(masterOf(0.5) === 0.5 && masterOf(0.65) === 1 && masterOf(0.8) === 1 && masterOf(1) === 1 && masterOf(1.25) === 2 && masterOf(1.75) === 2 && masterOf(2) === 2 && masterOf(2.5) === 2, 'master zoom: 0.5 → 0.5, 0.65–1 → 1, 1.25–2.5 → 2');
+    ok(M.hdMasterOf(1, 1) === 1 && M.hdMasterOf(1, 2) === 2 && M.hdMasterOf(0.8, 2) === 2 && M.hdMasterOf(0.65, 2) === 1 && M.hdMasterOf(2, 1) === 2 && M.hdMasterOf(1.25, 1) === 2 && M.hdMasterOf(0.5, 2) === 1, 'H0 hd master: 2 when zoom × dpr ≥ 1.5 or the sprite master is 2');
     for (const zs of STEPS) { cam.zoom = 1; cam.x = 100; cam.y = 900; const bx = (ax - 640) / cam.zoom + cam.x, by = (ay - 360) / cam.zoom + cam.y; setZoomCam(cam, zs, ax, ay, 1280, 720); const sxA = (bx - cam.x) * cam.zoom + 640, syA = (by - cam.y) * cam.zoom + 360; ok(cam.zoom === zs && Math.abs(sxA - ax) < 0.5 && Math.abs(syA - ay) < 0.5, 'setZoom(' + zs + ') keeps the world point under the anchor within 0.5 px'); }
     // 3. screenToTile inverse on 20 random tiles at random elevations (private elev array)
     const pe = new Float32Array(N); const r = BSU.rng.derive ? BSU.rng.derive('render-selftest', 1) : BSU.rng.fx;

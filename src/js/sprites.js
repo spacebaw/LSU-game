@@ -353,9 +353,83 @@
   M.registerPainter = function (family, fn) {
     if (typeof family !== 'string' || !family || typeof fn !== 'function') { BSU.error('sprites', 'registerPainter', new Error('bad painter for ' + family)); return; }
     painters[family] = fn;
-    for (const k of [...cache.keys()]) { const f = resolve(k.slice(0, k.indexOf('|'))); if (f && f.family === family) cache.delete(k); }
+    dropFamily(family);
+    if (hdFamilies[family] && fn.hd !== true) { delete hdFamilies[family]; hdIdCache.clear(); }   // a legacy painter replacing an HD one takes the family back to the pen
   };
   M.hasPainter = (family) => !!painters[family];
+  /** drop the cached entries of one family (and their HD byte count) */
+  function dropFamily(family) {
+    for (const k of [...cache.keys()]) { const f = resolve(k.slice(0, k.indexOf('|'))); if (f && f.family === family) { const e = cache.get(k); if (e && e.hd && e.own && e.zoom === 2) hdBytesNow -= e.bytes; try { if (e && e.own) { e.canvas.width = 1; e.canvas.height = 1; } } catch (err) { /* stub */ } cache.delete(k); } }
+    if (hdBytesNow < 0) hdBytesNow = 0;
+  }
+
+  // ---------------------------------------------------------------------------
+  // H0 pipeline pass — HD painters (docs/PLAN_HD_ART.md §3, docs/ART_STYLE.md "## Brush API").
+  // registerHD(family, fn): fn(ctx, spec) like a pen painter, but it starts with `const g = BSU.sprites.beginHD(ctx, w, h, spec)`
+  // (or BSU.brush.begin): the canvas is sized w × h art px TIMES spec.master (1 = today's art pixels, 2 = HD), the context is
+  // pre-scaled to the master with image smoothing ON, and spec.env ({master, lod, night, dpr}) is what every brush primitive
+  // takes. The painter then draws in 1× art units with BSU.brush and returns {w, h, ox, oy} in art px exactly as today.
+  // get(id, variant, frame, zoom) keeps its key: zoom 2 → master 2 (unless the HD atlas cap tripped: then master 1, and the
+  // entry's .zoom says so, render scales by zoomNow / ref.zoom as it already does), 1 / 0.5 → master 1. Legacy pen painters
+  // are untouched (pen at master 1, pixel-doubled at 2). Families convert one at a time: an id whose family is not HD bakes
+  // exactly as before, so the shipped game renders identically until a family is registered through registerHD.
+  // ---------------------------------------------------------------------------
+  const hdFamilies = Object.create(null);     // family → true
+  const hdIdCache = new Map();                // id → boolean (resolve() once per id)
+  let hdBytesNow = 0;                         // own-canvas bytes of master-2 HD entries
+  M.hdFallback = false;                       // latched when hdBytesNow passes the browser's atlas cap: HD families bake at master 1 until gc frees enough
+  /** register an HD painter (replaces any painter of that family); fn.hd is set so bake() hands it the master-scaled context */
+  M.registerHD = function (family, fn) {
+    if (typeof family !== 'string' || !family || typeof fn !== 'function') { BSU.error('sprites', 'registerHD', new Error('bad HD painter for ' + family)); return; }
+    fn.hd = true;
+    M.registerPainter(family, fn);
+    hdFamilies[family] = true; hdIdCache.clear();
+  };
+  /** remove a family's painter (HD or legacy) and every cached entry of it; ids of that family resolve to null again */
+  M.unregisterPainter = function (family) {
+    if (typeof family !== 'string' || !painters[family]) return false;
+    delete painters[family]; delete hdFamilies[family]; hdIdCache.clear(); dropFamily(family);
+    for (const id of [...erroredIds]) { const r = resolve(id); if (r && r.family === family) erroredIds.delete(id); }
+    return true;
+  };
+  /** true when the family of id is HD-registered (cached per id string; cleared on every registration change) */
+  M.isHD = function (id) {
+    let v = hdIdCache.get(id);
+    if (v === undefined) { const r = resolve(id); v = !!(r && hdFamilies[r.family]); if (hdIdCache.size > 4096) hdIdCache.clear(); hdIdCache.set(id, v); }
+    return v;
+  };
+  M.hdCount = function () { let n = 0; for (const k in hdFamilies) if (hdFamilies[k]) n++; return n; };
+  M.hdFamilies = function () { return Object.keys(hdFamilies); };
+  /** HD painters start here: size the canvas to w × h art px at spec.master, pre-scale the context, smoothing on → {w, h, S, env} */
+  M.beginHD = function (ctx, w, h, spec) {
+    const S = (spec && spec.master === 2) ? 2 : 1;
+    w = Math.max(1, Math.round(Number.isFinite(w) ? w : 1)); h = Math.max(1, Math.round(Number.isFinite(h) ? h : 1));
+    const c = ctx && ctx.canvas;
+    if (c) { c.width = w * S; c.height = h * S; }
+    try { ctx.setTransform(S, 0, 0, S, 0, 0); ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high'; ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; } catch (e) { /* stub */ }
+    const env = (spec && spec.env) || (BSU.brush && typeof BSU.brush.env === 'function' ? BSU.brush.env(S) : { master: S, lod: S >= 2 ? 0 : 1, night: false, dpr: 1, originX: 0, originY: 0 });
+    return { w: w, h: h, S: S, env: env };
+  };
+  /** the HD memory caps of this browser (params.art.hd; Safari gets the smaller pair; feature-detected once) */
+  let safariDetected = null;
+  function isSafari() {
+    if (safariDetected !== null) return safariDetected;
+    let s = false;
+    try { const ua = (typeof navigator !== 'undefined' && navigator.userAgent) || ''; const vendor = (typeof navigator !== 'undefined' && navigator.vendor) || ''; s = /Safari/.test(ua) && !/Chrome|Chromium|CriOS|Edg|OPR|Android/.test(ua) && /Apple/.test(vendor); } catch (e) { s = false; }
+    safariDetected = s; return s;
+  }
+  M.hdCaps = function () {
+    const hd = (BSU.params.art && BSU.params.art.hd) || {};
+    const saf = isSafari();
+    return { safari: saf, atlasMB: saf ? (hd.safariAtlasMB || 64) : (hd.chromeAtlasMB || 96), chunkMB: saf ? (hd.safariChunkMB || 80) : (hd.chromeChunkMB || 120), sliceMs: hd.bakeSliceMs || 4, masterAt: hd.masterAt || 1.5 };
+  };
+  /** own-canvas bytes of the master-2 HD entries / 2^20 */
+  M.hdMemoryMB = function () { return hdBytesNow / 1048576; };
+  function hdAccount(e) {
+    if (!e || !e.hd || !e.own || e.zoom !== 2) return;
+    hdBytesNow += e.bytes;
+    if (hdBytesNow > M.hdCaps().atlasMB * 1048576) M.hdFallback = true;
+  }
 
   /** id → {family, sub, row, rot} per the brief's rule; null for a non-string */
   function resolve(id) {
@@ -400,7 +474,8 @@
       if (!r) return null;
       variant = Number.isFinite(variant) ? Math.max(0, variant | 0) : 0;
       frame = Number.isFinite(frame) ? (frame | 0) : 0;
-      const z = (zoom === 2 && M.ZOOM2) ? 2 : 1;
+      let z = (zoom === 2 && M.ZOOM2) ? 2 : 1;
+      if (z === 2 && M.hdFallback && hdFamilies[r.family]) z = 1;   // H0: the HD atlas cap tripped → HD families serve the master-1 entry (ref.zoom says 1)
       const n = M.frames(id, variant);
       frame = n > 0 ? ((frame % n) + n) % n : 0;
       const key = id + '|' + variant + '|' + frame + '|' + z;
@@ -414,6 +489,7 @@
       }
       e = bake(r, id, variant, frame, z, key, fn);
       cache.set(key, e);
+      hdAccount(e);
       return e;
     } catch (err) {
       try { BSU.error('sprites', 'get', err); } catch (e2) { /* never throw */ }
@@ -426,7 +502,12 @@
   function bake(r, id, variant, frame, z, key, fn, extra) {
     const canvas = newCanvas(1, 1);
     const ctx = ctx2d(canvas);
-    const spec = { id: id, family: r.family, sub: r.sub, variant: variant, frame: frame, zoom: z, row: r.row, rot: r.rot, seed: hash(strHash(id), variant), frames: 0 };
+    const hd = fn.hd === true;
+    const spec = { id: id, family: r.family, sub: r.sub, variant: variant, frame: frame, zoom: z, master: z, hd: hd, env: null, row: r.row, rot: r.rot, seed: hash(strHash(id), variant), frames: 0 };
+    if (hd) {   // H0: an HD painter gets the master-scaled, smoothing-on context and the brush env (beginHD sizes the canvas and re-applies both)
+      spec.env = (BSU.brush && typeof BSU.brush.env === 'function') ? BSU.brush.env(z) : { master: z, lod: z >= 2 ? 0 : 1, night: false, dpr: 1, originX: 0, originY: 0 };
+      try { ctx.setTransform(z, 0, 0, z, 0, 0); ctx.imageSmoothingEnabled = true; } catch (e) { /* stub */ }
+    }
     if (extra) for (const k in extra) if (spec[k] === undefined) spec[k] = extra[k];   // tee pass: per-building fields (e.g. tees) the painter may read
     let g;
     try { g = fn(ctx, spec); }
@@ -441,7 +522,7 @@
       sx: Number.isFinite(g.sx) ? g.sx : 0, sy: Number.isFinite(g.sy) ? g.sy : 0,
       sw: Number.isFinite(g.sw) ? g.sw : w * z, sh: Number.isFinite(g.sh) ? g.sh : h * z,
       ox: Math.round(ox * z), oy: Math.round(oy * z),
-      w: w * z, h: h * z, zoom: z, id: id, variant: variant, frame: frame,
+      w: w * z, h: h * z, zoom: z, id: id, variant: variant, frame: frame, hd: hd,
       own: !g.canvas, bytes: (g.canvas ? 0 : (cv.width | 0) * (cv.height | 0) * 4), lazy: !baking, used: frameNo
     };
     if (cv !== canvas) { try { canvas.width = 1; canvas.height = 1; } catch (err) { /* stub */ } }
@@ -474,18 +555,20 @@
   /** render calls gc(frameNo) every ~300 frames: above the budget, drop lazily built entries unused for GC_FRAMES */
   M.gc = function (frame) {
     frameNo = Number.isFinite(frame) ? (frame | 0) : frameNo + 1;
+    if (M.hdFallback && hdBytesNow < M.hdCaps().atlasMB * 1048576 * 0.8) M.hdFallback = false;   // H0: enough HD atlas freed (or the cap raised) → masters come back
     if (M.memoryMB() <= M.CANVAS_LIMIT_MB) return 0;
     let dropped = 0;
     for (const [k, e] of cache) {
       if (!e || !e.lazy || frameNo - e.used < M.GC_FRAMES) continue;
       try { if (e.own) { e.canvas.width = 1; e.canvas.height = 1; } } catch (err) { /* stub */ }
+      if (e.hd && e.own && e.zoom === 2) hdBytesNow = Math.max(0, hdBytesNow - e.bytes);
       cache.delete(k); dropped++;
       if (M.memoryMB() <= M.CANVAS_LIMIT_MB) break;
     }
     return dropped;
   };
   /** drop every cached entry (tests / debug); painters stay registered */
-  M.clear = function () { for (const e of cache.values()) { try { if (e && e.own) { e.canvas.width = 1; e.canvas.height = 1; } } catch (err) { /* stub */ } } cache.clear(); erroredIds.clear(); };
+  M.clear = function () { for (const e of cache.values()) { try { if (e && e.own) { e.canvas.width = 1; e.canvas.height = 1; } } catch (err) { /* stub */ } } cache.clear(); erroredIds.clear(); hdBytesNow = 0; M.hdFallback = false; };
 
   // ---------------------------------------------------------------------------
   // Shared geometry for tile-anchored painters

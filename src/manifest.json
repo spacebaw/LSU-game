@@ -12,6 +12,7 @@
     "agents.js",
     "sports.js",
     "sprites.js",
+    "brush.js",
     "sprites_buildings.js",
     "sprites_entities.js",
     "render.js",

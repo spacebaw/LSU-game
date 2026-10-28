@@ -514,5 +514,56 @@ try {
   ok(BSU.errors.size === errZ, 'no BSU.error across the zoom-step checks');
 } catch (e) { ok(false, 'hud + zoom render: ' + (e.stack || e)); }
 
+// --- H0 pipeline pass: hd registration → chunk master, progressive bake order, byte caps + fallback -----------------
+try {
+  const sp = BSU.sprites, sH = BSU.state, errH = BSU.errors.size;
+  for (const fn of ['debugHD', 'hdInfo', 'chunkMasters', 'hdMasterOf', 'bakeStatReset']) ok(typeof R[fn] === 'function', 'H0 public function ' + fn);
+  ok(R.passes().some((p) => p.name === 'hddebug' && p.order === 4.5), 'the hddebug pass is registered at 4.5 (after entities, before weather)');
+  R.panToTile(sH.plot.founders.tx + 1, sH.plot.founders.ty + 1, false); R.setZoom(1); for (let k = 0; k < 3; k++) BSU.headless.render();
+  const i0 = R.hdInfo(), p0 = R.perf();
+  ok(i0.on === false && i0.chunkMaster === 1 && i0.hdChunks === 0 && i0.families.length === 0 && p0.hd === false && p0.chunkMaster === 1 && Number.isFinite(p0.chunkMB) && Number.isFinite(p0.atlasMB) && Number.isFinite(p0.hdAtlasMB) && p0.hdChunks === 0, 'shipped game: no HD family, chunk master 1, perf() reports hd flags and real chunk / atlas MB');
+  ok(Math.abs(p0.chunkMB - p0.chunks * (512 * 416 * 4) / 1048576) < 0.01 && R.chunkMasters().filter((m) => m === 1).length === p0.chunks && R.chunkMasters().length === 64, 'every live chunk is one 512×416 master-1 canvas (chunkMasters)');
+  ok(R.debugHD(true) === true && R.hdInfo().on === true && R.hdInfo().families.join() === 'debug' && sp.isHD('debug:hdtest') === true, 'debugHD(true) registers the debug family as HD (the only HD family) and switches hdOn');
+  for (let k = 0; k < 3; k++) BSU.headless.render();
+  const i1 = R.hdInfo();
+  ok(i1.master === 1 && i1.chunkMaster === 1 && i1.hdChunks === 0 && i1.dpr === 1, 'at zoom 1 dpr 1 the HD master is 1: chunks stay master 1 even with an HD family (master 2 needs zoom × dpr ≥ 1.5)');
+  ok(sp.get('debug:hdtest', 0, 0, 1) && sp.get('debug:hdtest', 0, 0, 1).zoom === 1 && sp.get('debug:hdtest', 0, 0, 1).sw === 64, 'the debug cube bakes through the brush at master 1 (64×72 art px)');
+  const td = i1.debugTile; const tt = sH.tiles;
+  ok(td >= 0 && tt.owner[td] < 0 && tt.surface[td] === 0 && tt.type[td] > BSU.T.MARSH, 'the chunk-stamped cube sits on a free land tile near the view centre');
+  // zoom 2: HD master 2 → chunk master 2; progressive: the visible chunks are master 1 already, one upgrade per frame, nearest the view centre first
+  R.setZoom(2); const i2 = R.hdInfo();
+  ok(i2.master === 2 && i2.chunkMaster === 2 && i2.hdChunks === 0, 'setZoom(2) with an HD family: hd master 2, chunk master 2, nothing re-baked yet');
+  let order = [], prevHd = 0, perFrameOk = true, dirtyOk = true;
+  for (let k = 0; k < 40; k++) { BSU.headless.render(); const inf = R.hdInfo(); if (inf.hdChunks > prevHd + 1) perFrameOk = false; if (inf.hdChunks > prevHd) order.push(inf.lastUpgrade); prevHd = inf.hdChunks; for (let c = 0; c < 64; c++) if (R.chunkDirty(c) && R.chunkMasters()[c] > 0) dirtyOk = false; }
+  const i3 = R.hdInfo();
+  ok(perFrameOk && order.length >= 3, `progressive: hdChunks grows by at most one per frame (${order.length} upgrades in 40 frames)`);
+  let centreChunk = -1, bestD = Infinity;   // the chunk whose bounding-box centre is nearest the view centre (what the bake ranks by)
+  for (let k = 0; k < 64; k++) { const o = R.chunkOrigin(k & 7, k >> 3); const ex = (o.ox + 256 - R.camera.x) * 2, ey = (o.oy + 208 - R.camera.y) * 2; const d = ex * ex + ey * ey; if (d < bestD) { bestD = d; centreChunk = k; } }
+  ok(order[0] === centreChunk, `the first upgrade is the chunk nearest the view centre (chunk ${order[0]}, nearest ${centreChunk}: visible ring first)`);
+  ok(i3.hdChunks >= 1 && i3.hdChunks <= i3.chunks && R.chunkMasters().every((m) => m === 0 || m === 1 || m === 2) && i3.chunks <= 64, 'chunk masters are 0 / 1 / 2 only: one canvas per chunk, no second table');
+  ok(Math.abs(i3.chunkMB - R.chunkMasters().reduce((a, m) => a + (m ? (m === 2 ? 1024 * 832 * 4 : 512 * 416 * 4) : 0), 0) / 1048576) < 0.01, 'chunkMB counts every canvas at its own master (1024×832 = 3.4 MB at 2)');
+  ok(i3.bake.n2 === i3.hdChunks && i3.bake.n2 > 0 && Number.isFinite(i3.bake.ms2), 'hdInfo().bake counts the master-2 bakes');
+  ok(sp.get('debug:hdtest', 0, 0, 2).zoom === 2 && sp.get('debug:hdtest', 0, 0, 2).sw === 128, 'the cube is fetched at master 2 at zoom 2 (128 device px wide)');
+  // byte cap: a 1 MB chunk cap evicts off-screen chunks and then latches the fallback (chunk master 1); restoring the cap lifts it
+  const hdp = BSU.params.art.hd, saveChunk = hdp.chromeChunkMB; hdp.chromeChunkMB = 1;
+  for (let k = 0; k < 4; k++) BSU.headless.render();
+  const i4 = R.hdInfo();
+  ok(i4.fallback === true && i4.chunkMaster === 1 && R.perf().hdFallback === true, 'over the HD chunk cap with only visible chunks left: fallback latched, chunk master back to 1');
+  for (let k = 0; k < 30; k++) BSU.headless.render();
+  const i5 = R.hdInfo();
+  ok(i5.hdChunks === 0 && i5.chunks > 0, 'under the fallback the master-2 chunks are re-baked at master 1 (one or two per frame) and the view stays drawn');
+  hdp.chromeChunkMB = saveChunk;
+  for (let k = 0; k < 70; k++) BSU.headless.render();
+  const i6 = R.hdInfo();
+  ok(i6.fallback === false && i6.chunkMaster === 2 && i6.hdChunks >= 1, 'restoring the cap clears the fallback at the next cap check and the upgrades resume');
+  // zoom back to 1: master 1 wanted; the master-2 canvases are kept (drawn scaled) — the table never grows past 64 and keeps one canvas per chunk
+  R.setZoom(1); for (let k = 0; k < 5; k++) BSU.headless.render();
+  const i7 = R.hdInfo();
+  ok(i7.chunkMaster === 1 && i7.chunks <= 64 && R.chunkMasters().filter((m) => m > 0).length === i7.chunks, 'zoom 1 again: chunk master 1, the live chunks are still one canvas each');
+  ok(R.debugHD(false) === false && R.hdInfo().on === false && R.hdInfo().families.length === 0 && sp.isHD('debug:hdtest') === false && R.hdInfo().chunkMaster === 1, 'debugHD(false) unregisters the family: no HD family, chunk master 1');
+  for (let k = 0; k < 3; k++) BSU.headless.render();
+  ok(BSU.errors.size === errH, 'no BSU.error across the H0 checks');
+} catch (e) { ok(false, 'H0 render: ' + (e.stack || e)); }
+
 console.log(`\n${passes} passed, ${failures} failed`);
 process.exit(failures ? 1 : 0);
