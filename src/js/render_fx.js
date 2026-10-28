@@ -1374,6 +1374,9 @@
   // Every ring breathes on a 1.2 s cycle in the kind's colour (BSU.issues.kinds(), used nowhere else);
   // a 40-px light column rises from the anchor to a glyph disc; off-screen issues get a border arrow.
   // Caps: ≤ ISS_MAX beacons, ≤ ISS_ARROWS arrows, the pass stops early past ISS_BUDGET_MS (perf guard).
+  // Calm alerts pass: the beacons pass draws BSU.issues.beacons(state, camTx, camTy) — severity-gated by the Alerts mode, never a
+  // suggestion (severity-1 kinds, muted kinds), ≤ params.issues.beaconMax (6), most severe then nearest the camera, the selected
+  // row always — and the edge arrows follow the same list; the spotlight (I held / toggled) lights every eligible row, uncapped.
   // ---------------------------------------------------------------------------
   const ISS_MAX = 40, ISS_ARROWS = 12, ISS_BUDGET_MS = 1.0, ISS_BREATH_MS = 1200, ISS_PULSE_MS = 420, ISS_COL_PX = 40, ISS_DIM = 0.55;
   const issStats = { drawn: 0, arrows: 0, ms: 0, capped: false, labels: 0, frames: 0 };
@@ -1406,6 +1409,10 @@
   }
   /** the HUD-free frame of the viewport (top bar, palette + ticker, the right column: minimap / keys / tray, the left goals tracker) in CSS px */
   const issFrameO = { L: 26, R: 1254, T: 70, B: 564, ui: 1, rightCol: 250, rightColH: 600, leftCol: 390, leftColH: 520 };
+  /** the camera's centre tile (for the beacon list's "nearest first"); render's camera is in world px (32 × 16 iso) */
+  function issCamTile(state, out) { const cam = camOf(state); out.tx = (cam.x / 32 + cam.y / 16) / 2; out.ty = (cam.y / 16 - cam.x / 32) / 2; return out; }
+  const issCam = { tx: 32, ty: 32 };
+  function issBeaconList(state, I, all) { try { issCamTile(state, issCam); const l = I.beacons(state, issCam.tx, issCam.ty, all ? { all: true } : undefined); return Array.isArray(l) ? l : []; } catch (e) { return []; } }
   function issFrame(view) {
     let ui = 1; try { const U = mod('ui'); if (U && typeof U.uiScaleEffective === 'function') ui = fin(U.uiScaleEffective(), 1) || 1; } catch (e) { ui = 1; }
     issFrameO.ui = ui; issFrameO.L = 26; issFrameO.R = view.vw - 26; issFrameO.T = 70 * ui; issFrameO.B = view.vh - 236 * ui;
@@ -1487,7 +1494,7 @@
     let gi = 0, gn = 1; if (sel._gk) { gn = issGroups[sel._gk] | 0 || 1; const li = issuesApi() ? issuesApi().list(state) : []; for (let k = 0; k < li.length; k++) { if (li[k] === sel) break; if (li[k]._gk === sel._gk) gi++; } }
     const ax = issPt.x + (gi - (gn - 1) / 2) * 24 * Math.max(0.75, z), iy = issPt.y - hc - 16;
     g.font = 'bold 13px system-ui, -apple-system, "Segoe UI", sans-serif';
-    const title = issWrap(g, sel.title, 230); g.font = '12px system-ui, -apple-system, "Segoe UI", sans-serif'; const fix = issWrap(g, sel.fix || '', 230);
+    const title = issWrap(g, sel.title, 230); g.font = '12px system-ui, -apple-system, "Segoe UI", sans-serif'; const fix = issWrap(g, sel.progress && sel.progress.text ? 'In progress: ' + sel.progress.text : (sel.fix || ''), 230);   // calm alerts pass: an in-progress row says so, not its fix
     const hint = 'Fix / Locate in the Issues tray · I next · Esc';
     let bw = 0; g.font = 'bold 13px system-ui, -apple-system, "Segoe UI", sans-serif'; for (const l of title) bw = Math.max(bw, g.measureText(l).width);
     g.font = '12px system-ui, -apple-system, "Segoe UI", sans-serif'; for (const l of fix) bw = Math.max(bw, g.measureText(l).width); g.font = '11px system-ui, -apple-system, "Segoe UI", sans-serif'; bw = Math.max(bw, g.measureText(hint).width);
@@ -1545,14 +1552,14 @@
     const I = issuesApi(); if (!I || !state || !state.tiles) return;
     if (state.setPiece) return;   // qa pass 4: set pieces are cinematic (the tray already hides); beacons flashed over the stadium mid-montage
     if (I.spotlight()) return;   // the spotlight pass draws them above the dim
-    const t0 = nowMs(); const issues = I.list(state), sel = I.selected(state);
+    const t0 = nowMs(); const issues = typeof I.beacons === 'function' ? issBeaconList(state, I, false) : I.list(state), sel = I.selected(state);
     issStats.drawn = drawBeacons(state, g, view, issues, sel, t0); issStats.ms = nowMs() - t0; issStats.frames++;
   }
   function passSpotlight(state, g, view) {
     const I = issuesApi(); if (!I || !state || !state.tiles) return;
     if (state.setPiece) return;   // qa pass 4: as passBeacons
-    const t0 = nowMs(); const issues = I.list(state), sel = I.selected(state), z = (camOf(state).zoom) || 1;
-    if (I.spotlight()) {
+    const t0 = nowMs(); const spot = I.spotlight(), issues = typeof I.beacons === 'function' ? issBeaconList(state, I, spot) : I.list(state), sel = I.selected(state), z = (camOf(state).zoom) || 1;
+    if (spot) {
       // dim everything except the issue tiles (even-odd: the viewport minus every outline; rects deduped so stacked issues do not cancel)
       g.globalAlpha = ISS_DIM; g.fillStyle = 'rgb(6,4,18)'; g.beginPath(); g.rect(0, 0, view.vw, view.vh);
       const seen = new Set(); let holes = 0;

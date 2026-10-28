@@ -593,3 +593,12 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
 #hud[data-hud="hidden"]>*:not(#decision-toast):not(#cards):not(#hud-chip):not(#ghost-label):not(#tooltip):not(#hint):not(#btn-skip):not(#coach):not(#inspect):not(#build-menu):not(#perfmode-chip){display:none !important}
 #hud-chip{position:absolute;right:var(--side);bottom:1.2rem;z-index:4;font:600 1.3rem/1.6rem var(--font-ui);color:var(--gold-hi);padding:.5rem 1.2rem;min-height:0;border-radius:99.9rem;opacity:.85}
 #hud-chip:hover{opacity:1}
+/* calm alerts pass: the tray's Suggestions group + the mute bell (append-only) */
+#issues-suggest{display:flex;flex-direction:column;gap:.3rem}
+#issues-suggest #issues-suggest-head{align-self:flex-start;padding:0 .8rem;min-height:2.2rem;height:2.2rem;line-height:2rem;font-size:1.05rem;color:var(--text-dim);letter-spacing:.04em}
+#issues-suggest.open #issues-suggest-head{color:var(--text)}
+#issues-suggest-list{display:flex;flex-direction:column;gap:.3rem}
+.issue-row.suggest{opacity:.82;border-left-style:dotted} .issue-row.suggest:hover{opacity:1}
+.issue-row.lead{grid-template-columns:1.8rem minmax(0,1fr) auto auto auto auto auto auto}
+.issue-row .btn.bell{font-size:1.2rem} .issue-row .btn.bell.muted{color:var(--gold-hi)}
+#issues-tray.collapsed #issues-suggest{display:none}

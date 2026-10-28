@@ -1519,9 +1519,10 @@
     try { if (state && Array.isArray(state.buildings)) recomputeCoverageInner(state); }
     catch (e) { if (BSU.SELFTEST) throw e; BSU.error('buildings', 'recomputeCoverage', e); }
   };
-  /** gators within 2 of the footprint this tick (transient) */
+  /** retired (calm alerts + ambient gators pass): gators close nothing; always false (the cache below is never reached) */
   M.gatorClosed = function (state, id) {
     try {
+      if (state || !state) return false;
       const c = cache(state), b = M.get(state, id);
       if (!b) return false;
       const tick = fin(state.tick, 0);

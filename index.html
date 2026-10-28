@@ -600,6 +600,15 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
 #hud[data-hud="hidden"]>*:not(#decision-toast):not(#cards):not(#hud-chip):not(#ghost-label):not(#tooltip):not(#hint):not(#btn-skip):not(#coach):not(#inspect):not(#build-menu):not(#perfmode-chip){display:none !important}
 #hud-chip{position:absolute;right:var(--side);bottom:1.2rem;z-index:4;font:600 1.3rem/1.6rem var(--font-ui);color:var(--gold-hi);padding:.5rem 1.2rem;min-height:0;border-radius:99.9rem;opacity:.85}
 #hud-chip:hover{opacity:1}
+/* calm alerts pass: the tray's Suggestions group + the mute bell (append-only) */
+#issues-suggest{display:flex;flex-direction:column;gap:.3rem}
+#issues-suggest #issues-suggest-head{align-self:flex-start;padding:0 .8rem;min-height:2.2rem;height:2.2rem;line-height:2rem;font-size:1.05rem;color:var(--text-dim);letter-spacing:.04em}
+#issues-suggest.open #issues-suggest-head{color:var(--text)}
+#issues-suggest-list{display:flex;flex-direction:column;gap:.3rem}
+.issue-row.suggest{opacity:.82;border-left-style:dotted} .issue-row.suggest:hover{opacity:1}
+.issue-row.lead{grid-template-columns:1.8rem minmax(0,1fr) auto auto auto auto auto auto}
+.issue-row .btn.bell{font-size:1.2rem} .issue-row .btn.bell.muted{color:var(--gold-hi)}
+#issues-tray.collapsed #issues-suggest{display:none}
 
 </style>
 </head>
@@ -896,26 +905,9 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
         poolCloseDays: 1, kickoffDelayDays: 1,   // §6.3
         firstGatorDate: 'Feb 9',             // §9.2
         tagTicks: 30,                        // name tag shown 3 s on campus entry (§6.3)
-        // gator pass (Josh: "why does a gator on campus matter?"): legible, parameterised consequences
-        delayHappinessPer: 0.25,             // happiness points per student delayed (fled / rerouted) by a gator since Dawn
-        delayHappinessCap: 6,                // cap of that happiness term (all gators together)
-        delayAttendancePer: 0.004,           // class-attendance dent per delayed student at Dusk (12 delayed → −4.8 %)
-        delayAttendanceCap: 0.25,            // cap of the attendance dent
-        closurePenalty: 2,                   // happiness per building a gator keeps closed (dining hall, shack, pool)
-        closureCap: 6,                       // cap of the closure term
-        blockTraffic: 3,                     // students delayed before a gator on a path counts as "blocking" (escalation)
-        callOutFee: 15000,                   // Parish Wildlife call-out when no Wildlife Officer Post is in range
-        callOutDays: 1,                      // the Parish truck arrives this many days after the call
-        mischiefChance: 0.15,                // per gator per campus day: a comic incident with a small bill
-        backpackCost: 2000,                  // 'stolen backpack' reimbursement
-        bikeCost: 800,                       // 'eaten bike' replacement
-        badPressDays: 3,                     // a gator on campus for more than this many days unaddressed → bad press
-        badPressPrestige: 1,                 // the bad-press prestige dip …
-        badPressWeek: 7,                     // … restored after this many days
-        gameDayTailgateLoss: 0.25,           // share of the tailgate take refunded when a gator delays kickoff
-        gameDayMinLoss: 5000,                // … never less than this (the gator can arrive before the tailgate take is known)
-        alertCooldownDays: 3,                // ui: the top chip does not re-fire for the same gator for this many days
-        alertMs: 12000                       // ui: the top chip auto-dismisses after this long
+        // calm alerts + ambient gators pass: gators are wildlife, not a mechanic (no penalties, closures, call-outs, bills or chips);
+        // the one flavour line a gator still earns is a ticker sighting at most once per sightingGapDays
+        sightingGapDays: 90
       },
       mosq: {
         standDays: 2, stand: 0.12, standFlooded: 0.24,   // §6.4
@@ -1313,7 +1305,11 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
       refreshTicks: 25,                      // the registry recomputes at most this often without an event (every event listed in issues.js recomputes at once)
       snoozeDays: 3,                         // a snoozed row hides for this many days (it comes back earlier if the issue gets worse)
       linkMax: 8,                            // "Link it": the gravel tie from an unlinked building reaches this many tiles to any connected surface
-      gatorBlockDelayed: 3                   // a gator is an issue (not a sighting) once this many students were rerouted this visit, or it closes a hall, or it is on the field on game day
+      // calm alerts pass: the alert budget. Beacons only from beaconMin (Normal) / 3 (Quiet) / none (Off), at most beaconMax on screen
+      // (most severe, then nearest the camera); severity-1 KINDS (unlinkedPath, mosquitoHotspot) and muted kinds never beacon
+      // and sit in the tray's collapsed Suggestions group; an issue toast needs toastMinSeverity and fires once per kind per toastPerKindDays
+      beaconMin: 2, beaconMax: 6, toastMinSeverity: 2, toastPerKindDays: 7,
+      alertModes: ['normal', 'quiet', 'off']  // Settings → Alerts (ui.setAlertMode); persisted in settings.alerts
     },
     render: {                                // GDD §12
       tileW: 64, tileH: 32, pxPerFt: 6, zooms: [0.5, 1, 2],   // §12.1
@@ -1466,7 +1462,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     'gate:closed', 'gate:opened',
     'marsh:drained', 'marsh:reverted', 'marsh:restored',
     'gator:spawn', 'gator:campus', 'gator:incident', 'gator:relocated',
-    'gator:blocked', 'gator:callout',   // gator pass: a gator blocks a path / closes a building / delays kickoff; a Parish Wildlife call-out is placed or arrives
+    'gator:blocked', 'gator:callout',   // retired (calm alerts + ambient gators pass): kept for old saves / listeners, never emitted; gator:incident likewise
     'mosquito:warning', 'ecology:changed',
     'festival:start', 'festival:end',
     'game:scheduled', 'game:kickoff', 'game:score', 'game:halftime', 'game:final', 'season:end', 'coach:changed', 'staff:offer', 'staff:poached',
@@ -1902,7 +1898,8 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
         camera: { x: (founders.tx - founders.ty) * 32, y: (founders.tx + founders.ty) * 16, zoom: 1, tx: 0, ty: 0, follow: -1 },
         overlay: BSU.OV.NONE, speed: 1, speedBefore: 1, tool: null, panel: null, paletteTab: 'essentials',
         tabsSeen: {}, newPips: {}, tabsIntroduced: {},
-        settings: { volume: P.audio.defaultVolume, muted: false, particles: 'high', shake: true, colorblind: false, autoSimHint: false, coachSeen: false, hudMode: 'full', hudCollapsed: { goals: false, needs: false, minimap: false, issues: false, palette: false } },   // hud + zoom pass: hudMode full | compact | hidden; hudCollapsed = per-element pills in full mode (ui.hudCollapse)
+        settings: { volume: P.audio.defaultVolume, muted: false, particles: 'high', shake: true, colorblind: false, autoSimHint: false, coachSeen: false, hudMode: 'full', hudCollapsed: { goals: false, needs: false, minimap: false, issues: false, palette: false }, alerts: 'normal', mutedIssues: {} },   // hud + zoom pass: hudMode full | compact | hidden; hudCollapsed = per-element pills in full mode (ui.hudCollapse). calm alerts pass: alerts normal | quiet | off, mutedIssues {kind: true}
+        issues: { snoozed: {}, dismissed: {} },   // calm alerts pass: the Issues tray's snoozes {id: {until (tick), severity, days}} and dismissals {id: sig}, saved with the game
         perfMode: false
       },
       rng: { sim: (seed ^ 0x9E3779B9) >>> 0 }
@@ -2209,16 +2206,16 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     pump: 'Pumps 15 tile-ft a day out of its canal network. Needs power.',
     pond: 'Holds 20 tile-ft of runoff; once stocked, mosquitoes −80% within 4.',
     pilings: 'Lifts one building 3 ft above the flood line (+40% of its cost).',
-    gator_fence: 'A fence gators cannot cross; students walk through. Keeps gators off paths and out of your halls.',   // gator pass
+    gator_fence: 'A low cypress rail along the bank: gators keep to their side, students step over. Pure scenery.',   // calm pass: ambient
     abatement: 'A fogger truck: mosquitoes −70% along paths within 8. Costs ecology.',
     bat_house: 'Bats and martins: mosquitoes −30% within 4 (stacks to −60%); +0.5 ecology.',
-    wildlife_post: 'An officer who relocates gators within 14 for free (else a $15k Parish call-out); stops nutria; +3 ecology.',   // gator pass
-    preserve: 'Protects a tile as wetland: +0.5 ecology, slows the surge, and gators lounge here instead of campus.',   // gator pass
+    wildlife_post: 'Nutria burrowing −80% within 14, debris cleared, Cajun Navy, +3 ecology; the officer walks stray gators home.',   // calm pass
+    preserve: 'Protects a tile as wetland: +0.5 ecology, slows the surge; gators like to lounge here.',   // calm pass
     live_oak: '+1 happiness within 4; shade cuts heat −30%; wind damage −30% within 2.',
     cypress: 'Roots drink 0.05 ft of water a day and halve sinking next door; +0.5 ecology.',
     azalea: '+1 happiness within 3; +1 more while it blooms in March.',
     bell_tower: 'Landmark +10 and +3 happiness campus-wide; bells at midday and dusk.',
-    tiger_habitat: 'Landmark +8, +5 happiness within 15, home win +5%; gators stay 10 tiles away.',
+    tiger_habitat: 'Landmark +8, +5 happiness within 15, home win +5%; the gators give Roux a wide berth.',
     surge_barrier: 'A gate that closes the bayou when the stage passes 2 ft. Needs 2 powered Pumps.',
     marsh_restoration: 'Turns 10–40 tiles back into marsh over 30 days; up to +15 ecology.',
     rookery: 'Landmark +6, +2 happiness within 8, and spoonbills every dawn.'
@@ -2430,8 +2427,8 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     row({ n: 31, name: 'Gator Fence', kind: 'drag', cost: 8000, upkeep: 80, placeRule: PLACE.FENCE, pip: 'gator',
       effects: { surfaceId: SURF.FENCE, special: ['gatorBlock'] },
       paint: flat(['#9A9A9E', GOLD], ['sign']),
-      why: 'Gators cannot cross it. Students can. Everyone is happier.',
-      desc: 'Blocks gators and nutria; students pass; Cat 3+ breaks 30% of segments.' }),
+      why: 'A rail along the bank. The gators respect it; so do the photographers.',
+      desc: 'Decorative bank rail: gators and nutria keep to their side, students step over; Cat 3+ breaks 30% of segments.' }),
     row({ n: 32, name: 'Mosquito Abatement Station', cost: 90000, upkeep: 2500, wr: 2, pip: 'mosquito',
       effects: { mosquito: { mult: 0.3, radius: 8, stacksTo: 0 }, special: ['fogger'] },
       paint: P({ wall: ['#5E2CA5', PURPLE], roof: 'gable', roofColor: PURPLE, windows: { cols: 1, rows: 1 }, decals: ['truck'], special: 'abatement', material: 'metal', features: ['sign:FOG'] }),
@@ -2445,13 +2442,13 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     row({ n: 34, name: 'Wildlife Officer Post', cost: 140000, upkeep: 4000, wr: 2, pip: 'gator',
       effects: { ecology: 3, special: ['officer', 'traps', 'debris', 'cajunNavy'] },
       paint: P({ wall: ['#C9B47C', '#A8925C'], roof: 'gable', roofColor: '#4A3B2A', windows: { cols: 2, rows: 1 }, decals: ['truck', 'airboat', 'sign'], special: 'wildlife_post' }),
-      why: 'One officer, a truck, and an airboat. The gators know the truck.',
-      desc: 'Relocates gators within 14; nutria burrowing −80% within 14; clears debris; Cajun Navy; +3 ecology.' }),
+      why: 'One officer, a truck, and an airboat. The nutria know the truck.',
+      desc: 'Nutria burrowing −80% within 14; clears debris; Cajun Navy; +3 ecology; the officer walks stray gators home (scenery).' }),
     row({ n: 35, name: 'Wetland Preserve', kind: 'paint', cost: 5000, upkeep: 0, placeRule: PLACE.PRESERVE,
       effects: { ecologyPerTile: 0.5, special: ['preserve'] },
       paint: flat(['#8A9A4B', '#6E8F3C'], ['reeds', 'lookout']),
       why: 'Preserving swamp is cheaper flood defense with a longer payback.',
-      desc: 'Protected tile; +0.5 ecology/tile; absorbs gator wanders; surge head loss 0.12 ft/tile; fireflies ×3.' }),
+      desc: 'Protected tile; +0.5 ecology/tile; gators lounge here; surge head loss 0.12 ft/tile; fireflies ×3.' }),
     row({ n: 36, name: 'Live Oak', cost: 12000, upkeep: 0, wr: 5,
       effects: { happiness: { value: 1, radius: 4 }, heat: { mult: 0.7, radius: 3 }, windShield: { mult: 0.7, radius: 2 }, ecology: 0.3 },
       paint: flat(['#3A2A1E', '#3B5A2A'], [], 'live_oak'),
@@ -2479,7 +2476,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
       effects: { landmark: 8, happiness: { value: 5, radius: 15 }, homeWinBonus: 0.05, gatorAvoidRadius: 10, special: ['tank', 'habitat'] },
       paint: P({ wall: ['#9C978E', '#7C776F'], roof: 'none', roofColor: '', floors: 0, decals: [], special: 'tiger_habitat', material: 'stone', accent: '#E07020', features: ['sign:ROUX'] }),   // habitat pass: a bespoke zoo-exhibit painter (sprites_buildings.js habitatPaint) draws the pool, den, glass, plaza; the paint row only names it
       why: 'Roux lives here. The gators keep their distance. So do opponents.',
-      desc: 'Landmark +8; +5 happiness radius 15; home win +5%; gators avoid radius 10; floods → Roux Is Loose.' }),
+      desc: 'Landmark +8; +5 happiness radius 15; home win +5%; gators keep 10 tiles from Roux; floods → Roux Is Loose.' }),
     row({ n: 41, name: 'Bayou Surge Barrier', kind: 'drag', cost: 6000000, upkeep: 40000, wr: 5, placeRule: PLACE.BARRIER,
       unlock: { milestone: 'fortressBayou' },
       effects: { gate: true, ecology: -10, happiness: { value: -2, radius: 4 }, flatTimer: 'surgeBarrier', noise: { value: 2, radius: 4 } },
@@ -3217,9 +3214,10 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     ['Laissez les Bons Temps Rouler', '20,000 students, prestige 85, ecology ≥ 50', {}],
     ['Untouched', 'Reach Flagship without draining a single marsh tile', {}]
   ];
+  const RETIRED_MILESTONES = { gatorWrangler: true, sunbather: true };   // calm alerts + ambient gators pass: never earned again, hidden in the panel
   const milestones = BSU.MILESTONES.map(function (id, i) {
     const m = MILESTONE_ROWS[i] || ['', '', {}];
-    return { id: id, name: m[0], text: m[1], reward: m[2] };
+    return { id: id, name: m[0], text: m[1], reward: m[2], retired: !!RETIRED_MILESTONES[id] };
   });
 
   // ---------------------------------------------------------------------------
@@ -3487,16 +3485,8 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
   // ---------------------------------------------------------------------------
   // Assemble, deep-freeze, self-test
   // ---------------------------------------------------------------------------
-  /** gator pass: the one-line rationale the issues tray, the notifications and the inspect panel carry ({fee}/{days} filled by issues.js) */
-  const gatorText = {
-    why: "Students won't walk past a gator: class attendance and happiness drop until it is moved.",
-    whyClosed: 'A gator within 2 tiles closes the kitchen or pool: nobody eats or swims until it is moved.',
-    whyGame: 'A gator on the field delays kickoff and refunds part of the tailgate take.',
-    fixFree: 'Fix: the Wildlife Officer wrangles it (free). Or fence this bank, or build a Preserve so it lounges there instead.',
-    fixPaid: 'Fix: Parish Wildlife call-out {fee}, arrives in {days}. Or fence this bank, or build a Preserve so it lounges there instead.'
-  };
   const data = {
-    gatorText: gatorText, catalog: catalog, catalogList: catalogList, tabs: tabs, decals: decals, names: names, students: students,
+    catalog: catalog, catalogList: catalogList, tabs: tabs, decals: decals, names: names, students: students,
     coaches: coaches, coachQuotes: coachQuotes, staff: staff, gatorNames: gatorNames, leGrand: leGrand, stormNames: stormNames,
     opponents: opponents, schedule: schedule, calendar: calendar, ticker: ticker, tickerKinds: tickerKinds,
     tickerKindList: TICKER_KIND_LIST, objectives: objectives, milestones: milestones, voiceCards: voiceCards,
@@ -8732,7 +8722,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
 // BAYOU STATE — wildlife.js (module 5) → BSU.wildlife
 // Owner of: state.gators[], state.wildlife.* (campusMask unsaved), tiles.mosq,
 //           tiles.integrity for nutria burrows only (−15, then buildings.onIntegrityChanged).
-// Implements: GDD §6.3 (gators: dens, state machine, attractors, campus set, incidents,
+// Implements: GDD §6.3 (gators: dens, state machine, attractors, campus set, sightings,
 //             officers, Le Grand), §6.4 (mosquito field, index, warnings, illness), §6.7
 //             (nutria burrows, birds, fireflies, critters), §6.8 (ecology score), §6.2 Recovery
 //             (post-storm gator wave, mosquito bloom), §6.6 (heat illness half), §0.3 rows
@@ -8874,23 +8864,20 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     if (!isNum(wl.ecologyTerms.once)) wl.ecologyTerms.once = 0;
     if (!wl.birds || typeof wl.birds !== 'object') wl.birds = { egrets: 0, spoonbills: false, pelicans: 0 };
     if (!Array.isArray(wl.officers)) wl.officers = [];
-    if (!Array.isArray(wl.incidents)) wl.incidents = [];
     if (!Array.isArray(state.gators)) state.gators = [];
-    if (!Array.isArray(wl.callOuts)) wl.callOuts = [];          // gator pass: pending Parish Wildlife call-outs {gatorId, day (arrival), fee}
-    if (!Array.isArray(wl.pressRestore)) wl.pressRestore = [];  // gator pass: bad-press prestige dips to give back {day, amount}
+    if (!isNum(wl.sightingDay)) wl.sightingDay = -1e9;   // calm alerts + ambient gators pass: the day of the last "spotted" ticker line (≥ sightingGapDays apart)
+    // calm alerts + ambient gators pass: the gator mechanic is gone. A save from the gator pass carries call-outs, bad-press restores,
+    // incident rows and per-visit bills; they are purged here (once per load) so nothing fires, charges or lists again.
+    if (!Array.isArray(wl.incidents) || wl.incidents.length) wl.incidents = [];
+    if (!Array.isArray(wl.callOuts) || wl.callOuts.length) wl.callOuts = [];
+    if (!Array.isArray(wl.pressRestore) || wl.pressRestore.length) wl.pressRestore = [];
     for (let k = 0; k < state.gators.length; k++) ensureGatorKeys(state.gators[k]);
   }
-  /** gator pass: per-visit bookkeeping on the gator struct (all finite; a pre-pass save gets them lazily). */
+  /** the gator struct's visit keys (all finite); the gator-pass bookkeeping (delays, bills, closures, escalation bits) is reset to nothing */
   function ensureGatorKeys(g) {
     if (!g) return;
     if (!isNum(g.visitDay)) g.visitDay = -1;          // day the gator stepped onto campus (−1 off campus)
-    if (!isNum(g.delayed)) g.delayed = 0;             // students delayed (fled / rerouted) since Dawn (agent:flee)
-    if (!isNum(g.delayedVisit)) g.delayedVisit = 0;   // … over the whole campus visit
-    if (!isNum(g.cost)) g.cost = 0;                   // $ this visit has cost (mischief, tailgate refunds, the call-out fee)
-    if (!isNum(g.badPressDay)) g.badPressDay = -1;    // day the bad-press prestige dip was applied (−1 none)
-    if (!isNum(g.blocked)) g.blocked = 0;             // escalation bits already raised this visit: 1 path, 2 building closed, 4 game day
-    if (!isNum(g.closes)) g.closes = -1;              // id of the kitchen / pool this gator keeps closed (−1 none)
-    if (typeof g.onPath !== 'boolean') g.onPath = false;   // standing on or beside a path / road / boardwalk tile
+    g.delayed = 0; g.delayedVisit = 0; g.cost = 0; g.badPressDay = -1; g.blocked = 0; g.closes = -1; g.onPath = false;
   }
 
   // ---------------------------------------------------------------------------
@@ -9302,39 +9289,17 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     const on = campusOf(state)[i] === 1;
     if (on !== g.onCampus) {
       g.onCampus = on; g.tag = PG.tagTicks;
-      if (on) { g.visitDay = day; g.delayed = 0; g.delayedVisit = 0; g.cost = 0; g.badPressDay = -1; g.blocked = 0; g.closes = -1; if (g.lastIncidentDay !== day) sighting(state, g, i); }   // one sighting line per gator per day (a gator on the mask edge can flip in and out)
-      else { g.visitDay = -1; g.closes = -1; g.onPath = false; }
+      if (on) { g.visitDay = day; g.lastIncidentDay = day; sighting(state, g, i, day); }   // calm pass: a visit is a rare flavour line, nothing else
+      else { g.visitDay = -1; }
       emit(BSU.EV.GATOR_CAMPUS, { id: g.id, name: g.name, i: i, enter: on, target: g.target });
-    }
-    if (on) watchGator(state, g, i);
-    if (on && g.lastIncidentDay !== day) {
-      g.lastIncidentDay = day;
-      const wl = state.wildlife;
-      const kind = incidentKind(state, i);
-      const row = { day: day, gatorId: g.id, tile: i };
-      mischief(state, g, row, day);
-      wl.incidents.push(row);
-      emit(BSU.EV.GATOR_INCIDENT, { id: g.id, name: g.name, i: i, kind: kind });
-      if (kind === 'field' && state.sports && state.sports.game) gameDayDelay(state, g, i);
     }
   }
 
   // ---------------------------------------------------------------------------
-  // gator pass: consequences that are real and legible (Josh: "why does a gator on campus matter?")
+  // calm alerts + ambient gators pass: gators are scenery. No path blocking, closures, bills, bad press, call-outs,
+  // game-day delays or incident rows; the ticker gets one "spotted" line per sightingGapDays at most.
   // ---------------------------------------------------------------------------
-  const CLOSABLE = { dining_hall: 'dining hall', poboy: "po'boy shack", rec_center: 'pool' };   // buildings.gatorClosed shuts these within closeRadius
   function ticker(state, text, kind, i) { const Pr = dep('progress'); const tk = fn(Pr, 'ticker'); if (tk) tk(state, text, null, kind || 'wildlife', isNum(i) ? i : undefined); }
-  function bump(state, stat, delta, why) {
-    const Ec = dep('economy'); const f = fn(Ec, 'bump');
-    if (f) f(state, stat, delta, why); else if (state.economy && isNum(state.economy[stat])) state.economy[stat] += delta;
-  }
-  /** charges a gator's bill (ledger 'misc', forced: a reimbursement is not optional) and remembers it on the gator */
-  function chargeGator(state, g, amount, note) {
-    if (!(amount > 0)) return;
-    const Ec = dep('economy'); const f = fn(Ec, 'charge');
-    if (f) f(state, amount, 'misc', { note: 'gator:' + note, force: true, i: gatorTile(g) }); else if (state.economy && isNum(state.economy.cash)) state.economy.cash -= amount;
-    g.cost += amount;
-  }
   /** nearest complete building within 3 of a tile → {id, name} (sightings, the inspect line) */
   function nearBuilding(state, i) {
     const tx = i & 63, ty = i >> 6, owner = state.tiles.owner, blds = state.buildings || [];
@@ -9345,114 +9310,19 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     }
     return best ? { id: best.id, name: best.name || best.type } : null;
   }
-  /** routine sighting → the ticker only (the ui's chip and notifications decide on their own what deserves attention) */
-  function sighting(state, g, i) {
+  /** a rare flavour line: "<name> spotted near <building>." at most once per params.wildlife.gator.sightingGapDays (90) across all gators */
+  function sighting(state, g, i, day) {
+    const wl = state.wildlife, gap = isNum(PG.sightingGapDays) ? PG.sightingGapDays : 90;
+    if (isNum(wl.sightingDay) && day - wl.sightingDay < gap) return;
+    wl.sightingDay = day;
     const nb = nearBuilding(state, i);
     ticker(state, g.name + ' spotted ' + (nb ? 'near ' + nb.name : 'on the bank') + '.', 'wildlife', i);
-  }
-  /** every 10 ticks per on-campus gator: is it on / beside a path, which kitchen or pool it closes, and the escalations (gator:blocked once per kind per visit) */
-  function watchGator(state, g, i) {
-    if ((((state.tick | 0) + g.id) % 10) !== 0) return;
-    const tx = i & 63, ty = i >> 6, surf = state.tiles.surface, owner = state.tiles.owner, blds = state.buildings || [], r = PG.closeRadius;
-    let onPath = false, closes = -1, bd = 99;
-    for (let y = Math.max(0, ty - r); y <= Math.min(H - 1, ty + r); y++) for (let x = Math.max(0, tx - r); x <= Math.min(W - 1, tx + r); x++) {
-      const j = y * W + x, d = BSU.chebyshev(tx, ty, x, y);
-      if (d <= 1 && surf[j] >= SURF.PATH && surf[j] !== SURF.FENCE) onPath = true;
-      const o = owner[j]; if (o < 0 || !blds[o] || !CLOSABLE[blds[o].type] || !isComplete(blds[o])) continue;
-      if (d < bd) { bd = d; closes = blds[o].id; }
-    }
-    g.onPath = onPath; g.closes = closes;
-    if (onPath && g.delayed >= PG.blockTraffic && !(g.blocked & 1)) { g.blocked |= 1; emit(BSU.EV.GATOR_BLOCKED, { id: g.id, name: g.name, i: i, what: 'path', delayed: g.delayed }); }
-    if (closes >= 0 && !(g.blocked & 2)) { g.blocked |= 2; const b = blds[closes]; emit(BSU.EV.GATOR_BLOCKED, { id: g.id, name: g.name, i: i, what: 'closed', buildingId: closes, building: (b && (b.name || b.type)) || '', kind: CLOSABLE[b ? b.type : ''] || 'building' }); }
-  }
-  /** comic incident with a small bill on some campus days (a hash, not an rng draw: the sim stream stays as it was; selfTest 9 counts rows) */
-  function mischief(state, g, row, day) {
-    if (!(state.economy && isNum(state.economy.students) && state.economy.students > 0)) return;   // nobody to rob on an empty campus
-    if (((g.id * 7919 + day * 104729) % 1000) / 1000 >= PG.mischiefChance) return;
-    const bike = ((g.id + day) & 1) === 1, cost = bike ? PG.bikeCost : PG.backpackCost;
-    row.kind = bike ? 'bike' : 'backpack'; row.cost = cost;
-    chargeGator(state, g, cost, row.kind);
-    const nb = nearBuilding(state, row.tile);
-    ticker(state, bike ? g.name + ' eats a bicycle' + (nb ? ' outside ' + nb.name : '') + '. Replacement ' + BSU.formatMoney(cost) + '.'
-      : g.name + ' makes off with a backpack' + (nb ? ' at ' + nb.name : '') + '. Reimbursed ' + BSU.formatMoney(cost) + '.', 'money', row.tile);
-  }
-  /** game day: a gator on the field delays kickoff (the 'sunbather' event in progress) and refunds part of the tailgate take */
-  function gameDayDelay(state, g, i) {
-    if (g.blocked & 4) return; g.blocked |= 4;
-    const game = state.sports.game, PS = BSU.params.sports || {};
-    const take = Math.max(isNum(game.tailgate) ? game.tailgate : 0, (isNum(PS.tailgatePer) ? PS.tailgatePer : 3) * (isNum(game.attendance) ? game.attendance : 0));
-    const loss = Math.max(PG.gameDayMinLoss, Math.round(take * PG.gameDayTailgateLoss));
-    chargeGator(state, g, loss, 'kickoff');
-    ticker(state, 'Kickoff delayed: ' + g.name + ' is sunning on the 50-yard line. Tailgate refunds ' + BSU.formatMoney(loss) + '.', 'event', i);
-    emit(BSU.EV.GATOR_BLOCKED, { id: g.id, name: g.name, i: i, what: 'game', cost: loss });
-  }
-  /** daily: Parish trucks that arrive, bad press after badPressDays unaddressed, prestige given back after the week */
-  function gatorDaily(state, day) {
-    const wl = state.wildlife, gs = state.gators;
-    for (let k = wl.callOuts.length - 1; k >= 0; k--) {
-      const c = wl.callOuts[k];
-      if (!c || !isNum(c.day)) { wl.callOuts.splice(k, 1); continue; }
-      if (c.day > day) continue;
-      wl.callOuts.splice(k, 1);
-      const g = findGator(state, c.gatorId);
-      if (g) { ticker(state, 'Parish Wildlife relocates ' + g.name + '.', 'wildlife', gatorTile(g)); relocate(state, g.id, false); }
-      emit(BSU.EV.GATOR_CALLOUT, { id: c.gatorId, name: g ? g.name : '', arrived: true, fee: isNum(c.fee) ? c.fee : 0 });
-    }
-    for (let k = 0; k < gs.length; k++) {
-      const g = gs[k];
-      if (!g.onCampus || g.visitDay < 0 || g.badPressDay >= 0 || day - g.visitDay <= PG.badPressDays) continue;
-      g.badPressDay = day;
-      bump(state, 'prestige', -PG.badPressPrestige, 'gatorPress');
-      wl.pressRestore.push({ day: day + PG.badPressWeek, amount: PG.badPressPrestige });
-      ticker(state, 'Bad press: ' + g.name + ' has had the run of campus for ' + (day - g.visitDay) + ' days. Prestige −' + PG.badPressPrestige + ' for a week.', 'danger', gatorTile(g));
-    }
-    for (let k = wl.pressRestore.length - 1; k >= 0; k--) {
-      const r = wl.pressRestore[k];
-      if (r && isNum(r.day) && r.day > day) continue;
-      wl.pressRestore.splice(k, 1);
-      if (r && isNum(r.amount)) bump(state, 'prestige', r.amount, 'gatorPress');
-    }
-  }
-  /** agent:flee → one more student delayed by that gator (since Dawn, and over the visit while it is on campus) */
-  function noteDelay(state, gatorId, n) {
-    const g = findGator(state, gatorId); if (!g) return;
-    ensureGatorKeys(g);
-    const k = isNum(n) ? n : 1;
-    g.delayed += k; if (g.onCampus) g.delayedVisit += k;
-  }
-  /** a complete Wildlife Officer Post within officerRadius of the gator → the officer wrangles for free */
-  function postInRange(state, g) {
-    const i = gatorTile(g), tx = i & 63, ty = i >> 6, os = state.wildlife.officers || [], blds = state.buildings || [];
-    for (let k = 0; k < os.length; k++) {
-      const o = os[k], b = blds[o.post];
-      if (!b || !isComplete(b)) continue;
-      if (BSU.chebyshev(tx, ty, b.tx, b.ty) <= PG.officerRadius) return o;
-    }
-    return null;
-  }
-  /** 'pool' | 'field' | 'dumpster' | 'building' | 'tile' (brief §4; pool = within 1 of a Rec Center, decision). */
-  function incidentKind(state, i) {
-    const tx = i & 63, ty = i >> 6, owner = state.tiles.owner, blds = state.buildings || [];
-    const o = owner[i];
-    if (o >= 0 && blds[o] && (blds[o].type === 'practice_field' || blds[o].type === 'stadium') && gameDayNow(state)) return 'field';
-    let nearBuilding = false, pool = false;
-    for (let y = Math.max(0, ty - 2); y <= Math.min(H - 1, ty + 2); y++) for (let x = Math.max(0, tx - 2); x <= Math.min(W - 1, tx + 2); x++) {
-      const oo = owner[y * W + x];
-      if (oo < 0) continue;
-      nearBuilding = true;
-      if (blds[oo] && blds[oo].type === 'rec_center' && BSU.chebyshev(tx, ty, x, y) <= 1) pool = true;
-    }
-    if (pool) return 'pool';
-    const dining = listBuildings(state, 'dining_hall');
-    for (let k = 0; k < dining.length; k++) if (dumpsterOf(state, dining[k]) === i) return 'dumpster';
-    return nearBuilding ? 'building' : 'tile';
   }
 
   /** Sky-phase transitions: DAY → SUN/SWIM split; DAWN/DUSK → wander rolls (gators in index order). */
   function onPhaseChange(state, phase) {
     const retreating = stormRetreat(state);
     const gs = state.gators;
-    if (phase === SKY.DAWN) for (let k = 0; k < gs.length; k++) gs[k].delayed = 0;   // gator pass: "students delayed" counts per sky cycle (Dawn → Dawn)
     if (phase === SKY.DAY) {
       for (let k = 0; k < gs.length; k++) {
         const g = gs[k];
@@ -10033,10 +9903,6 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     for (let k = 0; k < gs.length; k++) { const g = gs[k]; if (!isNum(g.den) || g.den < 0 || g.den >= N || !isWaterType(type[g.den])) g.den = nearestDen(state, gatorTile(g)); }
     topUp(state);
     waveStep(state, day);
-    gatorDaily(state, day);
-    // incidents: keep the last 10 days
-    const inc = state.wildlife.incidents;
-    for (let k = inc.length - 1; k >= 0; k--) if (!inc[k] || !isNum(inc[k].day) || inc[k].day <= day - PG.incidentDays) inc.splice(k, 1);
     mosqStep(state, null);
     mosqIndexStep(state, day);
     ecologyStep(state, false);
@@ -10060,8 +9926,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     on(BSU.EV.STORM_PASSED, (p) => { retreatFlag = false; wavePending = { point: p.point, nearMiss: !!p.nearMiss }; });
     on(BSU.EV.FESTIVAL_START, (p) => { if (p.id === 'mardiGras') { const s = BSU.state || state; trashUntilDay = s ? dayOf(s, PG.trashDays[1]) : -1; } });
     on(BSU.EV.FESTIVAL_END, (p) => { if (p.id === 'mardiGras') { /* trash lingers until Feb 10 by rule */ } });
-    on(BSU.EV.GAME_KICKOFF, () => { const s = BSU.state || state; gameDay = s ? today(s) : -1; });
-    on(BSU.EV.AGENT_FLEE, (p) => { const s = BSU.state || state; if (s && s.gators) noteDelay(s, p.gatorId, 1); });   // gator pass: students delayed per gator
+    on(BSU.EV.GAME_KICKOFF, () => { const s = BSU.state || state; gameDay = s ? today(s) : -1; });   // tailgate parking draws gators on game day (ambient attractor)
   });
 
   M.reset = safe('reset', function (state, fresh) {
@@ -10206,63 +10071,29 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     if (Math.abs(target - prev) >= 1) emit(BSU.EV.ECOLOGY_CHANGED, { value: target, prev: prev });
     birdsStep(state);
   });
-  /** economy's `gator` happiness term: min(15, 3 × incidents in the last 10 days) + the students-delayed term (≤ delayHappinessCap) + the closure term (≤ closureCap). */
-  M.gatorPenalty = safe('gatorPenalty', function (state) {
-    if (!state || !state.wildlife || !Array.isArray(state.wildlife.incidents)) return 0;
-    const day = today(state); let n = 0, delayed = 0, closed = 0;
-    const inc = state.wildlife.incidents;
-    for (let k = 0; k < inc.length; k++) if (inc[k] && isNum(inc[k].day) && inc[k].day > day - PG.incidentDays) n++;
-    const gs = state.gators || [];
-    for (let k = 0; k < gs.length; k++) { const g = gs[k]; if (!g) continue; if (isNum(g.delayed)) delayed += g.delayed; if (isNum(g.closes) && g.closes >= 0 && g.onCampus) closed++; }
-    return Math.min(PG.incidentCap, PG.incidentPenalty * n) + Math.min(PG.delayHappinessCap, PG.delayHappinessPer * delayed) + Math.min(PG.closureCap, PG.closurePenalty * closed);
-  }, 0);
-  /** gator pass: Σ students delayed by gators since Dawn (agent:flee, one per student per flee) */
-  M.delayedToday = safe('delayedToday', function (state) { let n = 0; const gs = (state && state.gators) || []; for (let k = 0; k < gs.length; k++) if (gs[k] && isNum(gs[k].delayed)) n += gs[k].delayed; return n; }, 0);
-  /** gator pass: the class-attendance dent economy subtracts at Dusk: min(delayAttendanceCap, delayAttendancePer × delayedToday) */
-  M.attendanceDent = safe('attendanceDent', function (state) { return Math.min(PG.delayAttendanceCap, PG.delayAttendancePer * M.delayedToday(state)); }, 0);
-  /** gator pass: the on-campus gator keeping this kitchen / pool closed, or null */
-  M.closedBy = safe('closedBy', function (state, buildingId) { const gs = (state && state.gators) || []; for (let k = 0; k < gs.length; k++) { const g = gs[k]; if (g && g.onCampus && g.closes === buildingId) return g; } return null; }, null);
-  /** gator pass: test / agents hook — n more students delayed by gator `gatorId` */
-  M.noteDelay = safe('noteDelay', function (state, gatorId, n) { if (state && state.gators) noteDelay(state, gatorId, n); });
-  /** gator pass: true when a complete Wildlife Officer Post is within officerRadius of the gator (relocation is free) */
-  M.canWrangle = safe('canWrangle', function (state, gatorId) { const g = state && findGator(state, gatorId); return !!(g && postInRange(state, g)); }, false);
-  /** gator pass: the pending Parish Wildlife call-out for a gator ({gatorId, day, fee}) or null */
-  M.callOutPending = safe('callOutPending', function (state, gatorId) { ensureKeys(state); const cs = state.wildlife.callOuts; for (let k = 0; k < cs.length; k++) if (cs[k] && cs[k].gatorId === gatorId) return cs[k]; return null; }, null);
-  /** gator pass: the one-click Fix. Free when a Wildlife Officer Post is in range (the officer is sent now), else a Parish Wildlife call-out:
-   *  callOutFee charged now, the truck relocates the gator callOutDays later (gator:callout). → {ok, free?, fee?, arrivalDay?, reason?} */
-  M.callOut = safe('callOut', function (state, gatorId) {
-    heal(state); ensureKeys(state);
-    const g = findGator(state, gatorId);
-    if (!g) return { ok: false, reason: 'That gator has moved on' };
-    const o = postInRange(state, g);
-    if (o) {
-      o.cooldown = 0;
-      if (o.state === 'IDLE' || o.state === 'RETURN') { o.state = 'WALK'; o.target = g.id; o.route = []; o.ri = 0; }
-      return { ok: true, free: true, officer: o.post };
-    }
-    if (M.callOutPending(state, gatorId)) return { ok: false, reason: 'Parish Wildlife is already on the way for ' + g.name };
-    const Ec = dep('economy'); const ch = fn(Ec, 'charge');
-    const fee = PG.callOutFee, day = today(state);
-    if (ch) { if (!ch(state, fee, 'misc', { note: 'gator:callout', i: gatorTile(g) })) return { ok: false, reason: 'Not enough cash for the ' + BSU.formatMoney(fee) + ' call-out' }; }
-    else if (state.economy && isNum(state.economy.cash)) { if (state.economy.cash < fee) return { ok: false, reason: 'Not enough cash' }; state.economy.cash -= fee; }
-    g.cost += fee;
-    const arrivalDay = day + PG.callOutDays;
-    state.wildlife.callOuts.push({ gatorId: g.id, day: arrivalDay, fee: fee });
-    ticker(state, 'Parish Wildlife called for ' + g.name + ': ' + BSU.formatMoney(fee) + ', the truck arrives ' + (PG.callOutDays === 1 ? 'tomorrow' : 'in ' + PG.callOutDays + ' days') + '.', 'money', gatorTile(g));
-    emit(BSU.EV.GATOR_CALLOUT, { id: g.id, name: g.name, arrived: false, fee: fee, arrivalDay: arrivalDay });
-    return { ok: true, free: false, fee: fee, arrivalDay: arrivalDay };
-  }, { ok: false, reason: 'Wildlife is unavailable' });
-  /** gator pass: everything the inspect panel / notifications print about one gator (null when unknown) */
+  // calm alerts + ambient gators pass: the gator-pass consequence API stays callable (old callers, tests) but gators cost nothing,
+  // close nothing, delay nobody and cannot be called out. Officers at a Wildlife Officer Post still walk out and escort a
+  // gator off campus on their own (ambient; no action, no fee, no row).
+  M.gatorPenalty = safe('gatorPenalty', function () { return 0; }, 0);
+  M.delayedToday = safe('delayedToday', function () { return 0; }, 0);
+  M.attendanceDent = safe('attendanceDent', function () { return 0; }, 0);
+  M.closedBy = safe('closedBy', function () { return null; }, null);
+  M.noteDelay = safe('noteDelay', function () { /* retired */ });
+  M.canWrangle = safe('canWrangle', function () { return false; }, false);
+  M.callOutPending = safe('callOutPending', function () { return null; }, null);
+  /** retired: always refused (gators are wildlife now; nothing to fix) */
+  M.callOut = safe('callOut', function () { return { ok: false, reason: 'Gators are part of the swamp now: they wander back on their own', retired: true }; }, { ok: false, reason: 'Wildlife is unavailable' });
+  /** what the inspect panel prints about one gator (null when unknown): where it is and what it is doing, nothing it costs */
   M.gatorStatus = safe('gatorStatus', function (state, gatorId) {
     const g = state && findGator(state, gatorId); if (!g) return null;
     ensureGatorKeys(g);
-    const i = gatorTile(g), blds = state.buildings || [], cb = g.closes >= 0 ? blds[g.closes] : null;
+    const i = gatorTile(g);
     return {
-      id: g.id, name: g.name, size: g.size, state: g.state, onCampus: !!g.onCampus, onPath: !!g.onPath, tile: i,
-      delayed: g.delayed, delayedVisit: g.delayedVisit, cost: g.cost, blocked: g.blocked,
+      id: g.id, name: g.name, size: g.size, state: g.state, onCampus: !!g.onCampus, onPath: false, tile: i,
+      delayed: 0, delayedVisit: 0, cost: 0, blocked: 0,
       visitDays: g.onCampus && g.visitDay >= 0 ? Math.max(0, today(state) - g.visitDay) : 0,
-      closes: g.closes, closesName: cb ? (cb.name || cb.type) : '', closesKind: cb ? (CLOSABLE[cb.type] || 'building') : '',
-      near: nearBuilding(state, i), canWrangle: !!postInRange(state, g), callOut: M.callOutPending(state, gatorId), fee: PG.callOutFee, callOutDays: PG.callOutDays
+      closes: -1, closesName: '', closesKind: '',
+      near: nearBuilding(state, i), canWrangle: false, callOut: null, fee: 0, callOutDays: 0
     };
   }, null);
   /** ui: +1 prestige once per year via economy.bump. */
@@ -10499,20 +10330,24 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
         A(Math.abs(r2.sumBefore - r2.sumAfter) < 1e-6, 'diffusion conserves Σ mosq (Δ ' + (r2.sumAfter - r2.sumBefore).toExponential(2) + ')');
       }
 
-      // 9. incident cap and gatorPenalty
+      // 9. calm alerts + ambient gators pass: gators on campus cost nothing, record nothing and raise nothing
       {
         const s10 = build(18);
         bld(s10, 'dorm', 20, 20, 3, 2);
         M.reset(s10, true);
         s10.gators.length = 0;
+        s10.wildlife.callOuts = [{ gatorId: 0, day: 21, fee: 15000 }]; s10.wildlife.pressRestore = [{ day: 22, amount: 1 }]; s10.wildlife.incidents = [{ day: 19, gatorId: 0, tile: 0 }];   // an old gator-pass save
         for (let k = 0; k < 6; k++) { const g = makeGator(s10, BSU.idx(18, 18)); g.state = 'LOUNGE'; g.lounge = 100000; s10.gators.push(g); }
+        const cash0 = s10.economy.cash, n0 = rec.length;
         for (let dayN = 20; dayN < 23; dayN++) { s10.calendar.day = dayN; M.tick(s10, { newDay: true, newMonth: false, newYear: false, day: dayN }); for (let t = 0; t < 3; t++) M.tick(s10, {}); }
-        A(s10.wildlife.incidents.length === 18, '6 gators × 3 days → 18 incident rows (' + s10.wildlife.incidents.length + ')');
-        A(M.gatorPenalty(s10) === 15, 'gatorPenalty caps at 15');
-        A(rec.filter(r => r.name === BSU.EV.GATOR_INCIDENT).length === 18, 'one gator:incident per gator per day');
-        s10.calendar.day = 40;
-        M.tick(s10, { newDay: true, day: 40 });
-        A(s10.wildlife.incidents.every(r => r.day > 30), 'incidents keep only the last 10 days');
+        A(s10.wildlife.incidents.length === 0 && s10.wildlife.callOuts.length === 0 && s10.wildlife.pressRestore.length === 0, 'old call-outs, press restores and incident rows are purged on load');
+        A(M.gatorPenalty(s10) === 0 && M.attendanceDent(s10) === 0 && M.closedBy(s10, 0) === null && M.canWrangle(s10, 0) === false, 'no penalty, dent, closure or wrangle');
+        A(s10.economy.cash === cash0, 'gators charge nothing (' + cash0 + ' → ' + s10.economy.cash + ')');
+        const names = rec.slice(n0).map(r => r.name);
+        A(!names.some(n => n === BSU.EV.GATOR_INCIDENT || n === BSU.EV.GATOR_BLOCKED || n === BSU.EV.GATOR_CALLOUT), 'no gator:incident / blocked / callout events');
+        const co = M.callOut(s10, s10.gators[0].id); A(co && co.ok === false && co.retired === true, 'callOut is refused');
+        const st = M.gatorStatus(s10, s10.gators[0].id); A(st && st.onCampus === true && st.cost === 0 && st.closes === -1 && st.callOut === null, 'gatorStatus is a location, not a bill');
+        A(s10.gators.every(g => g.delayed === 0 && g.cost === 0 && g.blocked === 0 && g.closes === -1), 'no per-visit bookkeeping');
       }
 
       // movement: a forced wander walks to a target over the gator grid and lounges there; storm watch retreats
@@ -12083,9 +11918,10 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     try { if (state && Array.isArray(state.buildings)) recomputeCoverageInner(state); }
     catch (e) { if (BSU.SELFTEST) throw e; BSU.error('buildings', 'recomputeCoverage', e); }
   };
-  /** gators within 2 of the footprint this tick (transient) */
+  /** retired (calm alerts + ambient gators pass): gators close nothing; always false (the cache below is never reached) */
   M.gatorClosed = function (state, id) {
     try {
+      if (state || !state) return false;
       const c = cache(state), b = M.get(state, id);
       if (!b) return false;
       const tick = fin(state.tick, 0);
@@ -13466,11 +13302,15 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
 // issues.js — the ISSUE SPOTLIGHT registry (issue spotlight pass; issues v2 pass). One place that answers "what is
 // wrong on campus right now, where exactly, what fixes it, and is a fix already underway": buildings without power
 // or water, flooded, damaged or ruined buildings, buildings whose path never reached campus, weak levees, full beds /
-// seats / dining, gators that actually BLOCK something, mosquito hotspots, the boil-water notice, a brownout and
-// unpowered pumps in the rain. The list is recomputed at most every `params.issues.refreshTicks` (25) ticks and at
-// once after any building / power / coverage / levee / flood / gator / repair event. Deterministic (state in, plain
-// objects out), no DOM, no timers; render_fx draws the beacons, ui.js the tray. Selection, spotlight mode, the gauge
-// hover pulse, snoozes and dismissals live here so render_fx and ui share them without events.
+// seats / dining, mosquito hotspots, the boil-water notice, a brownout and unpowered pumps in the rain (gators are
+// wildlife, never an issue: calm alerts + ambient gators pass). The list is recomputed at most every
+// `params.issues.refreshTicks` (25) ticks and at once after any building / power / coverage / levee / flood / repair
+// event. Deterministic (state in, plain objects out), no DOM, no timers; render_fx draws the beacons, ui.js the tray.
+// Selection, spotlight mode and the gauge hover pulse live here so render_fx and ui share them without events;
+// snoozes / dismissals are saved with the game (state.ui.issues), mutes and the Alerts mode in the settings.
+// Calm alerts pass: `beacons(state, camTx, camTy)` is the capped, severity-gated list the map draws (≤ beaconMax,
+// most severe then nearest; severity-1 KINDS and muted kinds never beacon and are "suggestions" in the tray);
+// `toastGate(state, kinds)` says whether an issue notification may show right now (mode, severity, once per kind per week).
 // Every issue: {id, kind, severity 1–3, title, fix, why, persist, tiles, rect, anchor, buildingId, action, cost,
 // resolvable, progress {text, days} | null, hidden '' | 'snoozed' | 'dismissed', sig, since, color, glyph}.
 // `list()` = the rows the tray and the beacons show (hidden ones left out); `actionable()` = those with no fix
@@ -13505,37 +13345,46 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     unlinkedPath:    Object.freeze({ color: '#FDD023', glyph: 'link',     severity: 1, family: 'path',     label: 'Not linked' }),
     weakLevee:       Object.freeze({ color: '#FF8C42', glyph: 'sandbag',  severity: 2, family: 'levee',    label: 'Weak levee' }),
     overCapacity:    Object.freeze({ color: '#FF7AD9', glyph: 'crowd',    severity: 2, family: 'capacity', label: 'Full' }),
-    gatorOnCampus:   Object.freeze({ color: '#7CFF6B', glyph: 'gator',    severity: 3, family: 'gator',    label: 'Gator' }),
     mosquitoHotspot: Object.freeze({ color: '#C77DFF', glyph: 'mosquito', severity: 1, family: 'mosquito', label: 'Mosquitoes' })
   });
   const FAMILY_KINDS = Object.freeze({
     power: ['unpowered', 'brownout', 'pumpOff'], water: ['unwatered', 'boilWater'], flood: ['flooded'], damage: ['damaged'], path: ['unlinkedPath'],
-    levee: ['weakLevee'], capacity: ['overCapacity'], gator: ['gatorOnCampus'], mosquito: ['mosquitoHotspot']
+    levee: ['weakLevee'], capacity: ['overCapacity'], mosquito: ['mosquitoHotspot']
   });
+  const ALERT_MODES = (Array.isArray(PI().alertModes) && PI().alertModes.length === 3) ? PI().alertModes.slice() : ['normal', 'quiet', 'off'];
   const REFRESH_TICKS = Math.max(1, fin(PI().refreshTicks, 25) | 0), MOSQ_HOT = 0.6, MOSQ_SEVERE = 0.8, MOSQ_CLUSTERS = 3, MOSQ_RADIUS = 3, LEVEE_RUN_MAX = 48;
   const ACCESS = [SURF.PATH, SURF.ROAD, SURF.BOARDWALK, SURF.BRIDGE].filter((v) => Number.isFinite(v));
 
   // ---------------------------------------------------------------------------
-  // Cache, selection, modes, snoozes
+  // Cache, selection, modes; snoozes / dismissals live in state.ui.issues (saved), mutes + the Alerts mode in the settings
   // ---------------------------------------------------------------------------
-  const cache = { state: null, tick: -1e9, list: [], all: [], active: [], dirty: true, version: 0, computes: 0 };
+  const cache = { state: null, tick: -1e9, list: [], all: [], active: [], main: [], suggest: [], dirty: true, version: 0, computes: 0 };
   const sinceMap = new Map();   // issue id → tick first seen (survives recomputes while the issue persists)
-  const snoozed = new Map();    // issue id → {until (tick), severity}: hidden until then, back earlier if it gets worse
-  const dismissed = new Map();  // issue id → sig: hidden until the condition changes (severity / stage)
   const depthMemo = new Map();  // flooded id → last depth (ft): "receding" when it drops between refreshes
+  const toastStamp = {};        // kind / family → day of the last issue toast of that key (one per toastPerKindDays)
   let selectedId = null, spotlightOn = false, pulseKinds = null, subscribed = false;
   const conn = new Uint8Array(N), ring = new Uint8Array(N), queue = new Int32Array(N), visited = new Uint8Array(N);
+  /** the saved snooze / dismissal store on state.ui (created lazily for saves from before this pass) */
+  function store(state) {
+    const u = state && state.ui; if (!u) return { snoozed: {}, dismissed: {} };
+    if (!u.issues || typeof u.issues !== 'object') u.issues = { snoozed: {}, dismissed: {} };
+    if (!u.issues.snoozed || typeof u.issues.snoozed !== 'object') u.issues.snoozed = {};
+    if (!u.issues.dismissed || typeof u.issues.dismissed !== 'object') u.issues.dismissed = {};
+    return u.issues;
+  }
+  function settingsOf(state) { const u = state && state.ui; if (!u) return {}; if (!u.settings || typeof u.settings !== 'object') u.settings = {}; return u.settings; }
+  function mutedMap(state) { const s = settingsOf(state); if (!s.mutedIssues || typeof s.mutedIssues !== 'object') s.mutedIssues = {}; return s.mutedIssues; }
 
   function subscribe() {
     if (subscribed || !BSU.events || typeof BSU.events.on !== 'function') return;
     subscribed = true;
     const names = [EV.BUILDING_PLACED, EV.BUILDING_REMOVED, EV.BUILDING_COMPLETE, EV.BUILDING_UPGRADED, EV.BUILDING_FLOODED, EV.BUILDING_DRIED, EV.BUILDING_DAMAGED, EV.BUILDING_REPAIRED,
-      EV.POWER_BLACKOUT, EV.POWER_RESTORED, EV.COVERAGE_CHANGED, EV.LEVEE_OVERTOP, EV.LEVEE_BREACH, EV.LEVEE_BURROW, EV.GATOR_CAMPUS, EV.GATOR_RELOCATED, EV.GATOR_BLOCKED, EV.GATOR_CALLOUT,
+      EV.POWER_BLACKOUT, EV.POWER_RESTORED, EV.COVERAGE_CHANGED, EV.LEVEE_OVERTOP, EV.LEVEE_BREACH, EV.LEVEE_BURROW,
       EV.MOSQUITO_WARNING, EV.TILE_CHANGED, EV.STORM_LANDFALL, EV.STORM_PHASE];
     for (const n of names) { if (!n) continue; try { BSU.events.on(n, function () { cache.dirty = true; }, 'issues'); } catch (e) { ierr('subscribe', e); } }
     try { BSU.events.on(EV.SAVE_LOADED, function () { resetAll(); }, 'issues'); } catch (e) { ierr('subscribe:load', e); }
   }
-  function resetAll() { cache.state = null; cache.tick = -1e9; cache.list = []; cache.all = []; cache.active = []; cache.dirty = true; sinceMap.clear(); snoozed.clear(); dismissed.clear(); depthMemo.clear(); selectedId = null; spotlightOn = false; pulseKinds = null; cache.version++; }
+  function resetAll() { cache.state = null; cache.tick = -1e9; cache.list = []; cache.all = []; cache.active = []; cache.main = []; cache.suggest = []; cache.dirty = true; sinceMap.clear(); depthMemo.clear(); for (const k in toastStamp) delete toastStamp[k]; selectedId = null; spotlightOn = false; pulseKinds = null; cache.version++; }
 
   // ---------------------------------------------------------------------------
   // Detection
@@ -13729,31 +13578,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
         }
       }
     } catch (e) { ierr('capacity', e); }
-    // gators that BLOCK something (gator pass bits: 1 path with ≥ gatorBlockDelayed students rerouted, 2 a kitchen / pool closed, 4 on the field on game day); the rest are sightings (ticker)
-    try {
-      const gs = call('wildlife', 'onCampus', state) || [];
-      const GT = (BSU.data && BSU.data.gatorText) || {}, PG = (BSU.params.wildlife && BSU.params.wildlife.gator) || {};
-      const minDelayed = fin(PI().gatorBlockDelayed, fin(PG.blockTraffic, 3));
-      const officers = (state.wildlife && state.wildlife.officers) || [];
-      for (const g of gs) {
-        if (!g) continue;
-        const st = call('wildlife', 'gatorStatus', state, g.id); if (!st) continue;
-        const closes = st.closes >= 0, onField = (fin(st.blocked, 0) & 4) !== 0, delayed = Math.max(fin(st.delayed, 0), fin(st.delayedVisit, 0));
-        const onPath = (fin(st.blocked, 0) & 1) !== 0 || (st.onPath && delayed >= minDelayed);
-        if (!closes && !onField && !onPath) continue;   // a sighting, not an issue (sunning at its den, wandering past)
-        const i = clamp(Math.floor(fin(g.ty, 0)), 0, H - 1) * W + clamp(Math.floor(fin(g.tx, 0)), 0, W - 1);
-        const free = !!st.canWrangle, fee = money(fin(PG.callOutFee, 15000)), days = fin(PG.callOutDays, 1) === 1 ? '1 day' : fin(PG.callOutDays, 1) + ' days';
-        const fix = free ? (GT.fixFree || 'Fix: the Wildlife Officer relocates it (free)') : String(GT.fixPaid || 'Fix: Parish Wildlife call-out {fee}, arrives in {days}').replace('{fee}', fee).replace('{days}', days);
-        const why = onField ? (GT.whyGame || '') : (closes ? (GT.whyClosed || '') : (GT.why || ''));
-        const title = (g.name || 'A gator') + (closes && st.closesName ? ' · ' + st.closesName + ' closed' : (onField ? ' · on the field, kickoff delayed' : ' · blocking the path, ' + delayed + ' students rerouted'));
-        let progress = null, wrangling = g.state === 'WRANGLED';
-        for (const o of officers) if (o && o.target === g.id && (o.state === 'WALK' || o.state === 'WRANGLE')) wrangling = true;
-        if (st.callOut) progress = { text: 'Parish Wildlife booked · arrives ' + BSU.formatDate(fin(st.callOut.day, 0)), days: Math.max(0, fin(st.callOut.day, 0) - fin(state.calendar && state.calendar.day, 0)) };
-        else if (wrangling) progress = { text: 'Wildlife Officer on the way', days: 0 };
-        mk(out, 'gatorOnCampus', 'gator:' + fin(g.id, i), { severity: 3, title: title, fix: fix, why: why, persist: free ? 'Free: the Wildlife Officer Post is in range · one click' : 'No Wildlife Officer Post within ' + fin(PG.officerRadius, 14) + ' tiles: the Parish call-out costs ' + fee,
-          tiles: [i], anchor: tileAnchor(i), action: { relocate: g.id, free: free }, cost: free ? 0 : fin(PG.callOutFee, 15000), resolvable: free && !progress, progress: progress, stage: onField ? 'game' : (closes ? 'closed' : 'path') });
-      }
-    } catch (e) { ierr('gators', e); }
+    // (gators: never an issue — calm alerts + ambient gators pass)
     // mosquito hotspots: the top campus tiles over the "Biblical" band, clustered
     try {
       const mq = state.tiles && state.tiles.mosq; const cm = has('wildlife', 'campusMask') ? call('wildlife', 'campusMask', state) : null;
@@ -13784,20 +13609,29 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     return { tiles: BSU.footprintTiles(f.tx | 0, f.ty | 0, 3, 3), rect: { tx: f.tx | 0, ty: f.ty | 0, w: 3, h: 3 }, anchor: { tx: (f.tx | 0) + 1, ty: (f.ty | 0) + 1 }, buildingId: null };
   }
   function finish(state, out) {
-    const tick = fin(state.tick, 0) | 0, seen = new Set();
+    const tick = fin(state.tick, 0) | 0, seen = new Set(), st = store(state), snoozed = st.snoozed, dismissed = st.dismissed;
     for (const it of out) {
       seen.add(it.id); if (!sinceMap.has(it.id)) sinceMap.set(it.id, tick); it.since = sinceMap.get(it.id);
       it.sig = it.kind + '|' + it.severity + '|' + it.stage;
-      const sn = snoozed.get(it.id);
-      if (sn && tick < sn.until && it.severity <= sn.severity) it.hidden = 'snoozed'; else if (sn) snoozed.delete(it.id);
-      if (!it.hidden) { const ds = dismissed.get(it.id); if (ds === it.sig) it.hidden = 'dismissed'; else if (ds !== undefined) dismissed.delete(it.id); }
+      const sn = snoozed[it.id];
+      if (sn && tick < fin(sn.until, 0) && it.severity <= fin(sn.severity, 3)) it.hidden = 'snoozed'; else if (sn) delete snoozed[it.id];
+      if (!it.hidden) { const ds = dismissed[it.id]; if (ds === it.sig) it.hidden = 'dismissed'; else if (ds !== undefined) delete dismissed[it.id]; }
+      it.suggestion = isSuggestion(state, it);
     }
-    for (const id of Array.from(sinceMap.keys())) if (!seen.has(id)) { sinceMap.delete(id); snoozed.delete(id); dismissed.delete(id); }
+    for (const id of Array.from(sinceMap.keys())) if (!seen.has(id)) sinceMap.delete(id);
+    for (const id in snoozed) if (!seen.has(id)) delete snoozed[id];
+    for (const id in dismissed) if (!seen.has(id)) delete dismissed[id];
     out.sort((a, b) => (b.severity - a.severity) || (a.since - b.since) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
     cache.all = out; cache.list = out.filter((it) => !it.hidden); cache.active = cache.list.filter((it) => !it.progress);
+    cache.main = cache.active.filter((it) => !it.suggestion); cache.suggest = cache.active.filter((it) => it.suggestion);
     if (selectedId !== null && !cache.list.some((it) => it.id === selectedId)) selectedId = null;
     return cache.list;
   }
+  /** calm alerts pass: a suggestion = a severity-1 KIND (unlinkedPath, mosquitoHotspot: the kind's base severity, whatever the row's) or a muted kind */
+  function isSuggestion(state, it) { const K = KINDS[it.kind]; return !K || K.severity <= 1 || !!mutedMap(state)[it.kind]; }
+  function alertModeOf(state) { const m = settingsOf(state).alerts; return ALERT_MODES.indexOf(m) >= 0 ? m : ALERT_MODES[0]; }
+  /** the least severity that earns a map beacon in the current Alerts mode: Normal params.issues.beaconMin (2), Quiet 3, Off never (4) */
+  function beaconMinOf(state) { const m = alertModeOf(state); return m === ALERT_MODES[2] ? 4 : m === ALERT_MODES[1] ? 3 : clamp(fin(PI().beaconMin, 2) | 0, 1, 3); }
 
   // ---------------------------------------------------------------------------
   // API
@@ -13806,7 +13640,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     state = state || BSU.state; if (!state || !state.tiles) return cache.list;
     subscribe();
     const tick = fin(state.tick, 0) | 0;
-    if (cache.state !== state) { resetAll(); cache.state = state; }
+    if (cache.state !== state) { resetAll(); cache.state = state; store(state); }
     if (!cache.dirty && tick >= cache.tick && tick - cache.tick < REFRESH_TICKS && cache.list) return cache.list;
     finish(state, compute(state)); cache.tick = tick; cache.dirty = false; cache.version++; cache.computes++;
     return cache.list;
@@ -13815,8 +13649,59 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
   M.list = function (state) { try { return refresh(state); } catch (e) { ierr('list', e); return cache.list || []; } };
   /** all(state) → every issue, hidden ones too (`hidden` = 'snoozed' | 'dismissed' | '') */
   M.all = function (state) { try { refresh(state); return cache.all; } catch (e) { ierr('all', e); return cache.all || []; } };
-  /** actionable(state) → visible issues with no fix underway: the tray count and I-cycling */
+  /** actionable(state) → visible issues with no fix underway (main rows + suggestions) */
   M.actionable = function (state) { try { refresh(state); return cache.active; } catch (e) { ierr('actionable', e); return cache.active || []; } };
+  /** main(state) → the actionable rows that are not suggestions: the tray's count, the groups, I-cycling, Clear N */
+  M.main = function (state) { try { refresh(state); return cache.main; } catch (e) { ierr('main', e); return cache.main || []; } };
+  /** suggestions(state) → the actionable rows of severity-1 kinds and muted kinds: the tray's collapsed Suggestions group (never a beacon, never a toast) */
+  M.suggestions = function (state) { try { refresh(state); return cache.suggest; } catch (e) { ierr('suggestions', e); return cache.suggest || []; } };
+  M.isSuggestion = function (state, it) { return !!(it && isSuggestion(state || cache.state, it)); };
+  /** alertMode(state) → 'normal' | 'quiet' | 'off' (settings.alerts; ui.setAlertMode writes it) */
+  M.alertMode = function (state) { return alertModeOf(state || cache.state || BSU.state); };
+  M.alertModes = function () { return ALERT_MODES.slice(); };
+  M.beaconMin = function (state) { return beaconMinOf(state || cache.state || BSU.state); };
+  M.beaconMax = function () { return Math.max(0, fin(PI().beaconMax, 6) | 0); };
+  /** muted(state, kind) → the kind's rows are suggestions only (settings.mutedIssues[kind]); mute(state, kind, on?) sets / toggles it (ui saves the settings) */
+  M.muted = function (state, kind) { return !!mutedMap(state || cache.state || BSU.state)[kind]; };
+  M.mute = function (state, kind, on) {
+    state = state || cache.state || BSU.state; if (!KINDS[kind]) return false;
+    const m = mutedMap(state); const v = on === undefined ? !m[kind] : !!on;
+    if (v) m[kind] = true; else delete m[kind];
+    cache.dirty = true; cache.version++; return v;
+  };
+  M.mutedKinds = function (state) { const m = mutedMap(state || cache.state || BSU.state); return Object.keys(m).filter((k) => !!m[k] && !!KINDS[k]); };
+  /** beacons(state, camTx?, camTy?, {all}) → the rows the map may draw: the selected one always; otherwise severity ≥ beaconMin for the
+   *  Alerts mode, no suggestions (severity-1 kinds, muted kinds); sorted most severe first then nearest the camera; ≤ beaconMax unless `all` (spotlight) */
+  M.beacons = function (state, camTx, camTy, opts) {
+    try {
+      state = state || cache.state || BSU.state; const l = M.list(state), min = beaconMinOf(state), sel = selectedId, cx = fin(camTx, 32), cy = fin(camTy, 32);
+      const out = [];
+      for (const it of l) { if (it.id === sel) { out.push(it); continue; } if (min > 3 || it.suggestion || it.severity < min) continue; out.push(it); }
+      const d = (it) => { const a = it.anchor || { tx: 32, ty: 32 }; return Math.max(Math.abs(fin(a.tx, 32) - cx), Math.abs(fin(a.ty, 32) - cy)); };
+      out.sort((a, b) => ((b.id === sel) - (a.id === sel)) || (b.severity - a.severity) || (d(a) - d(b)) || (a.since - b.since) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+      const cap = opts && opts.all ? Infinity : M.beaconMax();
+      return out.length > cap ? out.slice(0, cap) : out;
+    } catch (e) { ierr('beacons', e); return []; }
+  };
+  /** toastGate(state, kinds | family) → may an issue notification about these kinds show now? Off / Quiet: never; a severity below
+   *  toastMinSeverity (the rows' worst, else the kinds' base) or every kind muted: never; otherwise once per kind per toastPerKindDays
+   *  (every kind named is stamped with the day; a toast naming any kind stamped within the gap is refused) */
+  M.toastGate = function (state, kinds) {
+    try {
+      state = state || cache.state || BSU.state; if (!state) return false;
+      const mode = alertModeOf(state); if (mode !== ALERT_MODES[0]) return false;
+      let ks = typeof kinds === 'string' ? (FAMILY_KINDS[kinds] || [kinds]) : (Array.isArray(kinds) ? kinds : []); ks = ks.filter((k) => !!KINDS[k]); if (!ks.length) return false;
+      const m = mutedMap(state); ks = ks.filter((k) => !m[k]); if (!ks.length) return false;
+      const rows = M.ofKinds(state, ks); let sev = 0;
+      if (rows.length) { for (const it of rows) if (it.severity > sev) sev = it.severity; } else { for (const k of ks) if (KINDS[k].severity > sev) sev = KINDS[k].severity; }
+      if (sev < clamp(fin(PI().toastMinSeverity, 2) | 0, 1, 3)) return false;
+      const day = fin(state.calendar && state.calendar.day, 0), gap = Math.max(0, fin(PI().toastPerKindDays, 7));
+      for (const k of ks) if (Number.isFinite(toastStamp[k]) && day - toastStamp[k] < gap) return false;
+      for (const k of ks) toastStamp[k] = day;
+      return true;
+    } catch (e) { ierr('toastGate', e); return false; }
+  };
+  M.toastStamps = function () { return Object.assign({}, toastStamp); };
   M.inProgress = function (state) { return M.list(state).filter((it) => !!it.progress); };
   M.hiddenList = function (state) { return M.all(state).filter((it) => !!it.hidden); };
   M.invalidate = function () { cache.dirty = true; };
@@ -13824,42 +13709,44 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
   M.byId = function (state, id) { const l = M.all(state); for (let k = 0; k < l.length; k++) if (l[k].id === id) return l[k]; return null; };
   M.ofKinds = function (state, kinds) { const l = M.list(state), set = Array.isArray(kinds) ? kinds : [kinds]; return l.filter((it) => set.indexOf(it.kind) >= 0); };
   M.ofFamily = function (state, family) { return M.ofKinds(state, FAMILY_KINDS[family] || []); };
-  /** summary(state) → {count (actionable), worst, bySeverity, inProgress, hidden, total (visible)} */
+  /** summary(state) → {count (main rows), suggestions, worst, bySeverity, inProgress, hidden, total (visible)} */
   M.summary = function (state) {
-    const l = M.actionable(state); const s = { count: l.length, worst: 0, bySeverity: [0, 0, 0, 0], inProgress: cache.list.length - l.length, hidden: cache.all.length - cache.list.length, total: cache.list.length };
+    const l = M.main(state); const s = { count: l.length, suggestions: cache.suggest.length, worst: 0, bySeverity: [0, 0, 0, 0], inProgress: cache.list.length - cache.active.length, hidden: cache.all.length - cache.list.length, total: cache.list.length };
     for (const it of l) { s.bySeverity[it.severity]++; if (it.severity > s.worst) s.worst = it.severity; }
     return s;
   };
-  /** groups(state) → [{kind, label, color, glyph, rows}] over the actionable rows in list order (the tray's grouping) */
-  M.groups = function (state) {
-    const l = M.actionable(state), out = [], by = new Map();
-    for (const it of l) { let g = by.get(it.kind); if (!g) { g = { kind: it.kind, label: KINDS[it.kind].label, color: it.color, glyph: it.glyph, rows: [] }; by.set(it.kind, g); out.push(g); } g.rows.push(it); }
+  function groupRows(state, l) {
+    const out = [], by = new Map();
+    for (const it of l) { let g = by.get(it.kind); if (!g) { g = { kind: it.kind, label: KINDS[it.kind].label, color: it.color, glyph: it.glyph, muted: !!mutedMap(state)[it.kind], rows: [] }; by.set(it.kind, g); out.push(g); } g.rows.push(it); }
     return out;
-  };
-  /** resolvable(state) → {rows, total, free, paid}: every visible issue with a zero-click fix right now (repairs within cash, link-its within cash, free wrangles) */
+  }
+  /** groups(state) → [{kind, label, color, glyph, muted, rows}] over the MAIN rows in list order (the tray's grouping); suggestionGroups(state) the same over the suggestions */
+  M.groups = function (state) { return groupRows(state, M.main(state)); };
+  M.suggestionGroups = function (state) { return groupRows(state, M.suggestions(state)); };
+  /** resolvable(state) → {rows, total, free, paid}: every MAIN row with a zero-click fix right now (repairs within cash, link-its within cash); never a suggestion or a muted kind */
   M.resolvable = function (state) {
-    const rows = M.actionable(state).filter((it) => it.resolvable); let total = 0, free = 0;
+    const rows = M.main(state).filter((it) => it.resolvable); let total = 0, free = 0;
     for (const it of rows) { total += it.cost; if (!(it.cost > 0)) free++; }
     return { rows: rows, total: total, free: free, paid: rows.length - free };
   };
-  /** snooze(state, id, days?) → hides the row for params.issues.snoozeDays (3) days; it returns sooner if the severity rises */
+  /** snooze(state, id, days?) → hides the row for params.issues.snoozeDays (3) days (saved with the game); it returns sooner if the severity rises */
   M.snooze = function (state, id, days) {
     const it = M.byId(state, id); if (!it) return false;
-    const tpd = fin(BSU.params.time && BSU.params.time.ticksPerDay, 200), d = Math.max(1, fin(days, fin(PI().snoozeDays, 3)));
-    snoozed.set(it.id, { until: (fin(state && state.tick, 0) | 0) + Math.round(d * tpd), severity: it.severity, days: d });
-    dismissed.delete(it.id); if (selectedId === it.id) selectedId = null; cache.dirty = true; cache.version++; return true;
+    const st = store(state), tpd = fin(BSU.params.time && BSU.params.time.ticksPerDay, 200), d = Math.max(1, fin(days, fin(PI().snoozeDays, 3)));
+    st.snoozed[it.id] = { until: (fin(state && state.tick, 0) | 0) + Math.round(d * tpd), severity: it.severity, days: d };
+    delete st.dismissed[it.id]; if (selectedId === it.id) selectedId = null; cache.dirty = true; cache.version++; return true;
   };
-  /** dismiss(state, id) → hides the row until the condition changes (its kind / severity / stage) */
-  M.dismiss = function (state, id) { const it = M.byId(state, id); if (!it) return false; dismissed.set(it.id, it.sig); snoozed.delete(it.id); if (selectedId === it.id) selectedId = null; cache.dirty = true; cache.version++; return true; };
-  M.restore = function (id) { const had = snoozed.delete(id) || dismissed.delete(id); if (had) { cache.dirty = true; cache.version++; } return !!had; };
-  M.restoreAll = function () { const n = snoozed.size + dismissed.size; snoozed.clear(); dismissed.clear(); if (n) { cache.dirty = true; cache.version++; } return n; };
-  M.snoozeInfo = function (id) { const sn = snoozed.get(id); return sn ? { until: sn.until, days: sn.days, severity: sn.severity } : null; };
+  /** dismiss(state, id) → hides the row until the condition changes (its kind / severity / stage); saved with the game */
+  M.dismiss = function (state, id) { const it = M.byId(state, id); if (!it) return false; const st = store(state); st.dismissed[it.id] = it.sig; delete st.snoozed[it.id]; if (selectedId === it.id) selectedId = null; cache.dirty = true; cache.version++; return true; };
+  M.restore = function (id, state) { const st = store(state || cache.state); const had = (id in st.snoozed) || (id in st.dismissed); delete st.snoozed[id]; delete st.dismissed[id]; if (had) { cache.dirty = true; cache.version++; } return !!had; };
+  M.restoreAll = function (state) { const st = store(state || cache.state); const n = Object.keys(st.snoozed).length + Object.keys(st.dismissed).length; st.snoozed = {}; st.dismissed = {}; if (n) { cache.dirty = true; cache.version++; } return n; };
+  M.snoozeInfo = function (id, state) { const sn = store(state || cache.state).snoozed[id]; return sn ? { until: sn.until, days: sn.days, severity: sn.severity } : null; };
   M.select = function (id) { selectedId = (id === undefined || id === null) ? null : String(id); cache.version++; return selectedId; };
   M.selectedId = function () { return selectedId; };
   M.selected = function (state) { return selectedId === null ? null : M.byId(state, selectedId); };
-  /** cycle(state, dir) → the next ACTIONABLE issue after the selected one (wraps; dir −1 goes back) and selects it; null when there are none */
+  /** cycle(state, dir) → the next MAIN issue after the selected one (wraps; dir −1 goes back) and selects it; null when there are none (suggestions are reached from the tray) */
   M.cycle = function (state, dir) {
-    const l = M.actionable(state); if (!l.length) { selectedId = null; return null; }
+    const l = M.main(state); if (!l.length) { selectedId = null; return null; }
     dir = dir < 0 ? -1 : 1; let k = -1;
     for (let j = 0; j < l.length; j++) if (l[j].id === selectedId) { k = j; break; }
     const next = l[(k < 0 ? (dir > 0 ? 0 : l.length - 1) : (k + dir + l.length) % l.length)];
@@ -13888,7 +13775,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
   M.refreshTicks = REFRESH_TICKS;
   M.init = function (state) { try { subscribe(); if (state) M.list(state); } catch (e) { ierr('init', e); } };
   M.reset = function (state, fresh) { void fresh; resetAll(); if (state) cache.state = null; };
-  M.stats = function () { return { computes: cache.computes, version: cache.version, cached: cache.list.length, tick: cache.tick, snoozed: snoozed.size, dismissed: dismissed.size }; };
+  M.stats = function () { const st = store(cache.state); return { computes: cache.computes, version: cache.version, cached: cache.list.length, tick: cache.tick, snoozed: Object.keys(st.snoozed).length, dismissed: Object.keys(st.dismissed).length }; };
 
   // ---------------------------------------------------------------------------
   // selfTest: synthetic buildings on a fresh state (no terrain/hydro needed), deterministic
@@ -13950,22 +13837,65 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     A(l.some((it) => it.kind === 'unwatered' && /Water Tower within 12 tiles/.test(it.fix)), 'unwatered fix names the tower radius');
     for (let k = 1; k < l.length; k++) A(l[k - 1].severity > l[k].severity || (l[k - 1].severity === l[k].severity && l[k - 1].since <= l[k].since), 'sorted by severity then age');
     A(M.selected(s) === null, 'nothing selected at first');
-    const c1 = M.cycle(s, 1); A(c1 && c1.id === l[0].id && M.selectedId() === l[0].id, 'I cycles to the first issue');
-    const c2 = M.cycle(s, 1); A(c2 && c2.id === l[1 % l.length].id, 'then the next');
-    for (let k = 0; k < l.length; k++) M.cycle(s, 1); A(M.selectedId() === c2.id, 'wraps around');
-    M.cycle(s, -1); A(M.selectedId() === l[0].id, 'Shift-direction goes back');
+    const ml = M.main(s); A(ml.length >= 1 && ml.length < l.length && l.some((it) => it.kind === 'unlinkedPath') && !ml.some((it) => it.kind === 'unlinkedPath'), 'I cycles the main rows, not the suggestions (' + ml.length + ' of ' + l.length + ')');
+    const c1 = M.cycle(s, 1); A(c1 && c1.id === ml[0].id && M.selectedId() === ml[0].id, 'I cycles to the first issue');
+    const c2 = M.cycle(s, 1); A(c2 && c2.id === ml[1 % ml.length].id, 'then the next');
+    for (let k = 0; k < ml.length; k++) M.cycle(s, 1); A(M.selectedId() === c2.id, 'wraps around');
+    M.cycle(s, -1); A(M.selectedId() === ml[0].id, 'Shift-direction goes back');
     M.select(null); A(M.selected(s) === null, 'select(null) clears');
     // groups + over capacity suppression during the tutorial
-    A(M.groups(s).length >= 2 && M.groups(s).every((g) => g.rows.length >= 1 && g.rows.every((it) => it.kind === g.kind)), 'groups by kind');
+    A(M.groups(s).length >= 1 && M.groups(s).every((g) => g.rows.length >= 1 && !g.muted && g.rows.every((it) => it.kind === g.kind)) && M.suggestionGroups(s).length === 1 && M.suggestionGroups(s)[0].kind === 'unlinkedPath', 'groups by kind (main) + suggestion groups');
     s.economy.students = 500; s.progress = s.progress || {}; s.progress.tutorialStage = 3; s.ui.tabsIntroduced = {}; M.invalidate(); A(!M.list(s).some((it) => it.kind === 'overCapacity'), 'over capacity rows are suppressed before housing is introduced');
     s.progress.tutorialStage = 6; M.invalidate(); A(M.list(s).some((it) => it.kind === 'overCapacity' && it.action.arm), 'and shown (armed) in free play');
     s.economy.suspendCapPenalties = true; M.invalidate(); A(!M.list(s).some((it) => it.kind === 'overCapacity'), 'and while the cap penalties are suspended'); s.economy.suspendCapPenalties = false; s.economy.students = 0;
     M.select(l[0].id); s.buildings = []; M.invalidate(); l = M.list(s); A(l.length === 0 && M.selected(s) === null, 'selection drops with its issue');
     A(M.spotlight() === false && M.spotlight(true) === true && M.spotlight(false) === false, 'spotlight getter/setter');
     A(M.pulse('power').length === 3 && M.isPulsing('pumpOff') && M.pulse(null) === null && !M.isPulsing('pumpOff'), 'pulse by family');
-    A(M.colorOf('flooded') === '#2BD4C0' && M.glyphOf('gatorOnCampus') === 'gator' && M.colorOf('nope') === '#FDD023', 'kind table');
+    A(M.colorOf('flooded') === '#2BD4C0' && M.glyphOf('mosquitoHotspot') === 'mosquito' && !KINDS.gatorOnCampus && M.colorOf('nope') === '#FDD023', 'kind table (no gator kind)');
     const cols = Object.keys(KINDS).map((k) => KINDS[k].family + ':' + KINDS[k].color); A(new Set(cols.map((c) => c.split(':')[1])).size === Object.keys(FAMILY_KINDS).length, 'one colour per family');
     A(M.ageText({ tick: 100 }, { since: 100 }) === '0s' && M.ageText({ tick: 100 + 200 * 3 }, { since: 100 }) === '3d', 'ageText');
+    // calm alerts pass: suggestions, beacons (mode + severity gate, cap, nearest first), mutes, saved snoozes, the toast gate
+    {
+      const s2 = BSU.newState(9); s2.tick = 50; s2.economy.suppressCoverage = false; s2.economy.suspendCapPenalties = false; s2.economy.students = 0; s2.economy.cash = 1e7; s2.buildings = [];
+      s2.plot = s2.plot || {}; s2.plot.founders = { tx: 30, ty: 30 }; s2.plot.highway = [];
+      const mkb = function (id, type, tx, ty, o) { const r = rowOf(type); s2.buildings[id] = Object.assign({ id: id, type: type, tx: tx, ty: ty, w: fin(r && r.w, 1), h: fin(r && r.h, 1), rot: 0, name: 'B' + id, hp: 1, built: 1, builtDay: 0, pilings: false, sunk: 0, powered: false, watered: true, provider: { power: -1, water: -1 }, flooded: false, floodedSince: -1, closedUntil: -1, blackout: false, tier: 0, upgradeDoneDay: -1, ruin: false, tarp: false }, o || {}); return s2.buildings[id]; };
+      for (let k = 0; k < 9; k++) mkb(k, 'dorm', 4 + k * 6, 4, {});   // nine unpowered, unlinked dorms along the top: 9 severity-2 rows + 9 suggestions
+      let L2 = M.list(s2);
+      A(L2.filter((it) => it.kind === 'unpowered').length === 9 && L2.filter((it) => it.kind === 'unlinkedPath').length === 9, 'nine unpowered + nine unlinked rows (' + L2.length + ')');
+      A(M.main(s2).length === 9 && M.suggestions(s2).length === 9 && M.suggestions(s2).every((it) => it.kind === 'unlinkedPath' && it.suggestion), 'unlinkedPath rows are suggestions, not main rows');
+      A(M.summary(s2).count === 9 && M.summary(s2).suggestions === 9 && M.groups(s2).length === 1 && M.suggestionGroups(s2).length === 1, 'summary counts main rows; groups / suggestionGroups split by kind');
+      A(M.alertMode(s2) === 'normal' && M.beaconMin(s2) === 2 && M.beaconMax() === 6, 'Normal: beacons from severity 2, at most 6');
+      let bc = M.beacons(s2, 4, 4);
+      A(bc.length === 6 && bc.every((it) => it.kind === 'unpowered') && bc[0].buildingId === 0 && bc[5].buildingId === 5, 'six beacons, none a suggestion, nearest the camera first: ' + bc.map((it) => it.buildingId).join(','));
+      bc = M.beacons(s2, 52, 4); A(bc[0].buildingId === 8 && bc.length === 6, 'the camera at the far end flips the order');
+      A(M.beacons(s2, 4, 4, { all: true }).length === 9, 'spotlight (all) is uncapped but still skips suggestions');
+      M.select('unlinked:3'); bc = M.beacons(s2, 4, 4); A(bc.length === 6 && bc[0].id === 'unlinked:3', 'the selected row always beacons, first'); M.select(null);
+      s2.ui.settings.alerts = 'quiet'; A(M.alertMode(s2) === 'quiet' && M.beaconMin(s2) === 3 && M.beacons(s2, 4, 4).length === 0, 'Quiet: only severity 3 beacons');
+      s2.buildings[0].flooded = true; M.invalidate(); A(M.beacons(s2, 4, 4).length === 1 && M.beacons(s2, 4, 4)[0].kind === 'flooded', '… a flooded dorm (sev 3) does');
+      s2.ui.settings.alerts = 'off'; A(M.beaconMin(s2) === 4 && M.beacons(s2, 4, 4).length === 0, 'Off: no beacons at all');
+      s2.ui.settings.alerts = 'normal'; s2.buildings[0].flooded = false; M.invalidate();
+      // mutes live in the settings: a muted kind is a suggestion, never a beacon, never in Clear N
+      s2.buildings[1].hp = 0.5; M.invalidate(); A(M.resolvable(s2).rows.length === 1 && M.resolvable(s2).rows[0].kind === 'damaged', 'Clear N counts the repair');
+      A(M.mute(s2, 'damaged') === true && M.muted(s2, 'damaged') && s2.ui.settings.mutedIssues.damaged === true && M.mutedKinds(s2).join() === 'damaged', 'mute writes settings.mutedIssues');
+      A(M.resolvable(s2).rows.length === 0 && M.suggestions(s2).some((it) => it.kind === 'damaged') && !M.beacons(s2, 4, 4).some((it) => it.kind === 'damaged') && M.groups(s2).every((g) => g.kind !== 'damaged'), 'a muted kind is a suggestion: no Clear, no beacon, no main group');
+      A(M.mute(s2, 'damaged', false) === false && M.resolvable(s2).rows.length === 1 && M.mute(s2, 'nope') === false, 'unmute restores it; unknown kinds refuse');
+      s2.buildings[1].hp = 1; M.invalidate();
+      // snoozes / dismissals are on state.ui.issues and survive a JSON round trip
+      const sid = M.main(s2)[0].id; A(M.snooze(s2, sid) && s2.ui.issues.snoozed[sid] && s2.ui.issues.snoozed[sid].until === 50 + 600, 'snooze is saved on state.ui.issues');
+      const did = M.main(s2)[0].id; A(did !== sid && M.dismiss(s2, did) && s2.ui.issues.dismissed[did] === 'unpowered|2|', 'dismiss is saved with its signature');
+      const copy = JSON.parse(JSON.stringify(s2.ui.issues)); resetAll(); s2.ui.issues = copy;
+      A(!M.list(s2).some((it) => it.id === sid || it.id === did) && M.hiddenList(s2).length === 2 && M.stats().snoozed === 1 && M.stats().dismissed === 1, 'a reloaded store still hides both rows');
+      A(M.restore(sid, s2) && M.restoreAll(s2) === 1 && M.list(s2).some((it) => it.id === did), 'restore / restoreAll clear the saved store');
+      // the toast gate: severity-1 kinds never, Quiet / Off never, once per key per week
+      s2.calendar.day = 100;
+      A(M.toastGate(s2, 'path') === false && M.toastGate(s2, ['unlinkedPath']) === false, 'no toast for a severity-1 kind');
+      A(M.toastGate(s2, 'power') === true && M.toastGate(s2, 'power') === false, 'one power toast, then quiet for the week');
+      s2.calendar.day = 107; A(M.toastGate(s2, 'power') === true, '… and again a week later');
+      A(M.toastGate(s2, 'flood') === true && M.toastGate(s2, ['flooded']) === false && M.toastGate(s2, ['unwatered', 'flooded']) === false, 'a family toast stamps its kinds (rows absent → base severity): any toast naming a stamped kind waits');
+      M.mute(s2, 'unpowered'); M.mute(s2, 'brownout'); M.mute(s2, 'pumpOff'); s2.calendar.day = 200; A(M.toastGate(s2, 'power') === false, 'every kind muted → no toast'); M.mute(s2, 'unpowered', false); M.mute(s2, 'brownout', false); M.mute(s2, 'pumpOff', false);
+      s2.ui.settings.alerts = 'quiet'; s2.calendar.day = 300; A(M.toastGate(s2, 'power') === false, 'Quiet: no toasts'); s2.ui.settings.alerts = 'off'; A(M.toastGate(s2, 'power') === false, 'Off: no toasts'); s2.ui.settings.alerts = 'normal';
+      A(M.toastGate(s2, 'nope') === false && M.toastGate(s2, []) === false, 'unknown kinds → no toast');
+    }
     resetAll();
     return { ok: true, notes: notes.join('; ') };
   };
@@ -14175,15 +14105,8 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     if (typeof v === 'number' && isFinite(v)) return clamp(v, 0, 1);
     return clamp(num(state.wildlife && state.wildlife.mosqIndex, 0), 0, 1);
   }
-  function gatorPenaltyNow(state) {
-    const v = call('wildlife', 'gatorPenalty', [state], null);
-    if (typeof v === 'number' && isFinite(v)) return clamp(v, 0, P.wildlife.gator.incidentCap + num(P.wildlife.gator.delayHappinessCap, 0) + num(P.wildlife.gator.closureCap, 0));   // gator pass: incidents + students delayed + closures
-    const inc = (state.wildlife && Array.isArray(state.wildlife.incidents)) ? state.wildlife.incidents : [];
-    const day = today(state);
-    let n = 0;
-    for (let i = 0; i < inc.length; i++) if (inc[i] && num(inc[i].day, -1e9) > day - P.wildlife.gator.incidentDays) n++;
-    return Math.min(P.wildlife.gator.incidentCap, P.wildlife.gator.incidentPenalty * n);
-  }
+  /** calm alerts + ambient gators pass: gators are wildlife, never a happiness term (the `gator` key stays, at 0, for the breakdown and old saves) */
+  function gatorPenaltyNow(state) { void state; return 0; }
   function sampleNow(state) {
     const s = call('agents', 'sample', [state], null);
     if (!s || typeof s !== 'object') return { life: 0, green: 0, mosq: 0, heat: 0, n: 0 };
@@ -15192,7 +15115,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     salaries: 'Staff salaries', upkeep: 'Upkeep', utilities: 'Utilities', food: 'Food', coaching: 'Coaching', interest: 'Loan interest', repair: 'Repairs', prep: 'Storm prep',
     construction: 'Construction', demolition: 'Demolition', boardCards: 'Board cards',
     housing: 'housing quality', dining: 'dining coverage', life: 'student life', green: 'green space', spirit: 'school spirit', mosquito: 'mosquitoes', flood: 'flooding',
-    gator: 'gators (incidents, students delayed, closed halls)', heat: 'heat',   // gator pass crowd: 'crowded classes', noise: 'noise',
+    gator: 'gators', heat: 'heat',   // calm pass: always 0 (gators are scenery) crowd: 'crowded classes', noise: 'noise',
     academic: 'academic quality', faculty: 'faculty', happiness: 'happiness', football: 'football', landmarks: 'landmarks', ecology: 'ecology', selectivity: 'selectivity', blight: 'blight', rookery: 'the rookery'
   };
   function label(k) { return LABELS[k] || k; }
@@ -15351,7 +15274,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
       if (pendingAttendance) {
         pendingAttendance = false;
         const a = call('agents', 'classAttendance', [state], 1);
-        const dent = clamp(num(call('wildlife', 'attendanceDent', [state], 0), 0), 0, 1);   // gator pass: students delayed by gators since Dawn skip or arrive late (params.wildlife.gator.delayAttendancePer / Cap)
+        const dent = 0;   // calm alerts + ambient gators pass: no gator attendance dent
         if (Array.isArray(state.economy.attendanceCycles)) state.economy.attendanceCycles.push(clamp(num(a, 1) - dent, 0, 1));
       }
       if (newDay) {
@@ -35530,6 +35453,9 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
   // Every ring breathes on a 1.2 s cycle in the kind's colour (BSU.issues.kinds(), used nowhere else);
   // a 40-px light column rises from the anchor to a glyph disc; off-screen issues get a border arrow.
   // Caps: ≤ ISS_MAX beacons, ≤ ISS_ARROWS arrows, the pass stops early past ISS_BUDGET_MS (perf guard).
+  // Calm alerts pass: the beacons pass draws BSU.issues.beacons(state, camTx, camTy) — severity-gated by the Alerts mode, never a
+  // suggestion (severity-1 kinds, muted kinds), ≤ params.issues.beaconMax (6), most severe then nearest the camera, the selected
+  // row always — and the edge arrows follow the same list; the spotlight (I held / toggled) lights every eligible row, uncapped.
   // ---------------------------------------------------------------------------
   const ISS_MAX = 40, ISS_ARROWS = 12, ISS_BUDGET_MS = 1.0, ISS_BREATH_MS = 1200, ISS_PULSE_MS = 420, ISS_COL_PX = 40, ISS_DIM = 0.55;
   const issStats = { drawn: 0, arrows: 0, ms: 0, capped: false, labels: 0, frames: 0 };
@@ -35562,6 +35488,10 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
   }
   /** the HUD-free frame of the viewport (top bar, palette + ticker, the right column: minimap / keys / tray, the left goals tracker) in CSS px */
   const issFrameO = { L: 26, R: 1254, T: 70, B: 564, ui: 1, rightCol: 250, rightColH: 600, leftCol: 390, leftColH: 520 };
+  /** the camera's centre tile (for the beacon list's "nearest first"); render's camera is in world px (32 × 16 iso) */
+  function issCamTile(state, out) { const cam = camOf(state); out.tx = (cam.x / 32 + cam.y / 16) / 2; out.ty = (cam.y / 16 - cam.x / 32) / 2; return out; }
+  const issCam = { tx: 32, ty: 32 };
+  function issBeaconList(state, I, all) { try { issCamTile(state, issCam); const l = I.beacons(state, issCam.tx, issCam.ty, all ? { all: true } : undefined); return Array.isArray(l) ? l : []; } catch (e) { return []; } }
   function issFrame(view) {
     let ui = 1; try { const U = mod('ui'); if (U && typeof U.uiScaleEffective === 'function') ui = fin(U.uiScaleEffective(), 1) || 1; } catch (e) { ui = 1; }
     issFrameO.ui = ui; issFrameO.L = 26; issFrameO.R = view.vw - 26; issFrameO.T = 70 * ui; issFrameO.B = view.vh - 236 * ui;
@@ -35643,7 +35573,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     let gi = 0, gn = 1; if (sel._gk) { gn = issGroups[sel._gk] | 0 || 1; const li = issuesApi() ? issuesApi().list(state) : []; for (let k = 0; k < li.length; k++) { if (li[k] === sel) break; if (li[k]._gk === sel._gk) gi++; } }
     const ax = issPt.x + (gi - (gn - 1) / 2) * 24 * Math.max(0.75, z), iy = issPt.y - hc - 16;
     g.font = 'bold 13px system-ui, -apple-system, "Segoe UI", sans-serif';
-    const title = issWrap(g, sel.title, 230); g.font = '12px system-ui, -apple-system, "Segoe UI", sans-serif'; const fix = issWrap(g, sel.fix || '', 230);
+    const title = issWrap(g, sel.title, 230); g.font = '12px system-ui, -apple-system, "Segoe UI", sans-serif'; const fix = issWrap(g, sel.progress && sel.progress.text ? 'In progress: ' + sel.progress.text : (sel.fix || ''), 230);   // calm alerts pass: an in-progress row says so, not its fix
     const hint = 'Fix / Locate in the Issues tray · I next · Esc';
     let bw = 0; g.font = 'bold 13px system-ui, -apple-system, "Segoe UI", sans-serif'; for (const l of title) bw = Math.max(bw, g.measureText(l).width);
     g.font = '12px system-ui, -apple-system, "Segoe UI", sans-serif'; for (const l of fix) bw = Math.max(bw, g.measureText(l).width); g.font = '11px system-ui, -apple-system, "Segoe UI", sans-serif'; bw = Math.max(bw, g.measureText(hint).width);
@@ -35701,14 +35631,14 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     const I = issuesApi(); if (!I || !state || !state.tiles) return;
     if (state.setPiece) return;   // qa pass 4: set pieces are cinematic (the tray already hides); beacons flashed over the stadium mid-montage
     if (I.spotlight()) return;   // the spotlight pass draws them above the dim
-    const t0 = nowMs(); const issues = I.list(state), sel = I.selected(state);
+    const t0 = nowMs(); const issues = typeof I.beacons === 'function' ? issBeaconList(state, I, false) : I.list(state), sel = I.selected(state);
     issStats.drawn = drawBeacons(state, g, view, issues, sel, t0); issStats.ms = nowMs() - t0; issStats.frames++;
   }
   function passSpotlight(state, g, view) {
     const I = issuesApi(); if (!I || !state || !state.tiles) return;
     if (state.setPiece) return;   // qa pass 4: as passBeacons
-    const t0 = nowMs(); const issues = I.list(state), sel = I.selected(state), z = (camOf(state).zoom) || 1;
-    if (I.spotlight()) {
+    const t0 = nowMs(); const spot = I.spotlight(), issues = typeof I.beacons === 'function' ? issBeaconList(state, I, spot) : I.list(state), sel = I.selected(state), z = (camOf(state).zoom) || 1;
+    if (spot) {
       // dim everything except the issue tiles (even-odd: the viewport minus every outline; rects deduped so stacked issues do not cancel)
       g.globalAlpha = ISS_DIM; g.fillStyle = 'rgb(6,4,18)'; g.beginPath(); g.rect(0, 0, view.vw, view.vh);
       const seen = new Set(); let holes = 0;
@@ -35920,8 +35850,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
   let hint = null;                         // {until, untilTick}
   let bubble = { since: 0, until: 0, key: '' };
   let manualAlert = null, alertAt = -1e9, alertKey = '';
-  let alertClosedKey = '';                 // gator pass: the alert key the player closed with ✕ (hidden until the alert changes)
-  const gatorAlerts = {};                  // gator pass: gator id → {until (ms clock), cooldownDay}: one chip per gator per visit, 12 s, no re-fire for 3 days
+  let alertClosedKey = '';                 // the alert key the player closed with ✕ (hidden until the alert changes)
   let paletteDirty = true, paletteKey = '', paletteTab = '', pipKey = '', hudFade = false, hudFadeAt = 0, capacityShown = false;
   let objKey = '', msAt = -1e9, panelAt = -1e9, perfAt = -1e9, speedKey = '', skipShown = false, paletteHidden = false, errCount = 0;
   let pendingPlaceSound = 0;
@@ -35994,7 +35923,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     const ic = el('span', null, ''); ic.id = 'alert-icon'; const tx = el('span', null, ''); tx.id = 'alert-text';
     const act = btn('alert-action', '', 'small', function () { const s = stateOf(); const sp = currentAlert; if (sp && sp.action && typeof sp.action.fn === 'function') sp.action.fn(s); });
     const g = el('span', 'chip gator hidden', ''); g.id = 'alert-gator'; g.addEventListener('click', function () { const sp = currentAlert; if (sp && sp.gator && Number.isFinite(sp.gator.i)) { const t = tileOf(sp.gator.i); call('render', 'panToTile', t.tx, t.ty); } });
-    const x = btn('alert-close', '✕', 'icon', function () { closeAlert(); });   // gator pass: every chip can be closed; a closed gator chip starts its 3-day cooldown
+    const x = btn('alert-close', '✕', 'icon', function () { closeAlert(); });   // every chip can be closed (the #alert-gator chip is Le Grand's, the lake legend: ambient)
     x.title = 'Dismiss (the ticker keeps the log)';
     a.appendChild(ic); a.appendChild(tx); a.appendChild(act); a.appendChild(g); a.appendChild(x);
     E['alert-strip'] = a; E['alert-icon'] = ic; E['alert-text'] = tx; E['alert-action'] = act; E['alert-gator'] = g; E['alert-close'] = x; return a;
@@ -36295,7 +36224,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     const col = hudCollapsedOf();
     for (const k in HUD_PARTS) {
       const e = E[HUD_PARTS[k]]; if (!e) continue;
-      const want = eff === 'compact' || (eff === 'full' && !!col[k] && coach.expanded.indexOf(k) < 0);
+      const want = eff === 'compact' || (eff === 'full' && !!col[k] && coach.expanded.indexOf(k) < 0) || (k === 'issues' && alertModeOf() === 'off' && coach.step < 0);   // calm alerts pass: Alerts Off folds the tray to its count pill
       if (e.classList.contains('pill') !== want) { cls(e, 'pill', want); if (k === 'issues') tray.key = ''; }
       if (!want && e.classList.contains('peek')) cls(e, 'peek', false);
     }
@@ -36368,9 +36297,6 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     on('storm:toast', function (p) { const s = stateOf(); if (s) M.decision(s, { id: p.id, text: p.text, yes: p.yes, no: p.no, untilTick: p.untilTick, ticks: L.toastTicks }); });
     on('storm:named', function () { alertAt = -1e9; }); on('storm:watch', function () { alertAt = -1e9; }); on('storm:bands', function () { alertAt = -1e9; }); on('storm:landfall', function () { alertAt = -1e9; }); on('storm:passed', function () { alertAt = -1e9; });
     on('mosquito:warning', function (p) { alertAt = -1e9; const s = stateOf(); if (s && p && p.text) M.notify(s, { kind: 'wildlife', text: p.text, locate: 'mosquito' }); });
-    on('gator:campus', function () { alertAt = -1e9; });
-    on('gator:blocked', function (p) { const s = stateOf(); if (s) gatorBlocked(s, p); });   // gator pass: escalation → a notification with Locate + Fix
-    on('gator:callout', function (p) { const s = stateOf(); if (s && p && p.arrived) M.notify(s, { kind: 'wildlife', text: 'Parish Wildlife relocated ' + (p.name || 'the gator') + '.', ttl: 6000 }); alertAt = -1e9; });
     on('weather:heat', function () { alertAt = -1e9; });
     on('power:blackout', function () { alertAt = -1e9; }); on('power:restored', function () { alertAt = -1e9; });
     on('building:flooded', function () { alertAt = -1e9; }); on('building:dried', function () { alertAt = -1e9; });
@@ -37052,7 +36978,6 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
       setText(E['insp-sub'], r.name + (b.tier > 0 && r.tiers && r.tiers[b.tier - 1] ? ' · ' + (r.tiers[b.tier - 1].name || 'Tier ' + b.tier) : '') + (b.pilings ? ' · on pilings' : ''));
       call('render', 'drawIcon', spr, b.type); hasSprite = true;
       if (b.ruin) body.appendChild(row('Status', 'Ruin', 'bad')); else if (b.built < 1) body.appendChild(row('Status', 'Under construction ' + Math.round(fin(b.built, 0) * 100) + '%')); else if (b.flooded) body.appendChild(row('Status', 'Flooded', 'bad')); else if (b.blackout) body.appendChild(row('Status', 'Blackout', 'bad')); else if (b.closedUntil >= 0 && b.closedUntil > dayOf(s)) body.appendChild(row('Status', 'Closed · reopens ' + BSU.formatDate(b.closedUntil)));
-      else if (call('buildings', 'gatorClosed', s, b.id)) body.appendChild(row('Status', 'Closed · a gator is too close (relocate it)', 'bad'));   // qa pass 4: a gator-closed kitchen served nobody and said nothing
       const ms = ef.feeds ? call('buildings', 'menuOf', s, b.id) : null;   // P6: a kitchen feeds its menu's throughput
       if (ms && b.built >= 1 && !b.ruin) body.appendChild(menuSection(s, b, ms));   // menu layout pass: first in the body, so the summary and Edit menu never need scrolling to
       if (ef.beds) body.appendChild(row('Beds', String(ef.beds))); if (ef.seats) body.appendChild(row('Seats', String(ef.seats))); if (ef.feeds) body.appendChild(row('Feeds', ms ? '~' + ms.throughput.toLocaleString('en-US') + ' a day (menu)' : String(ef.feeds)));
@@ -37075,7 +37000,6 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
       if (issuesApi()) { const li = issuesApi().byId(s, 'unlinked:' + b.id); if (li && li.action && li.action.link) acts.appendChild(action(li.resolvable ? 'Link to campus · ' + money(li.cost) : 'Link to campus', function (st) { const r2 = call('buildings', 'linkBuilding', st, b.id); if (r2 && r2.ok && issuesApi()) issuesApi().invalidate(); return r2; })); }   // issues v2: the gravel tie from the inspect panel too
       if (r.tiers && r.tiers.length > fin(b.tier, 0)) acts.appendChild(action('Upgrade', function (st) { return call('buildings', 'upgrade', st, b.id); }));
       if (b.type === 'generator') acts.appendChild(action('Refuel +3 days $5k', function (st) { return call('buildings', 'refuel', st, b.id); }));
-      if (b.type === 'dining_hall') { const gp = !!(b.data && b.data.policies && b.data.policies.gatorProofDumpsters); acts.appendChild(action((gp ? '✓ ' : '') + 'Gator-proof dumpsters $5k', function (st) { return call('buildings', 'setPolicy', st, b.id, 'gatorProofDumpsters', !gp); })); }
       if (b.type === 'wildlife_post') acts.appendChild(action((b.data && b.data.nutriaBounty ? '✓ ' : '') + 'Nutria bounty', function (st) { return call('buildings', 'setPolicy', st, b.id, 'nutriaBounty', !(b.data && b.data.nutriaBounty)); }));
       if (b.type === 'abatement') acts.appendChild(action(b.data && b.data.active === false ? 'Abatement off → on' : 'Abatement on → off', function (st) { return call('buildings', 'setPolicy', st, b.id, 'active', !(b.data && b.data.active !== false)); }));
       if ((tl.type[i0] === T.WET || tl.type[i0] === T.DRAINED) && r.kind === 'footprint') acts.appendChild(action('Re-grade', function (st) { return call('buildings', 'regrade', st, b.id); }));
@@ -37127,17 +37051,12 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
       body.appendChild(row('Length', legend || g.size === 'legend' ? '5 m' : g.size === 'juvenile' ? '1.5 m' : '3–4 m'));
       const mood = legend ? 'Unbothered' : ({ SUN: 'Sunning', SWIM: 'Swimming', WANDER: 'Peckish', LOUNGE: 'Lounging', RETREAT: 'Heading home', WRANGLED: 'Wrangled' }[g.state] || 'Sunning');
       body.appendChild(row('Mood', mood));
-      // gator pass: what it is doing, who it delays, what it closes, what it has cost, and the same Fix as the issue row
+      // calm alerts + ambient gators pass: where it is and what it is doing; nothing to fix, nothing it costs
       const st = legend ? null : call('wildlife', 'gatorStatus', s, g.id);
       if (st && st.onCampus) {
-        const verb = ({ SUN: 'sunning', SWIM: 'swimming', WANDER: 'prowling', LOUNGE: 'lounging', RETREAT: 'heading home', WRANGLED: 'being wrangled' }[g.state] || 'sunning');
-        const where = st.onPath ? 'on the path' + (st.near ? ' to ' + st.near.name : '') : (st.near ? 'by ' + st.near.name : 'on the bank');
-        const bits = [verb + ' ' + where]; if (st.delayedVisit > 0) bits.push(st.delayedVisit + ' students rerouted'); if (st.closes >= 0 && st.closesName) bits.push(st.closesName + ' closed');
-        body.appendChild(row('Doing', bits.join(' · ')));
+        const verb = ({ SUN: 'sunning', SWIM: 'swimming', WANDER: 'prowling', LOUNGE: 'lounging', RETREAT: 'heading home', WRANGLED: 'being walked home' }[g.state] || 'sunning');
+        body.appendChild(row('Doing', verb + ' ' + (st.near ? 'by ' + st.near.name : 'on the bank') + ' · it will wander back to the water'));
         body.appendChild(row('On campus', st.visitDays === 0 ? 'since today' : st.visitDays + (st.visitDays === 1 ? ' day' : ' days')));
-        body.appendChild(row('Cost so far', money(st.cost)));
-        body.appendChild(row('Why it matters', st.closes >= 0 ? gatorText('whyClosed') : gatorText('why'), 'why'));
-        if (st.callOut) body.appendChild(row('Parish Wildlife', 'on the way · arrives ' + BSU.formatDate(fin(st.callOut.day, dayOf(s)))));
       } else if (st) {
         body.appendChild(row('Doing', mood.toLowerCase() + (st.near ? ' near ' + st.near.name : ' off campus')));
       }
@@ -37145,8 +37064,6 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
       if (Number.isFinite(g.target) && g.target >= 0) { const ob = call('buildings', 'at', s, g.target % W, (g.target / W) | 0); body.appendChild(row('Headed for', ob ? 'the ' + (ob.name || (rowOf(ob.type) || {}).name) + ' dumpster' : 'the water')); }
       if (Number.isFinite(g.lastIncidentDay) && g.lastIncidentDay >= 0) body.appendChild(row('Last seen', BSU.formatDate(g.lastIncidentDay)));
       if (legend) acts.appendChild(action('Photograph', function (st2) { return call('wildlife', 'photographLeGrand', st2); }, 'primary'));
-      if (st && st.onCampus && !st.callOut) acts.appendChild(action(st.canWrangle ? 'Relocate · Officer (free)' : 'Call Parish Wildlife · ' + money(st.fee), function (s2) { return gatorFix(s2, g.id); }, 'primary'));
-      if (st && st.onCampus) { acts.appendChild(action('Fence this bank', function (s2) { M.selectTool(s2, 'gator_fence'); return null; })); acts.appendChild(action('Build a Preserve', function (s2) { M.selectTool(s2, 'preserve'); return null; })); }
       acts.appendChild(action('Pan to', function () { call('render', 'panToTile', Math.floor(fin(g.tx, 32)), Math.floor(fin(g.ty, 32))); return null; }));
     } else {
       setText(E['insp-title'], insp.kind); setText(E['insp-sub'], '');
@@ -37724,7 +37641,6 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     else if (Number.isFinite(a.overlay)) { M.setOverlay(s, a.overlay); }
     else if (Number.isFinite(a.repair)) { r = call('buildings', 'repair', s, a.repair) || r; }
     else if (Number.isFinite(a.repairLevee)) { r = (a.run && a.run.length ? call('buildings', 'repairLeveeRun', s, a.run) : call('buildings', 'repairLevee', s, a.repairLevee)) || r; }
-    else if (Number.isFinite(a.relocate)) { r = gatorFix(s, a.relocate); if (r && r.ok) I.select(null); }   // gator pass: free wrangle or the confirmed Parish call-out
     if (r && r.ok === false) { call('audio', 'play', 'invalid'); if (r.reason) M.notify(s, { kind: 'info', text: r.reason, ttl: 4000 }); }
     else if (Number.isFinite(a.repair) || Number.isFinite(a.repairLevee)) { I.select(null); M.notify(s, { kind: 'info', text: 'Fixed: ' + it.title + (r && r.cost > 0 ? ' · ' + money(r.cost) : ''), ttl: 3500 }); }
     I.invalidate(); tray.key = ''; inspAt = -1e9;
@@ -37754,72 +37670,43 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     if (Number.isFinite(a.repair)) return call('buildings', 'repair', s, a.repair);
     if (Number.isFinite(a.repairLevee)) return a.run && a.run.length ? call('buildings', 'repairLeveeRun', s, a.run) : call('buildings', 'repairLevee', s, a.repairLevee);
     if (a.link) return call('buildings', 'linkBuilding', s, a.link);
-    if (Number.isFinite(a.relocate) && a.free) return call('wildlife', 'callOut', s, a.relocate);
     return { ok: false, reason: 'Not a one-click fix' };
   }
   function cycleIssue(s, dir) { const I = issuesApi(); if (!I) return null; const it = I.cycle(s, dir); if (it) locateIssue(s, it); else { I.select(null); M.notify(s, { kind: 'info', text: 'All clear: no issues on campus', ttl: 2500 }); } return it; }
   function clearIssueUi() { const I = issuesApi(); if (I) I.select(null); spotToggled = false; heldI = false; applySpotlight(); tray.key = ''; }
   function issueFirstOf(s, kinds) { const I = issuesApi(); if (!I) return null; const l = I.ofKinds(s, kinds); return l.length ? l[0] : null; }
   // ---------------------------------------------------------------------------
-  // gator pass: one-click Fix, the escalation notification, the chip rules
+  // calm alerts pass: the Alerts mode (Settings → Alerts: Normal / Quiet / Off, settings.alerts) and per-kind mutes (settings.mutedIssues)
   // ---------------------------------------------------------------------------
-  function gatorText(key) { const T = (BSU.data && BSU.data.gatorText) || {}; return T[key] || ''; }
-  /** the gator's one-click Fix: free when a Wildlife Officer Post is in range (wildlife.callOut sends the officer), else a confirm line for the Parish call-out */
-  function gatorFix(s, gatorId) {
-    const st = call('wildlife', 'gatorStatus', s, gatorId);
-    if (!st) return { ok: false, reason: 'That gator has moved on' };
-    if (st.callOut) return { ok: false, reason: 'Parish Wildlife is already on the way for ' + st.name + ' (arrives ' + BSU.formatDate(fin(st.callOut.day, dayOf(s))) + ')' };
-    if (st.canWrangle) {
-      const r = call('wildlife', 'callOut', s, gatorId) || { ok: false, reason: 'Wildlife is unavailable' };
-      if (r.ok) M.notify(s, { kind: 'wildlife', text: 'The Wildlife Officer is on the way for ' + st.name + ' (free).', ttl: 5000 });
-      return r;
-    }
-    const fee = money(st.fee), days = fin(st.callOutDays, 1) === 1 ? 'tomorrow' : 'in ' + st.callOutDays + ' days';
-    closeNotifsOf(gatorId, 'confirm');
-    M.notify(s, { kind: 'money', gatorId: gatorId, confirm: true, ttl: 20000, text: 'Parish Wildlife call-out for ' + st.name + ': ' + fee + ', the truck arrives ' + days + '. No Wildlife Officer Post is in range.',
-      why: 'A Wildlife Officer Post within ' + fin((P.wildlife && P.wildlife.gator && P.wildlife.gator.officerRadius), 14) + ' tiles would have done this for free.',
-      action: { label: 'Confirm ' + fee, fn: function (s2) { const r = call('wildlife', 'callOut', s2, gatorId) || { ok: false, reason: 'Wildlife is unavailable' }; if (!r.ok) M.notify(s2, { kind: 'info', text: r.reason || 'Not now', ttl: 5000 }); if (r.ok) { if (issuesApi()) issuesApi().invalidate(); tray.key = ''; inspAt = -1e9; } } } });
-    return { ok: true, pending: true };
-  }
-  function closeNotifsOf(gatorId, why) { for (let k = notifs.length - 1; k >= 0; k--) { const n = notifs[k]; if (n.spec && n.spec.gatorId === gatorId && !n.spec.confirm) closeNotif(n, why); } }
-  /** gator:blocked → one notification per gator (replaces the earlier one): what it blocks, why it matters, Locate + Fix */
-  function gatorBlocked(s, p) {
-    const st = call('wildlife', 'gatorStatus', s, p.id); const name = (p.name || (st && st.name) || 'A gator');
-    let text, why;
-    if (p.what === 'closed') { text = name + ' is keeping ' + (p.building || 'a hall') + ' closed' + (p.kind ? ' (' + p.kind + ')' : ''); why = gatorText('whyClosed'); }
-    else if (p.what === 'game') { text = name + ' is on the field: kickoff delayed, ' + money(fin(p.cost, 0)) + ' in tailgate refunds'; why = gatorText('whyGame'); }
-    else { text = name + ' is blocking the path' + (st && st.near ? ' to ' + st.near.name : '') + ' · ' + fin(p.delayed, st ? st.delayed : 0) + ' students rerouted'; why = gatorText('why'); }
-    closeNotifsOf(p.id, 'replaced');
-    M.notify(s, { kind: 'wildlife', gatorId: p.id, text: text, why: why, locate: 'gator', action: { label: 'Fix', fn: function (s2) { gatorFix(s2, p.id); } } });
-  }
-  /** the top chip: one per gator per visit, auto-dismissed after alertMs, no re-fire for alertCooldownDays; muted sightings stay in the ticker */
-  function gatorChip(s, day) {
-    const PG = (P.wildlife && P.wildlife.gator) || {};
-    if (M.settings().muteGators) return null;
-    const gs = call('wildlife', 'onCampus', s) || [];
-    for (const g of gs) {
-      if (!g) continue;
-      if ((g.state === 'SUN' || g.state === 'SWIM') && Number.isFinite(g.den) && Math.max(Math.abs(Math.floor(fin(g.tx, 0)) - g.den % W), Math.abs(Math.floor(fin(g.ty, 0)) - ((g.den / W) | 0))) <= 1) continue;   // at home on its own bank: a sighting for the ticker, not a chip
-      let a = gatorAlerts[g.id];
-      if (!a || (a.visitDay !== fin(g.visitDay, -1) && day >= a.cooldownDay)) { a = gatorAlerts[g.id] = { visitDay: fin(g.visitDay, -1), until: clock + fin(PG.alertMs, 12000), cooldownDay: day + fin(PG.alertCooldownDays, 3) }; }
-      if (clock >= a.until) continue;
-      const st = call('wildlife', 'gatorStatus', s, g.id) || {};
-      const i = clamp(Math.floor(fin(g.tx, 0)), 0, W - 1) + clamp(Math.floor(fin(g.ty, 0)), 0, HGT - 1) * W;
-      const detail = st.closes >= 0 && st.closesName ? ' · ' + st.closesName + ' closed' : (fin(st.delayedVisit, 0) > 0 ? ' · ' + st.delayedVisit + ' students rerouted' : '');
-      return { icon: '🐊', text: '', gatorId: g.id, gator: { name: (g.name || 'A gator') + ' at ' + nearestBuildingName(s, fin(g.tx, 0), fin(g.ty, 0)) + detail, i: i }, action: { label: st.canWrangle ? 'Relocate' : 'Fix', fn: function (s2) { gatorFix(s2, g.id); } }, kind: 'wildlife' };
-    }
-    return null;
-  }
-  function closeAlert() { alertClosedKey = alertKey; const sp = currentAlert; if (sp && Number.isFinite(sp.gatorId) && gatorAlerts[sp.gatorId]) gatorAlerts[sp.gatorId].until = 0; alertAt = -1e9; alertKey = ''; show(E['alert-strip'], false); }
+  const ALERT_MODES = (P.issues && Array.isArray(P.issues.alertModes) && P.issues.alertModes.length === 3) ? P.issues.alertModes.slice() : ['normal', 'quiet', 'off'];
+  function alertModeOf() { const m = M.settings().alerts; return ALERT_MODES.indexOf(m) >= 0 ? m : ALERT_MODES[0]; }
+  M.alertMode = function () { return alertModeOf(); };
+  M.alertModes = function () { return ALERT_MODES.slice(); };
+  /** setAlertMode('normal' | 'quiet' | 'off'): Normal = beacons from severity 2 (≤ 6), toasts once per kind per week; Quiet = severity-3 beacons, no toasts but decisions; Off = the tray pill only */
+  M.setAlertMode = function (mode) {
+    try {
+      if (ALERT_MODES.indexOf(mode) < 0) return alertModeOf();
+      const set = M.settings(); if (set.alerts !== mode) { set.alerts = mode; M.saveSettings(); }
+      const I = issuesApi(); if (I) I.invalidate(); tray.key = ''; alertAt = -1e9; alertKey = '';
+      const s = stateOf(); if (s && dom()) { updateHud(s); if (mode === 'off') { for (let k = notifs.length - 1; k >= 0; k--) if (locateKindsOf(notifs[k].spec)) closeNotif(notifs[k], 'alertsOff'); } }
+      return mode;
+    } catch (e) { uerr('setAlertMode', e); return alertModeOf(); }
+  };
+  /** mute / unmute one issue kind: its rows sit under Suggestions (no beacon, no toast, not in Clear N); remembered in the settings */
+  M.muteIssueKind = function (kind, on) {
+    const I = issuesApi(); const s = stateOf(); if (!I || !s) return false;
+    const v = I.mute(s, kind, on); M.saveSettings(); tray.key = '';
+    return v;
+  };
+  function closeAlert() { alertClosedKey = alertKey; alertAt = -1e9; alertKey = ''; show(E['alert-strip'], false); }
   M.closeAlert = function () { closeAlert(); };
   M.dismissNotifs = function () { for (let k = notifs.length - 1; k >= 0; k--) closeNotif(notifs[k], 'dismissed'); };
-  M.gatorAlerts = function () { return gatorAlerts; };
   /** which issue kinds a notification / needs line is about (used to add a 'Locate' button) */
   function locateKindsOf(spec) {
-    if (!spec || spec.milestone) return null;   // qa pass 4: 'Milestone: Gator Wrangler' matched the gator heuristic and grew a Locate button
+    if (!spec || spec.milestone) return null;   // milestone notes never carry a Locate
     if (spec.locate) { const lc = spec.locate; if (typeof lc === 'string') return (issuesApi() && issuesApi().families()[lc]) || [lc]; if (Array.isArray(lc)) return lc; if (lc.kind) return [lc.kind]; if (lc.family) return (issuesApi() && issuesApi().families()[lc.family]) || null; return null; }
     const t = String(spec.text || ''); const F = issuesApi() ? issuesApi().families() : null; if (!F) return null;
-    if (/gator/i.test(t)) return F.gator; if (/flood/i.test(t)) return F.flood; if (/levee/i.test(t)) return F.levee; if (/mosquito/i.test(t)) return F.mosquito;
+    if (/flood/i.test(t)) return F.flood; if (/levee/i.test(t)) return F.levee; if (/mosquito/i.test(t)) return F.mosquito;
     if (/blackout|brownout|no power|unpowered/i.test(t)) return F.power; if (/boil|no water/i.test(t)) return F.water; if (/damage|ruin/i.test(t)) return F.damage;
     return null;
   }
@@ -37836,9 +37723,14 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     const list = el('div'); list.id = 'issues-list';
     const prog = el('div', 'hidden'); prog.id = 'issues-progress'; prog.appendChild(el('div', 'ph', 'In progress')); const plist = el('div'); plist.id = 'issues-progress-list'; prog.appendChild(plist);
     const more = el('div', 'hidden', ''); more.id = 'issues-more';
-    const hid = btn('issues-hidden', '', 'small hidden', function () { const I = issuesApi(); if (I) { I.restoreAll(); tray.key = ''; } }); hid.title = 'Snoozed and dismissed rows: click to show them again';
-    wrap.appendChild(head); wrap.appendChild(list); wrap.appendChild(prog); wrap.appendChild(more); wrap.appendChild(hid);
+    const hid = btn('issues-hidden', '', 'small hidden', function () { const I = issuesApi(); const s = stateOf(); if (I) { I.restoreAll(s); tray.key = ''; } }); hid.title = 'Snoozed and dismissed rows: click to show them again';
+    // calm alerts pass: the collapsed Suggestions group (severity-1 kinds and muted kinds) at the bottom of the tray
+    const sg = el('div', 'hidden'); sg.id = 'issues-suggest';
+    const sh = btn('issues-suggest-head', 'Suggestions', 'small', function () { tray.suggestOpen = !tray.suggestOpen; tray.key = ''; }); sh.title = 'Low-priority rows (unlinked paths, mosquito hotspots) and muted kinds: never a beacon, never a toast · click to list them';
+    const sl = el('div'); sl.id = 'issues-suggest-list'; sg.appendChild(sh); sg.appendChild(sl);
+    wrap.appendChild(head); wrap.appendChild(list); wrap.appendChild(prog); wrap.appendChild(more); wrap.appendChild(sg); wrap.appendChild(hid);
     E['issues-tray'] = wrap; E['issues-head'] = head; E['issues-count'] = n; E['issues-sub'] = sub; E['issues-clear'] = clr; E['issues-spot'] = spot; E['issues-toggle'] = car; E['issues-list'] = list; E['issues-progress'] = prog; E['issues-progress-list'] = plist; E['issues-more'] = more; E['issues-hidden'] = hid;
+    E['issues-suggest'] = sg; E['issues-suggest-head'] = sh; E['issues-suggest-list'] = sl;
     return wrap;
   }
   function rowTitle(it) { let t = it.fix || it.title; if (it.persist) t += '\nWhy it persists: ' + it.persist; return t; }
@@ -37852,7 +37744,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     const col = el('div', 't', (opts.progress && it.progress) ? it.progress.text : it.title); const age = el('span', 'a', ' · ' + (issuesApi() ? issuesApi().ageText(s, it) : '')); col.appendChild(age);
     row.appendChild(ic); row.appendChild(col);
     const I = issuesApi(), sd = fin(P.issues && P.issues.snoozeDays, 3);
-    if (opts.count > 1) { const bd = btn(null, '×' + opts.count, 'small badge', function () { tray.open[it.kind] = !tray.open[it.kind]; tray.key = ''; }); bd.title = opts.count + ' ' + (I ? I.labelOf(it.kind).toLowerCase() : it.kind) + ' issues: click to ' + (opts.expanded ? 'fold them' : 'list them all'); row.appendChild(bd); }
+    if (opts.count > 1) { const bd = btn(null, '×' + opts.count, 'small badge', function () { const o = opts.suggest ? tray.sopen : tray.open; o[it.kind] = !o[it.kind]; tray.key = ''; }); bd.title = opts.count + ' ' + (I ? I.labelOf(it.kind).toLowerCase() : it.kind) + ' issues: click to ' + (opts.expanded ? 'fold them' : 'list them all'); row.appendChild(bd); }
     let fix = null;
     if (!opts.progress) { fix = btn(null, 'Fix', 'small fix', function () { const st = stateOf(); if (st) fixIssue(st, issuesApi().byId(st, it.id) || it); }); fix.title = it.fix || 'Fix it'; row.appendChild(fix); }
     const loc = btn(null, '⌖', 'small icon-sm locate', function () { const st = stateOf(); if (st) locateIssue(st, issuesApi().byId(st, it.id) || it); }); loc.title = 'Locate: ease the camera there (I cycles)'; loc.dataset.act = 'locate'; row.appendChild(loc);
@@ -37860,6 +37752,8 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
       const zz = btn(null, 'zz', 'small icon-sm', function () { const st = stateOf(); const I2 = issuesApi(); if (st && I2 && I2.snooze(st, it.id)) { tray.key = ''; M.notify(st, { kind: 'info', text: 'Snoozed ' + sd + ' days: ' + it.title, ttl: 2500 }); } }); zz.title = 'Snooze ' + sd + ' days: hides this row until ' + BSU.formatDate(dayOf(s) + sd) + '; it comes back sooner if it gets worse'; zz.dataset.act = 'snooze'; row.appendChild(zz);
       const dm = btn(null, '✕', 'small icon-sm', function () { const st = stateOf(); const I2 = issuesApi(); if (st && I2 && I2.dismiss(st, it.id)) tray.key = ''; }); dm.title = 'Dismiss: hides this row until the condition changes (it gets worse, or moves to a new stage)'; dm.dataset.act = 'dismiss'; row.appendChild(dm);
     }
+    // calm alerts pass: the bell on a group's lead row mutes that kind (rows move under Suggestions, no beacons, no toasts; remembered); a muted kind's bell unmutes it
+    if (opts.lead && !opts.progress && I && (opts.muted || !opts.suggest)) { const bell = btn(null, opts.muted ? '🔕' : '🔔', 'small icon-sm bell' + (opts.muted ? ' muted' : ''), function () { M.muteIssueKind(it.kind, !opts.muted); const st = stateOf(); if (st) M.notify(st, { kind: 'info', text: (opts.muted ? 'Unmuted: ' : 'Muted: ') + (I.labelOf(it.kind)) + (opts.muted ? '' : ' · its rows sit under Suggestions (no beacons, no toasts)'), ttl: 3000 }); }); bell.title = opts.muted ? 'Unmute ' + I.labelOf(it.kind).toLowerCase() + ': back to the main list, beacons and toasts' : 'Mute ' + I.labelOf(it.kind).toLowerCase() + ': rows move under Suggestions, no beacons, no toasts (remembered)'; bell.dataset.act = 'mute'; row.appendChild(bell); }
     const why = (!opts.progress && it.why) ? el('div', 'why', it.why) : null; if (why) { why.title = it.why; row.appendChild(why); }   // gator pass: the one-line "why it matters" as a full-width second grid row
     row.addEventListener('click', function (ev) { if (ev && ev.target && ev.target !== row && ev.target !== col && ev.target !== ic && ev.target !== age && ev.target !== why) return; const st = stateOf(); if (st) locateIssue(st, issuesApi().byId(st, it.id) || it); });
     return { el: row, age: age, id: it.id };
@@ -37884,37 +37778,43 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     const I = issuesApi(); if (!I) return;
     if (clock - tray.at < 250) return; tray.at = clock;
     if (titleOn || coach.step >= 0) { show(E['issues-tray'], false); tray.key = ''; return; }
-    const list = I.list(s), active = I.actionable(s), prog = I.inProgress(s), hidden = I.hiddenList(s), sel = I.selectedId();
-    const fit = trayRowsFit(active.some(function (it) { return !!it.why; }));
-    const collapsed = fit < 2 || M.hudPill('issues');   // hud + zoom pass: collapsed = the tray's pill (compact mode, or the caret in full mode) unless hovered open
+    const list = I.list(s), main = I.main(s), sugg = I.suggestions(s), prog = I.inProgress(s), hidden = I.hiddenList(s), sel = I.selectedId();
+    const fit = trayRowsFit(main.some(function (it) { return !!it.why; }));
+    const collapsed = fit < 2 || M.hudPill('issues');   // hud + zoom pass: collapsed = the tray's pill (compact mode, the caret in full mode, or Alerts: Off) unless hovered open
     if (list.length === 0) {
       if (tray.hadIssues) { tray.hadIssues = false; tray.clearAt = clock; }
       const showClear = clock - tray.clearAt < 3000 || hidden.length > 0;
       show(E['issues-tray'], showClear); if (!showClear) { tray.key = ''; return; }
       const k = 'clear|' + hidden.length;
-      if (tray.key !== k) { tray.key = k; setText(E['issues-count'], 'All clear ✓'); setText(E['issues-sub'], ''); cls(E['issues-head'], 'clear', true); cls(E['issues-tray'], 'collapsed', true); clear(E['issues-list']); clear(E['issues-progress-list']); show(E['issues-progress'], false); tray.rows = []; show(E['issues-more'], false); show(E['issues-clear'], false); hiddenLine(hidden); }
+      if (tray.key !== k) { tray.key = k; setText(E['issues-count'], 'All clear ✓'); setText(E['issues-sub'], ''); cls(E['issues-head'], 'clear', true); cls(E['issues-tray'], 'collapsed', true); clear(E['issues-list']); clear(E['issues-progress-list']); show(E['issues-progress'], false); clear(E['issues-suggest-list']); show(E['issues-suggest'], false); tray.rows = []; show(E['issues-more'], false); show(E['issues-clear'], false); hiddenLine(hidden); }
       return;
     }
     tray.hadIssues = true; show(E['issues-tray'], true);
-    const groups = I.groups(s), res = I.resolvable(s);
-    // the plan: one lead row per kind (count badge) + the siblings when the group is unfolded; the row budget is shared with the In progress section
-    const plan = []; for (const g of groups) { const open = !!tray.open[g.kind]; plan.push({ it: g.rows[0], lead: true, count: g.rows.length, expanded: open }); if (open) for (let k = 1; k < g.rows.length; k++) plan.push({ it: g.rows[k], sub: true }); }
+    const groups = I.groups(s), sgroups = I.suggestionGroups(s), res = I.resolvable(s);
+    // the plan: one lead row per kind (count badge) + the siblings when the group is unfolded; the row budget is shared with the In progress section and the open Suggestions group
+    const plan = []; for (const g of groups) { const open = !!tray.open[g.kind]; plan.push({ it: g.rows[0], lead: true, count: g.rows.length, expanded: open, muted: g.muted }); if (open) for (let k = 1; k < g.rows.length; k++) plan.push({ it: g.rows[k], sub: true }); }
+    const splan = []; for (const g of sgroups) { const open = !!tray.sopen[g.kind]; splan.push({ it: g.rows[0], lead: true, count: g.rows.length, expanded: open, muted: g.muted, suggest: true }); if (open) for (let k = 1; k < g.rows.length; k++) splan.push({ it: g.rows[k], sub: true, suggest: true }); }
     const progFit = prog.length ? Math.max(1, Math.min(prog.length, Math.floor(fit / 3))) : 0;
     const shown = collapsed ? 0 : Math.min(Math.max(0, fit - progFit), plan.length), pShown = collapsed ? 0 : progFit;
-    const key = [active.length, prog.length, hidden.length, shown, pShown, sel || '', res.rows.length, res.total, plan.slice(0, shown).map(function (p) { return p.it.id + p.it.title + p.it.severity + (p.count || 0) + (p.expanded ? 'o' : ''); }).join(';'), prog.slice(0, pShown).map(function (it) { return it.id + it.progress.text; }).join(';')].join('|');
+    const sShown = (collapsed || !tray.suggestOpen) ? 0 : Math.min(splan.length, Math.max(1, fit - shown - pShown));
+    const key = [main.length, sugg.length, prog.length, hidden.length, shown, pShown, sShown, tray.suggestOpen ? 'S' : '', sel || '', res.rows.length, res.total, plan.slice(0, shown).map(function (p) { return p.it.id + p.it.title + p.it.severity + (p.count || 0) + (p.expanded ? 'o' : '') + (p.muted ? 'm' : ''); }).join(';'), prog.slice(0, pShown).map(function (it) { return it.id + it.progress.text; }).join(';'), splan.slice(0, sShown).map(function (p) { return p.it.id + p.it.title + (p.count || 0) + (p.expanded ? 'o' : '') + (p.muted ? 'm' : ''); }).join(';')].join('|');
     if (key !== tray.key) {
       tray.key = key; tray.ageAt = clock;
-      setText(E['issues-count'], active.length + (active.length === 1 ? ' issue' : ' issues'));
-      const w3 = active.filter(function (it) { return it.severity >= 3; }).length; const subs = []; if (w3) subs.push(w3 + ' urgent'); if (prog.length) subs.push(prog.length + ' in progress'); if (!subs.length && collapsed) subs.push('click to cycle');
+      const none = main.length === 0;
+      setText(E['issues-count'], none ? (prog.length ? 'No open issues' : 'All clear ✓') : main.length + (main.length === 1 ? ' issue' : ' issues'));
+      const w3 = main.filter(function (it) { return it.severity >= 3; }).length; const subs = []; if (w3) subs.push(w3 + ' urgent'); if (prog.length) subs.push(prog.length + ' in progress'); if (none && sugg.length) subs.push(sugg.length + (sugg.length === 1 ? ' suggestion' : ' suggestions')); if (!subs.length && collapsed) subs.push('click to cycle');
       setText(E['issues-sub'], subs.join(' · '));
       show(E['issues-clear'], res.rows.length > 0 && !collapsed); setText(E['issues-clear'], 'Clear ' + res.rows.length);
-      E['issues-clear'].title = res.rows.length + ' one-click fix' + (res.rows.length === 1 ? '' : 'es') + ' (repairs within cash, gravel ties, free wrangles): ' + (res.total > 0 ? money(res.total) + ' total, confirm first' : 'free');
-      cls(E['issues-head'], 'clear', false); cls(E['issues-tray'], 'collapsed', collapsed); setText(E['issues-toggle'], collapsed ? '▸' : '▾');
+      E['issues-clear'].title = res.rows.length + ' one-click fix' + (res.rows.length === 1 ? '' : 'es') + ' (repairs within cash, gravel ties; suggestions and muted kinds are never counted): ' + (res.total > 0 ? money(res.total) + ' total, confirm first' : 'free');
+      cls(E['issues-head'], 'clear', none); cls(E['issues-tray'], 'collapsed', collapsed); setText(E['issues-toggle'], collapsed ? '▸' : '▾');
       clear(E['issues-list']); tray.rows = [];
       for (let k = 0; k < shown; k++) { const p = plan[k]; const r = issueRow(s, p.it, p.it.id === sel, p); E['issues-list'].appendChild(r.el); tray.rows.push(r); }
       clear(E['issues-progress-list']); for (let k = 0; k < pShown; k++) { const r = issueRow(s, prog[k], prog[k].id === sel, { progress: true }); E['issues-progress-list'].appendChild(r.el); tray.rows.push(r); }
       show(E['issues-progress'], pShown > 0);
       const rest = (plan.length - shown) + (prog.length - pShown); setText(E['issues-more'], rest > 0 ? '+' + rest + ' more · I cycles through all' : ''); show(E['issues-more'], rest > 0 && !collapsed);
+      // the Suggestions group: a one-line header (count, caret), the rows only while unfolded
+      clear(E['issues-suggest-list']); show(E['issues-suggest'], sugg.length > 0 && !collapsed);
+      if (sugg.length) { setText(E['issues-suggest-head'], (tray.suggestOpen ? '▾ ' : '▸ ') + 'Suggestions · ' + sugg.length + (sShown < splan.length && tray.suggestOpen ? ' (' + sShown + ' shown)' : '')); cls(E['issues-suggest'], 'open', tray.suggestOpen && sShown > 0); for (let k = 0; k < sShown; k++) { const p = splan[k]; const r = issueRow(s, p.it, p.it.id === sel, p); r.el.classList.add('suggest'); E['issues-suggest-list'].appendChild(r.el); tray.rows.push(r); } }
       hiddenLine(hidden);
     } else if (clock - tray.ageAt >= 1000) {
       tray.ageAt = clock; for (const r of tray.rows) { const it = I.byId(s, r.id); if (it) setText(r.age, ' · ' + I.ageText(s, it)); }
@@ -37927,8 +37827,13 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     restoreAll: function () { const I = issuesApi(); const n = I ? I.restoreAll() : 0; tray.key = ''; return n; },
     clearAll: function (s, confirmed) { return clearAllResolvable(s || stateOf(), !!confirmed); },
     arm: function (s, idOrIt) { const I = issuesApi(); const st = s || stateOf(); const it = typeof idOrIt === 'string' ? (I && I.byId(st, idOrIt)) : idOrIt; return (it && it.action && it.action.arm) ? armTool(st, it, it.action) : { ok: false, reason: 'Not an arm action' }; },
-    lastArm: function () { return lastArm; }, pin: function () { return ghostPin; }, toggleGroup: function (kind) { tray.open[kind] = !tray.open[kind]; tray.key = ''; }, groupOpen: function (kind) { return !!tray.open[kind]; }
+    lastArm: function () { return lastArm; }, pin: function () { return ghostPin; }, toggleGroup: function (kind) { tray.open[kind] = !tray.open[kind]; tray.key = ''; }, groupOpen: function (kind) { return !!tray.open[kind]; },
+    // calm alerts pass
+    mute: function (kind, on) { return M.muteIssueKind(kind, on); }, muted: function (kind) { const I = issuesApi(); return !!(I && I.muted(stateOf(), kind)); },
+    alertMode: function () { return alertModeOf(); }, setAlertMode: function (mode) { return M.setAlertMode(mode); },
+    toggleSuggestions: function (on) { tray.suggestOpen = on === undefined ? !tray.suggestOpen : !!on; tray.key = ''; return tray.suggestOpen; }, suggestionsOpen: function () { return !!tray.suggestOpen; }
   });
+  tray.sopen = {}; tray.suggestOpen = false;
 
   // ---------------------------------------------------------------------------
   // Notifications, hints
@@ -37959,6 +37864,13 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
       const kind = spec.kind || 'info';
       const act = mapAction(s, spec.action);
       let onClose = spec.onClose; if (onClose === 'restoreWarning') onClose = function () { call('progress', 'warningClosed', s); }; if (typeof onClose !== 'function') onClose = null;
+      // calm alerts pass: an issue toast (one that names issue kinds) passes the registry's gate: never under Alerts Off / Quiet, never for a
+      // severity-1 kind or a muted kind, once per kind per week. A confirm line (the player's own click) always shows. A gated toast with an
+      // onClose (the speed-dropping first warning) still runs it, so nothing stays paused.
+      if (!spec.confirm && !spec.milestone && issuesApi()) {
+        const lk0 = locateKindsOf(spec);
+        if (lk0 && lk0.length && !issuesApi().toastGate(s, typeof spec.locate === 'string' ? spec.locate : lk0)) { if (onClose) { try { onClose('gated'); } catch (e) { uerr('notif:gated', e); } } return; }
+      }
       const n = { spec: spec, kind: kind, el: null, born: clock, bornTick: tickOf(s), ttl: fin(spec.ttl, L.notifMs), closed: false, onClose: onClose };
       if (dom()) {
         const d = el('div', 'notif' + (spec.stamp === 'paw' || spec.milestone ? ' paw' : '')); d.dataset.kind = kind;
@@ -38233,7 +38145,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     call('session', 'newGame', seed === undefined ? {} : { seed: seed });
     void s;
   }
-  M.settings = function () { const s = stateOf(); if (s && s.ui && s.ui.settings) return s.ui.settings; return { volume: 0.5, muted: false, particles: 'high', shake: true, colorblind: false, autoSimHint: false, hudMode: 'full', hudCollapsed: {} }; };
+  M.settings = function () { const s = stateOf(); if (s && s.ui && s.ui.settings) return s.ui.settings; return { volume: 0.5, muted: false, particles: 'high', shake: true, colorblind: false, autoSimHint: false, hudMode: 'full', hudCollapsed: {}, alerts: 'normal', mutedIssues: {} }; };
   /** mirror state.ui.settings to localStorage['bsu.settings'] (a failure → one 'saveUnavailable' hint) */
   M.saveSettings = function () { try { window.localStorage.setItem('bsu.settings', JSON.stringify(M.settings())); } catch (e) { const s = stateOf(); if (s) M.hint(s, 'saveUnavailable'); } };
   /** stat popover from economy.breakdown */
@@ -38268,13 +38180,15 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     host._particles = chk('seg-particles', 'Particles (high)', function () { return M.settings().particles !== 'low'; }, function (v) { M.settings().particles = v ? 'high' : 'low'; });
     host._shake = chk('chk-shake', 'Screen shake', function () { return M.settings().shake !== false; }, function (v) { M.settings().shake = v; });
     host._cb = chk('chk-colorblind', 'Colorblind overlays', function () { return !!M.settings().colorblind; }, function (v) { M.settings().colorblind = v; });
-    host._gators = chk('chk-gators', 'Mute gator sightings', function () { return !!M.settings().muteGators; }, function (v) { M.settings().muteGators = v; alertAt = -1e9; alertKey = ''; }); host._gators.title = 'Sightings go to the ticker only; a gator that blocks a path or closes a hall still notifies';   // gator pass
     const sp = el('div', 'seg'); [0, 1, 2, 4, 8].forEach(function (v) { const b = btn(null, v === 0 ? 'Pause' : v + '×', 'seg-btn', function () { M.setSpeed(stateOf(), v); refreshSettingsPanel(stateOf(), host); }); b.dataset.speed = String(v); sp.appendChild(b); }); rowEl('Speed', sp); host._speed = sp;
     const us = el('div', 'seg'); host._uiScale = us; UI_SCALES.forEach(function (v) { const b = btn('btn-uiscale-' + Math.round(v * 100), Math.round(v * 100) + '%', 'seg-btn', function () { M.setUiScale(v); refreshSettingsPanel(stateOf(), host); }); b.dataset.scale = String(v); b.title = 'Interface size ' + Math.round(v * 100) + '%'; us.appendChild(b); });
     { const ab = btn('btn-uiscale-auto', 'Auto', 'seg-btn', function () { M.setUiScale('auto'); refreshSettingsPanel(stateOf(), host); }); ab.dataset.scale = 'auto'; ab.title = 'Pick the interface size from this window'; us.appendChild(ab); }   // P5
     const uw = el('div', 'seg-wrap'); const un = el('div', 'seg-note hidden', ''); host._uiNote = un; uw.appendChild(us); uw.appendChild(un); rowEl('UI size', uw);   // UI scale pass (C7)
     const hs = el('div', 'seg'); host._hud = hs; [['full', 'Full'], ['compact', 'Compact'], ['hidden', 'Hidden']].forEach(function (d) { const b = btn('btn-hud-' + d[0], d[1], 'seg-btn', function () { M.setHudMode(d[0]); refreshSettingsPanel(stateOf(), host); }); b.dataset.hud = d[0]; b.title = d[0] === 'full' ? 'Every panel' : d[0] === 'compact' ? 'Each panel folds to a pill that opens on hover or click' : 'Only the decision toasts and a small chip'; hs.appendChild(b); });
     const hw = el('div', 'seg-wrap'); hw.appendChild(hs); hw.appendChild(el('div', 'seg-note', 'H cycles Full → Compact → Hidden · Shift+H restores · the ▾ on a panel folds just that one')); rowEl('HUD', hw);   // hud + zoom pass
+    // calm alerts pass: Alerts Normal / Quiet / Off
+    const as = el('div', 'seg'); host._alerts = as; [['normal', 'Normal', 'Map beacons from severity 2 (at most 6), issue toasts once per kind per week'], ['quiet', 'Quiet', 'Beacons only for severity 3; no toasts except decisions'], ['off', 'Off', 'The Issues tray folds to its count; no beacons, no toasts']].forEach(function (d) { const b = btn('btn-alerts-' + d[0], d[1], 'seg-btn', function () { M.setAlertMode(d[0]); refreshSettingsPanel(stateOf(), host); }); b.dataset.alerts = d[0]; b.title = d[2]; as.appendChild(b); });
+    const aw = el('div', 'seg-wrap'); aw.appendChild(as); aw.appendChild(el('div', 'seg-note', 'Low-priority rows (unlinked paths, mosquito hotspots) and muted kinds sit under Suggestions in the tray · the 🔔 on a tray row mutes that kind · hold I or toggle Spotlight to light every issue')); rowEl('Alerts', aw);
     rowEl('Tour', btn('btn-coach-replay', 'Replay the 60-second tour', 'small', function () { M.startCoach(stateOf()); }));
     const leg = el('div', 'legend-table'); for (const o of ((BSU.data && BSU.data.overlays) || [])) { const r = el('div', 'legend-row'); r.appendChild(el('span', 'key', o.key)); r.appendChild(el('span', 'k', o.name)); r.appendChild(el('span', 'v', o.legend.join(' · '))); leg.appendChild(r); } rowEl('Overlays', leg);
     const keys = el('div', 'keys-table'); keys.id = 'keys'; const KEYNAMES = { ' ': 'Space' }; for (const k of ((BSU.data && BSU.data.keys) || [])) { if (/^pan|^pick[2-9]|^toast/.test(k.action)) continue; const r = el('div', 'legend-row'); r.appendChild(el('span', 'key', (k.ctrl ? 'Ctrl+' : '') + (k.shift ? 'Shift+' : '') + (KEYNAMES[k.key] || (k.key.length === 1 ? k.key.toUpperCase() : k.key)))); r.appendChild(el('span', 'k', k.action === 'pick1' ? 'pick item 1–9' : k.action.replace(/([A-Z])/g, ' $1').toLowerCase())); keys.appendChild(r); } rowEl('Keys', keys);
@@ -38287,7 +38201,8 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
   }
   function refreshSettingsPanel(s, host) {
     if (!host) return;
-    [host._audio, host._particles, host._shake, host._cb, host._gators].forEach(function (b) { if (!b || !b._get) return; const on = !!b._get(); setText(b, on ? 'On' : 'Off'); b.setAttribute('aria-pressed', on ? 'true' : 'false'); });
+    [host._audio, host._particles, host._shake, host._cb].forEach(function (b) { if (!b || !b._get) return; const on = !!b._get(); setText(b, on ? 'On' : 'Off'); b.setAttribute('aria-pressed', on ? 'true' : 'false'); });
+    if (host._alerts) for (const b of host._alerts.children) cls(b, 'active', b.dataset.alerts === alertModeOf());   // calm alerts pass
     if (host._speed) for (const b of host._speed.children) cls(b, 'active', String(fin(s.ui.speed, 1)) === b.dataset.speed);
     if (host._vol) host._vol.value = String(fin(M.settings().volume, 0.5));
     if (host._uiScale) for (const b of host._uiScale.children) { const d = b.dataset.scale; cls(b, 'active', d === 'auto' ? uiMode === 'auto' : uiMode !== 'auto' && Number(d) === appliedScale); }
@@ -38327,6 +38242,11 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
   M.alert = function (state, spec) { manualAlert = spec || null; alertAt = -1e9; void state; };
   function autoAlert(s) {
     const day = dayOf(s);
+    const mode = alertModeOf(); if (mode === 'off') return null;   // calm alerts pass: Off = no strip at all; Quiet = the danger chips only (storm, heat, blackout)
+    if (mode === 'quiet') { const a = autoAlertFull(s, day); return a && a.kind === 'danger' ? a : null; }
+    return autoAlertFull(s, day);
+  }
+  function autoAlertFull(s, day) {
     const st = call('weather', 'storm', s);
     if (st && !st.nearMiss && st.phase >= STORM.NAMED && st.phase <= STORM.LANDFALL) {
       const H = fin(call('weather', 'forecastSurge', s), 0); const g = H > 0 ? call('buildings', 'gaps', s, H) : null; const gl = g && Array.isArray(g.gaps) ? g.gaps : [];
@@ -38341,7 +38261,6 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     const flooded = list.find(function (b) { if (!b || !b.flooded || b.ruin) return false; const r = rowOf(b.type); return b.type === 'founders_hall' || (r && r.needsPower); });
     if (flooded) return { icon: '🌊', text: (flooded.name || flooded.type) + ' is flooded', action: { label: 'Show me', fn: function () { call('render', 'panToTile', flooded.tx, flooded.ty); } }, kind: 'water' };
     if (call('buildings', 'boilWaterTriggered', s)) return { icon: '🚱', text: 'Boil-water advisory', kind: 'water' };
-    const gc = gatorChip(s, day); if (gc) return gc;   // gator pass: one chip per gator per visit (12 s, 3-day cooldown, mute → ticker only)
     const lg = s.wildlife && s.wildlife.leGrand; if (lg) { const left = Math.max(0, fin(s.wildlife.leGrandDay, day) + 3 - day); const i = clamp(Math.floor(fin(lg.tx, 0)), 0, W - 1) + clamp(Math.floor(fin(lg.ty, 0)), 0, HGT - 1) * W; return { icon: '🐊', text: '', gator: { name: 'Le Grand at the cypress lake · ' + left + (left === 1 ? ' day' : ' days'), i: i }, kind: 'wildlife' }; }
     return null;
   }
@@ -38580,7 +38499,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
       for (let k = notifs.length - 1; k >= 0; k--) { notifs[k].closed = true; } notifs.length = 0;
       odo.cash = NaN; odo.students = NaN; odo.lastStudents = NaN; odo.holdUntil = -1; odo.deltaUntil = 0;
       tk = { x: 0, line: null, seen: Math.max(0, ((state && state.ticker) || []).length - 1), w: 0, lastLen: -1, logOpen: false, cycle: 0 };
-      alertClosedKey = ''; for (const k in gatorAlerts) delete gatorAlerts[k];
+      alertClosedKey = ''; tray.suggestOpen = false; tray.sopen = {};
       bubble = { since: clock, until: 0, key: '' }; objKey = ''; alertKey = ''; alertAt = -1e9; msAt = -1e9; speedKey = ''; paletteKey = ''; palShownTab = ''; pipKey = ''; paletteDirty = true; capacityShown = false; skipShown = false; paletteHidden = null; hudFade = false;   // null: the first updateSetPiece re-syncs #palette and #hud.no-palette (a stale no-palette from the title / tutorial left a 0-height palette after newGame/load)
       M.debug.open = false; M.hoverTile = -1; lastGhost = null;
       tray.key = ''; tray.rows = []; tray.hadIssues = false; tray.clearAt = -1e9; heldI = false; spotToggled = false; try { if (BSU.issues) { BSU.issues.select(null); BSU.issues.spotlight(false); BSU.issues.pulse(null); } } catch (e) { /* */ }
@@ -38697,7 +38616,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
         A(M.keydown('i', { ctrl: false, shift: false, meta: false, alt: false, repeat: true }) === true && I.selectedId() === li[0].id, 'key repeat does not cycle'); keyup('i');
         A(M.keydown('I', { ctrl: false, shift: true, meta: false, alt: false }) === true && I.spotlight() === true && spotToggled, 'Shift+I toggles spotlight on');
         s.ui.tool = null; s.ui.panel = null; A(M.keydown('Escape', M0) === true && I.spotlight() === false && I.selectedId() === null, 'Esc clears the selection and the spotlight');
-        A(locateKindsOf({ text: 'A gator is on the quad' })[0] === 'gatorOnCampus' && locateKindsOf({ locate: 'power' }).length === 3 && locateKindsOf({ text: 'Saved' }) === null, 'locate kinds from a notification');
+        A(locateKindsOf({ text: 'Tiger Hall is flooded' })[0] === 'flooded' && locateKindsOf({ text: 'A gator is on the quad' }) === null && locateKindsOf({ locate: 'power' }).length === 3 && locateKindsOf({ text: 'Saved' }) === null, 'locate kinds from a notification (gators are not issues)');
         const r = fixIssue(s, li[0]); A(r && r.ok !== false && (bm.open === true || (s.ui.tool && s.ui.tool.id === 'substation')) && I.selectedId() === li[0].id, 'Fix arms the Substation (palette card, or the build menu when no spot is in reach)'); M.closeBuildMenu(); M.selectTool(s, null);
         s.buildings = []; I.invalidate(); A(I.list(s).length === 0 && I.selectedId() === null, 'issue gone → selection gone'); I.reset();
       }
@@ -40048,6 +39967,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     clear(host._list);
     const rows = (BSU.data && BSU.data.milestones) || [];
     rows.forEach(function (m) {
+      if (m.retired && !call('progress', 'earned', s, m.id)) return;   // calm pass: Gator Wrangler / Sunbather are retired (an old save that earned one keeps it)
       const earned = call('progress', 'earned', s, m.id);
       const reward = m.reward || {};
       let rt = '';
@@ -40172,6 +40092,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     const rows = (BSU.data && BSU.data.milestones) || [];
     rows.forEach(function (m) {
       const earned = call('progress', 'earned', s, m.id);
+      if (m.retired && !earned) return;   // calm pass: retired milestones stay out of the Almanac too
       const t = el('div', 'bud-col' + (earned ? '' : ' locked'));
       t.appendChild(el('div', 'k', m.name)); t.appendChild(el('div', 'v', earned ? 'Earned' : m.text));
       host._achievements.appendChild(t);
@@ -40190,11 +40111,9 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
 
     clear(host._gators);
     const wl = s.wildlife || {};
-    const relocations = fin(wl.relocations, 0);
-    const incidents = Array.isArray(wl.incidents) ? wl.incidents.length : fin(wl.incidents, 0);
-    const photos = fin(wl.leGrandPhotoYear, 0);
-    host._gators.appendChild(el('div', 'row')); host._gators.lastChild.appendChild(el('span', 'k', 'Relocations')); host._gators.lastChild.appendChild(el('span', 'v', String(relocations)));
-    const r2 = el('div', 'row'); r2.appendChild(el('span', 'k', 'Incidents')); r2.appendChild(el('span', 'v', String(incidents))); host._gators.appendChild(r2);
+    const photos = fin(wl.leGrandPhotoYear, 0);   // calm pass: no relocation / incident counts (gators are scenery)
+    const gn = Array.isArray(s.gators) ? s.gators.length : 0;
+    const r1 = el('div', 'row'); r1.appendChild(el('span', 'k', 'Gators in the swamp')); r1.appendChild(el('span', 'v', String(gn))); host._gators.appendChild(r1);
     const r3 = el('div', 'row'); r3.appendChild(el('span', 'k', 'Le Grand')); r3.appendChild(el('span', 'v', photos > 0 ? ('photographed (Y' + photos + ')') : 'not yet sighted')); host._gators.appendChild(r3);
 
     refreshFootball(s, host);
@@ -41773,7 +41692,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     bayouField: null, nightFalls: null, geauxBeatMagnolia: null, undefeated: null, bigBoil: null, throwMeSomethin: null, skeeterBeater: null,
     firstBell: function (s) { return students(s) >= fin(MG.firstBell, 600); },
     highAndDry: function (s) { const H = fin(MG.highAndDryH, 8); if (!call('buildings', 'ringClosed', s, H)) return false; const g = call('buildings', 'gaps', s, H); if (g && g.gaps && g.gaps.length) return false; return pumpInsideRing(s, H); },
-    gatorWrangler: function (s) { return fin(s.wildlife && s.wildlife.relocations, 0) >= fin(MG.gatorWrangler, 10); },
+    gatorWrangler: function () { return false; },   // retired (calm alerts + ambient gators pass): never earned, hidden in the panel
     greenAndGold: function (s) { const g = MG.greenAndGold || {}; return ecology(s) >= fin(g.ecology, 70) && students(s) >= fin(g.students, 3000); },
     fortressBayou: function (s) { const g = MG.fortressBayou || {}; if (otherExclusiveThisYear(s, 'livingWithWater')) return false; return !!call('buildings', 'ringClosed', s, fin(g.H, 12)) && floodwallTiles(s, true, fin(g.H, 12)) >= fin(g.floodwalls, 40); },
     livingWithWater: function (s) { const g = MG.livingWithWater || {}; if (otherExclusiveThisYear(s, 'fortressBayou')) return false; return ecology(s) >= fin(g.ecology, 75) && students(s) >= fin(g.students, 2000) && floodwallTiles(s, false) <= fin(g.floodwallMax, 10); },
@@ -41786,7 +41705,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
   };
   const MILESTONE_PROGRESS = {
     firstBell: function (s) { return { progress: students(s), goal: fin(MG.firstBell, 600) }; },
-    gatorWrangler: function (s) { return { progress: fin(s.wildlife && s.wildlife.relocations, 0), goal: fin(MG.gatorWrangler, 10) }; },
+    gatorWrangler: function () { return { progress: 0, goal: fin(MG.gatorWrangler, 10) }; },
     greenAndGold: function (s) { const g = MG.greenAndGold || {}; return { progress: Math.min(ecology(s) / fin(g.ecology, 70), students(s) / fin(g.students, 3000)), goal: 1 }; },
     fortressBayou: function (s) { const g = MG.fortressBayou || {}; return { progress: floodwallTiles(s, false), goal: fin(g.floodwalls, 40) }; },
     livingWithWater: function (s) { const g = MG.livingWithWater || {}; return { progress: Math.min(ecology(s) / fin(g.ecology, 75), students(s) / fin(g.students, 2000)), goal: 1 }; },
@@ -42003,7 +41922,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     '13': function (s, c) { return !!c.trig['13']; },
     '14': function (s, c) { return !!c.trig['14']; },
     '15': function (s) { return students(s) >= fin(G.students15, 400); },
-    '16': function (s, c) { return (!!c.trig['16'] && done(s, '9')) || ecology(s) < fin(G.ecology16, 75); },
+    '16': function (s, c) { return !!c.trig['16'] || ecology(s) < fin(G.ecology16, 75); },   // calm pass: Objective 9 (gator counterplay) is retired; the first gator visit still opens Preserve it
     '17': function (s) { return students(s) >= fin(G.students17, 1000); },
     '18a': function (s) { return bhas(s, 'practice_field', 1); },
     '18b': function (s) { return done(s, '18a'); },
@@ -42961,26 +42880,14 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
       case EV.GATOR_CAMPUS: {
         if (!e || !e.enter) break;
         const i = fin(e.i, NONE);
-        if (p.firsts.gatorDay < 0) {
-          p.firsts.gatorDay = day; c.firstGatorTile = i;
-          if (warningsOn(state)) firstWarningDrop(state, c, (e.name || 'A gator') + ' is on campus.', 'wildlife', i);
-        }
-        c.trig['9'] = true; c.trig['16'] = true;
-        if (i >= 0 && (state.tiles.flags[i] & FLAG.CANAL) && state.tiles.surface[i] >= SURF.PATH && c.lastGatorEnterDay !== day) { c.lastGatorEnterDay = day; M.ticker(state, 1, null, null, i); }
+        // calm alerts + ambient gators pass: no first-gator warning, no Objective 9, no incident / relocation lines; the culvert line is a rare flavour (≥ 90 days apart)
+        if (p.firsts.gatorDay < 0) { p.firsts.gatorDay = day; c.firstGatorTile = i; }
+        c.trig['16'] = true;
+        if (i >= 0 && (state.tiles.flags[i] & FLAG.CANAL) && state.tiles.surface[i] >= SURF.PATH && (c.lastGatorEnterDay === NONE || day - c.lastGatorEnterDay >= 90)) { c.lastGatorEnterDay = day; M.ticker(state, 1, null, null, i); }
         break;
       }
-      case EV.GATOR_INCIDENT:
-        if (e && e.kind === 'pool') M.ticker(state, 28, null, null, fin(e.i, NONE));
-        if (e && e.kind === 'field' && state.sports && state.sports.game) M.achieve(state, 'sunbather');
-        break;
-      case EV.GATOR_RELOCATED: {
-        const m = parts(day).month;
-        if (c.relocMonth !== m) { c.relocMonth = m; c.relocCount = {}; }
-        const key = String(e && e.id);
-        c.relocCount[key] = (c.relocCount[key] || 0) + 1;
-        if (c.relocCount[key] === 4) M.ticker(state, 21, { gator: (e && e.name) || 'the gator' });
-        break;
-      }
+      case EV.GATOR_INCIDENT: break;    // retired, never emitted
+      case EV.GATOR_RELOCATED: break;   // ambient (an officer walking a gator home); no ticker line
       case EV.MOSQUITO_WARNING:
         if (p.firsts.mosquitoDay < 0) { p.firsts.mosquitoDay = day; if (warningsOn(state)) firstWarningDrop(state, c, 'Mosquito warning: standing water on campus.', 'wildlife', fin(e && e.worstTile, NONE)); }
         if (e && Number.isFinite(e.worstTile)) c.worstMosqTile = e.worstTile;
@@ -43060,7 +42967,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
           // Mardi Gras parade (§14.3): the first Dusk on or after Feb 8 (the sky cycle is 3 calendar days, so Feb 8 itself may have none), once per year
           { const yr = yearOf(day), feb8 = dateDay('Feb 8', yr); if (p.tutorialStage >= 6 && feb8 >= 0 && day >= feb8 && day <= feb8 + 4 && p.paradeYear !== yr) { c.paradeWanted = day; c.paradeStart = true; } }
           // first gator (§9.2): the first Dusk on or after Feb 9 Y1, any year until Objective 9 has been offered; once per day
-          if (!M.offered(state, '9') && p.tutorialStage >= 6 && day >= dateDay('Feb 9', 1) && c.firstGatorDay !== day) { c.firstGatorDay = day; call('wildlife', 'forceFirstGator', state); }
+          if (p.firsts.gatorDay < 0 && p.tutorialStage >= 6 && day >= dateDay('Feb 9', 1) && c.firstGatorDay !== day) { c.firstGatorDay = day; call('wildlife', 'forceFirstGator', state); }   // calm pass: an ambient first visit (once; Objective 9 is retired)
           if (day % 5 === 0 && bhas(state, 'union') && c.zydecoDay !== day) { c.zydecoDay = day; M.ticker(state, 8); }
         }
         if (ph === SKY.NIGHT && !p.hints.ticker24 && fin(state.wildlife && state.wildlife.fireflies, 0) >= 50) { p.hints.ticker24 = true; M.ticker(state, 24); }

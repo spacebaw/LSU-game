@@ -126,16 +126,16 @@
     pump: 'Pumps 15 tile-ft a day out of its canal network. Needs power.',
     pond: 'Holds 20 tile-ft of runoff; once stocked, mosquitoes −80% within 4.',
     pilings: 'Lifts one building 3 ft above the flood line (+40% of its cost).',
-    gator_fence: 'A fence gators cannot cross; students walk through. Keeps gators off paths and out of your halls.',   // gator pass
+    gator_fence: 'A low cypress rail along the bank: gators keep to their side, students step over. Pure scenery.',   // calm pass: ambient
     abatement: 'A fogger truck: mosquitoes −70% along paths within 8. Costs ecology.',
     bat_house: 'Bats and martins: mosquitoes −30% within 4 (stacks to −60%); +0.5 ecology.',
-    wildlife_post: 'An officer who relocates gators within 14 for free (else a $15k Parish call-out); stops nutria; +3 ecology.',   // gator pass
-    preserve: 'Protects a tile as wetland: +0.5 ecology, slows the surge, and gators lounge here instead of campus.',   // gator pass
+    wildlife_post: 'Nutria burrowing −80% within 14, debris cleared, Cajun Navy, +3 ecology; the officer walks stray gators home.',   // calm pass
+    preserve: 'Protects a tile as wetland: +0.5 ecology, slows the surge; gators like to lounge here.',   // calm pass
     live_oak: '+1 happiness within 4; shade cuts heat −30%; wind damage −30% within 2.',
     cypress: 'Roots drink 0.05 ft of water a day and halve sinking next door; +0.5 ecology.',
     azalea: '+1 happiness within 3; +1 more while it blooms in March.',
     bell_tower: 'Landmark +10 and +3 happiness campus-wide; bells at midday and dusk.',
-    tiger_habitat: 'Landmark +8, +5 happiness within 15, home win +5%; gators stay 10 tiles away.',
+    tiger_habitat: 'Landmark +8, +5 happiness within 15, home win +5%; the gators give Roux a wide berth.',
     surge_barrier: 'A gate that closes the bayou when the stage passes 2 ft. Needs 2 powered Pumps.',
     marsh_restoration: 'Turns 10–40 tiles back into marsh over 30 days; up to +15 ecology.',
     rookery: 'Landmark +6, +2 happiness within 8, and spoonbills every dawn.'
@@ -347,8 +347,8 @@
     row({ n: 31, name: 'Gator Fence', kind: 'drag', cost: 8000, upkeep: 80, placeRule: PLACE.FENCE, pip: 'gator',
       effects: { surfaceId: SURF.FENCE, special: ['gatorBlock'] },
       paint: flat(['#9A9A9E', GOLD], ['sign']),
-      why: 'Gators cannot cross it. Students can. Everyone is happier.',
-      desc: 'Blocks gators and nutria; students pass; Cat 3+ breaks 30% of segments.' }),
+      why: 'A rail along the bank. The gators respect it; so do the photographers.',
+      desc: 'Decorative bank rail: gators and nutria keep to their side, students step over; Cat 3+ breaks 30% of segments.' }),
     row({ n: 32, name: 'Mosquito Abatement Station', cost: 90000, upkeep: 2500, wr: 2, pip: 'mosquito',
       effects: { mosquito: { mult: 0.3, radius: 8, stacksTo: 0 }, special: ['fogger'] },
       paint: P({ wall: ['#5E2CA5', PURPLE], roof: 'gable', roofColor: PURPLE, windows: { cols: 1, rows: 1 }, decals: ['truck'], special: 'abatement', material: 'metal', features: ['sign:FOG'] }),
@@ -362,13 +362,13 @@
     row({ n: 34, name: 'Wildlife Officer Post', cost: 140000, upkeep: 4000, wr: 2, pip: 'gator',
       effects: { ecology: 3, special: ['officer', 'traps', 'debris', 'cajunNavy'] },
       paint: P({ wall: ['#C9B47C', '#A8925C'], roof: 'gable', roofColor: '#4A3B2A', windows: { cols: 2, rows: 1 }, decals: ['truck', 'airboat', 'sign'], special: 'wildlife_post' }),
-      why: 'One officer, a truck, and an airboat. The gators know the truck.',
-      desc: 'Relocates gators within 14; nutria burrowing −80% within 14; clears debris; Cajun Navy; +3 ecology.' }),
+      why: 'One officer, a truck, and an airboat. The nutria know the truck.',
+      desc: 'Nutria burrowing −80% within 14; clears debris; Cajun Navy; +3 ecology; the officer walks stray gators home (scenery).' }),
     row({ n: 35, name: 'Wetland Preserve', kind: 'paint', cost: 5000, upkeep: 0, placeRule: PLACE.PRESERVE,
       effects: { ecologyPerTile: 0.5, special: ['preserve'] },
       paint: flat(['#8A9A4B', '#6E8F3C'], ['reeds', 'lookout']),
       why: 'Preserving swamp is cheaper flood defense with a longer payback.',
-      desc: 'Protected tile; +0.5 ecology/tile; absorbs gator wanders; surge head loss 0.12 ft/tile; fireflies ×3.' }),
+      desc: 'Protected tile; +0.5 ecology/tile; gators lounge here; surge head loss 0.12 ft/tile; fireflies ×3.' }),
     row({ n: 36, name: 'Live Oak', cost: 12000, upkeep: 0, wr: 5,
       effects: { happiness: { value: 1, radius: 4 }, heat: { mult: 0.7, radius: 3 }, windShield: { mult: 0.7, radius: 2 }, ecology: 0.3 },
       paint: flat(['#3A2A1E', '#3B5A2A'], [], 'live_oak'),
@@ -396,7 +396,7 @@
       effects: { landmark: 8, happiness: { value: 5, radius: 15 }, homeWinBonus: 0.05, gatorAvoidRadius: 10, special: ['tank', 'habitat'] },
       paint: P({ wall: ['#9C978E', '#7C776F'], roof: 'none', roofColor: '', floors: 0, decals: [], special: 'tiger_habitat', material: 'stone', accent: '#E07020', features: ['sign:ROUX'] }),   // habitat pass: a bespoke zoo-exhibit painter (sprites_buildings.js habitatPaint) draws the pool, den, glass, plaza; the paint row only names it
       why: 'Roux lives here. The gators keep their distance. So do opponents.',
-      desc: 'Landmark +8; +5 happiness radius 15; home win +5%; gators avoid radius 10; floods → Roux Is Loose.' }),
+      desc: 'Landmark +8; +5 happiness radius 15; home win +5%; gators keep 10 tiles from Roux; floods → Roux Is Loose.' }),
     row({ n: 41, name: 'Bayou Surge Barrier', kind: 'drag', cost: 6000000, upkeep: 40000, wr: 5, placeRule: PLACE.BARRIER,
       unlock: { milestone: 'fortressBayou' },
       effects: { gate: true, ecology: -10, happiness: { value: -2, radius: 4 }, flatTimer: 'surgeBarrier', noise: { value: 2, radius: 4 } },
@@ -1134,9 +1134,10 @@
     ['Laissez les Bons Temps Rouler', '20,000 students, prestige 85, ecology ≥ 50', {}],
     ['Untouched', 'Reach Flagship without draining a single marsh tile', {}]
   ];
+  const RETIRED_MILESTONES = { gatorWrangler: true, sunbather: true };   // calm alerts + ambient gators pass: never earned again, hidden in the panel
   const milestones = BSU.MILESTONES.map(function (id, i) {
     const m = MILESTONE_ROWS[i] || ['', '', {}];
-    return { id: id, name: m[0], text: m[1], reward: m[2] };
+    return { id: id, name: m[0], text: m[1], reward: m[2], retired: !!RETIRED_MILESTONES[id] };
   });
 
   // ---------------------------------------------------------------------------
@@ -1404,16 +1405,8 @@
   // ---------------------------------------------------------------------------
   // Assemble, deep-freeze, self-test
   // ---------------------------------------------------------------------------
-  /** gator pass: the one-line rationale the issues tray, the notifications and the inspect panel carry ({fee}/{days} filled by issues.js) */
-  const gatorText = {
-    why: "Students won't walk past a gator: class attendance and happiness drop until it is moved.",
-    whyClosed: 'A gator within 2 tiles closes the kitchen or pool: nobody eats or swims until it is moved.',
-    whyGame: 'A gator on the field delays kickoff and refunds part of the tailgate take.',
-    fixFree: 'Fix: the Wildlife Officer wrangles it (free). Or fence this bank, or build a Preserve so it lounges there instead.',
-    fixPaid: 'Fix: Parish Wildlife call-out {fee}, arrives in {days}. Or fence this bank, or build a Preserve so it lounges there instead.'
-  };
   const data = {
-    gatorText: gatorText, catalog: catalog, catalogList: catalogList, tabs: tabs, decals: decals, names: names, students: students,
+    catalog: catalog, catalogList: catalogList, tabs: tabs, decals: decals, names: names, students: students,
     coaches: coaches, coachQuotes: coachQuotes, staff: staff, gatorNames: gatorNames, leGrand: leGrand, stormNames: stormNames,
     opponents: opponents, schedule: schedule, calendar: calendar, ticker: ticker, tickerKinds: tickerKinds,
     tickerKindList: TICKER_KIND_LIST, objectives: objectives, milestones: milestones, voiceCards: voiceCards,

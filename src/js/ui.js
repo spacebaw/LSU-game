@@ -146,8 +146,7 @@
   let hint = null;                         // {until, untilTick}
   let bubble = { since: 0, until: 0, key: '' };
   let manualAlert = null, alertAt = -1e9, alertKey = '';
-  let alertClosedKey = '';                 // gator pass: the alert key the player closed with ✕ (hidden until the alert changes)
-  const gatorAlerts = {};                  // gator pass: gator id → {until (ms clock), cooldownDay}: one chip per gator per visit, 12 s, no re-fire for 3 days
+  let alertClosedKey = '';                 // the alert key the player closed with ✕ (hidden until the alert changes)
   let paletteDirty = true, paletteKey = '', paletteTab = '', pipKey = '', hudFade = false, hudFadeAt = 0, capacityShown = false;
   let objKey = '', msAt = -1e9, panelAt = -1e9, perfAt = -1e9, speedKey = '', skipShown = false, paletteHidden = false, errCount = 0;
   let pendingPlaceSound = 0;
@@ -220,7 +219,7 @@
     const ic = el('span', null, ''); ic.id = 'alert-icon'; const tx = el('span', null, ''); tx.id = 'alert-text';
     const act = btn('alert-action', '', 'small', function () { const s = stateOf(); const sp = currentAlert; if (sp && sp.action && typeof sp.action.fn === 'function') sp.action.fn(s); });
     const g = el('span', 'chip gator hidden', ''); g.id = 'alert-gator'; g.addEventListener('click', function () { const sp = currentAlert; if (sp && sp.gator && Number.isFinite(sp.gator.i)) { const t = tileOf(sp.gator.i); call('render', 'panToTile', t.tx, t.ty); } });
-    const x = btn('alert-close', '✕', 'icon', function () { closeAlert(); });   // gator pass: every chip can be closed; a closed gator chip starts its 3-day cooldown
+    const x = btn('alert-close', '✕', 'icon', function () { closeAlert(); });   // every chip can be closed (the #alert-gator chip is Le Grand's, the lake legend: ambient)
     x.title = 'Dismiss (the ticker keeps the log)';
     a.appendChild(ic); a.appendChild(tx); a.appendChild(act); a.appendChild(g); a.appendChild(x);
     E['alert-strip'] = a; E['alert-icon'] = ic; E['alert-text'] = tx; E['alert-action'] = act; E['alert-gator'] = g; E['alert-close'] = x; return a;
@@ -521,7 +520,7 @@
     const col = hudCollapsedOf();
     for (const k in HUD_PARTS) {
       const e = E[HUD_PARTS[k]]; if (!e) continue;
-      const want = eff === 'compact' || (eff === 'full' && !!col[k] && coach.expanded.indexOf(k) < 0);
+      const want = eff === 'compact' || (eff === 'full' && !!col[k] && coach.expanded.indexOf(k) < 0) || (k === 'issues' && alertModeOf() === 'off' && coach.step < 0);   // calm alerts pass: Alerts Off folds the tray to its count pill
       if (e.classList.contains('pill') !== want) { cls(e, 'pill', want); if (k === 'issues') tray.key = ''; }
       if (!want && e.classList.contains('peek')) cls(e, 'peek', false);
     }
@@ -594,9 +593,6 @@
     on('storm:toast', function (p) { const s = stateOf(); if (s) M.decision(s, { id: p.id, text: p.text, yes: p.yes, no: p.no, untilTick: p.untilTick, ticks: L.toastTicks }); });
     on('storm:named', function () { alertAt = -1e9; }); on('storm:watch', function () { alertAt = -1e9; }); on('storm:bands', function () { alertAt = -1e9; }); on('storm:landfall', function () { alertAt = -1e9; }); on('storm:passed', function () { alertAt = -1e9; });
     on('mosquito:warning', function (p) { alertAt = -1e9; const s = stateOf(); if (s && p && p.text) M.notify(s, { kind: 'wildlife', text: p.text, locate: 'mosquito' }); });
-    on('gator:campus', function () { alertAt = -1e9; });
-    on('gator:blocked', function (p) { const s = stateOf(); if (s) gatorBlocked(s, p); });   // gator pass: escalation → a notification with Locate + Fix
-    on('gator:callout', function (p) { const s = stateOf(); if (s && p && p.arrived) M.notify(s, { kind: 'wildlife', text: 'Parish Wildlife relocated ' + (p.name || 'the gator') + '.', ttl: 6000 }); alertAt = -1e9; });
     on('weather:heat', function () { alertAt = -1e9; });
     on('power:blackout', function () { alertAt = -1e9; }); on('power:restored', function () { alertAt = -1e9; });
     on('building:flooded', function () { alertAt = -1e9; }); on('building:dried', function () { alertAt = -1e9; });
@@ -1278,7 +1274,6 @@
       setText(E['insp-sub'], r.name + (b.tier > 0 && r.tiers && r.tiers[b.tier - 1] ? ' · ' + (r.tiers[b.tier - 1].name || 'Tier ' + b.tier) : '') + (b.pilings ? ' · on pilings' : ''));
       call('render', 'drawIcon', spr, b.type); hasSprite = true;
       if (b.ruin) body.appendChild(row('Status', 'Ruin', 'bad')); else if (b.built < 1) body.appendChild(row('Status', 'Under construction ' + Math.round(fin(b.built, 0) * 100) + '%')); else if (b.flooded) body.appendChild(row('Status', 'Flooded', 'bad')); else if (b.blackout) body.appendChild(row('Status', 'Blackout', 'bad')); else if (b.closedUntil >= 0 && b.closedUntil > dayOf(s)) body.appendChild(row('Status', 'Closed · reopens ' + BSU.formatDate(b.closedUntil)));
-      else if (call('buildings', 'gatorClosed', s, b.id)) body.appendChild(row('Status', 'Closed · a gator is too close (relocate it)', 'bad'));   // qa pass 4: a gator-closed kitchen served nobody and said nothing
       const ms = ef.feeds ? call('buildings', 'menuOf', s, b.id) : null;   // P6: a kitchen feeds its menu's throughput
       if (ms && b.built >= 1 && !b.ruin) body.appendChild(menuSection(s, b, ms));   // menu layout pass: first in the body, so the summary and Edit menu never need scrolling to
       if (ef.beds) body.appendChild(row('Beds', String(ef.beds))); if (ef.seats) body.appendChild(row('Seats', String(ef.seats))); if (ef.feeds) body.appendChild(row('Feeds', ms ? '~' + ms.throughput.toLocaleString('en-US') + ' a day (menu)' : String(ef.feeds)));
@@ -1301,7 +1296,6 @@
       if (issuesApi()) { const li = issuesApi().byId(s, 'unlinked:' + b.id); if (li && li.action && li.action.link) acts.appendChild(action(li.resolvable ? 'Link to campus · ' + money(li.cost) : 'Link to campus', function (st) { const r2 = call('buildings', 'linkBuilding', st, b.id); if (r2 && r2.ok && issuesApi()) issuesApi().invalidate(); return r2; })); }   // issues v2: the gravel tie from the inspect panel too
       if (r.tiers && r.tiers.length > fin(b.tier, 0)) acts.appendChild(action('Upgrade', function (st) { return call('buildings', 'upgrade', st, b.id); }));
       if (b.type === 'generator') acts.appendChild(action('Refuel +3 days $5k', function (st) { return call('buildings', 'refuel', st, b.id); }));
-      if (b.type === 'dining_hall') { const gp = !!(b.data && b.data.policies && b.data.policies.gatorProofDumpsters); acts.appendChild(action((gp ? '✓ ' : '') + 'Gator-proof dumpsters $5k', function (st) { return call('buildings', 'setPolicy', st, b.id, 'gatorProofDumpsters', !gp); })); }
       if (b.type === 'wildlife_post') acts.appendChild(action((b.data && b.data.nutriaBounty ? '✓ ' : '') + 'Nutria bounty', function (st) { return call('buildings', 'setPolicy', st, b.id, 'nutriaBounty', !(b.data && b.data.nutriaBounty)); }));
       if (b.type === 'abatement') acts.appendChild(action(b.data && b.data.active === false ? 'Abatement off → on' : 'Abatement on → off', function (st) { return call('buildings', 'setPolicy', st, b.id, 'active', !(b.data && b.data.active !== false)); }));
       if ((tl.type[i0] === T.WET || tl.type[i0] === T.DRAINED) && r.kind === 'footprint') acts.appendChild(action('Re-grade', function (st) { return call('buildings', 'regrade', st, b.id); }));
@@ -1353,17 +1347,12 @@
       body.appendChild(row('Length', legend || g.size === 'legend' ? '5 m' : g.size === 'juvenile' ? '1.5 m' : '3–4 m'));
       const mood = legend ? 'Unbothered' : ({ SUN: 'Sunning', SWIM: 'Swimming', WANDER: 'Peckish', LOUNGE: 'Lounging', RETREAT: 'Heading home', WRANGLED: 'Wrangled' }[g.state] || 'Sunning');
       body.appendChild(row('Mood', mood));
-      // gator pass: what it is doing, who it delays, what it closes, what it has cost, and the same Fix as the issue row
+      // calm alerts + ambient gators pass: where it is and what it is doing; nothing to fix, nothing it costs
       const st = legend ? null : call('wildlife', 'gatorStatus', s, g.id);
       if (st && st.onCampus) {
-        const verb = ({ SUN: 'sunning', SWIM: 'swimming', WANDER: 'prowling', LOUNGE: 'lounging', RETREAT: 'heading home', WRANGLED: 'being wrangled' }[g.state] || 'sunning');
-        const where = st.onPath ? 'on the path' + (st.near ? ' to ' + st.near.name : '') : (st.near ? 'by ' + st.near.name : 'on the bank');
-        const bits = [verb + ' ' + where]; if (st.delayedVisit > 0) bits.push(st.delayedVisit + ' students rerouted'); if (st.closes >= 0 && st.closesName) bits.push(st.closesName + ' closed');
-        body.appendChild(row('Doing', bits.join(' · ')));
+        const verb = ({ SUN: 'sunning', SWIM: 'swimming', WANDER: 'prowling', LOUNGE: 'lounging', RETREAT: 'heading home', WRANGLED: 'being walked home' }[g.state] || 'sunning');
+        body.appendChild(row('Doing', verb + ' ' + (st.near ? 'by ' + st.near.name : 'on the bank') + ' · it will wander back to the water'));
         body.appendChild(row('On campus', st.visitDays === 0 ? 'since today' : st.visitDays + (st.visitDays === 1 ? ' day' : ' days')));
-        body.appendChild(row('Cost so far', money(st.cost)));
-        body.appendChild(row('Why it matters', st.closes >= 0 ? gatorText('whyClosed') : gatorText('why'), 'why'));
-        if (st.callOut) body.appendChild(row('Parish Wildlife', 'on the way · arrives ' + BSU.formatDate(fin(st.callOut.day, dayOf(s)))));
       } else if (st) {
         body.appendChild(row('Doing', mood.toLowerCase() + (st.near ? ' near ' + st.near.name : ' off campus')));
       }
@@ -1371,8 +1360,6 @@
       if (Number.isFinite(g.target) && g.target >= 0) { const ob = call('buildings', 'at', s, g.target % W, (g.target / W) | 0); body.appendChild(row('Headed for', ob ? 'the ' + (ob.name || (rowOf(ob.type) || {}).name) + ' dumpster' : 'the water')); }
       if (Number.isFinite(g.lastIncidentDay) && g.lastIncidentDay >= 0) body.appendChild(row('Last seen', BSU.formatDate(g.lastIncidentDay)));
       if (legend) acts.appendChild(action('Photograph', function (st2) { return call('wildlife', 'photographLeGrand', st2); }, 'primary'));
-      if (st && st.onCampus && !st.callOut) acts.appendChild(action(st.canWrangle ? 'Relocate · Officer (free)' : 'Call Parish Wildlife · ' + money(st.fee), function (s2) { return gatorFix(s2, g.id); }, 'primary'));
-      if (st && st.onCampus) { acts.appendChild(action('Fence this bank', function (s2) { M.selectTool(s2, 'gator_fence'); return null; })); acts.appendChild(action('Build a Preserve', function (s2) { M.selectTool(s2, 'preserve'); return null; })); }
       acts.appendChild(action('Pan to', function () { call('render', 'panToTile', Math.floor(fin(g.tx, 32)), Math.floor(fin(g.ty, 32))); return null; }));
     } else {
       setText(E['insp-title'], insp.kind); setText(E['insp-sub'], '');
@@ -1950,7 +1937,6 @@
     else if (Number.isFinite(a.overlay)) { M.setOverlay(s, a.overlay); }
     else if (Number.isFinite(a.repair)) { r = call('buildings', 'repair', s, a.repair) || r; }
     else if (Number.isFinite(a.repairLevee)) { r = (a.run && a.run.length ? call('buildings', 'repairLeveeRun', s, a.run) : call('buildings', 'repairLevee', s, a.repairLevee)) || r; }
-    else if (Number.isFinite(a.relocate)) { r = gatorFix(s, a.relocate); if (r && r.ok) I.select(null); }   // gator pass: free wrangle or the confirmed Parish call-out
     if (r && r.ok === false) { call('audio', 'play', 'invalid'); if (r.reason) M.notify(s, { kind: 'info', text: r.reason, ttl: 4000 }); }
     else if (Number.isFinite(a.repair) || Number.isFinite(a.repairLevee)) { I.select(null); M.notify(s, { kind: 'info', text: 'Fixed: ' + it.title + (r && r.cost > 0 ? ' · ' + money(r.cost) : ''), ttl: 3500 }); }
     I.invalidate(); tray.key = ''; inspAt = -1e9;
@@ -1980,72 +1966,43 @@
     if (Number.isFinite(a.repair)) return call('buildings', 'repair', s, a.repair);
     if (Number.isFinite(a.repairLevee)) return a.run && a.run.length ? call('buildings', 'repairLeveeRun', s, a.run) : call('buildings', 'repairLevee', s, a.repairLevee);
     if (a.link) return call('buildings', 'linkBuilding', s, a.link);
-    if (Number.isFinite(a.relocate) && a.free) return call('wildlife', 'callOut', s, a.relocate);
     return { ok: false, reason: 'Not a one-click fix' };
   }
   function cycleIssue(s, dir) { const I = issuesApi(); if (!I) return null; const it = I.cycle(s, dir); if (it) locateIssue(s, it); else { I.select(null); M.notify(s, { kind: 'info', text: 'All clear: no issues on campus', ttl: 2500 }); } return it; }
   function clearIssueUi() { const I = issuesApi(); if (I) I.select(null); spotToggled = false; heldI = false; applySpotlight(); tray.key = ''; }
   function issueFirstOf(s, kinds) { const I = issuesApi(); if (!I) return null; const l = I.ofKinds(s, kinds); return l.length ? l[0] : null; }
   // ---------------------------------------------------------------------------
-  // gator pass: one-click Fix, the escalation notification, the chip rules
+  // calm alerts pass: the Alerts mode (Settings → Alerts: Normal / Quiet / Off, settings.alerts) and per-kind mutes (settings.mutedIssues)
   // ---------------------------------------------------------------------------
-  function gatorText(key) { const T = (BSU.data && BSU.data.gatorText) || {}; return T[key] || ''; }
-  /** the gator's one-click Fix: free when a Wildlife Officer Post is in range (wildlife.callOut sends the officer), else a confirm line for the Parish call-out */
-  function gatorFix(s, gatorId) {
-    const st = call('wildlife', 'gatorStatus', s, gatorId);
-    if (!st) return { ok: false, reason: 'That gator has moved on' };
-    if (st.callOut) return { ok: false, reason: 'Parish Wildlife is already on the way for ' + st.name + ' (arrives ' + BSU.formatDate(fin(st.callOut.day, dayOf(s))) + ')' };
-    if (st.canWrangle) {
-      const r = call('wildlife', 'callOut', s, gatorId) || { ok: false, reason: 'Wildlife is unavailable' };
-      if (r.ok) M.notify(s, { kind: 'wildlife', text: 'The Wildlife Officer is on the way for ' + st.name + ' (free).', ttl: 5000 });
-      return r;
-    }
-    const fee = money(st.fee), days = fin(st.callOutDays, 1) === 1 ? 'tomorrow' : 'in ' + st.callOutDays + ' days';
-    closeNotifsOf(gatorId, 'confirm');
-    M.notify(s, { kind: 'money', gatorId: gatorId, confirm: true, ttl: 20000, text: 'Parish Wildlife call-out for ' + st.name + ': ' + fee + ', the truck arrives ' + days + '. No Wildlife Officer Post is in range.',
-      why: 'A Wildlife Officer Post within ' + fin((P.wildlife && P.wildlife.gator && P.wildlife.gator.officerRadius), 14) + ' tiles would have done this for free.',
-      action: { label: 'Confirm ' + fee, fn: function (s2) { const r = call('wildlife', 'callOut', s2, gatorId) || { ok: false, reason: 'Wildlife is unavailable' }; if (!r.ok) M.notify(s2, { kind: 'info', text: r.reason || 'Not now', ttl: 5000 }); if (r.ok) { if (issuesApi()) issuesApi().invalidate(); tray.key = ''; inspAt = -1e9; } } } });
-    return { ok: true, pending: true };
-  }
-  function closeNotifsOf(gatorId, why) { for (let k = notifs.length - 1; k >= 0; k--) { const n = notifs[k]; if (n.spec && n.spec.gatorId === gatorId && !n.spec.confirm) closeNotif(n, why); } }
-  /** gator:blocked → one notification per gator (replaces the earlier one): what it blocks, why it matters, Locate + Fix */
-  function gatorBlocked(s, p) {
-    const st = call('wildlife', 'gatorStatus', s, p.id); const name = (p.name || (st && st.name) || 'A gator');
-    let text, why;
-    if (p.what === 'closed') { text = name + ' is keeping ' + (p.building || 'a hall') + ' closed' + (p.kind ? ' (' + p.kind + ')' : ''); why = gatorText('whyClosed'); }
-    else if (p.what === 'game') { text = name + ' is on the field: kickoff delayed, ' + money(fin(p.cost, 0)) + ' in tailgate refunds'; why = gatorText('whyGame'); }
-    else { text = name + ' is blocking the path' + (st && st.near ? ' to ' + st.near.name : '') + ' · ' + fin(p.delayed, st ? st.delayed : 0) + ' students rerouted'; why = gatorText('why'); }
-    closeNotifsOf(p.id, 'replaced');
-    M.notify(s, { kind: 'wildlife', gatorId: p.id, text: text, why: why, locate: 'gator', action: { label: 'Fix', fn: function (s2) { gatorFix(s2, p.id); } } });
-  }
-  /** the top chip: one per gator per visit, auto-dismissed after alertMs, no re-fire for alertCooldownDays; muted sightings stay in the ticker */
-  function gatorChip(s, day) {
-    const PG = (P.wildlife && P.wildlife.gator) || {};
-    if (M.settings().muteGators) return null;
-    const gs = call('wildlife', 'onCampus', s) || [];
-    for (const g of gs) {
-      if (!g) continue;
-      if ((g.state === 'SUN' || g.state === 'SWIM') && Number.isFinite(g.den) && Math.max(Math.abs(Math.floor(fin(g.tx, 0)) - g.den % W), Math.abs(Math.floor(fin(g.ty, 0)) - ((g.den / W) | 0))) <= 1) continue;   // at home on its own bank: a sighting for the ticker, not a chip
-      let a = gatorAlerts[g.id];
-      if (!a || (a.visitDay !== fin(g.visitDay, -1) && day >= a.cooldownDay)) { a = gatorAlerts[g.id] = { visitDay: fin(g.visitDay, -1), until: clock + fin(PG.alertMs, 12000), cooldownDay: day + fin(PG.alertCooldownDays, 3) }; }
-      if (clock >= a.until) continue;
-      const st = call('wildlife', 'gatorStatus', s, g.id) || {};
-      const i = clamp(Math.floor(fin(g.tx, 0)), 0, W - 1) + clamp(Math.floor(fin(g.ty, 0)), 0, HGT - 1) * W;
-      const detail = st.closes >= 0 && st.closesName ? ' · ' + st.closesName + ' closed' : (fin(st.delayedVisit, 0) > 0 ? ' · ' + st.delayedVisit + ' students rerouted' : '');
-      return { icon: '🐊', text: '', gatorId: g.id, gator: { name: (g.name || 'A gator') + ' at ' + nearestBuildingName(s, fin(g.tx, 0), fin(g.ty, 0)) + detail, i: i }, action: { label: st.canWrangle ? 'Relocate' : 'Fix', fn: function (s2) { gatorFix(s2, g.id); } }, kind: 'wildlife' };
-    }
-    return null;
-  }
-  function closeAlert() { alertClosedKey = alertKey; const sp = currentAlert; if (sp && Number.isFinite(sp.gatorId) && gatorAlerts[sp.gatorId]) gatorAlerts[sp.gatorId].until = 0; alertAt = -1e9; alertKey = ''; show(E['alert-strip'], false); }
+  const ALERT_MODES = (P.issues && Array.isArray(P.issues.alertModes) && P.issues.alertModes.length === 3) ? P.issues.alertModes.slice() : ['normal', 'quiet', 'off'];
+  function alertModeOf() { const m = M.settings().alerts; return ALERT_MODES.indexOf(m) >= 0 ? m : ALERT_MODES[0]; }
+  M.alertMode = function () { return alertModeOf(); };
+  M.alertModes = function () { return ALERT_MODES.slice(); };
+  /** setAlertMode('normal' | 'quiet' | 'off'): Normal = beacons from severity 2 (≤ 6), toasts once per kind per week; Quiet = severity-3 beacons, no toasts but decisions; Off = the tray pill only */
+  M.setAlertMode = function (mode) {
+    try {
+      if (ALERT_MODES.indexOf(mode) < 0) return alertModeOf();
+      const set = M.settings(); if (set.alerts !== mode) { set.alerts = mode; M.saveSettings(); }
+      const I = issuesApi(); if (I) I.invalidate(); tray.key = ''; alertAt = -1e9; alertKey = '';
+      const s = stateOf(); if (s && dom()) { updateHud(s); if (mode === 'off') { for (let k = notifs.length - 1; k >= 0; k--) if (locateKindsOf(notifs[k].spec)) closeNotif(notifs[k], 'alertsOff'); } }
+      return mode;
+    } catch (e) { uerr('setAlertMode', e); return alertModeOf(); }
+  };
+  /** mute / unmute one issue kind: its rows sit under Suggestions (no beacon, no toast, not in Clear N); remembered in the settings */
+  M.muteIssueKind = function (kind, on) {
+    const I = issuesApi(); const s = stateOf(); if (!I || !s) return false;
+    const v = I.mute(s, kind, on); M.saveSettings(); tray.key = '';
+    return v;
+  };
+  function closeAlert() { alertClosedKey = alertKey; alertAt = -1e9; alertKey = ''; show(E['alert-strip'], false); }
   M.closeAlert = function () { closeAlert(); };
   M.dismissNotifs = function () { for (let k = notifs.length - 1; k >= 0; k--) closeNotif(notifs[k], 'dismissed'); };
-  M.gatorAlerts = function () { return gatorAlerts; };
   /** which issue kinds a notification / needs line is about (used to add a 'Locate' button) */
   function locateKindsOf(spec) {
-    if (!spec || spec.milestone) return null;   // qa pass 4: 'Milestone: Gator Wrangler' matched the gator heuristic and grew a Locate button
+    if (!spec || spec.milestone) return null;   // milestone notes never carry a Locate
     if (spec.locate) { const lc = spec.locate; if (typeof lc === 'string') return (issuesApi() && issuesApi().families()[lc]) || [lc]; if (Array.isArray(lc)) return lc; if (lc.kind) return [lc.kind]; if (lc.family) return (issuesApi() && issuesApi().families()[lc.family]) || null; return null; }
     const t = String(spec.text || ''); const F = issuesApi() ? issuesApi().families() : null; if (!F) return null;
-    if (/gator/i.test(t)) return F.gator; if (/flood/i.test(t)) return F.flood; if (/levee/i.test(t)) return F.levee; if (/mosquito/i.test(t)) return F.mosquito;
+    if (/flood/i.test(t)) return F.flood; if (/levee/i.test(t)) return F.levee; if (/mosquito/i.test(t)) return F.mosquito;
     if (/blackout|brownout|no power|unpowered/i.test(t)) return F.power; if (/boil|no water/i.test(t)) return F.water; if (/damage|ruin/i.test(t)) return F.damage;
     return null;
   }
@@ -2062,9 +2019,14 @@
     const list = el('div'); list.id = 'issues-list';
     const prog = el('div', 'hidden'); prog.id = 'issues-progress'; prog.appendChild(el('div', 'ph', 'In progress')); const plist = el('div'); plist.id = 'issues-progress-list'; prog.appendChild(plist);
     const more = el('div', 'hidden', ''); more.id = 'issues-more';
-    const hid = btn('issues-hidden', '', 'small hidden', function () { const I = issuesApi(); if (I) { I.restoreAll(); tray.key = ''; } }); hid.title = 'Snoozed and dismissed rows: click to show them again';
-    wrap.appendChild(head); wrap.appendChild(list); wrap.appendChild(prog); wrap.appendChild(more); wrap.appendChild(hid);
+    const hid = btn('issues-hidden', '', 'small hidden', function () { const I = issuesApi(); const s = stateOf(); if (I) { I.restoreAll(s); tray.key = ''; } }); hid.title = 'Snoozed and dismissed rows: click to show them again';
+    // calm alerts pass: the collapsed Suggestions group (severity-1 kinds and muted kinds) at the bottom of the tray
+    const sg = el('div', 'hidden'); sg.id = 'issues-suggest';
+    const sh = btn('issues-suggest-head', 'Suggestions', 'small', function () { tray.suggestOpen = !tray.suggestOpen; tray.key = ''; }); sh.title = 'Low-priority rows (unlinked paths, mosquito hotspots) and muted kinds: never a beacon, never a toast · click to list them';
+    const sl = el('div'); sl.id = 'issues-suggest-list'; sg.appendChild(sh); sg.appendChild(sl);
+    wrap.appendChild(head); wrap.appendChild(list); wrap.appendChild(prog); wrap.appendChild(more); wrap.appendChild(sg); wrap.appendChild(hid);
     E['issues-tray'] = wrap; E['issues-head'] = head; E['issues-count'] = n; E['issues-sub'] = sub; E['issues-clear'] = clr; E['issues-spot'] = spot; E['issues-toggle'] = car; E['issues-list'] = list; E['issues-progress'] = prog; E['issues-progress-list'] = plist; E['issues-more'] = more; E['issues-hidden'] = hid;
+    E['issues-suggest'] = sg; E['issues-suggest-head'] = sh; E['issues-suggest-list'] = sl;
     return wrap;
   }
   function rowTitle(it) { let t = it.fix || it.title; if (it.persist) t += '\nWhy it persists: ' + it.persist; return t; }
@@ -2078,7 +2040,7 @@
     const col = el('div', 't', (opts.progress && it.progress) ? it.progress.text : it.title); const age = el('span', 'a', ' · ' + (issuesApi() ? issuesApi().ageText(s, it) : '')); col.appendChild(age);
     row.appendChild(ic); row.appendChild(col);
     const I = issuesApi(), sd = fin(P.issues && P.issues.snoozeDays, 3);
-    if (opts.count > 1) { const bd = btn(null, '×' + opts.count, 'small badge', function () { tray.open[it.kind] = !tray.open[it.kind]; tray.key = ''; }); bd.title = opts.count + ' ' + (I ? I.labelOf(it.kind).toLowerCase() : it.kind) + ' issues: click to ' + (opts.expanded ? 'fold them' : 'list them all'); row.appendChild(bd); }
+    if (opts.count > 1) { const bd = btn(null, '×' + opts.count, 'small badge', function () { const o = opts.suggest ? tray.sopen : tray.open; o[it.kind] = !o[it.kind]; tray.key = ''; }); bd.title = opts.count + ' ' + (I ? I.labelOf(it.kind).toLowerCase() : it.kind) + ' issues: click to ' + (opts.expanded ? 'fold them' : 'list them all'); row.appendChild(bd); }
     let fix = null;
     if (!opts.progress) { fix = btn(null, 'Fix', 'small fix', function () { const st = stateOf(); if (st) fixIssue(st, issuesApi().byId(st, it.id) || it); }); fix.title = it.fix || 'Fix it'; row.appendChild(fix); }
     const loc = btn(null, '⌖', 'small icon-sm locate', function () { const st = stateOf(); if (st) locateIssue(st, issuesApi().byId(st, it.id) || it); }); loc.title = 'Locate: ease the camera there (I cycles)'; loc.dataset.act = 'locate'; row.appendChild(loc);
@@ -2086,6 +2048,8 @@
       const zz = btn(null, 'zz', 'small icon-sm', function () { const st = stateOf(); const I2 = issuesApi(); if (st && I2 && I2.snooze(st, it.id)) { tray.key = ''; M.notify(st, { kind: 'info', text: 'Snoozed ' + sd + ' days: ' + it.title, ttl: 2500 }); } }); zz.title = 'Snooze ' + sd + ' days: hides this row until ' + BSU.formatDate(dayOf(s) + sd) + '; it comes back sooner if it gets worse'; zz.dataset.act = 'snooze'; row.appendChild(zz);
       const dm = btn(null, '✕', 'small icon-sm', function () { const st = stateOf(); const I2 = issuesApi(); if (st && I2 && I2.dismiss(st, it.id)) tray.key = ''; }); dm.title = 'Dismiss: hides this row until the condition changes (it gets worse, or moves to a new stage)'; dm.dataset.act = 'dismiss'; row.appendChild(dm);
     }
+    // calm alerts pass: the bell on a group's lead row mutes that kind (rows move under Suggestions, no beacons, no toasts; remembered); a muted kind's bell unmutes it
+    if (opts.lead && !opts.progress && I && (opts.muted || !opts.suggest)) { const bell = btn(null, opts.muted ? '🔕' : '🔔', 'small icon-sm bell' + (opts.muted ? ' muted' : ''), function () { M.muteIssueKind(it.kind, !opts.muted); const st = stateOf(); if (st) M.notify(st, { kind: 'info', text: (opts.muted ? 'Unmuted: ' : 'Muted: ') + (I.labelOf(it.kind)) + (opts.muted ? '' : ' · its rows sit under Suggestions (no beacons, no toasts)'), ttl: 3000 }); }); bell.title = opts.muted ? 'Unmute ' + I.labelOf(it.kind).toLowerCase() + ': back to the main list, beacons and toasts' : 'Mute ' + I.labelOf(it.kind).toLowerCase() + ': rows move under Suggestions, no beacons, no toasts (remembered)'; bell.dataset.act = 'mute'; row.appendChild(bell); }
     const why = (!opts.progress && it.why) ? el('div', 'why', it.why) : null; if (why) { why.title = it.why; row.appendChild(why); }   // gator pass: the one-line "why it matters" as a full-width second grid row
     row.addEventListener('click', function (ev) { if (ev && ev.target && ev.target !== row && ev.target !== col && ev.target !== ic && ev.target !== age && ev.target !== why) return; const st = stateOf(); if (st) locateIssue(st, issuesApi().byId(st, it.id) || it); });
     return { el: row, age: age, id: it.id };
@@ -2110,37 +2074,43 @@
     const I = issuesApi(); if (!I) return;
     if (clock - tray.at < 250) return; tray.at = clock;
     if (titleOn || coach.step >= 0) { show(E['issues-tray'], false); tray.key = ''; return; }
-    const list = I.list(s), active = I.actionable(s), prog = I.inProgress(s), hidden = I.hiddenList(s), sel = I.selectedId();
-    const fit = trayRowsFit(active.some(function (it) { return !!it.why; }));
-    const collapsed = fit < 2 || M.hudPill('issues');   // hud + zoom pass: collapsed = the tray's pill (compact mode, or the caret in full mode) unless hovered open
+    const list = I.list(s), main = I.main(s), sugg = I.suggestions(s), prog = I.inProgress(s), hidden = I.hiddenList(s), sel = I.selectedId();
+    const fit = trayRowsFit(main.some(function (it) { return !!it.why; }));
+    const collapsed = fit < 2 || M.hudPill('issues');   // hud + zoom pass: collapsed = the tray's pill (compact mode, the caret in full mode, or Alerts: Off) unless hovered open
     if (list.length === 0) {
       if (tray.hadIssues) { tray.hadIssues = false; tray.clearAt = clock; }
       const showClear = clock - tray.clearAt < 3000 || hidden.length > 0;
       show(E['issues-tray'], showClear); if (!showClear) { tray.key = ''; return; }
       const k = 'clear|' + hidden.length;
-      if (tray.key !== k) { tray.key = k; setText(E['issues-count'], 'All clear ✓'); setText(E['issues-sub'], ''); cls(E['issues-head'], 'clear', true); cls(E['issues-tray'], 'collapsed', true); clear(E['issues-list']); clear(E['issues-progress-list']); show(E['issues-progress'], false); tray.rows = []; show(E['issues-more'], false); show(E['issues-clear'], false); hiddenLine(hidden); }
+      if (tray.key !== k) { tray.key = k; setText(E['issues-count'], 'All clear ✓'); setText(E['issues-sub'], ''); cls(E['issues-head'], 'clear', true); cls(E['issues-tray'], 'collapsed', true); clear(E['issues-list']); clear(E['issues-progress-list']); show(E['issues-progress'], false); clear(E['issues-suggest-list']); show(E['issues-suggest'], false); tray.rows = []; show(E['issues-more'], false); show(E['issues-clear'], false); hiddenLine(hidden); }
       return;
     }
     tray.hadIssues = true; show(E['issues-tray'], true);
-    const groups = I.groups(s), res = I.resolvable(s);
-    // the plan: one lead row per kind (count badge) + the siblings when the group is unfolded; the row budget is shared with the In progress section
-    const plan = []; for (const g of groups) { const open = !!tray.open[g.kind]; plan.push({ it: g.rows[0], lead: true, count: g.rows.length, expanded: open }); if (open) for (let k = 1; k < g.rows.length; k++) plan.push({ it: g.rows[k], sub: true }); }
+    const groups = I.groups(s), sgroups = I.suggestionGroups(s), res = I.resolvable(s);
+    // the plan: one lead row per kind (count badge) + the siblings when the group is unfolded; the row budget is shared with the In progress section and the open Suggestions group
+    const plan = []; for (const g of groups) { const open = !!tray.open[g.kind]; plan.push({ it: g.rows[0], lead: true, count: g.rows.length, expanded: open, muted: g.muted }); if (open) for (let k = 1; k < g.rows.length; k++) plan.push({ it: g.rows[k], sub: true }); }
+    const splan = []; for (const g of sgroups) { const open = !!tray.sopen[g.kind]; splan.push({ it: g.rows[0], lead: true, count: g.rows.length, expanded: open, muted: g.muted, suggest: true }); if (open) for (let k = 1; k < g.rows.length; k++) splan.push({ it: g.rows[k], sub: true, suggest: true }); }
     const progFit = prog.length ? Math.max(1, Math.min(prog.length, Math.floor(fit / 3))) : 0;
     const shown = collapsed ? 0 : Math.min(Math.max(0, fit - progFit), plan.length), pShown = collapsed ? 0 : progFit;
-    const key = [active.length, prog.length, hidden.length, shown, pShown, sel || '', res.rows.length, res.total, plan.slice(0, shown).map(function (p) { return p.it.id + p.it.title + p.it.severity + (p.count || 0) + (p.expanded ? 'o' : ''); }).join(';'), prog.slice(0, pShown).map(function (it) { return it.id + it.progress.text; }).join(';')].join('|');
+    const sShown = (collapsed || !tray.suggestOpen) ? 0 : Math.min(splan.length, Math.max(1, fit - shown - pShown));
+    const key = [main.length, sugg.length, prog.length, hidden.length, shown, pShown, sShown, tray.suggestOpen ? 'S' : '', sel || '', res.rows.length, res.total, plan.slice(0, shown).map(function (p) { return p.it.id + p.it.title + p.it.severity + (p.count || 0) + (p.expanded ? 'o' : '') + (p.muted ? 'm' : ''); }).join(';'), prog.slice(0, pShown).map(function (it) { return it.id + it.progress.text; }).join(';'), splan.slice(0, sShown).map(function (p) { return p.it.id + p.it.title + (p.count || 0) + (p.expanded ? 'o' : '') + (p.muted ? 'm' : ''); }).join(';')].join('|');
     if (key !== tray.key) {
       tray.key = key; tray.ageAt = clock;
-      setText(E['issues-count'], active.length + (active.length === 1 ? ' issue' : ' issues'));
-      const w3 = active.filter(function (it) { return it.severity >= 3; }).length; const subs = []; if (w3) subs.push(w3 + ' urgent'); if (prog.length) subs.push(prog.length + ' in progress'); if (!subs.length && collapsed) subs.push('click to cycle');
+      const none = main.length === 0;
+      setText(E['issues-count'], none ? (prog.length ? 'No open issues' : 'All clear ✓') : main.length + (main.length === 1 ? ' issue' : ' issues'));
+      const w3 = main.filter(function (it) { return it.severity >= 3; }).length; const subs = []; if (w3) subs.push(w3 + ' urgent'); if (prog.length) subs.push(prog.length + ' in progress'); if (none && sugg.length) subs.push(sugg.length + (sugg.length === 1 ? ' suggestion' : ' suggestions')); if (!subs.length && collapsed) subs.push('click to cycle');
       setText(E['issues-sub'], subs.join(' · '));
       show(E['issues-clear'], res.rows.length > 0 && !collapsed); setText(E['issues-clear'], 'Clear ' + res.rows.length);
-      E['issues-clear'].title = res.rows.length + ' one-click fix' + (res.rows.length === 1 ? '' : 'es') + ' (repairs within cash, gravel ties, free wrangles): ' + (res.total > 0 ? money(res.total) + ' total, confirm first' : 'free');
-      cls(E['issues-head'], 'clear', false); cls(E['issues-tray'], 'collapsed', collapsed); setText(E['issues-toggle'], collapsed ? '▸' : '▾');
+      E['issues-clear'].title = res.rows.length + ' one-click fix' + (res.rows.length === 1 ? '' : 'es') + ' (repairs within cash, gravel ties; suggestions and muted kinds are never counted): ' + (res.total > 0 ? money(res.total) + ' total, confirm first' : 'free');
+      cls(E['issues-head'], 'clear', none); cls(E['issues-tray'], 'collapsed', collapsed); setText(E['issues-toggle'], collapsed ? '▸' : '▾');
       clear(E['issues-list']); tray.rows = [];
       for (let k = 0; k < shown; k++) { const p = plan[k]; const r = issueRow(s, p.it, p.it.id === sel, p); E['issues-list'].appendChild(r.el); tray.rows.push(r); }
       clear(E['issues-progress-list']); for (let k = 0; k < pShown; k++) { const r = issueRow(s, prog[k], prog[k].id === sel, { progress: true }); E['issues-progress-list'].appendChild(r.el); tray.rows.push(r); }
       show(E['issues-progress'], pShown > 0);
       const rest = (plan.length - shown) + (prog.length - pShown); setText(E['issues-more'], rest > 0 ? '+' + rest + ' more · I cycles through all' : ''); show(E['issues-more'], rest > 0 && !collapsed);
+      // the Suggestions group: a one-line header (count, caret), the rows only while unfolded
+      clear(E['issues-suggest-list']); show(E['issues-suggest'], sugg.length > 0 && !collapsed);
+      if (sugg.length) { setText(E['issues-suggest-head'], (tray.suggestOpen ? '▾ ' : '▸ ') + 'Suggestions · ' + sugg.length + (sShown < splan.length && tray.suggestOpen ? ' (' + sShown + ' shown)' : '')); cls(E['issues-suggest'], 'open', tray.suggestOpen && sShown > 0); for (let k = 0; k < sShown; k++) { const p = splan[k]; const r = issueRow(s, p.it, p.it.id === sel, p); r.el.classList.add('suggest'); E['issues-suggest-list'].appendChild(r.el); tray.rows.push(r); } }
       hiddenLine(hidden);
     } else if (clock - tray.ageAt >= 1000) {
       tray.ageAt = clock; for (const r of tray.rows) { const it = I.byId(s, r.id); if (it) setText(r.age, ' · ' + I.ageText(s, it)); }
@@ -2153,8 +2123,13 @@
     restoreAll: function () { const I = issuesApi(); const n = I ? I.restoreAll() : 0; tray.key = ''; return n; },
     clearAll: function (s, confirmed) { return clearAllResolvable(s || stateOf(), !!confirmed); },
     arm: function (s, idOrIt) { const I = issuesApi(); const st = s || stateOf(); const it = typeof idOrIt === 'string' ? (I && I.byId(st, idOrIt)) : idOrIt; return (it && it.action && it.action.arm) ? armTool(st, it, it.action) : { ok: false, reason: 'Not an arm action' }; },
-    lastArm: function () { return lastArm; }, pin: function () { return ghostPin; }, toggleGroup: function (kind) { tray.open[kind] = !tray.open[kind]; tray.key = ''; }, groupOpen: function (kind) { return !!tray.open[kind]; }
+    lastArm: function () { return lastArm; }, pin: function () { return ghostPin; }, toggleGroup: function (kind) { tray.open[kind] = !tray.open[kind]; tray.key = ''; }, groupOpen: function (kind) { return !!tray.open[kind]; },
+    // calm alerts pass
+    mute: function (kind, on) { return M.muteIssueKind(kind, on); }, muted: function (kind) { const I = issuesApi(); return !!(I && I.muted(stateOf(), kind)); },
+    alertMode: function () { return alertModeOf(); }, setAlertMode: function (mode) { return M.setAlertMode(mode); },
+    toggleSuggestions: function (on) { tray.suggestOpen = on === undefined ? !tray.suggestOpen : !!on; tray.key = ''; return tray.suggestOpen; }, suggestionsOpen: function () { return !!tray.suggestOpen; }
   });
+  tray.sopen = {}; tray.suggestOpen = false;
 
   // ---------------------------------------------------------------------------
   // Notifications, hints
@@ -2185,6 +2160,13 @@
       const kind = spec.kind || 'info';
       const act = mapAction(s, spec.action);
       let onClose = spec.onClose; if (onClose === 'restoreWarning') onClose = function () { call('progress', 'warningClosed', s); }; if (typeof onClose !== 'function') onClose = null;
+      // calm alerts pass: an issue toast (one that names issue kinds) passes the registry's gate: never under Alerts Off / Quiet, never for a
+      // severity-1 kind or a muted kind, once per kind per week. A confirm line (the player's own click) always shows. A gated toast with an
+      // onClose (the speed-dropping first warning) still runs it, so nothing stays paused.
+      if (!spec.confirm && !spec.milestone && issuesApi()) {
+        const lk0 = locateKindsOf(spec);
+        if (lk0 && lk0.length && !issuesApi().toastGate(s, typeof spec.locate === 'string' ? spec.locate : lk0)) { if (onClose) { try { onClose('gated'); } catch (e) { uerr('notif:gated', e); } } return; }
+      }
       const n = { spec: spec, kind: kind, el: null, born: clock, bornTick: tickOf(s), ttl: fin(spec.ttl, L.notifMs), closed: false, onClose: onClose };
       if (dom()) {
         const d = el('div', 'notif' + (spec.stamp === 'paw' || spec.milestone ? ' paw' : '')); d.dataset.kind = kind;
@@ -2459,7 +2441,7 @@
     call('session', 'newGame', seed === undefined ? {} : { seed: seed });
     void s;
   }
-  M.settings = function () { const s = stateOf(); if (s && s.ui && s.ui.settings) return s.ui.settings; return { volume: 0.5, muted: false, particles: 'high', shake: true, colorblind: false, autoSimHint: false, hudMode: 'full', hudCollapsed: {} }; };
+  M.settings = function () { const s = stateOf(); if (s && s.ui && s.ui.settings) return s.ui.settings; return { volume: 0.5, muted: false, particles: 'high', shake: true, colorblind: false, autoSimHint: false, hudMode: 'full', hudCollapsed: {}, alerts: 'normal', mutedIssues: {} }; };
   /** mirror state.ui.settings to localStorage['bsu.settings'] (a failure → one 'saveUnavailable' hint) */
   M.saveSettings = function () { try { window.localStorage.setItem('bsu.settings', JSON.stringify(M.settings())); } catch (e) { const s = stateOf(); if (s) M.hint(s, 'saveUnavailable'); } };
   /** stat popover from economy.breakdown */
@@ -2494,13 +2476,15 @@
     host._particles = chk('seg-particles', 'Particles (high)', function () { return M.settings().particles !== 'low'; }, function (v) { M.settings().particles = v ? 'high' : 'low'; });
     host._shake = chk('chk-shake', 'Screen shake', function () { return M.settings().shake !== false; }, function (v) { M.settings().shake = v; });
     host._cb = chk('chk-colorblind', 'Colorblind overlays', function () { return !!M.settings().colorblind; }, function (v) { M.settings().colorblind = v; });
-    host._gators = chk('chk-gators', 'Mute gator sightings', function () { return !!M.settings().muteGators; }, function (v) { M.settings().muteGators = v; alertAt = -1e9; alertKey = ''; }); host._gators.title = 'Sightings go to the ticker only; a gator that blocks a path or closes a hall still notifies';   // gator pass
     const sp = el('div', 'seg'); [0, 1, 2, 4, 8].forEach(function (v) { const b = btn(null, v === 0 ? 'Pause' : v + '×', 'seg-btn', function () { M.setSpeed(stateOf(), v); refreshSettingsPanel(stateOf(), host); }); b.dataset.speed = String(v); sp.appendChild(b); }); rowEl('Speed', sp); host._speed = sp;
     const us = el('div', 'seg'); host._uiScale = us; UI_SCALES.forEach(function (v) { const b = btn('btn-uiscale-' + Math.round(v * 100), Math.round(v * 100) + '%', 'seg-btn', function () { M.setUiScale(v); refreshSettingsPanel(stateOf(), host); }); b.dataset.scale = String(v); b.title = 'Interface size ' + Math.round(v * 100) + '%'; us.appendChild(b); });
     { const ab = btn('btn-uiscale-auto', 'Auto', 'seg-btn', function () { M.setUiScale('auto'); refreshSettingsPanel(stateOf(), host); }); ab.dataset.scale = 'auto'; ab.title = 'Pick the interface size from this window'; us.appendChild(ab); }   // P5
     const uw = el('div', 'seg-wrap'); const un = el('div', 'seg-note hidden', ''); host._uiNote = un; uw.appendChild(us); uw.appendChild(un); rowEl('UI size', uw);   // UI scale pass (C7)
     const hs = el('div', 'seg'); host._hud = hs; [['full', 'Full'], ['compact', 'Compact'], ['hidden', 'Hidden']].forEach(function (d) { const b = btn('btn-hud-' + d[0], d[1], 'seg-btn', function () { M.setHudMode(d[0]); refreshSettingsPanel(stateOf(), host); }); b.dataset.hud = d[0]; b.title = d[0] === 'full' ? 'Every panel' : d[0] === 'compact' ? 'Each panel folds to a pill that opens on hover or click' : 'Only the decision toasts and a small chip'; hs.appendChild(b); });
     const hw = el('div', 'seg-wrap'); hw.appendChild(hs); hw.appendChild(el('div', 'seg-note', 'H cycles Full → Compact → Hidden · Shift+H restores · the ▾ on a panel folds just that one')); rowEl('HUD', hw);   // hud + zoom pass
+    // calm alerts pass: Alerts Normal / Quiet / Off
+    const as = el('div', 'seg'); host._alerts = as; [['normal', 'Normal', 'Map beacons from severity 2 (at most 6), issue toasts once per kind per week'], ['quiet', 'Quiet', 'Beacons only for severity 3; no toasts except decisions'], ['off', 'Off', 'The Issues tray folds to its count; no beacons, no toasts']].forEach(function (d) { const b = btn('btn-alerts-' + d[0], d[1], 'seg-btn', function () { M.setAlertMode(d[0]); refreshSettingsPanel(stateOf(), host); }); b.dataset.alerts = d[0]; b.title = d[2]; as.appendChild(b); });
+    const aw = el('div', 'seg-wrap'); aw.appendChild(as); aw.appendChild(el('div', 'seg-note', 'Low-priority rows (unlinked paths, mosquito hotspots) and muted kinds sit under Suggestions in the tray · the 🔔 on a tray row mutes that kind · hold I or toggle Spotlight to light every issue')); rowEl('Alerts', aw);
     rowEl('Tour', btn('btn-coach-replay', 'Replay the 60-second tour', 'small', function () { M.startCoach(stateOf()); }));
     const leg = el('div', 'legend-table'); for (const o of ((BSU.data && BSU.data.overlays) || [])) { const r = el('div', 'legend-row'); r.appendChild(el('span', 'key', o.key)); r.appendChild(el('span', 'k', o.name)); r.appendChild(el('span', 'v', o.legend.join(' · '))); leg.appendChild(r); } rowEl('Overlays', leg);
     const keys = el('div', 'keys-table'); keys.id = 'keys'; const KEYNAMES = { ' ': 'Space' }; for (const k of ((BSU.data && BSU.data.keys) || [])) { if (/^pan|^pick[2-9]|^toast/.test(k.action)) continue; const r = el('div', 'legend-row'); r.appendChild(el('span', 'key', (k.ctrl ? 'Ctrl+' : '') + (k.shift ? 'Shift+' : '') + (KEYNAMES[k.key] || (k.key.length === 1 ? k.key.toUpperCase() : k.key)))); r.appendChild(el('span', 'k', k.action === 'pick1' ? 'pick item 1–9' : k.action.replace(/([A-Z])/g, ' $1').toLowerCase())); keys.appendChild(r); } rowEl('Keys', keys);
@@ -2513,7 +2497,8 @@
   }
   function refreshSettingsPanel(s, host) {
     if (!host) return;
-    [host._audio, host._particles, host._shake, host._cb, host._gators].forEach(function (b) { if (!b || !b._get) return; const on = !!b._get(); setText(b, on ? 'On' : 'Off'); b.setAttribute('aria-pressed', on ? 'true' : 'false'); });
+    [host._audio, host._particles, host._shake, host._cb].forEach(function (b) { if (!b || !b._get) return; const on = !!b._get(); setText(b, on ? 'On' : 'Off'); b.setAttribute('aria-pressed', on ? 'true' : 'false'); });
+    if (host._alerts) for (const b of host._alerts.children) cls(b, 'active', b.dataset.alerts === alertModeOf());   // calm alerts pass
     if (host._speed) for (const b of host._speed.children) cls(b, 'active', String(fin(s.ui.speed, 1)) === b.dataset.speed);
     if (host._vol) host._vol.value = String(fin(M.settings().volume, 0.5));
     if (host._uiScale) for (const b of host._uiScale.children) { const d = b.dataset.scale; cls(b, 'active', d === 'auto' ? uiMode === 'auto' : uiMode !== 'auto' && Number(d) === appliedScale); }
@@ -2553,6 +2538,11 @@
   M.alert = function (state, spec) { manualAlert = spec || null; alertAt = -1e9; void state; };
   function autoAlert(s) {
     const day = dayOf(s);
+    const mode = alertModeOf(); if (mode === 'off') return null;   // calm alerts pass: Off = no strip at all; Quiet = the danger chips only (storm, heat, blackout)
+    if (mode === 'quiet') { const a = autoAlertFull(s, day); return a && a.kind === 'danger' ? a : null; }
+    return autoAlertFull(s, day);
+  }
+  function autoAlertFull(s, day) {
     const st = call('weather', 'storm', s);
     if (st && !st.nearMiss && st.phase >= STORM.NAMED && st.phase <= STORM.LANDFALL) {
       const H = fin(call('weather', 'forecastSurge', s), 0); const g = H > 0 ? call('buildings', 'gaps', s, H) : null; const gl = g && Array.isArray(g.gaps) ? g.gaps : [];
@@ -2567,7 +2557,6 @@
     const flooded = list.find(function (b) { if (!b || !b.flooded || b.ruin) return false; const r = rowOf(b.type); return b.type === 'founders_hall' || (r && r.needsPower); });
     if (flooded) return { icon: '🌊', text: (flooded.name || flooded.type) + ' is flooded', action: { label: 'Show me', fn: function () { call('render', 'panToTile', flooded.tx, flooded.ty); } }, kind: 'water' };
     if (call('buildings', 'boilWaterTriggered', s)) return { icon: '🚱', text: 'Boil-water advisory', kind: 'water' };
-    const gc = gatorChip(s, day); if (gc) return gc;   // gator pass: one chip per gator per visit (12 s, 3-day cooldown, mute → ticker only)
     const lg = s.wildlife && s.wildlife.leGrand; if (lg) { const left = Math.max(0, fin(s.wildlife.leGrandDay, day) + 3 - day); const i = clamp(Math.floor(fin(lg.tx, 0)), 0, W - 1) + clamp(Math.floor(fin(lg.ty, 0)), 0, HGT - 1) * W; return { icon: '🐊', text: '', gator: { name: 'Le Grand at the cypress lake · ' + left + (left === 1 ? ' day' : ' days'), i: i }, kind: 'wildlife' }; }
     return null;
   }
@@ -2806,7 +2795,7 @@
       for (let k = notifs.length - 1; k >= 0; k--) { notifs[k].closed = true; } notifs.length = 0;
       odo.cash = NaN; odo.students = NaN; odo.lastStudents = NaN; odo.holdUntil = -1; odo.deltaUntil = 0;
       tk = { x: 0, line: null, seen: Math.max(0, ((state && state.ticker) || []).length - 1), w: 0, lastLen: -1, logOpen: false, cycle: 0 };
-      alertClosedKey = ''; for (const k in gatorAlerts) delete gatorAlerts[k];
+      alertClosedKey = ''; tray.suggestOpen = false; tray.sopen = {};
       bubble = { since: clock, until: 0, key: '' }; objKey = ''; alertKey = ''; alertAt = -1e9; msAt = -1e9; speedKey = ''; paletteKey = ''; palShownTab = ''; pipKey = ''; paletteDirty = true; capacityShown = false; skipShown = false; paletteHidden = null; hudFade = false;   // null: the first updateSetPiece re-syncs #palette and #hud.no-palette (a stale no-palette from the title / tutorial left a 0-height palette after newGame/load)
       M.debug.open = false; M.hoverTile = -1; lastGhost = null;
       tray.key = ''; tray.rows = []; tray.hadIssues = false; tray.clearAt = -1e9; heldI = false; spotToggled = false; try { if (BSU.issues) { BSU.issues.select(null); BSU.issues.spotlight(false); BSU.issues.pulse(null); } } catch (e) { /* */ }
@@ -2923,7 +2912,7 @@
         A(M.keydown('i', { ctrl: false, shift: false, meta: false, alt: false, repeat: true }) === true && I.selectedId() === li[0].id, 'key repeat does not cycle'); keyup('i');
         A(M.keydown('I', { ctrl: false, shift: true, meta: false, alt: false }) === true && I.spotlight() === true && spotToggled, 'Shift+I toggles spotlight on');
         s.ui.tool = null; s.ui.panel = null; A(M.keydown('Escape', M0) === true && I.spotlight() === false && I.selectedId() === null, 'Esc clears the selection and the spotlight');
-        A(locateKindsOf({ text: 'A gator is on the quad' })[0] === 'gatorOnCampus' && locateKindsOf({ locate: 'power' }).length === 3 && locateKindsOf({ text: 'Saved' }) === null, 'locate kinds from a notification');
+        A(locateKindsOf({ text: 'Tiger Hall is flooded' })[0] === 'flooded' && locateKindsOf({ text: 'A gator is on the quad' }) === null && locateKindsOf({ locate: 'power' }).length === 3 && locateKindsOf({ text: 'Saved' }) === null, 'locate kinds from a notification (gators are not issues)');
         const r = fixIssue(s, li[0]); A(r && r.ok !== false && (bm.open === true || (s.ui.tool && s.ui.tool.id === 'substation')) && I.selectedId() === li[0].id, 'Fix arms the Substation (palette card, or the build menu when no spot is in reach)'); M.closeBuildMenu(); M.selectTool(s, null);
         s.buildings = []; I.invalidate(); A(I.list(s).length === 0 && I.selectedId() === null, 'issue gone → selection gone'); I.reset();
       }

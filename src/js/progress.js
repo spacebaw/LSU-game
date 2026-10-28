@@ -349,7 +349,7 @@
     bayouField: null, nightFalls: null, geauxBeatMagnolia: null, undefeated: null, bigBoil: null, throwMeSomethin: null, skeeterBeater: null,
     firstBell: function (s) { return students(s) >= fin(MG.firstBell, 600); },
     highAndDry: function (s) { const H = fin(MG.highAndDryH, 8); if (!call('buildings', 'ringClosed', s, H)) return false; const g = call('buildings', 'gaps', s, H); if (g && g.gaps && g.gaps.length) return false; return pumpInsideRing(s, H); },
-    gatorWrangler: function (s) { return fin(s.wildlife && s.wildlife.relocations, 0) >= fin(MG.gatorWrangler, 10); },
+    gatorWrangler: function () { return false; },   // retired (calm alerts + ambient gators pass): never earned, hidden in the panel
     greenAndGold: function (s) { const g = MG.greenAndGold || {}; return ecology(s) >= fin(g.ecology, 70) && students(s) >= fin(g.students, 3000); },
     fortressBayou: function (s) { const g = MG.fortressBayou || {}; if (otherExclusiveThisYear(s, 'livingWithWater')) return false; return !!call('buildings', 'ringClosed', s, fin(g.H, 12)) && floodwallTiles(s, true, fin(g.H, 12)) >= fin(g.floodwalls, 40); },
     livingWithWater: function (s) { const g = MG.livingWithWater || {}; if (otherExclusiveThisYear(s, 'fortressBayou')) return false; return ecology(s) >= fin(g.ecology, 75) && students(s) >= fin(g.students, 2000) && floodwallTiles(s, false) <= fin(g.floodwallMax, 10); },
@@ -362,7 +362,7 @@
   };
   const MILESTONE_PROGRESS = {
     firstBell: function (s) { return { progress: students(s), goal: fin(MG.firstBell, 600) }; },
-    gatorWrangler: function (s) { return { progress: fin(s.wildlife && s.wildlife.relocations, 0), goal: fin(MG.gatorWrangler, 10) }; },
+    gatorWrangler: function () { return { progress: 0, goal: fin(MG.gatorWrangler, 10) }; },
     greenAndGold: function (s) { const g = MG.greenAndGold || {}; return { progress: Math.min(ecology(s) / fin(g.ecology, 70), students(s) / fin(g.students, 3000)), goal: 1 }; },
     fortressBayou: function (s) { const g = MG.fortressBayou || {}; return { progress: floodwallTiles(s, false), goal: fin(g.floodwalls, 40) }; },
     livingWithWater: function (s) { const g = MG.livingWithWater || {}; return { progress: Math.min(ecology(s) / fin(g.ecology, 75), students(s) / fin(g.students, 2000)), goal: 1 }; },
@@ -579,7 +579,7 @@
     '13': function (s, c) { return !!c.trig['13']; },
     '14': function (s, c) { return !!c.trig['14']; },
     '15': function (s) { return students(s) >= fin(G.students15, 400); },
-    '16': function (s, c) { return (!!c.trig['16'] && done(s, '9')) || ecology(s) < fin(G.ecology16, 75); },
+    '16': function (s, c) { return !!c.trig['16'] || ecology(s) < fin(G.ecology16, 75); },   // calm pass: Objective 9 (gator counterplay) is retired; the first gator visit still opens Preserve it
     '17': function (s) { return students(s) >= fin(G.students17, 1000); },
     '18a': function (s) { return bhas(s, 'practice_field', 1); },
     '18b': function (s) { return done(s, '18a'); },
@@ -1537,26 +1537,14 @@
       case EV.GATOR_CAMPUS: {
         if (!e || !e.enter) break;
         const i = fin(e.i, NONE);
-        if (p.firsts.gatorDay < 0) {
-          p.firsts.gatorDay = day; c.firstGatorTile = i;
-          if (warningsOn(state)) firstWarningDrop(state, c, (e.name || 'A gator') + ' is on campus.', 'wildlife', i);
-        }
-        c.trig['9'] = true; c.trig['16'] = true;
-        if (i >= 0 && (state.tiles.flags[i] & FLAG.CANAL) && state.tiles.surface[i] >= SURF.PATH && c.lastGatorEnterDay !== day) { c.lastGatorEnterDay = day; M.ticker(state, 1, null, null, i); }
+        // calm alerts + ambient gators pass: no first-gator warning, no Objective 9, no incident / relocation lines; the culvert line is a rare flavour (≥ 90 days apart)
+        if (p.firsts.gatorDay < 0) { p.firsts.gatorDay = day; c.firstGatorTile = i; }
+        c.trig['16'] = true;
+        if (i >= 0 && (state.tiles.flags[i] & FLAG.CANAL) && state.tiles.surface[i] >= SURF.PATH && (c.lastGatorEnterDay === NONE || day - c.lastGatorEnterDay >= 90)) { c.lastGatorEnterDay = day; M.ticker(state, 1, null, null, i); }
         break;
       }
-      case EV.GATOR_INCIDENT:
-        if (e && e.kind === 'pool') M.ticker(state, 28, null, null, fin(e.i, NONE));
-        if (e && e.kind === 'field' && state.sports && state.sports.game) M.achieve(state, 'sunbather');
-        break;
-      case EV.GATOR_RELOCATED: {
-        const m = parts(day).month;
-        if (c.relocMonth !== m) { c.relocMonth = m; c.relocCount = {}; }
-        const key = String(e && e.id);
-        c.relocCount[key] = (c.relocCount[key] || 0) + 1;
-        if (c.relocCount[key] === 4) M.ticker(state, 21, { gator: (e && e.name) || 'the gator' });
-        break;
-      }
+      case EV.GATOR_INCIDENT: break;    // retired, never emitted
+      case EV.GATOR_RELOCATED: break;   // ambient (an officer walking a gator home); no ticker line
       case EV.MOSQUITO_WARNING:
         if (p.firsts.mosquitoDay < 0) { p.firsts.mosquitoDay = day; if (warningsOn(state)) firstWarningDrop(state, c, 'Mosquito warning: standing water on campus.', 'wildlife', fin(e && e.worstTile, NONE)); }
         if (e && Number.isFinite(e.worstTile)) c.worstMosqTile = e.worstTile;
@@ -1636,7 +1624,7 @@
           // Mardi Gras parade (§14.3): the first Dusk on or after Feb 8 (the sky cycle is 3 calendar days, so Feb 8 itself may have none), once per year
           { const yr = yearOf(day), feb8 = dateDay('Feb 8', yr); if (p.tutorialStage >= 6 && feb8 >= 0 && day >= feb8 && day <= feb8 + 4 && p.paradeYear !== yr) { c.paradeWanted = day; c.paradeStart = true; } }
           // first gator (§9.2): the first Dusk on or after Feb 9 Y1, any year until Objective 9 has been offered; once per day
-          if (!M.offered(state, '9') && p.tutorialStage >= 6 && day >= dateDay('Feb 9', 1) && c.firstGatorDay !== day) { c.firstGatorDay = day; call('wildlife', 'forceFirstGator', state); }
+          if (p.firsts.gatorDay < 0 && p.tutorialStage >= 6 && day >= dateDay('Feb 9', 1) && c.firstGatorDay !== day) { c.firstGatorDay = day; call('wildlife', 'forceFirstGator', state); }   // calm pass: an ambient first visit (once; Objective 9 is retired)
           if (day % 5 === 0 && bhas(state, 'union') && c.zydecoDay !== day) { c.zydecoDay = day; M.ticker(state, 8); }
         }
         if (ph === SKY.NIGHT && !p.hints.ticker24 && fin(state.wildlife && state.wildlife.fireflies, 0) >= 50) { p.hints.ticker24 = true; M.ticker(state, 24); }

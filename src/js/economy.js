@@ -200,15 +200,8 @@
     if (typeof v === 'number' && isFinite(v)) return clamp(v, 0, 1);
     return clamp(num(state.wildlife && state.wildlife.mosqIndex, 0), 0, 1);
   }
-  function gatorPenaltyNow(state) {
-    const v = call('wildlife', 'gatorPenalty', [state], null);
-    if (typeof v === 'number' && isFinite(v)) return clamp(v, 0, P.wildlife.gator.incidentCap + num(P.wildlife.gator.delayHappinessCap, 0) + num(P.wildlife.gator.closureCap, 0));   // gator pass: incidents + students delayed + closures
-    const inc = (state.wildlife && Array.isArray(state.wildlife.incidents)) ? state.wildlife.incidents : [];
-    const day = today(state);
-    let n = 0;
-    for (let i = 0; i < inc.length; i++) if (inc[i] && num(inc[i].day, -1e9) > day - P.wildlife.gator.incidentDays) n++;
-    return Math.min(P.wildlife.gator.incidentCap, P.wildlife.gator.incidentPenalty * n);
-  }
+  /** calm alerts + ambient gators pass: gators are wildlife, never a happiness term (the `gator` key stays, at 0, for the breakdown and old saves) */
+  function gatorPenaltyNow(state) { void state; return 0; }
   function sampleNow(state) {
     const s = call('agents', 'sample', [state], null);
     if (!s || typeof s !== 'object') return { life: 0, green: 0, mosq: 0, heat: 0, n: 0 };
@@ -1217,7 +1210,7 @@
     salaries: 'Staff salaries', upkeep: 'Upkeep', utilities: 'Utilities', food: 'Food', coaching: 'Coaching', interest: 'Loan interest', repair: 'Repairs', prep: 'Storm prep',
     construction: 'Construction', demolition: 'Demolition', boardCards: 'Board cards',
     housing: 'housing quality', dining: 'dining coverage', life: 'student life', green: 'green space', spirit: 'school spirit', mosquito: 'mosquitoes', flood: 'flooding',
-    gator: 'gators (incidents, students delayed, closed halls)', heat: 'heat',   // gator pass crowd: 'crowded classes', noise: 'noise',
+    gator: 'gators', heat: 'heat',   // calm pass: always 0 (gators are scenery) crowd: 'crowded classes', noise: 'noise',
     academic: 'academic quality', faculty: 'faculty', happiness: 'happiness', football: 'football', landmarks: 'landmarks', ecology: 'ecology', selectivity: 'selectivity', blight: 'blight', rookery: 'the rookery'
   };
   function label(k) { return LABELS[k] || k; }
@@ -1376,7 +1369,7 @@
       if (pendingAttendance) {
         pendingAttendance = false;
         const a = call('agents', 'classAttendance', [state], 1);
-        const dent = clamp(num(call('wildlife', 'attendanceDent', [state], 0), 0), 0, 1);   // gator pass: students delayed by gators since Dawn skip or arrive late (params.wildlife.gator.delayAttendancePer / Cap)
+        const dent = 0;   // calm alerts + ambient gators pass: no gator attendance dent
         if (Array.isArray(state.economy.attendanceCycles)) state.economy.attendanceCycles.push(clamp(num(a, 1) - dent, 0, 1));
       }
       if (newDay) {

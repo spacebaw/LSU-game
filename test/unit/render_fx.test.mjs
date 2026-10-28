@@ -188,6 +188,31 @@ ok(!threw && BSU.errors.size === errs0, 'frames through a Cat 3 landfall and aft
 P.clear(); R.onPerfMode(s); P.emit('dust', 0, 0, 3000);
 ok(P.count() <= BSU.params.render.particlesLow, `onPerfMode caps the pool at particlesLow (${P.count()} ≤ ${BSU.params.render.particlesLow})`);
 R._fxReset(s); ok(P.count() === 0, '_fxReset clears the pool');
+// calm alerts pass: the beacons pass draws the registry's capped, severity-gated list; the label of an in-progress row says so
+try {
+  const I = BSU.issues;
+  ok(/I\.beacons\(|issBeaconList/.test(readFileSync(join(root, 'src', 'js', 'render_fx.js'), 'utf8')) && typeof I.beacons === 'function', 'the beacons / spotlight passes read issues.beacons');
+  const sb = BSU.newState(5); sb.tick = 10; sb.economy.suppressCoverage = false; sb.economy.suspendCapPenalties = false; sb.economy.students = 0; sb.buildings = [];
+  sb.plot = sb.plot || {}; sb.plot.founders = { tx: 30, ty: 30 }; sb.plot.highway = [];
+  const row = BSU.data.catalog.dorm;
+  for (let k = 0; k < 9; k++) sb.buildings[k] = { id: k, type: 'dorm', tx: 4 + k * 6, ty: 4, w: row.w, h: row.h, rot: 0, name: 'B' + k, hp: 1, built: 1, builtDay: 0, pilings: false, sunk: 0, powered: false, watered: true, provider: { power: -1, water: -1 }, flooded: false, floodedSince: -1, closedUntil: -1, blackout: false, tier: 0, upgradeDoneDay: -1, ruin: false, tarp: false };
+  I.invalidate(); const lst = I.list(sb);
+  ok(lst.filter((it) => it.kind === 'unpowered').length === 9 && lst.filter((it) => it.kind === 'unlinkedPath').length === 9, 'nine unpowered dorms + nine unlinked suggestions');
+  const bl = I.beacons(sb, 4, 4); ok(bl.length === 6 && bl.every((it) => it.kind === 'unpowered'), 'issues.beacons: six, no suggestions');
+  // a stub context that counts the discs the beacon pass draws (one arc per beacon foot + one per disc)
+  let arcs = 0, texts = []; const gs = new Proxy({}, { get: (t, k) => { if (k === 'arc') return () => { arcs++; }; if (k === 'fillText') return (s2) => { texts.push(String(s2)); }; if (k === 'measureText') return () => ({ width: 10 }); if (k === 'createLinearGradient') return () => ({ addColorStop() {} }); return () => {}; }, set: () => true });
+  const view = { vw: 1280, vh: 800 }; sb.ui.camera = sb.ui.camera || {}; sb.ui.camera.x = 0; sb.ui.camera.y = 0; sb.ui.camera.zoom = 0.5;
+  const drawn = R._issueDraw.beacons(sb, gs, view, bl, null, performance.now());
+  ok(drawn >= 1 && drawn <= 6 && arcs > 0, 'the beacon pass draws from the capped list, never more than beaconMax (' + drawn + ' on screen of ' + bl.length + ')');
+  // the floating label of an in-progress row reads "In progress: …", not the fix
+  sb.buildings[9] = Object.assign({}, sb.buildings[0], { id: 9, type: 'substation', tx: 4, ty: 9, w: BSU.data.catalog.substation.w, h: BSU.data.catalog.substation.h, built: 0.5, powered: true });
+  I.invalidate(); const ip = I.list(sb).find((it) => it.kind === 'unpowered' && it.progress);
+  ok(!!ip, 'a substation under construction puts a dorm in progress');
+  if (ip) { I.select(ip.id); texts = []; sb.ui.camera.x = 0; sb.ui.camera.y = 0; sb.ui.camera.zoom = 1; const sel = I.selected(sb); const camTx = ((sel.anchor.tx | 0)); void camTx;
+    R.panToTile ? R.panToTile(sel.anchor.tx, sel.anchor.ty, false) : null; const drew = R._issueDraw.label(sb, gs, view, sel);
+    ok(drew === false || (texts.some((t) => /In progress:/.test(t)) && !texts.some((t) => /place a Substation/.test(t))), 'the label says "In progress: …" (' + (drew ? texts.filter((t) => /progress|Substation/.test(t)).join(' | ') : 'off-screen, no label') + ')'); I.select(null); }
+  I.reset(sb);
+} catch (e) { ok(false, 'calm alerts render_fx: ' + (e.stack || e)); }
 // selfTest hook
 BSU.SELFTEST = true; let st; try { st = R.selfTest(); } finally { BSU.SELFTEST = false; }
 ok(st && st.ok && /render_fx/.test(st.notes || ''), 'render.selfTest runs the render_fx tests: ' + (st && st.notes));

@@ -2,11 +2,15 @@
 // issues.js — the ISSUE SPOTLIGHT registry (issue spotlight pass; issues v2 pass). One place that answers "what is
 // wrong on campus right now, where exactly, what fixes it, and is a fix already underway": buildings without power
 // or water, flooded, damaged or ruined buildings, buildings whose path never reached campus, weak levees, full beds /
-// seats / dining, gators that actually BLOCK something, mosquito hotspots, the boil-water notice, a brownout and
-// unpowered pumps in the rain. The list is recomputed at most every `params.issues.refreshTicks` (25) ticks and at
-// once after any building / power / coverage / levee / flood / gator / repair event. Deterministic (state in, plain
-// objects out), no DOM, no timers; render_fx draws the beacons, ui.js the tray. Selection, spotlight mode, the gauge
-// hover pulse, snoozes and dismissals live here so render_fx and ui share them without events.
+// seats / dining, mosquito hotspots, the boil-water notice, a brownout and unpowered pumps in the rain (gators are
+// wildlife, never an issue: calm alerts + ambient gators pass). The list is recomputed at most every
+// `params.issues.refreshTicks` (25) ticks and at once after any building / power / coverage / levee / flood / repair
+// event. Deterministic (state in, plain objects out), no DOM, no timers; render_fx draws the beacons, ui.js the tray.
+// Selection, spotlight mode and the gauge hover pulse live here so render_fx and ui share them without events;
+// snoozes / dismissals are saved with the game (state.ui.issues), mutes and the Alerts mode in the settings.
+// Calm alerts pass: `beacons(state, camTx, camTy)` is the capped, severity-gated list the map draws (≤ beaconMax,
+// most severe then nearest; severity-1 KINDS and muted kinds never beacon and are "suggestions" in the tray);
+// `toastGate(state, kinds)` says whether an issue notification may show right now (mode, severity, once per kind per week).
 // Every issue: {id, kind, severity 1–3, title, fix, why, persist, tiles, rect, anchor, buildingId, action, cost,
 // resolvable, progress {text, days} | null, hidden '' | 'snoozed' | 'dismissed', sig, since, color, glyph}.
 // `list()` = the rows the tray and the beacons show (hidden ones left out); `actionable()` = those with no fix
@@ -41,37 +45,46 @@
     unlinkedPath:    Object.freeze({ color: '#FDD023', glyph: 'link',     severity: 1, family: 'path',     label: 'Not linked' }),
     weakLevee:       Object.freeze({ color: '#FF8C42', glyph: 'sandbag',  severity: 2, family: 'levee',    label: 'Weak levee' }),
     overCapacity:    Object.freeze({ color: '#FF7AD9', glyph: 'crowd',    severity: 2, family: 'capacity', label: 'Full' }),
-    gatorOnCampus:   Object.freeze({ color: '#7CFF6B', glyph: 'gator',    severity: 3, family: 'gator',    label: 'Gator' }),
     mosquitoHotspot: Object.freeze({ color: '#C77DFF', glyph: 'mosquito', severity: 1, family: 'mosquito', label: 'Mosquitoes' })
   });
   const FAMILY_KINDS = Object.freeze({
     power: ['unpowered', 'brownout', 'pumpOff'], water: ['unwatered', 'boilWater'], flood: ['flooded'], damage: ['damaged'], path: ['unlinkedPath'],
-    levee: ['weakLevee'], capacity: ['overCapacity'], gator: ['gatorOnCampus'], mosquito: ['mosquitoHotspot']
+    levee: ['weakLevee'], capacity: ['overCapacity'], mosquito: ['mosquitoHotspot']
   });
+  const ALERT_MODES = (Array.isArray(PI().alertModes) && PI().alertModes.length === 3) ? PI().alertModes.slice() : ['normal', 'quiet', 'off'];
   const REFRESH_TICKS = Math.max(1, fin(PI().refreshTicks, 25) | 0), MOSQ_HOT = 0.6, MOSQ_SEVERE = 0.8, MOSQ_CLUSTERS = 3, MOSQ_RADIUS = 3, LEVEE_RUN_MAX = 48;
   const ACCESS = [SURF.PATH, SURF.ROAD, SURF.BOARDWALK, SURF.BRIDGE].filter((v) => Number.isFinite(v));
 
   // ---------------------------------------------------------------------------
-  // Cache, selection, modes, snoozes
+  // Cache, selection, modes; snoozes / dismissals live in state.ui.issues (saved), mutes + the Alerts mode in the settings
   // ---------------------------------------------------------------------------
-  const cache = { state: null, tick: -1e9, list: [], all: [], active: [], dirty: true, version: 0, computes: 0 };
+  const cache = { state: null, tick: -1e9, list: [], all: [], active: [], main: [], suggest: [], dirty: true, version: 0, computes: 0 };
   const sinceMap = new Map();   // issue id → tick first seen (survives recomputes while the issue persists)
-  const snoozed = new Map();    // issue id → {until (tick), severity}: hidden until then, back earlier if it gets worse
-  const dismissed = new Map();  // issue id → sig: hidden until the condition changes (severity / stage)
   const depthMemo = new Map();  // flooded id → last depth (ft): "receding" when it drops between refreshes
+  const toastStamp = {};        // kind / family → day of the last issue toast of that key (one per toastPerKindDays)
   let selectedId = null, spotlightOn = false, pulseKinds = null, subscribed = false;
   const conn = new Uint8Array(N), ring = new Uint8Array(N), queue = new Int32Array(N), visited = new Uint8Array(N);
+  /** the saved snooze / dismissal store on state.ui (created lazily for saves from before this pass) */
+  function store(state) {
+    const u = state && state.ui; if (!u) return { snoozed: {}, dismissed: {} };
+    if (!u.issues || typeof u.issues !== 'object') u.issues = { snoozed: {}, dismissed: {} };
+    if (!u.issues.snoozed || typeof u.issues.snoozed !== 'object') u.issues.snoozed = {};
+    if (!u.issues.dismissed || typeof u.issues.dismissed !== 'object') u.issues.dismissed = {};
+    return u.issues;
+  }
+  function settingsOf(state) { const u = state && state.ui; if (!u) return {}; if (!u.settings || typeof u.settings !== 'object') u.settings = {}; return u.settings; }
+  function mutedMap(state) { const s = settingsOf(state); if (!s.mutedIssues || typeof s.mutedIssues !== 'object') s.mutedIssues = {}; return s.mutedIssues; }
 
   function subscribe() {
     if (subscribed || !BSU.events || typeof BSU.events.on !== 'function') return;
     subscribed = true;
     const names = [EV.BUILDING_PLACED, EV.BUILDING_REMOVED, EV.BUILDING_COMPLETE, EV.BUILDING_UPGRADED, EV.BUILDING_FLOODED, EV.BUILDING_DRIED, EV.BUILDING_DAMAGED, EV.BUILDING_REPAIRED,
-      EV.POWER_BLACKOUT, EV.POWER_RESTORED, EV.COVERAGE_CHANGED, EV.LEVEE_OVERTOP, EV.LEVEE_BREACH, EV.LEVEE_BURROW, EV.GATOR_CAMPUS, EV.GATOR_RELOCATED, EV.GATOR_BLOCKED, EV.GATOR_CALLOUT,
+      EV.POWER_BLACKOUT, EV.POWER_RESTORED, EV.COVERAGE_CHANGED, EV.LEVEE_OVERTOP, EV.LEVEE_BREACH, EV.LEVEE_BURROW,
       EV.MOSQUITO_WARNING, EV.TILE_CHANGED, EV.STORM_LANDFALL, EV.STORM_PHASE];
     for (const n of names) { if (!n) continue; try { BSU.events.on(n, function () { cache.dirty = true; }, 'issues'); } catch (e) { ierr('subscribe', e); } }
     try { BSU.events.on(EV.SAVE_LOADED, function () { resetAll(); }, 'issues'); } catch (e) { ierr('subscribe:load', e); }
   }
-  function resetAll() { cache.state = null; cache.tick = -1e9; cache.list = []; cache.all = []; cache.active = []; cache.dirty = true; sinceMap.clear(); snoozed.clear(); dismissed.clear(); depthMemo.clear(); selectedId = null; spotlightOn = false; pulseKinds = null; cache.version++; }
+  function resetAll() { cache.state = null; cache.tick = -1e9; cache.list = []; cache.all = []; cache.active = []; cache.main = []; cache.suggest = []; cache.dirty = true; sinceMap.clear(); depthMemo.clear(); for (const k in toastStamp) delete toastStamp[k]; selectedId = null; spotlightOn = false; pulseKinds = null; cache.version++; }
 
   // ---------------------------------------------------------------------------
   // Detection
@@ -265,31 +278,7 @@
         }
       }
     } catch (e) { ierr('capacity', e); }
-    // gators that BLOCK something (gator pass bits: 1 path with ≥ gatorBlockDelayed students rerouted, 2 a kitchen / pool closed, 4 on the field on game day); the rest are sightings (ticker)
-    try {
-      const gs = call('wildlife', 'onCampus', state) || [];
-      const GT = (BSU.data && BSU.data.gatorText) || {}, PG = (BSU.params.wildlife && BSU.params.wildlife.gator) || {};
-      const minDelayed = fin(PI().gatorBlockDelayed, fin(PG.blockTraffic, 3));
-      const officers = (state.wildlife && state.wildlife.officers) || [];
-      for (const g of gs) {
-        if (!g) continue;
-        const st = call('wildlife', 'gatorStatus', state, g.id); if (!st) continue;
-        const closes = st.closes >= 0, onField = (fin(st.blocked, 0) & 4) !== 0, delayed = Math.max(fin(st.delayed, 0), fin(st.delayedVisit, 0));
-        const onPath = (fin(st.blocked, 0) & 1) !== 0 || (st.onPath && delayed >= minDelayed);
-        if (!closes && !onField && !onPath) continue;   // a sighting, not an issue (sunning at its den, wandering past)
-        const i = clamp(Math.floor(fin(g.ty, 0)), 0, H - 1) * W + clamp(Math.floor(fin(g.tx, 0)), 0, W - 1);
-        const free = !!st.canWrangle, fee = money(fin(PG.callOutFee, 15000)), days = fin(PG.callOutDays, 1) === 1 ? '1 day' : fin(PG.callOutDays, 1) + ' days';
-        const fix = free ? (GT.fixFree || 'Fix: the Wildlife Officer relocates it (free)') : String(GT.fixPaid || 'Fix: Parish Wildlife call-out {fee}, arrives in {days}').replace('{fee}', fee).replace('{days}', days);
-        const why = onField ? (GT.whyGame || '') : (closes ? (GT.whyClosed || '') : (GT.why || ''));
-        const title = (g.name || 'A gator') + (closes && st.closesName ? ' · ' + st.closesName + ' closed' : (onField ? ' · on the field, kickoff delayed' : ' · blocking the path, ' + delayed + ' students rerouted'));
-        let progress = null, wrangling = g.state === 'WRANGLED';
-        for (const o of officers) if (o && o.target === g.id && (o.state === 'WALK' || o.state === 'WRANGLE')) wrangling = true;
-        if (st.callOut) progress = { text: 'Parish Wildlife booked · arrives ' + BSU.formatDate(fin(st.callOut.day, 0)), days: Math.max(0, fin(st.callOut.day, 0) - fin(state.calendar && state.calendar.day, 0)) };
-        else if (wrangling) progress = { text: 'Wildlife Officer on the way', days: 0 };
-        mk(out, 'gatorOnCampus', 'gator:' + fin(g.id, i), { severity: 3, title: title, fix: fix, why: why, persist: free ? 'Free: the Wildlife Officer Post is in range · one click' : 'No Wildlife Officer Post within ' + fin(PG.officerRadius, 14) + ' tiles: the Parish call-out costs ' + fee,
-          tiles: [i], anchor: tileAnchor(i), action: { relocate: g.id, free: free }, cost: free ? 0 : fin(PG.callOutFee, 15000), resolvable: free && !progress, progress: progress, stage: onField ? 'game' : (closes ? 'closed' : 'path') });
-      }
-    } catch (e) { ierr('gators', e); }
+    // (gators: never an issue — calm alerts + ambient gators pass)
     // mosquito hotspots: the top campus tiles over the "Biblical" band, clustered
     try {
       const mq = state.tiles && state.tiles.mosq; const cm = has('wildlife', 'campusMask') ? call('wildlife', 'campusMask', state) : null;
@@ -320,20 +309,29 @@
     return { tiles: BSU.footprintTiles(f.tx | 0, f.ty | 0, 3, 3), rect: { tx: f.tx | 0, ty: f.ty | 0, w: 3, h: 3 }, anchor: { tx: (f.tx | 0) + 1, ty: (f.ty | 0) + 1 }, buildingId: null };
   }
   function finish(state, out) {
-    const tick = fin(state.tick, 0) | 0, seen = new Set();
+    const tick = fin(state.tick, 0) | 0, seen = new Set(), st = store(state), snoozed = st.snoozed, dismissed = st.dismissed;
     for (const it of out) {
       seen.add(it.id); if (!sinceMap.has(it.id)) sinceMap.set(it.id, tick); it.since = sinceMap.get(it.id);
       it.sig = it.kind + '|' + it.severity + '|' + it.stage;
-      const sn = snoozed.get(it.id);
-      if (sn && tick < sn.until && it.severity <= sn.severity) it.hidden = 'snoozed'; else if (sn) snoozed.delete(it.id);
-      if (!it.hidden) { const ds = dismissed.get(it.id); if (ds === it.sig) it.hidden = 'dismissed'; else if (ds !== undefined) dismissed.delete(it.id); }
+      const sn = snoozed[it.id];
+      if (sn && tick < fin(sn.until, 0) && it.severity <= fin(sn.severity, 3)) it.hidden = 'snoozed'; else if (sn) delete snoozed[it.id];
+      if (!it.hidden) { const ds = dismissed[it.id]; if (ds === it.sig) it.hidden = 'dismissed'; else if (ds !== undefined) delete dismissed[it.id]; }
+      it.suggestion = isSuggestion(state, it);
     }
-    for (const id of Array.from(sinceMap.keys())) if (!seen.has(id)) { sinceMap.delete(id); snoozed.delete(id); dismissed.delete(id); }
+    for (const id of Array.from(sinceMap.keys())) if (!seen.has(id)) sinceMap.delete(id);
+    for (const id in snoozed) if (!seen.has(id)) delete snoozed[id];
+    for (const id in dismissed) if (!seen.has(id)) delete dismissed[id];
     out.sort((a, b) => (b.severity - a.severity) || (a.since - b.since) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
     cache.all = out; cache.list = out.filter((it) => !it.hidden); cache.active = cache.list.filter((it) => !it.progress);
+    cache.main = cache.active.filter((it) => !it.suggestion); cache.suggest = cache.active.filter((it) => it.suggestion);
     if (selectedId !== null && !cache.list.some((it) => it.id === selectedId)) selectedId = null;
     return cache.list;
   }
+  /** calm alerts pass: a suggestion = a severity-1 KIND (unlinkedPath, mosquitoHotspot: the kind's base severity, whatever the row's) or a muted kind */
+  function isSuggestion(state, it) { const K = KINDS[it.kind]; return !K || K.severity <= 1 || !!mutedMap(state)[it.kind]; }
+  function alertModeOf(state) { const m = settingsOf(state).alerts; return ALERT_MODES.indexOf(m) >= 0 ? m : ALERT_MODES[0]; }
+  /** the least severity that earns a map beacon in the current Alerts mode: Normal params.issues.beaconMin (2), Quiet 3, Off never (4) */
+  function beaconMinOf(state) { const m = alertModeOf(state); return m === ALERT_MODES[2] ? 4 : m === ALERT_MODES[1] ? 3 : clamp(fin(PI().beaconMin, 2) | 0, 1, 3); }
 
   // ---------------------------------------------------------------------------
   // API
@@ -342,7 +340,7 @@
     state = state || BSU.state; if (!state || !state.tiles) return cache.list;
     subscribe();
     const tick = fin(state.tick, 0) | 0;
-    if (cache.state !== state) { resetAll(); cache.state = state; }
+    if (cache.state !== state) { resetAll(); cache.state = state; store(state); }
     if (!cache.dirty && tick >= cache.tick && tick - cache.tick < REFRESH_TICKS && cache.list) return cache.list;
     finish(state, compute(state)); cache.tick = tick; cache.dirty = false; cache.version++; cache.computes++;
     return cache.list;
@@ -351,8 +349,59 @@
   M.list = function (state) { try { return refresh(state); } catch (e) { ierr('list', e); return cache.list || []; } };
   /** all(state) → every issue, hidden ones too (`hidden` = 'snoozed' | 'dismissed' | '') */
   M.all = function (state) { try { refresh(state); return cache.all; } catch (e) { ierr('all', e); return cache.all || []; } };
-  /** actionable(state) → visible issues with no fix underway: the tray count and I-cycling */
+  /** actionable(state) → visible issues with no fix underway (main rows + suggestions) */
   M.actionable = function (state) { try { refresh(state); return cache.active; } catch (e) { ierr('actionable', e); return cache.active || []; } };
+  /** main(state) → the actionable rows that are not suggestions: the tray's count, the groups, I-cycling, Clear N */
+  M.main = function (state) { try { refresh(state); return cache.main; } catch (e) { ierr('main', e); return cache.main || []; } };
+  /** suggestions(state) → the actionable rows of severity-1 kinds and muted kinds: the tray's collapsed Suggestions group (never a beacon, never a toast) */
+  M.suggestions = function (state) { try { refresh(state); return cache.suggest; } catch (e) { ierr('suggestions', e); return cache.suggest || []; } };
+  M.isSuggestion = function (state, it) { return !!(it && isSuggestion(state || cache.state, it)); };
+  /** alertMode(state) → 'normal' | 'quiet' | 'off' (settings.alerts; ui.setAlertMode writes it) */
+  M.alertMode = function (state) { return alertModeOf(state || cache.state || BSU.state); };
+  M.alertModes = function () { return ALERT_MODES.slice(); };
+  M.beaconMin = function (state) { return beaconMinOf(state || cache.state || BSU.state); };
+  M.beaconMax = function () { return Math.max(0, fin(PI().beaconMax, 6) | 0); };
+  /** muted(state, kind) → the kind's rows are suggestions only (settings.mutedIssues[kind]); mute(state, kind, on?) sets / toggles it (ui saves the settings) */
+  M.muted = function (state, kind) { return !!mutedMap(state || cache.state || BSU.state)[kind]; };
+  M.mute = function (state, kind, on) {
+    state = state || cache.state || BSU.state; if (!KINDS[kind]) return false;
+    const m = mutedMap(state); const v = on === undefined ? !m[kind] : !!on;
+    if (v) m[kind] = true; else delete m[kind];
+    cache.dirty = true; cache.version++; return v;
+  };
+  M.mutedKinds = function (state) { const m = mutedMap(state || cache.state || BSU.state); return Object.keys(m).filter((k) => !!m[k] && !!KINDS[k]); };
+  /** beacons(state, camTx?, camTy?, {all}) → the rows the map may draw: the selected one always; otherwise severity ≥ beaconMin for the
+   *  Alerts mode, no suggestions (severity-1 kinds, muted kinds); sorted most severe first then nearest the camera; ≤ beaconMax unless `all` (spotlight) */
+  M.beacons = function (state, camTx, camTy, opts) {
+    try {
+      state = state || cache.state || BSU.state; const l = M.list(state), min = beaconMinOf(state), sel = selectedId, cx = fin(camTx, 32), cy = fin(camTy, 32);
+      const out = [];
+      for (const it of l) { if (it.id === sel) { out.push(it); continue; } if (min > 3 || it.suggestion || it.severity < min) continue; out.push(it); }
+      const d = (it) => { const a = it.anchor || { tx: 32, ty: 32 }; return Math.max(Math.abs(fin(a.tx, 32) - cx), Math.abs(fin(a.ty, 32) - cy)); };
+      out.sort((a, b) => ((b.id === sel) - (a.id === sel)) || (b.severity - a.severity) || (d(a) - d(b)) || (a.since - b.since) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+      const cap = opts && opts.all ? Infinity : M.beaconMax();
+      return out.length > cap ? out.slice(0, cap) : out;
+    } catch (e) { ierr('beacons', e); return []; }
+  };
+  /** toastGate(state, kinds | family) → may an issue notification about these kinds show now? Off / Quiet: never; a severity below
+   *  toastMinSeverity (the rows' worst, else the kinds' base) or every kind muted: never; otherwise once per kind per toastPerKindDays
+   *  (every kind named is stamped with the day; a toast naming any kind stamped within the gap is refused) */
+  M.toastGate = function (state, kinds) {
+    try {
+      state = state || cache.state || BSU.state; if (!state) return false;
+      const mode = alertModeOf(state); if (mode !== ALERT_MODES[0]) return false;
+      let ks = typeof kinds === 'string' ? (FAMILY_KINDS[kinds] || [kinds]) : (Array.isArray(kinds) ? kinds : []); ks = ks.filter((k) => !!KINDS[k]); if (!ks.length) return false;
+      const m = mutedMap(state); ks = ks.filter((k) => !m[k]); if (!ks.length) return false;
+      const rows = M.ofKinds(state, ks); let sev = 0;
+      if (rows.length) { for (const it of rows) if (it.severity > sev) sev = it.severity; } else { for (const k of ks) if (KINDS[k].severity > sev) sev = KINDS[k].severity; }
+      if (sev < clamp(fin(PI().toastMinSeverity, 2) | 0, 1, 3)) return false;
+      const day = fin(state.calendar && state.calendar.day, 0), gap = Math.max(0, fin(PI().toastPerKindDays, 7));
+      for (const k of ks) if (Number.isFinite(toastStamp[k]) && day - toastStamp[k] < gap) return false;
+      for (const k of ks) toastStamp[k] = day;
+      return true;
+    } catch (e) { ierr('toastGate', e); return false; }
+  };
+  M.toastStamps = function () { return Object.assign({}, toastStamp); };
   M.inProgress = function (state) { return M.list(state).filter((it) => !!it.progress); };
   M.hiddenList = function (state) { return M.all(state).filter((it) => !!it.hidden); };
   M.invalidate = function () { cache.dirty = true; };
@@ -360,42 +409,44 @@
   M.byId = function (state, id) { const l = M.all(state); for (let k = 0; k < l.length; k++) if (l[k].id === id) return l[k]; return null; };
   M.ofKinds = function (state, kinds) { const l = M.list(state), set = Array.isArray(kinds) ? kinds : [kinds]; return l.filter((it) => set.indexOf(it.kind) >= 0); };
   M.ofFamily = function (state, family) { return M.ofKinds(state, FAMILY_KINDS[family] || []); };
-  /** summary(state) → {count (actionable), worst, bySeverity, inProgress, hidden, total (visible)} */
+  /** summary(state) → {count (main rows), suggestions, worst, bySeverity, inProgress, hidden, total (visible)} */
   M.summary = function (state) {
-    const l = M.actionable(state); const s = { count: l.length, worst: 0, bySeverity: [0, 0, 0, 0], inProgress: cache.list.length - l.length, hidden: cache.all.length - cache.list.length, total: cache.list.length };
+    const l = M.main(state); const s = { count: l.length, suggestions: cache.suggest.length, worst: 0, bySeverity: [0, 0, 0, 0], inProgress: cache.list.length - cache.active.length, hidden: cache.all.length - cache.list.length, total: cache.list.length };
     for (const it of l) { s.bySeverity[it.severity]++; if (it.severity > s.worst) s.worst = it.severity; }
     return s;
   };
-  /** groups(state) → [{kind, label, color, glyph, rows}] over the actionable rows in list order (the tray's grouping) */
-  M.groups = function (state) {
-    const l = M.actionable(state), out = [], by = new Map();
-    for (const it of l) { let g = by.get(it.kind); if (!g) { g = { kind: it.kind, label: KINDS[it.kind].label, color: it.color, glyph: it.glyph, rows: [] }; by.set(it.kind, g); out.push(g); } g.rows.push(it); }
+  function groupRows(state, l) {
+    const out = [], by = new Map();
+    for (const it of l) { let g = by.get(it.kind); if (!g) { g = { kind: it.kind, label: KINDS[it.kind].label, color: it.color, glyph: it.glyph, muted: !!mutedMap(state)[it.kind], rows: [] }; by.set(it.kind, g); out.push(g); } g.rows.push(it); }
     return out;
-  };
-  /** resolvable(state) → {rows, total, free, paid}: every visible issue with a zero-click fix right now (repairs within cash, link-its within cash, free wrangles) */
+  }
+  /** groups(state) → [{kind, label, color, glyph, muted, rows}] over the MAIN rows in list order (the tray's grouping); suggestionGroups(state) the same over the suggestions */
+  M.groups = function (state) { return groupRows(state, M.main(state)); };
+  M.suggestionGroups = function (state) { return groupRows(state, M.suggestions(state)); };
+  /** resolvable(state) → {rows, total, free, paid}: every MAIN row with a zero-click fix right now (repairs within cash, link-its within cash); never a suggestion or a muted kind */
   M.resolvable = function (state) {
-    const rows = M.actionable(state).filter((it) => it.resolvable); let total = 0, free = 0;
+    const rows = M.main(state).filter((it) => it.resolvable); let total = 0, free = 0;
     for (const it of rows) { total += it.cost; if (!(it.cost > 0)) free++; }
     return { rows: rows, total: total, free: free, paid: rows.length - free };
   };
-  /** snooze(state, id, days?) → hides the row for params.issues.snoozeDays (3) days; it returns sooner if the severity rises */
+  /** snooze(state, id, days?) → hides the row for params.issues.snoozeDays (3) days (saved with the game); it returns sooner if the severity rises */
   M.snooze = function (state, id, days) {
     const it = M.byId(state, id); if (!it) return false;
-    const tpd = fin(BSU.params.time && BSU.params.time.ticksPerDay, 200), d = Math.max(1, fin(days, fin(PI().snoozeDays, 3)));
-    snoozed.set(it.id, { until: (fin(state && state.tick, 0) | 0) + Math.round(d * tpd), severity: it.severity, days: d });
-    dismissed.delete(it.id); if (selectedId === it.id) selectedId = null; cache.dirty = true; cache.version++; return true;
+    const st = store(state), tpd = fin(BSU.params.time && BSU.params.time.ticksPerDay, 200), d = Math.max(1, fin(days, fin(PI().snoozeDays, 3)));
+    st.snoozed[it.id] = { until: (fin(state && state.tick, 0) | 0) + Math.round(d * tpd), severity: it.severity, days: d };
+    delete st.dismissed[it.id]; if (selectedId === it.id) selectedId = null; cache.dirty = true; cache.version++; return true;
   };
-  /** dismiss(state, id) → hides the row until the condition changes (its kind / severity / stage) */
-  M.dismiss = function (state, id) { const it = M.byId(state, id); if (!it) return false; dismissed.set(it.id, it.sig); snoozed.delete(it.id); if (selectedId === it.id) selectedId = null; cache.dirty = true; cache.version++; return true; };
-  M.restore = function (id) { const had = snoozed.delete(id) || dismissed.delete(id); if (had) { cache.dirty = true; cache.version++; } return !!had; };
-  M.restoreAll = function () { const n = snoozed.size + dismissed.size; snoozed.clear(); dismissed.clear(); if (n) { cache.dirty = true; cache.version++; } return n; };
-  M.snoozeInfo = function (id) { const sn = snoozed.get(id); return sn ? { until: sn.until, days: sn.days, severity: sn.severity } : null; };
+  /** dismiss(state, id) → hides the row until the condition changes (its kind / severity / stage); saved with the game */
+  M.dismiss = function (state, id) { const it = M.byId(state, id); if (!it) return false; const st = store(state); st.dismissed[it.id] = it.sig; delete st.snoozed[it.id]; if (selectedId === it.id) selectedId = null; cache.dirty = true; cache.version++; return true; };
+  M.restore = function (id, state) { const st = store(state || cache.state); const had = (id in st.snoozed) || (id in st.dismissed); delete st.snoozed[id]; delete st.dismissed[id]; if (had) { cache.dirty = true; cache.version++; } return !!had; };
+  M.restoreAll = function (state) { const st = store(state || cache.state); const n = Object.keys(st.snoozed).length + Object.keys(st.dismissed).length; st.snoozed = {}; st.dismissed = {}; if (n) { cache.dirty = true; cache.version++; } return n; };
+  M.snoozeInfo = function (id, state) { const sn = store(state || cache.state).snoozed[id]; return sn ? { until: sn.until, days: sn.days, severity: sn.severity } : null; };
   M.select = function (id) { selectedId = (id === undefined || id === null) ? null : String(id); cache.version++; return selectedId; };
   M.selectedId = function () { return selectedId; };
   M.selected = function (state) { return selectedId === null ? null : M.byId(state, selectedId); };
-  /** cycle(state, dir) → the next ACTIONABLE issue after the selected one (wraps; dir −1 goes back) and selects it; null when there are none */
+  /** cycle(state, dir) → the next MAIN issue after the selected one (wraps; dir −1 goes back) and selects it; null when there are none (suggestions are reached from the tray) */
   M.cycle = function (state, dir) {
-    const l = M.actionable(state); if (!l.length) { selectedId = null; return null; }
+    const l = M.main(state); if (!l.length) { selectedId = null; return null; }
     dir = dir < 0 ? -1 : 1; let k = -1;
     for (let j = 0; j < l.length; j++) if (l[j].id === selectedId) { k = j; break; }
     const next = l[(k < 0 ? (dir > 0 ? 0 : l.length - 1) : (k + dir + l.length) % l.length)];
@@ -424,7 +475,7 @@
   M.refreshTicks = REFRESH_TICKS;
   M.init = function (state) { try { subscribe(); if (state) M.list(state); } catch (e) { ierr('init', e); } };
   M.reset = function (state, fresh) { void fresh; resetAll(); if (state) cache.state = null; };
-  M.stats = function () { return { computes: cache.computes, version: cache.version, cached: cache.list.length, tick: cache.tick, snoozed: snoozed.size, dismissed: dismissed.size }; };
+  M.stats = function () { const st = store(cache.state); return { computes: cache.computes, version: cache.version, cached: cache.list.length, tick: cache.tick, snoozed: Object.keys(st.snoozed).length, dismissed: Object.keys(st.dismissed).length }; };
 
   // ---------------------------------------------------------------------------
   // selfTest: synthetic buildings on a fresh state (no terrain/hydro needed), deterministic
@@ -486,22 +537,65 @@
     A(l.some((it) => it.kind === 'unwatered' && /Water Tower within 12 tiles/.test(it.fix)), 'unwatered fix names the tower radius');
     for (let k = 1; k < l.length; k++) A(l[k - 1].severity > l[k].severity || (l[k - 1].severity === l[k].severity && l[k - 1].since <= l[k].since), 'sorted by severity then age');
     A(M.selected(s) === null, 'nothing selected at first');
-    const c1 = M.cycle(s, 1); A(c1 && c1.id === l[0].id && M.selectedId() === l[0].id, 'I cycles to the first issue');
-    const c2 = M.cycle(s, 1); A(c2 && c2.id === l[1 % l.length].id, 'then the next');
-    for (let k = 0; k < l.length; k++) M.cycle(s, 1); A(M.selectedId() === c2.id, 'wraps around');
-    M.cycle(s, -1); A(M.selectedId() === l[0].id, 'Shift-direction goes back');
+    const ml = M.main(s); A(ml.length >= 1 && ml.length < l.length && l.some((it) => it.kind === 'unlinkedPath') && !ml.some((it) => it.kind === 'unlinkedPath'), 'I cycles the main rows, not the suggestions (' + ml.length + ' of ' + l.length + ')');
+    const c1 = M.cycle(s, 1); A(c1 && c1.id === ml[0].id && M.selectedId() === ml[0].id, 'I cycles to the first issue');
+    const c2 = M.cycle(s, 1); A(c2 && c2.id === ml[1 % ml.length].id, 'then the next');
+    for (let k = 0; k < ml.length; k++) M.cycle(s, 1); A(M.selectedId() === c2.id, 'wraps around');
+    M.cycle(s, -1); A(M.selectedId() === ml[0].id, 'Shift-direction goes back');
     M.select(null); A(M.selected(s) === null, 'select(null) clears');
     // groups + over capacity suppression during the tutorial
-    A(M.groups(s).length >= 2 && M.groups(s).every((g) => g.rows.length >= 1 && g.rows.every((it) => it.kind === g.kind)), 'groups by kind');
+    A(M.groups(s).length >= 1 && M.groups(s).every((g) => g.rows.length >= 1 && !g.muted && g.rows.every((it) => it.kind === g.kind)) && M.suggestionGroups(s).length === 1 && M.suggestionGroups(s)[0].kind === 'unlinkedPath', 'groups by kind (main) + suggestion groups');
     s.economy.students = 500; s.progress = s.progress || {}; s.progress.tutorialStage = 3; s.ui.tabsIntroduced = {}; M.invalidate(); A(!M.list(s).some((it) => it.kind === 'overCapacity'), 'over capacity rows are suppressed before housing is introduced');
     s.progress.tutorialStage = 6; M.invalidate(); A(M.list(s).some((it) => it.kind === 'overCapacity' && it.action.arm), 'and shown (armed) in free play');
     s.economy.suspendCapPenalties = true; M.invalidate(); A(!M.list(s).some((it) => it.kind === 'overCapacity'), 'and while the cap penalties are suspended'); s.economy.suspendCapPenalties = false; s.economy.students = 0;
     M.select(l[0].id); s.buildings = []; M.invalidate(); l = M.list(s); A(l.length === 0 && M.selected(s) === null, 'selection drops with its issue');
     A(M.spotlight() === false && M.spotlight(true) === true && M.spotlight(false) === false, 'spotlight getter/setter');
     A(M.pulse('power').length === 3 && M.isPulsing('pumpOff') && M.pulse(null) === null && !M.isPulsing('pumpOff'), 'pulse by family');
-    A(M.colorOf('flooded') === '#2BD4C0' && M.glyphOf('gatorOnCampus') === 'gator' && M.colorOf('nope') === '#FDD023', 'kind table');
+    A(M.colorOf('flooded') === '#2BD4C0' && M.glyphOf('mosquitoHotspot') === 'mosquito' && !KINDS.gatorOnCampus && M.colorOf('nope') === '#FDD023', 'kind table (no gator kind)');
     const cols = Object.keys(KINDS).map((k) => KINDS[k].family + ':' + KINDS[k].color); A(new Set(cols.map((c) => c.split(':')[1])).size === Object.keys(FAMILY_KINDS).length, 'one colour per family');
     A(M.ageText({ tick: 100 }, { since: 100 }) === '0s' && M.ageText({ tick: 100 + 200 * 3 }, { since: 100 }) === '3d', 'ageText');
+    // calm alerts pass: suggestions, beacons (mode + severity gate, cap, nearest first), mutes, saved snoozes, the toast gate
+    {
+      const s2 = BSU.newState(9); s2.tick = 50; s2.economy.suppressCoverage = false; s2.economy.suspendCapPenalties = false; s2.economy.students = 0; s2.economy.cash = 1e7; s2.buildings = [];
+      s2.plot = s2.plot || {}; s2.plot.founders = { tx: 30, ty: 30 }; s2.plot.highway = [];
+      const mkb = function (id, type, tx, ty, o) { const r = rowOf(type); s2.buildings[id] = Object.assign({ id: id, type: type, tx: tx, ty: ty, w: fin(r && r.w, 1), h: fin(r && r.h, 1), rot: 0, name: 'B' + id, hp: 1, built: 1, builtDay: 0, pilings: false, sunk: 0, powered: false, watered: true, provider: { power: -1, water: -1 }, flooded: false, floodedSince: -1, closedUntil: -1, blackout: false, tier: 0, upgradeDoneDay: -1, ruin: false, tarp: false }, o || {}); return s2.buildings[id]; };
+      for (let k = 0; k < 9; k++) mkb(k, 'dorm', 4 + k * 6, 4, {});   // nine unpowered, unlinked dorms along the top: 9 severity-2 rows + 9 suggestions
+      let L2 = M.list(s2);
+      A(L2.filter((it) => it.kind === 'unpowered').length === 9 && L2.filter((it) => it.kind === 'unlinkedPath').length === 9, 'nine unpowered + nine unlinked rows (' + L2.length + ')');
+      A(M.main(s2).length === 9 && M.suggestions(s2).length === 9 && M.suggestions(s2).every((it) => it.kind === 'unlinkedPath' && it.suggestion), 'unlinkedPath rows are suggestions, not main rows');
+      A(M.summary(s2).count === 9 && M.summary(s2).suggestions === 9 && M.groups(s2).length === 1 && M.suggestionGroups(s2).length === 1, 'summary counts main rows; groups / suggestionGroups split by kind');
+      A(M.alertMode(s2) === 'normal' && M.beaconMin(s2) === 2 && M.beaconMax() === 6, 'Normal: beacons from severity 2, at most 6');
+      let bc = M.beacons(s2, 4, 4);
+      A(bc.length === 6 && bc.every((it) => it.kind === 'unpowered') && bc[0].buildingId === 0 && bc[5].buildingId === 5, 'six beacons, none a suggestion, nearest the camera first: ' + bc.map((it) => it.buildingId).join(','));
+      bc = M.beacons(s2, 52, 4); A(bc[0].buildingId === 8 && bc.length === 6, 'the camera at the far end flips the order');
+      A(M.beacons(s2, 4, 4, { all: true }).length === 9, 'spotlight (all) is uncapped but still skips suggestions');
+      M.select('unlinked:3'); bc = M.beacons(s2, 4, 4); A(bc.length === 6 && bc[0].id === 'unlinked:3', 'the selected row always beacons, first'); M.select(null);
+      s2.ui.settings.alerts = 'quiet'; A(M.alertMode(s2) === 'quiet' && M.beaconMin(s2) === 3 && M.beacons(s2, 4, 4).length === 0, 'Quiet: only severity 3 beacons');
+      s2.buildings[0].flooded = true; M.invalidate(); A(M.beacons(s2, 4, 4).length === 1 && M.beacons(s2, 4, 4)[0].kind === 'flooded', '… a flooded dorm (sev 3) does');
+      s2.ui.settings.alerts = 'off'; A(M.beaconMin(s2) === 4 && M.beacons(s2, 4, 4).length === 0, 'Off: no beacons at all');
+      s2.ui.settings.alerts = 'normal'; s2.buildings[0].flooded = false; M.invalidate();
+      // mutes live in the settings: a muted kind is a suggestion, never a beacon, never in Clear N
+      s2.buildings[1].hp = 0.5; M.invalidate(); A(M.resolvable(s2).rows.length === 1 && M.resolvable(s2).rows[0].kind === 'damaged', 'Clear N counts the repair');
+      A(M.mute(s2, 'damaged') === true && M.muted(s2, 'damaged') && s2.ui.settings.mutedIssues.damaged === true && M.mutedKinds(s2).join() === 'damaged', 'mute writes settings.mutedIssues');
+      A(M.resolvable(s2).rows.length === 0 && M.suggestions(s2).some((it) => it.kind === 'damaged') && !M.beacons(s2, 4, 4).some((it) => it.kind === 'damaged') && M.groups(s2).every((g) => g.kind !== 'damaged'), 'a muted kind is a suggestion: no Clear, no beacon, no main group');
+      A(M.mute(s2, 'damaged', false) === false && M.resolvable(s2).rows.length === 1 && M.mute(s2, 'nope') === false, 'unmute restores it; unknown kinds refuse');
+      s2.buildings[1].hp = 1; M.invalidate();
+      // snoozes / dismissals are on state.ui.issues and survive a JSON round trip
+      const sid = M.main(s2)[0].id; A(M.snooze(s2, sid) && s2.ui.issues.snoozed[sid] && s2.ui.issues.snoozed[sid].until === 50 + 600, 'snooze is saved on state.ui.issues');
+      const did = M.main(s2)[0].id; A(did !== sid && M.dismiss(s2, did) && s2.ui.issues.dismissed[did] === 'unpowered|2|', 'dismiss is saved with its signature');
+      const copy = JSON.parse(JSON.stringify(s2.ui.issues)); resetAll(); s2.ui.issues = copy;
+      A(!M.list(s2).some((it) => it.id === sid || it.id === did) && M.hiddenList(s2).length === 2 && M.stats().snoozed === 1 && M.stats().dismissed === 1, 'a reloaded store still hides both rows');
+      A(M.restore(sid, s2) && M.restoreAll(s2) === 1 && M.list(s2).some((it) => it.id === did), 'restore / restoreAll clear the saved store');
+      // the toast gate: severity-1 kinds never, Quiet / Off never, once per key per week
+      s2.calendar.day = 100;
+      A(M.toastGate(s2, 'path') === false && M.toastGate(s2, ['unlinkedPath']) === false, 'no toast for a severity-1 kind');
+      A(M.toastGate(s2, 'power') === true && M.toastGate(s2, 'power') === false, 'one power toast, then quiet for the week');
+      s2.calendar.day = 107; A(M.toastGate(s2, 'power') === true, '… and again a week later');
+      A(M.toastGate(s2, 'flood') === true && M.toastGate(s2, ['flooded']) === false && M.toastGate(s2, ['unwatered', 'flooded']) === false, 'a family toast stamps its kinds (rows absent → base severity): any toast naming a stamped kind waits');
+      M.mute(s2, 'unpowered'); M.mute(s2, 'brownout'); M.mute(s2, 'pumpOff'); s2.calendar.day = 200; A(M.toastGate(s2, 'power') === false, 'every kind muted → no toast'); M.mute(s2, 'unpowered', false); M.mute(s2, 'brownout', false); M.mute(s2, 'pumpOff', false);
+      s2.ui.settings.alerts = 'quiet'; s2.calendar.day = 300; A(M.toastGate(s2, 'power') === false, 'Quiet: no toasts'); s2.ui.settings.alerts = 'off'; A(M.toastGate(s2, 'power') === false, 'Off: no toasts'); s2.ui.settings.alerts = 'normal';
+      A(M.toastGate(s2, 'nope') === false && M.toastGate(s2, []) === false, 'unknown kinds → no toast');
+    }
     resetAll();
     return { ok: true, notes: notes.join('; ') };
   };

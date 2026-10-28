@@ -1331,6 +1331,7 @@
     clear(host._list);
     const rows = (BSU.data && BSU.data.milestones) || [];
     rows.forEach(function (m) {
+      if (m.retired && !call('progress', 'earned', s, m.id)) return;   // calm pass: Gator Wrangler / Sunbather are retired (an old save that earned one keeps it)
       const earned = call('progress', 'earned', s, m.id);
       const reward = m.reward || {};
       let rt = '';
@@ -1455,6 +1456,7 @@
     const rows = (BSU.data && BSU.data.milestones) || [];
     rows.forEach(function (m) {
       const earned = call('progress', 'earned', s, m.id);
+      if (m.retired && !earned) return;   // calm pass: retired milestones stay out of the Almanac too
       const t = el('div', 'bud-col' + (earned ? '' : ' locked'));
       t.appendChild(el('div', 'k', m.name)); t.appendChild(el('div', 'v', earned ? 'Earned' : m.text));
       host._achievements.appendChild(t);
@@ -1473,11 +1475,9 @@
 
     clear(host._gators);
     const wl = s.wildlife || {};
-    const relocations = fin(wl.relocations, 0);
-    const incidents = Array.isArray(wl.incidents) ? wl.incidents.length : fin(wl.incidents, 0);
-    const photos = fin(wl.leGrandPhotoYear, 0);
-    host._gators.appendChild(el('div', 'row')); host._gators.lastChild.appendChild(el('span', 'k', 'Relocations')); host._gators.lastChild.appendChild(el('span', 'v', String(relocations)));
-    const r2 = el('div', 'row'); r2.appendChild(el('span', 'k', 'Incidents')); r2.appendChild(el('span', 'v', String(incidents))); host._gators.appendChild(r2);
+    const photos = fin(wl.leGrandPhotoYear, 0);   // calm pass: no relocation / incident counts (gators are scenery)
+    const gn = Array.isArray(s.gators) ? s.gators.length : 0;
+    const r1 = el('div', 'row'); r1.appendChild(el('span', 'k', 'Gators in the swamp')); r1.appendChild(el('span', 'v', String(gn))); host._gators.appendChild(r1);
     const r3 = el('div', 'row'); r3.appendChild(el('span', 'k', 'Le Grand')); r3.appendChild(el('span', 'v', photos > 0 ? ('photographed (Y' + photos + ')') : 'not yet sighted')); host._gators.appendChild(r3);
 
     refreshFootball(s, host);

@@ -304,7 +304,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - contract.selfTest()
 
 ## BSU.data
-- values: gatorText:object, catalog:object, catalogList:array[46], tabs:array[10], decals:object, names:object, students:object, coaches:array[10], coachQuotes:array[12], staff:object, gatorNames:array[14], leGrand:string, stormNames:array[26], opponents:object, schedule:array[8], calendar:object, ticker:array[62], tickerKinds:object, tickerKindList:array[7], objectives:object, milestones:array[26], voiceCards:array[12], boardCards:array[8], failureCards:object, tutorial:array[7], thibodeaux:array[12], stormQuotes:array[8], overlays:array[6], keys:array[49], toastKeys:object, panKeys:object, rainKinds:object, guide:object, needs:object, requirements:object, coach:array[6], football:object, dishes:array[24], menuPresets:object, menuDefaults:object
+- values: catalog:object, catalogList:array[46], tabs:array[10], decals:object, names:object, students:object, coaches:array[10], coachQuotes:array[12], staff:object, gatorNames:array[14], leGrand:string, stormNames:array[26], opponents:object, schedule:array[8], calendar:object, ticker:array[62], tickerKinds:object, tickerKindList:array[7], objectives:object, milestones:array[26], voiceCards:array[12], boardCards:array[8], failureCards:object, tutorial:array[7], thibodeaux:array[12], stormQuotes:array[8], overlays:array[6], keys:array[49], toastKeys:object, panKeys:object, rainKinds:object, guide:object, needs:object, requirements:object, coach:array[6], football:object, dishes:array[24], menuPresets:object, menuDefaults:object
 - data.selfTest()
 
 - BSU.dateToDay(str, year)
@@ -443,6 +443,19 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - issues.list(state)
 - issues.all(state)
 - issues.actionable(state)
+- issues.main(state)
+- issues.suggestions(state)
+- issues.isSuggestion(state, it)
+- issues.alertMode(state)
+- issues.alertModes()
+- issues.beaconMin(state)
+- issues.beaconMax()
+- issues.muted(state, kind)
+- issues.mute(state, kind, on)
+- issues.mutedKinds(state)
+- issues.beacons(state, camTx, camTy, opts)
+- issues.toastGate(state, kinds)
+- issues.toastStamps()
 - issues.inProgress(state)
 - issues.hiddenList(state)
 - issues.invalidate()
@@ -452,12 +465,13 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - issues.ofFamily(state, family)
 - issues.summary(state)
 - issues.groups(state)
+- issues.suggestionGroups(state)
 - issues.resolvable(state)
 - issues.snooze(state, id, days)
 - issues.dismiss(state, id)
-- issues.restore(id)
-- issues.restoreAll()
-- issues.snoozeInfo(id)
+- issues.restore(id, state)
+- issues.restoreAll(state)
+- issues.snoozeInfo(id, state)
 - issues.select(id)
 - issues.selectedId()
 - issues.selected(state)
@@ -950,9 +964,12 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - ui.buildMenuOpen()
 - ui.startCoach(state, opts)
 - ui.coachStep()
+- ui.alertMode()
+- ui.alertModes()
+- ui.setAlertMode(mode)
+- ui.muteIssueKind(kind, on)
 - ui.closeAlert()
 - ui.dismissNotifs()
-- ui.gatorAlerts()
 - ui.notify(state, spec)
 - ui.hint(state, id, text, opts)
 - ui.decision(state, spec)
@@ -1058,7 +1075,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 
 - BSU.worldToScreen(tx, ty, elev, cam, vw, vh)
 
-## BSU.params groups (19): time[30], terrain[59], hydro[47], storm[116], wildlife[4], subsidence[17], heat[21], weather[18], econ[64], sports[81], agents[30], build[34], issues[4], render[59], ui[18], art[1], audio[6], palette[34], progress[16]
+## BSU.params groups (19): time[30], terrain[59], hydro[47], storm[116], wildlife[4], subsidence[17], heat[21], weather[18], econ[64], sports[81], agents[30], build[34], issues[8], render[59], ui[18], art[1], audio[6], palette[34], progress[16]
 
 ## BSU.newState(seed) tree
 - v:number
@@ -1086,7 +1103,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - sports:{hasTeam:boolean, venue:string, seasonYear:number, schedule:array[0], record:object, lastSeason:object, coach:object, candidates:array[0], starters:array[0], recruit:null, rating:number, ratingTerms:object, nightToggle:boolean, autoSim:boolean, permits:string, homecomingBudget:number, rivalryLossStreak:number, game:null, firstHomeGameDay:number, firstNightGameDay:number, scriptedNightDay:number, playbook:string, aggression:string, watchFull:boolean, lastSummary:null, records:object, springDay:number, springYear:number, lastSpring:null, prospects:null, seasonLog:array[0], seasonLines:null, autoSign:boolean, staff:null, roster:null, budget:null}
 - progress:{tutorialStage:number, objectives:object, card:null, background:null, interruptQueue:array[0], backgroundQueue:array[0], milestones:object, timers:array[0], voiceCards:array[0], boardCards:array[0], failure:object, setPiecesSeen:object, firsts:object, recap:null, achievementsWhileDebug:boolean, hints:object}
 - ticker:array[0]
-- ui:{camera:object, overlay:number, speed:number, speedBefore:number, tool:null, panel:null, paletteTab:string, tabsSeen:object, newPips:object, tabsIntroduced:object, settings:object, perfMode:boolean}
+- ui:{camera:object, overlay:number, speed:number, speedBefore:number, tool:null, panel:null, paletteTab:string, tabsSeen:object, newPips:object, tabsIntroduced:object, settings:object, issues:object, perfMode:boolean}
 - rng:{sim:number}
 
 # Module header notes
@@ -1210,7 +1227,7 @@ state is mirrored on the module object (D46).
 BAYOU STATE — wildlife.js (module 5) → BSU.wildlife
 Owner of: state.gators[], state.wildlife.* (campusMask unsaved), tiles.mosq,
           tiles.integrity for nutria burrows only (−15, then buildings.onIntegrityChanged).
-Implements: GDD §6.3 (gators: dens, state machine, attractors, campus set, incidents,
+Implements: GDD §6.3 (gators: dens, state machine, attractors, campus set, sightings,
             officers, Le Grand), §6.4 (mosquito field, index, warnings, illness), §6.7
             (nutria burrows, birds, fireflies, critters), §6.8 (ecology score), §6.2 Recovery
             (post-storm gator wave, mosquito bloom), §6.6 (heat illness half), §0.3 rows
@@ -1243,11 +1260,15 @@ in state.* or in the closure cache keyed on the root object (self-healing, §1/D
 issues.js — the ISSUE SPOTLIGHT registry (issue spotlight pass; issues v2 pass). One place that answers "what is
 wrong on campus right now, where exactly, what fixes it, and is a fix already underway": buildings without power
 or water, flooded, damaged or ruined buildings, buildings whose path never reached campus, weak levees, full beds /
-seats / dining, gators that actually BLOCK something, mosquito hotspots, the boil-water notice, a brownout and
-unpowered pumps in the rain. The list is recomputed at most every `params.issues.refreshTicks` (25) ticks and at
-once after any building / power / coverage / levee / flood / gator / repair event. Deterministic (state in, plain
-objects out), no DOM, no timers; render_fx draws the beacons, ui.js the tray. Selection, spotlight mode, the gauge
-hover pulse, snoozes and dismissals live here so render_fx and ui share them without events.
+seats / dining, mosquito hotspots, the boil-water notice, a brownout and unpowered pumps in the rain (gators are
+wildlife, never an issue: calm alerts + ambient gators pass). The list is recomputed at most every
+`params.issues.refreshTicks` (25) ticks and at once after any building / power / coverage / levee / flood / repair
+event. Deterministic (state in, plain objects out), no DOM, no timers; render_fx draws the beacons, ui.js the tray.
+Selection, spotlight mode and the gauge hover pulse live here so render_fx and ui share them without events;
+snoozes / dismissals are saved with the game (state.ui.issues), mutes and the Alerts mode in the settings.
+Calm alerts pass: `beacons(state, camTx, camTy)` is the capped, severity-gated list the map draws (≤ beaconMax,
+most severe then nearest; severity-1 KINDS and muted kinds never beacon and are "suggestions" in the tray);
+`toastGate(state, kinds)` says whether an issue notification may show right now (mode, severity, once per kind per week).
 Every issue: {id, kind, severity 1–3, title, fix, why, persist, tiles, rect, anchor, buildingId, action, cost,
 resolvable, progress {text, days} | null, hidden '' | 'snoozed' | 'dismissed', sig, since, color, glyph}.
 `list()` = the rows the tray and the beacons show (hidden ones left out); `actionable()` = those with no fix

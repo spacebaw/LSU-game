@@ -498,14 +498,19 @@ try {
   // animation frame is baked), then the master itself and the narrower steps (their viewports are subsets) — the atlas must gain no key and the
   // chunk table must not grow: nothing is baked per step
   const sp = BSU.sprites; R.panToTile(sZ.plot.founders.tx + 1, sZ.plot.founders.ty + 1, false);
-  const warm = (z, n) => { R.setZoom(z); for (let k = 0; k < n; k++) BSU.headless.render(); return { keys: sp.count(), mem: sp.memoryMB(), chunks: R.perf().chunks, p: R.perf() }; };
+  // entity animation frames (agent:* idle / walk cycles run to 144 frames) are baked lazily whenever an agent reaches a frame the warm-up never
+  // showed; they are not a per-step cache, so the no-new-key check counts every key EXCEPT those (calm alerts pass: the gator term no longer dents
+  // happiness, which moved the seed-42 students' idle phases enough for two agent:idle frames to land in the 2× window)
+  let entityNew = 0; const spGet0 = sp.get; sp.get = function (id) { const n0 = sp.count(); const r = spGet0.apply(sp, arguments); if (sp.count() > n0 && /^agent:/.test(String(id))) entityNew++; return r; };
+  const warm = (z, n) => { R.setZoom(z); for (let k = 0; k < n; k++) BSU.headless.render(); return { keys: sp.count() - entityNew, mem: sp.memoryMB(), chunks: R.perf().chunks, p: R.perf() }; };
   const w125 = warm(1.25, 40); let perfOk = true, keysOk = true, chunksOk = true;
   // (H1: the atlas can shrink here — sprites.gc drops idle lazy entries above CANVAS_LIMIT_MB now that the HD tile variants put it over — so the check is "no new key", not equality)
   for (const z of [2, 1.5, 1.75, 2.5]) { const w = warm(z, 6); if (w.p.zoom !== z || w.p.atlasZoom !== 2 || w.p.smooth !== (z !== 2)) { perfOk = false; console.error('perf at', z, w.p.zoom, w.p.atlasZoom, w.p.smooth); } if (w.keys > w125.keys) { keysOk = false; console.error('atlas grew at', z, w125.keys, '→', w.keys); } if (w.chunks > w125.chunks) { chunksOk = false; console.error('chunks grew at', z, w125.chunks, '→', w.chunks); } }
   const w065 = warm(0.65, 40);
   for (const z of [0.8, 1]) { const w = warm(z, 6); if (w.p.zoom !== z || w.p.atlasZoom !== 1 || w.p.smooth !== (z !== 1)) { perfOk = false; console.error('perf at', z, w.p.zoom, w.p.atlasZoom, w.p.smooth); } if (w.keys > w065.keys) { keysOk = false; console.error('atlas grew at', z, w065.keys, '→', w.keys); } if (w.chunks > w065.chunks) { chunksOk = false; console.error('chunks grew at', z, w065.chunks, '→', w.chunks); } }
   ok(perfOk, 'perf() reports the exact zoom, its master (2 for 1.25–2.5, 1 for 0.65–1) and smoothing on exactly at the non-master steps');
-  ok(keysOk, 'the atlas gained no key at 2 / 1.5 / 1.75 / 2.5 after 1.25, nor at 0.8 / 1 after 0.65 (' + w125.keys + ' / ' + w065.keys + ' keys)');
+  sp.get = spGet0;
+  ok(keysOk, 'the atlas gained no key (entity animation frames aside) at 2 / 1.5 / 1.75 / 2.5 after 1.25, nor at 0.8 / 1 after 0.65 (' + w125.keys + ' / ' + w065.keys + ' keys, ' + entityNew + ' entity frames)');
   ok(chunksOk && R.perf().chunks <= 64, 'the chunk table never grew past the widest step of its family and stays within the single 64-slot table (' + w125.chunks + ' at 1.25, ' + w065.chunks + ' at 0.65)');
   const w05 = warm(0.5, 3); ok(w05.p.atlasZoom === 0.5 && w05.p.smooth === false, 'at 0.5× the master is 0.5 and nothing is smoothed beyond the art-pass downsample');
   // the football camera snaps to the venue zoom from an intermediate step and hands the step back
