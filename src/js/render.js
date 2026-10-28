@@ -1237,7 +1237,7 @@
     g.drawImage(ref.canvas, ref.sx, ref.sy, ref.sw, ref.sh, Math.round(sx + ref.ox * zs), Math.round(sy + ref.oy * zs), ref.sw * zs, ref.sh * zs);
     drawCalls++;
   }
-  function getRef(id, variant, frame) { const sp = S(); const r = sp.get(id, variant, frame, atlasZoom); return r || null; }   // hud + zoom pass: the atlas is asked at the MASTER zoom (no bake per step); zsOf scales it to the exact live zoom
+  function getRef(id, variant, frame) { const sp = S(); const r = sp.get(id, variant, frame, (hdOn && sp.isHD(id)) ? hdMaster : atlasZoom); return r || null; }   // hud + zoom pass: the atlas is asked at the MASTER zoom (no bake per step); zsOf scales it to the exact live zoom. H2a: an HD family (buildings) is asked at hdMaster, so at zoom 1 on a Retina its master-2 entry lands 1 art px = 1 device px (zsOf = 0.5 under the dpr-2 transform)
   /** art pass B4: the character / wildlife / vehicle sheets are pure pixel-doubles at 2× (every art pixel is a 2×2 block), so the entity pass asks for the 1× entry at 2× and lets blit() scale it (nearest-neighbour, integer): the 2× sheets are never baked in play (saves ~6 MB of canvases in a crowd) */
   function getRefE(id, variant, frame) { const sp = S(); const r = sp.get(id, variant, frame, atlasZoom > 1 ? 1 : atlasZoom); return r || null; }
   function zsOf(ref) { return zoomNow / (ref.zoom || 1); }
@@ -1765,7 +1765,7 @@
     c.used = frameNo;
     if (c.fl !== fl) { c.fl = fl; c.tees = M.teesOf(state, b, fl); c.sig = c.tees ? c.tees.join(',') : ''; c.key = ''; }
     if (!c.tees) return null;
-    const z = atlasZoom >= 2 ? 2 : 1;   // hud + zoom pass: tees bake at the master zoom only
+    const z = (hdOn && S().isHD(id)) ? hdMaster : (atlasZoom >= 2 ? 2 : 1);   // hud + zoom pass: tees bake at the master zoom only (H2a: HD building rows at hdMaster, as getRef)
     const key = v + '|' + fr + '|' + z + '|' + c.sig;
     if (c.key !== key) {
       if (teeBakes >= TEE_BAKES_PER_FRAME) return c.ref;   // over budget this frame: keep the previous bake (or the plain sprite) one more frame

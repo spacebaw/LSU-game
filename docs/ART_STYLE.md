@@ -327,3 +327,34 @@ macro drift and halves the sites (no micro grain, a quarter of the glints).
 | live water (render) | `waterShallow` → `waterDeep` by depth | fill alpha .2 over a baked HD water tile (`C.hdWaterLiveA`); flood water over land keeps .55–.85; surge .86 as before |
 
 AO is always `#1E1946` (`edgeFade` / `softEllipse`), the specular `#FFFBEA`, the cool rim `#B8C8FF`; night glints `#C9D8FF` through `env.night`.
+
+**Buildings (settled in pass H2a — `src/js/sprites_buildings_hd.js`, the 14 rows of tabs utilities / academic / housing; part 2 matches these).**
+A row has ONE wall base (`paint.wall[0]`; `wall[1]` is ignored) and the brush face offsets do the rest (`sw` −.10 lit, `se` −.48 shadow, `top` +.05);
+the trim is `paint.trim`, else limestone `#D9C9A3` (gold `#F5B700` on purple walls). Masters: the same knots at 1 and 2; lod 1 (master 1) keeps the
+planes, the grain-free faces, the belt courses / cornice / plinth, 4 roof courses and the rail lines, and drops brick / stone courses, metal seams,
+battens, mullions, balusters, awning stripes, gravel orbs and tin seams.
+
+| surface | base (ramp / palette) | t and layers |
+|---|---|---|
+| stucco / brick / stone wall | `wall[0]` (cream `#F5ECD7`, brick `#B87A5A`, tan `#C9A97A`, white, limestone) | `fillQuadShaded` sw / se (brick = `stucco` + courses every 3 px at −.55 @ .3 with staggered joints; stone 5-px courses −.5 @ .35); belt courses trim +.5 / −.4 @ .75; cornice trim +.9 / 0 (1.4 px) over +.4 / −.5; plinth trim −.1 / −.6; front corner rim `#B8C8FF` @ .35; eave shadow `edgeFade` `#2B2550` −.6 @ .4 over 9 px |
+| metal / wood / glass wall | `wall[0]` (`#8A8A8E`, `#B9A57C`, `#F5ECD7`) | `metal` seams every 7 px −.45 @ .4 + verticals every 12; `wood` battens every 4 px −.4 @ .35; `glass` mullions `iron` every 6 px |
+| window (day) | `glass` `#A0D0FF` | `fillQuadShaded` glass; sill trim +.3 / −.3, lintel −.2 below that; mullion cross trim (lod 0); arched head = trim ellipse; shutters `accent` plane −.2 (amp .18) |
+| window (night) | `#FFD27A` / `#FFE9A8` / `#F2B860` / `#FFDC8E` | 70 % lit: `brush.glow` pane (+ a `windowDark` curtain on a quarter @ .55); dark: `plane` `#3A3050` −.2 (amp .15); mullions `iron` 0 |
+| door | `purple` (`gold` on purple walls) / `#2E5C2A` suites | surround trim +.2 / −.35 (amp .12); leaf `wood` sw / se; split −.6; transom glass (night `glow` #FFD27A); knob `gold` +.2 |
+| clay tile roof | `roofColor` `#B5533C` | `roofPlane` nw / ne / sw / se (brush: eave −.2 → ridge +.45, courses −.5 @ .35 / +.6 @ .3, ridge specular on nw / sw); ridge cap +.6 (2 px); hips −.7 @ .45; fascia trim `wood` sw / se |
+| tin / slate roof (sat < .12) | `#9AA3AC` bunkhouse, `#4C5566` suites, `#3F5E3A` institute (green: tile) | as tile + standing seams +.5 @ .35 every 6 px (lod 0) |
+| flat roof | `roofColor` `#6E6E72` / `#8A8A8E` | parapet = wall faces −.12; top `stone` −.1, inner plane −.25 (amp .1), gravel orbs ±.4 (lod 0); coping trim +.5 / −.1 (1.2 px) |
+| portico / arcade | trim (`#D9C9A3`) | columns `column` `#F3EBD8` r 1.7 in a band at face t −.32; entablature trim `stone`; pediment trim +.15 / −.3 with a `gold` disc (or the clock `white` +.3); arcade band face t −.55, piers `column` trim r 1.1, arch heads base −.75, keystone trim +.5, lit floor trim +.2 @ .5 (night `#FFD27A` +.4 @ .8) |
+| gallery | trim slab / `iron` `#4A4C55` | slab `stone` top +.1 / −.25 (3 px out); rail `iron` +.3; balusters `iron` 0 every 2.5 px (lod 0); posts `column` `iron` r .7 every 12 px |
+| awning / banner / sign | `accent` cloth / `purple` cloth / `purple` paint | awning `cloth` + `#E8E8E8` +.3 stripes (lod 0), edge −.6; Roux banner gold +.2 / −.2 border, gold diamond, `#E07020` stripe; sign gold +.1 edge, gold +.2 bars (night +.6 / +.7) |
+| cupola / dome | `wall[0]` box, `gold` dome | louvers `iron` −.1 (night `#FFE9A8` +.5); cap trim +.8 / +.2; gold `orb` +.1 spec .5, finial gold +.5, `white` +.5 tip; library dome `orb` accent +.05 spec .55 on a `column` drum in the wall base |
+| roof gear | `steel` `#8A8A8E`, `tin` `#9AA3AC`, `brick` stack | hvac three `metal` faces + an `iron` vent orb; tank `column` steel r 4 on `iron` legs, cap orb +.15; vents `column` tin r 1; stack `column` brick r 1.5, cap −.3 |
+| apron: brick paving | `#A8604A` | `stone` top +.05, macro .3; joints every 6 px −.45 @ .4 / .25 (lod 0); curbs −.6 @ .8 (1.6 px) on the SW / SE edges, rims +.5 @ .7 on the back edges |
+| apron: lawn | `#7FBF3C` | `wood` top 0 (no spec); mowing stripes `#74AD36` @ .55 per half tile; tufts `orb` +.25 (lod 0); hedges `orb` `#3F6B2E` ±.1 spec .15 every 3 px, 5.5 px inside the edge |
+| apron: gravel / sand / pave | `#8A8A8E` / `#B3A27C` / `#D8D2C2` | `stone` top +.05, macro .3, specks `orb` ±.4; chain fence `#9A9AA0` posts `column` r .7 every 12 px, chain +.2 @ .7; pavers joints every 8 px −.4 @ .4 |
+| walk / steps / planters / lamps | `#D5CBAE` / trim / `#9A6A44` + `#2E8B57` / `#2A2A32` | walk `stone` +.05 with −.55 edges; treads trim +.35 / +.1; pots `orb` clay +.1 spec .3, foliage green +.1, `azalea` dots +.3; lamp `column` r .8, head glass `#D8D8E0` (night `glow` #FFD27A + pool `softEllipse` #FFD27A @ .35) |
+| tees | `gravel` `#C9B47C` / `asphalt` / `boardwalk` `#8B7355` | `stone` / `wood` strip +.05 with −.55 edges, plank gaps −.6 @ .6, `bark` posts + rail +.2; doorway base −.9 with a +.4 lintel (night transom `glow`) |
+| pilings | `waterNight` `#1B3A3A` / `bark` | water `paint` −.15, macro .3, ripples `shallows` +.4 @ .5 (night `#C9D8FF`); stilts `column` bark r 1.4 every 12 px, braces −.2 @ .9, waterline ripple `shallows` +.3 |
+| construction | `concrete` `#B0ADA6`, `block` `#9A9A9E`, `steel`, `plywood` `#B08D5E`, `wood` `#8B7355`, `crane` `#D9B33A` | slab `stone` +.1 / plane +.25; block walls `stone` raw; scaffold `column` steel r .6 every 8 px, ledgers −.2 @ .9 + plywood planks; crane `column` r 1.4, jib 0 (2 px), pendants `iron` +.2; openings base −.95; deck `wood` +.1, rafters +.5 / −.1 / +.2 |
+| damage / boards / flood / ruin | `#2B2550` tint, `#B59A6A` sheathing, `tarp` `#3B6FD6`, `plywood`, `sandbag` `#C9B47C`, `stain` `#5A4A3A`, `rubble` `#6B625A` | DAMAGED `source-atop` cool @ .2; sheathing planes −.3; tarp `cloth` top + `tarpCrease` lines; boards `wood` + `iron` −.5 nails; cracked panes `#1B1B1B` + `white` @ .7; wall crack base −.95; FLOODED stain `edgeFade` −.3 @ .75, mineral line sandbag +.5 @ .6, sandbag orbs +.05 / −.35; wet apron `waterNight` −.2 @ .4 over 12 px; RUIN rubble `stone` −.15 + orbs ±.3 spec .1, stubs `column` r 1.2 |
+| light companion `bldlight:<id>` | `#FFD27A` | lit panes `light({quad})` @ .9 halo 5; transom @ .7 halo 4; lamp heads `light` r 4 @ .8 + pools rx 8 ry 3.5 @ .45 (additive; same canvas and anchor as the building) |

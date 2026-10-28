@@ -15,6 +15,7 @@
     "brush.js",
     "sprites_terrain.js",
     "sprites_buildings.js",
+    "sprites_buildings_hd.js",
     "sprites_entities.js",
     "render.js",
     "render_fx.js",

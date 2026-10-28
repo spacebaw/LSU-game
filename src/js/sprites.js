@@ -528,7 +528,7 @@
       sx: Number.isFinite(g.sx) ? g.sx : 0, sy: Number.isFinite(g.sy) ? g.sy : 0,
       sw: Number.isFinite(g.sw) ? g.sw : w * z, sh: Number.isFinite(g.sh) ? g.sh : h * z,
       ox: Math.round(ox * z), oy: Math.round(oy * z),
-      w: w * z, h: h * z, zoom: z, id: id, variant: variant, frame: frame, hd: hd,
+      w: w * z, h: h * z, zoom: z, id: id, variant: variant, frame: frame, hd: hd && g.pen !== true,   // H2a: an HD family painter that delegated this id to the pen returns {pen: true}: the entry is pixel art and does not count toward the HD atlas cap
       own: !g.canvas, bytes: (g.canvas ? 0 : (cv.width | 0) * (cv.height | 0) * 4), lazy: !baking && pinned[r.family] !== true, used: frameNo
     };
     if (cv !== canvas) { try { canvas.width = 1; canvas.height = 1; } catch (err) { /* stub */ } }
