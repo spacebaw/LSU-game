@@ -140,7 +140,7 @@
   const lightRefs = {};        // kind → SpriteRef (refreshed per frame)
   const LIGHT_KINDS = ['lamp', 'window', 'mast', 'beacon', 'blink', 'arc', 'glow', 'pot', 'fire', 'firefly', 'eye', 'canal'];
   const LMAX = PR.lightsMax || 250;
-  const lightsList = []; for (let k = 0; k < LMAX + 8 + 48; k++) lightsList.push({ kind: 'lamp', x: 0, y: 0, r: 1, a: 1, rot: 0, d: 0 });
+  const lightsList = []; for (let k = 0; k < LMAX + 8 + 48; k++) lightsList.push({ kind: 'lamp', x: 0, y: 0, r: 1, a: 1, rot: 0, d: 0, ref: null, refl: 0, cx: 0, cy: 0 });   // H2b: `ref` = a baked `bldlight:` companion for kind 'bld'
   let lightsN = 0;
   R.lightsList = lightsList;
   const TINTS = {};
@@ -374,14 +374,14 @@
         if (pvA[p] < 0.3) continue;
         const qx = pvSX[p], qy = pvSY[p]; let best = -1, bd = 1e9;
         for (let k = 0; k < lightsN; k++) {
-          const L = lightsList[k]; if (L.refl || (L.kind !== 'lamp' && L.kind !== 'window' && L.kind !== 'pot' && L.kind !== 'fire' && L.kind !== 'glow')) continue;
-          const dx = L.x - qx, dy = qy - L.y; if (dy < 6 * z || dy > 230 * z || dx > 120 * z || dx < -120 * z) continue;
+          const L = lightsList[k]; if (L.refl || (L.kind !== 'lamp' && L.kind !== 'window' && L.kind !== 'bld' && L.kind !== 'pot' && L.kind !== 'fire' && L.kind !== 'glow')) continue;
+          const dx = (L.kind === 'bld' ? L.cx : L.x) - qx, dy = qy - (L.kind === 'bld' ? L.cy : L.y); if (dy < 6 * z || dy > 230 * z || dx > 120 * z || dx < -120 * z) continue;   // H2b: a companion light reflects from its building's window centre
           const d = dx * dx + dy * dy * 0.4; if (d < bd) { bd = d; best = k; }
         }
         if (best < 0) continue;
         const S = lightsList[best], fall = 1 - Math.sqrt(bd) / (200 * z); if (fall <= 0.05) continue;
         const rx = pvWR[p] * z * 1.1 * (0.5 + 0.5 * pvA[p]), a = Math.min(1, 0.95 * S.a * pvA[p] * fall * night);
-        g.fillStyle = S.kind === 'window' ? '#FFC56A' : '#FFD98A';
+        g.fillStyle = (S.kind === 'window' || S.kind === 'bld') ? '#FFC56A' : '#FFD98A';
         g.globalAlpha = a * 0.7; g.beginPath(); ellRects(g, qx + (S.x - qx) * 0.12, qy, rx, rx * 0.5); g.fill();
         g.globalAlpha = a; g.beginPath(); ellRects(g, qx + (S.x - qx) * 0.12, qy, rx * 0.42, rx * 0.21); g.fill(); shown++;
       }
@@ -892,7 +892,7 @@
   // ---------------------------------------------------------------------------
   // Pass 7: lights (additive sprites on the offscreen composite; skipped by Day)
   // ---------------------------------------------------------------------------
-  function pushLight(kind, x, y, r, a, rot) { if (lightsN >= lightsList.length) return null; const L = lightsList[lightsN++]; L.kind = kind; L.x = x; L.y = y; L.r = r; L.a = a; L.rot = rot || 0; L.refl = 0; return L; }
+  function pushLight(kind, x, y, r, a, rot) { if (lightsN >= lightsList.length) return null; const L = lightsList[lightsN++]; L.kind = kind; L.x = x; L.y = y; L.r = r; L.a = a; L.rot = rot || 0; L.refl = 0; L.ref = null; return L; }
   // art pass B1: a lamp beside water (its S or E neighbour is wet) mirrors as a stretched, fainter pool on the water
   function wetBelow(state, i) { const tx = i & 63, ty = i >> 6; return (ty < HGT - 1 && isWaterTile(state, i + W)) || (tx < W - 1 && isWaterTile(state, i + 1)); }
   function pushReflection(x, y, z, a) { const L = pushLight('lamp', x, y + 14 * z, 0.9, a, 0); if (L) L.refl = 1; return L; }
@@ -959,7 +959,14 @@
         if (e.kind === 'building' && e.b) {
           const b = e.b, v = e.variant | 0, span = (b.w | 0) + (b.h | 0);
           const cx = e.sx + ((b.h | 0) - (b.w | 0)) * 16 * z, cy = e.sy - (span - 2) * 8 * z;
-          if ((v & SPR.NIGHT) && !(b.type === 'stadium' && game && game.home)) { const L = pushLight('window', cx, cy - (10 + span * 3) * z, 1.6 + 0.7 * span, 0.9, 0); if (L) L.d = 1; if (v & SPR.PILINGS) pushReflection(cx, cy + (span * 4) * z, z, 0.3); else if (FXO.reflect && state.tiles && state.tiles.depth) windowReflections(state, b, span, cam, view, 0.34); }
+          if ((v & SPR.NIGHT) && !(b.type === 'stadium' && game && game.home)) {
+            // H2b: an HD building (sprites_buildings_hd) glows through its `bldlight:<id>` companion — the lit panes, the transom, the lamps, the mast heads — baked at the day sprite's master and drawn at its anchor; a pen row keeps the centre light:window blob
+            let hd = null;
+            if (e.ref && e.ref.hd) { try { const Sp = mod('sprites'); hd = Sp && typeof Sp.isHDBuilding === 'function' && Sp.isHDBuilding(b.type) ? Sp.get('bldlight:' + (e.id || b.type), v, e.frame | 0, e.ref.zoom || 1) : null; } catch (err) { hd = null; } }
+            if (hd && hd.canvas) { const L = pushLight('bld', e.sx, e.sy, 1, 0.95, 0); if (L) { L.ref = hd; L.cx = cx; L.cy = cy - (10 + span * 3) * z; } }
+            else { const L = pushLight('window', cx, cy - (10 + span * 3) * z, 1.6 + 0.7 * span, 0.9, 0); if (L) L.d = 1; }
+            if (v & SPR.PILINGS) pushReflection(cx, cy + (span * 4) * z, z, 0.3); else if (FXO.reflect && state.tiles && state.tiles.depth) windowReflections(state, b, span, cam, view, 0.34);
+          }
           if (b.type === 'bell_tower' && b.built >= 1 && !b.ruin) pushLight('beacon', cx, cy - 78 * z, 2.2 + 0.4 * Math.sin(frameNo * 0.05), prestige, 0);
           else if (b.type === 'water_tower' && b.built >= 1 && !b.ruin && (((frameNo / 60) | 0) & 1) === 0) pushLight('blink', cx, cy - 64 * z, 1.5, 1, 0);
           else if (b.type === 'substation' && (v & SPR.NIGHT) && (frameNo % 180) < 6) pushLight('arc', cx, cy - 10 * z, 2.5, 1, 0);
@@ -1008,7 +1015,9 @@
       lg.setTransform(1, 0, 0, 1, 0, 0); lg.globalCompositeOperation = 'source-over'; lg.globalAlpha = 1; lg.clearRect(0, 0, lc.width, lc.height);
       lg.setTransform(sc, 0, 0, sc, 0, 0); lg.imageSmoothingEnabled = true; lg.globalCompositeOperation = 'lighter';
       for (let k = 0; k < lightsN; k++) {
-        const L = lightsList[k], ref = lightRef(L.kind); if (!ref) continue;
+        const L = lightsList[k];
+        if (L.kind === 'bld') { const r = L.ref; if (!r || !r.canvas) continue; const zs = z / (r.zoom || 1); lg.globalAlpha = L.a; lg.drawImage(r.canvas, r.sx, r.sy, r.sw, r.sh, Math.round(L.x + r.ox * zs), Math.round(L.y + r.oy * zs), r.sw * zs, r.sh * zs); continue; }   // H2b: the companion, aligned to the day sprite (render.blit's rounding)
+        const ref = lightRef(L.kind); if (!ref) continue;
         const w = ref.sw * L.r * z, h = ref.sh * L.r * z;
         if (L.kind === 'mast') { lg.save(); lg.translate(L.x, L.y); lg.rotate(L.rot); lg.globalAlpha = L.a; lg.drawImage(ref.canvas, ref.sx, ref.sy, ref.sw, ref.sh, -w / 2, 0, w, h); lg.restore(); continue; }
         if (L.kind === 'lamp') { if (L.refl) { drawRef(lg, ref, L.x, L.y, w * 0.9, h * 2.8, L.a * 0.6); continue; } drawRef(lg, ref, L.x, L.y + 10 * z, w * 3.2, h * 1.6, L.a * 0.55); drawRef(lg, ref, L.x, L.y, w, h, L.a); continue; }   // pool on the ground + the core; refl = a mirrored smear on water

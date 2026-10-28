@@ -91,6 +91,26 @@ ok(R.lightsCount() > 0 && R.lightsCount() <= BSU.params.render.lightsMax, `light
 let sorted = true; for (let k = 1; k < R.lightsCount(); k++) if (R.lightsList[k - 1].d > R.lightsList[k].d) sorted = false;
 ok(sorted, 'lights sorted nearest-to-camera first');
 ok(P.count() > 0, `per-frame emitters populated the pool at night in rain (${P.count()} particles)`);
+// H2b: an HD building glows through its `bldlight:` companion (kind 'bld', the baked companion ref at the day sprite's master and anchor); the pen's centre blob is gone for HD rows.
+// A fresh campus has one unfinished hall, so place a few rows, complete them (built = 1) and let the power / sky settle before the night frame.
+{
+  const SP = BSU.sprites; s.economy.cash = 5e7;
+  for (const id of ['substation', 'wastewater', 'dorm', 'dining_hall']) { const sp = H.findSpot(id); if (sp) H.place(id, sp.x, sp.y); }
+  for (const b of s.buildings) if (b) b.built = 1;
+  H.tick(40); WX.scriptSky(s, SKY.NIGHT, 0.5); H.tick(40); for (let k = 0; k < 3; k++) H.render();
+  const L = R.lightsList.slice(0, R.lightsCount()), blds = L.filter((l) => l.kind === 'bld'), wins = L.filter((l) => l.kind === 'window' && !l.refl);
+  const hdTypes = (s.buildings || []).filter((b) => b && SP.isHDBuilding(b.type)).length;
+  ok((R.drawList || []).some((e) => e && e.kind === 'building' && (e.variant & BSU.SPR.NIGHT)), 'the night frame draws buildings with the NIGHT variant');
+  ok(/pushLight\('bld'/.test(src) && /L\.kind === 'bld'/.test(src), "render_fx pushes kind 'bld' and draws it from its companion ref");
+  ok(blds.length > 0, `HD buildings in view at night push 'bld' lights (${blds.length}; ${hdTypes} HD buildings on the campus)`);
+  ok(blds.every((l) => l.ref && l.ref.canvas && l.ref.hd && (l.ref.zoom === 1 || l.ref.zoom === 2) && Number.isFinite(l.ref.ox)), 'every bld entry carries a baked HD companion ref (canvas, master, anchor)');
+  ok(blds.every((l) => Number.isFinite(l.cx) && Number.isFinite(l.cy) && l.cy < l.y), 'bld entries keep the window centre (cx, cy) for the puddle reflections');
+  let aligned = 0, unmatched = 0;
+  for (const l of blds) { const e = (R.drawList || []).find((d) => d && d.kind === 'building' && d.sx === l.x && d.sy === l.y && d.ref); if (!e) { unmatched++; continue; } if (l.ref.w === e.ref.w && l.ref.h === e.ref.h && l.ref.ox === e.ref.ox && l.ref.oy === e.ref.oy && l.ref.zoom === e.ref.zoom) aligned++; }
+  ok(unmatched === 0 && aligned === blds.length, `every bld companion sits at its building's draw-list anchor with the day sprite's canvas, anchor and master (${aligned}/${blds.length})`);
+  ok(wins.length === 0, `no centre light:window blob remains (every building row is HD now; ${wins.length} left)`);
+  ok(BSU.errors.size === errs0, 'no BSU.error from the companion fetch');
+}
 threw = null;
 try {
   const f = s.plot.founders;

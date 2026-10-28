@@ -1410,29 +1410,29 @@ gradients, no getImageData. Determinism: every jitter comes from BSU.rng.hash (n
 ## sprites_buildings_hd.js
 'use strict';
 ============================================================================
-BAYOU STATE — sprites_buildings_hd.js (H2a buildings pass): the HD building composer, style C "soft rendered diorama".
+BAYOU STATE — sprites_buildings_hd.js (H2a + H2b buildings passes): the HD building composer, style C "soft rendered diorama".
 Owner: nothing in state (the atlas is derived, seed-independent, never saved).
-Implements: docs/PLAN_HD_ART.md §4 row "H2 buildings" (part 1 of 2); docs/ART_STYLE.md §1–§3, "## Brush API",
+Implements: docs/PLAN_HD_ART.md §4 row "H2 buildings" (parts 1 and 2); docs/ART_STYLE.md §1–§3, "## Brush API",
 "## Style C palette" (building knots); the B3 "Louisiana Collegiate" language (PLAN_FIDELITY B3) re-expressed through
 BSU.brush: walls are fillQuadShaded planes (SW lit, SE shadow) in the row's wall base, roofs are roofPlane hips / gables /
 flat parapets with tile courses or tin seams, porticos and galleries are brush columns, windows a mullioned grid of glass
 planes (brush.glow panes at night), decals are planes / orbs / strokes; nothing hand-picks a colour or writes a gradient.
 Registered through BSU.sprites.registerHD('building', …) OVER the pen painter of sprites_buildings.js (manifest order:
 this file loads after it), so sprites.get(<catalogId>, variant, frame, zoom) serves every row through this painter:
-the rows in HD_ROWS (tab utilities / academic / housing, 14 rows) are composed here at master 1 (zoom 0.5 / 1, lod 1)
-and master 2 (zoom 2 / Retina, lod 0); every other row (dining, life, swamp, grounds, sports, the Tiger Habitat — part 2)
-is delegated to sprites.paintBuilding (the pen), which pixel-doubles at master 2 exactly as before H2.
+the rows in HD_ROWS (every footprint row except the three vegetation rows, 32 rows) are composed here at master 1
+(zoom 0.5 / 1, lod 1) and master 2 (zoom 2 / Retina, lod 0); live_oak / cypress / azalea are delegated to
+sprites.paintBuilding (the pen): buildings.place turns them into veg entities, so their catalog sprite has no consumer in
+play and their art is H3's (vegetation). `habfront` (the Tiger Habitat's foreground layer) is re-registered HD beside it.
+H2b (part 2) adds the own-ground bodies (quad, parking, pond, rookery, bat house, the practice field, the stadium in its
+four tiers over sprites.stadiumGeom so render's football overlay — field rectangle, fan rows, shader clip, mast heads —
+keeps lining up, the Tiger Habitat over sprites.HABITAT so Roux's route and the plaza lamps keep lining up), the barrel
+roof, the belfry + spire, the terrace apron with umbrellas, and the decals H2a left out (boil pot, dumpster, fountain,
+pool, truck, airboat, lookout) as brush props.
 Geometry: sprites.buildingBox (unchanged) gives the canvas, the anchor and the inset box; the composer works in footprint
 px through fp(g, X, Y, up) (= the pen's fpPt), so footprints, anchors, heights-in-tiles and render's shadow boxes are the
 pen's. Variant bits (contract SPR): NIGHT (4 frames, seeded lit pattern hash(row.n·131 + frame, cell) % 100 < 70),
 DAMAGED, PILINGS (+10 px lift on bark stilts over water), SCAFFOLD (3 frames: slab / half-height block walls in scaffolding
 (+ crane ≥ 3×3) / full height with openings and rafters), RUIN, BOARDED, FRONT_L (door, walk and lamps on the SW face),
-FLOODED (waterline, sandbags, wet apron); tees (render.bakeWith) are gravel / asphalt / plank connectors into the wall.
-Companion family `bldlight:<catalogId>[:r]` (same canvas, anchor and variant bits as the building; frame = the NIGHT
-pattern): only the lit window panes, the door transom and the lamp heads as brush.light quads / blooms, additive, for the
-lights pass — baked on demand, not fetched by render until H5 / part 2 wires it (render_fx today draws light:window).
-Per-row data (HD_ROWS, documented in docs/INTEGRATION_NOTES.md "## H2a buildings pass"): { ground, body, windows, columns,
-props, stripe, plaque } — everything else comes from the catalog row's paint (wall, roof, roofColor, floors, windows,
 
 ## sprites_entities.js
 'use strict';
