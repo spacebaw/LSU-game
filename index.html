@@ -564,6 +564,43 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
 #issues-head #issues-clear{color:var(--purple-shadow);background:var(--g-gold);border-color:var(--gold-shadow);font-weight:700}
 #issues-hidden{align-self:center;padding:0 .8rem;min-height:2.2rem;height:2.2rem;line-height:2rem;font-size:1.05rem;color:var(--text-dim)}
 
+/* hud modes (hud + zoom pass): H cycles full → compact → hidden, Shift+H restores. #hud[data-hud] carries the mode; a part with .pill is drawn as icon + one reading (compact mode, or folded by its ▾ in full mode); .pill.peek = opened by hover / click until the pointer leaves */
+.hud-pill{display:none;align-items:center;gap:.6rem;padding:.2rem .4rem;font:600 1.3rem/1.6rem var(--font-ui);color:var(--gold-hi);white-space:nowrap;cursor:pointer;pointer-events:auto;user-select:none}
+.hud-pill .pg{font-size:1.5rem;line-height:1} .hud-pill .pc{color:var(--text-dim);font-size:1.1rem}
+.hud-pill:hover .pt{text-decoration:underline dotted}
+.pill:not(.peek)>.hud-pill{display:inline-flex}
+.btn.hud-chev{width:2.2rem;min-width:2.2rem;height:2.2rem;min-height:2.2rem;padding:0;font-size:1.1rem;line-height:2rem;opacity:.55;flex:0 0 auto}
+.btn.hud-chev:hover{opacity:1}
+#objective-card.pill:not(.peek){width:auto;max-width:36rem;padding:.6rem 1.2rem;display:flex;align-items:center}
+#objective-card.pill:not(.peek)>*:not(.hud-pill){display:none !important}
+#objective-card #hud-chev-goals{position:absolute;right:1.2rem;top:4.6rem}
+#objective-card.collapsed #hud-chev-goals{display:none !important}
+.needs-row #hud-chev-needs{flex:0 0 auto}
+#needs-strip.pill:not(.peek){padding-top:.8rem;display:flex;align-items:center}
+#needs-strip.pill:not(.peek)>*:not(.hud-pill){display:none !important}
+#minimap-wrap #hud-chev-minimap{position:absolute;right:.6rem;top:.6rem;z-index:2}
+#minimap-wrap.pill:not(.peek){width:auto;height:auto;padding:.4rem .8rem;display:flex;align-items:center}
+#minimap-wrap.pill:not(.peek)>*:not(.hud-pill){display:none !important}
+#hud:has(#minimap-wrap.pill:not(.peek)) #overlay-buttons{top:calc(var(--topbar-h) + 6.4rem)}
+#hud:has(#minimap-wrap.pill:not(.peek)) #issues-tray{top:calc(var(--topbar-h) + 11.2rem)}
+#hud:has(#minimap-wrap.pill:not(.peek)):has(#legend:not(.hidden)) #issues-tray{top:calc(var(--topbar-h) + 14.2rem)}
+#issues-tray.pill:not(.peek){width:auto;max-width:33rem}
+#issues-tray.pill:not(.peek) #issues-head .sub,#issues-tray.pill:not(.peek) #issues-head #issues-spot,#issues-tray.pill:not(.peek) #issues-head #issues-clear{display:none}
+#hud.pal-pill{--palette-h:4.4rem}
+#palette.pill:not(.peek){left:var(--side);right:auto;height:auto;display:flex;align-items:center;padding:.4rem .8rem;bottom:calc(var(--ticker-h) + .8rem);background:var(--panel-bg);border:1px solid var(--line);border-radius:var(--radius)}
+#palette.pill:not(.peek)>*:not(.hud-pill){display:none !important}
+#palette #hud-chev-palette{position:absolute;right:.6rem;top:.6rem;z-index:2}
+#hud[data-hud="compact"] .stats .stat:not(#stat-cash){flex-direction:row;align-items:baseline;align-self:center;height:auto;gap:.5rem;min-width:0;padding:.3rem .7rem}
+#hud[data-hud="compact"] #stat-students .stat-label{display:block !important}
+#hud[data-hud="compact"] .stats .stat:not(#stat-cash) .odometer{font-size:1.5rem;margin-top:0}
+#hud[data-hud="compact"] .stats .stat:not(#stat-cash) .stat-label{font-size:1rem;letter-spacing:.06em}
+#hud[data-hud="compact"] #chip-capacity{display:none}
+#hud[data-hud="compact"] .btn.hud-chev{opacity:.4}
+#hud[data-hud="hidden"]{--palette-h:0px}
+#hud[data-hud="hidden"]>*:not(#decision-toast):not(#cards):not(#hud-chip):not(#ghost-label):not(#tooltip):not(#hint):not(#btn-skip):not(#coach):not(#inspect):not(#build-menu):not(#perfmode-chip){display:none !important}
+#hud-chip{position:absolute;right:var(--side);bottom:1.2rem;z-index:4;font:600 1.3rem/1.6rem var(--font-ui);color:var(--gold-hi);padding:.5rem 1.2rem;min-height:0;border-radius:99.9rem;opacity:.85}
+#hud-chip:hover{opacity:1}
+
 </style>
 </head>
 <body>
@@ -1311,7 +1348,9 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
       tickerMax: 30, tickerNoLineDays: 3,    // §11.1
       hoverTagMs: 300, panelRefreshMs: 500,  // §6.3, ARCH §7.7
       cardWordsMax: 12,                      // §10.1
-      touchTargetPx: 44                      // §11.7
+      touchTargetPx: 44,                     // §11.7
+      zoomSteps: [0.5, 0.65, 0.8, 1, 1.25, 1.5, 1.75, 2, 2.5],   // hud + zoom pass: the player's zoom steps (+ / − / wheel); render.zooms stay the three MASTER zooms the atlas and chunks are baked at
+      hudModes: ['full', 'compact', 'hidden']   // hud + zoom pass: H cycles, Shift+H → full (ui.setHudMode)
     },
     audio: { voices: 12, ambienceDb: -12, duckDb: -6, thunderDelay: [0.3, 2], zydecoBpm: 120, defaultVolume: 0.5 },   // GDD §13
     palette: {                               // GDD §12.2 (defined once here)
@@ -1855,7 +1894,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
         camera: { x: (founders.tx - founders.ty) * 32, y: (founders.tx + founders.ty) * 16, zoom: 1, tx: 0, ty: 0, follow: -1 },
         overlay: BSU.OV.NONE, speed: 1, speedBefore: 1, tool: null, panel: null, paletteTab: 'essentials',
         tabsSeen: {}, newPips: {}, tabsIntroduced: {},
-        settings: { volume: P.audio.defaultVolume, muted: false, particles: 'high', shake: true, colorblind: false, autoSimHint: false, coachSeen: false },
+        settings: { volume: P.audio.defaultVolume, muted: false, particles: 'high', shake: true, colorblind: false, autoSimHint: false, coachSeen: false, hudMode: 'full', hudCollapsed: { goals: false, needs: false, minimap: false, issues: false, palette: false } },   // hud + zoom pass: hudMode full | compact | hidden; hudCollapsed = per-element pills in full mode (ui.hudCollapse)
         perfMode: false
       },
       rng: { sim: (seed ^ 0x9E3779B9) >>> 0 }
@@ -3292,7 +3331,8 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     { key: '1', action: 'pick1', shift: true }, { key: '2', action: 'pick2', shift: true }, { key: '3', action: 'pick3', shift: true },
     { key: '4', action: 'pick4', shift: true }, { key: '5', action: 'pick5', shift: true }, { key: '6', action: 'pick6', shift: true },
     { key: '7', action: 'pick7', shift: true }, { key: '8', action: 'pick8', shift: true }, { key: '9', action: 'pick9', shift: true },
-    { key: 'g', action: 'buildMenu' }, { key: 'x', action: 'bulldoze' }, { key: 'r', action: 'rotate' }, { key: 'h', action: 'home' }, { key: '.', action: 'follow' },
+    { key: 'g', action: 'buildMenu' }, { key: 'x', action: 'bulldoze' }, { key: 'r', action: 'rotate' }, { key: 'Home', action: 'home' }, { key: '.', action: 'follow' },
+    { key: 'h', action: 'hud' }, { key: 'h', action: 'hudFull', shift: true },   // hud + zoom pass: H cycles full → compact → hidden, Shift+H restores full (Home now pans to Founders' Hall)
     { key: 'Escape', action: 'escape' },
     { key: 's', action: 'save', ctrl: true }, { key: 'z', action: 'undo', ctrl: true }, { key: 'p', action: 'postcard', ctrl: true },
     { key: 'm', action: 'mute' },
@@ -28325,7 +28365,10 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
   const T = BSU.T, SPR = BSU.SPR, SKY = BSU.SKY, FLAG = BSU.FLAG, SURF = BSU.SURF, OV = BSU.OV;
   const W = MAP.W, HGT = MAP.H, N = MAP.N, TW = 64, TH = 32, PXFT = 6;
   const CW = PR.chunkW || 512, CHH = PR.chunkH || 416, CS = 8, NCH = 64;
-  const ZOOMS = [0.5, 1, 2];
+  const ZOOMS = [0.5, 1, 2];   // the three MASTER zooms: the atlas bakes sprites at 1× / 2× (0.5× reads the 1× entry) and the chunks are baked once at 1×
+  // hud + zoom pass: the player's zoom steps (params.ui.zoomSteps). Nothing is baked per step: a step draws the nearest master ≥ it
+  // (2 for 1.25–2.5, 1 for 0.65–1, 0.5 at 0.5) scaled by step/master with image smoothing on whenever that scale is not 1.
+  const STEPS = (function () { const src = (BSU.params.ui && Array.isArray(BSU.params.ui.zoomSteps)) ? BSU.params.ui.zoomSteps : [0.5, 0.65, 0.8, 1, 1.25, 1.5, 1.75, 2, 2.5]; const a = src.filter(function (z) { return Number.isFinite(z) && z > 0; }).slice().sort(function (p, q) { return p - q; }); return a.length ? a : ZOOMS.slice(); })();
   const WATER_FLAGS = FLAG.BAYOU | FLAG.OPEN_WATER;
   const WORLD_X = PR.worldX || [-2016, 2016], WORLD_Y = PR.worldY || [-84, 2040];
   const MARGIN = PR.cameraMargin || 200, LERP = PR.cameraLerp || 0.15;
@@ -28360,7 +28403,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
   const comp = { tint: null, lights: null, fog: null };
   const chunks = new Array(NCH);
   const dirtyBits = new Uint8Array(NCH);
-  let frameNo = 0, alphaNow = 0, zoomNow = 1, firstFrame = true, bakesThisFrame = 0;
+  let frameNo = 0, alphaNow = 0, zoomNow = 1, atlasZoom = 1, frameSmooth = false, firstFrame = true, bakesThisFrame = 0;   // hud + zoom pass: zoomNow is the EXACT live zoom (every screen↔world transform uses it); atlasZoom is the master the sprites / tees / sheets are fetched at; frameSmooth = zoomNow !== atlasZoom
   let frameDt = 1 / 60, simSpeed = 1, poseX = 0, poseY = 0;   // movement pass: last frame's real seconds, the game speed (≥ 1) and the drawn position poseAgent leaves for pushMover
   const view = { vw: 1280, vh: 720, dpr: 1, x0: 0, y0: 0, x1: 63, y1: 63 };
   let shakeUntil = 0, shakePx = 0, hitStopUntilMs = 0;
@@ -28409,11 +28452,15 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
   // ---------------------------------------------------------------------------
   // Pure camera math (shared by the live API and selfTest; `cam` is any {x, y, zoom, …} object)
   // ---------------------------------------------------------------------------
-  /** snap a zoom to the nearest allowed step */
-  function snapZoom(z) { z = fin(z, 1); let best = 1, bd = Infinity; for (let k = 0; k < ZOOMS.length; k++) { const d = Math.abs(ZOOMS[k] - z); if (d < bd) { bd = d; best = ZOOMS[k]; } } return best; }
+  /** snap a zoom to the nearest allowed step (params.ui.zoomSteps) */
+  function snapZoom(z) { z = fin(z, 1); let best = 1, bd = Infinity; for (let k = 0; k < STEPS.length; k++) { const d = Math.abs(STEPS[k] - z); if (d < bd) { bd = d; best = STEPS[k]; } } return best; }
+  /** the master zoom (0.5 / 1 / 2) whose baked sprites and chunks a live zoom draws from: the nearest master ≥ the zoom (2 for 1.25–2.5, 1 for 0.65–1, 0.5 at 0.5) */
+  function masterOf(z) { z = fin(z, 1); return z <= 0.5 ? 0.5 : z <= 1 ? 1 : 2; }
+  /** the ONE place the live zoom changes: keeps the atlas master and the smoothing flag in step */
+  function setZoomNow(z) { zoomNow = fin(z, 1); atlasZoom = masterOf(zoomNow); frameSmooth = zoomNow !== atlasZoom; }
   /** clamp x,y into the world extents ± cameraMargin/zoom; repairs non-finite numbers */
   function clampCam(cam) {
-    const z = cam.zoom === 0.5 || cam.zoom === 1 || cam.zoom === 2 ? cam.zoom : snapZoom(cam.zoom);
+    const z = STEPS.indexOf(cam.zoom) >= 0 ? cam.zoom : snapZoom(cam.zoom);
     cam.zoom = z;
     const m = MARGIN / z;
     cam.x = clamp(fin(cam.x, 0), WORLD_X[0] - m, WORLD_X[1] + m);
@@ -29382,10 +29429,14 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
   };
   /** pan to a tile center (at its elevation) */
   M.panToTile = function (tx, ty, ease) { const e = (BSU.inBounds(tx | 0, ty | 0)) ? elevAt(tx | 0, ty | 0) : 0; const w = tileWorld(fin(tx, 32), fin(ty, 32), e); M.panTo(w.x, w.y, ease); };
-  /** zoom to 0.5/1/2 about a CSS-px anchor (default: the viewport center) */
-  M.setZoom = function (z, anchorPx) { if (!camera) return; const ax = anchorPx && Number.isFinite(anchorPx.x) ? anchorPx.x : vw / 2, ay = anchorPx && Number.isFinite(anchorPx.y) ? anchorPx.y : vh / 2; setZoomCam(camera, z, ax, ay, vw, vh); zoomNow = camera.zoom; markMoved(true); if (root && root.setPiece) M.captureCameraTouch(root); };
-  /** next zoom step in [0.5, 1, 2] */
-  M.zoomStep = function (dir, anchorPx) { if (!camera) return; const k = ZOOMS.indexOf(camera.zoom); const nk = clamp((k < 0 ? 1 : k) + (dir < 0 ? -1 : 1), 0, ZOOMS.length - 1); M.setZoom(ZOOMS[nk], anchorPx); };
+  /** zoom to the nearest step (params.ui.zoomSteps) about a CSS-px anchor (default: the viewport center): the world point under the anchor stays under it */
+  M.setZoom = function (z, anchorPx) { if (!camera) return; const ax = anchorPx && Number.isFinite(anchorPx.x) ? anchorPx.x : vw / 2, ay = anchorPx && Number.isFinite(anchorPx.y) ? anchorPx.y : vh / 2; setZoomCam(camera, z, ax, ay, vw, vh); setZoomNow(camera.zoom); markMoved(true); if (root && root.setPiece) M.captureCameraTouch(root); };
+  /** next / previous zoom step (hud + zoom pass: 0.5 … 2.5, nine steps) */
+  M.zoomStep = function (dir, anchorPx) { if (!camera) return; const k = STEPS.indexOf(snapZoom(camera.zoom)); const nk = clamp(k + (dir < 0 ? -1 : 1), 0, STEPS.length - 1); M.setZoom(STEPS[nk], anchorPx); };
+  /** the zoom step table (a copy) */
+  M.zoomSteps = function () { return STEPS.slice(); };
+  /** how a zoom (default: the live one) is drawn: {zoom, master, scale, smooth, index} — the master's baked art scaled by `scale`, smoothing on when scale ≠ 1 */
+  M.zoomInfo = function (z) { const zz = snapZoom(z === undefined || z === null ? (camera ? camera.zoom : zoomNow) : z); const m = masterOf(zz); return { zoom: zz, master: m, scale: zz / m, smooth: zz !== m, index: STEPS.indexOf(zz) }; };
   /** follow an agent id each frame (−1 releases; a user pan releases too) */
   M.follow = function (agentId) { if (camera) camera.follow = Number.isFinite(agentId) ? agentId | 0 : -1; };
   /** follow the first state.vehicles entry matching pred(v, state) each frame (null releases; a user pan releases too; releases itself when nothing matches) */
@@ -29411,7 +29462,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     try { const sp = S(); mem = typeof sp.totalMemoryMB === 'function' ? sp.totalMemoryMB() : sp.memoryMB(); } catch (e) { mem = 0; }
     mem += liveChunks() * C.chunkMB + (canvas ? (canvas.width * canvas.height * 12) / 1048576 : 0) + teeBytes / 1048576;
     let parts = 0; try { parts = M.particles && typeof M.particles.count === 'function' ? fin(M.particles.count(), 0) : 0; } catch (e) { parts = 0; }
-    return { frameMs: fin(frameMs, 0), drawCalls: drawCalls | 0, particles: parts, agentsDrawn: agentsDrawn | 0, hydroActive: hydroActive, chunks: liveChunks(), memMB: Math.round(mem * 100) / 100, tees: teeCache.size, water: waterDrawn | 0, frameNo: frameNo, zoom: zoomNow, perfMode: !!(root && root.ui && root.ui.perfMode) };
+    return { frameMs: fin(frameMs, 0), drawCalls: drawCalls | 0, particles: parts, agentsDrawn: agentsDrawn | 0, hydroActive: hydroActive, chunks: liveChunks(), memMB: Math.round(mem * 100) / 100, tees: teeCache.size, water: waterDrawn | 0, frameNo: frameNo, zoom: zoomNow, atlasZoom: atlasZoom, smooth: frameSmooth, perfMode: !!(root && root.ui && root.ui.perfMode) };
   };
   /** render_fx / ui register or replace a named pass: order 5 weather, 6 tint, 7 lights, 8 fog, 9 overlays, 10 hud */
   M.registerPass = function (name, fn, order_, builtin) {
@@ -29443,9 +29494,9 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     g.drawImage(ref.canvas, ref.sx, ref.sy, ref.sw, ref.sh, Math.round(sx + ref.ox * zs), Math.round(sy + ref.oy * zs), ref.sw * zs, ref.sh * zs);
     drawCalls++;
   }
-  function getRef(id, variant, frame) { const sp = S(); const r = sp.get(id, variant, frame, zoomNow); return r || null; }
+  function getRef(id, variant, frame) { const sp = S(); const r = sp.get(id, variant, frame, atlasZoom); return r || null; }   // hud + zoom pass: the atlas is asked at the MASTER zoom (no bake per step); zsOf scales it to the exact live zoom
   /** art pass B4: the character / wildlife / vehicle sheets are pure pixel-doubles at 2× (every art pixel is a 2×2 block), so the entity pass asks for the 1× entry at 2× and lets blit() scale it (nearest-neighbour, integer): the 2× sheets are never baked in play (saves ~6 MB of canvases in a crowd) */
-  function getRefE(id, variant, frame) { const sp = S(); const r = sp.get(id, variant, frame, zoomNow > 1 ? 1 : zoomNow); return r || null; }
+  function getRefE(id, variant, frame) { const sp = S(); const r = sp.get(id, variant, frame, atlasZoom > 1 ? 1 : atlasZoom); return r || null; }
   function zsOf(ref) { return zoomNow / (ref.zoom || 1); }
 
   // ---------------------------------------------------------------------------
@@ -29470,7 +29521,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
   }
   function waterPass(state, g) {
     const t = state.tiles, elev = t.elev, depth = t.depth, type = t.type, fl = t.flags;
-    const z = zoomNow, w = TW * z, h = TH * z, step = z === 1 ? 1 : 2;
+    const z = zoomNow, w = TW * z, h = TH * z, step = (z >= 1 && z < 2) ? 1 : 2;   // hud + zoom pass: every 1×-detail step (1 … 1.75) keeps the per-tile stride
     const surgeOn = !!(state.hydro && state.hydro.surge);
     const hyd = mod('hydro'), te = mod('terrain');
     const cap = surgeOn ? C.waterCapSurge : (z >= 1 ? C.waterCapZoom : C.waterCap);   // art pass B1: the detail zooms cover more of the river
@@ -29599,7 +29650,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
         let under = 0;
         if (live) for (let q = 0; q < ch.deckTiles.length; q++) if (deckOvertopped(state, hy, th, ch.deckTiles[q])) { under++; over.add(ch.deckTiles[q].i); }
         if (track) { deckStats.under += under; deckStats.live = live; }
-        if (!under) { g.drawImage(ch.deck, 0, 0, CW, CHH, Math.round(dx), Math.round(dy), Math.round(cw), Math.round(chh)); drawCalls++; if (track) decksDrawn += ch.deckTiles.length; continue; }
+        if (!under) { if (frameSmooth) g.drawImage(ch.deck, 0, 0, CW, CHH, dx, dy, cw, chh); else g.drawImage(ch.deck, 0, 0, CW, CHH, Math.round(dx), Math.round(dy), Math.round(cw), Math.round(chh)); drawCalls++; if (track) decksDrawn += ch.deckTiles.length; continue; }
         for (let q = 0; q < ch.deckTiles.length; q++) {   // a surge: tile by tile, the overtopped ones left under the water
           const d = ch.deckTiles[q]; if (over.has(d.i)) continue;
           g.drawImage(ch.deck, d.x, d.y, d.w, d.h, Math.round(dx + d.x * z), Math.round(dy + d.y * z), Math.round(d.w * z), Math.round(d.h * z)); drawCalls++; if (track) decksDrawn++;
@@ -29963,12 +30014,12 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     c.used = frameNo;
     if (c.fl !== fl) { c.fl = fl; c.tees = M.teesOf(state, b, fl); c.sig = c.tees ? c.tees.join(',') : ''; c.key = ''; }
     if (!c.tees) return null;
-    const z = zoomNow >= 2 ? 2 : 1;
+    const z = atlasZoom >= 2 ? 2 : 1;   // hud + zoom pass: tees bake at the master zoom only
     const key = v + '|' + fr + '|' + z + '|' + c.sig;
     if (c.key !== key) {
       if (teeBakes >= TEE_BAKES_PER_FRAME) return c.ref;   // over budget this frame: keep the previous bake (or the plain sprite) one more frame
       teeBakes++;
-      let ref = null; try { ref = S().bakeWith(id, v, fr, zoomNow, { tees: c.tees }); } catch (e) { rerr('tee:bake', e); ref = null; }
+      let ref = null; try { ref = S().bakeWith(id, v, fr, z, { tees: c.tees }); } catch (e) { rerr('tee:bake', e); ref = null; }
       if (c.ref) teeBytes -= c.ref.bytes | 0;
       c.ref = ref; c.key = key; if (ref) teeBytes += ref.bytes | 0;
     }
@@ -30528,9 +30579,9 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
         if (!inView(clamp(Math.floor(fin(a.tx, 0)), 0, W - 1), clamp(Math.floor(fin(a.ty, 0)), 0, HGT - 1), 2)) continue;   // off screen: nothing to pose or draw
         poseAgent(a, state);
         const anim = typeof a.anim === 'string' ? a.anim : 'idle';
-        const id = typeof sp.agentId === 'function' ? sp.agentId(anim, a, zoomNow) : 'agent';
+        const id = typeof sp.agentId === 'function' ? sp.agentId(anim, a, atlasZoom) : 'agent';   // hud + zoom pass: the sheet family follows the master zoom (0.65 / 0.8 draw the 1× sheets scaled, not the far two-pose ones)
         // art pass B4: 8 facings, per-agent phase, cycle rate by speed, idle fidgets and the 0.5× two-pose rule live in sprites_entities.agentFrame (agent, zoom and frame counter passed)
-        const fr = typeof sp.agentFrame === 'function' ? sp.agentFrame(anim, a.dir | 0, f, a, zoomNow, frameNo) : ((a.dir | 0) * 4 + ((zoomNow < 1 ? f & 2 : f) & 3));
+        const fr = typeof sp.agentFrame === 'function' ? sp.agentFrame(anim, a.dir | 0, f, a, atlasZoom, frameNo) : ((a.dir | 0) * 4 + ((atlasZoom < 1 ? f & 2 : f) & 3));
         const e = pushMover('agent', a, id, fin(a.look, 0) | 0, fr, groundElev, state, true);
         if (e) {
           e.c = a.state === 'FLEE' ? 1 : 0; e.b = a; agentsDrawn++;
@@ -30669,7 +30720,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
   const tmpPt = { x: 0, y: 0 };
   function builtinOverlays(state, g) {
     const ov = state.ui ? state.ui.overlay | 0 : 0, t = state.tiles;
-    const z = zoomNow, w = TW * z, h = TH * z, step = z === 1 ? 1 : 2;
+    const z = zoomNow, w = TW * z, h = TH * z, step = (z >= 1 && z < 2) ? 1 : 2;
     const fade = clamp((nowMs() - overlayFadeStart) / (PR.overlayFadeMs || 150), 0, 1) || (BSU.headlessMode ? 1 : 0);
     if (ov !== OV.NONE) {
       let risk = null, auras = null;
@@ -30868,12 +30919,12 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     const sv = { x0: view.x0, y0: view.y0, x1: view.x1, y1: view.y1, vw: view.vw, vh: view.vh };
     try {
       ctx = g; vw = w; vh = h; view.vw = w; view.vh = h;
-      camera = camOverride || saveCam; zoomNow = camera.zoom;
+      camera = camOverride || saveCam; setZoomNow(camera.zoom);
       visibleRect(camera, vw, vh, view);
       g.fillStyle = BG; g.fillRect(0, 0, w, h);
       runWorld(state, g, alphaNow, 16.67, false);
     } finally {
-      ctx = saveCtx; vw = saveVw; vh = saveVh; camera = saveCam; zoomNow = saveZoom;
+      ctx = saveCtx; vw = saveVw; vh = saveVh; camera = saveCam; setZoomNow(saveZoom);
       view.x0 = sv.x0; view.y0 = sv.y0; view.x1 = sv.x1; view.y1 = sv.y1; view.vw = sv.vw; view.vh = sv.vh;
     }
   };
@@ -30942,7 +30993,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     const t0 = nowMs(); const timeBudget = firstFrame ? C.firstBakeMs : 0;
     const maxBakes = PR.chunkRebakesPerFrame || 2;
     bakesThisFrame = 0;
-    const smooth = z < 1 && !info.perfMode;   // art pass B1: a filtered 2:1 downsample at 0.5× (nearest sparkled the noisy ground); off in perf mode
+    const smooth = (z < 1 && !info.perfMode) || frameSmooth;   // art pass B1: a filtered 2:1 downsample at 0.5× (nearest sparkled the noisy ground); off in perf mode. hud + zoom pass: on at every non-master step (the 1× chunks scale by a non-integer)
     if (smooth) g.imageSmoothingEnabled = true;
     if (curves && !curvesDirty && (frameNo % 30) === 7 && curves.deckCount > 0 && stageRefOf(state) !== curves.stageRef) { curvesDirty = true; M.dirtyAll(); }
     for (let s = 0; s <= 14; s++) {
@@ -30956,10 +31007,11 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
           if (!ch.canvas) continue;
         }
         ch.lastSeen = frameNo;
-        g.drawImage(ch.canvas, 0, 0, CW, CHH, Math.round(dx), Math.round(dy), Math.round(cw), Math.round(chh)); drawCalls++;
+        if (frameSmooth) g.drawImage(ch.canvas, 0, 0, CW, CHH, dx, dy, cw, chh); else g.drawImage(ch.canvas, 0, 0, CW, CHH, Math.round(dx), Math.round(dy), Math.round(cw), Math.round(chh));   // hud + zoom pass: sub-pixel placement while smoothing (rounding each chunk separately left hairline seams at 0.65 / 1.25)
+        drawCalls++;
       }
     }
-    if (smooth) g.imageSmoothingEnabled = false;
+    g.imageSmoothingEnabled = frameSmooth;   // the passes after the chunks draw sprites scaled from their master: smooth only at a non-master step
     if ((frameNo % 60) === 0) evictChunks();
   }
   /** passes 2–9 on context g (shared by frame and renderInto) */
@@ -31001,7 +31053,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     } else if (M.titleDrift) {
       cam.x += Math.sin(frameNo / 300) * C.titleDriftX; cam.y += Math.cos(frameNo / 420) * C.titleDriftY; clampCam(cam);
     }
-    zoomNow = cam.zoom;
+    setZoomNow(cam.zoom);
     visibleRect(cam, vw, vh, view);
     if (movedFlag) {
       camEvent.x = cam.x; camEvent.y = cam.y; camEvent.zoom = cam.zoom; camEvent.byUser = movedFlag === 2; movedFlag = 0;
@@ -31029,7 +31081,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
       if (now < shakeUntil && shakePx > 0 && !(state.ui.settings && state.ui.settings.shake === false)) { sx = Math.round((BSU.rng.fx.float() * 2 - 1) * shakePx); sy = Math.round((BSU.rng.fx.float() * 2 - 1) * shakePx); }
       else if (now >= shakeUntil) shakePx = 0;
       g.setTransform(dpr, 0, 0, dpr, 0, 0);
-      g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; g.imageSmoothingEnabled = false;
+      g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; g.imageSmoothingEnabled = frameSmooth;
       g.fillStyle = BG; g.fillRect(0, 0, vw, vh);
       g.save(); g.translate(sx, sy);
     } catch (e) { rerr('clear', e); }
@@ -31066,7 +31118,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     camera = ui.camera; followVehicle = null;
     camera.hasTarget = false; if (!Number.isFinite(camera.follow)) camera.follow = -1;
     clampCam(camera);
-    zoomNow = camera.zoom;
+    setZoomNow(camera.zoom);
     nanReported = false;
   }
   /** once per page load: the #world canvas, composites, chunk records, subscriptions, resize listener */
@@ -31140,7 +31192,9 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     const wxA = (ax - 640) / cam.zoom + cam.x, wyA = (ay - 360) / cam.zoom + cam.y;
     ok(cam.zoom === 2 && Math.abs(wxA - wxB) < 1 && Math.abs(wyA - wyB) < 1, 'setZoom(2) keeps the world point under the anchor (' + (wxA - wxB).toFixed(3) + ')');
     void before;
-    ok(snapZoom(1.3) === 1 && snapZoom(1.6) === 2 && snapZoom(0.1) === 0.5 && snapZoom(NaN) === 1, 'zoom snaps to 0.5/1/2');
+    ok(snapZoom(1.3) === 1.25 && snapZoom(1.6) === 1.5 && snapZoom(0.1) === 0.5 && snapZoom(NaN) === 1 && snapZoom(9) === STEPS[STEPS.length - 1], 'zoom snaps to the nearest step (' + STEPS.join('/') + ')');
+    ok(masterOf(0.5) === 0.5 && masterOf(0.65) === 1 && masterOf(0.8) === 1 && masterOf(1) === 1 && masterOf(1.25) === 2 && masterOf(1.75) === 2 && masterOf(2) === 2 && masterOf(2.5) === 2, 'master zoom: 0.5 → 0.5, 0.65–1 → 1, 1.25–2.5 → 2');
+    for (const zs of STEPS) { cam.zoom = 1; cam.x = 100; cam.y = 900; const bx = (ax - 640) / cam.zoom + cam.x, by = (ay - 360) / cam.zoom + cam.y; setZoomCam(cam, zs, ax, ay, 1280, 720); const sxA = (bx - cam.x) * cam.zoom + 640, syA = (by - cam.y) * cam.zoom + 360; ok(cam.zoom === zs && Math.abs(sxA - ax) < 0.5 && Math.abs(syA - ay) < 0.5, 'setZoom(' + zs + ') keeps the world point under the anchor within 0.5 px'); }
     // 3. screenToTile inverse on 20 random tiles at random elevations (private elev array)
     const pe = new Float32Array(N); const r = BSU.rng.derive ? BSU.rng.derive('render-selftest', 1) : BSU.rng.fx;
     for (let k = 0; k < N; k++) pe[k] = -4 + (hash(k, 3) % 1800) / 100;
@@ -32962,7 +33016,11 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
   // UX pass: build menu, needs strip cache, coach-mark tour
   const bm = { open: false, hover: null, selected: null, pulseId: null, pulseUntil: 0, focusUntil: 0, keepOpen: false, key: '', detailKey: '', dirty: true };
   let needsCache = null, needsAt = -1e9, needsKey = '';
-  const coach = { step: -1, armedAt: 0, paused: false, overlayBefore: 0, layoutAt: -1e9 };
+  const coach = { step: -1, armedAt: 0, paused: false, overlayBefore: 0, layoutAt: -1e9, expanded: [] };   // hud + zoom pass: `expanded` = the HUD parts un-pilled for the current step
+  // hud + zoom pass: HUD modes (full / compact / hidden; H cycles, Shift+H → full) and the per-element pills of full mode
+  const HUD_MODES = (BSU.params.ui && Array.isArray(BSU.params.ui.hudModes) && BSU.params.ui.hudModes.length === 3) ? BSU.params.ui.hudModes.slice() : ['full', 'compact', 'hidden'];
+  const HUD_PARTS = { goals: 'objective-card', needs: 'needs-strip', minimap: 'minimap-wrap', issues: 'issues-tray', palette: 'palette' };
+  const hudSt = { eff: '', chipOn: null, pillAt: -1e9, wheelAcc: 0, wheelAt: -1e9, wheelStepAt: -1e9 };
 
   // ---------------------------------------------------------------------------
   // Panel / card registries (plain map writes; ui_panels registers at definition time)
@@ -33039,6 +33097,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     c.addEventListener('pointerdown', function (ev) { mdown = true; go(ev); if (ev.preventDefault) ev.preventDefault(); });
     c.addEventListener('pointermove', function (ev) { if (mdown) go(ev); });
     c.addEventListener('pointerup', function () { mdown = false; }); c.addEventListener('pointerleave', function () { mdown = false; });
+    wrap.appendChild(hudChevron('minimap')); wrap.appendChild(hudPillEl('minimap', '🗺', 'Map')); hudHover('minimap', wrap);   // hud + zoom pass
     E['minimap-wrap'] = wrap; E.minimap = c; E['minimap-viewport'] = vp; return wrap;
   }
   function buildOverlays() {
@@ -33057,7 +33116,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     const openMs = function () { const s = stateOf(); if (!s || coach.step >= 0) return; M.openPanel(s.ui.panel === 'milestones' ? null : 'milestones'); };
     col.addEventListener('click', openMs); col.title = 'All milestones'; portrait.addEventListener('click', openMs);
     const dis = btn('btn-obj-dismiss', '✕', 'icon', function () { const s = stateOf(); const o = s ? call('progress', 'objective', s) : null; if (o) call('progress', 'dismiss', s, o.id); }); dis.title = 'Dismiss this goal';
-    head.appendChild(portrait); head.appendChild(col); head.appendChild(dis);
+    head.appendChild(portrait); head.appendChild(col); head.appendChild(dis); head.appendChild(hudChevron('goals'));
     const progRow = el('div', 'obj-prog-row'); const prog = el('div', 'bar'); prog.id = 'obj-progress'; const fill = el('div', 'fill'); prog.appendChild(fill); const count = el('span', null, ''); count.id = 'obj-count'; progRow.appendChild(prog); progRow.appendChild(count);
     const acts = el('div', 'obj-actions');
     const build = btn('btn-obj-build', 'Build it', 'primary small', function () { objBuildIt(); }); build.title = 'Select the right tool and open the build menu on it';
@@ -33079,7 +33138,9 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     const nloc = btn('needs-locate', 'Locate', 'small hidden', function () { const s = stateOf(); const fam = nloc.dataset.family; if (!s || !fam) return; const it = issueFirstOf(s, (issuesApi() && issuesApi().families()[fam]) || []); if (it) locateIssue(s, it); }); nloc.title = 'Ease the camera to the first building with this problem';
     const nrow = el('div', 'needs-row'); nrow.appendChild(ntext); nrow.appendChild(nloc);
     strip.appendChild(gauges); strip.appendChild(nrow); E['needs-locate'] = nloc;
+    nrow.appendChild(hudChevron('needs')); strip.appendChild(hudPillEl('needs', '⚖', 'Needs')); hudHover('needs', strip);   // hud + zoom pass: the chevron rides the binding line (inside the strip, so the pill rule hides it with the rest)
     c.appendChild(bub); c.appendChild(head); c.appendChild(progRow); c.appendChild(acts); c.appendChild(next); c.appendChild(bg); c.appendChild(strip);
+    c.appendChild(hudPillEl('goals', '🎯', 'Goal')); hudHover('goals', c);
     E['objective-card'] = c; E['obj-portrait'] = portrait; E['obj-kicker'] = kick; E['obj-title'] = title; E['obj-text'] = text; E['obj-why'] = why; E['obj-progress'] = prog; E['obj-prog-row'] = progRow; E['obj-fill'] = fill; E['obj-count'] = count; E['obj-actions'] = acts;
     E['btn-obj-build'] = build; E['btn-showme'] = showme; E['btn-postcard-obj'] = post; E['btn-obj-dismiss'] = dis; E['obj-next'] = next; E['obj-background'] = bg; E['speech-bubble'] = bub; E['needs-strip'] = strip; E['needs-text'] = ntext;
     const v = el('div', 'hidden'); v.id = 'voice-card'; const vh = el('div', 'card-kicker', 'Student voice'); const vs = el('div', 'voice-student', ''); const vt = el('div', null, ''); vt.id = 'voice-text'; const vp = el('div', null, ''); vp.id = 'voice-payoff';
@@ -33136,6 +33197,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     const bmBtn = btn('btn-build-menu', '', 'primary', function () { const s = stateOf(); if (!s) return; if (bm.open) M.closeBuildMenu(); else M.openBuildMenu(s, {}); }); bmBtn.title = 'Build menu (G)';
     bmBtn.appendChild(el('span', 'glyph', '🏗')); bmBtn.appendChild(el('span', 'label', 'Build')); bmBtn.appendChild(el('span', 'key', 'G'));
     p.appendChild(bmBtn); p.appendChild(tabs); p.appendChild(items); p.appendChild(side);
+    p.appendChild(hudChevron('palette')); p.appendChild(hudPillEl('palette', '🏗', 'Build · G')); hudHover('palette', p);   // hud + zoom pass: the quick-bar folds to a pill (G still opens the build menu); the chevron sits in the strip's top-right corner
     E.palette = p; E['palette-tabs'] = tabs; E['palette-items'] = items; E['btn-bulldoze'] = bull; E['btn-palette-info'] = info; E['btn-build-menu'] = bmBtn; E.tabEls = {}; E.itemEls = {}; return p;
   }
   function buildTitle() {
@@ -33186,7 +33248,8 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     const uc = btn('undo-chip', '', 'hidden', function () { doUndo(stateOf()); }); const ucMain = el('span', 'uc-main', ''); const ucBar = el('span', 'uc-bar'); const ucFill = el('span', 'uc-fill'); ucBar.appendChild(ucFill);
     uc.appendChild(el('span', 'uc-glyph', '↶')); uc.appendChild(ucMain); uc.appendChild(el('span', 'key', 'Ctrl+Z')); uc.appendChild(ucBar);
     E['undo-chip'] = uc; E['undo-main'] = ucMain; E['undo-fill'] = ucFill;
-    E['perf-chip'] = perf; E['perfmode-chip'] = pm; E.hint = h; E['hint-text'] = ht; E['btn-hint-action'] = ha; E['btn-skip'] = skip; return [perf, pm, h, skip, uc];
+    const hc = btn('hud-chip', 'HUD hidden · H', 'chip hidden', function () { M.setHudMode('full'); }); hc.title = 'Show the HUD again (H cycles full → compact → hidden; Shift+H restores)'; E['hud-chip'] = hc;   // hud + zoom pass
+    E['perf-chip'] = perf; E['perfmode-chip'] = pm; E.hint = h; E['hint-text'] = ht; E['btn-hint-action'] = ha; E['btn-skip'] = skip; return [perf, pm, h, skip, uc, hc];
   }
   function buildCards() { const c = el('div', 'hidden'); c.id = 'cards'; E.cards = c; return c; }
   function buildLabels() {
@@ -33282,6 +33345,58 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
   M.autoScaleFor = autoScaleFor;
   /** Settings → UI size: remember it (state.ui.settings + localStorage) and apply it now */
   M.setUiScale = function (v) { try { const sc = isAuto(v) ? 'auto' : scaleOf(v); M.settings().uiScale = sc; M.saveSettings(); applyScale(sc); return appliedScale; } catch (e) { uerr('setUiScale', e); return appliedScale; } };
+
+  // ---- HUD modes (hud + zoom pass) -----------------------------------------------------------------------------------------
+  // settings.hudMode: 'full' (every panel) | 'compact' (every part is a pill that opens on hover / click) | 'hidden' (the decision layer + a chip).
+  // settings.hudCollapsed[part]: in full mode that one part stays a pill (its ▾ chevron). Both persist like the display size.
+  // #hud[data-hud=mode] + .pill / .peek classes on the five parts drive the CSS (`/* hud modes */` block); nothing else moves.
+  function hudModeOf() { const m = M.settings().hudMode; return HUD_MODES.indexOf(m) >= 0 ? m : 'full'; }
+  function hudCollapsedOf() { const set = M.settings(); if (!set.hudCollapsed || typeof set.hudCollapsed !== 'object') set.hudCollapsed = {}; return set.hudCollapsed; }
+  /** the mode the HUD is drawn in right now: the coach-mark tour always runs in full (its spotlights point at HUD elements) */
+  function hudEffective() { return coach.step >= 0 ? 'full' : hudModeOf(); }
+  M.hudMode = function () { return hudModeOf(); };
+  M.hudModes = function () { return HUD_MODES.slice(); };
+  M.setHudMode = function (mode) { try { if (HUD_MODES.indexOf(mode) < 0) return hudModeOf(); const set = M.settings(); if (set.hudMode !== mode) { set.hudMode = mode; M.saveSettings(); } const s = stateOf(); if (s && dom()) updateHud(s); return mode; } catch (e) { uerr('setHudMode', e); return hudModeOf(); } };
+  /** H: full → compact → hidden → full (dir −1 walks back) */
+  M.cycleHud = function (dir) { const k = HUD_MODES.indexOf(hudModeOf()); const n = HUD_MODES[(k + (dir < 0 ? HUD_MODES.length - 1 : 1)) % HUD_MODES.length]; M.setHudMode(n); const s = stateOf(); if (s && dom() && !BSU.headlessMode) hudHint(s, n === 'compact' ? 'HUD: compact · H again hides it · Shift+H restores' : n === 'hidden' ? 'HUD hidden · H or Shift+H brings it back' : ''); return n; };
+  /** a short, replaceable hint for the mode just chosen (M.hint is once-per-save; this one must follow every press) */
+  function hudHint(s, t) { if (!t) { if (hint && hint.hud) hideHint(); return; } hint = { until: clock + 3500, untilTick: tickOf(s) + L.hintTicks, action: null, text: t, hud: true }; setText(E['hint-text'], t); show(E['btn-hint-action'], false); show(E.hint, true); }
+  M.hudCollapsed = function (key) { return !!hudCollapsedOf()[key]; };
+  /** collapse (on) / expand (off) one part in full mode; no `on` = toggle. Remembered in settings. */
+  M.hudCollapse = function (key, on) { try { if (!HUD_PARTS[key]) return false; const col = hudCollapsedOf(); const v = on === undefined ? !col[key] : !!on; if (col[key] !== v) { col[key] = v; M.saveSettings(); } const e = E[HUD_PARTS[key]]; if (e) cls(e, 'peek', false); if (key === 'issues') tray.key = ''; const s = stateOf(); if (s && dom()) updateHud(s); return v; } catch (e) { uerr('hudCollapse', e); return false; } };
+  /** true while that part is drawn as its pill (compact mode, or collapsed in full mode, and not peeked open) */
+  M.hudPill = function (key) { const e = E[HUD_PARTS[key]]; return !!(e && e.classList.contains('pill') && !e.classList.contains('peek')); };
+  M.hudState = function () { const o = { mode: hudModeOf(), effective: hudEffective(), collapsed: {}, pill: {} }; const col = hudCollapsedOf(); for (const k in HUD_PARTS) { o.collapsed[k] = !!col[k]; o.pill[k] = M.hudPill(k); } return o; };
+  /** a pill opened by hover / click (`peek`); closes when the pointer leaves the part */
+  function hudPeek(key, on) { const e = E[HUD_PARTS[key]]; if (!e) return; if (on && !e.classList.contains('pill')) return; if (e.classList.contains('peek') === !!on) return; cls(e, 'peek', !!on); if (key === 'issues') tray.key = ''; if (key === 'palette') cls(E.hud, 'pal-pill', M.hudPill('palette')); }
+  M.hudPeek = hudPeek;
+  /** the collapse chevron of one part (full mode: fold to the pill; compact: close a peek) */
+  function hudChevron(key) { const b = btn('hud-chev-' + key, '▾', 'icon hud-chev', function (ev) { if (ev && ev.stopPropagation) ev.stopPropagation(); if (hudEffective() === 'compact') hudPeek(key, false); else M.hudCollapse(key); }); b.title = 'Fold this panel to a pill (H folds the whole HUD)'; E['hud-chev-' + key] = b; return b; }
+  /** the pill a part folds to: icon + one short reading; click or hover opens it */
+  function hudPillEl(key, glyph, label) { const p = el('div', 'hud-pill'); p.id = 'hud-pill-' + key; p.appendChild(el('span', 'pg', glyph)); const t = el('span', 'pt', label); p.appendChild(t); p.appendChild(el('span', 'pc', '▸')); p.title = 'Open'; p.addEventListener('click', function (ev) { if (ev && ev.stopPropagation) ev.stopPropagation(); if (hudEffective() === 'compact') hudPeek(key, true); else M.hudCollapse(key, false); }); E['hud-pill-' + key] = p; E['hud-pill-' + key + '-text'] = t; return p; }
+  function hudHover(key, e) { e.addEventListener('mouseenter', function () { if (e.classList.contains('pill')) hudPeek(key, true); }); e.addEventListener('mouseleave', function () { hudPeek(key, false); }); }
+  /** per frame: the mode on #hud, each part's pill class, the chip, and (every 250 ms) the pill readings */
+  function updateHud(s) {
+    if (!dom() || !E.hud) return;
+    const eff = hudEffective();
+    if (E.hud.dataset.hud !== eff) { E.hud.dataset.hud = eff; hudSt.eff = eff; fitTopbar(); coach.layoutAt = -1e9; tray.key = ''; for (const k in HUD_PARTS) cls(E[HUD_PARTS[k]], 'peek', false); if (eff === 'hidden') { hideTooltip(); show(E['ghost-label'], false); } }
+    const col = hudCollapsedOf();
+    for (const k in HUD_PARTS) {
+      const e = E[HUD_PARTS[k]]; if (!e) continue;
+      const want = eff === 'compact' || (eff === 'full' && !!col[k] && coach.expanded.indexOf(k) < 0);
+      if (e.classList.contains('pill') !== want) { cls(e, 'pill', want); if (k === 'issues') tray.key = ''; }
+      if (!want && e.classList.contains('peek')) cls(e, 'peek', false);
+    }
+    cls(E.hud, 'pal-pill', M.hudPill('palette'));
+    const chip = eff === 'hidden' && !titleOn; if (chip !== hudSt.chipOn) { hudSt.chipOn = chip; show(E['hud-chip'], chip); }
+    if (clock - hudSt.pillAt < 250) return; hudSt.pillAt = clock;
+    try {
+      const o = call('progress', 'objective', s); const cnt = E['obj-count'] ? E['obj-count'].textContent : '';
+      setText(E['hud-pill-goals-text'], o ? 'Goal' + (cnt ? ' · ' + cnt : '') : 'Goals');
+      let tight = 0; for (const k in E.needEls) { const lv = E.needEls[k].el.dataset.level; if (lv === 'warn' || lv === 'bad') tight++; }
+      setText(E['hud-pill-needs-text'], tight ? 'Needs · ' + tight + ' tight' : 'Needs · OK');
+    } catch (e) { /* stub */ }
+  }
 
   // ---------------------------------------------------------------------------
   // DOM listeners → the machine (pointer / wheel / keys / gestures)
@@ -33515,15 +33630,26 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
       mcStep(live, { type: type, px: px, py: py, button: fin(button, 0) | 0, mods: mods });
     } catch (e) { uerr('pointer:' + type, e); }
   };
-  /** wheel: two-finger pan (no ctrl) / ctrl+wheel = zoom at the cursor */
+  /** wheel (hud + zoom pass): the wheel zooms AT THE CURSOR, one step per notch — a mouse notch (|dy| ≥ 40) steps at once, a trackpad's
+   *  pixel stream accumulates to the same notch, and steps are rate-limited to one per 90 ms of HUD clock (rapid events coalesce);
+   *  ctrl+wheel (a pinch) takes the same path with a finer notch. A sideways two-finger scroll (|dx| > 1.5·|dy|) still pans. */
   M.wheel = function (px, py, dx, dy, ctrl) {
     try {
       const s = stateOf(); if (titleOn || !s) return;
-      if (ctrl) { if (Math.abs(dy) < 0.5) return; call('render', 'zoomStep', dy < 0 ? 1 : -1, { x: px, y: py }); return; }
-      call('render', 'panBy', clamp(fin(dx, 0), -120, 120), clamp(fin(dy, 0), -120, 120), true);
+      dx = fin(dx, 0); dy = fin(dy, 0);
+      if (!ctrl && Math.abs(dx) > Math.abs(dy) * 1.5) { call('render', 'panBy', clamp(dx, -120, 120), clamp(dy, -120, 120), true); if (live.state === 'PLACING' || live.state === 'DRAGGING') updateGhost(s, px, py); return; }
+      if (Math.abs(dy) < 0.5) return;
+      if (clock - hudSt.wheelAt > 250) hudSt.wheelAcc = 0;
+      hudSt.wheelAt = clock; hudSt.wheelAcc += dy;
+      if (Math.abs(hudSt.wheelAcc) < (ctrl ? WHEEL_NOTCH_PINCH : WHEEL_NOTCH)) return;
+      const dir = hudSt.wheelAcc < 0 ? 1 : -1; hudSt.wheelAcc = 0;
+      if (clock - hudSt.wheelStepAt < WHEEL_STEP_MS) return;
+      hudSt.wheelStepAt = clock;
+      call('render', 'zoomStep', dir, { x: px, y: py });
       if (live.state === 'PLACING' || live.state === 'DRAGGING') updateGhost(s, px, py);
     } catch (e) { uerr('wheel', e); }
   };
+  const WHEEL_NOTCH = 40, WHEEL_NOTCH_PINCH = 8, WHEEL_STEP_MS = 90;
 
   // ---------------------------------------------------------------------------
   // Keyboard (ARCHITECTURE §7.4): precedence toast → focused input → card → map
@@ -33598,6 +33724,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
         heldI = true; applySpotlight(); return true;
       }
       let k = key;
+      if (k === '+') k = '=';   // hud + zoom pass: + (Shift+=) and = both zoom in
       if (mods.shift && typeof mods.code === 'string' && /^Digit[1-9]$/.test(mods.code)) k = mods.code.slice(5);
       const action = keymap().get(keyId(k, !!(mods.ctrl || mods.meta), !!mods.shift)) || (mods.shift ? keymap().get(keyId(k, !!(mods.ctrl || mods.meta), false)) : null);
       const pd = (!mods.ctrl && !mods.meta) ? panDirOf(key) : null;
@@ -33623,6 +33750,8 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
       }
       case 'zoomOut': call('render', 'zoomStep', -1, null); return true;
       case 'zoomIn': call('render', 'zoomStep', 1, null); return true;
+      case 'hud': M.cycleHud(1); return true;   // hud + zoom pass: H
+      case 'hudFull': M.setHudMode('full'); return true;   // Shift+H
       case 'nextTab': cycleTab(s, 1); return true;
       case 'prevTab': cycleTab(s, -1); return true;
       case 'bulldoze': { const t = s.ui.tool; if (toolLocked) return true; M.selectTool(s, t && t.id === 'bulldoze' ? null : 'bulldoze'); return true; }
@@ -34575,12 +34704,15 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     if (st.id === 'swamp') M.setOverlay(s, OV.FLOOD); else if (fin(s.ui.overlay, 0) === OV.FLOOD && coach.overlayBefore !== OV.FLOOD) M.setOverlay(s, coach.overlayBefore);
     setText(E['coach-step'], 'Quick tour · ' + (coach.step + 1) + ' of ' + steps.length); setText(E['coach-title'], st.title); setText(E['coach-text'], st.text);
     setText(E['btn-coach-next'], coach.step === steps.length - 1 ? 'Geaux build ▸' : 'Next ▸'); show(E['btn-coach-back'], coach.step > 0);
+    coach.expanded = st.target === 'needs-strip' ? ['goals', 'needs'] : st.target === 'objective-card' ? ['goals'] : st.target === 'build-menu' ? ['palette'] : [];   // hud + zoom pass: a step that points at a collapsed element opens it for the step (the tour itself always runs in the full HUD)
+    updateHud(s);
     coach.layoutAt = -1e9; layoutCoach(s);
   }
   function coachNext(s, dir) { if (coach.step < 0) return; const n = coachSteps().length; const k = coach.step + dir; if (k >= n) { coachFinish(s, true); return; } coach.step = clamp(k, 0, n - 1); applyCoachStep(s); emit('ui:coach', { step: coach.step }); }
   function coachFinish(s, completed) {
-    coach.step = -1; coach.paused = false; show(E.coach, false); show(E['coach-ring'], false);
+    coach.step = -1; coach.paused = false; coach.expanded = []; show(E.coach, false); show(E['coach-ring'], false);
     M.settings().coachSeen = true; M.saveSettings();
+    if (s && dom()) updateHud(s);   // hud + zoom pass: the player's mode and pills come back
     if (s && fin(s.ui.overlay, 0) === OV.FLOOD && coach.overlayBefore !== OV.FLOOD) M.setOverlay(s, coach.overlayBefore);
     // hand-off: land in the build menu on the goal's card (the existing objective chain takes it from here)
     if (s && !s.setPiece) { const o = call('progress', 'objective', s); const t = o ? objTarget(s, o) : null; M.openBuildMenu(s, t ? { focus: t, pulse: true } : { tab: 'essentials' }); }
@@ -34612,7 +34744,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     box.dataset.pos = r ? (by > r.y ? 'below' : 'above') : 'center';
   }
   /** Settings → replay: forget the flag and let the next frame start the tour (Settings closes) */
-  M.startCoach = function (state) { try { const s = state || stateOf(); M.settings().coachSeen = false; M.saveSettings(); coach.step = -1; coach.armedAt = clock - 1e5; if (s && s.ui && s.ui.panel) M.openPanel(null); } catch (e) { uerr('startCoach', e); } };
+  M.startCoach = function (state, opts) { try { const s = state || stateOf(); M.settings().coachSeen = false; M.saveSettings(); coach.step = -1; coach.armedAt = clock - 1e5; if (s && s.ui && s.ui.panel) M.openPanel(null); if (opts && opts.now === true && s && dom()) coachStart(s); } catch (e) { uerr('startCoach', e); } };   // hud + zoom pass: {now: true} starts the tour at once (tests; headless has no eligibility)
   M.coachStep = function () { return coach.step; };
   M._ux = { needsOf: needsOf, recommend: recommend, objTarget: objTarget, effectLines: effectLines, requirementsOf: requirementsOf, utilityWarning: utilityWarning };
 
@@ -34785,9 +34917,10 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     const n = el('span', 'n', ''); n.id = 'issues-count'; const sub = el('span', 'sub', ''); sub.id = 'issues-sub';
     const clr = btn('issues-clear', 'Clear all', 'small hidden', function () { const s = stateOf(); if (s) clearAllResolvable(s, false); }); clr.title = 'Run every one-click fix: repairs within cash, gravel ties, free officer wrangles (a confirm line shows the total)';
     const spot = btn('issues-spot', 'Spotlight', 'small', function () { toggleSpotlight(); }); spot.title = 'Dim the map except the issues (Shift+I; hold I)';
-    const car = btn('issues-toggle', '▾', 'icon small', function () { tray.userCollapsed = !tray.userCollapsed; tray.key = ''; }); car.title = 'Collapse / expand';
+    const car = btn('issues-toggle', '▾', 'icon small', function () { if (hudEffective() === 'compact') hudPeek('issues', false); else M.hudCollapse('issues'); }); car.title = 'Collapse / expand (remembered)';   // hud + zoom pass: the caret is the tray's collapse chevron
     head.appendChild(n); head.appendChild(sub); head.appendChild(clr); head.appendChild(spot); head.appendChild(car);
-    head.addEventListener('click', function (ev) { if (ev && ev.target && (ev.target === spot || ev.target === car || ev.target === clr)) return; if (tray.userCollapsed) { tray.userCollapsed = false; tray.key = ''; } else { const s = stateOf(); if (s) cycleIssue(s, 1); } });
+    head.addEventListener('click', function (ev) { if (ev && ev.target && (ev.target === spot || ev.target === car || ev.target === clr)) return; if (M.hudPill('issues')) { if (hudEffective() === 'compact') hudPeek('issues', true); else M.hudCollapse('issues', false); } else { const s = stateOf(); if (s) cycleIssue(s, 1); } });
+    hudHover('issues', wrap);   // hud + zoom pass: hovering the pill peeks the rows
     const list = el('div'); list.id = 'issues-list';
     const prog = el('div', 'hidden'); prog.id = 'issues-progress'; prog.appendChild(el('div', 'ph', 'In progress')); const plist = el('div'); plist.id = 'issues-progress-list'; prog.appendChild(plist);
     const more = el('div', 'hidden', ''); more.id = 'issues-more';
@@ -34841,7 +34974,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     if (titleOn || coach.step >= 0) { show(E['issues-tray'], false); tray.key = ''; return; }
     const list = I.list(s), active = I.actionable(s), prog = I.inProgress(s), hidden = I.hiddenList(s), sel = I.selectedId();
     const fit = trayRowsFit(active.some(function (it) { return !!it.why; }));
-    const collapsed = tray.userCollapsed || fit < 2;
+    const collapsed = fit < 2 || M.hudPill('issues');   // hud + zoom pass: collapsed = the tray's pill (compact mode, or the caret in full mode) unless hovered open
     if (list.length === 0) {
       if (tray.hadIssues) { tray.hadIssues = false; tray.clearAt = clock; }
       const showClear = clock - tray.clearAt < 3000 || hidden.length > 0;
@@ -35188,7 +35321,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     call('session', 'newGame', seed === undefined ? {} : { seed: seed });
     void s;
   }
-  M.settings = function () { const s = stateOf(); if (s && s.ui && s.ui.settings) return s.ui.settings; return { volume: 0.5, muted: false, particles: 'high', shake: true, colorblind: false, autoSimHint: false }; };
+  M.settings = function () { const s = stateOf(); if (s && s.ui && s.ui.settings) return s.ui.settings; return { volume: 0.5, muted: false, particles: 'high', shake: true, colorblind: false, autoSimHint: false, hudMode: 'full', hudCollapsed: {} }; };
   /** mirror state.ui.settings to localStorage['bsu.settings'] (a failure → one 'saveUnavailable' hint) */
   M.saveSettings = function () { try { window.localStorage.setItem('bsu.settings', JSON.stringify(M.settings())); } catch (e) { const s = stateOf(); if (s) M.hint(s, 'saveUnavailable'); } };
   /** stat popover from economy.breakdown */
@@ -35228,6 +35361,8 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     const us = el('div', 'seg'); host._uiScale = us; UI_SCALES.forEach(function (v) { const b = btn('btn-uiscale-' + Math.round(v * 100), Math.round(v * 100) + '%', 'seg-btn', function () { M.setUiScale(v); refreshSettingsPanel(stateOf(), host); }); b.dataset.scale = String(v); b.title = 'Interface size ' + Math.round(v * 100) + '%'; us.appendChild(b); });
     { const ab = btn('btn-uiscale-auto', 'Auto', 'seg-btn', function () { M.setUiScale('auto'); refreshSettingsPanel(stateOf(), host); }); ab.dataset.scale = 'auto'; ab.title = 'Pick the interface size from this window'; us.appendChild(ab); }   // P5
     const uw = el('div', 'seg-wrap'); const un = el('div', 'seg-note hidden', ''); host._uiNote = un; uw.appendChild(us); uw.appendChild(un); rowEl('UI size', uw);   // UI scale pass (C7)
+    const hs = el('div', 'seg'); host._hud = hs; [['full', 'Full'], ['compact', 'Compact'], ['hidden', 'Hidden']].forEach(function (d) { const b = btn('btn-hud-' + d[0], d[1], 'seg-btn', function () { M.setHudMode(d[0]); refreshSettingsPanel(stateOf(), host); }); b.dataset.hud = d[0]; b.title = d[0] === 'full' ? 'Every panel' : d[0] === 'compact' ? 'Each panel folds to a pill that opens on hover or click' : 'Only the decision toasts and a small chip'; hs.appendChild(b); });
+    const hw = el('div', 'seg-wrap'); hw.appendChild(hs); hw.appendChild(el('div', 'seg-note', 'H cycles Full → Compact → Hidden · Shift+H restores · the ▾ on a panel folds just that one')); rowEl('HUD', hw);   // hud + zoom pass
     rowEl('Tour', btn('btn-coach-replay', 'Replay the 60-second tour', 'small', function () { M.startCoach(stateOf()); }));
     const leg = el('div', 'legend-table'); for (const o of ((BSU.data && BSU.data.overlays) || [])) { const r = el('div', 'legend-row'); r.appendChild(el('span', 'key', o.key)); r.appendChild(el('span', 'k', o.name)); r.appendChild(el('span', 'v', o.legend.join(' · '))); leg.appendChild(r); } rowEl('Overlays', leg);
     const keys = el('div', 'keys-table'); keys.id = 'keys'; const KEYNAMES = { ' ': 'Space' }; for (const k of ((BSU.data && BSU.data.keys) || [])) { if (/^pan|^pick[2-9]|^toast/.test(k.action)) continue; const r = el('div', 'legend-row'); r.appendChild(el('span', 'key', (k.ctrl ? 'Ctrl+' : '') + (k.shift ? 'Shift+' : '') + (KEYNAMES[k.key] || (k.key.length === 1 ? k.key.toUpperCase() : k.key)))); r.appendChild(el('span', 'k', k.action === 'pick1' ? 'pick item 1–9' : k.action.replace(/([A-Z])/g, ' $1').toLowerCase())); keys.appendChild(r); } rowEl('Keys', keys);
@@ -35244,6 +35379,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     if (host._speed) for (const b of host._speed.children) cls(b, 'active', String(fin(s.ui.speed, 1)) === b.dataset.speed);
     if (host._vol) host._vol.value = String(fin(M.settings().volume, 0.5));
     if (host._uiScale) for (const b of host._uiScale.children) { const d = b.dataset.scale; cls(b, 'active', d === 'auto' ? uiMode === 'auto' : uiMode !== 'auto' && Number(d) === appliedScale); }
+    if (host._hud) for (const b of host._hud.children) cls(b, 'active', b.dataset.hud === hudModeOf());
     if (host._uiNote) { const lim = effScale < appliedScale - 0.005; const txt = uiMode === 'auto' ? 'Auto picks ' + Math.round(effScale * 100) + '% for this window.' : lim ? 'Limited to ' + Math.round(effScale * 100) + '% by this window size.' : ''; show(host._uiNote, !!txt); if (txt) setText(host._uiNote, txt); }
   }
   // Debug panel (built in; hidden; Backquote). ui_panels may re-register 'debug' with the full params tree.
@@ -35500,6 +35636,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     sec('queue', drainQueue, state, dtMs);
     sec('pan', heldPan, state, dtMs);
     sec('topbar', updateTopbar, state, dtMs);
+    sec('hud', updateHud, state, dtMs);   // hud + zoom pass: mode + pills
     sec('scorebug', function (s) { if (typeof M.scoreBug === 'function') M.scoreBug(s); }, state, dtMs);   // ui_panels' live score bug (hidden when no game)
     sec('alert', updateAlert, state, dtMs);
     sec('objective', updateObjective, state, dtMs);
@@ -35534,7 +35671,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
       alertClosedKey = ''; for (const k in gatorAlerts) delete gatorAlerts[k];
       bubble = { since: clock, until: 0, key: '' }; objKey = ''; alertKey = ''; alertAt = -1e9; msAt = -1e9; speedKey = ''; paletteKey = ''; palShownTab = ''; pipKey = ''; paletteDirty = true; capacityShown = false; skipShown = false; paletteHidden = null; hudFade = false;   // null: the first updateSetPiece re-syncs #palette and #hud.no-palette (a stale no-palette from the title / tutorial left a 0-height palette after newGame/load)
       M.debug.open = false; M.hoverTile = -1; lastGhost = null;
-      tray.key = ''; tray.rows = []; tray.hadIssues = false; tray.clearAt = -1e9; tray.userCollapsed = false; heldI = false; spotToggled = false; try { if (BSU.issues) { BSU.issues.select(null); BSU.issues.spotlight(false); BSU.issues.pulse(null); } } catch (e) { /* */ }
+      tray.key = ''; tray.rows = []; tray.hadIssues = false; tray.clearAt = -1e9; heldI = false; spotToggled = false; try { if (BSU.issues) { BSU.issues.select(null); BSU.issues.spotlight(false); BSU.issues.pulse(null); } } catch (e) { /* */ }
       bm.open = false; bm.hover = null; bm.selected = null; bm.pulseId = null; bm.key = ''; bm.detailKey = ''; bm.dirty = true; needsCache = null; needsAt = -1e9; needsKey = ''; coach.step = -1; coach.armedAt = 0; coach.paused = false;
       for (const k in held) held[k] = false;
       if (dom()) {

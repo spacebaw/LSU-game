@@ -182,8 +182,8 @@ const anchor = { x: 900, y: 200 }, wBefore = { x: (anchor.x - 640) / 1 + R.camer
 R.setZoom(2, anchor);
 const wAfter = { x: (anchor.x - 640) / 2 + R.camera.x, y: (anchor.y - 360) / 2 + R.camera.y };
 ok(R.camera.zoom === 2 && Math.abs(wAfter.x - wBefore.x) < 1 && Math.abs(wAfter.y - wBefore.y) < 1, 'setZoom(2) keeps the world point under the anchor');
-R.zoomStep(-1); ok(R.camera.zoom === 1, 'zoomStep(-1) → 1'); R.zoomStep(-1); ok(R.camera.zoom === 0.5, 'zoomStep(-1) → 0.5'); R.zoomStep(-1); ok(R.camera.zoom === 0.5, 'zoomStep below 0.5 stays 0.5');
-R.setZoom(1.4); ok(R.camera.zoom === 1, 'setZoom snaps 1.4 → 1');
+R.zoomStep(-1); ok(R.camera.zoom === 1.75, 'zoomStep(-1) → 1.75'); for (let k = 0; k < 20; k++) R.zoomStep(-1); ok(R.camera.zoom === 0.5, 'zoomStep below 0.5 stays 0.5'); for (let k = 0; k < 20; k++) R.zoomStep(1); ok(R.camera.zoom === 2.5, 'zoomStep above 2.5 stays 2.5'); R.setZoom(2);
+R.setZoom(1.4); ok(R.camera.zoom === 1.5, 'setZoom snaps 1.4 → 1.5 (the nearest step)'); R.setZoom(1);
 BSU.headless.render();
 const vt = R.visibleTiles();
 ok(vt.x0 >= 0 && vt.y0 >= 0 && vt.x1 <= 63 && vt.y1 <= 63 && vt.x1 >= vt.x0 && vt.y1 >= vt.y0, `visibleTiles is a clamped rect (${vt.x0},${vt.y0})–(${vt.x1},${vt.y1})`);
@@ -473,6 +473,46 @@ const camJson = JSON.stringify(s.ui.camera);
 ok(!/NaN|Infinity/.test(camJson), 'saved camera has no NaN/Infinity: ' + camJson);
 ok(BSU.errors.size === eb + 1, `no unexpected BSU.error during the run (${BSU.errors.size - eb - 1} extra)`);
 if (BSU.errors.size !== eb + 1) console.error([...BSU.errors.keys()].join('\n'));
+
+// --- hud + zoom pass: nine zoom steps, zoom at the cursor, master selection + smoothing per step, no bake per step ------------
+try {
+  const sZ = BSU.state; const camZ = sZ.ui.camera; const errZ = BSU.errors.size;
+  const stepsP = BSU.params.ui.zoomSteps;
+  ok(Array.isArray(stepsP) && stepsP.join(',') === '0.5,0.65,0.8,1,1.25,1.5,1.75,2,2.5' && R.zoomSteps().join(',') === stepsP.join(','), 'params.ui.zoomSteps = 0.5 … 2.5 (nine steps) and render.zoomSteps() mirrors it');
+  ok(BSU.params.render.zooms.join(',') === '0.5,1,2', 'the three master zooms are unchanged');
+  ok(!/chunks\s*\[\s*z|chunksByZoom|chunkSets|new Array\(NCH\)\s*,\s*new Array\(NCH\)/.test(src) && (src.match(/new Array\(NCH\)/g) || []).length === 1, 'one chunk table (no chunk set per zoom)');
+  const masters = { 0.5: [0.5, false], 0.65: [1, true], 0.8: [1, true], 1: [1, false], 1.25: [2, true], 1.5: [2, true], 1.75: [2, true], 2: [2, false], 2.5: [2, true] };
+  let mOk = true; for (const z of stepsP) { const i = R.zoomInfo(z); if (i.zoom !== z || i.master !== masters[z][0] || i.smooth !== masters[z][1] || Math.abs(i.scale - z / masters[z][0]) > 1e-9) { mOk = false; console.error('zoomInfo', z, i); } }
+  ok(mOk, 'zoomInfo: master 2 for 1.25–2.5, 1 for 0.65–1, 0.5 at 0.5; smoothing on exactly when the scale ≠ 1');
+  ok(R.zoomInfo(1.3).zoom === 1.25 && R.zoomInfo(1.6).zoom === 1.5 && R.zoomInfo(0.6).zoom === 0.65, 'zoomInfo snaps an off-table zoom to the nearest step');
+  // wheel at the cursor: for every step from 1× (and back), the world point under the anchor moves < 0.5 px
+  R.panTo(0, 1024, false); const vwZ = R.view.vw, vhZ = R.view.vh, axZ = 900, ayZ = 200;
+  const underZ = () => ({ x: (axZ - vwZ / 2) / camZ.zoom + camZ.x, y: (ayZ - vhZ / 2) / camZ.zoom + camZ.y });
+  let aOk = true, worst = 0;
+  for (const z of stepsP) { R.setZoom(1); R.panTo(0, 1024, false); const b = underZ(); R.setZoom(z, { x: axZ, y: ayZ }); const a = underZ(); const d = Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y)) * camZ.zoom; worst = Math.max(worst, d); if (camZ.zoom !== z || d >= 0.5) { aOk = false; console.error('anchor drift at', z, d); } }
+  ok(aOk, 'setZoom(step, anchor) keeps the world point under the anchor for every step (worst ' + worst.toFixed(3) + ' px)');
+  R.setZoom(1.25, { x: axZ, y: ayZ }); const b2 = underZ(); R.zoomStep(1, { x: axZ, y: ayZ }); const a2 = underZ();
+  ok(camZ.zoom === 1.5 && Math.abs(a2.x - b2.x) * 1.5 < 0.5 && Math.abs(a2.y - b2.y) * 1.5 < 0.5, 'zoomStep(+1, anchor) 1.25 → 1.5 keeps the cursor point too');
+  { const ts = R.tileToScreen(32, 32), ws = BSU.worldToScreen(32, 32, sZ.tiles.elev[32 * 64 + 32], camZ, R.view.vw, R.view.vh); ok(camZ.zoom === 1.5 && Math.abs(ts.x - ws.x) < 1e-6 && Math.abs(ts.y - ws.y) < 1e-6, 'tileToScreen at 1.5× equals the contract projection with the live camera (' + ts.x + ',' + ts.y + ' vs ' + ws.x + ',' + ws.y + ')'); }
+  // no extra caches: the widest step of each master family is rendered first (1.25 for the 2× family, 0.65 for the 1× family; 40 frames so every
+  // animation frame is baked), then the master itself and the narrower steps (their viewports are subsets) — the atlas must gain no key and the
+  // chunk table must not grow: nothing is baked per step
+  const sp = BSU.sprites; R.panToTile(sZ.plot.founders.tx + 1, sZ.plot.founders.ty + 1, false);
+  const warm = (z, n) => { R.setZoom(z); for (let k = 0; k < n; k++) BSU.headless.render(); return { keys: sp.count(), mem: sp.memoryMB(), chunks: R.perf().chunks, p: R.perf() }; };
+  const w125 = warm(1.25, 40); let perfOk = true, keysOk = true, chunksOk = true;
+  for (const z of [2, 1.5, 1.75, 2.5]) { const w = warm(z, 6); if (w.p.zoom !== z || w.p.atlasZoom !== 2 || w.p.smooth !== (z !== 2)) { perfOk = false; console.error('perf at', z, w.p.zoom, w.p.atlasZoom, w.p.smooth); } if (w.keys !== w125.keys) { keysOk = false; console.error('atlas grew at', z, w125.keys, '→', w.keys); } if (w.chunks > w125.chunks) { chunksOk = false; console.error('chunks grew at', z, w125.chunks, '→', w.chunks); } }
+  const w065 = warm(0.65, 40);
+  for (const z of [0.8, 1]) { const w = warm(z, 6); if (w.p.zoom !== z || w.p.atlasZoom !== 1 || w.p.smooth !== (z !== 1)) { perfOk = false; console.error('perf at', z, w.p.zoom, w.p.atlasZoom, w.p.smooth); } if (w.keys !== w065.keys) { keysOk = false; console.error('atlas grew at', z, w065.keys, '→', w.keys); } if (w.chunks > w065.chunks) { chunksOk = false; console.error('chunks grew at', z, w065.chunks, '→', w.chunks); } }
+  ok(perfOk, 'perf() reports the exact zoom, its master (2 for 1.25–2.5, 1 for 0.65–1) and smoothing on exactly at the non-master steps');
+  ok(keysOk, 'the atlas gained no key at 2 / 1.5 / 1.75 / 2.5 after 1.25, nor at 0.8 / 1 after 0.65 (' + w125.keys + ' / ' + w065.keys + ' keys)');
+  ok(chunksOk && R.perf().chunks <= 64, 'the chunk table never grew past the widest step of its family and stays within the single 64-slot table (' + w125.chunks + ' at 1.25, ' + w065.chunks + ' at 0.65)');
+  const w05 = warm(0.5, 3); ok(w05.p.atlasZoom === 0.5 && w05.p.smooth === false, 'at 0.5× the master is 0.5 and nothing is smoothed beyond the art-pass downsample');
+  // the football camera snaps to the venue zoom from an intermediate step and hands the step back
+  R.setZoom(1.25); BSU.headless.render();
+  ok(camZ.zoom === 1.25 && R.zoomInfo().zoom === 1.25, 'an intermediate step is a legal saved camera zoom');
+  R.setZoom(1); BSU.headless.render();
+  ok(BSU.errors.size === errZ, 'no BSU.error across the zoom-step checks');
+} catch (e) { ok(false, 'hud + zoom render: ' + (e.stack || e)); }
 
 console.log(`\n${passes} passed, ${failures} failed`);
 process.exit(failures ? 1 : 0);

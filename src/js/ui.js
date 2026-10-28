@@ -154,7 +154,11 @@
   // UX pass: build menu, needs strip cache, coach-mark tour
   const bm = { open: false, hover: null, selected: null, pulseId: null, pulseUntil: 0, focusUntil: 0, keepOpen: false, key: '', detailKey: '', dirty: true };
   let needsCache = null, needsAt = -1e9, needsKey = '';
-  const coach = { step: -1, armedAt: 0, paused: false, overlayBefore: 0, layoutAt: -1e9 };
+  const coach = { step: -1, armedAt: 0, paused: false, overlayBefore: 0, layoutAt: -1e9, expanded: [] };   // hud + zoom pass: `expanded` = the HUD parts un-pilled for the current step
+  // hud + zoom pass: HUD modes (full / compact / hidden; H cycles, Shift+H → full) and the per-element pills of full mode
+  const HUD_MODES = (BSU.params.ui && Array.isArray(BSU.params.ui.hudModes) && BSU.params.ui.hudModes.length === 3) ? BSU.params.ui.hudModes.slice() : ['full', 'compact', 'hidden'];
+  const HUD_PARTS = { goals: 'objective-card', needs: 'needs-strip', minimap: 'minimap-wrap', issues: 'issues-tray', palette: 'palette' };
+  const hudSt = { eff: '', chipOn: null, pillAt: -1e9, wheelAcc: 0, wheelAt: -1e9, wheelStepAt: -1e9 };
 
   // ---------------------------------------------------------------------------
   // Panel / card registries (plain map writes; ui_panels registers at definition time)
@@ -231,6 +235,7 @@
     c.addEventListener('pointerdown', function (ev) { mdown = true; go(ev); if (ev.preventDefault) ev.preventDefault(); });
     c.addEventListener('pointermove', function (ev) { if (mdown) go(ev); });
     c.addEventListener('pointerup', function () { mdown = false; }); c.addEventListener('pointerleave', function () { mdown = false; });
+    wrap.appendChild(hudChevron('minimap')); wrap.appendChild(hudPillEl('minimap', '🗺', 'Map')); hudHover('minimap', wrap);   // hud + zoom pass
     E['minimap-wrap'] = wrap; E.minimap = c; E['minimap-viewport'] = vp; return wrap;
   }
   function buildOverlays() {
@@ -249,7 +254,7 @@
     const openMs = function () { const s = stateOf(); if (!s || coach.step >= 0) return; M.openPanel(s.ui.panel === 'milestones' ? null : 'milestones'); };
     col.addEventListener('click', openMs); col.title = 'All milestones'; portrait.addEventListener('click', openMs);
     const dis = btn('btn-obj-dismiss', '✕', 'icon', function () { const s = stateOf(); const o = s ? call('progress', 'objective', s) : null; if (o) call('progress', 'dismiss', s, o.id); }); dis.title = 'Dismiss this goal';
-    head.appendChild(portrait); head.appendChild(col); head.appendChild(dis);
+    head.appendChild(portrait); head.appendChild(col); head.appendChild(dis); head.appendChild(hudChevron('goals'));
     const progRow = el('div', 'obj-prog-row'); const prog = el('div', 'bar'); prog.id = 'obj-progress'; const fill = el('div', 'fill'); prog.appendChild(fill); const count = el('span', null, ''); count.id = 'obj-count'; progRow.appendChild(prog); progRow.appendChild(count);
     const acts = el('div', 'obj-actions');
     const build = btn('btn-obj-build', 'Build it', 'primary small', function () { objBuildIt(); }); build.title = 'Select the right tool and open the build menu on it';
@@ -271,7 +276,9 @@
     const nloc = btn('needs-locate', 'Locate', 'small hidden', function () { const s = stateOf(); const fam = nloc.dataset.family; if (!s || !fam) return; const it = issueFirstOf(s, (issuesApi() && issuesApi().families()[fam]) || []); if (it) locateIssue(s, it); }); nloc.title = 'Ease the camera to the first building with this problem';
     const nrow = el('div', 'needs-row'); nrow.appendChild(ntext); nrow.appendChild(nloc);
     strip.appendChild(gauges); strip.appendChild(nrow); E['needs-locate'] = nloc;
+    nrow.appendChild(hudChevron('needs')); strip.appendChild(hudPillEl('needs', '⚖', 'Needs')); hudHover('needs', strip);   // hud + zoom pass: the chevron rides the binding line (inside the strip, so the pill rule hides it with the rest)
     c.appendChild(bub); c.appendChild(head); c.appendChild(progRow); c.appendChild(acts); c.appendChild(next); c.appendChild(bg); c.appendChild(strip);
+    c.appendChild(hudPillEl('goals', '🎯', 'Goal')); hudHover('goals', c);
     E['objective-card'] = c; E['obj-portrait'] = portrait; E['obj-kicker'] = kick; E['obj-title'] = title; E['obj-text'] = text; E['obj-why'] = why; E['obj-progress'] = prog; E['obj-prog-row'] = progRow; E['obj-fill'] = fill; E['obj-count'] = count; E['obj-actions'] = acts;
     E['btn-obj-build'] = build; E['btn-showme'] = showme; E['btn-postcard-obj'] = post; E['btn-obj-dismiss'] = dis; E['obj-next'] = next; E['obj-background'] = bg; E['speech-bubble'] = bub; E['needs-strip'] = strip; E['needs-text'] = ntext;
     const v = el('div', 'hidden'); v.id = 'voice-card'; const vh = el('div', 'card-kicker', 'Student voice'); const vs = el('div', 'voice-student', ''); const vt = el('div', null, ''); vt.id = 'voice-text'; const vp = el('div', null, ''); vp.id = 'voice-payoff';
@@ -328,6 +335,7 @@
     const bmBtn = btn('btn-build-menu', '', 'primary', function () { const s = stateOf(); if (!s) return; if (bm.open) M.closeBuildMenu(); else M.openBuildMenu(s, {}); }); bmBtn.title = 'Build menu (G)';
     bmBtn.appendChild(el('span', 'glyph', '🏗')); bmBtn.appendChild(el('span', 'label', 'Build')); bmBtn.appendChild(el('span', 'key', 'G'));
     p.appendChild(bmBtn); p.appendChild(tabs); p.appendChild(items); p.appendChild(side);
+    p.appendChild(hudChevron('palette')); p.appendChild(hudPillEl('palette', '🏗', 'Build · G')); hudHover('palette', p);   // hud + zoom pass: the quick-bar folds to a pill (G still opens the build menu); the chevron sits in the strip's top-right corner
     E.palette = p; E['palette-tabs'] = tabs; E['palette-items'] = items; E['btn-bulldoze'] = bull; E['btn-palette-info'] = info; E['btn-build-menu'] = bmBtn; E.tabEls = {}; E.itemEls = {}; return p;
   }
   function buildTitle() {
@@ -378,7 +386,8 @@
     const uc = btn('undo-chip', '', 'hidden', function () { doUndo(stateOf()); }); const ucMain = el('span', 'uc-main', ''); const ucBar = el('span', 'uc-bar'); const ucFill = el('span', 'uc-fill'); ucBar.appendChild(ucFill);
     uc.appendChild(el('span', 'uc-glyph', '↶')); uc.appendChild(ucMain); uc.appendChild(el('span', 'key', 'Ctrl+Z')); uc.appendChild(ucBar);
     E['undo-chip'] = uc; E['undo-main'] = ucMain; E['undo-fill'] = ucFill;
-    E['perf-chip'] = perf; E['perfmode-chip'] = pm; E.hint = h; E['hint-text'] = ht; E['btn-hint-action'] = ha; E['btn-skip'] = skip; return [perf, pm, h, skip, uc];
+    const hc = btn('hud-chip', 'HUD hidden · H', 'chip hidden', function () { M.setHudMode('full'); }); hc.title = 'Show the HUD again (H cycles full → compact → hidden; Shift+H restores)'; E['hud-chip'] = hc;   // hud + zoom pass
+    E['perf-chip'] = perf; E['perfmode-chip'] = pm; E.hint = h; E['hint-text'] = ht; E['btn-hint-action'] = ha; E['btn-skip'] = skip; return [perf, pm, h, skip, uc, hc];
   }
   function buildCards() { const c = el('div', 'hidden'); c.id = 'cards'; E.cards = c; return c; }
   function buildLabels() {
@@ -474,6 +483,58 @@
   M.autoScaleFor = autoScaleFor;
   /** Settings → UI size: remember it (state.ui.settings + localStorage) and apply it now */
   M.setUiScale = function (v) { try { const sc = isAuto(v) ? 'auto' : scaleOf(v); M.settings().uiScale = sc; M.saveSettings(); applyScale(sc); return appliedScale; } catch (e) { uerr('setUiScale', e); return appliedScale; } };
+
+  // ---- HUD modes (hud + zoom pass) -----------------------------------------------------------------------------------------
+  // settings.hudMode: 'full' (every panel) | 'compact' (every part is a pill that opens on hover / click) | 'hidden' (the decision layer + a chip).
+  // settings.hudCollapsed[part]: in full mode that one part stays a pill (its ▾ chevron). Both persist like the display size.
+  // #hud[data-hud=mode] + .pill / .peek classes on the five parts drive the CSS (`/* hud modes */` block); nothing else moves.
+  function hudModeOf() { const m = M.settings().hudMode; return HUD_MODES.indexOf(m) >= 0 ? m : 'full'; }
+  function hudCollapsedOf() { const set = M.settings(); if (!set.hudCollapsed || typeof set.hudCollapsed !== 'object') set.hudCollapsed = {}; return set.hudCollapsed; }
+  /** the mode the HUD is drawn in right now: the coach-mark tour always runs in full (its spotlights point at HUD elements) */
+  function hudEffective() { return coach.step >= 0 ? 'full' : hudModeOf(); }
+  M.hudMode = function () { return hudModeOf(); };
+  M.hudModes = function () { return HUD_MODES.slice(); };
+  M.setHudMode = function (mode) { try { if (HUD_MODES.indexOf(mode) < 0) return hudModeOf(); const set = M.settings(); if (set.hudMode !== mode) { set.hudMode = mode; M.saveSettings(); } const s = stateOf(); if (s && dom()) updateHud(s); return mode; } catch (e) { uerr('setHudMode', e); return hudModeOf(); } };
+  /** H: full → compact → hidden → full (dir −1 walks back) */
+  M.cycleHud = function (dir) { const k = HUD_MODES.indexOf(hudModeOf()); const n = HUD_MODES[(k + (dir < 0 ? HUD_MODES.length - 1 : 1)) % HUD_MODES.length]; M.setHudMode(n); const s = stateOf(); if (s && dom() && !BSU.headlessMode) hudHint(s, n === 'compact' ? 'HUD: compact · H again hides it · Shift+H restores' : n === 'hidden' ? 'HUD hidden · H or Shift+H brings it back' : ''); return n; };
+  /** a short, replaceable hint for the mode just chosen (M.hint is once-per-save; this one must follow every press) */
+  function hudHint(s, t) { if (!t) { if (hint && hint.hud) hideHint(); return; } hint = { until: clock + 3500, untilTick: tickOf(s) + L.hintTicks, action: null, text: t, hud: true }; setText(E['hint-text'], t); show(E['btn-hint-action'], false); show(E.hint, true); }
+  M.hudCollapsed = function (key) { return !!hudCollapsedOf()[key]; };
+  /** collapse (on) / expand (off) one part in full mode; no `on` = toggle. Remembered in settings. */
+  M.hudCollapse = function (key, on) { try { if (!HUD_PARTS[key]) return false; const col = hudCollapsedOf(); const v = on === undefined ? !col[key] : !!on; if (col[key] !== v) { col[key] = v; M.saveSettings(); } const e = E[HUD_PARTS[key]]; if (e) cls(e, 'peek', false); if (key === 'issues') tray.key = ''; const s = stateOf(); if (s && dom()) updateHud(s); return v; } catch (e) { uerr('hudCollapse', e); return false; } };
+  /** true while that part is drawn as its pill (compact mode, or collapsed in full mode, and not peeked open) */
+  M.hudPill = function (key) { const e = E[HUD_PARTS[key]]; return !!(e && e.classList.contains('pill') && !e.classList.contains('peek')); };
+  M.hudState = function () { const o = { mode: hudModeOf(), effective: hudEffective(), collapsed: {}, pill: {} }; const col = hudCollapsedOf(); for (const k in HUD_PARTS) { o.collapsed[k] = !!col[k]; o.pill[k] = M.hudPill(k); } return o; };
+  /** a pill opened by hover / click (`peek`); closes when the pointer leaves the part */
+  function hudPeek(key, on) { const e = E[HUD_PARTS[key]]; if (!e) return; if (on && !e.classList.contains('pill')) return; if (e.classList.contains('peek') === !!on) return; cls(e, 'peek', !!on); if (key === 'issues') tray.key = ''; if (key === 'palette') cls(E.hud, 'pal-pill', M.hudPill('palette')); }
+  M.hudPeek = hudPeek;
+  /** the collapse chevron of one part (full mode: fold to the pill; compact: close a peek) */
+  function hudChevron(key) { const b = btn('hud-chev-' + key, '▾', 'icon hud-chev', function (ev) { if (ev && ev.stopPropagation) ev.stopPropagation(); if (hudEffective() === 'compact') hudPeek(key, false); else M.hudCollapse(key); }); b.title = 'Fold this panel to a pill (H folds the whole HUD)'; E['hud-chev-' + key] = b; return b; }
+  /** the pill a part folds to: icon + one short reading; click or hover opens it */
+  function hudPillEl(key, glyph, label) { const p = el('div', 'hud-pill'); p.id = 'hud-pill-' + key; p.appendChild(el('span', 'pg', glyph)); const t = el('span', 'pt', label); p.appendChild(t); p.appendChild(el('span', 'pc', '▸')); p.title = 'Open'; p.addEventListener('click', function (ev) { if (ev && ev.stopPropagation) ev.stopPropagation(); if (hudEffective() === 'compact') hudPeek(key, true); else M.hudCollapse(key, false); }); E['hud-pill-' + key] = p; E['hud-pill-' + key + '-text'] = t; return p; }
+  function hudHover(key, e) { e.addEventListener('mouseenter', function () { if (e.classList.contains('pill')) hudPeek(key, true); }); e.addEventListener('mouseleave', function () { hudPeek(key, false); }); }
+  /** per frame: the mode on #hud, each part's pill class, the chip, and (every 250 ms) the pill readings */
+  function updateHud(s) {
+    if (!dom() || !E.hud) return;
+    const eff = hudEffective();
+    if (E.hud.dataset.hud !== eff) { E.hud.dataset.hud = eff; hudSt.eff = eff; fitTopbar(); coach.layoutAt = -1e9; tray.key = ''; for (const k in HUD_PARTS) cls(E[HUD_PARTS[k]], 'peek', false); if (eff === 'hidden') { hideTooltip(); show(E['ghost-label'], false); } }
+    const col = hudCollapsedOf();
+    for (const k in HUD_PARTS) {
+      const e = E[HUD_PARTS[k]]; if (!e) continue;
+      const want = eff === 'compact' || (eff === 'full' && !!col[k] && coach.expanded.indexOf(k) < 0);
+      if (e.classList.contains('pill') !== want) { cls(e, 'pill', want); if (k === 'issues') tray.key = ''; }
+      if (!want && e.classList.contains('peek')) cls(e, 'peek', false);
+    }
+    cls(E.hud, 'pal-pill', M.hudPill('palette'));
+    const chip = eff === 'hidden' && !titleOn; if (chip !== hudSt.chipOn) { hudSt.chipOn = chip; show(E['hud-chip'], chip); }
+    if (clock - hudSt.pillAt < 250) return; hudSt.pillAt = clock;
+    try {
+      const o = call('progress', 'objective', s); const cnt = E['obj-count'] ? E['obj-count'].textContent : '';
+      setText(E['hud-pill-goals-text'], o ? 'Goal' + (cnt ? ' · ' + cnt : '') : 'Goals');
+      let tight = 0; for (const k in E.needEls) { const lv = E.needEls[k].el.dataset.level; if (lv === 'warn' || lv === 'bad') tight++; }
+      setText(E['hud-pill-needs-text'], tight ? 'Needs · ' + tight + ' tight' : 'Needs · OK');
+    } catch (e) { /* stub */ }
+  }
 
   // ---------------------------------------------------------------------------
   // DOM listeners → the machine (pointer / wheel / keys / gestures)
@@ -707,15 +768,26 @@
       mcStep(live, { type: type, px: px, py: py, button: fin(button, 0) | 0, mods: mods });
     } catch (e) { uerr('pointer:' + type, e); }
   };
-  /** wheel: two-finger pan (no ctrl) / ctrl+wheel = zoom at the cursor */
+  /** wheel (hud + zoom pass): the wheel zooms AT THE CURSOR, one step per notch — a mouse notch (|dy| ≥ 40) steps at once, a trackpad's
+   *  pixel stream accumulates to the same notch, and steps are rate-limited to one per 90 ms of HUD clock (rapid events coalesce);
+   *  ctrl+wheel (a pinch) takes the same path with a finer notch. A sideways two-finger scroll (|dx| > 1.5·|dy|) still pans. */
   M.wheel = function (px, py, dx, dy, ctrl) {
     try {
       const s = stateOf(); if (titleOn || !s) return;
-      if (ctrl) { if (Math.abs(dy) < 0.5) return; call('render', 'zoomStep', dy < 0 ? 1 : -1, { x: px, y: py }); return; }
-      call('render', 'panBy', clamp(fin(dx, 0), -120, 120), clamp(fin(dy, 0), -120, 120), true);
+      dx = fin(dx, 0); dy = fin(dy, 0);
+      if (!ctrl && Math.abs(dx) > Math.abs(dy) * 1.5) { call('render', 'panBy', clamp(dx, -120, 120), clamp(dy, -120, 120), true); if (live.state === 'PLACING' || live.state === 'DRAGGING') updateGhost(s, px, py); return; }
+      if (Math.abs(dy) < 0.5) return;
+      if (clock - hudSt.wheelAt > 250) hudSt.wheelAcc = 0;
+      hudSt.wheelAt = clock; hudSt.wheelAcc += dy;
+      if (Math.abs(hudSt.wheelAcc) < (ctrl ? WHEEL_NOTCH_PINCH : WHEEL_NOTCH)) return;
+      const dir = hudSt.wheelAcc < 0 ? 1 : -1; hudSt.wheelAcc = 0;
+      if (clock - hudSt.wheelStepAt < WHEEL_STEP_MS) return;
+      hudSt.wheelStepAt = clock;
+      call('render', 'zoomStep', dir, { x: px, y: py });
       if (live.state === 'PLACING' || live.state === 'DRAGGING') updateGhost(s, px, py);
     } catch (e) { uerr('wheel', e); }
   };
+  const WHEEL_NOTCH = 40, WHEEL_NOTCH_PINCH = 8, WHEEL_STEP_MS = 90;
 
   // ---------------------------------------------------------------------------
   // Keyboard (ARCHITECTURE §7.4): precedence toast → focused input → card → map
@@ -790,6 +862,7 @@
         heldI = true; applySpotlight(); return true;
       }
       let k = key;
+      if (k === '+') k = '=';   // hud + zoom pass: + (Shift+=) and = both zoom in
       if (mods.shift && typeof mods.code === 'string' && /^Digit[1-9]$/.test(mods.code)) k = mods.code.slice(5);
       const action = keymap().get(keyId(k, !!(mods.ctrl || mods.meta), !!mods.shift)) || (mods.shift ? keymap().get(keyId(k, !!(mods.ctrl || mods.meta), false)) : null);
       const pd = (!mods.ctrl && !mods.meta) ? panDirOf(key) : null;
@@ -815,6 +888,8 @@
       }
       case 'zoomOut': call('render', 'zoomStep', -1, null); return true;
       case 'zoomIn': call('render', 'zoomStep', 1, null); return true;
+      case 'hud': M.cycleHud(1); return true;   // hud + zoom pass: H
+      case 'hudFull': M.setHudMode('full'); return true;   // Shift+H
       case 'nextTab': cycleTab(s, 1); return true;
       case 'prevTab': cycleTab(s, -1); return true;
       case 'bulldoze': { const t = s.ui.tool; if (toolLocked) return true; M.selectTool(s, t && t.id === 'bulldoze' ? null : 'bulldoze'); return true; }
@@ -1767,12 +1842,15 @@
     if (st.id === 'swamp') M.setOverlay(s, OV.FLOOD); else if (fin(s.ui.overlay, 0) === OV.FLOOD && coach.overlayBefore !== OV.FLOOD) M.setOverlay(s, coach.overlayBefore);
     setText(E['coach-step'], 'Quick tour · ' + (coach.step + 1) + ' of ' + steps.length); setText(E['coach-title'], st.title); setText(E['coach-text'], st.text);
     setText(E['btn-coach-next'], coach.step === steps.length - 1 ? 'Geaux build ▸' : 'Next ▸'); show(E['btn-coach-back'], coach.step > 0);
+    coach.expanded = st.target === 'needs-strip' ? ['goals', 'needs'] : st.target === 'objective-card' ? ['goals'] : st.target === 'build-menu' ? ['palette'] : [];   // hud + zoom pass: a step that points at a collapsed element opens it for the step (the tour itself always runs in the full HUD)
+    updateHud(s);
     coach.layoutAt = -1e9; layoutCoach(s);
   }
   function coachNext(s, dir) { if (coach.step < 0) return; const n = coachSteps().length; const k = coach.step + dir; if (k >= n) { coachFinish(s, true); return; } coach.step = clamp(k, 0, n - 1); applyCoachStep(s); emit('ui:coach', { step: coach.step }); }
   function coachFinish(s, completed) {
-    coach.step = -1; coach.paused = false; show(E.coach, false); show(E['coach-ring'], false);
+    coach.step = -1; coach.paused = false; coach.expanded = []; show(E.coach, false); show(E['coach-ring'], false);
     M.settings().coachSeen = true; M.saveSettings();
+    if (s && dom()) updateHud(s);   // hud + zoom pass: the player's mode and pills come back
     if (s && fin(s.ui.overlay, 0) === OV.FLOOD && coach.overlayBefore !== OV.FLOOD) M.setOverlay(s, coach.overlayBefore);
     // hand-off: land in the build menu on the goal's card (the existing objective chain takes it from here)
     if (s && !s.setPiece) { const o = call('progress', 'objective', s); const t = o ? objTarget(s, o) : null; M.openBuildMenu(s, t ? { focus: t, pulse: true } : { tab: 'essentials' }); }
@@ -1804,7 +1882,7 @@
     box.dataset.pos = r ? (by > r.y ? 'below' : 'above') : 'center';
   }
   /** Settings → replay: forget the flag and let the next frame start the tour (Settings closes) */
-  M.startCoach = function (state) { try { const s = state || stateOf(); M.settings().coachSeen = false; M.saveSettings(); coach.step = -1; coach.armedAt = clock - 1e5; if (s && s.ui && s.ui.panel) M.openPanel(null); } catch (e) { uerr('startCoach', e); } };
+  M.startCoach = function (state, opts) { try { const s = state || stateOf(); M.settings().coachSeen = false; M.saveSettings(); coach.step = -1; coach.armedAt = clock - 1e5; if (s && s.ui && s.ui.panel) M.openPanel(null); if (opts && opts.now === true && s && dom()) coachStart(s); } catch (e) { uerr('startCoach', e); } };   // hud + zoom pass: {now: true} starts the tour at once (tests; headless has no eligibility)
   M.coachStep = function () { return coach.step; };
   M._ux = { needsOf: needsOf, recommend: recommend, objTarget: objTarget, effectLines: effectLines, requirementsOf: requirementsOf, utilityWarning: utilityWarning };
 
@@ -1977,9 +2055,10 @@
     const n = el('span', 'n', ''); n.id = 'issues-count'; const sub = el('span', 'sub', ''); sub.id = 'issues-sub';
     const clr = btn('issues-clear', 'Clear all', 'small hidden', function () { const s = stateOf(); if (s) clearAllResolvable(s, false); }); clr.title = 'Run every one-click fix: repairs within cash, gravel ties, free officer wrangles (a confirm line shows the total)';
     const spot = btn('issues-spot', 'Spotlight', 'small', function () { toggleSpotlight(); }); spot.title = 'Dim the map except the issues (Shift+I; hold I)';
-    const car = btn('issues-toggle', '▾', 'icon small', function () { tray.userCollapsed = !tray.userCollapsed; tray.key = ''; }); car.title = 'Collapse / expand';
+    const car = btn('issues-toggle', '▾', 'icon small', function () { if (hudEffective() === 'compact') hudPeek('issues', false); else M.hudCollapse('issues'); }); car.title = 'Collapse / expand (remembered)';   // hud + zoom pass: the caret is the tray's collapse chevron
     head.appendChild(n); head.appendChild(sub); head.appendChild(clr); head.appendChild(spot); head.appendChild(car);
-    head.addEventListener('click', function (ev) { if (ev && ev.target && (ev.target === spot || ev.target === car || ev.target === clr)) return; if (tray.userCollapsed) { tray.userCollapsed = false; tray.key = ''; } else { const s = stateOf(); if (s) cycleIssue(s, 1); } });
+    head.addEventListener('click', function (ev) { if (ev && ev.target && (ev.target === spot || ev.target === car || ev.target === clr)) return; if (M.hudPill('issues')) { if (hudEffective() === 'compact') hudPeek('issues', true); else M.hudCollapse('issues', false); } else { const s = stateOf(); if (s) cycleIssue(s, 1); } });
+    hudHover('issues', wrap);   // hud + zoom pass: hovering the pill peeks the rows
     const list = el('div'); list.id = 'issues-list';
     const prog = el('div', 'hidden'); prog.id = 'issues-progress'; prog.appendChild(el('div', 'ph', 'In progress')); const plist = el('div'); plist.id = 'issues-progress-list'; prog.appendChild(plist);
     const more = el('div', 'hidden', ''); more.id = 'issues-more';
@@ -2033,7 +2112,7 @@
     if (titleOn || coach.step >= 0) { show(E['issues-tray'], false); tray.key = ''; return; }
     const list = I.list(s), active = I.actionable(s), prog = I.inProgress(s), hidden = I.hiddenList(s), sel = I.selectedId();
     const fit = trayRowsFit(active.some(function (it) { return !!it.why; }));
-    const collapsed = tray.userCollapsed || fit < 2;
+    const collapsed = fit < 2 || M.hudPill('issues');   // hud + zoom pass: collapsed = the tray's pill (compact mode, or the caret in full mode) unless hovered open
     if (list.length === 0) {
       if (tray.hadIssues) { tray.hadIssues = false; tray.clearAt = clock; }
       const showClear = clock - tray.clearAt < 3000 || hidden.length > 0;
@@ -2380,7 +2459,7 @@
     call('session', 'newGame', seed === undefined ? {} : { seed: seed });
     void s;
   }
-  M.settings = function () { const s = stateOf(); if (s && s.ui && s.ui.settings) return s.ui.settings; return { volume: 0.5, muted: false, particles: 'high', shake: true, colorblind: false, autoSimHint: false }; };
+  M.settings = function () { const s = stateOf(); if (s && s.ui && s.ui.settings) return s.ui.settings; return { volume: 0.5, muted: false, particles: 'high', shake: true, colorblind: false, autoSimHint: false, hudMode: 'full', hudCollapsed: {} }; };
   /** mirror state.ui.settings to localStorage['bsu.settings'] (a failure → one 'saveUnavailable' hint) */
   M.saveSettings = function () { try { window.localStorage.setItem('bsu.settings', JSON.stringify(M.settings())); } catch (e) { const s = stateOf(); if (s) M.hint(s, 'saveUnavailable'); } };
   /** stat popover from economy.breakdown */
@@ -2420,6 +2499,8 @@
     const us = el('div', 'seg'); host._uiScale = us; UI_SCALES.forEach(function (v) { const b = btn('btn-uiscale-' + Math.round(v * 100), Math.round(v * 100) + '%', 'seg-btn', function () { M.setUiScale(v); refreshSettingsPanel(stateOf(), host); }); b.dataset.scale = String(v); b.title = 'Interface size ' + Math.round(v * 100) + '%'; us.appendChild(b); });
     { const ab = btn('btn-uiscale-auto', 'Auto', 'seg-btn', function () { M.setUiScale('auto'); refreshSettingsPanel(stateOf(), host); }); ab.dataset.scale = 'auto'; ab.title = 'Pick the interface size from this window'; us.appendChild(ab); }   // P5
     const uw = el('div', 'seg-wrap'); const un = el('div', 'seg-note hidden', ''); host._uiNote = un; uw.appendChild(us); uw.appendChild(un); rowEl('UI size', uw);   // UI scale pass (C7)
+    const hs = el('div', 'seg'); host._hud = hs; [['full', 'Full'], ['compact', 'Compact'], ['hidden', 'Hidden']].forEach(function (d) { const b = btn('btn-hud-' + d[0], d[1], 'seg-btn', function () { M.setHudMode(d[0]); refreshSettingsPanel(stateOf(), host); }); b.dataset.hud = d[0]; b.title = d[0] === 'full' ? 'Every panel' : d[0] === 'compact' ? 'Each panel folds to a pill that opens on hover or click' : 'Only the decision toasts and a small chip'; hs.appendChild(b); });
+    const hw = el('div', 'seg-wrap'); hw.appendChild(hs); hw.appendChild(el('div', 'seg-note', 'H cycles Full → Compact → Hidden · Shift+H restores · the ▾ on a panel folds just that one')); rowEl('HUD', hw);   // hud + zoom pass
     rowEl('Tour', btn('btn-coach-replay', 'Replay the 60-second tour', 'small', function () { M.startCoach(stateOf()); }));
     const leg = el('div', 'legend-table'); for (const o of ((BSU.data && BSU.data.overlays) || [])) { const r = el('div', 'legend-row'); r.appendChild(el('span', 'key', o.key)); r.appendChild(el('span', 'k', o.name)); r.appendChild(el('span', 'v', o.legend.join(' · '))); leg.appendChild(r); } rowEl('Overlays', leg);
     const keys = el('div', 'keys-table'); keys.id = 'keys'; const KEYNAMES = { ' ': 'Space' }; for (const k of ((BSU.data && BSU.data.keys) || [])) { if (/^pan|^pick[2-9]|^toast/.test(k.action)) continue; const r = el('div', 'legend-row'); r.appendChild(el('span', 'key', (k.ctrl ? 'Ctrl+' : '') + (k.shift ? 'Shift+' : '') + (KEYNAMES[k.key] || (k.key.length === 1 ? k.key.toUpperCase() : k.key)))); r.appendChild(el('span', 'k', k.action === 'pick1' ? 'pick item 1–9' : k.action.replace(/([A-Z])/g, ' $1').toLowerCase())); keys.appendChild(r); } rowEl('Keys', keys);
@@ -2436,6 +2517,7 @@
     if (host._speed) for (const b of host._speed.children) cls(b, 'active', String(fin(s.ui.speed, 1)) === b.dataset.speed);
     if (host._vol) host._vol.value = String(fin(M.settings().volume, 0.5));
     if (host._uiScale) for (const b of host._uiScale.children) { const d = b.dataset.scale; cls(b, 'active', d === 'auto' ? uiMode === 'auto' : uiMode !== 'auto' && Number(d) === appliedScale); }
+    if (host._hud) for (const b of host._hud.children) cls(b, 'active', b.dataset.hud === hudModeOf());
     if (host._uiNote) { const lim = effScale < appliedScale - 0.005; const txt = uiMode === 'auto' ? 'Auto picks ' + Math.round(effScale * 100) + '% for this window.' : lim ? 'Limited to ' + Math.round(effScale * 100) + '% by this window size.' : ''; show(host._uiNote, !!txt); if (txt) setText(host._uiNote, txt); }
   }
   // Debug panel (built in; hidden; Backquote). ui_panels may re-register 'debug' with the full params tree.
@@ -2692,6 +2774,7 @@
     sec('queue', drainQueue, state, dtMs);
     sec('pan', heldPan, state, dtMs);
     sec('topbar', updateTopbar, state, dtMs);
+    sec('hud', updateHud, state, dtMs);   // hud + zoom pass: mode + pills
     sec('scorebug', function (s) { if (typeof M.scoreBug === 'function') M.scoreBug(s); }, state, dtMs);   // ui_panels' live score bug (hidden when no game)
     sec('alert', updateAlert, state, dtMs);
     sec('objective', updateObjective, state, dtMs);
@@ -2726,7 +2809,7 @@
       alertClosedKey = ''; for (const k in gatorAlerts) delete gatorAlerts[k];
       bubble = { since: clock, until: 0, key: '' }; objKey = ''; alertKey = ''; alertAt = -1e9; msAt = -1e9; speedKey = ''; paletteKey = ''; palShownTab = ''; pipKey = ''; paletteDirty = true; capacityShown = false; skipShown = false; paletteHidden = null; hudFade = false;   // null: the first updateSetPiece re-syncs #palette and #hud.no-palette (a stale no-palette from the title / tutorial left a 0-height palette after newGame/load)
       M.debug.open = false; M.hoverTile = -1; lastGhost = null;
-      tray.key = ''; tray.rows = []; tray.hadIssues = false; tray.clearAt = -1e9; tray.userCollapsed = false; heldI = false; spotToggled = false; try { if (BSU.issues) { BSU.issues.select(null); BSU.issues.spotlight(false); BSU.issues.pulse(null); } } catch (e) { /* */ }
+      tray.key = ''; tray.rows = []; tray.hadIssues = false; tray.clearAt = -1e9; heldI = false; spotToggled = false; try { if (BSU.issues) { BSU.issues.select(null); BSU.issues.spotlight(false); BSU.issues.pulse(null); } } catch (e) { /* */ }
       bm.open = false; bm.hover = null; bm.selected = null; bm.pulseId = null; bm.key = ''; bm.detailKey = ''; bm.dirty = true; needsCache = null; needsAt = -1e9; needsKey = ''; coach.step = -1; coach.armedAt = 0; coach.paused = false;
       for (const k in held) held[k] = false;
       if (dom()) {

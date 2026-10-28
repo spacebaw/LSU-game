@@ -23,7 +23,7 @@ ok(!/innerHTML/.test(src), 'no innerHTML (every node is created and kept in M.el
 ok(!/querySelector|closest\(|matches\(|instanceof\s+(Node|HTMLInputElement|HTMLCanvasElement|Text)/.test(src), 'no querySelector/closest/matches/instanceof Node');
 ok(!/setTimeout|setInterval/.test(src.replace(/\/\/.*$/gm, '')), 'no timers for game logic');
 const css = readFileSync(join(root, 'src', 'style.css'), 'utf8');
-ok(Buffer.byteLength(css) <= 70 * 1024, `style.css ≤ 70 KB (${(Buffer.byteLength(css) / 1024).toFixed(1)} KB)`);   // gator pass: the chip ✕, the relocated strip beside an open inspect, Dismiss all, why-lines (68 → 70 KB);   // P6 dining menus: the inspect Menu section (64 → 68 KB); UX pass: build menu + tracker + coach marks (was 25 KB); football pass D: Season panel, game HUD, summary card (was 40 KB); UI scale pass: every length in rem + scale tokens (was 48 KB)
+ok(Buffer.byteLength(css) <= 76 * 1024, `style.css ≤ 76 KB (${(Buffer.byteLength(css) / 1024).toFixed(1)} KB)`);   // hud + zoom pass: the hud modes block (70 → 76 KB);   // gator pass: the chip ✕, the relocated strip beside an open inspect, Dismiss all, why-lines (68 → 70 KB);   // P6 dining menus: the inspect Menu section (64 → 68 KB); UX pass: build menu + tracker + coach marks (was 25 KB); football pass D: Season panel, game HUD, summary card (was 40 KB); UI scale pass: every length in rem + scale tokens (was 48 KB)
 const cssNoComments = css.replace(/\/\*[\s\S]*?\*\//g, '');
 ok(!/@import|url\(/.test(cssNoComments) && /--purple:\s*#461D7C/.test(css) && /--gold:\s*#FDD023/.test(css), 'css tokens present, no @import/url()');
 
@@ -379,7 +379,7 @@ U.pointer('down', 500, 300, 2, M0); U.pointer('up', 501, 300, 2, M0); ok(U.state
 // pan arms after 4 px
 U.pointer('down', 300, 300, 0, M0); U.pointer('move', 302, 302, 0, M0); ok(U.state === 'IDLE', '3 px: still armed');
 U.pointer('move', 320, 320, 0, M0); ok(U.state === 'PANNING', '> 4 px → PANNING'); U.pointer('up', 320, 320, 0, M0); ok(U.state === 'IDLE', 'release → IDLE');
-U.wheel(640, 360, 0, 120, true); ok(s.ui.camera.zoom === 0.5, 'ctrl+wheel down → zoom out: ' + s.ui.camera.zoom); U.wheel(640, 360, 0, -120, true);
+U.wheel(640, 360, 0, 120, true); ok(s.ui.camera.zoom === 0.8, 'ctrl+wheel down → zoom out one step: ' + s.ui.camera.zoom); U.update(s, 100); U.wheel(640, 360, 0, -120, true); U.update(s, 100); ok(s.ui.camera.zoom === 1, 'ctrl+wheel up → back to 1×');   // hud + zoom pass: nine steps, one per notch, ≥ 90 ms apart
 // lockTool: Escape cannot cancel
 U.selectTool(s, 'dorm'); U.lockTool(s, true); U.keydown('Escape', M0); ok(s.ui.tool && s.ui.tool.id === 'dorm', 'locked tool survives Escape'); U.lockTool(false); U.selectTool(s, null);
 // notification onClose exactly once
@@ -507,6 +507,81 @@ try {
   ok(U.issues.pin() === null, 'the pin drops once the tool is cleared');
   ok(BSU.errors.size === 0, 'no BSU.error in the issues v2 tray checks');
 } catch (e) { ok(false, 'issues v2 ui: ' + (e.stack || e)); }
+
+// --- hud + zoom pass: HUD modes (H / Shift+H), per-element pills, the tutorial opening what it points at, the wheel ----------
+try {
+  const sH = BSU.state; U.showTitle(false); U.settings().coachSeen = true; U.openPanel(null); if (U.buildMenuOpen()) U.closeBuildMenu();
+  const MH = { ctrl: false, shift: false, meta: false, alt: false };
+  const lsHud = () => { try { return JSON.parse(win.localStorage.getItem('bsu.settings')); } catch (e) { return null; } };
+  U.setHudMode('full'); for (const k of ['goals', 'needs', 'minimap', 'issues', 'palette']) U.hudCollapse(k, false);
+  U.update(sH, 300);
+  ok(U.hudMode() === 'full' && U.el.hud.dataset.hud === 'full' && U.hudModes().join(',') === 'full,compact,hidden', 'HUD starts full; the three modes come from params.ui.hudModes');
+  ok(['hud-chip', 'hud-chev-goals', 'hud-chev-needs', 'hud-chev-minimap', 'hud-chev-palette', 'hud-pill-goals', 'hud-pill-needs', 'hud-pill-minimap', 'hud-pill-palette'].every((id) => U.el[id] && U.el[id].id === id) && U.el['hud-chip'].parentNode === U.el.hud, 'hud modes skeleton: the chip, four chevrons, four pills (the issues tray keeps its caret)');
+  ok(U.keydown('h', MH) === true && U.hudMode() === 'compact', 'H → compact');
+  U.update(sH, 300);
+  ok(U.el.hud.dataset.hud === 'compact' && ['goals', 'needs', 'minimap', 'issues', 'palette'].every((k) => U.hudPill(k)) && U.el.hud.classList.contains('pal-pill'), 'compact: every part is a pill (and the palette pill lowers --palette-h)');
+  ok(lsHud() && lsHud().hudMode === 'compact' && U.settings().hudMode === 'compact', 'the mode persists in settings + localStorage');
+  ok(U.keydown('h', MH) === true && U.hudMode() === 'hidden', 'H → hidden');
+  U.update(sH, 300);
+  ok(U.el.hud.dataset.hud === 'hidden' && !U.el['hud-chip'].classList.contains('hidden') && !U.hudPill('goals'), 'hidden: the "HUD hidden · H" chip shows (the CSS hides the rest; no pill classes)');
+  U.decision(sH, { id: 'hudq', text: 'Still answerable?', ticks: 80 }); U.update(sH, 50);
+  ok(!U.el['decision-toast'].classList.contains('hidden') && U.keydown('y', MH) === true && U.el['decision-toast'].classList.contains('hidden'), 'a decision toast still shows and answers in hidden mode');
+  ok(U.keydown('h', MH) === true && U.hudMode() === 'full', 'H → full again (the cycle closes)');
+  U.keydown('h', MH); U.keydown('h', MH); ok(U.hudMode() === 'hidden' && U.keydown('H', { ctrl: false, shift: true, meta: false, alt: false }) === true && U.hudMode() === 'full', 'Shift+H jumps straight back to full');
+  U.el['hud-chip'].dispatchEvent({ type: 'click' }); ok(U.hudMode() === 'full', 'the chip click is a no-op in full; ');
+  U.setHudMode('hidden'); U.el['hud-chip'].dispatchEvent({ type: 'click' }); ok(U.hudMode() === 'full', 'clicking the chip restores the full HUD');
+  ok(U.setHudMode('junk') === 'full' && U.hudMode() === 'full', 'an unknown mode is refused');
+  ok(U.keydown('Home', MH) === true, 'Home pans to Founders\' Hall (H is the HUD now)');
+  // per-element collapse in full mode
+  ok(U.hudCollapse('goals', true) === true && U.hudPill('goals') && U.el['objective-card'].classList.contains('pill') && U.settings().hudCollapsed.goals === true && lsHud().hudCollapsed.goals === true, 'hudCollapse(goals) folds the tracker to its pill and remembers it');
+  U.update(sH, 300);
+  ok(/^Goal/.test(U.el['hud-pill-goals-text'].textContent), 'the goals pill reads "Goal …" (' + U.el['hud-pill-goals-text'].textContent + ')');
+  U.el['hud-pill-goals'].dispatchEvent({ type: 'click' }); ok(!U.hudPill('goals') && U.settings().hudCollapsed.goals === false, 'clicking the pill expands it again');
+  U.el['hud-chev-goals'].dispatchEvent({ type: 'click' }); ok(U.hudPill('goals') && U.settings().hudCollapsed.goals === true, 'the chevron folds it');
+  U.el['objective-card'].dispatchEvent({ type: 'mouseenter' }); ok(!U.hudPill('goals') && U.el['objective-card'].classList.contains('peek'), 'hovering a pill peeks it open');
+  U.el['objective-card'].dispatchEvent({ type: 'mouseleave' }); ok(U.hudPill('goals'), 'leaving closes the peek (still collapsed)');
+  U.hudCollapse('goals', false);
+  U.el['hud-chev-minimap'].dispatchEvent({ type: 'click' }); ok(U.hudPill('minimap') && U.settings().hudCollapsed.minimap === true, 'minimap chevron'); U.hudCollapse('minimap', false);
+  U.el['issues-toggle'].dispatchEvent({ type: 'click' }); ok(U.hudPill('issues') && U.settings().hudCollapsed.issues === true, 'the issues caret is the tray\'s collapse (remembered)'); U.hudCollapse('issues', false);
+  U.el['hud-chev-palette'].dispatchEvent({ type: 'click' }); U.update(sH, 50); ok(U.hudPill('palette') && U.el.hud.classList.contains('pal-pill') && U.settings().hudCollapsed.palette === true, 'palette chevron folds the quick-bar to the Build pill');
+  ok(U.keydown('g', MH) === true && U.buildMenuOpen(), 'G still opens the build menu with the palette folded'); U.closeBuildMenu(); U.hudCollapse('palette', false); U.update(sH, 50);
+  ok(!U.el.hud.classList.contains('pal-pill'), 'pal-pill clears when the palette is back');
+  const st = U.hudState(); ok(st.mode === 'full' && st.effective === 'full' && Object.keys(st.collapsed).length === 5 && Object.values(st.pill).every((v) => v === false), 'hudState() summarises mode / collapsed / pills');
+  // the coach-mark tour opens what it points at and restores afterwards
+  U.setHudMode('hidden'); U.hudCollapse('goals', true); U.hudCollapse('needs', true); U.update(sH, 300);
+  U.startCoach(sH, { now: true }); U.update(sH, 50);
+  ok(U.coachStep() === 0 && U.hudState().effective === 'full' && U.el.hud.dataset.hud === 'full' && U.settings().hudMode === 'hidden', 'the tour runs in the full HUD without touching the hidden setting');
+  ok(U.hudPill('goals') === true, 'step 0 (stats) leaves the collapsed tracker folded');
+  U.keydown('Enter', MH); U.update(sH, 50);
+  ok(U.coachStep() === 1 && U.hudPill('goals') === false && U.settings().hudCollapsed.goals === true, 'the goals step opens the folded tracker for the step (setting untouched)');
+  U.keydown('Enter', MH); U.keydown('Enter', MH); U.keydown('Enter', MH); U.update(sH, 50);
+  ok(U.coachStep() === 4 && U.hudPill('goals') === false && U.hudPill('needs') === false, 'the needs step opens both the tracker and the needs strip');
+  U.keydown('ArrowLeft', MH); U.update(sH, 50);
+  ok(U.coachStep() === 3 && U.hudPill('goals') === true && U.hudPill('needs') === true, 'back on the place step both fold again');
+  U.keydown('Escape', MH); U.update(sH, 300); if (U.buildMenuOpen()) U.closeBuildMenu(); U.update(sH, 50);
+  ok(U.coachStep() === -1 && U.hudState().effective === 'hidden' && U.el.hud.dataset.hud === 'hidden' && U.settings().hudCollapsed.goals === true && U.settings().hudCollapsed.needs === true, 'after the tour the hidden mode and both folds are back');
+  U.setHudMode('full'); U.update(sH, 50); ok(U.hudPill('goals') && U.hudPill('needs'), 'back in full the remembered folds apply');
+  U.hudCollapse('goals', false); U.hudCollapse('needs', false); U.settings().coachSeen = true; U.saveSettings();
+  // Settings → HUD row
+  U.openPanel('settings'); const bh = win.document.getElementById('btn-hud-compact');
+  ok(bh && win.document.getElementById('btn-hud-full') && win.document.getElementById('btn-hud-hidden'), 'Settings has the HUD row (Full / Compact / Hidden)');
+  bh.dispatchEvent({ type: 'click' }); ok(U.hudMode() === 'compact' && bh.classList.contains('active') && !win.document.getElementById('btn-hud-full').classList.contains('active'), 'the Compact button writes the mode and goes active');
+  win.document.getElementById('btn-hud-full').dispatchEvent({ type: 'click' }); U.openPanel(null); ok(U.hudMode() === 'full', 'Full restores');
+  // the wheel: one step per notch at the cursor, coalesced; sideways scroll pans; + zooms in
+  const R2 = BSU.render; const cam = sH.ui.camera; R2.setZoom(1); R2.panTo(0, 1024, false); U.update(sH, 300);
+  const vw = R2.view.vw, vh = R2.view.vh, ax = 900, ay = 200;
+  const under = () => ({ x: (ax - vw / 2) / cam.zoom + cam.x, y: (ay - vh / 2) / cam.zoom + cam.y });
+  const w0 = under(); U.wheel(ax, ay, 0, -100, false); const w1 = under();
+  ok(cam.zoom === 1.25 && Math.abs(w1.x - w0.x) * cam.zoom < 0.5 && Math.abs(w1.y - w0.y) * cam.zoom < 0.5, 'a plain wheel notch up zooms in one step AT THE CURSOR (world point fixed within 0.5 px)');
+  U.wheel(ax, ay, 0, -100, false); ok(cam.zoom === 1.25, 'a second notch inside 90 ms is coalesced');
+  U.update(sH, 100); U.wheel(ax, ay, 0, -100, false); ok(cam.zoom === 1.5, 'after 100 ms the next notch steps again');
+  U.update(sH, 100); U.wheel(ax, ay, 0, 10, false); ok(cam.zoom === 1.5, 'a 10-px trackpad tick accumulates (no step yet)');
+  U.wheel(ax, ay, 0, 15, false); U.wheel(ax, ay, 0, 20, false); ok(cam.zoom === 1.25, '45 px of ticks make one notch down');
+  U.update(sH, 300); const cx0 = cam.x; U.wheel(ax, ay, 80, 10, false); ok(cam.zoom === 1.25 && cam.x !== cx0, 'a sideways two-finger scroll still pans');
+  U.update(sH, 300); ok(U.keydown('+', { ctrl: false, shift: true, meta: false, alt: false }) === true && cam.zoom === 1.5 && U.keydown('-', MH) === true && cam.zoom === 1.25 && U.keydown('=', MH) === true && cam.zoom === 1.5, '+ / = / − step the zoom');
+  R2.setZoom(1); U.update(sH, 300);
+  ok(BSU.errors.size === 0, 'no BSU.error in the hud + zoom checks');
+} catch (e) { ok(false, 'hud + zoom ui: ' + (e.stack || e)); }
 
 console.log(`\n${passes} passed, ${failures} failed`);
 process.exit(failures ? 1 : 0);

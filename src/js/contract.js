@@ -738,7 +738,9 @@
       tickerMax: 30, tickerNoLineDays: 3,    // §11.1
       hoverTagMs: 300, panelRefreshMs: 500,  // §6.3, ARCH §7.7
       cardWordsMax: 12,                      // §10.1
-      touchTargetPx: 44                      // §11.7
+      touchTargetPx: 44,                     // §11.7
+      zoomSteps: [0.5, 0.65, 0.8, 1, 1.25, 1.5, 1.75, 2, 2.5],   // hud + zoom pass: the player's zoom steps (+ / − / wheel); render.zooms stay the three MASTER zooms the atlas and chunks are baked at
+      hudModes: ['full', 'compact', 'hidden']   // hud + zoom pass: H cycles, Shift+H → full (ui.setHudMode)
     },
     audio: { voices: 12, ambienceDb: -12, duckDb: -6, thunderDelay: [0.3, 2], zydecoBpm: 120, defaultVolume: 0.5 },   // GDD §13
     palette: {                               // GDD §12.2 (defined once here)
@@ -1282,7 +1284,7 @@
         camera: { x: (founders.tx - founders.ty) * 32, y: (founders.tx + founders.ty) * 16, zoom: 1, tx: 0, ty: 0, follow: -1 },
         overlay: BSU.OV.NONE, speed: 1, speedBefore: 1, tool: null, panel: null, paletteTab: 'essentials',
         tabsSeen: {}, newPips: {}, tabsIntroduced: {},
-        settings: { volume: P.audio.defaultVolume, muted: false, particles: 'high', shake: true, colorblind: false, autoSimHint: false, coachSeen: false },
+        settings: { volume: P.audio.defaultVolume, muted: false, particles: 'high', shake: true, colorblind: false, autoSimHint: false, coachSeen: false, hudMode: 'full', hudCollapsed: { goals: false, needs: false, minimap: false, issues: false, palette: false } },   // hud + zoom pass: hudMode full | compact | hidden; hudCollapsed = per-element pills in full mode (ui.hudCollapse)
         perfMode: false
       },
       rng: { sim: (seed ^ 0x9E3779B9) >>> 0 }

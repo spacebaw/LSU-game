@@ -556,3 +556,40 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
 #issues-tray.collapsed #issues-progress,#issues-tray.collapsed #issues-hidden{display:none}
 #issues-head #issues-clear{color:var(--purple-shadow);background:var(--g-gold);border-color:var(--gold-shadow);font-weight:700}
 #issues-hidden{align-self:center;padding:0 .8rem;min-height:2.2rem;height:2.2rem;line-height:2rem;font-size:1.05rem;color:var(--text-dim)}
+
+/* hud modes (hud + zoom pass): H cycles full → compact → hidden, Shift+H restores. #hud[data-hud] carries the mode; a part with .pill is drawn as icon + one reading (compact mode, or folded by its ▾ in full mode); .pill.peek = opened by hover / click until the pointer leaves */
+.hud-pill{display:none;align-items:center;gap:.6rem;padding:.2rem .4rem;font:600 1.3rem/1.6rem var(--font-ui);color:var(--gold-hi);white-space:nowrap;cursor:pointer;pointer-events:auto;user-select:none}
+.hud-pill .pg{font-size:1.5rem;line-height:1} .hud-pill .pc{color:var(--text-dim);font-size:1.1rem}
+.hud-pill:hover .pt{text-decoration:underline dotted}
+.pill:not(.peek)>.hud-pill{display:inline-flex}
+.btn.hud-chev{width:2.2rem;min-width:2.2rem;height:2.2rem;min-height:2.2rem;padding:0;font-size:1.1rem;line-height:2rem;opacity:.55;flex:0 0 auto}
+.btn.hud-chev:hover{opacity:1}
+#objective-card.pill:not(.peek){width:auto;max-width:36rem;padding:.6rem 1.2rem;display:flex;align-items:center}
+#objective-card.pill:not(.peek)>*:not(.hud-pill){display:none !important}
+#objective-card #hud-chev-goals{position:absolute;right:1.2rem;top:4.6rem}
+#objective-card.collapsed #hud-chev-goals{display:none !important}
+.needs-row #hud-chev-needs{flex:0 0 auto}
+#needs-strip.pill:not(.peek){padding-top:.8rem;display:flex;align-items:center}
+#needs-strip.pill:not(.peek)>*:not(.hud-pill){display:none !important}
+#minimap-wrap #hud-chev-minimap{position:absolute;right:.6rem;top:.6rem;z-index:2}
+#minimap-wrap.pill:not(.peek){width:auto;height:auto;padding:.4rem .8rem;display:flex;align-items:center}
+#minimap-wrap.pill:not(.peek)>*:not(.hud-pill){display:none !important}
+#hud:has(#minimap-wrap.pill:not(.peek)) #overlay-buttons{top:calc(var(--topbar-h) + 6.4rem)}
+#hud:has(#minimap-wrap.pill:not(.peek)) #issues-tray{top:calc(var(--topbar-h) + 11.2rem)}
+#hud:has(#minimap-wrap.pill:not(.peek)):has(#legend:not(.hidden)) #issues-tray{top:calc(var(--topbar-h) + 14.2rem)}
+#issues-tray.pill:not(.peek){width:auto;max-width:33rem}
+#issues-tray.pill:not(.peek) #issues-head .sub,#issues-tray.pill:not(.peek) #issues-head #issues-spot,#issues-tray.pill:not(.peek) #issues-head #issues-clear{display:none}
+#hud.pal-pill{--palette-h:4.4rem}
+#palette.pill:not(.peek){left:var(--side);right:auto;height:auto;display:flex;align-items:center;padding:.4rem .8rem;bottom:calc(var(--ticker-h) + .8rem);background:var(--panel-bg);border:1px solid var(--line);border-radius:var(--radius)}
+#palette.pill:not(.peek)>*:not(.hud-pill){display:none !important}
+#palette #hud-chev-palette{position:absolute;right:.6rem;top:.6rem;z-index:2}
+#hud[data-hud="compact"] .stats .stat:not(#stat-cash){flex-direction:row;align-items:baseline;align-self:center;height:auto;gap:.5rem;min-width:0;padding:.3rem .7rem}
+#hud[data-hud="compact"] #stat-students .stat-label{display:block !important}
+#hud[data-hud="compact"] .stats .stat:not(#stat-cash) .odometer{font-size:1.5rem;margin-top:0}
+#hud[data-hud="compact"] .stats .stat:not(#stat-cash) .stat-label{font-size:1rem;letter-spacing:.06em}
+#hud[data-hud="compact"] #chip-capacity{display:none}
+#hud[data-hud="compact"] .btn.hud-chev{opacity:.4}
+#hud[data-hud="hidden"]{--palette-h:0px}
+#hud[data-hud="hidden"]>*:not(#decision-toast):not(#cards):not(#hud-chip):not(#ghost-label):not(#tooltip):not(#hint):not(#btn-skip):not(#coach):not(#inspect):not(#build-menu):not(#perfmode-chip){display:none !important}
+#hud-chip{position:absolute;right:var(--side);bottom:1.2rem;z-index:4;font:600 1.3rem/1.6rem var(--font-ui);color:var(--gold-hi);padding:.5rem 1.2rem;min-height:0;border-radius:99.9rem;opacity:.85}
+#hud-chip:hover{opacity:1}

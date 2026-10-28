@@ -18,7 +18,10 @@
   const T = BSU.T, SPR = BSU.SPR, SKY = BSU.SKY, FLAG = BSU.FLAG, SURF = BSU.SURF, OV = BSU.OV;
   const W = MAP.W, HGT = MAP.H, N = MAP.N, TW = 64, TH = 32, PXFT = 6;
   const CW = PR.chunkW || 512, CHH = PR.chunkH || 416, CS = 8, NCH = 64;
-  const ZOOMS = [0.5, 1, 2];
+  const ZOOMS = [0.5, 1, 2];   // the three MASTER zooms: the atlas bakes sprites at 1× / 2× (0.5× reads the 1× entry) and the chunks are baked once at 1×
+  // hud + zoom pass: the player's zoom steps (params.ui.zoomSteps). Nothing is baked per step: a step draws the nearest master ≥ it
+  // (2 for 1.25–2.5, 1 for 0.65–1, 0.5 at 0.5) scaled by step/master with image smoothing on whenever that scale is not 1.
+  const STEPS = (function () { const src = (BSU.params.ui && Array.isArray(BSU.params.ui.zoomSteps)) ? BSU.params.ui.zoomSteps : [0.5, 0.65, 0.8, 1, 1.25, 1.5, 1.75, 2, 2.5]; const a = src.filter(function (z) { return Number.isFinite(z) && z > 0; }).slice().sort(function (p, q) { return p - q; }); return a.length ? a : ZOOMS.slice(); })();
   const WATER_FLAGS = FLAG.BAYOU | FLAG.OPEN_WATER;
   const WORLD_X = PR.worldX || [-2016, 2016], WORLD_Y = PR.worldY || [-84, 2040];
   const MARGIN = PR.cameraMargin || 200, LERP = PR.cameraLerp || 0.15;
@@ -53,7 +56,7 @@
   const comp = { tint: null, lights: null, fog: null };
   const chunks = new Array(NCH);
   const dirtyBits = new Uint8Array(NCH);
-  let frameNo = 0, alphaNow = 0, zoomNow = 1, firstFrame = true, bakesThisFrame = 0;
+  let frameNo = 0, alphaNow = 0, zoomNow = 1, atlasZoom = 1, frameSmooth = false, firstFrame = true, bakesThisFrame = 0;   // hud + zoom pass: zoomNow is the EXACT live zoom (every screen↔world transform uses it); atlasZoom is the master the sprites / tees / sheets are fetched at; frameSmooth = zoomNow !== atlasZoom
   let frameDt = 1 / 60, simSpeed = 1, poseX = 0, poseY = 0;   // movement pass: last frame's real seconds, the game speed (≥ 1) and the drawn position poseAgent leaves for pushMover
   const view = { vw: 1280, vh: 720, dpr: 1, x0: 0, y0: 0, x1: 63, y1: 63 };
   let shakeUntil = 0, shakePx = 0, hitStopUntilMs = 0;
@@ -102,11 +105,15 @@
   // ---------------------------------------------------------------------------
   // Pure camera math (shared by the live API and selfTest; `cam` is any {x, y, zoom, …} object)
   // ---------------------------------------------------------------------------
-  /** snap a zoom to the nearest allowed step */
-  function snapZoom(z) { z = fin(z, 1); let best = 1, bd = Infinity; for (let k = 0; k < ZOOMS.length; k++) { const d = Math.abs(ZOOMS[k] - z); if (d < bd) { bd = d; best = ZOOMS[k]; } } return best; }
+  /** snap a zoom to the nearest allowed step (params.ui.zoomSteps) */
+  function snapZoom(z) { z = fin(z, 1); let best = 1, bd = Infinity; for (let k = 0; k < STEPS.length; k++) { const d = Math.abs(STEPS[k] - z); if (d < bd) { bd = d; best = STEPS[k]; } } return best; }
+  /** the master zoom (0.5 / 1 / 2) whose baked sprites and chunks a live zoom draws from: the nearest master ≥ the zoom (2 for 1.25–2.5, 1 for 0.65–1, 0.5 at 0.5) */
+  function masterOf(z) { z = fin(z, 1); return z <= 0.5 ? 0.5 : z <= 1 ? 1 : 2; }
+  /** the ONE place the live zoom changes: keeps the atlas master and the smoothing flag in step */
+  function setZoomNow(z) { zoomNow = fin(z, 1); atlasZoom = masterOf(zoomNow); frameSmooth = zoomNow !== atlasZoom; }
   /** clamp x,y into the world extents ± cameraMargin/zoom; repairs non-finite numbers */
   function clampCam(cam) {
-    const z = cam.zoom === 0.5 || cam.zoom === 1 || cam.zoom === 2 ? cam.zoom : snapZoom(cam.zoom);
+    const z = STEPS.indexOf(cam.zoom) >= 0 ? cam.zoom : snapZoom(cam.zoom);
     cam.zoom = z;
     const m = MARGIN / z;
     cam.x = clamp(fin(cam.x, 0), WORLD_X[0] - m, WORLD_X[1] + m);
@@ -1075,10 +1082,14 @@
   };
   /** pan to a tile center (at its elevation) */
   M.panToTile = function (tx, ty, ease) { const e = (BSU.inBounds(tx | 0, ty | 0)) ? elevAt(tx | 0, ty | 0) : 0; const w = tileWorld(fin(tx, 32), fin(ty, 32), e); M.panTo(w.x, w.y, ease); };
-  /** zoom to 0.5/1/2 about a CSS-px anchor (default: the viewport center) */
-  M.setZoom = function (z, anchorPx) { if (!camera) return; const ax = anchorPx && Number.isFinite(anchorPx.x) ? anchorPx.x : vw / 2, ay = anchorPx && Number.isFinite(anchorPx.y) ? anchorPx.y : vh / 2; setZoomCam(camera, z, ax, ay, vw, vh); zoomNow = camera.zoom; markMoved(true); if (root && root.setPiece) M.captureCameraTouch(root); };
-  /** next zoom step in [0.5, 1, 2] */
-  M.zoomStep = function (dir, anchorPx) { if (!camera) return; const k = ZOOMS.indexOf(camera.zoom); const nk = clamp((k < 0 ? 1 : k) + (dir < 0 ? -1 : 1), 0, ZOOMS.length - 1); M.setZoom(ZOOMS[nk], anchorPx); };
+  /** zoom to the nearest step (params.ui.zoomSteps) about a CSS-px anchor (default: the viewport center): the world point under the anchor stays under it */
+  M.setZoom = function (z, anchorPx) { if (!camera) return; const ax = anchorPx && Number.isFinite(anchorPx.x) ? anchorPx.x : vw / 2, ay = anchorPx && Number.isFinite(anchorPx.y) ? anchorPx.y : vh / 2; setZoomCam(camera, z, ax, ay, vw, vh); setZoomNow(camera.zoom); markMoved(true); if (root && root.setPiece) M.captureCameraTouch(root); };
+  /** next / previous zoom step (hud + zoom pass: 0.5 … 2.5, nine steps) */
+  M.zoomStep = function (dir, anchorPx) { if (!camera) return; const k = STEPS.indexOf(snapZoom(camera.zoom)); const nk = clamp(k + (dir < 0 ? -1 : 1), 0, STEPS.length - 1); M.setZoom(STEPS[nk], anchorPx); };
+  /** the zoom step table (a copy) */
+  M.zoomSteps = function () { return STEPS.slice(); };
+  /** how a zoom (default: the live one) is drawn: {zoom, master, scale, smooth, index} — the master's baked art scaled by `scale`, smoothing on when scale ≠ 1 */
+  M.zoomInfo = function (z) { const zz = snapZoom(z === undefined || z === null ? (camera ? camera.zoom : zoomNow) : z); const m = masterOf(zz); return { zoom: zz, master: m, scale: zz / m, smooth: zz !== m, index: STEPS.indexOf(zz) }; };
   /** follow an agent id each frame (−1 releases; a user pan releases too) */
   M.follow = function (agentId) { if (camera) camera.follow = Number.isFinite(agentId) ? agentId | 0 : -1; };
   /** follow the first state.vehicles entry matching pred(v, state) each frame (null releases; a user pan releases too; releases itself when nothing matches) */
@@ -1104,7 +1115,7 @@
     try { const sp = S(); mem = typeof sp.totalMemoryMB === 'function' ? sp.totalMemoryMB() : sp.memoryMB(); } catch (e) { mem = 0; }
     mem += liveChunks() * C.chunkMB + (canvas ? (canvas.width * canvas.height * 12) / 1048576 : 0) + teeBytes / 1048576;
     let parts = 0; try { parts = M.particles && typeof M.particles.count === 'function' ? fin(M.particles.count(), 0) : 0; } catch (e) { parts = 0; }
-    return { frameMs: fin(frameMs, 0), drawCalls: drawCalls | 0, particles: parts, agentsDrawn: agentsDrawn | 0, hydroActive: hydroActive, chunks: liveChunks(), memMB: Math.round(mem * 100) / 100, tees: teeCache.size, water: waterDrawn | 0, frameNo: frameNo, zoom: zoomNow, perfMode: !!(root && root.ui && root.ui.perfMode) };
+    return { frameMs: fin(frameMs, 0), drawCalls: drawCalls | 0, particles: parts, agentsDrawn: agentsDrawn | 0, hydroActive: hydroActive, chunks: liveChunks(), memMB: Math.round(mem * 100) / 100, tees: teeCache.size, water: waterDrawn | 0, frameNo: frameNo, zoom: zoomNow, atlasZoom: atlasZoom, smooth: frameSmooth, perfMode: !!(root && root.ui && root.ui.perfMode) };
   };
   /** render_fx / ui register or replace a named pass: order 5 weather, 6 tint, 7 lights, 8 fog, 9 overlays, 10 hud */
   M.registerPass = function (name, fn, order_, builtin) {
@@ -1136,9 +1147,9 @@
     g.drawImage(ref.canvas, ref.sx, ref.sy, ref.sw, ref.sh, Math.round(sx + ref.ox * zs), Math.round(sy + ref.oy * zs), ref.sw * zs, ref.sh * zs);
     drawCalls++;
   }
-  function getRef(id, variant, frame) { const sp = S(); const r = sp.get(id, variant, frame, zoomNow); return r || null; }
+  function getRef(id, variant, frame) { const sp = S(); const r = sp.get(id, variant, frame, atlasZoom); return r || null; }   // hud + zoom pass: the atlas is asked at the MASTER zoom (no bake per step); zsOf scales it to the exact live zoom
   /** art pass B4: the character / wildlife / vehicle sheets are pure pixel-doubles at 2× (every art pixel is a 2×2 block), so the entity pass asks for the 1× entry at 2× and lets blit() scale it (nearest-neighbour, integer): the 2× sheets are never baked in play (saves ~6 MB of canvases in a crowd) */
-  function getRefE(id, variant, frame) { const sp = S(); const r = sp.get(id, variant, frame, zoomNow > 1 ? 1 : zoomNow); return r || null; }
+  function getRefE(id, variant, frame) { const sp = S(); const r = sp.get(id, variant, frame, atlasZoom > 1 ? 1 : atlasZoom); return r || null; }
   function zsOf(ref) { return zoomNow / (ref.zoom || 1); }
 
   // ---------------------------------------------------------------------------
@@ -1163,7 +1174,7 @@
   }
   function waterPass(state, g) {
     const t = state.tiles, elev = t.elev, depth = t.depth, type = t.type, fl = t.flags;
-    const z = zoomNow, w = TW * z, h = TH * z, step = z === 1 ? 1 : 2;
+    const z = zoomNow, w = TW * z, h = TH * z, step = (z >= 1 && z < 2) ? 1 : 2;   // hud + zoom pass: every 1×-detail step (1 … 1.75) keeps the per-tile stride
     const surgeOn = !!(state.hydro && state.hydro.surge);
     const hyd = mod('hydro'), te = mod('terrain');
     const cap = surgeOn ? C.waterCapSurge : (z >= 1 ? C.waterCapZoom : C.waterCap);   // art pass B1: the detail zooms cover more of the river
@@ -1292,7 +1303,7 @@
         let under = 0;
         if (live) for (let q = 0; q < ch.deckTiles.length; q++) if (deckOvertopped(state, hy, th, ch.deckTiles[q])) { under++; over.add(ch.deckTiles[q].i); }
         if (track) { deckStats.under += under; deckStats.live = live; }
-        if (!under) { g.drawImage(ch.deck, 0, 0, CW, CHH, Math.round(dx), Math.round(dy), Math.round(cw), Math.round(chh)); drawCalls++; if (track) decksDrawn += ch.deckTiles.length; continue; }
+        if (!under) { if (frameSmooth) g.drawImage(ch.deck, 0, 0, CW, CHH, dx, dy, cw, chh); else g.drawImage(ch.deck, 0, 0, CW, CHH, Math.round(dx), Math.round(dy), Math.round(cw), Math.round(chh)); drawCalls++; if (track) decksDrawn += ch.deckTiles.length; continue; }
         for (let q = 0; q < ch.deckTiles.length; q++) {   // a surge: tile by tile, the overtopped ones left under the water
           const d = ch.deckTiles[q]; if (over.has(d.i)) continue;
           g.drawImage(ch.deck, d.x, d.y, d.w, d.h, Math.round(dx + d.x * z), Math.round(dy + d.y * z), Math.round(d.w * z), Math.round(d.h * z)); drawCalls++; if (track) decksDrawn++;
@@ -1656,12 +1667,12 @@
     c.used = frameNo;
     if (c.fl !== fl) { c.fl = fl; c.tees = M.teesOf(state, b, fl); c.sig = c.tees ? c.tees.join(',') : ''; c.key = ''; }
     if (!c.tees) return null;
-    const z = zoomNow >= 2 ? 2 : 1;
+    const z = atlasZoom >= 2 ? 2 : 1;   // hud + zoom pass: tees bake at the master zoom only
     const key = v + '|' + fr + '|' + z + '|' + c.sig;
     if (c.key !== key) {
       if (teeBakes >= TEE_BAKES_PER_FRAME) return c.ref;   // over budget this frame: keep the previous bake (or the plain sprite) one more frame
       teeBakes++;
-      let ref = null; try { ref = S().bakeWith(id, v, fr, zoomNow, { tees: c.tees }); } catch (e) { rerr('tee:bake', e); ref = null; }
+      let ref = null; try { ref = S().bakeWith(id, v, fr, z, { tees: c.tees }); } catch (e) { rerr('tee:bake', e); ref = null; }
       if (c.ref) teeBytes -= c.ref.bytes | 0;
       c.ref = ref; c.key = key; if (ref) teeBytes += ref.bytes | 0;
     }
@@ -2221,9 +2232,9 @@
         if (!inView(clamp(Math.floor(fin(a.tx, 0)), 0, W - 1), clamp(Math.floor(fin(a.ty, 0)), 0, HGT - 1), 2)) continue;   // off screen: nothing to pose or draw
         poseAgent(a, state);
         const anim = typeof a.anim === 'string' ? a.anim : 'idle';
-        const id = typeof sp.agentId === 'function' ? sp.agentId(anim, a, zoomNow) : 'agent';
+        const id = typeof sp.agentId === 'function' ? sp.agentId(anim, a, atlasZoom) : 'agent';   // hud + zoom pass: the sheet family follows the master zoom (0.65 / 0.8 draw the 1× sheets scaled, not the far two-pose ones)
         // art pass B4: 8 facings, per-agent phase, cycle rate by speed, idle fidgets and the 0.5× two-pose rule live in sprites_entities.agentFrame (agent, zoom and frame counter passed)
-        const fr = typeof sp.agentFrame === 'function' ? sp.agentFrame(anim, a.dir | 0, f, a, zoomNow, frameNo) : ((a.dir | 0) * 4 + ((zoomNow < 1 ? f & 2 : f) & 3));
+        const fr = typeof sp.agentFrame === 'function' ? sp.agentFrame(anim, a.dir | 0, f, a, atlasZoom, frameNo) : ((a.dir | 0) * 4 + ((atlasZoom < 1 ? f & 2 : f) & 3));
         const e = pushMover('agent', a, id, fin(a.look, 0) | 0, fr, groundElev, state, true);
         if (e) {
           e.c = a.state === 'FLEE' ? 1 : 0; e.b = a; agentsDrawn++;
@@ -2362,7 +2373,7 @@
   const tmpPt = { x: 0, y: 0 };
   function builtinOverlays(state, g) {
     const ov = state.ui ? state.ui.overlay | 0 : 0, t = state.tiles;
-    const z = zoomNow, w = TW * z, h = TH * z, step = z === 1 ? 1 : 2;
+    const z = zoomNow, w = TW * z, h = TH * z, step = (z >= 1 && z < 2) ? 1 : 2;
     const fade = clamp((nowMs() - overlayFadeStart) / (PR.overlayFadeMs || 150), 0, 1) || (BSU.headlessMode ? 1 : 0);
     if (ov !== OV.NONE) {
       let risk = null, auras = null;
@@ -2561,12 +2572,12 @@
     const sv = { x0: view.x0, y0: view.y0, x1: view.x1, y1: view.y1, vw: view.vw, vh: view.vh };
     try {
       ctx = g; vw = w; vh = h; view.vw = w; view.vh = h;
-      camera = camOverride || saveCam; zoomNow = camera.zoom;
+      camera = camOverride || saveCam; setZoomNow(camera.zoom);
       visibleRect(camera, vw, vh, view);
       g.fillStyle = BG; g.fillRect(0, 0, w, h);
       runWorld(state, g, alphaNow, 16.67, false);
     } finally {
-      ctx = saveCtx; vw = saveVw; vh = saveVh; camera = saveCam; zoomNow = saveZoom;
+      ctx = saveCtx; vw = saveVw; vh = saveVh; camera = saveCam; setZoomNow(saveZoom);
       view.x0 = sv.x0; view.y0 = sv.y0; view.x1 = sv.x1; view.y1 = sv.y1; view.vw = sv.vw; view.vh = sv.vh;
     }
   };
@@ -2635,7 +2646,7 @@
     const t0 = nowMs(); const timeBudget = firstFrame ? C.firstBakeMs : 0;
     const maxBakes = PR.chunkRebakesPerFrame || 2;
     bakesThisFrame = 0;
-    const smooth = z < 1 && !info.perfMode;   // art pass B1: a filtered 2:1 downsample at 0.5× (nearest sparkled the noisy ground); off in perf mode
+    const smooth = (z < 1 && !info.perfMode) || frameSmooth;   // art pass B1: a filtered 2:1 downsample at 0.5× (nearest sparkled the noisy ground); off in perf mode. hud + zoom pass: on at every non-master step (the 1× chunks scale by a non-integer)
     if (smooth) g.imageSmoothingEnabled = true;
     if (curves && !curvesDirty && (frameNo % 30) === 7 && curves.deckCount > 0 && stageRefOf(state) !== curves.stageRef) { curvesDirty = true; M.dirtyAll(); }
     for (let s = 0; s <= 14; s++) {
@@ -2649,10 +2660,11 @@
           if (!ch.canvas) continue;
         }
         ch.lastSeen = frameNo;
-        g.drawImage(ch.canvas, 0, 0, CW, CHH, Math.round(dx), Math.round(dy), Math.round(cw), Math.round(chh)); drawCalls++;
+        if (frameSmooth) g.drawImage(ch.canvas, 0, 0, CW, CHH, dx, dy, cw, chh); else g.drawImage(ch.canvas, 0, 0, CW, CHH, Math.round(dx), Math.round(dy), Math.round(cw), Math.round(chh));   // hud + zoom pass: sub-pixel placement while smoothing (rounding each chunk separately left hairline seams at 0.65 / 1.25)
+        drawCalls++;
       }
     }
-    if (smooth) g.imageSmoothingEnabled = false;
+    g.imageSmoothingEnabled = frameSmooth;   // the passes after the chunks draw sprites scaled from their master: smooth only at a non-master step
     if ((frameNo % 60) === 0) evictChunks();
   }
   /** passes 2–9 on context g (shared by frame and renderInto) */
@@ -2694,7 +2706,7 @@
     } else if (M.titleDrift) {
       cam.x += Math.sin(frameNo / 300) * C.titleDriftX; cam.y += Math.cos(frameNo / 420) * C.titleDriftY; clampCam(cam);
     }
-    zoomNow = cam.zoom;
+    setZoomNow(cam.zoom);
     visibleRect(cam, vw, vh, view);
     if (movedFlag) {
       camEvent.x = cam.x; camEvent.y = cam.y; camEvent.zoom = cam.zoom; camEvent.byUser = movedFlag === 2; movedFlag = 0;
@@ -2722,7 +2734,7 @@
       if (now < shakeUntil && shakePx > 0 && !(state.ui.settings && state.ui.settings.shake === false)) { sx = Math.round((BSU.rng.fx.float() * 2 - 1) * shakePx); sy = Math.round((BSU.rng.fx.float() * 2 - 1) * shakePx); }
       else if (now >= shakeUntil) shakePx = 0;
       g.setTransform(dpr, 0, 0, dpr, 0, 0);
-      g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; g.imageSmoothingEnabled = false;
+      g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; g.imageSmoothingEnabled = frameSmooth;
       g.fillStyle = BG; g.fillRect(0, 0, vw, vh);
       g.save(); g.translate(sx, sy);
     } catch (e) { rerr('clear', e); }
@@ -2759,7 +2771,7 @@
     camera = ui.camera; followVehicle = null;
     camera.hasTarget = false; if (!Number.isFinite(camera.follow)) camera.follow = -1;
     clampCam(camera);
-    zoomNow = camera.zoom;
+    setZoomNow(camera.zoom);
     nanReported = false;
   }
   /** once per page load: the #world canvas, composites, chunk records, subscriptions, resize listener */
@@ -2833,7 +2845,9 @@
     const wxA = (ax - 640) / cam.zoom + cam.x, wyA = (ay - 360) / cam.zoom + cam.y;
     ok(cam.zoom === 2 && Math.abs(wxA - wxB) < 1 && Math.abs(wyA - wyB) < 1, 'setZoom(2) keeps the world point under the anchor (' + (wxA - wxB).toFixed(3) + ')');
     void before;
-    ok(snapZoom(1.3) === 1 && snapZoom(1.6) === 2 && snapZoom(0.1) === 0.5 && snapZoom(NaN) === 1, 'zoom snaps to 0.5/1/2');
+    ok(snapZoom(1.3) === 1.25 && snapZoom(1.6) === 1.5 && snapZoom(0.1) === 0.5 && snapZoom(NaN) === 1 && snapZoom(9) === STEPS[STEPS.length - 1], 'zoom snaps to the nearest step (' + STEPS.join('/') + ')');
+    ok(masterOf(0.5) === 0.5 && masterOf(0.65) === 1 && masterOf(0.8) === 1 && masterOf(1) === 1 && masterOf(1.25) === 2 && masterOf(1.75) === 2 && masterOf(2) === 2 && masterOf(2.5) === 2, 'master zoom: 0.5 → 0.5, 0.65–1 → 1, 1.25–2.5 → 2');
+    for (const zs of STEPS) { cam.zoom = 1; cam.x = 100; cam.y = 900; const bx = (ax - 640) / cam.zoom + cam.x, by = (ay - 360) / cam.zoom + cam.y; setZoomCam(cam, zs, ax, ay, 1280, 720); const sxA = (bx - cam.x) * cam.zoom + 640, syA = (by - cam.y) * cam.zoom + 360; ok(cam.zoom === zs && Math.abs(sxA - ax) < 0.5 && Math.abs(syA - ay) < 0.5, 'setZoom(' + zs + ') keeps the world point under the anchor within 0.5 px'); }
     // 3. screenToTile inverse on 20 random tiles at random elevations (private elev array)
     const pe = new Float32Array(N); const r = BSU.rng.derive ? BSU.rng.derive('render-selftest', 1) : BSU.rng.fx;
     for (let k = 0; k < N; k++) pe[k] = -4 + (hash(k, 3) % 1800) / 100;

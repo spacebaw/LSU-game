@@ -1256,7 +1256,8 @@
     { key: '1', action: 'pick1', shift: true }, { key: '2', action: 'pick2', shift: true }, { key: '3', action: 'pick3', shift: true },
     { key: '4', action: 'pick4', shift: true }, { key: '5', action: 'pick5', shift: true }, { key: '6', action: 'pick6', shift: true },
     { key: '7', action: 'pick7', shift: true }, { key: '8', action: 'pick8', shift: true }, { key: '9', action: 'pick9', shift: true },
-    { key: 'g', action: 'buildMenu' }, { key: 'x', action: 'bulldoze' }, { key: 'r', action: 'rotate' }, { key: 'h', action: 'home' }, { key: '.', action: 'follow' },
+    { key: 'g', action: 'buildMenu' }, { key: 'x', action: 'bulldoze' }, { key: 'r', action: 'rotate' }, { key: 'Home', action: 'home' }, { key: '.', action: 'follow' },
+    { key: 'h', action: 'hud' }, { key: 'h', action: 'hudFull', shift: true },   // hud + zoom pass: H cycles full → compact → hidden, Shift+H restores full (Home now pans to Founders' Hall)
     { key: 'Escape', action: 'escape' },
     { key: 's', action: 'save', ctrl: true }, { key: 'z', action: 'undo', ctrl: true }, { key: 'p', action: 'postcard', ctrl: true },
     { key: 'm', action: 'mute' },

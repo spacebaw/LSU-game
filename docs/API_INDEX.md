@@ -251,7 +251,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - contract.selfTest()
 
 ## BSU.data
-- values: gatorText:object, catalog:object, catalogList:array[46], tabs:array[10], decals:object, names:object, students:object, coaches:array[10], coachQuotes:array[12], staff:object, gatorNames:array[14], leGrand:string, stormNames:array[26], opponents:object, schedule:array[8], calendar:object, ticker:array[62], tickerKinds:object, tickerKindList:array[7], objectives:object, milestones:array[26], voiceCards:array[12], boardCards:array[8], failureCards:object, tutorial:array[7], thibodeaux:array[12], stormQuotes:array[8], overlays:array[6], keys:array[47], toastKeys:object, panKeys:object, rainKinds:object, guide:object, needs:object, requirements:object, coach:array[6], football:object, dishes:array[24], menuPresets:object, menuDefaults:object
+- values: gatorText:object, catalog:object, catalogList:array[46], tabs:array[10], decals:object, names:object, students:object, coaches:array[10], coachQuotes:array[12], staff:object, gatorNames:array[14], leGrand:string, stormNames:array[26], opponents:object, schedule:array[8], calendar:object, ticker:array[62], tickerKinds:object, tickerKindList:array[7], objectives:object, milestones:array[26], voiceCards:array[12], boardCards:array[8], failureCards:object, tutorial:array[7], thibodeaux:array[12], stormQuotes:array[8], overlays:array[6], keys:array[49], toastKeys:object, panKeys:object, rainKinds:object, guide:object, needs:object, requirements:object, coach:array[6], football:object, dishes:array[24], menuPresets:object, menuDefaults:object
 - data.selfTest()
 
 - BSU.dateToDay(str, year)
@@ -510,6 +510,8 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - render.panToTile(tx, ty, ease)
 - render.setZoom(z, anchorPx)
 - render.zoomStep(dir, anchorPx)
+- render.zoomSteps()
+- render.zoomInfo(z)
 - render.follow(agentId)
 - render.followVehicle(pred)
 - render.shake(ms, px)
@@ -848,6 +850,15 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - ui.uiScaleMode()
 - ui.autoScaleFor(w)
 - ui.setUiScale(v)
+- ui.hudMode()
+- ui.hudModes()
+- ui.setHudMode(mode)
+- ui.cycleHud(dir)
+- ui.hudCollapsed(key)
+- ui.hudCollapse(key, on)
+- ui.hudPill(key)
+- ui.hudState()
+- ui.hudPeek(key, on)
 - ui._machine(cb)
 - ui.pointer(type, px, py, button, mods)
 - ui.wheel(px, py, dx, dy, ctrl)
@@ -865,7 +876,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - ui.openBuildMenu(state, opts)
 - ui.closeBuildMenu()
 - ui.buildMenuOpen()
-- ui.startCoach(state)
+- ui.startCoach(state, opts)
 - ui.coachStep()
 - ui.closeAlert()
 - ui.dismissNotifs()
@@ -975,7 +986,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 
 - BSU.worldToScreen(tx, ty, elev, cam, vw, vh)
 
-## BSU.params groups (18): time[30], terrain[59], hydro[47], storm[116], wildlife[4], subsidence[17], heat[21], weather[18], econ[64], sports[81], agents[30], build[34], issues[4], render[59], ui[16], audio[6], palette[34], progress[16]
+## BSU.params groups (18): time[30], terrain[59], hydro[47], storm[116], wildlife[4], subsidence[17], heat[21], weather[18], econ[64], sports[81], agents[30], build[34], issues[4], render[59], ui[18], audio[6], palette[34], progress[16]
 
 ## BSU.newState(seed) tree
 - v:number
