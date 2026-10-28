@@ -1407,23 +1407,32 @@
     if (Math.abs(terms.raw - prev) >= 1) emit(BSU.EV.ECOLOGY_CHANGED, { value: terms.raw, prev: prev });
   });
   /** Tier 2: transient critter positions for render — pure hashes of state, no rng. */
+  let critRoot = null, critTick = -1e9, critLevees = [], critPres = null;   // L1 follow-up: the per-frame scans below are cached per root for 64 ticks
+  function critScan(state, tick) {
+    if (state === critRoot && tick - critTick < 64 && tick >= critTick) return;
+    critRoot = state; critTick = tick; critLevees = []; critPres = null;
+    const crest = state.tiles.crest, flags = state.tiles.flags; let sx = 0, sy = 0, c = 0;
+    for (let i = 0; i < N; i++) { if (crest[i] === 6) critLevees.push(i); if (flags[i] & FLAG.PRESERVE) { sx += (i % W); sy += ((i / W) | 0); c++; } }
+    if (c) critPres = { cx: sx / c, cy: sy / c };
+  }
   M.critters = safe('critters', function (state) {
     const out = [];
     if (!state || !state.tiles) return out;
     const phase = skyPhase(state), tick = isNum(state.tick) ? state.tick : 0, wl = state.wildlife || {};
+    critScan(state, tick);
     const frame = (tick >> 2) & 3;
     const crest = state.tiles.crest, type = state.tiles.type;
     if (phase === SKY.NIGHT) {
       // nutria scurry on earthen levees at Night: one per ~12 levee tiles, drifting along the run
-      const levees = []; for (let i = 0; i < N; i++) if (crest[i] === 6) levees.push(i);
+      const levees = critLevees;
       const n = Math.min(12, Math.floor(levees.length / 12));
       for (let k = 0; k < n; k++) { const i = levees[(BSU.rng.hash(k, 7) + (tick >> 4)) % levees.length]; out.push({ kind: 'nutria', tx: ((i % W)) + 0.5, ty: (((i / W) | 0)) + 0.5, frame: frame }); }
       const hw = state.plot && Array.isArray(state.plot.highway) ? state.plot.highway : [];
       if (hw.length && ((((tick / W) | 0)) % 5) === 0) { const i = hw[Math.min(hw.length - 1, (tick >> 3) % hw.length)]; out.push({ kind: 'armadillo', tx: ((i % W)) + 0.5, ty: (((i / W) | 0)) + 0.5, frame: frame }); }
     }
     if (phase === SKY.DAWN && wl.birds && wl.birds.spoonbills) {
-      const flags = state.tiles.flags; let sx = 0, sy = 0, c = 0;
-      for (let i = 0; i < N; i++) if (flags[i] & FLAG.PRESERVE) { sx += (i % W); sy += ((i / W) | 0); c++; }
+      let sx = 0, sy = 0, c = 0;
+      if (critPres) { sx = critPres.cx; sy = critPres.cy; c = 1; }
       if (!c) { const rk = listBuildings(state, 'rookery'); if (rk.length) { sx = rk[0].tx; sy = rk[0].ty; c = 1; } }
       if (c) { const cx = sx / c, cy = sy / c; for (let k = 0; k < 5; k++) { const a = (tick / 40) + k * (Math.PI * 2 / 5); out.push({ kind: 'spoonbill', tx: cx + Math.cos(a) * 3, ty: cy + Math.sin(a) * 3, frame: frame }); } }
     }

@@ -10432,23 +10432,32 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     if (Math.abs(terms.raw - prev) >= 1) emit(BSU.EV.ECOLOGY_CHANGED, { value: terms.raw, prev: prev });
   });
   /** Tier 2: transient critter positions for render — pure hashes of state, no rng. */
+  let critRoot = null, critTick = -1e9, critLevees = [], critPres = null;   // L1 follow-up: the per-frame scans below are cached per root for 64 ticks
+  function critScan(state, tick) {
+    if (state === critRoot && tick - critTick < 64 && tick >= critTick) return;
+    critRoot = state; critTick = tick; critLevees = []; critPres = null;
+    const crest = state.tiles.crest, flags = state.tiles.flags; let sx = 0, sy = 0, c = 0;
+    for (let i = 0; i < N; i++) { if (crest[i] === 6) critLevees.push(i); if (flags[i] & FLAG.PRESERVE) { sx += (i % W); sy += ((i / W) | 0); c++; } }
+    if (c) critPres = { cx: sx / c, cy: sy / c };
+  }
   M.critters = safe('critters', function (state) {
     const out = [];
     if (!state || !state.tiles) return out;
     const phase = skyPhase(state), tick = isNum(state.tick) ? state.tick : 0, wl = state.wildlife || {};
+    critScan(state, tick);
     const frame = (tick >> 2) & 3;
     const crest = state.tiles.crest, type = state.tiles.type;
     if (phase === SKY.NIGHT) {
       // nutria scurry on earthen levees at Night: one per ~12 levee tiles, drifting along the run
-      const levees = []; for (let i = 0; i < N; i++) if (crest[i] === 6) levees.push(i);
+      const levees = critLevees;
       const n = Math.min(12, Math.floor(levees.length / 12));
       for (let k = 0; k < n; k++) { const i = levees[(BSU.rng.hash(k, 7) + (tick >> 4)) % levees.length]; out.push({ kind: 'nutria', tx: ((i % W)) + 0.5, ty: (((i / W) | 0)) + 0.5, frame: frame }); }
       const hw = state.plot && Array.isArray(state.plot.highway) ? state.plot.highway : [];
       if (hw.length && ((((tick / W) | 0)) % 5) === 0) { const i = hw[Math.min(hw.length - 1, (tick >> 3) % hw.length)]; out.push({ kind: 'armadillo', tx: ((i % W)) + 0.5, ty: (((i / W) | 0)) + 0.5, frame: frame }); }
     }
     if (phase === SKY.DAWN && wl.birds && wl.birds.spoonbills) {
-      const flags = state.tiles.flags; let sx = 0, sy = 0, c = 0;
-      for (let i = 0; i < N; i++) if (flags[i] & FLAG.PRESERVE) { sx += (i % W); sy += ((i / W) | 0); c++; }
+      let sx = 0, sy = 0, c = 0;
+      if (critPres) { sx = critPres.cx; sy = critPres.cy; c = 1; }
       if (!c) { const rk = listBuildings(state, 'rookery'); if (rk.length) { sx = rk[0].tx; sy = rk[0].ty; c = 1; } }
       if (c) { const cx = sx / c, cy = sy / c; for (let k = 0; k < 5; k++) { const a = (tick / 40) + k * (Math.PI * 2 / 5); out.push({ kind: 'spoonbill', tx: cx + Math.cos(a) * 3, ty: cy + Math.sin(a) * 3, frame: frame }); } }
     }
@@ -31495,6 +31504,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     return fin(c.frame, 0) & 1;
   }
   let minimapEl = null, mmBase = null, mmImg = null;
+  const mmHex = new Map();   // L1 follow-up: colour string → [r, g, b] (the minimap loop walks every tile every 6 frames)
   BSU.onMap(function (m) {   // L1: the live map size; the chunk table, the world clamp extents and every N-sized scratch follow it (inside BSU.setMap, before any allocation)
     W = m.W; HGT = m.H; N = m.N; CXN = m.CX; CYN = m.CY; NCH = m.NCH;
     WORLD_X = [-(W - 1) * 32, (W - 1) * 32]; WORLD_Y = [-84, (W + HGT - 2) * 16 + 24];
@@ -34031,7 +34041,8 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
           if (t.owner[i] >= 0) col = GOLD;
           else if (t.surface[i] > 0) col = PAL.gravel || '#C9B47C';
           else if (t.crest[i] > 0) col = PAL.creamStone || '#F5ECD7';
-          const c = sp.hex(col); px[i * 4] = c[0]; px[i * 4 + 1] = c[1]; px[i * 4 + 2] = c[2]; px[i * 4 + 3] = 255;
+          let c = mmHex.get(col); if (!c) { c = sp.hex(col); if (mmHex.size > 512) mmHex.clear(); mmHex.set(col, c); }
+          px[i * 4] = c[0]; px[i * 4 + 1] = c[1]; px[i * 4 + 2] = c[2]; px[i * 4 + 3] = 255;
         }
         bg.putImageData(mmImg, 0, 0);
       }
@@ -44355,9 +44366,10 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
   // BSU.headless (§9.5; docs/HEADLESS_API.md) — always defined, also in browsers
   // ============================================================================
   /** Chebyshev-ring spiral from (cx, cy): ring order, each ring clockwise from its top-left; first (tx, ty) where test() is true. */
-  function spiral(cx, cy, maxR, test) {
+  function spiral(cx, cy, maxR, test, box) {
     const W = BSU.MAP.W, Hh = BSU.MAP.H;
-    const probe = function (tx, ty) { return tx >= 0 && ty >= 0 && tx < W && ty < Hh && test(tx, ty); };
+    const x0 = box ? box.x0 : 0, y0 = box ? box.y0 : 0, x1 = box ? box.x1 : W - 1, y1 = box ? box.y1 : Hh - 1;   // L1 follow-up: an optional rectangle (the legacy / charter one)
+    const probe = function (tx, ty) { return tx >= x0 && ty >= y0 && tx <= x1 && ty <= y1 && tx < W && ty < Hh && test(tx, ty); };
     if (probe(cx, cy)) return { x: cx, y: cy };
     for (let r = 1; r <= maxR; r++) {
       for (let x = cx - r; x <= cx + r; x++) if (probe(x, cy - r)) return { x: x, y: cy - r };                 // top: left → right
@@ -44422,8 +44434,9 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
         return null;
       }
       const f = s.plot.founders;
-      let p = spiral(f.tx, f.ty, 40, function (tx, ty) { return okAt(tx, ty, { rot: 0, ignoreCash: true }); });
-      if (!p && row.kind === 'footprint' && row.rotatable) p = spiral(f.tx, f.ty, 40, function (tx, ty) { return okAt(tx, ty, { rot: 1, ignoreCash: true }); });
+      const box = (s.world && s.world.legacy) || null;   // L1 follow-up: spots are searched inside the legacy rectangle (the start charter L2 defines), so a test campus is the same at 64 and 96
+      let p = spiral(f.tx, f.ty, 40, function (tx, ty) { return okAt(tx, ty, { rot: 0, ignoreCash: true }); }, box);
+      if (!p && row.kind === 'footprint' && row.rotatable) p = spiral(f.tx, f.ty, 40, function (tx, ty) { return okAt(tx, ty, { rot: 1, ignoreCash: true }); }, box);
       return p;
     },
     /** = buildings.place(state, id, x, y, {rot: 0}) — the UI's validation/cost path (charges cash; 'pilings' retrofits the building at x, y) */

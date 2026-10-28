@@ -94,6 +94,7 @@
     return fin(c.frame, 0) & 1;
   }
   let minimapEl = null, mmBase = null, mmImg = null;
+  const mmHex = new Map();   // L1 follow-up: colour string → [r, g, b] (the minimap loop walks every tile every 6 frames)
   BSU.onMap(function (m) {   // L1: the live map size; the chunk table, the world clamp extents and every N-sized scratch follow it (inside BSU.setMap, before any allocation)
     W = m.W; HGT = m.H; N = m.N; CXN = m.CX; CYN = m.CY; NCH = m.NCH;
     WORLD_X = [-(W - 1) * 32, (W - 1) * 32]; WORLD_Y = [-84, (W + HGT - 2) * 16 + 24];
@@ -2630,7 +2631,8 @@
           if (t.owner[i] >= 0) col = GOLD;
           else if (t.surface[i] > 0) col = PAL.gravel || '#C9B47C';
           else if (t.crest[i] > 0) col = PAL.creamStone || '#F5ECD7';
-          const c = sp.hex(col); px[i * 4] = c[0]; px[i * 4 + 1] = c[1]; px[i * 4 + 2] = c[2]; px[i * 4 + 3] = 255;
+          let c = mmHex.get(col); if (!c) { c = sp.hex(col); if (mmHex.size > 512) mmHex.clear(); mmHex.set(col, c); }
+          px[i * 4] = c[0]; px[i * 4 + 1] = c[1]; px[i * 4 + 2] = c[2]; px[i * 4 + 3] = 255;
         }
         bg.putImageData(mmImg, 0, 0);
       }

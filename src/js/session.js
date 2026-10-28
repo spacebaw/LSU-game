@@ -521,9 +521,10 @@
   // BSU.headless (§9.5; docs/HEADLESS_API.md) — always defined, also in browsers
   // ============================================================================
   /** Chebyshev-ring spiral from (cx, cy): ring order, each ring clockwise from its top-left; first (tx, ty) where test() is true. */
-  function spiral(cx, cy, maxR, test) {
+  function spiral(cx, cy, maxR, test, box) {
     const W = BSU.MAP.W, Hh = BSU.MAP.H;
-    const probe = function (tx, ty) { return tx >= 0 && ty >= 0 && tx < W && ty < Hh && test(tx, ty); };
+    const x0 = box ? box.x0 : 0, y0 = box ? box.y0 : 0, x1 = box ? box.x1 : W - 1, y1 = box ? box.y1 : Hh - 1;   // L1 follow-up: an optional rectangle (the legacy / charter one)
+    const probe = function (tx, ty) { return tx >= x0 && ty >= y0 && tx <= x1 && ty <= y1 && tx < W && ty < Hh && test(tx, ty); };
     if (probe(cx, cy)) return { x: cx, y: cy };
     for (let r = 1; r <= maxR; r++) {
       for (let x = cx - r; x <= cx + r; x++) if (probe(x, cy - r)) return { x: x, y: cy - r };                 // top: left → right
@@ -588,8 +589,9 @@
         return null;
       }
       const f = s.plot.founders;
-      let p = spiral(f.tx, f.ty, 40, function (tx, ty) { return okAt(tx, ty, { rot: 0, ignoreCash: true }); });
-      if (!p && row.kind === 'footprint' && row.rotatable) p = spiral(f.tx, f.ty, 40, function (tx, ty) { return okAt(tx, ty, { rot: 1, ignoreCash: true }); });
+      const box = (s.world && s.world.legacy) || null;   // L1 follow-up: spots are searched inside the legacy rectangle (the start charter L2 defines), so a test campus is the same at 64 and 96
+      let p = spiral(f.tx, f.ty, 40, function (tx, ty) { return okAt(tx, ty, { rot: 0, ignoreCash: true }); }, box);
+      if (!p && row.kind === 'footprint' && row.rotatable) p = spiral(f.tx, f.ty, 40, function (tx, ty) { return okAt(tx, ty, { rot: 1, ignoreCash: true }); }, box);
       return p;
     },
     /** = buildings.place(state, id, x, y, {rot: 0}) — the UI's validation/cost path (charges cash; 'pilings' retrofits the building at x, y) */
