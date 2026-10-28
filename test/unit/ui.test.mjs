@@ -433,6 +433,7 @@ try {
   U.openPanel(null);
   // escalation → a notification with Locate, Fix and the why-line; one per gator (replaced, not stacked)
   U.dismissNotifs();
+  g.onPath = true; g.delayed = 7; g.blocked |= 3; BSU.issues.invalidate();   // issues v2: only a blocking gator is an issue (the notification's Locate wants the row)
   BSU.events.emit(BSU.EV.GATOR_BLOCKED, { id: g.id, name: 'Chippy', i: ci, what: 'path', delayed: 7 });
   BSU.events.emit(BSU.EV.GATOR_BLOCKED, { id: g.id, name: 'Chippy', i: ci, what: 'closed', buildingId: 0, building: 'Tiger Dining', kind: 'dining hall' });
   const nn = Array.from(U.el.notifications.children).filter((c) => c.className.indexOf('notif') === 0 && c.id !== 'notif-dismiss');
@@ -457,6 +458,55 @@ try {
     U.closeInspect(); U.dismissNotifs(); U.closeAlert();
   s.gators.length = 0; for (const x of savedGators) s.gators.push(x); BSU.issues.invalidate();
 } catch (e) { ok(false, 'gator pass ui: ' + (e.stack || e)); }
+
+// --- issues v2 pass: the tray groups rows by kind, an In progress section, Clear all, Snooze / Dismiss, Fix arms the tool ----
+try {
+  BSU.session.newGame({ seed: 42, skipTutorial: true });
+  const s3 = BSU.state; U.showTitle(false); U.settings().coachSeen = true; s3.economy.cash = 5e6;
+  const B = BSU.buildings, I3 = BSU.issues, H = BSU.headless; win.innerHeight = 1400; U.closeInspect(); U.closeBuildMenu(); U.selectTool(s3, null);
+  H.tick(20); H.render();
+  const upd = () => { U.update(s3, 300); U.update(s3, 300); };
+  const sp = H.findSpot('dorm'); const pr = H.place('dorm', sp.x, sp.y); const dorm = B.get(s3, pr.id); dorm.built = 1; B.recomputeCoverage(s3);
+  const tl = s3.tiles; const xs = []; for (let x = 10; x < 14; x++) { const i = BSU.idx(x, 5); tl.crest[i] = 6; tl.integrity[i] = 60; xs.push(i); }
+  dorm.hp = 0.5; I3.invalidate(); upd();
+  const rows = () => Array.from(U.el['issues-list'].children);
+  const act = I3.actionable(s3), groups = I3.groups(s3);
+  ok(/^\d+ issues?$/.test(U.el['issues-count'].textContent) && parseInt(U.el['issues-count'].textContent, 10) === act.length, 'tray count = actionable rows: ' + U.el['issues-count'].textContent);
+  ok(rows().length === Math.min(groups.length, 6) && rows().every((r, k) => r.dataset.kind === groups[k].kind && r.classList.contains('lead')), 'one lead row per kind, in list order: ' + groups.map((g) => g.kind + '×' + g.rows.length).join(', '));
+  const multi = groups.find((g) => g.rows.length > 1);
+  const badge = multi && rows().find((r) => r.dataset.kind === multi.kind).children[2];
+  ok(multi && badge && badge.classList.contains('badge') && badge.textContent === '×' + multi.rows.length, 'a count badge on the lead row: ' + (badge && badge.textContent));
+  if (badge) { badge.dispatchEvent({ type: 'click' }); upd(); ok(rows().filter((r) => r.dataset.kind === multi.kind).length === Math.min(multi.rows.length, 6) && rows().some((r) => r.classList.contains('sub')), 'clicking the badge unfolds the group'); U.issues.toggleGroup(multi.kind); upd(); }
+  ok(rows().every((r) => r.title && /Why it persists/.test(r.title) && r.querySelector), 'every row tooltip explains why the issue persists');
+  // Clear all: damaged + levee run are resolvable → confirm line → confirmed → both fixed
+  const res = I3.resolvable(s3); const clr = U.el['issues-clear'];
+  ok(res.rows.length === 2 && !clr.classList.contains('hidden') && clr.textContent === 'Clear 2' && /\$/.test(clr.title), 'Clear all button: Clear 2, tooltip with the total');
+  const n0 = U.el.notifications.children.length; clr.dispatchEvent({ type: 'click' });
+  ok(U.el.notifications.children.length === n0 + 1, 'Clear all → a confirm line');
+  let btn = null; (function walk(e) { for (const c of (e.children || [])) { if (c.tagName === 'BUTTON' && /^Confirm /.test(c.textContent)) btn = c; walk(c); } })(U.el.notifications);
+  ok(btn && /Confirm \$/.test(btn.textContent), 'the confirm button shows the total: ' + (btn && btn.textContent));
+  const cashC = s3.economy.cash; if (btn) btn.dispatchEvent({ type: 'click' }); upd();
+  ok(dorm.hp === 1 && xs.every((i) => tl.integrity[i] === 100) && s3.economy.cash === cashC - res.total && I3.resolvable(s3).rows.length === 0 && clr.classList.contains('hidden'), 'confirmed: both repaired for the quoted total, the button hides');
+  for (const i of xs) tl.crest[i] = 0; I3.invalidate(); upd();
+  // Snooze / Dismiss from the row buttons; the hidden line restores
+  const lead = rows()[0]; const id0 = lead.dataset.id;
+  const zz = Array.from(lead.children).find((c) => c.dataset && c.dataset.act === 'snooze'); ok(zz && /Snooze 3 days/.test(zz.title), 'the zz button tooltip: ' + (zz && zz.title));
+  zz.dispatchEvent({ type: 'click' }); upd();
+  ok(!rows().some((r) => r.dataset.id === id0) && !U.el['issues-hidden'].classList.contains('hidden') && /1 snoozed/.test(U.el['issues-hidden'].textContent), 'snoozed: row gone, hidden line "' + U.el['issues-hidden'].textContent + '"');
+  const lead2 = rows()[0]; const id1 = lead2.dataset.id; const dm = Array.from(lead2.children).find((c) => c.dataset && c.dataset.act === 'dismiss'); dm.dispatchEvent({ type: 'click' }); upd();
+  ok(!rows().some((r) => r.dataset.id === id1) && /1 snoozed · 1 dismissed/.test(U.el['issues-hidden'].textContent), 'dismissed: hidden line "' + U.el['issues-hidden'].textContent + '"');
+  U.el['issues-hidden'].dispatchEvent({ type: 'click' }); upd();
+  ok(U.el['issues-hidden'].classList.contains('hidden') && I3.summary(s3).hidden === 0, 'the hidden line restores every row');
+  // Fix arms the Substation with the ghost pinned; placing it moves the row to In progress
+  const up = I3.list(s3).find((it) => it.kind === 'unpowered' && it.buildingId === dorm.id);
+  const fr = U.issues.fix(s3, up); const arm = U.issues.lastArm();
+  ok(fr && fr.ok && !U.buildMenuOpen() && s3.ui.paletteTab === 'utilities' && s3.ui.tool && s3.ui.tool.id === 'substation' && arm && arm.spot && U.issues.pin() && U.issues.pin().tx === arm.spot.tx, 'Fix on unpowered: palette tab + armed tool + pinned ghost at ' + JSON.stringify(arm && arm.spot));
+  const sr = H.place('substation', arm.spot.tx, arm.spot.ty); U.selectTool(s3, null); U.closeBuildMenu(); H.tick(1); upd();
+  const prow = Array.from(U.el['issues-progress-list'].children).find((r) => r.dataset.id === up.id);
+  ok(sr.ok && !U.el['issues-progress'].classList.contains('hidden') && prow && /under construction/.test(prow.children[1].textContent) && /in progress/.test(U.el['issues-sub'].textContent), 'In progress section lists the dorm with the substation under construction');
+  ok(U.issues.pin() === null, 'the pin drops once the tool is cleared');
+  ok(BSU.errors.size === 0, 'no BSU.error in the issues v2 tray checks');
+} catch (e) { ok(false, 'issues v2 ui: ' + (e.stack || e)); }
 
 console.log(`\n${passes} passed, ${failures} failed`);
 process.exit(failures ? 1 : 0);

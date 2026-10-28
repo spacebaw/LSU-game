@@ -542,3 +542,17 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
 #notif-dismiss{pointer-events:auto;opacity:.85}
 .issue-row .why{grid-column:1 / -1;min-width:0;font-size:1.15rem;line-height:1.25;opacity:.7;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #inspect .row.why .v{white-space:normal;text-align:left;opacity:.8}
+
+/* issues v2 */
+#issues-tray{width:33rem}
+.issue-row{grid-template-columns:1.8rem minmax(0,1fr) auto auto auto auto auto;gap:.4rem}
+.issue-row .btn.locate{color:var(--gold-hi);font-size:1.5rem}
+.issue-row .btn.badge{padding:0 .5rem;min-width:0;font-weight:700;color:var(--gold-hi);border-color:var(--gold)}
+.issue-row .btn.icon-sm{width:2.2rem;min-width:2.2rem;padding:0;color:var(--text-dim)} .issue-row .btn.icon-sm:hover{color:var(--text)}
+.issue-row.sub{margin-left:1.2rem;border-left-width:.25rem;opacity:.92}
+.issue-row.progress{grid-template-columns:1.8rem minmax(0,1fr) auto;border-left-style:dashed;background:rgba(26,18,48,.86)} .issue-row.progress .t{color:var(--text-dim);font-weight:500}
+#issues-progress{display:flex;flex-direction:column;gap:.3rem} #issues-progress .ph{font-size:1.05rem;letter-spacing:.08em;text-transform:uppercase;color:var(--text-dim);padding:.2rem 0 0 .8rem}
+#issues-progress-list{display:flex;flex-direction:column;gap:.3rem}
+#issues-tray.collapsed #issues-progress,#issues-tray.collapsed #issues-hidden{display:none}
+#issues-head #issues-clear{color:var(--purple-shadow);background:var(--g-gold);border-color:var(--gold-shadow);font-weight:700}
+#issues-hidden{align-self:center;padding:0 .8rem;min-height:2.2rem;height:2.2rem;line-height:2rem;font-size:1.05rem;color:var(--text-dim)}

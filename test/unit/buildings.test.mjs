@@ -497,5 +497,62 @@ try {
 } catch (e) { threwAny = true; console.error(e); }
 ok(!threwAny, 'public functions never throw on bad input');
 
+// --- issues v2 pass: linkQuote / linkBuilding (Link it), leveeRunQuote / repairLeveeRun, spotNear, repairCost ----
+try {
+  const sl = BSU.newState(43);
+  for (let i = 0; i < 4096; i++) { sl.tiles.owner[i] = -1; sl.tiles.elev[i] = 6; sl.tiles.type[i] = BSU.T.DRY; sl.tiles.surface[i] = 0; sl.tiles.crest[i] = 0; sl.tiles.flags[i] = 0; sl.tiles.integrity[i] = 100; }
+  sl.plot.bank0 = 57; sl.plot.founders = { tx: 50, ty: 7 }; sl.plot.highway = []; sl.plot.cove = []; sl.plot.mouth = [0, 0, 0]; sl.plot.bayou = []; sl.plot.cheniers = []; sl.plot.mounds = [];
+  sl.economy.suppressCoverage = true; sl.economy.cash = 50000000; sl.economy.loanLimit = 0;
+  BSU.state = sl; B.reset(sl, true); BSU.terrain.rewalk(sl);
+  ok(B.place(sl, 'founders_hall', 50, 7, { ignoreCash: true, instant: true }).ok, 'link world: Founders\' placed');
+  for (let x = 30; x <= 49; x++) BSU.terrain.setSurface(sl, BSU.idx(x, 7), BSU.SURF.PATH);
+  B.tick(sl, {});
+  const PATH = BSU.SURF.PATH;
+  const paths = () => { let n = 0; for (let i = 0; i < 4096; i++) if (sl.tiles.surface[i] === PATH) n++; return n; };
+  const p1 = B.place(sl, 'dining_hall', 36, 11, { rot: 0 });
+  ok(p1.ok && p1.connector && p1.connector.tiles.length === 3, 'dining hall 3 tiles below the path: placed with a 3-tile tie');
+  ok(B.linkQuote(sl, p1.id).ok === false && B.linkQuote(sl, p1.id).reason === 'Already linked', 'linkQuote on a linked building: Already linked');
+  for (const t of p1.connector.tiles) ok(B.remove(sl, { tile: t }, 'demolish').ok, 'tie tile ' + t + ' demolished');
+  const q1 = B.linkQuote(sl, p1.id);
+  ok(q1.ok && q1.tiles.length === 3 && q1.cost === 6000 && q1.reason === '', 'the tie gone → linkQuote: 3 tiles for $6,000 (' + JSON.stringify(q1) + ')');
+  const cash1 = sl.economy.cash, n1 = paths();
+  const l1 = B.linkBuilding(sl, p1.id);
+  ok(l1.ok && l1.placed === 3 && l1.cost === 6000 && sl.economy.cash === cash1 - 6000 && paths() === n1 + 3, 'linkBuilding lays the 3 tiles, charges $6,000');
+  ok(B.linkQuote(sl, p1.id).reason === 'Already linked', 'and the building is linked again');
+  // 5 tiles away (beyond the 4-tile placement connector) still links through linkQuote's 8-tile reach
+  for (let y = 8; y <= 12; y++) BSU.terrain.setSurface(sl, BSU.idx(42, y), PATH); B.tick(sl, {});
+  const p2 = B.place(sl, 'dining_hall', 41, 13, { rot: 0 }); ok(p2.ok, 'a hall 5 tiles below the path placed beside a temporary path');
+  for (let y = 8; y <= 12; y++) ok(B.remove(sl, { tile: BSU.idx(42, y) }, 'demolish').ok, 'temp path tile removed y=' + y);
+  const q2 = B.linkQuote(sl, p2.id);
+  ok(q2.ok && q2.tiles.length === 5 && q2.cost === 10000, 'linkQuote reaches 5 tiles (' + JSON.stringify(q2.tiles) + ')');
+  ok(B.linkBuilding(sl, p2.id).ok && B.linkQuote(sl, p2.id).reason === 'Already linked', 'Link it at 5 tiles');
+  // beyond 8 tiles: refused with the reason; cash short: refused with the reason
+  for (let y = 8; y <= 18; y++) BSU.terrain.setSurface(sl, BSU.idx(32, y), PATH); B.tick(sl, {});
+  const p3 = B.place(sl, 'dining_hall', 29, 19, { rot: 0 }); ok(p3.ok, 'a hall 11 tiles below the path placed beside a temporary path');
+  for (let y = 8; y <= 18; y++) B.remove(sl, { tile: BSU.idx(32, y) }, 'demolish');
+  const q3 = B.linkQuote(sl, p3.id);
+  ok(q3.ok === false && /within 8 tiles/.test(q3.reason) && !B.linkBuilding(sl, p3.id).ok, 'no route within 8 tiles: ' + q3.reason);
+  for (let y = 8; y <= 12; y++) BSU.terrain.setSurface(sl, BSU.idx(46, y), PATH); B.tick(sl, {});
+  const p4 = B.place(sl, 'dining_hall', 45, 13, { rot: 0 }); for (let y = 8; y <= 12; y++) B.remove(sl, { tile: BSU.idx(46, y) }, 'demolish');
+  const cash4 = sl.economy.cash; sl.economy.cash = 1000;
+  const q4 = B.linkQuote(sl, p4.id); ok(p4.ok && q4.ok === false && /Not enough cash/.test(q4.reason) && q4.tiles.length >= 4 && !B.linkBuilding(sl, p4.id).ok && sl.economy.cash === 1000, 'cash short: quote carries the route and the reason, nothing charged');
+  sl.economy.cash = cash4;
+  // repairCost / leveeRunQuote / repairLeveeRun
+  const hall = B.get(sl, p1.id); hall.built = 1; hall.hp = 0.5;
+  ok(B.repairCost(sl, p1.id) > 0 && B.repairCost(sl, p2.id) === 0, 'repairCost: damaged > 0, intact 0'); hall.hp = 1;
+  const run = []; for (let x = 10; x < 14; x++) { const i = BSU.idx(x, 30); sl.tiles.crest[i] = 6; sl.tiles.integrity[i] = 60; run.push(i); }
+  const lq = B.leveeRunQuote(sl, run); ok(lq.ok && lq.count === 4 && lq.cost === 4 * BSU.params.storm.repairPerTile, 'leveeRunQuote: 4 tiles, $20k');
+  const cashR = sl.economy.cash; const rr = B.repairLeveeRun(sl, run);
+  ok(rr.ok && rr.repaired === 4 && rr.cost === 20000 && sl.economy.cash === cashR - 20000 && run.every((i) => sl.tiles.integrity[i] === 100), 'repairLeveeRun repairs every tile of the run');
+  ok(B.repairLeveeRun(sl, run).ok === false && B.repairLeveeRun(sl, run).reason === 'Nothing to repair', 'again: Nothing to repair');
+  for (const i of run) sl.tiles.integrity[i] = 60; sl.economy.cash = 1000;
+  const rr2 = B.repairLeveeRun(sl, run); ok(rr2.ok === false && /Not enough cash/.test(rr2.reason) && run.every((i) => sl.tiles.integrity[i] === 60), 'cash short: the whole run refused, nothing repaired');
+  sl.economy.cash = cashR; for (const i of run) { sl.tiles.crest[i] = 0; sl.tiles.integrity[i] = 100; }
+  // spotNear: the nearest legal substation spot that covers the hall
+  const sn = B.spotNear(sl, 'substation', hall.tx + 1, hall.ty, { radius: 10, reach: 10, target: hall.id });
+  ok(sn && B.canPlace(sl, 'substation', sn.tx, sn.ty, { rot: 0 }).ok && sn.d <= 4, 'spotNear finds a legal substation spot beside the hall: ' + JSON.stringify(sn));
+  ok(B.spotNear(sl, 'substation', 0, 0, { radius: 0 }) === null || B.canPlace(sl, 'substation', 0, 0, {}).ok, 'spotNear with radius 0 only tests the one spot');
+} catch (e) { ok(false, 'issues v2 buildings: ' + (e.stack || e)); }
+
 console.log(`\n${passes} passed, ${failures} failed`);
 process.exit(failures ? 1 : 0);

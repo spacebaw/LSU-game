@@ -699,6 +699,12 @@
       waterTowerUnpoweredCap: 25,            // §4.11
       maxBuildings: 400                      // §15.3
     },
+    issues: {                                // issues v2 pass: the Issues tray's lifecycle
+      refreshTicks: 25,                      // the registry recomputes at most this often without an event (every event listed in issues.js recomputes at once)
+      snoozeDays: 3,                         // a snoozed row hides for this many days (it comes back earlier if the issue gets worse)
+      linkMax: 8,                            // "Link it": the gravel tie from an unlinked building reaches this many tiles to any connected surface
+      gatorBlockDelayed: 3                   // a gator is an issue (not a sighting) once this many students were rerouted this visit, or it closes a hall, or it is on the field on game day
+    },
     render: {                                // GDD §12
       tileW: 64, tileH: 32, pxPerFt: 6, zooms: [0.5, 1, 2],   // §12.1
       chunk: 8, chunkW: 512, chunkH: 416, chunkRebakesPerFrame: 2,   // §12.1, ARCH D19

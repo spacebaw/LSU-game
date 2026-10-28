@@ -223,6 +223,12 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - buildings.repairQuote(state)
 - buildings.repairLevee(state, i)
 - buildings.repairAllLevees(state)
+- buildings.repairCost(state, id)
+- buildings.leveeRunQuote(state, tiles)
+- buildings.repairLeveeRun(state, tiles)
+- buildings.linkQuote(state, id)
+- buildings.linkBuilding(state, id)
+- buildings.spotNear(state, id, tx, ty, opts)
 - buildings.applyWindPulse(state, n, share)
 - buildings.boardOrder(state)
 - buildings.boardInfo(state)
@@ -382,12 +388,23 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 ## BSU.issues
 - values: refreshTicks:number
 - issues.list(state)
+- issues.all(state)
+- issues.actionable(state)
+- issues.inProgress(state)
+- issues.hiddenList(state)
 - issues.invalidate()
 - issues.version()
 - issues.byId(state, id)
 - issues.ofKinds(state, kinds)
 - issues.ofFamily(state, family)
 - issues.summary(state)
+- issues.groups(state)
+- issues.resolvable(state)
+- issues.snooze(state, id, days)
+- issues.dismiss(state, id)
+- issues.restore(id)
+- issues.restoreAll()
+- issues.snoozeInfo(id)
 - issues.select(id)
 - issues.selectedId()
 - issues.selected(state)
@@ -401,6 +418,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - issues.colorOf(kind)
 - issues.glyphOf(kind)
 - issues.familyOf(kind)
+- issues.labelOf(kind)
 - issues.ageText(state, it)
 - issues.init(state)
 - issues.reset(state, fresh)
@@ -578,6 +596,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 ## BSU.sports
 - values: _deps:object
 - sports._buildSchedule(state)
+- sports.montage(state)
 - sports._onDecision(p)
 - sports.budget(state)
 - sports.setTopUp(state)
@@ -956,7 +975,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 
 - BSU.worldToScreen(tx, ty, elev, cam, vw, vh)
 
-## BSU.params groups (17): time[30], terrain[59], hydro[47], storm[116], wildlife[4], subsidence[17], heat[21], weather[18], econ[64], sports[81], agents[30], build[34], render[59], ui[16], audio[6], palette[34], progress[16]
+## BSU.params groups (18): time[30], terrain[59], hydro[47], storm[116], wildlife[4], subsidence[17], heat[21], weather[18], econ[64], sports[81], agents[30], build[34], issues[4], render[59], ui[16], audio[6], palette[34], progress[16]
 
 ## BSU.newState(seed) tree
 - v:number
@@ -1138,15 +1157,18 @@ in state.* or in the closure cache keyed on the root object (self-healing, §1/D
 
 ## issues.js
 'use strict';
-issues.js — the ISSUE SPOTLIGHT registry (issue spotlight pass). One place that answers "what is
-wrong on campus right now, where exactly, and what fixes it": buildings without power or water, flooded,
-damaged or ruined buildings, buildings whose path never reached campus, weak levees, full beds / seats /
-dining, gators on campus, mosquito hotspots, the boil-water notice, a brownout and unpowered pumps in the
-rain. The list is recomputed at most every `refreshTicks` (25) ticks and at once after a building / hydro /
-wildlife event. Deterministic (state in, plain objects out), no DOM, no timers; render_fx draws the beacons,
-ui.js the tray. Selection, spotlight mode and the gauge hover pulse live here so render_fx and ui share
-them without events (BSU.EV is a closed registry and contract.js is not edited in this pass).
-Owner branch: none (writes nothing in state). Loads right after buildings.js; every lookup is lazy.
+issues.js — the ISSUE SPOTLIGHT registry (issue spotlight pass; issues v2 pass). One place that answers "what is
+wrong on campus right now, where exactly, what fixes it, and is a fix already underway": buildings without power
+or water, flooded, damaged or ruined buildings, buildings whose path never reached campus, weak levees, full beds /
+seats / dining, gators that actually BLOCK something, mosquito hotspots, the boil-water notice, a brownout and
+unpowered pumps in the rain. The list is recomputed at most every `params.issues.refreshTicks` (25) ticks and at
+once after any building / power / coverage / levee / flood / gator / repair event. Deterministic (state in, plain
+objects out), no DOM, no timers; render_fx draws the beacons, ui.js the tray. Selection, spotlight mode, the gauge
+hover pulse, snoozes and dismissals live here so render_fx and ui share them without events.
+Every issue: {id, kind, severity 1–3, title, fix, why, persist, tiles, rect, anchor, buildingId, action, cost,
+resolvable, progress {text, days} | null, hidden '' | 'snoozed' | 'dismissed', sig, since, color, glyph}.
+`list()` = the rows the tray and the beacons show (hidden ones left out); `actionable()` = those with no fix
+underway (the count, I-cycling); `all()` = everything. Owner branch: none (writes nothing in state).
 
 ## economy.js
 'use strict';

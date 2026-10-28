@@ -452,10 +452,10 @@
   // The SE face (east neighbours, the default door of the design pass) is tried first, then the SW face.
   // ---------------------------------------------------------------------------
   function connectorMax() { return Math.max(0, Math.floor(fin(PB.connectorMax, 4))); }
-  function connectorInner(state, row, tx, ty, rot, anySurface) {
+  function connectorInner(state, row, tx, ty, rot, anySurface, maxOverride) {
     const pathRow = rowOf('path');
     if (!pathRow || !row || row.kind !== 'footprint' || row.id === 'founders_hall') return null;
-    const max = connectorMax(); if (max <= 0) return null;
+    const max = Number.isFinite(maxOverride) ? (maxOverride | 0) : connectorMax(); if (max <= 0) return null;   // issues v2: linkQuote reaches params.issues.linkMax
     const d = dims(row, rot), foot = BSU.footprintTiles(tx, ty, d.w, d.h);
     if (!foot) return null;
     const conn = connectedMask(state), ring = cache(state).founderRing, surf = state.tiles.surface;
@@ -2191,6 +2191,78 @@
       for (let i = 0; i < N; i++) if (tl.crest[i] > 0 && tl.integrity[i] < 100) { const r = M.repairLevee(state, i); if (!r.ok) break; total += r.cost; any = true; }
       return { ok: any, cost: total };
     } catch (e) { if (BSU.SELFTEST) throw e; BSU.error('buildings', 'repairAllLevees', e); return { ok: false, cost: 0 }; }
+  };
+  // --- issues v2 pass: one-click quotes and fixes the Issues tray runs (repair a whole weak run, link an unlinked building, a provider spot) ---
+  function affordable(state, cost) { const E = BSU.economy; if (E && typeof E.canAfford === 'function') { try { return !!E.canAfford(state, cost); } catch (e) { /* fall through */ } } return fin(state.economy && state.economy.cash, 0) >= cost; }
+  /** what repairing building id costs now (0 when nothing to repair) */
+  M.repairCost = function (state, id) { try { const b = M.get(state, id); return (b && (b.hp < 1 || b.ruin)) ? repairCostOf(b) : 0; } catch (e) { return 0; } };
+  /** a weak levee run's repair bill: {cost, count (tiles below 100), ok, reason} */
+  M.leveeRunQuote = function (state, tiles) {
+    try {
+      const tl = state.tiles; let count = 0;
+      for (const i of (Array.isArray(tiles) ? tiles : [])) if (Number.isInteger(i) && i >= 0 && i < N && tl.crest[i] > 0 && tl.integrity[i] < 100) count++;
+      const cost = count * PS.repairPerTile;
+      if (!count) return { ok: false, cost: 0, count: 0, reason: 'Nothing to repair' };
+      if (!affordable(state, cost)) return { ok: false, cost: cost, count: count, reason: 'Not enough cash (' + BSU.formatMoney(cost) + ')' };
+      return { ok: true, cost: cost, count: count, reason: '' };
+    } catch (e) { if (BSU.SELFTEST) throw e; BSU.error('buildings', 'leveeRunQuote', e); return { ok: false, cost: 0, count: 0, reason: 'Cannot repair' }; }
+  };
+  /** repair every tile of a weak run (the tray's Fix: the whole run, not the weakest tile); refused as a whole when cash is short */
+  M.repairLeveeRun = function (state, tiles) {
+    try {
+      const q = M.leveeRunQuote(state, tiles); if (!q.ok) return { ok: false, cost: q.cost, repaired: 0, reason: q.reason };
+      let total = 0, n = 0;
+      for (const i of tiles) { if (!(state.tiles.crest[i] > 0 && state.tiles.integrity[i] < 100)) continue; const r = M.repairLevee(state, i); if (!r.ok) return { ok: n > 0, cost: total, repaired: n, reason: r.reason }; total += r.cost; n++; }
+      return { ok: n > 0, cost: total, repaired: n, reason: n > 0 ? '' : 'Nothing to repair' };
+    } catch (e) { if (BSU.SELFTEST) throw e; BSU.error('buildings', 'repairLeveeRun', e); return { ok: false, cost: 0, repaired: 0, reason: 'Cannot repair' }; }
+  };
+  /** the gravel tie that would link an existing (unlinked) building to the campus network: {ok, tiles, cost, reason}; the BFS reaches params.issues.linkMax (8) tiles, against any CONNECTED surface */
+  M.linkQuote = function (state, id) {
+    try {
+      const b = M.get(state, id); if (!b) return { ok: false, tiles: [], cost: 0, reason: 'Pick a building' };
+      const row = rowOf(b.type); if (!row || row.kind !== 'footprint') return { ok: false, tiles: [], cost: 0, reason: 'Not a building' };
+      const max = Math.max(1, fin(BSU.params.issues && BSU.params.issues.linkMax, 8) | 0);
+      const c = connectorInner(state, row, b.tx | 0, b.ty | 0, b.rot | 0, false, max);
+      if (!c) {
+        const conn = connectedMask(state), ring = cache(state).founderRing, surf = state.tiles.surface;
+        for (const e of BSU.edgeTiles(b.tx | 0, b.ty | 0, b.w | 0, b.h | 0)) if ((isAccessSurface(surf[e]) && conn[e]) || ring[e]) return { ok: false, tiles: [], cost: 0, reason: 'Already linked' };
+        return { ok: false, tiles: [], cost: 0, reason: 'No route to a campus path within ' + max + ' tiles: lay a Path toward it first' };
+      }
+      if (!affordable(state, c.cost)) return { ok: false, tiles: c.tiles, cost: c.cost, reason: 'Not enough cash (' + BSU.formatMoney(c.cost) + ')' };
+      return { ok: true, tiles: c.tiles, cost: c.cost, reason: '' };
+    } catch (e) { if (BSU.SELFTEST) throw e; BSU.error('buildings', 'linkQuote', e); return { ok: false, tiles: [], cost: 0, reason: 'Cannot link' }; }
+  };
+  /** lay that tie (the path tool's own placeRun: charged, undoable, the network rebuilt): {ok, cost, placed, tiles, reason} */
+  M.linkBuilding = function (state, id) {
+    try {
+      const q = M.linkQuote(state, id); if (!q.ok) return { ok: false, cost: q.cost, placed: 0, tiles: q.tiles, reason: q.reason };
+      const r = M.placeRun(state, 'path', q.tiles, { rot: 0 });
+      if (!r.ok) return { ok: false, cost: 0, placed: 0, tiles: q.tiles, reason: (r.skipped[0] && r.skipped[0].reason) || 'Cannot lay the path' };
+      return { ok: true, cost: fin(r.cost, q.cost), placed: r.placed, tiles: q.tiles, reason: '' };
+    } catch (e) { if (BSU.SELFTEST) throw e; BSU.error('buildings', 'linkBuilding', e); return { ok: false, cost: 0, placed: 0, tiles: [], reason: 'Cannot link' }; }
+  };
+  /** the nearest legal top-left for catalog id around (tx, ty) (Chebyshev rings out to opts.radius, 12): {tx, ty, rot, d} or null;
+   *  opts.target = a building id the placement must cover (its rectDist to the footprint ≤ opts.reach, the provider's radius) */
+  M.spotNear = function (state, id, tx, ty, opts) {
+    try {
+      opts = opts || {}; const row = rowOf(id); if (!row || !state || !state.tiles) return null;
+      const radius = Math.max(0, fin(opts.radius, 12) | 0), rot = fin(opts.rot, 0) | 0, d0 = dims(row, rot);
+      const tgt = Number.isFinite(opts.target) ? M.get(state, opts.target) : null, reach = fin(opts.reach, Infinity);
+      const cx = Math.floor(fin(tx, 0)), cy = Math.floor(fin(ty, 0));
+      const okAt = function (x, y) {
+        if (!BSU.inBounds(x, y)) return false;
+        if (tgt && rectDist(tgt.tx, tgt.ty, tgt.w, tgt.h, x, y, d0.w, d0.h) > reach) return false;
+        const r = M.canPlace(state, id, x, y, { rot: rot, ignoreCash: true }); return !!(r && r.ok);
+      };
+      for (let d = 0; d <= radius; d++) {
+        for (let dy = -d; dy <= d; dy++) for (let dx = -d; dx <= d; dx++) {
+          if (Math.max(Math.abs(dx), Math.abs(dy)) !== d) continue;
+          const x = cx + dx - ((d0.w - 1) >> 1), y = cy + dy - ((d0.h - 1) >> 1);
+          if (okAt(x, y)) return { tx: x, ty: y, rot: rot, d: d };
+        }
+      }
+      return null;
+    } catch (e) { if (BSU.SELFTEST) throw e; BSU.error('buildings', 'spotNear', e); return null; }
   };
   function oakWithin(state, b, r) {
     for (const v of (state.veg || [])) if (v && v.type === 'oak' && v.stage >= LOCAL.oakStageForEffect && tileDist(v.tx, v.ty, b) <= r) return true;

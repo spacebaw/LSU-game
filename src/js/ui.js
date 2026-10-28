@@ -131,7 +131,7 @@
   M.fmt = { money: function (n) { return BSU.formatMoney(n); }, date: function (d) { return BSU.formatDate(d); } };
   const panels = {};                       // name → {build, refresh, events, el, built, lastRefresh}
   let root = null, inited = false, dry = false, clock = 0, titleOn = false, focusedInput = null;
-  let toolLocked = false, undoAtMs = -1e9, lastRunLen = 0, lastGhost = null, lastRingMs = -1e9, shakeUntil = 0, ghostCache = null;
+  let toolLocked = false, undoAtMs = -1e9, lastRunLen = 0, lastGhost = null, ghostPin = null, lastArm = null, lastRingMs = -1e9, shakeUntil = 0, ghostCache = null;
   let heldShift = false;   // design pass: Shift held → the footprint ghost places flush (no setback snap)
   let hoverKey = '', hoverSince = 0, hoverPx = 0, hoverPy = 0, tipShown = '', lastPx = 0, lastPy = 0;
   const notifs = [];                       // {spec, el, born, bornTick, closed}
@@ -676,7 +676,7 @@
   // the live machine: callbacks bound to render/buildings/inspect
   const live = makeMachine({
     getTool: function () { const s = stateOf(); return s && s.ui ? s.ui.tool : null; },
-    setTool: function (t) { const s = stateOf(); if (s && s.ui) { s.ui.tool = t; } markToolDom(s); if (t && bm.open && !bm.keepOpen) M.closeBuildMenu(); try { emit('ui:tool', { tool: t ? t.id : null }); } catch (e) { uerr('emit:tool', e); } },
+    setTool: function (t) { if (!t || !ghostPin || ghostPin.id !== t.id) ghostPin = null; const s = stateOf(); if (s && s.ui) { s.ui.tool = t; } markToolDom(s); if (t && bm.open && !bm.keepOpen) M.closeBuildMenu(); try { emit('ui:tool', { tool: t ? t.id : null }); } catch (e) { uerr('emit:tool', e); } },
     isDrag: function (id) { const r = rowOf(id); return !!(r && r.kind === 'drag'); },
     rotatable: function (id) { const r = rowOf(id); return !!(r && r.rotatable); },
     locked: function () { return toolLocked; },
@@ -698,6 +698,7 @@
     try {
       const s = stateOf(); if (!s || !s.ui) return;
       px = fin(px, 0); py = fin(py, 0); lastPx = px; lastPy = py; mods = mods || M0;
+      if (ghostPin && ghostPin.fresh && type === 'move' && Math.hypot(px - ghostPin.px0, py - ghostPin.py0) > 12) ghostPin.fresh = false;   // issues v2: the armed ghost follows the pointer once it travels onto the map (it still snaps back within ~2 tiles of the spot)
       heldShift = !!mods.shift;
       if (titleOn) return;
       if (type === 'down' && s.ui.panel && !s.ui.tool && !bm.open) { M.openPanel(null); return; }   // a map click dismisses an open panel
@@ -890,11 +891,20 @@
   function ghostTarget(s, tool, px, py) {
     const t = call('render', 'screenToTile', px, py); if (!t) return null;
     let tx = Math.floor(fin(t.tx, 0)), ty = Math.floor(fin(t.ty, 0)); let cove = false;
+    let pinned = false;   // issues v2: an armed ghost sits on the recommended spot until the pointer travels onto the map, then snaps to it within ~2 tiles; a building on the spot drops the pin
+    if (ghostPin && ghostPin.id === tool.id && live.state !== 'DRAGGING') {
+      if (call('buildings', 'at', s, ghostPin.tx, ghostPin.ty)) ghostPin = null;
+      else {
+        let near = !!ghostPin.fresh;
+        if (!near) { const a = call('render', 'tileToScreen', ghostPin.tx, ghostPin.ty), b2 = call('render', 'tileToScreen', ghostPin.tx + 2, ghostPin.ty + 2); if (a && b2) near = Math.hypot(px - a.x, py - a.y) <= Math.hypot(b2.x - a.x, b2.y - a.y); }
+        if (near) { tx = ghostPin.tx; ty = ghostPin.ty; pinned = true; }
+      }
+    }
     if (tool.id === 'founders_hall' && s.plot && s.plot.founders) { const c = s.plot.cove || []; const i = BSU.inBounds(tx, ty) ? ty * W + tx : -1; cove = i >= 0 && c.indexOf(i) >= 0; tx = s.plot.founders.tx; ty = s.plot.founders.ty; }
     const g = { tx: clamp(tx, 0, W - 1), ty: clamp(ty, 0, HGT - 1), cove: cove, setback: false };
     // design pass — soft spacing: a footprint that would touch another building snaps one tile out to leave a gap (Shift = flush)
     const row = rowOf(tool.id);
-    if (row && row.kind === 'footprint' && tool.id !== 'founders_hall' && !heldShift && !cove) {
+    if (row && row.kind === 'footprint' && tool.id !== 'founders_hall' && !heldShift && !cove && !pinned) {
       const sb = call('buildings', 'setbackSpot', s, tool.id, g.tx, g.ty, { rot: tool.rot });
       // connector pass: the setback must never push the ghost off its path — keep the candidate that touches a path
       // outright, else the one with the shorter tie, else the snapped one (Shift still forces flush)
@@ -1213,6 +1223,7 @@
       acts.appendChild(action('Rename', function () { startRename(b); return null; }));
       if (!b.pilings && r.kind === 'footprint' && b.built >= 1 && !b.ruin) acts.appendChild(action('Pilings', function (st) { return call('buildings', 'retrofitPilings', st, b.id, {}); }));
       if (b.hp < 1 && !b.ruin) acts.appendChild(action('Repair', function (st) { return call('buildings', 'repair', st, b.id); }));
+      if (issuesApi()) { const li = issuesApi().byId(s, 'unlinked:' + b.id); if (li && li.action && li.action.link) acts.appendChild(action(li.resolvable ? 'Link to campus · ' + money(li.cost) : 'Link to campus', function (st) { const r2 = call('buildings', 'linkBuilding', st, b.id); if (r2 && r2.ok && issuesApi()) issuesApi().invalidate(); return r2; })); }   // issues v2: the gravel tie from the inspect panel too
       if (r.tiers && r.tiers.length > fin(b.tier, 0)) acts.appendChild(action('Upgrade', function (st) { return call('buildings', 'upgrade', st, b.id); }));
       if (b.type === 'generator') acts.appendChild(action('Refuel +3 days $5k', function (st) { return call('buildings', 'refuel', st, b.id); }));
       if (b.type === 'dining_hall') { const gp = !!(b.data && b.data.policies && b.data.policies.gatorProofDumpsters); acts.appendChild(action((gp ? '✓ ' : '') + 'Gator-proof dumpsters $5k', function (st) { return call('buildings', 'setPolicy', st, b.id, 'gatorProofDumpsters', !gp); })); }
@@ -1234,6 +1245,7 @@
         const bl = s.wildlife && s.wildlife.burrowLog && s.wildlife.burrowLog[i]; if (bl) body.appendChild(row('Burrows', bl.n + ' · last ' + BSU.formatDate(bl.day)));
         const H = fin(call('weather', 'forecastSurge', s), 5) || 5; const bnd = call('buildings', 'boundaryLevees', s, H); if (bnd && typeof bnd.indexOf === 'function') body.appendChild(row('Boundary at ' + H.toFixed(0) + ' ft', bnd.indexOf(i) >= 0 ? 'yes — on the ring' : 'no'));
         if (integ < 100) acts.appendChild(action('Repair $5k', function (st) { return call('buildings', 'repairLevee', st, i); }));
+        if (integ < 100 && issuesApi()) { const wl = issuesApi().list(s).find(function (it) { return it.kind === 'weakLevee' && it.tiles.indexOf(i) >= 0; }); if (wl && wl.action && wl.action.run && wl.action.run.length > 1) acts.appendChild(action('Repair run · ' + money(wl.cost), function (st) { const r2 = call('buildings', 'repairLeveeRun', st, wl.action.run); if (r2 && r2.ok && issuesApi()) issuesApi().invalidate(); return r2; })); }   // issues v2
         acts.appendChild(action('Demolish', function (st) { const rr = call('buildings', 'remove', st, { tile: i }, 'demolish'); if (rr && rr.ok) closeInspectDom(); return rr; }, 'danger'));
       } else {
         setText(E['insp-title'], tname); setText(E['insp-sub'], 'Tile (' + (i % W) + ', ' + ((i / W) | 0) + ')');
@@ -1814,22 +1826,84 @@
     if (s && s.setPiece) call('render', 'captureCameraTouch', s);
     tray.key = ''; return true;
   }
-  /** run an issue's one-click fix: open the build menu on the card, pick a tool, show an overlay, or repair / relocate */
+  tray.open = {};   // issues v2: kind → the group is unfolded in the tray
+  /** issues v2: open the build menu on the card AND arm the tool with the ghost pinned to the nearest legal spot within reach of the affected building (the player just clicks) */
+  function armTool(s, it, a) {
+    const id = a.arm; const row = rowOf(id);
+    if (!row) { M.openBuildMenu(s, { focus: a.openMenuCard || id, pulse: true }); return { ok: true, spot: null }; }
+    if (id !== 'founders_hall') { const u = call('buildings', 'unlocked', s, id); if (u && u.ok === false) { M.openBuildMenu(s, { focus: a.openMenuCard || id, pulse: true }); return { ok: false, reason: u.reason || (row.name + ' is locked') }; } }
+    if (toolLocked || s.setPiece) { M.openBuildMenu(s, { focus: a.openMenuCard || id, pulse: true }); return { ok: true, spot: null }; }
+    let near = null;
+    if (Number.isFinite(a.near)) { const b = call('buildings', 'get', s, a.near); if (b) near = { tx: (b.tx | 0) + ((b.w | 0) - 1) / 2, ty: (b.ty | 0) + ((b.h | 0) - 1) / 2, target: b.id }; }
+    if (!near && Number.isFinite(a.nearTile)) near = { tx: a.nearTile % W, ty: (a.nearTile / W) | 0, target: null };
+    if (!near && it.anchor) near = { tx: fin(it.anchor.tx, 32), ty: fin(it.anchor.ty, 32), target: null };
+    const reach = fin(a.reach, 12);
+    const spot = near ? call('buildings', 'spotNear', s, id, Math.round(near.tx), Math.round(near.ty), { radius: Math.max(reach, 6), reach: reach, target: near.target }) : null;
+    lastArm = { id: id, spot: spot || null, issue: it.id };
+    if (!spot) {   // nothing legal in reach: the full build menu on the card, the player picks a spot by hand
+      ghostPin = null; M.openBuildMenu(s, { focus: a.openMenuCard || id, pulse: true });
+      bm.keepOpen = true; try { M.selectTool(s, id); } finally { bm.keepOpen = false; }
+      M.notify(s, { kind: 'info', text: 'No clear spot for a ' + row.name + ' within ' + reach + ' tiles of it: pick one on the map', ttl: 5000 });
+      return { ok: true, spot: null };
+    }
+    // a spot: no full-screen menu (it would hide the ghost) — the palette tab shows the card, the tool is armed and the ghost pinned on the spot; the camera jumps there
+    if (bm.open) M.closeBuildMenu();
+    const tab = tabFor(s, id); if (tab) setTab(s, tab);
+    call('render', 'panToTile', spot.tx + ((row.w | 0) - 1) / 2, spot.ty + ((row.h | 0) - 1) / 2, false);
+    const q = call('render', 'tileToScreen', spot.tx, spot.ty); if (q && Number.isFinite(q.x)) { lastPx = q.x; lastPy = q.y; }
+    ghostPin = { id: id, tx: spot.tx, ty: spot.ty, fresh: true, px0: lastPx, py0: lastPy };
+    M.selectTool(s, id);
+    if (!s.ui.tool || s.ui.tool.id !== id) { ghostPin = null; return { ok: true, spot: null }; }
+    M.notify(s, { kind: 'info', text: row.name + ' armed: click the glowing ghost to place it there (' + money(row.cost) + '), or anywhere else · Esc cancels', ttl: 5000 });
+    return { ok: true, spot: spot };
+  }
+  /** run an issue's one-click fix: arm the card's tool (ghost pinned), repair / repair the whole run / link it / relocate, or open the card */
   function fixIssue(s, it) {
     const I = issuesApi(); if (!I || !it) return { ok: false, reason: 'No issue' };
+    it = I.byId(s, it.id) || it;
     const a = it.action; let r = { ok: true };
     locateIssue(s, it);
     if (!a) return r;
-    if (a.openMenuCard) { M.openBuildMenu(s, { focus: a.openMenuCard, pulse: true }); }
+    if (it.progress && !Number.isFinite(a.repair) && !Number.isFinite(a.repairLevee) && !a.link) { M.notify(s, { kind: 'info', text: 'Already in progress: ' + it.progress.text, ttl: 3500 }); I.invalidate(); tray.key = ''; return { ok: true, pending: true }; }
+    if (a.arm) { r = armTool(s, it, a) || r; }
+    else if (a.openMenuCard) { M.openBuildMenu(s, { focus: a.openMenuCard, pulse: true }); }
+    else if (a.link) { r = call('buildings', 'linkBuilding', s, a.link) || { ok: false, reason: 'Cannot link' }; if (r.ok) { call('audio', 'play', 'tick'); I.select(null); M.notify(s, { kind: 'info', text: 'Linked to campus: ' + r.placed + (r.placed === 1 ? ' tile' : ' tiles') + ' of path · ' + money(r.cost), ttl: 3500 }); } }
     else if (a.tool) { M.selectTool(s, a.tool); }
     else if (Number.isFinite(a.overlay)) { M.setOverlay(s, a.overlay); }
     else if (Number.isFinite(a.repair)) { r = call('buildings', 'repair', s, a.repair) || r; }
-    else if (Number.isFinite(a.repairLevee)) { r = call('buildings', 'repairLevee', s, a.repairLevee) || r; }
+    else if (Number.isFinite(a.repairLevee)) { r = (a.run && a.run.length ? call('buildings', 'repairLeveeRun', s, a.run) : call('buildings', 'repairLevee', s, a.repairLevee)) || r; }
     else if (Number.isFinite(a.relocate)) { r = gatorFix(s, a.relocate); if (r && r.ok) I.select(null); }   // gator pass: free wrangle or the confirmed Parish call-out
     if (r && r.ok === false) { call('audio', 'play', 'invalid'); if (r.reason) M.notify(s, { kind: 'info', text: r.reason, ttl: 4000 }); }
     else if (Number.isFinite(a.repair) || Number.isFinite(a.repairLevee)) { I.select(null); M.notify(s, { kind: 'info', text: 'Fixed: ' + it.title + (r && r.cost > 0 ? ' · ' + money(r.cost) : ''), ttl: 3500 }); }
-    I.invalidate(); tray.key = '';
+    I.invalidate(); tray.key = ''; inspAt = -1e9;
     return r;
+  }
+  /** issues v2: every zero-click fix at once (repairs and gravel ties within cash, free officer wrangles); a confirm line first when it costs money */
+  function clearAllResolvable(s, confirmed) {
+    const I = issuesApi(); if (!I) return { ok: false, reason: 'No issues', count: 0, total: 0 };
+    const q = I.resolvable(s);
+    if (!q.rows.length) { M.notify(s, { kind: 'info', text: 'Nothing to clear: no one-click fixes right now', ttl: 3000 }); return { ok: false, reason: 'Nothing to clear', count: 0, total: 0 }; }
+    if (!confirmed && q.total > 0) {
+      const by = {}; for (const it of q.rows) by[it.kind] = (by[it.kind] || 0) + 1;
+      const parts = Object.keys(by).map(function (k) { return by[k] + ' × ' + I.labelOf(k).toLowerCase(); });
+      M.notify(s, { kind: 'money', confirm: true, ttl: 20000, text: 'Clear ' + q.rows.length + (q.rows.length === 1 ? ' issue' : ' issues') + ' (' + parts.join(', ') + ') for ' + money(q.total) + ' total?', why: 'Repairs and gravel ties are charged now; officer wrangles are free.', action: { label: 'Confirm ' + money(q.total), fn: function (s2) { clearAllResolvable(s2, true); } } });
+      return { ok: true, pending: true, count: q.rows.length, total: q.total };
+    }
+    let n = 0, spent = 0, failed = 0;
+    for (const it of q.rows) { const r = fixOne(s, it); if (r && r.ok !== false) { n++; spent += fin(r.cost, 0); } else failed++; }
+    I.invalidate(); tray.key = ''; inspAt = -1e9;
+    if (n) call('audio', 'play', 'tick');
+    M.notify(s, { kind: 'info', text: 'Cleared ' + n + (n === 1 ? ' issue' : ' issues') + (spent > 0 ? ' · ' + money(spent) : '') + (failed ? ' · ' + failed + ' could not be fixed' : ''), ttl: 4000 });
+    return { ok: n > 0, count: n, total: spent, failed: failed };
+  }
+  /** the silent fix behind Clear all (no camera move, no per-row notification) */
+  function fixOne(s, it) {
+    const a = it.action || {};
+    if (Number.isFinite(a.repair)) return call('buildings', 'repair', s, a.repair);
+    if (Number.isFinite(a.repairLevee)) return a.run && a.run.length ? call('buildings', 'repairLeveeRun', s, a.run) : call('buildings', 'repairLevee', s, a.repairLevee);
+    if (a.link) return call('buildings', 'linkBuilding', s, a.link);
+    if (Number.isFinite(a.relocate) && a.free) return call('wildlife', 'callOut', s, a.relocate);
+    return { ok: false, reason: 'Not a one-click fix' };
   }
   function cycleIssue(s, dir) { const I = issuesApi(); if (!I) return null; const it = I.cycle(s, dir); if (it) locateIssue(s, it); else { I.select(null); M.notify(s, { kind: 'info', text: 'All clear: no issues on campus', ttl: 2500 }); } return it; }
   function clearIssueUi() { const I = issuesApi(); if (I) I.select(null); spotToggled = false; heldI = false; applySpotlight(); tray.key = ''; }
@@ -1901,24 +1975,40 @@
     const wrap = el('div', 'hidden'); wrap.id = 'issues-tray';
     const head = el('div'); head.id = 'issues-head';
     const n = el('span', 'n', ''); n.id = 'issues-count'; const sub = el('span', 'sub', ''); sub.id = 'issues-sub';
+    const clr = btn('issues-clear', 'Clear all', 'small hidden', function () { const s = stateOf(); if (s) clearAllResolvable(s, false); }); clr.title = 'Run every one-click fix: repairs within cash, gravel ties, free officer wrangles (a confirm line shows the total)';
     const spot = btn('issues-spot', 'Spotlight', 'small', function () { toggleSpotlight(); }); spot.title = 'Dim the map except the issues (Shift+I; hold I)';
     const car = btn('issues-toggle', '▾', 'icon small', function () { tray.userCollapsed = !tray.userCollapsed; tray.key = ''; }); car.title = 'Collapse / expand';
-    head.appendChild(n); head.appendChild(sub); head.appendChild(spot); head.appendChild(car);
-    head.addEventListener('click', function (ev) { if (ev && ev.target && (ev.target === spot || ev.target === car)) return; if (tray.userCollapsed) { tray.userCollapsed = false; tray.key = ''; } else { const s = stateOf(); if (s) cycleIssue(s, 1); } });
-    const list = el('div'); list.id = 'issues-list'; const more = el('div', 'hidden', ''); more.id = 'issues-more';
-    wrap.appendChild(head); wrap.appendChild(list); wrap.appendChild(more);
-    E['issues-tray'] = wrap; E['issues-head'] = head; E['issues-count'] = n; E['issues-sub'] = sub; E['issues-spot'] = spot; E['issues-toggle'] = car; E['issues-list'] = list; E['issues-more'] = more;
+    head.appendChild(n); head.appendChild(sub); head.appendChild(clr); head.appendChild(spot); head.appendChild(car);
+    head.addEventListener('click', function (ev) { if (ev && ev.target && (ev.target === spot || ev.target === car || ev.target === clr)) return; if (tray.userCollapsed) { tray.userCollapsed = false; tray.key = ''; } else { const s = stateOf(); if (s) cycleIssue(s, 1); } });
+    const list = el('div'); list.id = 'issues-list';
+    const prog = el('div', 'hidden'); prog.id = 'issues-progress'; prog.appendChild(el('div', 'ph', 'In progress')); const plist = el('div'); plist.id = 'issues-progress-list'; prog.appendChild(plist);
+    const more = el('div', 'hidden', ''); more.id = 'issues-more';
+    const hid = btn('issues-hidden', '', 'small hidden', function () { const I = issuesApi(); if (I) { I.restoreAll(); tray.key = ''; } }); hid.title = 'Snoozed and dismissed rows: click to show them again';
+    wrap.appendChild(head); wrap.appendChild(list); wrap.appendChild(prog); wrap.appendChild(more); wrap.appendChild(hid);
+    E['issues-tray'] = wrap; E['issues-head'] = head; E['issues-count'] = n; E['issues-sub'] = sub; E['issues-clear'] = clr; E['issues-spot'] = spot; E['issues-toggle'] = car; E['issues-list'] = list; E['issues-progress'] = prog; E['issues-progress-list'] = plist; E['issues-more'] = more; E['issues-hidden'] = hid;
     return wrap;
   }
-  function issueRow(s, it, sel) {
-    const row = el('div', 'issue-row' + (sel ? ' sel' : '')); row.dataset.id = it.id; row.dataset.kind = it.kind; try { row.style.borderLeftColor = it.color || '#FDD023'; if (sel) row.style.boxShadow = '0 0 0 .2rem ' + (it.color || '#FDD023'); } catch (e) { /* stub */ } row.title = it.fix || it.title;
+  function rowTitle(it) { let t = it.fix || it.title; if (it.persist) t += '\nWhy it persists: ' + it.persist; return t; }
+  /** one tray row; opts.lead = the first row of a kind (carries the ×N badge), opts.sub = an unfolded sibling, opts.progress = an "In progress" row (Locate only) */
+  function issueRow(s, it, sel, opts) {
+    opts = opts || {};
+    const row = el('div', 'issue-row' + (sel ? ' sel' : '') + (opts.lead ? ' lead' : '') + (opts.sub ? ' sub' : '') + (opts.progress ? ' progress' : '')); row.dataset.id = it.id; row.dataset.kind = it.kind;
+    try { row.style.borderLeftColor = it.color || '#FDD023'; if (sel) row.style.boxShadow = '0 0 0 .2rem ' + (it.color || '#FDD023'); } catch (e) { /* stub */ }
+    row.title = (opts.progress && it.progress) ? ('In progress: ' + it.progress.text + '\n' + rowTitle(it)) : rowTitle(it);
     const ic = el('canvas'); ic.width = 18; ic.height = 18; try { const g = ic.getContext('2d'); if (g && has('render', 'drawIssueGlyph')) call('render', 'drawIssueGlyph', g, it.glyph, 9, 9, 7, it.color || '#FDD023'); } catch (e) { /* stub */ }
-    const col = el('div', 't', it.title); const age = el('span', 'a', ' · ' + (issuesApi() ? issuesApi().ageText(s, it) : '')); col.appendChild(age);
-    const why = it.why ? el('div', 'why', it.why) : null; if (why) why.title = it.why;   // gator pass: the one-line "why it matters" as a full-width second grid row (ellipsis; hover for the whole line)
-    const fix = btn(null, 'Fix', 'small fix', function () { const st = stateOf(); if (st) fixIssue(st, issuesApi().byId(st, it.id) || it); }); fix.title = it.fix || 'Fix it';
-    const loc = btn(null, 'Locate', 'small', function () { const st = stateOf(); if (st) locateIssue(st, issuesApi().byId(st, it.id) || it); }); loc.title = 'Ease the camera there (I cycles)';
-    row.appendChild(ic); row.appendChild(col); row.appendChild(fix); row.appendChild(loc); if (why) row.appendChild(why);
-    row.addEventListener('click', function (ev) { if (ev && ev.target && (ev.target === fix || ev.target === loc)) return; const st = stateOf(); if (st) locateIssue(st, issuesApi().byId(st, it.id) || it); });
+    const col = el('div', 't', (opts.progress && it.progress) ? it.progress.text : it.title); const age = el('span', 'a', ' · ' + (issuesApi() ? issuesApi().ageText(s, it) : '')); col.appendChild(age);
+    row.appendChild(ic); row.appendChild(col);
+    const I = issuesApi(), sd = fin(P.issues && P.issues.snoozeDays, 3);
+    if (opts.count > 1) { const bd = btn(null, '×' + opts.count, 'small badge', function () { tray.open[it.kind] = !tray.open[it.kind]; tray.key = ''; }); bd.title = opts.count + ' ' + (I ? I.labelOf(it.kind).toLowerCase() : it.kind) + ' issues: click to ' + (opts.expanded ? 'fold them' : 'list them all'); row.appendChild(bd); }
+    let fix = null;
+    if (!opts.progress) { fix = btn(null, 'Fix', 'small fix', function () { const st = stateOf(); if (st) fixIssue(st, issuesApi().byId(st, it.id) || it); }); fix.title = it.fix || 'Fix it'; row.appendChild(fix); }
+    const loc = btn(null, '⌖', 'small icon-sm locate', function () { const st = stateOf(); if (st) locateIssue(st, issuesApi().byId(st, it.id) || it); }); loc.title = 'Locate: ease the camera there (I cycles)'; loc.dataset.act = 'locate'; row.appendChild(loc);
+    if (!opts.progress) {
+      const zz = btn(null, 'zz', 'small icon-sm', function () { const st = stateOf(); const I2 = issuesApi(); if (st && I2 && I2.snooze(st, it.id)) { tray.key = ''; M.notify(st, { kind: 'info', text: 'Snoozed ' + sd + ' days: ' + it.title, ttl: 2500 }); } }); zz.title = 'Snooze ' + sd + ' days: hides this row until ' + BSU.formatDate(dayOf(s) + sd) + '; it comes back sooner if it gets worse'; zz.dataset.act = 'snooze'; row.appendChild(zz);
+      const dm = btn(null, '✕', 'small icon-sm', function () { const st = stateOf(); const I2 = issuesApi(); if (st && I2 && I2.dismiss(st, it.id)) tray.key = ''; }); dm.title = 'Dismiss: hides this row until the condition changes (it gets worse, or moves to a new stage)'; dm.dataset.act = 'dismiss'; row.appendChild(dm);
+    }
+    const why = (!opts.progress && it.why) ? el('div', 'why', it.why) : null; if (why) { why.title = it.why; row.appendChild(why); }   // gator pass: the one-line "why it matters" as a full-width second grid row
+    row.addEventListener('click', function (ev) { if (ev && ev.target && ev.target !== row && ev.target !== col && ev.target !== ic && ev.target !== age && ev.target !== why) return; const st = stateOf(); if (st) locateIssue(st, issuesApi().byId(st, it.id) || it); });
     return { el: row, age: age, id: it.id };
   }
   /** rows that fit between the overlay keys and the palette; < 2 → chip only ("space is tight") */
@@ -1929,36 +2019,63 @@
       const h = fin(window.innerHeight, 800) - top - bot - head; return clamp(Math.floor(h / row), 0, 6);
     } catch (e) { return 4; }
   }
+  function hiddenLine(hidden) {
+    const e = E['issues-hidden']; if (!e) return;
+    if (!hidden.length) { show(e, false); return; }
+    let sn = 0, dm = 0; for (const it of hidden) { if (it.hidden === 'snoozed') sn++; else dm++; }
+    const parts = []; if (sn) parts.push(sn + ' snoozed'); if (dm) parts.push(dm + ' dismissed');
+    setText(e, parts.join(' · ') + ' · show'); show(e, true);
+  }
   function updateIssues(s) {
     if (!dom() || !E['issues-tray']) return;
     const I = issuesApi(); if (!I) return;
     if (clock - tray.at < 250) return; tray.at = clock;
     if (titleOn || coach.step >= 0) { show(E['issues-tray'], false); tray.key = ''; return; }
-    const list = I.list(s), sel = I.selectedId(), fit = trayRowsFit(list.some(function (it) { return !!it.why; }));
+    const list = I.list(s), active = I.actionable(s), prog = I.inProgress(s), hidden = I.hiddenList(s), sel = I.selectedId();
+    const fit = trayRowsFit(active.some(function (it) { return !!it.why; }));
     const collapsed = tray.userCollapsed || fit < 2;
     if (list.length === 0) {
       if (tray.hadIssues) { tray.hadIssues = false; tray.clearAt = clock; }
-      const showClear = clock - tray.clearAt < 3000;
+      const showClear = clock - tray.clearAt < 3000 || hidden.length > 0;
       show(E['issues-tray'], showClear); if (!showClear) { tray.key = ''; return; }
-      const k = 'clear'; if (tray.key !== k) { tray.key = k; setText(E['issues-count'], 'All clear ✓'); setText(E['issues-sub'], ''); cls(E['issues-head'], 'clear', true); cls(E['issues-tray'], 'collapsed', true); clear(E['issues-list']); tray.rows = []; show(E['issues-more'], false); }
+      const k = 'clear|' + hidden.length;
+      if (tray.key !== k) { tray.key = k; setText(E['issues-count'], 'All clear ✓'); setText(E['issues-sub'], ''); cls(E['issues-head'], 'clear', true); cls(E['issues-tray'], 'collapsed', true); clear(E['issues-list']); clear(E['issues-progress-list']); show(E['issues-progress'], false); tray.rows = []; show(E['issues-more'], false); show(E['issues-clear'], false); hiddenLine(hidden); }
       return;
     }
     tray.hadIssues = true; show(E['issues-tray'], true);
-    const shown = collapsed ? 0 : Math.min(fit, list.length);
-    const key = list.length + '|' + shown + '|' + (sel || '') + '|' + list.slice(0, shown).map(function (it) { return it.id + it.title + it.severity; }).join(';');
+    const groups = I.groups(s), res = I.resolvable(s);
+    // the plan: one lead row per kind (count badge) + the siblings when the group is unfolded; the row budget is shared with the In progress section
+    const plan = []; for (const g of groups) { const open = !!tray.open[g.kind]; plan.push({ it: g.rows[0], lead: true, count: g.rows.length, expanded: open }); if (open) for (let k = 1; k < g.rows.length; k++) plan.push({ it: g.rows[k], sub: true }); }
+    const progFit = prog.length ? Math.max(1, Math.min(prog.length, Math.floor(fit / 3))) : 0;
+    const shown = collapsed ? 0 : Math.min(Math.max(0, fit - progFit), plan.length), pShown = collapsed ? 0 : progFit;
+    const key = [active.length, prog.length, hidden.length, shown, pShown, sel || '', res.rows.length, res.total, plan.slice(0, shown).map(function (p) { return p.it.id + p.it.title + p.it.severity + (p.count || 0) + (p.expanded ? 'o' : ''); }).join(';'), prog.slice(0, pShown).map(function (it) { return it.id + it.progress.text; }).join(';')].join('|');
     if (key !== tray.key) {
       tray.key = key; tray.ageAt = clock;
-      setText(E['issues-count'], list.length + (list.length === 1 ? ' issue' : ' issues'));
-      const w3 = list.filter(function (it) { return it.severity >= 3; }).length; setText(E['issues-sub'], w3 ? w3 + ' urgent' : (collapsed ? 'click to cycle' : ''));
+      setText(E['issues-count'], active.length + (active.length === 1 ? ' issue' : ' issues'));
+      const w3 = active.filter(function (it) { return it.severity >= 3; }).length; const subs = []; if (w3) subs.push(w3 + ' urgent'); if (prog.length) subs.push(prog.length + ' in progress'); if (!subs.length && collapsed) subs.push('click to cycle');
+      setText(E['issues-sub'], subs.join(' · '));
+      show(E['issues-clear'], res.rows.length > 0 && !collapsed); setText(E['issues-clear'], 'Clear ' + res.rows.length);
+      E['issues-clear'].title = res.rows.length + ' one-click fix' + (res.rows.length === 1 ? '' : 'es') + ' (repairs within cash, gravel ties, free wrangles): ' + (res.total > 0 ? money(res.total) + ' total, confirm first' : 'free');
       cls(E['issues-head'], 'clear', false); cls(E['issues-tray'], 'collapsed', collapsed); setText(E['issues-toggle'], collapsed ? '▸' : '▾');
       clear(E['issues-list']); tray.rows = [];
-      for (let k = 0; k < shown; k++) { const r = issueRow(s, list[k], list[k].id === sel); E['issues-list'].appendChild(r.el); tray.rows.push(r); }
-      const rest = list.length - shown; setText(E['issues-more'], rest > 0 ? '+' + rest + ' more · I cycles through all' : ''); show(E['issues-more'], rest > 0 && !collapsed);
+      for (let k = 0; k < shown; k++) { const p = plan[k]; const r = issueRow(s, p.it, p.it.id === sel, p); E['issues-list'].appendChild(r.el); tray.rows.push(r); }
+      clear(E['issues-progress-list']); for (let k = 0; k < pShown; k++) { const r = issueRow(s, prog[k], prog[k].id === sel, { progress: true }); E['issues-progress-list'].appendChild(r.el); tray.rows.push(r); }
+      show(E['issues-progress'], pShown > 0);
+      const rest = (plan.length - shown) + (prog.length - pShown); setText(E['issues-more'], rest > 0 ? '+' + rest + ' more · I cycles through all' : ''); show(E['issues-more'], rest > 0 && !collapsed);
+      hiddenLine(hidden);
     } else if (clock - tray.ageAt >= 1000) {
       tray.ageAt = clock; for (const r of tray.rows) { const it = I.byId(s, r.id); if (it) setText(r.age, ' · ' + I.ageText(s, it)); }
     }
   }
   M.issues = { locate: function (s, idOrIt) { const I = issuesApi(); const it = typeof idOrIt === 'string' ? (I && I.byId(s || stateOf(), idOrIt)) : idOrIt; return locateIssue(s || stateOf(), it); }, fix: function (s, idOrIt) { const I = issuesApi(); const it = typeof idOrIt === 'string' ? (I && I.byId(s || stateOf(), idOrIt)) : idOrIt; return fixIssue(s || stateOf(), it); }, cycle: function (s, dir) { return cycleIssue(s || stateOf(), dir); }, spotlight: function (on) { if (on !== undefined) { spotToggled = !!on; applySpotlight(); } return spotToggled; }, clear: clearIssueUi, rowsFit: trayRowsFit, kindsOf: locateKindsOf, held: function () { return heldI; } };
+  Object.assign(M.issues, {   // issues v2: snooze / dismiss / Clear all / the armed ghost
+    snooze: function (s, id, days) { const I = issuesApi(); const r = !!(I && I.snooze(s || stateOf(), id, days)); tray.key = ''; return r; },
+    dismiss: function (s, id) { const I = issuesApi(); const r = !!(I && I.dismiss(s || stateOf(), id)); tray.key = ''; return r; },
+    restoreAll: function () { const I = issuesApi(); const n = I ? I.restoreAll() : 0; tray.key = ''; return n; },
+    clearAll: function (s, confirmed) { return clearAllResolvable(s || stateOf(), !!confirmed); },
+    arm: function (s, idOrIt) { const I = issuesApi(); const st = s || stateOf(); const it = typeof idOrIt === 'string' ? (I && I.byId(st, idOrIt)) : idOrIt; return (it && it.action && it.action.arm) ? armTool(st, it, it.action) : { ok: false, reason: 'Not an arm action' }; },
+    lastArm: function () { return lastArm; }, pin: function () { return ghostPin; }, toggleGroup: function (kind) { tray.open[kind] = !tray.open[kind]; tray.key = ''; }, groupOpen: function (kind) { return !!tray.open[kind]; }
+  });
 
   // ---------------------------------------------------------------------------
   // Notifications, hints
@@ -2724,7 +2841,7 @@
         A(M.keydown('I', { ctrl: false, shift: true, meta: false, alt: false }) === true && I.spotlight() === true && spotToggled, 'Shift+I toggles spotlight on');
         s.ui.tool = null; s.ui.panel = null; A(M.keydown('Escape', M0) === true && I.spotlight() === false && I.selectedId() === null, 'Esc clears the selection and the spotlight');
         A(locateKindsOf({ text: 'A gator is on the quad' })[0] === 'gatorOnCampus' && locateKindsOf({ locate: 'power' }).length === 3 && locateKindsOf({ text: 'Saved' }) === null, 'locate kinds from a notification');
-        const r = fixIssue(s, li[0]); A(r && r.ok !== false && bm.open === true && I.selectedId() === li[0].id, 'Fix opens the build menu on the Substation card'); M.closeBuildMenu();
+        const r = fixIssue(s, li[0]); A(r && r.ok !== false && (bm.open === true || (s.ui.tool && s.ui.tool.id === 'substation')) && I.selectedId() === li[0].id, 'Fix arms the Substation (palette card, or the build menu when no spot is in reach)'); M.closeBuildMenu(); M.selectTool(s, null);
         s.buildings = []; I.invalidate(); A(I.list(s).length === 0 && I.selectedId() === null, 'issue gone → selection gone'); I.reset();
       }
       for (const t of M._tests) { try { t(s, A); } catch (e) { throw e; } }
