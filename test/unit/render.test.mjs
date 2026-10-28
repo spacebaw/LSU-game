@@ -61,7 +61,7 @@ try { R.frame(BSU.state, 0, 16.67); } catch (e) { threw = e; }
 ok(!threw && BSU.errors.size === errorsBefore, 'frame on an ungenerated state: no throw, no BSU.error' + (threw ? ': ' + threw.stack : ''));
 
 // --- new game, frames, chunks ---------------------------------------------------
-BSU.session.newGame({ seed: 42, skipTutorial: true });
+BSU.session.newGame({ seed: 42, skipTutorial: true, size: 64 });
 const s = BSU.state;
 ok(R.camera === s.ui.camera, 'camera is the live state.ui.camera reference after newGame');
 ok(R.camera.hasTarget === false && R.camera.follow === -1 && Number.isFinite(R.camera.x) && Number.isFinite(R.camera.y) && R.camera.zoom === 1, 'camera reset on newGame (finite, zoom 1, no target)');

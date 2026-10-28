@@ -24,7 +24,11 @@
   const P = BSU.params.agents;
   const PH = BSU.params.heat;
   const PS = BSU.params.storm;
-  const W = BSU.MAP.W, H = BSU.MAP.H, N = BSU.MAP.N;
+  let W = 64, H = 64, N = 4096;
+  // A* scratch (4-connected, Manhattan heuristic, binary heap, generation counters) — sized to the live map
+  let gScore, fScore, parent, seenGen, closedGen, heap;
+  let heapN = 0, gen = 0;
+  BSU.onMap(function (m) { W = m.W; H = m.H; N = m.N; gScore = new Float32Array(N); fScore = new Float32Array(N); parent = new Int32Array(N); seenGen = new Uint32Array(N); closedGen = new Uint32Array(N); heap = new Int32Array(N + 1); heapN = 0; gen = 0; });   // L1: the live map size (refreshed inside BSU.setMap, before any allocation)
   const T = BSU.T, SKY = BSU.SKY, FLAG = BSU.FLAG, EV = BSU.EV, STORM = BSU.STORM;
 
   // Constants the GDD states in prose but BSU.params does not carry (noted in
@@ -267,13 +271,6 @@
   // ---------------------------------------------------------------------------
   // A* (4-connected, Manhattan heuristic, binary heap, generation counters)
   // ---------------------------------------------------------------------------
-  const gScore = new Float32Array(N);
-  const fScore = new Float32Array(N);
-  const parent = new Int32Array(N);
-  const seenGen = new Uint32Array(N);
-  const closedGen = new Uint32Array(N);
-  const heap = new Int32Array(N + 1);
-  let heapN = 0, gen = 0;
   function heapPush(i) {
     let k = ++heapN; heap[k] = i;
     while (k > 1) { const p = k >> 1; if (fScore[heap[p]] <= fScore[heap[k]]) break; const t = heap[p]; heap[p] = heap[k]; heap[k] = t; k = p; }
@@ -320,8 +317,8 @@
     if (!stepCost(state, to, grid, gator)) return null;
     gen = (gen + 1) >>> 0; if (gen === 0) { seenGen.fill(0); closedGen.fill(0); gen = 1; }
     heapN = 0;
-    const tx1 = to & 63, ty1 = to >> 6;
-    gScore[from] = 0; fScore[from] = Math.abs((from & 63) - tx1) + Math.abs((from >> 6) - ty1); parent[from] = -1; seenGen[from] = gen;
+    const tx1 = (to % W), ty1 = ((to / W) | 0);
+    gScore[from] = 0; fScore[from] = Math.abs(((from % W)) - tx1) + Math.abs((((from / W) | 0)) - ty1); parent[from] = -1; seenGen[from] = gen;
     heapPush(from);
     let expansions = 0;
     while (heapN > 0) {
@@ -335,7 +332,7 @@
         return out;
       }
       if (++expansions > N) break;
-      const cx = cur & 63, cy = cur >> 6, g0 = gScore[cur];
+      const cx = (cur % W), cy = ((cur / W) | 0), g0 = gScore[cur];
       for (let d = 0; d < 4; d++) {
         let nx = cx, ny = cy;
         if (d === 0) ny--; else if (d === 1) nx++; else if (d === 2) ny++; else nx--;
@@ -356,7 +353,7 @@
   function routeKey(from, to, grid) { return from + ':' + to + ':' + grid; }
   function storeRoute(key, route) {
     let x0 = 63, y0 = 63, x1 = 0, y1 = 0;
-    for (let k = 0; k < route.length; k++) { const t = route[k], tx = t & 63, ty = t >> 6; if (tx < x0) x0 = tx; if (tx > x1) x1 = tx; if (ty < y0) y0 = ty; if (ty > y1) y1 = ty; }
+    for (let k = 0; k < route.length; k++) { const t = route[k], tx = (t % W), ty = ((t / W) | 0); if (tx < x0) x0 = tx; if (tx > x1) x1 = tx; if (ty < y0) y0 = ty; if (ty > y1) y1 = ty; }
     if (X.routeCache.size >= C.routeCacheCap) { const oldest = X.routeCache.keys().next().value; X.routeCache.delete(oldest); }
     X.routeCache.set(key, { route: route, x0: x0, y0: y0, x1: x1, y1: y1 });
   }
@@ -433,7 +430,7 @@
       X.doorCache.clear();
       X.missCache.clear();
       if (++X.invalidations > C.invalidateBurst) { X.routeCache.clear(); return; }
-      const tx = i & 63, ty = i >> 6;
+      const tx = (i % W), ty = ((i / W) | 0);
       const dead = [];
       X.routeCache.forEach(function (e, key) { if (tx >= e.x0 && tx <= e.x1 && ty >= e.y0 && ty <= e.y1) dead.push(key); });
       for (let k = 0; k < dead.length; k++) X.routeCache.delete(dead[k]);
@@ -500,7 +497,7 @@
   /** nearest complete academic building with seats and effective > 0 (Chebyshev from the home tile), −1 if none */
   function classFor(state, homeId) {
     refreshBuildingCaches(state);
-    const from = anchorTile(state, homeId), tx = from & 63, ty = from >> 6;
+    const from = anchorTile(state, homeId), tx = (from % W), ty = ((from / W) | 0);
     let best = -1, bd = 1e9;
     const cs = X.homes.classes;
     for (let k = 0; k < cs.length; k++) {
@@ -571,7 +568,7 @@
     const home = homeFor(state, id);
     const cls = classFor(state, home);
     const tile = walkableSpawn(state, isInt(atTile) ? atTile : anchorTile(state, home));
-    const tx = (tile & 63) + 0.5, ty = (tile >> 6) + 0.5;
+    const tx = ((tile % W)) + 0.5, ty = (((tile / W) | 0)) + 0.5;
     return {
       id: id, tx: tx, ty: ty, px: tx, py: ty, dir: 1, anim: 'idle', frame: 0,
       state: 'IDLE', goal: 'idle', target: -1, route: [], routeIdx: 0, waitTicks: 0,
@@ -640,7 +637,7 @@
       if (desired && a.state === 'GONE') {
         rehome(state, a);
         const t = walkableSpawn(state, anchorTile(state, a.home));
-        a.tx = (t & 63) + 0.5; a.ty = (t >> 6) + 0.5; a.px = a.tx; a.py = a.ty; a.lastTile = t;
+        a.tx = ((t % W)) + 0.5; a.ty = (((t / W) | 0)) + 0.5; a.px = a.tx; a.py = a.ty; a.lastTile = t;
         a.state = 'IDLE'; a.goal = 'idle'; a.target = -1; a.route = []; a.routeIdx = 0; a.inside = a.home >= 0; a.prop = 'none'; a.evacUntil = -1;
       } else if (!desired && a.state !== 'GONE') {
         a.state = 'GONE'; a.route = []; a.routeIdx = 0; a.inside = false;
@@ -780,7 +777,7 @@
       if (!choices.length) {
         const B = dep('buildings');
         const au = (B && typeof B.auras === 'function') ? B.auras(state) : null;
-        if (au && au.shade) { const home = anchorTile(state, a.home); const hx = home & 63, hy = home >> 6; for (let dy = -6; dy <= 6; dy++) for (let dx = -6; dx <= 6; dx++) { const x = hx + dx, y = hy + dy; if (!BSU.inBounds(x, y)) continue; const i = BSU.idx(x, y); if (au.shade[i] > 0 && state.tiles.walk[i] > 0) choices.push(i); } }
+        if (au && au.shade) { const home = anchorTile(state, a.home); const hx = (home % W), hy = ((home / W) | 0); for (let dy = -6; dy <= 6; dy++) for (let dx = -6; dx <= 6; dx++) { const x = hx + dx, y = hy + dy; if (!BSU.inBounds(x, y)) continue; const i = BSU.idx(x, y); if (au.shade[i] > 0 && state.tiles.walk[i] > 0) choices.push(i); } }
       }
     }
     if (!choices.length) {
@@ -1037,7 +1034,7 @@
    */
   function claimSpot(state, a, ti) {
     const pitch = PM.spotPitch, inv = 1 / pitch, occW = X.occW, occH = Math.ceil(H / pitch);
-    const cx = (ti & 63) + 0.5, cy = (ti >> 6) + 0.5, c0x = Math.floor(cx * inv), c0y = Math.floor(cy * inv);
+    const cx = ((ti % W)) + 0.5, cy = (((ti / W) | 0)) + 0.5, c0x = Math.floor(cx * inv), c0y = Math.floor(cy * inv);
     const fromX = fin(a.tx, cx), fromY = fin(a.ty, cy);
     for (let k = 0; k <= PM.spotRings; k++) {
       const ring = SPOT_RINGS[k], n = ring.length >> 1, s0 = (Math.imul(a.id + 1 + k * 977, 0x9E3779B1) >>> 12) % n;
@@ -1111,14 +1108,14 @@
     const n = a.route.length - a.routeIdx;
     if (n > 3 || n <= 0) return 9;
     let x = a.tx, y = a.ty, r = 0;
-    for (let k = a.routeIdx; k < a.route.length; k++) { const nx = (a.route[k] & 63) + 0.5, ny = (a.route[k] >> 6) + 0.5; const ex = nx - x, ey = ny - y; r += Math.sqrt(ex * ex + ey * ey); x = nx; y = ny; }
+    for (let k = a.routeIdx; k < a.route.length; k++) { const nx = ((a.route[k] % W)) + 0.5, ny = (((a.route[k] / W) | 0)) + 0.5; const ex = nx - x, ey = ny - y; r += Math.sqrt(ex * ex + ey * ey); x = nx; y = ny; }
     return r;
   }
   function standsOutdoors(a) { return a.goal === 'idle' || a.goal === 'parade' || a.goal === 'graduation' || a.goal === 'tile' || (a.goal === 'event' && a.next === 'inside') || a.goal === 'poboy'; }
   /** local avoidance: is a slower agent straight ahead (own tile or the next one along the heading), within yieldDist and the agent's width? lateral offsets count */
   function blockedAhead(state, a) {
     const A = state.agents, d = a.dir & 3, hx = DIRV[d][0], hy = DIRV[d][1], surf = state.tiles.surface;
-    const ti = agentTile(a), tx0 = ti & 63, ty0 = ti >> 6;
+    const ti = agentTile(a), tx0 = (ti % W), ty0 = ((ti / W) | 0);
     const la = a.lat * M.latScale(surf[ti]), ax = a.tx - hy * la, ay = a.ty + hx * la;
     for (let s = 0; s < 2; s++) {
       const x = tx0 + s * hx, y = ty0 + s * hy;
@@ -1138,7 +1135,7 @@
   }
   /** estimated ticks of walking from the agent to a door tile (mixed path / grass pace plus a detour allowance) */
   function walkNeed(state, a, door) {
-    const manh = Math.abs((door & 63) + 0.5 - a.tx) + Math.abs((door >> 6) + 0.5 - a.ty);
+    const manh = Math.abs(((door % W)) + 0.5 - a.tx) + Math.abs((((door / W) | 0)) + 0.5 - a.ty);
     return manh * 1.35 / ((SPEED_BY_CLASS[1] + SPEED_BY_CLASS[2]) * 0.5);
   }
   /**
@@ -1157,7 +1154,7 @@
       let need = walkNeed(state, a, doorTile(state, cb)), pb = null;
       if (X.homes.poboys.length && BSU.rng.sim.chance(P.poboyShare)) {
         pb = nearestOf(state, X.homes.poboys, Math.floor(a.tx), Math.floor(a.ty), true);
-        if (pb) { const pd = doorTile(state, pb); need = walkNeed(state, a, pd) + (Math.abs((pd & 63) - (doorTile(state, cb) & 63)) + Math.abs((pd >> 6) - (doorTile(state, cb) >> 6))) * 1.35 / ((SPEED_BY_CLASS[1] + SPEED_BY_CLASS[2]) * 0.5); }
+        if (pb) { const pd = doorTile(state, pb); need = walkNeed(state, a, pd) + (Math.abs(((pd % W)) - (doorTile(state, cb) % W)) + Math.abs((((pd / W) | 0)) - ((doorTile(state, cb) / W) | 0))) * 1.35 / ((SPEED_BY_CLASS[1] + SPEED_BY_CLASS[2]) * 0.5); }
       }
       a.leavePb = pb ? pb.id : -1;
       a.leaveAt = Math.max(1, Math.min(PM.leadMax, Math.round(hashFrac(a.id, 0x4f31) * PM.departSpread + Math.max(0, need - PM.leadAllow))));
@@ -1227,11 +1224,11 @@
     while (dist > 0 && a.routeIdx < route.length && guardN++ < 16) {
       const node = route[a.routeIdx];
       if (!validTile(node) || state.tiles.walk[node] === 0) { a.route = []; a.routeIdx = 0; return false; }   // re-plan next tick
-      let nx = (node & 63) + 0.5, ny = (node >> 6) + 0.5;
+      let nx = ((node % W)) + 0.5, ny = (((node / W) | 0)) + 0.5;
       if (a.routeIdx === route.length - 1 && !standsOutdoors(a) && a.state !== 'FLEE' && a.state !== 'BUS') {
         // the last step into a door: aim to the agent's own side of it (its lateral offset), so a crowd arriving together enters side by side, not through one point
         let sx = 0, sy = 0;
-        if (a.routeIdx > 0) { const pn = route[a.routeIdx - 1]; sx = Math.sign(nx - ((pn & 63) + 0.5)); sy = Math.sign(ny - ((pn >> 6) + 0.5)); }
+        if (a.routeIdx > 0) { const pn = route[a.routeIdx - 1]; sx = Math.sign(nx - (((pn % W)) + 0.5)); sy = Math.sign(ny - ((((pn / W) | 0)) + 0.5)); }
         if (sx === 0 && sy === 0) { sx = DIRV[a.dir & 3][0]; sy = DIRV[a.dir & 3][1]; }
         nx -= sy * a.lat; ny += sx * a.lat;
       }
@@ -1247,7 +1244,7 @@
         if (here !== a.lastTile) enterTile(state, a, here);
       }
     }
-    if (!Number.isFinite(a.tx) || !Number.isFinite(a.ty)) { a.tx = (a.lastTile & 63) + 0.5; a.ty = (a.lastTile >> 6) + 0.5; }
+    if (!Number.isFinite(a.tx) || !Number.isFinite(a.ty)) { a.tx = ((a.lastTile % W)) + 0.5; a.ty = (((a.lastTile / W) | 0)) + 0.5; }
     a.tx = BSU.clamp(a.tx, 0.5, W - 0.5); a.ty = BSU.clamp(a.ty, 0.5, H - 0.5);
     return a.routeIdx >= route.length;
   }
@@ -1381,7 +1378,7 @@
         if (a.linger) {   // the dwell outside is up: stand up, walk back to the door, go in for the usual short while
           a.linger = false; a.sitPlan = false; if (a.state === 'SIT') a.state = 'IDLE';
           const door = goalTile(state, a);
-          if (door >= 0) { a.spotX = (door & 63) + 0.5; a.spotY = (door >> 6) + 0.5; a.approach = true; a.enter = true; }
+          if (door >= 0) { a.spotX = ((door % W)) + 0.5; a.spotY = (((door / W) | 0)) + 0.5; a.approach = true; a.enter = true; }
           else { a.inside = true; a.waitTicks = 20 + (a.id % 10); }
         } else if (a.next && a.state !== 'FLEE') nextLeg(state, a, ctx);
         else if (a.goal !== 'idle' && a.target >= 0 && a.state === 'WALK') { /* retry the route */ }
@@ -1485,7 +1482,7 @@
         if (!present(a)) continue;
         const tx = Math.floor(a.tx), ty = Math.floor(a.ty);
         let best = -1, bd = 1e9;
-        for (let q = 0; q < roads.length; q++) { const d = cheb(tx, ty, roads[q] & 63, roads[q] >> 6); if (d < bd) { bd = d; best = roads[q]; } }
+        for (let q = 0; q < roads.length; q++) { const d = cheb(tx, ty, (roads[q] % W), ((roads[q] / W) | 0)); if (d < bd) { bd = d; best = roads[q]; } }
         if (a.state === 'FLEE') endFlee(state, a);
         a.state = 'BUS'; a.goal = 'tile'; a.target = best >= 0 ? best : agentTile(a); a.route = []; a.routeIdx = 0; a.inside = false; a.waitTicks = 0; a.next = null; clearStand(a);
         a.evacUntil = fin(state.tick, 0) + C.evacuateTicks + (a.id % 20);
@@ -1513,7 +1510,7 @@
   // ---------------------------------------------------------------------------
   function makeVehicle(kind, route, speed, extra) {
     const t0 = route.length ? route[0] : 0;
-    const v = { kind: kind, tx: (t0 & 63) + 0.5, ty: (t0 >> 6) + 0.5, px: 0, py: 0, route: route, routeIdx: 0, state: 'GO', payload: 0, ttl: 0, dir: 1, frame: 0, tag: '' };
+    const v = { kind: kind, tx: ((t0 % W)) + 0.5, ty: (((t0 / W) | 0)) + 0.5, px: 0, py: 0, route: route, routeIdx: 0, state: 'GO', payload: 0, ttl: 0, dir: 1, frame: 0, tag: '' };
     v.px = v.tx; v.py = v.ty;
     v.speed = speed;
     if (extra) for (const k in extra) v[k] = extra[k];
@@ -1540,9 +1537,9 @@
   function roadEntry(state) {
     const hw = Array.isArray(state.plot.highway) ? state.plot.highway.filter(validTile) : [];
     const start = hw.length ? hw[0] : -1;
-    const f = foundersFront(state), fx = f & 63, fy = f >> 6;
+    const f = foundersFront(state), fx = (f % W), fy = ((f / W) | 0);
     let best = -1, bd = 1e9;
-    for (let i = 0; i < N; i++) if (state.tiles.surface[i] === BSU.SURF.ROAD) { const d = cheb(fx, fy, i & 63, i >> 6); if (d < bd) { bd = d; best = i; } }
+    for (let i = 0; i < N; i++) if (state.tiles.surface[i] === BSU.SURF.ROAD) { const d = cheb(fx, fy, (i % W), ((i / W) | 0)); if (d < bd) { bd = d; best = i; } }
     return { start: start, end: best >= 0 ? best : (hw.length ? hw[hw.length - 1] : -1) };
   }
   /** CREATES the arriving agents (parked inside the vehicles) and the vehicles that bring them */
@@ -1596,7 +1593,7 @@
     for (let z = 0; z < v.ids.length; z++) {
       const a = state.agents[v.ids[z]];
       if (!a) continue;
-      a.tx = (at & 63) + 0.5; a.ty = (at >> 6) + 0.5; a.px = a.tx; a.py = a.ty; a.lastTile = at;
+      a.tx = ((at % W)) + 0.5; a.ty = (((at / W) | 0)) + 0.5; a.px = a.tx; a.py = a.ty; a.lastTile = at;
       a.inside = false; a.aboard = false;
       if (claimSpot(state, a, at)) { a.tx = a.spotX; a.ty = a.spotY; a.px = a.tx; a.py = a.ty; a.lastTile = agentTile(a); a.spotX = -1; a.spotY = -1; }   // step ashore over the landing, not onto one tile
       a.waveUntil = fin(state.tick, 0) + C.waveTicks;
@@ -1632,13 +1629,13 @@
       ensure(state);
       const b = getBuilding(state, postId);
       if (!b) return;
-      const door = doorTile(state, b), dx0 = door & 63, dy0 = door >> 6;
+      const door = doorTile(state, b), dx0 = (door % W), dy0 = ((door / W) | 0);
       // BFS over path/road/boardwalk tiles within the radius
       const seen = new Uint8Array(N), order = [], q = [door]; seen[door] = 1;
       while (q.length) {
         const cur = q.shift(); order.push(cur);
         const nb = BSU.nbr4(cur);
-        for (let k = 0; k < nb.length; k++) { const n = nb[k]; if (seen[n]) continue; const s = state.tiles.surface[n]; if (s < 1 || s > 3) continue; if (cheb(dx0, dy0, n & 63, n >> 6) > C.foggerRadius) continue; seen[n] = 1; q.push(n); }
+        for (let k = 0; k < nb.length; k++) { const n = nb[k]; if (seen[n]) continue; const s = state.tiles.surface[n]; if (s < 1 || s > 3) continue; if (cheb(dx0, dy0, (n % W), ((n / W) | 0)) > C.foggerRadius) continue; seen[n] = 1; q.push(n); }
       }
       let route = order.length > 1 ? order : [door];
       // out and back so the truck returns to the station
@@ -1663,7 +1660,7 @@
         const b = getBuilding(state, ids[k]);
         if (!b) continue;
         let best = -1, bd = 1e9;
-        for (let i = 0; i < N; i++) if (stepCost(state, i, 'water')) { const d = nearestBuildingTile(b, i & 63, i >> 6); if (d < bd) { bd = d; best = i; } }
+        for (let i = 0; i < N; i++) if (stepCost(state, i, 'water')) { const d = nearestBuildingTile(b, (i % W), ((i / W) | 0)); if (d < bd) { bd = d; best = i; } }
         if (best >= 0) targets.push(best);
       }
       if (!targets.length) targets.push(validTile(state.plot.landing) ? state.plot.landing : start);
@@ -1683,7 +1680,7 @@
       ensure(state);
       n = BSU.clamp(Math.floor(fin(n, C.crewN)), 1, 12);
       const posts = listBuildings(state, 'wildlife_post').filter(isComplete);
-      const post = posts.length ? nearestOf(state, posts, target & 63, target >> 6, false) : null;
+      const post = posts.length ? nearestOf(state, posts, (target % W), ((target / W) | 0), false) : null;
       const from = post ? doorTile(state, post) : foundersFront(state);
       const to = walkableSpawn(state, target);
       const route = M.routeSync(state, from, to, 'walk') || [from];
@@ -1700,7 +1697,7 @@
     let g = 0;
     while (dist > 0 && v.routeIdx < route.length && g++ < 32) {
       const node = route[v.routeIdx];
-      const nx = (node & 63) + 0.5, ny = (node >> 6) + 0.5;
+      const nx = ((node % W)) + 0.5, ny = (((node / W) | 0)) + 0.5;
       const dx = nx - v.tx, dy = ny - v.ty, len = Math.abs(dx) + Math.abs(dy);
       if (len > 0.0001) v.dir = M.dirOf(dx, dy);
       if (len <= dist) { v.tx = nx; v.ty = ny; dist -= len; v.routeIdx++; }
@@ -2011,7 +2008,7 @@
         M.reset(s, true);
         const r = M.routeSync(s, BSU.idx(0, 0), BSU.idx(19, 19), 'walk');
         A(r && r.length === 39, 'open-grid A* length 39, got ' + (r && r.length));
-        let steps4 = true; for (let k = 1; k < r.length; k++) { const d = Math.abs((r[k] & 63) - (r[k - 1] & 63)) + Math.abs((r[k] >> 6) - (r[k - 1] >> 6)); if (d !== 1) steps4 = false; }
+        let steps4 = true; for (let k = 1; k < r.length; k++) { const d = Math.abs(((r[k] % W)) - ((r[k - 1] % W))) + Math.abs((((r[k] / W) | 0)) - (((r[k - 1] / W) | 0))); if (d !== 1) steps4 = false; }
         A(steps4, 'A* steps are 4-connected');
         for (let y = 0; y < 20; y++) if (y !== 5) s.tiles.walk[BSU.idx(10, y)] = 0;
         M.invalidateRoutes(s, BSU.idx(10, 0));
@@ -2023,7 +2020,7 @@
         for (let x = 0; x < 20; x++) s.tiles.walk[BSU.idx(x, 1)] = 1;
         M.reset(s, true);
         const r3 = M.routeSync(s, BSU.idx(0, 0), BSU.idx(19, 0), 'walk');
-        let onPath = 0; for (let k = 0; k < r3.length; k++) if ((r3[k] >> 6) === 1) onPath++;
+        let onPath = 0; for (let k = 0; k < r3.length; k++) if ((((r3[k] / W) | 0)) === 1) onPath++;
         A(onPath >= 17, 'the class-1 corridor is preferred (' + onPath + ' of ' + r3.length + ' on it)');
         A(M.route(s, -1, 5, 'walk') === null && M.route(s, 5, 99999, 'walk') === null && M.route(s, NaN, 5) === null, 'bad tiles → null');
       }
@@ -2086,7 +2083,7 @@
         s.tiles.walk[t1] = 2; s.tiles.walk[t2] = 2;
         life[t1] = 4; life[t2] = 8; s.tiles.mosq[t1] = 0.2; s.tiles.mosq[t2] = 0.4;
         s.agents.length = 2;
-        const place = function (a, t) { a.tx = (t & 63) + 0.5; a.ty = (t >> 6) + 0.5; a.px = a.tx; a.py = a.ty; a.lastTile = t; a.inside = false; a.state = 'IDLE'; a.goal = 'idle'; a.target = -1; a.route = []; };
+        const place = function (a, t) { a.tx = ((t % W)) + 0.5; a.ty = (((t / W) | 0)) + 0.5; a.px = a.tx; a.py = a.ty; a.lastTile = t; a.inside = false; a.state = 'IDLE'; a.goal = 'idle'; a.target = -1; a.route = []; };
         place(s.agents[0], t1); place(s.agents[1], t2);
         s.tick = 30;   // Day phase
         run(s, 100, false);
@@ -2104,7 +2101,7 @@
         s.agents.length = 10;
         for (let k = 0; k < 10; k++) { const a = s.agents[k]; a.cls = 1; a.home = 0; }
         // three agents stranded on an island
-        for (let k = 7; k < 10; k++) { const t = BSU.idx(3 + k, 50); const a = s.agents[k]; a.tx = (t & 63) + 0.5; a.ty = (t >> 6) + 0.5; a.lastTile = t; for (let y = 48; y <= 52; y++) for (let x = 5; x <= 15; x++) s.tiles.walk[BSU.idx(x, y)] = 0; s.tiles.walk[t] = 2; }
+        for (let k = 7; k < 10; k++) { const t = BSU.idx(3 + k, 50); const a = s.agents[k]; a.tx = ((t % W)) + 0.5; a.ty = (((t / W) | 0)) + 0.5; a.lastTile = t; for (let y = 48; y <= 52; y++) for (let x = 5; x <= 15; x++) s.tiles.walk[BSU.idx(x, y)] = 0; s.tiles.walk[t] = 2; }
         s.tick = 0;
         run(s, 180, false);   // Dawn → Day → Golden → Dusk (175)
         const ca = M.classAttendance(s);

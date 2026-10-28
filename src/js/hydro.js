@@ -57,7 +57,8 @@
   const PS = BSU.params.storm;
   const PW = BSU.params.weather;
   const T = BSU.T, F = BSU.FLAG, EV = BSU.EV;
-  const W = 64, N = 4096;
+  let W = 64, H = 64, N = 4096;
+  BSU.onMap(function (m) { W = m.W; H = m.H; N = m.N; });   // L1: the live map size (refreshed inside BSU.setMap, before any allocation)
   const UNREACH = 65535;
 
   // Constants the GDD names that params does not carry (noted in INTEGRATION_NOTES.md).
@@ -126,6 +127,8 @@
       bayouIndex: new Int16Array(N),
       tileNet: new Int16Array(N),
       tileDirty: new Uint8Array(N),
+      waterList: new Uint16Array(N), waterN: 0, waterListDirty: true,   // L1: the boundary (OPEN_WATER / BAYOU) tiles as a list, so the per-pass boundary reset is O(water), not O(N)
+      lossMulApplied: NaN, lossDirty: true,                          // L1: lossEff = lossTable × lossMul is recomputed only when either changes
       anyTileDirty: false,
       cypressDirty: true,
       networksDirty: true,
@@ -216,10 +219,10 @@
 
   function mark5(mask, i) {
     mask[i] = 1;
-    const tx = i & 63, ty = i >> 6;
+    const tx = (i % W), ty = ((i / W) | 0);
     if (ty > 0) mask[i - W] = 1;
     if (tx < W - 1) mask[i + 1] = 1;
-    if (ty < W - 1) mask[i + W] = 1;
+    if (ty < H - 1) mask[i + W] = 1;
     if (tx > 0) mask[i - 1] = 1;
   }
 
@@ -247,6 +250,7 @@
     const isWater = (fl & WATER_MASK) !== 0 || ty === T.OPEN_WATER || ty === T.BAYOU;
     ctx.water[i] = isWater ? ((fl & F.OPEN_WATER) || ty === T.OPEN_WATER ? 1 : 2) : 0;
     ctx.land[i] = isWater ? 0 : 1;
+    ctx.waterListDirty = true; ctx.lossDirty = true;
     const canal = (fl & F.CANAL) !== 0;
     const paved = tiles.owner[i] >= 0 || (tiles.surface[i] >= 1 && tiles.surface[i] <= 3);
     const levee = tiles.crest[i] > 0;
@@ -310,12 +314,12 @@
         const i = q[head++];
         net.tiles.push(i);
         if (flags[i] & F.FLOODGATE) net.gates.push(i);
-        const tx = i & 63, ty = i >> 6;
+        const tx = (i % W), ty = ((i / W) | 0);
         for (let d = 0; d < 4; d++) {
           let j;
           if (d === 0) { if (ty === 0) continue; j = i - W; }
           else if (d === 1) { if (tx === W - 1) continue; j = i + 1; }
-          else if (d === 2) { if (ty === W - 1) continue; j = i + W; }
+          else if (d === 2) { if (ty === H - 1) continue; j = i + W; }
           else { if (tx === 0) continue; j = i - 1; }
           if (ctx.water[j]) {
             net.drainsToWater = true;
@@ -328,10 +332,10 @@
       }
       // canalNear: Chebyshev 2 of every canal tile
       for (let k = 0; k < net.tiles.length; k++) {
-        const i = net.tiles[k], tx = i & 63, ty = i >> 6;
+        const i = net.tiles[k], tx = (i % W), ty = ((i / W) | 0);
         for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
           const x = tx + dx, y = ty + dy;
-          if (x >= 0 && y >= 0 && x < W && y < W) ctx.canalNear[y * W + x] = 1;
+          if (x >= 0 && y >= 0 && x < W && y < H) ctx.canalNear[y * W + x] = 1;
         }
       }
       nets.push(net);
@@ -389,7 +393,7 @@
     const h = state.hydro;
     if (ctx.water[i] === 1) {
       let st = h.riverStage;
-      if (h.spillwayOffset > 0 && (i >> 6) < PW.spillway.northRow) st = Math.max(0, st - h.spillwayOffset);
+      if (h.spillwayOffset > 0 && (((i / W) | 0)) < PW.spillway.northRow + BSU.MAP.oy) st = Math.max(0, st - h.spillwayOffset);   // L1: the legacy row, shifted
       return st;
     }
     if (isHeldUpstream(state, ctx, i)) return h.heldStage;
@@ -486,10 +490,10 @@
       fr[i] = 0; q[tail++] = i;
     }
     while (head < tail) {
-      const i = q[head++], d = fr[i] + 1, tx = i & 63, ty = i >> 6;
+      const i = q[head++], d = fr[i] + 1, tx = (i % W), ty = ((i / W) | 0);
       if (ty > 0 && fr[i - W] === UNREACH) { fr[i - W] = d; q[tail++] = i - W; }
       if (tx < W - 1 && fr[i + 1] === UNREACH) { fr[i + 1] = d; q[tail++] = i + 1; }
-      if (ty < W - 1 && fr[i + W] === UNREACH) { fr[i + W] = d; q[tail++] = i + W; }
+      if (ty < H - 1 && fr[i + W] === UNREACH) { fr[i + W] = d; q[tail++] = i + W; }
       if (tx > 0 && fr[i - 1] === UNREACH) { fr[i - 1] = d; q[tail++] = i - 1; }
     }
   }
@@ -533,7 +537,7 @@
     integ[i] = nv;
     if (nv === 0) {
       if (ctx.stormLog.breached.indexOf(i) < 0) ctx.stormLog.breached.push(i);
-      emit(EV.LEVEE_BREACH, { i: i, tx: i & 63, ty: i >> 6 });
+      emit(EV.LEVEE_BREACH, { i: i, tx: (i % W), ty: ((i / W) | 0) });
     }
     try { buildingsApi().onIntegrityChanged(state, i); } catch (e) { BSU.error('hydro', 'onIntegrityChanged', e); }
   }
@@ -557,7 +561,9 @@
     // ecology halves the marsh/preserve loss below 30 (§6.8)
     const eco = (state.wildlife && typeof state.wildlife.ecology === 'number') ? state.wildlife.ecology : 100;
     const lossMul = eco < BSU.params.wildlife.ecology.lowThreshold ? BSU.params.wildlife.ecology.lowHeadLossMult : 1;
-    { const lt = ctx.lossTable, le = ctx.lossEff; for (let i = 0; i < N; i++) le[i] = lt[i] * lossMul; }
+    if (ctx.lossDirty || lossMul !== ctx.lossMulApplied) { const lt = ctx.lossTable, le = ctx.lossEff; for (let i = 0; i < N; i++) le[i] = lt[i] * lossMul; ctx.lossMulApplied = lossMul; ctx.lossDirty = false; }
+    if (ctx.waterListDirty) { const wl = ctx.waterList, wt = ctx.water; let n = 0; for (let i = 0; i < N; i++) if (wt[i]) wl[n++] = i; ctx.waterN = n; ctx.waterListDirty = false; }
+    const waterList = ctx.waterList, waterN = ctx.waterN;
 
     const water = ctx.water, land = ctx.land;
     let before = 0;
@@ -587,7 +593,7 @@
       // apply the back buffer (givers and receivers alike), then the boundary reset
       const back = ctx.back;
       for (let i = 0; i < N; i++) { const b = back[i]; if (b !== 0) { let nd = D[i] + b; if (nd < 0) nd = 0; D[i] = nd; back[i] = 0; } }
-      for (let i = 0; i < N; i++) if (water[i]) { const st = liveStage(state, ctx, i, quiet); let nd = st - elev[i]; if (nd < 0) nd = 0; D[i] = nd; }
+      for (let w = 0; w < waterN; w++) { const i = waterList[w]; const st = liveStage(state, ctx, i, quiet); let nd = st - elev[i]; if (nd < 0) nd = 0; D[i] = nd; }
     }
 
     // ---- 5. pumps and pond sinks (§6.1.5, §6.1.3) ----
@@ -649,10 +655,10 @@
     if (r <= 0) return 0;
     const D = ctx.D, S = ctx.S, land = ctx.land, af = ctx.absorbFrac, fill = P.satFill;
     let net = 0;
-    let x0 = 0, y0 = 0, x1 = W - 1, y1 = W - 1;
+    let x0 = 0, y0 = 0, x1 = W - 1, y1 = H - 1;
     if (!rain.mapWide) {
       const rad = Math.max(0, fin(rain.radius, 0) | 0), cx = fin(rain.cx, 32) | 0, cy = fin(rain.cy, 32) | 0;
-      x0 = Math.max(0, cx - rad); x1 = Math.min(W - 1, cx + rad); y0 = Math.max(0, cy - rad); y1 = Math.min(W - 1, cy + rad);
+      x0 = Math.max(0, cx - rad); x1 = Math.min(W - 1, cx + rad); y0 = Math.max(0, cy - rad); y1 = Math.min(H - 1, cy + rad);
     }
     for (let y = y0; y <= y1; y++) {
       for (let x = x0; x <= x1; x++) {
@@ -679,13 +685,13 @@
       const di = D[i];
       if (di <= 0 || bl[i]) continue;
       const Hi = ct[i] + di;
-      const tx = i & 63, ty = i >> 6;
+      const tx = (i % W), ty = ((i / W) | 0);
       let sum = 0, cnt = 0;
       for (let d = 0; d < 4; d++) {
         let j;
         if (d === 0) { if (ty === 0) continue; j = i - W; }
         else if (d === 1) { if (tx === W - 1) continue; j = i + 1; }
-        else if (d === 2) { if (ty === W - 1) continue; j = i + W; }
+        else if (d === 2) { if (ty === H - 1) continue; j = i + W; }
         else { if (tx === 0) continue; j = i - 1; }
         if (bl[j]) continue;
         const L = le[j];
@@ -725,14 +731,14 @@
     const contactDmg = P.surgeContactDmgPerCat * cat;
     for (let i = 0; i < N; i++) {
       if (crest[i] === 0) continue;
-      const tx = i & 63, ty = i >> 6;
+      const tx = (i % W), ty = ((i / W) | 0);
       const head = oh[i];
       let over = ot[i] === 1, contact = false;
       for (let d = 0; d < 4; d++) {
         let j;
         if (d === 0) { if (ty === 0) continue; j = i - W; }
         else if (d === 1) { if (tx === W - 1) continue; j = i + 1; }
-        else if (d === 2) { if (ty === W - 1) continue; j = i + W; }
+        else if (d === 2) { if (ty === H - 1) continue; j = i + W; }
         else { if (tx === 0) continue; j = i - 1; }
         if (water[j]) {
           if (!over && ct[j] + D[j] >= head) over = true;
@@ -802,7 +808,7 @@
         // candidates: tiles with water within the radius, sorted deepest first
         const cx = b.tx | 0, cy = b.ty | 0;
         let m = 0;
-        for (let y = Math.max(0, cy - rad); y <= Math.min(W - 1, cy + rad); y++) for (let x = Math.max(0, cx - rad); x <= Math.min(W - 1, cx + rad); x++) {
+        for (let y = Math.max(0, cy - rad); y <= Math.min(H - 1, cy + rad); y++) for (let x = Math.max(0, cx - rad); x <= Math.min(W - 1, cx + rad); x++) {
           const i = y * W + x;
           if (land[i] && D[i] > 0 && m < near.length) { near[m] = i; taken[m] = D[i]; m++; }
         }
@@ -884,7 +890,7 @@
         let eff = 0; try { eff = B.effective(state, b.id); } catch (e) { eff = 0; }
         if (eff !== 1) continue;
         const r = P.pumpRadius | 0;
-        for (let y = Math.max(0, (b.ty | 0) - r); y <= Math.min(W - 1, (b.ty | 0) + (b.h | 0) - 1 + r); y++)
+        for (let y = Math.max(0, (b.ty | 0) - r); y <= Math.min(H - 1, (b.ty | 0) + (b.h | 0) - 1 + r); y++)
           for (let x = Math.max(0, (b.tx | 0) - r); x <= Math.min(W - 1, (b.tx | 0) + (b.w | 0) - 1 + r); x++) pn[y * W + x] = 1;
       }
     } catch (e) { /* no buildings */ }
@@ -1042,7 +1048,7 @@
           let d = 0 - tiles.elev[i]; if (d < 0) d = 0;
           tiles.depth[i] = d; tiles.sat[i] = 1;
         } else if (ty === T.MARSH && !(fl & F.DRAINED)) {
-          tiles.depth[i] = P.initial.marshDepthMin + P.initial.marshDepthNoise * marshNoise(seed, i & 63, i >> 6);
+          tiles.depth[i] = P.initial.marshDepthMin + P.initial.marshDepthNoise * marshNoise(seed, (i % W) - BSU.MAP.ox, ((i / W) | 0) - BSU.MAP.oy);   // L1: legacy-frame coordinates (a legacy tile's depth is the same in every world size; the new land continues the field)
           tiles.sat[i] = P.initial.marshSat;
         } else {
           tiles.depth[i] = 0; tiles.sat[i] = P.initial.landSat;
@@ -1132,7 +1138,7 @@
         }
       }
       const caps = state.hydro.pondCap || {};
-      const keys = Object.keys(caps), tx = i & 63, ty = i >> 6;
+      const keys = Object.keys(caps), tx = (i % W), ty = ((i / W) | 0);
       for (let k = 0; k < keys.length; k++) {
         let b = null; try { b = buildingsApi().get(state, keys[k] | 0); } catch (e) { b = null; }
         if (b && BSU.chebyshev(tx, ty, b.tx | 0, b.ty | 0) <= P.pond.radius) return 'Pond';
@@ -1151,8 +1157,8 @@
       const mask = new Uint8Array(N);
       for (let i = 0; i < N; i++) {
         if (ctx.water[i] !== 1 || lake[i]) continue;
-        const tx = i & 63, ty = i >> 6;
-        for (let y = Math.max(0, ty - radius); y <= Math.min(W - 1, ty + radius); y++) for (let x = Math.max(0, tx - radius); x <= Math.min(W - 1, tx + radius); x++) mask[y * W + x] = 1;
+        const tx = (i % W), ty = ((i / W) | 0);
+        for (let y = Math.max(0, ty - radius); y <= Math.min(H - 1, ty + radius); y++) for (let x = Math.max(0, tx - radius); x <= Math.min(W - 1, tx + radius); x++) mask[y * W + x] = 1;
       }
       const out = [];
       for (let i = 0; i < N; i++) if (mask[i] && ctx.land[i]) out.push(i);
@@ -1262,7 +1268,7 @@
       const steps = Math.max(1, fin(o.steps, P.rain.cellSteps) | 0);
       const inches = fin(o.inches, 2);
       const radius = fin(o.radius, P.rain.cellRadius) | 0;
-      ctx.forcedRain = { r: inches / P.inchesPerFoot / steps, cx: fin(o.cx, 32) | 0, cy: fin(o.cy, 32) | 0, radius: radius, mapWide: radius >= W, stepsLeft: steps };
+      ctx.forcedRain = { r: inches / P.inchesPerFoot / steps, cx: fin(o.cx, W >> 1) | 0, cy: fin(o.cy, H >> 1) | 0, radius: radius, mapWide: radius >= Math.max(W, H), stepsLeft: steps };
       ctx.active.fill(1); ctx.activeN = N; for (let i = 0; i < N; i++) ctx.activeList[i] = i;
     } catch (e) { BSU.error('hydro', 'forceRain', e); }
   };
@@ -1274,7 +1280,7 @@
       const D = state.tiles.depth, type = state.tiles.type;
       let n = 0;
       for (let i = 0; i < N; i++) {
-        if ((i >> 6) <= sp.southRow || !ctx.land[i]) continue;
+        if ((((i / W) | 0)) <= sp.southRow + BSU.MAP.oy || !ctx.land[i]) continue;   // L1: the legacy row, shifted by the map offset
         const ty = type[i];
         if (ty === T.MARSH || ty === T.WET) { D[i] += 1.0; mark5(ctx.active, i); n++; }
       }
@@ -1354,7 +1360,7 @@
       ctx.D = RD; ctx.S = RS; ctx.quiet = true;
       for (let i = 0; i < N; i++) ctx.activeList[i] = i; ctx.activeN = N;
       const steps = Math.max(1, P.riskSteps | 0);
-      const rain = { r: P.riskInches / P.inchesPerFoot / steps, cx: 32, cy: 32, radius: W, mapWide: true };
+      const rain = { r: P.riskInches / P.inchesPerFoot / steps, cx: W >> 1, cy: H >> 1, radius: Math.max(W, H), mapWide: true };
       try { for (let s = 0; s < steps; s++) step(state, P.dtDayNormal, rain, null); }
       finally {
         ctx.D = state.tiles.depth; ctx.S = state.tiles.sat; ctx.quiet = false; ctx.pondScratch = null;
@@ -1401,7 +1407,7 @@
       const s = BSU.newState(seed);
       const t = s.tiles;
       for (let i = 0; i < N; i++) { t.elev[i] = 4; t.type[i] = T.DRY; }
-      for (let y = 0; y < W; y++) for (let x = 10; x <= 11; x++) { const i = y * W + x; t.elev[i] = -1; t.flags[i] |= F.BAYOU; t.type[i] = T.BAYOU; }
+      for (let y = 0; y < H; y++) for (let x = 10; x <= 11; x++) { const i = y * W + x; t.elev[i] = -1; t.flags[i] |= F.BAYOU; t.type[i] = T.BAYOU; }
       // a gentle bowl (4.0 → 2.6 ft over 6 tiles, Wet below 3.5) around the 2.2 lip and the 1.6 floor
       for (let y = 24; y <= 38; y++) for (let x = 24; x <= 38; x++) { const d = BSU.chebyshev(x, y, 31, 31); if (d <= 7) { const i = y * W + x; t.elev[i] = Math.min(4, 2.6 + (d - 2) * 0.28); t.type[i] = t.elev[i] < 3.5 ? T.WET : T.DRY; } }
       for (let y = 29; y <= 33; y++) for (let x = 29; x <= 33; x++) { const i = y * W + x; t.elev[i] = 2.2; t.type[i] = T.WET; }
@@ -1620,7 +1626,7 @@
       {
         const s = synth(9);
         s.weather.dtDay = P.dtDayLandfall;
-        const entry = []; for (let x = 28; x <= 35; x++) entry.push(63 * W + x);
+        const entry = []; for (let x = 28; x <= 35; x++) entry.push((H - 1) * W + x);
         rec.length = 0;
         M.surgeControl(s, 'begin', { stage: 0, target: 5, entry: entry, dir: 'S' });
         for (let t = 1; t <= 200; t++) { s.tick++; M.tick(s, { newDay: false }); M.surgeControl(s, 'stage', 5 * t / 200); }
@@ -1629,11 +1635,11 @@
         A(r >= 38 && r <= 40, 'reached ≈ ticks/5 (' + r + ')');
         A(count(EV.SURGE_FRONT) > 100, 'surge:front per activated tile (' + count(EV.SURGE_FRONT) + ')');
         A(Object.keys(s.hydro.surge).sort().join() === 'dir,entry,reached,stage,t0,target', 'surge keys exactly {stage,target,entry,dir,reached,t0}');
-        const bt = 63 * W + 10;   // bayou tile 18 steps from the entry
+        const bt = (H - 1) * W + 10;   // bayou tile 18 steps from the entry
         A(M.surgeReached(s, bt) && Math.abs(s.tiles.depth[bt] - 6) < 1e-5, 'reached bayou tile at depth 5 − (−1)');
         const far = 0 * W + 10;
         A(!M.surgeReached(s, far) && Math.abs(s.tiles.depth[far] - 1) < 1e-5, 'unreached bayou tile still at stage 0');
-        A(s.tiles.depth[63 * W + 12] > 0.5, 'land beside the reached bayou floods through the CA (entry tiles are land: never sources) (' + s.tiles.depth[63 * W + 12].toFixed(2) + ')');
+        A(s.tiles.depth[(H - 1) * W + 12] > 0.5, 'land beside the reached bayou floods through the CA (entry tiles are land: never sources) (' + s.tiles.depth[(H - 1) * W + 12].toFixed(2) + ')');
         const clone = BSU.deepClone(s);
         M.reset(clone, false);
         const cloneFront = new Uint16Array(N);

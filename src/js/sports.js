@@ -264,7 +264,7 @@
   }
   function venueTile(state) {
     const v = venueInfo(state);
-    return v.building ? BSU.idx(clamp(v.building.tx + v.building.w - 1, 0, 63), clamp(v.building.ty + v.building.h - 1, 0, 63)) : NONE;
+    return v.building ? BSU.idx(clamp(v.building.tx + v.building.w - 1, 0, BSU.MAP.W - 1), clamp(v.building.ty + v.building.h - 1, 0, BSU.MAP.H - 1)) : NONE;
   }
   /** Recompute hasTeam / venue / clubOnly; the first-team coach + starters; venue transitions mid-season. */
   function refreshTeam(state) {

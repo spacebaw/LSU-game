@@ -28,7 +28,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - values: 0:string, 1:string, 2:string, 3:string, 4:string, 5:string, 6:string, 7:string, 8:string, 9:string, 10:string, 11:string, 12:string, 13:string, 14:string
 
 ## BSU.MAP
-- values: W:number, H:number, N:number, TILE_W:number, TILE_H:number, PX_PER_FT:number, CHUNK:number, CHUNK_W:number, CHUNK_H:number
+- values: W:number, H:number, N:number, ox:number, oy:number, size:number, CX:number, CY:number, NCH:number, legacy:object, LEGACY_W:number, LEGACY_H:number, TILE_W:number, TILE_H:number, PX_PER_FT:number, CHUNK:number, CHUNK_W:number, CHUNK_H:number
 
 ## BSU.MILESTONES
 - values: 0:string, 1:string, 2:string, 3:string, 4:string, 5:string, 6:string, 7:string, 8:string, 9:string, 10:string, 11:string, 12:string, 13:string, 14:string, 15:string, 16:string, 17:string, 18:string, 19:string, 20:string, 21:string, 22:string, 23:string, 24:string, 25:string
@@ -444,6 +444,8 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 
 - BSU.inBounds(tx, ty)
 
+- BSU.inLegacy(tx, ty)
+
 ## BSU.issues
 - values: refreshTicks:number
 - issues.list(state)
@@ -502,6 +504,8 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 
 - BSU.manhattan(ax, ay, bx, by)
 
+- BSU.mapSpec(o)
+
 - BSU.monthName(m)
 
 - BSU.nbr4(i)
@@ -509,6 +513,10 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - BSU.nbr8(i)
 
 - BSU.newState(seed)
+
+- BSU.offMap(fn)
+
+- BSU.onMap(fn)
 
 ## BSU.progress
 - values: _deps:object, TIMER_IDS:array[51], TIE_LINE:string
@@ -673,6 +681,8 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - session.skipToDate(s, dateStr, yearOffset)
 - session.boot()
 - session.selfTest()
+
+- BSU.setMap(spec)
 
 - BSU.smoothstep(t)
 
@@ -889,7 +899,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - sprites.entitiesSelfTest()
 
 ## BSU.state
-- values: v:number, seed:number, tick:number, playSeconds:number, setPiece:object, saveMeta:object, calendar:object, sky:object, weather:object, storms:object, tiles:object, plot:object, veg:array[0], buildings:array[0], runNames:object, hydro:object, agents:array[0], vehicles:array[0], gators:array[0], wildlife:object, economy:object, ledger:object, sports:object, progress:object, ticker:array[0], ui:object, rng:object
+- values: v:number, seed:number, tick:number, playSeconds:number, setPiece:object, saveMeta:object, world:object, calendar:object, sky:object, weather:object, storms:object, tiles:object, plot:object, veg:array[0], buildings:array[0], runNames:object, hydro:object, agents:array[0], vehicles:array[0], gators:array[0], wildlife:object, economy:object, ledger:object, sports:object, progress:object, ticker:array[0], ui:object, rng:object
 
 - BSU.strHash(str)
 
@@ -926,6 +936,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - terrain.template()
 - terrain._attempt(state, R, tpl)
 - terrain.gen(state, seed)
+- terrain._legacyIdx(i)
 - terrain.guarantees(state)
 - terrain.selfTest()
 
@@ -1084,6 +1095,8 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - wildlife.roux()
 - wildlife.selfTest()
 
+- BSU.withLegacyMap(fn)
+
 - BSU.worldToScreen(tx, ty, elev, cam, vw, vh)
 
 ## BSU.params groups (19): time[30], terrain[59], hydro[47], storm[116], wildlife[4], subsidence[17], heat[21], weather[18], econ[64], sports[81], agents[30], build[36], issues[8], render[59], ui[18], art[1], audio[6], palette[34], progress[16]
@@ -1095,6 +1108,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - playSeconds:number
 - setPiece:null
 - saveMeta:{slot:string, savedAt:number, label:string}
+- world:{W:number, H:number, ox:number, oy:number, legacy:object}
 - calendar:{day:number, dayTick:number, running:boolean, frozen:boolean, year:number, month:number, dom:number, season:string, semester:string}
 - sky:{phase:number, phaseTick:number, cycleTick:number, scripted:boolean, t:number}
 - weather:{rainDays:array[0], event:null, cellQueue:array[0], heat:number, heatWaveDays:number, wind:number, windAngle:number, fog:number, rainRate:number, riverStage:number, spillwayUsedYear:number, clearNightDay:number, dtDay:number}
@@ -1176,7 +1190,7 @@ distribution), GDD §6.5 (subsidence), GDD §7 Pathfinding (the walk table),
 GDD §3.2 (surface runs: streetlamps, parade route; flags bit9/bit10/bit11;
 wear), GDD §6.2 Recovery (debris clearing); ARCHITECTURE §5.1 step 2, §5.2.
 Conventions:
- - i = ty * 64 + tx; chunk = ((ty >> 3) << 3) + (tx >> 3).
+ - i = ty * W + tx; chunk = (ty >> 3) * (W >> 3) + (tx >> 3) (W = BSU.MAP.W, per game since L1).
  - `walk` stays 0–4. DEBRIS (flag bit10) is NOT folded into the class: agents
    read the flag and double the step cost (params.agents.debrisCostMult).
  - Every emit goes through M._deps.emit (default BSU.events.emit) so selfTest

@@ -41,7 +41,7 @@ ok(!!U && typeof U.registerPanel === 'function', 'BSU.ui loaded');
 for (const id of ['newsflash', 'wetfeet', 'failure', 'damage', 'hire', 'raiseoffer', 'poached', 'recruitboard'])
   ok(typeof U.cards[id] === 'function', 'card registered: ' + id);
 
-BSU.session.newGame({ seed: 2024, skipTutorial: true });
+BSU.session.newGame({ seed: 2024, skipTutorial: true, size: 64 });
 const s = BSU.state;
 BSU.headless.tick(20); BSU.headless.render();
 const errorsAtStart = BSU.errors ? BSU.errors.size : 0;
@@ -98,7 +98,7 @@ const byId = (root, id) => findAll(root, (e) => e.id === id)[0] || null;
 const click = (e) => { e.dispatchEvent({ type: 'click' }); };
 const textOf = (e) => { let t = String(e.textContent || ''); for (const c of (e.children || [])) t += ' ' + textOf(c); return t; };
 
-BSU.session.newGame({ seed: 42, skipTutorial: true });
+BSU.session.newGame({ seed: 42, skipTutorial: true, size: 64 });
 const s2 = BSU.state;
 BSU.economy.post(s2, 'misc', 9e6); BSU.economy.addStudents(s2, 700, 'test');
 {
@@ -234,7 +234,7 @@ ok(st && st.ok, 'ui.selfTest ok (includes ui_panels pushed tests) ' + (st && st.
   const tick = (cb, v) => { cb.checked = v; cb.dispatchEvent({ type: 'change' }); };
   const refreshN = (st, n) => { for (let i = 0; i < n; i++) U.update(st, 600); };
   const H = BSU.headless, B = BSU.buildings, W = BSU.weather;
-  BSU.session.newGame({ seed: 42, skipTutorial: true });
+  BSU.session.newGame({ seed: 42, skipTutorial: true, size: 64 });
   const sp = BSU.state; sp.economy.cash = 30000000;
   const put = (id) => { const f = H.findSpot(id); return f ? H.place(id, f.x, f.y) : { ok: false }; };
   for (const id of ['water_tower', 'substation', 'dorm', 'dorm', 'dining_hall', 'pump']) put(id);
@@ -353,7 +353,7 @@ ok(st && st.ok, 'ui.selfTest ok (includes ui_panels pushed tests) ' + (st && st.
   const H = BSU.headless, B = BSU.buildings;
   const TABS = ['overview', 'staff', 'roster', 'recruiting', 'schedule', 'records'];
   // fresh game, no team: every tab builds and refreshes
-  BSU.session.newGame({ seed: 42, skipTutorial: true });
+  BSU.session.newGame({ seed: 42, skipTutorial: true, size: 64 });
   const s0 = BSU.state; const errs0 = BSU.errors ? BSU.errors.size : 0;
   U.openPanel('season'); U.update(s0, 600);
   const host = U.el['panel-season'];
@@ -471,7 +471,7 @@ ok(st && st.ok, 'ui.selfTest ok (includes ui_panels pushed tests) ' + (st && st.
   const visible = (e) => !!e && !e.classList.contains('hidden');
   const money = (n) => BSU.formatMoney(n);
   const H = BSU.headless, B = BSU.buildings, SP = BSU.sports;
-  BSU.session.newGame({ seed: 42, skipTutorial: true });
+  BSU.session.newGame({ seed: 42, skipTutorial: true, size: 64 });
   const s = BSU.state; const errs0 = BSU.errors ? BSU.errors.size : 0;
   BSU.economy.post(s, 'misc', 9e6); BSU.economy.addStudents(s, 700, 'test');
   const scan = (id) => { for (let y = 2; y < 60; y++) for (let x = 2; x < 60; x++) { const c = B.canPlace(s, id, x, y, { ignoreCash: true }); if (c && c.ok) return [x, y]; } return null; };

@@ -1609,7 +1609,7 @@
     for (const id of ['newsflash', 'wetfeet', 'failure', 'damage', 'hire', 'raiseoffer', 'poached', 'obj8', 'board', 'recap', 'charter', 'versionMismatch']) {
       A(typeof UI.cards[id] === 'function', 'card registered: ' + id);
     }
-    const synGaps = { gaps: [{ name: 'cove mouth', len: 4, tiles: [], cx: 0, cy: 0 }], weak: [{ i: 19 * 64 + 44, integrity: 60 }, { i: 10 * 64 + 10, integrity: 65 }], gates: [{ i: 33 * 64 + 41, jammed: false }] };
+    const synGaps = { gaps: [{ name: 'cove mouth', len: 4, tiles: [], cx: 0, cy: 0 }], weak: [{ i: BSU.idx(44, 19), integrity: 60 }, { i: BSU.idx(10, 10), integrity: 65 }], gates: [{ i: BSU.idx(41, 33), jammed: false }] };
     A(formatRingLine(5, synGaps) === 'Ring at 5 ft: 1 gap (cove mouth, 4 tiles) · 2 weak tiles (44, 19) · crossing (41, 33) closes', 'ring line formatter');
     const synBuildings = [{ type: 'dorm', wr: 3, cost: 700000 }, { type: 'water_tower', wr: 2, cost: 220000 }, { type: 'substation', wr: 2, cost: 250000 }, { type: 'poboy', wr: 1, cost: 60000 }, { type: 'dining_hall', wr: 3, cost: 500000 }];
     const ordered = synBuildings.slice().sort(windOrderCompare);

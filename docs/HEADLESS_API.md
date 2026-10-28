@@ -7,7 +7,7 @@ render loop or the sim in a way that requires real timers; `session.js` starts t
 a browser (`typeof requestAnimationFrame === 'function'` AND not `BSU.headlessMode`).
 
 ```js
-BSU.session.newGame({ seed, skipTutorial })  // → state; also sets BSU.state
+BSU.session.newGame({ seed, skipTutorial, size })  // → state; also sets BSU.state. L1: size 96 (default) or 64 (the legacy 64 × 64 world); BSU.MAP is set BEFORE allocation and state.world records {W, H, ox, oy, legacy}
 BSU.session.save(slot)                       // → JSON string (also written to localStorage under try/catch)
 BSU.session.load(slot)                       // → state (from localStorage or the in-memory slot map)
 

@@ -18,7 +18,10 @@
 (function () {
   const BSU = window.BSU;
   if (!BSU) return;
-  const MAP = BSU.MAP, W = MAP.W, H = MAP.H, N = MAP.N, SURF = BSU.SURF, EV = BSU.EV;
+  const SURF = BSU.SURF, EV = BSU.EV;
+  let W = 64, H = 64, N = 4096;
+  let conn, ring, queue, visited;   // the network / ring scratch, sized to the live map
+  BSU.onMap(function (m) { W = m.W; H = m.H; N = m.N; conn = new Uint8Array(N); ring = new Uint8Array(N); queue = new Int32Array(N); visited = new Uint8Array(N); });   // L1: the live map size (refreshed inside BSU.setMap, before any allocation)
   const fin = (v, d) => (Number.isFinite(v) ? v : d);
   const clamp = (v, lo, hi) => (v < lo ? lo : (v > hi ? hi : v));
   const M = BSU.issues = {};
@@ -63,7 +66,6 @@
   const depthMemo = new Map();  // flooded id → last depth (ft): "receding" when it drops between refreshes
   const toastStamp = {};        // kind / family → day of the last issue toast of that key (one per toastPerKindDays)
   let selectedId = null, spotlightOn = false, pulseKinds = null, subscribed = false;
-  const conn = new Uint8Array(N), ring = new Uint8Array(N), queue = new Int32Array(N), visited = new Uint8Array(N);
   /** the saved snooze / dismissal store on state.ui (created lazily for saves from before this pass) */
   function store(state) {
     const u = state && state.ui; if (!u) return { snoozed: {}, dismissed: {} };

@@ -77,7 +77,7 @@ ok(R.rainLineCount(0, 1, false) === 0 && R.rainLineCount(0.5, 1, false) === 750 
 ok(R.mosqBand(0.1) === 0 && R.mosqBand(0.2) === 1 && R.mosqBand(0.5) === 2 && R.mosqBand(0.7) === 3 && R.mosqBand(0.9) === 4, 'mosquito bands');
 
 // --- frames: night + rain + fog + events never throw ---------------------------------
-BSU.session.newGame({ seed: 42, skipTutorial: true });
+BSU.session.newGame({ seed: 42, skipTutorial: true, size: 64 });
 const s = BSU.state, H = BSU.headless, WX = BSU.weather;
 const errs0 = BSU.errors.size;
 let threw = null;
@@ -219,7 +219,7 @@ try {
   const U = BSU.ui, B = BSU.buildings;
   ok(R.passes().some((p) => p.name === 'network' && p.order === 9.2 && !p.builtin), 'network@9.2 registered (after overlays 9, before spotlight 9.5)');
   ok(typeof R.tiePreview === 'function' && typeof R.tiePreviewSpec === 'function' && typeof R.networkStats === 'function' && R._network && typeof R._network.pass === 'function', 'tiePreview / networkStats / _network API');
-  BSU.session.newGame({ seed: 42, skipTutorial: true });
+  BSU.session.newGame({ seed: 42, skipTutorial: true, size: 64 });
   const sn = BSU.state; U.showTitle(false); U.settings().coachSeen = true;
   BSU.headless.tick(3); BSU.headless.render();
   let fills = 0, strokes = 0, texts = [], dashes = 0;

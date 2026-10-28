@@ -49,7 +49,7 @@ for (const k of ['unpowered', 'unwatered', 'flooded', 'damaged', 'mosquitoHotspo
 
 // --- a real game: a dorm with no substation ------------------------------------
 const errors0 = BSU.errors.size;
-BSU.session.newGame({ seed: 42, skipTutorial: true });
+BSU.session.newGame({ seed: 42, skipTutorial: true, size: 64 });
 const s = BSU.state; U.showTitle(false); U.settings().coachSeen = true;
 H.tick(20); H.render();
 const base = I.list(s);
@@ -202,7 +202,7 @@ BSU.SELFTEST = true; let stt; try { stt = I.selfTest(); } catch (e) { stt = { ok
 ok(stt && stt.ok, 'issues.selfTest ok ' + (stt && stt.notes ? '(' + stt.notes + ')' : ''));
 // --- issues v2 pass: create → Fix → cleared / in progress within one refresh, per kind; snooze / dismiss; event recompute; blocking gators; tutorial suppression ----
 try {
-  BSU.session.newGame({ seed: 42, skipTutorial: true });
+  BSU.session.newGame({ seed: 42, skipTutorial: true, size: 64 });
   const s2 = BSU.state; U.showTitle(false); U.settings().coachSeen = true; s2.economy.cash = 5e6;
   const B = BSU.buildings, WL = BSU.wildlife, W = BSU.MAP.W;
   H.tick(20); H.render();
@@ -298,7 +298,7 @@ try {
   ok(I.snooze(s2, first.id) && BSU.session.save('calm.0') !== false, 'snooze again, save');
   { const beforeId = first.id; BSU.session.load ? BSU.session.load('calm.0') : BSU.session.continue_(); const s3 = BSU.state; H.tick(2); I.invalidate();
     ok(s3 !== s2 && s3.ui.issues && s3.ui.issues.snoozed[beforeId] && !I.list(s3).some((x) => x.id === beforeId) && I.hiddenList(s3).some((x) => x.id === beforeId && x.hidden === 'snoozed'), 'the snooze is still in force after a reload');
-    BSU.session.newGame({ seed: 42, skipTutorial: true }); }
+    BSU.session.newGame({ seed: 42, skipTutorial: true, size: 64 }); }
   // resolvable total
   dorm.hp = 0.5; for (const i of xs) { tl.crest[i] = 6; tl.integrity[i] = 60; } I.invalidate();
   const rs = I.resolvable(s2); ok(rs.rows.length === 2 && rs.total === B.repairCost(s2, dorm.id) + 25000, 'resolvable: the damaged dorm + the levee run, total ' + rs.total);

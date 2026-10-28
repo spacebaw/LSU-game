@@ -15,7 +15,8 @@
   const BSU = window.BSU;
   const M = (BSU.progress = BSU.progress || {});
   const EV = BSU.EV, P = BSU.params, PP = P.progress, PT = P.time, PE = P.econ, PS = P.storm;
-  const W = BSU.MAP.W, HGT = BSU.MAP.H, N = BSU.MAP.N;
+  let W = 64, HGT = 64, N = 4096;
+  BSU.onMap(function (m) { W = m.W; HGT = m.H; N = m.N; });   // L1: the live map size (refreshed inside BSU.setMap, before any allocation)
   const SKY = BSU.SKY, SURF = BSU.SURF, FLAG = BSU.FLAG, T = BSU.T, OBJ = BSU.OBJ, OV = BSU.OV;
   const NONE = -1;
   const TICKER_MAX = 30, UI_QUEUE_MAX = 40, DAYS_PER_YEAR = PT.daysPerYear || 120, TPD = PT.ticksPerDay || 100;

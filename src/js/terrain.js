@@ -16,7 +16,7 @@
 // wear), GDD §6.2 Recovery (debris clearing); ARCHITECTURE §5.1 step 2, §5.2.
 //
 // Conventions:
-//  - i = ty * 64 + tx; chunk = ((ty >> 3) << 3) + (tx >> 3).
+//  - i = ty * W + tx; chunk = (ty >> 3) * (W >> 3) + (tx >> 3) (W = BSU.MAP.W, per game since L1).
 //  - `walk` stays 0–4. DEBRIS (flag bit10) is NOT folded into the class: agents
 //    read the flag and double the step cost (params.agents.debrisCostMult).
 //  - Every emit goes through M._deps.emit (default BSU.events.emit) so selfTest
@@ -34,8 +34,15 @@
 
   const P = BSU.params;
   const PT = P.terrain, PS = P.subsidence, PH = P.hydro, PA = P.agents, PST = P.storm;
-  const T = BSU.T, F = BSU.FLAG, SURF = BSU.SURF, EV = BSU.EV, MAP = BSU.MAP;
-  const W = MAP.W, H = MAP.H, N = MAP.N;
+  const T = BSU.T, F = BSU.FLAG, SURF = BSU.SURF, EV = BSU.EV;
+  // L1 (world size per game): the live map size and every N-sized scratch, refreshed inside BSU.setMap before any allocation.
+  let W = 64, H = 64, N = 4096;
+  let RT_COST, RT_PARENT, RT_HEAP, RT_POS, CHUNK_SCRATCH, Q_SCRATCH, D_SCRATCH;
+  BSU.onMap(function (m) {
+    W = m.W; H = m.H; N = m.N;
+    RT_COST = new Int32Array(N); RT_PARENT = new Int32Array(N); RT_HEAP = new Int32Array(N + 1); RT_POS = new Int32Array(N);
+    CHUNK_SCRATCH = new Uint8Array(N); Q_SCRATCH = new Int32Array(N); D_SCRATCH = new Int32Array(N);
+  });
 
   const WATER_FLAGS = F.OPEN_WATER | F.BAYOU;
   const TERRAIN_BITS = F.WETLAND_ORIGINAL | F.PRESERVE | F.BAYOU | F.OPEN_WATER | F.DESIRE_WORN | F.DEBRIS | F.MOUND;
@@ -73,7 +80,7 @@
   const clamp = BSU.clamp;
   function validI(i) { return typeof i === 'number' && (i | 0) === i && i >= 0 && i < N; }
   function finite(v) { return typeof v === 'number' && Number.isFinite(v); }
-  function chunkOf(tx, ty) { return ((ty >> 3) << 3) + (tx >> 3); }
+  function chunkOf(tx, ty) { return (ty >> 3) * (W >> 3) + (tx >> 3); }
   function hydro() { return M._deps.hydro(); }
   function wildlife() { return M._deps.wildlife(); }
   function buildingsMod() { return M._deps.buildings(); }
@@ -110,8 +117,8 @@
   // ---------------------------------------------------------------------------
   // Profile functions (GDD §3.4)
   // ---------------------------------------------------------------------------
-  /** bank(ty) = floor(58 + 2·sin(ty/9)) − 1: the last land column beside the river */
-  M.bank = function (ty) { return Math.floor(PT.bankBase + PT.bankAmp * Math.sin(ty / PT.bankPeriod)) - 1; };
+  /** bank(ty) = floor(58 + 2·sin(ly/9)) − 1 + ox: the last land column beside the river in WORLD row ty (ly = ty − oy; L1) */
+  M.bank = function (ty) { return BSU.bankAt(ty); };
 
   /** crown(ty): 1.0 rows 6–13, 0.7 rows 5/14, 0.42 to row 26, linear to 0.25 at row 34 */
   function crown(ty) {
@@ -265,7 +272,7 @@
       if (!TOUCH_KINDS[what]) { fail('touch', new Error('bad what "' + what + '"')); return; }
       if (REWALK_KINDS[what]) state.tiles.walk[i] = M.walkClassOf(state, i);
       dirtyGen++;
-      const tx = i & 63, ty = i >> 6;
+      const tx = (i % W), ty = ((i / W) | 0);
       M._deps.emit(EV.TILE_CHANGED, { i: i, tx: tx, ty: ty, what: what, chunk: chunkOf(tx, ty) });
     } catch (e) { fail('touch', e); }
   };
@@ -336,11 +343,10 @@
   M.isWater = function (state, i) { return validI(i) && (state.tiles.flags[i] & WATER_FLAGS) !== 0; };
 
   /** BFS from the plot rectangle over land that is not Water/Bayou/Marsh/Pond; fills cache.reach (Dry/High reached), reachLand (every reached tile), high5 */
-  function buildReach(state) {
-    const c = ensure(state);
-    if (c.reach) return c;
+  /** the plot-reach BFS over land (no Water / Bayou / Marsh / Pond) confined to the rectangle B; fills out.reach / reachLand / high5 */
+  function reachWithin(state, B, out) {
     const t = state.tiles, type = t.type, elev = t.elev, flags = t.flags;
-    const reach = new Uint8Array(N), land = new Uint8Array(N), queue = new Int32Array(N);
+    const reach = out.reach, land = out.reachLand, queue = new Int32Array(N);
     let head = 0, tail = 0, high5 = 0;
     const r = state.plot.rect;
     const passable = function (k) { const ty = type[k]; return ty !== T.OPEN_WATER && ty !== T.BAYOU && ty !== T.MARSH && ty !== T.POND; };
@@ -352,13 +358,21 @@
     while (head < tail) {
       const k = queue[head++];
       if (elev[k] >= PT.typeBounds.wet && !(flags[k] & F.MOUND)) { reach[k] = 1; if (elev[k] >= PT.crownElev) high5++; }
-      const tx = k & 63, ty = k >> 6;
-      if (ty > 0) { const n = k - W; if (!land[n] && passable(n)) { land[n] = 1; queue[tail++] = n; } }
-      if (tx < W - 1) { const n = k + 1; if (!land[n] && passable(n)) { land[n] = 1; queue[tail++] = n; } }
-      if (ty < H - 1) { const n = k + W; if (!land[n] && passable(n)) { land[n] = 1; queue[tail++] = n; } }
-      if (tx > 0) { const n = k - 1; if (!land[n] && passable(n)) { land[n] = 1; queue[tail++] = n; } }
+      const tx = k % W, ty = (k / W) | 0;
+      if (ty > B.y0) { const n = k - W; if (!land[n] && passable(n)) { land[n] = 1; queue[tail++] = n; } }
+      if (tx < B.x1) { const n = k + 1; if (!land[n] && passable(n)) { land[n] = 1; queue[tail++] = n; } }
+      if (ty < B.y1) { const n = k + W; if (!land[n] && passable(n)) { land[n] = 1; queue[tail++] = n; } }
+      if (tx > B.x0) { const n = k - 1; if (!land[n] && passable(n)) { land[n] = 1; queue[tail++] = n; } }
     }
-    c.reach = reach; c.reachLand = land; c.high5 = high5;
+    out.high5 = high5;
+    return out;
+  }
+  /** the whole-map plot reach (cached until touch): the API's reachableDryHigh / reachableHigh5 / ridgeFull read this one */
+  function buildReach(state) {
+    const c = ensure(state);
+    if (c.reach) return c;
+    const out = reachWithin(state, { x0: 0, y0: 0, x1: W - 1, y1: H - 1 }, { reach: new Uint8Array(N), reachLand: new Uint8Array(N), high5: 0 });
+    c.reach = out.reach; c.reachLand = out.reachLand; c.high5 = out.high5;
     return c;
   }
   /** 1 = Dry/High tile reachable from the plot without crossing Water/Bayou/Marsh (G7); cached until touch */
@@ -375,7 +389,7 @@
     const t = state.tiles;
     if (t.owner[k] >= 0 || t.surface[k] !== 0 || t.crest[k] > 0) return false;
     if (t.flags[k] & (F.CANAL | F.PRESERVE | F.MOUND | F.POND_SINK)) return false;
-    const tx = k & 63, ty = k >> 6;
+    const tx = (k % W), ty = ((k / W) | 0);
     if (tx >= fx0 && tx < fx0 + 3 && ty >= fy0 && ty < fy0 + 3 && t.owner[k] < 0) return false;   // reserved Founders' footprint
     return true;
   }
@@ -430,7 +444,7 @@
           const cur = queue[head++];
           if (k % every === 0) lamps.push(cur);
           k++;
-          const tx = cur & 63, ty = cur >> 6;
+          const tx = (cur % W), ty = ((cur / W) | 0);
           if (ty > 0 && !seen[cur - W] && surface[cur - W] === s) { seen[cur - W] = 1; queue[tail++] = cur - W; }
           if (tx < W - 1 && !seen[cur + 1] && surface[cur + 1] === s) { seen[cur + 1] = 1; queue[tail++] = cur + 1; }
           if (ty < H - 1 && !seen[cur + W] && surface[cur + W] === s) { seen[cur + W] = 1; queue[tail++] = cur + W; }
@@ -450,7 +464,7 @@
     while (head < tail) {
       const cur = queue[head++];
       if (dist[cur] > dist[far] || (dist[cur] === dist[far] && cur < far)) far = cur;
-      const tx = cur & 63, ty = cur >> 6;
+      const tx = (cur % W), ty = ((cur / W) | 0);
       const tryN = function (n) { if (dist[n] < 0 && surface[n] === s) { dist[n] = dist[cur] + 1; parent[n] = cur; queue[tail++] = n; } };
       if (ty > 0) tryN(cur - W);
       if (tx < W - 1) tryN(cur + 1);
@@ -475,7 +489,7 @@
         seen[i] = 1; queue[tail++] = i;
         while (head < tail) {
           const cur = queue[head++];
-          const tx = cur & 63, ty = cur >> 6;
+          const tx = (cur % W), ty = ((cur / W) | 0);
           if (ty > 0 && !seen[cur - W] && surface[cur - W] === s) { seen[cur - W] = 1; queue[tail++] = cur - W; }
           if (tx < W - 1 && !seen[cur + 1] && surface[cur + 1] === s) { seen[cur + 1] = 1; queue[tail++] = cur + 1; }
           if (ty < H - 1 && !seen[cur + W] && surface[cur + W] === s) { seen[cur + W] = 1; queue[tail++] = cur + W; }
@@ -508,7 +522,7 @@
         for (let k = 0; k < N; k++) {
           const s = t.surface[k];
           if (t.owner[k] < 0 && !(s === SURF.PATH || s === SURF.ROAD || s === SURF.BOARDWALK || s === SURF.BRIDGE)) continue;
-          const tx = k & 63, ty = k >> 6;
+          const tx = (k % W), ty = ((k / W) | 0);
           for (let dy = -rad; dy <= rad; dy++) { const y = ty + dy; if (y < 0 || y >= H) continue; for (let dx = -rad; dx <= rad; dx++) { const x = tx + dx; if (x >= 0 && x < W) mask[y * W + x] = 1; } }
         }
         c.disturbed = mask;
@@ -522,7 +536,6 @@
   // Dijkstra with cost 64 per step minus 1 per cove tile: the shortest route in
   // steps, tie-broken toward the cove (so the tutorial path gets wet).
   // ---------------------------------------------------------------------------
-  const RT_COST = new Int32Array(N), RT_PARENT = new Int32Array(N), RT_HEAP = new Int32Array(N + 1), RT_POS = new Int32Array(N);
   /** shortest route (4-connected, over land, footprints excluded except the endpoints) from tile a to tile b; null if none */
   M.landRoute = function (state, a, b) {
     try {
@@ -550,7 +563,7 @@
       while (size) {
         const cur = pop();
         if (cur === b) { found = true; break; }
-        const tx = cur & 63, ty = cur >> 6, cc = cost[cur];
+        const tx = (cur % W), ty = ((cur / W) | 0), cc = cost[cur];
         const relax = function (n) {
           if (!passable(n)) return;
           const nc = cc + 64 - coveMask[n];
@@ -871,6 +884,7 @@
     // The raw basin field is z-normalized over the backswamp (d > 22, north of the south belt, not the lake) so the
     // Marsh/Wet split does not drift with the per-seed mean of a field that spans only ~3 lattice cells (§3.3 distribution).
     const basinRaw = new Float32Array(N);
+    let basinMean = 0, basinSd = 1;
     {
       let sum = 0, sum2 = 0, cnt = 0;
       for (let ty = 0; ty < H; ty++) {
@@ -885,7 +899,9 @@
       }
       const mean = cnt ? sum / cnt : 0, sd = cnt ? Math.sqrt(Math.max(1e-9, sum2 / cnt - mean * mean)) : 1;
       for (let k = 0; k < N; k++) basinRaw[k] = BASIN_NOISE_GAIN * (basinRaw[k] - mean) / sd;
+      basinMean = mean; basinSd = sd;
     }
+    const fields = { ridgeNoise: ridgeNoise, basinNoise: basinNoise, mean: basinMean, sd: basinSd };   // L1: extendWorld continues the same fields outside the legacy frame
 
     // --- steps 1–3: river, ridge, basin, lake ---
     for (let ty = 0; ty < H; ty++) {
@@ -928,7 +944,7 @@
     for (let k = 0; k < ringTiles.length; k++) { const n = ringTiles[k]; if (elev[n] < cove.rimMin) elev[n] = cove.rimMin; }
     // the mouth: the ring tile nearest (cx−2, cy+2) and its two nearest ring neighbours
     const mx = ccx + cove.mouthDx, my = ccy + cove.mouthDy;
-    const dist2 = function (i) { const dx = (i & 63) - mx, dy = (i >> 6) - my; return dx * dx + dy * dy; };
+    const dist2 = function (i) { const dx = ((i % W)) - mx, dy = (((i / W) | 0)) - my; return dx * dx + dy * dy; };
     let mid = -1, midD = Infinity;
     for (let k = 0; k < ringTiles.length; k++) { const d = dist2(ringTiles[k]); if (d < midD) { midD = d; mid = ringTiles[k]; } }
     const lips = [];
@@ -943,7 +959,7 @@
 
     // --- step 4: the bayou spline ---
     const by = PT.bayou;
-    const mouthX = mouth[1] & 63, mouthY = mouth[1] >> 6;
+    const mouthX = (mouth[1] % W), mouthY = ((mouth[1] / W) | 0);
     const x0 = tpl ? tpl.bayouX0 : by.x0 + R.int(2 * by.spread + 1) - by.spread;
     const ctl = [[x0, 0], [mouthX + cove.mouthDx, mouthY + cove.mouthDy]];
     if (tpl) { for (let k = 0; k < tpl.controls.length; k++) ctl.push([tpl.controls[k][0], tpl.controls[k][1]]); }
@@ -995,10 +1011,10 @@
       for (let q = 0; q < nb.length; q++) { const n = nb[q]; if (!bayouMask[n] && !protectedMask[n] && !(flags[n] & F.OPEN_WATER)) { shoulderMask[n] = 1; elev[n] = by.shoulderElev; } }
     }
     const bayouX = new Int32Array(H).fill(-1);
-    for (let k = 0; k < bayouOrder.length; k++) { const i = bayouOrder[k], tx = i & 63, ty = i >> 6; if (bayouX[ty] < 0 || tx < bayouX[ty]) bayouX[ty] = tx; }
+    for (let k = 0; k < bayouOrder.length; k++) { const i = bayouOrder[k], tx = (i % W), ty = ((i / W) | 0); if (bayouX[ty] < 0 || tx < bayouX[ty]) bayouX[ty] = tx; }
     // landing and its shoulder
     let landing = -1, landD = Infinity;
-    for (let k = 0; k < bayouOrder.length; k++) { const i = bayouOrder[k]; const d = BSU.chebyshev(i & 63, i >> 6, mouthX, mouthY); if (d < landD) { landD = d; landing = i; } }
+    for (let k = 0; k < bayouOrder.length; k++) { const i = bayouOrder[k]; const d = BSU.chebyshev((i % W), ((i / W) | 0), mouthX, mouthY); if (d < landD) { landD = d; landing = i; } }
     let landingShoulder = -1, lsD = Infinity;
     if (landing >= 0) {
       const nb = BSU.nbr8(landing);
@@ -1007,7 +1023,7 @@
           const n = nb[q];
           if (bayouMask[n] || (flags[n] & F.OPEN_WATER)) continue;
           if (pass === 0 && !shoulderMask[n]) continue;
-          const d = BSU.chebyshev(n & 63, n >> 6, mouthX, mouthY);
+          const d = BSU.chebyshev((n % W), ((n / W) | 0), mouthX, mouthY);
           if (d < lsD || (d === lsD && n < landingShoulder)) { lsD = d; landingShoulder = n; }
         }
       }
@@ -1024,7 +1040,7 @@
     const chenierOk = function (tiles) {
       let overlap = 0;
       for (let k = 0; k < tiles.length; k++) {
-        const i = tiles[k].i, tx = i & 63, ty = i >> 6;
+        const i = tiles[k].i, tx = (i % W), ty = ((i / W) | 0);
         if (bayouX[ty] < 0 || tx > bayouX[ty] - ch.bayouGap) return false;
         if (tx <= apronX && ty >= apronY) return false;   // the lake's marsh apron (the bowl rows west of the lake) stays chenier-free (G6)
         if (bayouMask[i] || shoulderMask[i] || protectedMask[i] || (flags[i] & F.OPEN_WATER)) return false;
@@ -1138,11 +1154,11 @@
     invalidate();
     let rc = buildReach(state);
     if (rc.high5 > PT.g1b[1]) {
-      for (let k = 0; k < N; k++) { const ty = k >> 6; if (rc.reach[k] && elev[k] >= PT.crownElev && (ty < PT.shoulderRows[0] || ty > PT.shoulderRows[1])) elev[k] = PT.crownElev - 0.1; }
+      for (let k = 0; k < N; k++) { const ty = ((k / W) | 0); if (rc.reach[k] && elev[k] >= PT.crownElev && (ty < PT.shoulderRows[0] || ty > PT.shoulderRows[1])) elev[k] = PT.crownElev - 0.1; }
       invalidate(); rc = buildReach(state);
       if (rc.high5 > PT.g1b[1]) {
         for (let k = 0; k < N; k++) {
-          const tx = k & 63, ty = k >> 6;
+          const tx = (k % W), ty = ((k / W) | 0);
           if (rc.reach[k] && elev[k] >= PT.crownElev && (ty === PT.shoulderRows[0] || ty === PT.shoulderRows[1]) && (bankRow[ty] - tx) >= 9) elev[k] = PT.crownElev - 0.1;
         }
         invalidate(); rc = buildReach(state);
@@ -1169,7 +1185,7 @@
       if (exclude[i]) continue;
       const ty = t.type[i];
       if (ty === T.OPEN_WATER || ty === T.BAYOU) continue;
-      const tx = i & 63, row = i >> 6;
+      const tx = (i % W), row = ((i / W) | 0);
       if (ty === T.DRY || ty === T.HIGH) { if (V.chance(veg.oak)) state.veg.push({ type: 'oak', tx: tx, ty: row, stage: 2, plantedDay: 0, planted: false }); continue; }
       let edge = false;
       if (ty !== T.MARSH && ty !== T.WET) { const nb = BSU.nbr8(i); for (let q = 0; q < nb.length; q++) if (flags[nb[q]] & WATER_FLAGS) { edge = true; break; } }
@@ -1178,7 +1194,7 @@
     }
 
     const g = M.guarantees(state);
-    return { ok: g.ok, why: g.failed.join(',') };
+    return { ok: g.ok, why: g.failed.join(','), fields: fields };
   }
 
   /** internal: one generation attempt (exported for the unit test's failure tallies; not part of the module API) */
@@ -1196,43 +1212,266 @@
     for (let i = 0; i < N; i++) {
       const ty = t.type[i];
       t.stand[i] = 0;
-      if (ty === T.MARSH) { t.depth[i] = ini.marshDepthMin + ini.marshDepthNoise * (BSU.rng.hash(i, 0x3A5) / 4294967296); t.sat[i] = ini.marshSat; }
+      if (ty === T.MARSH) { t.depth[i] = ini.marshDepthMin + ini.marshDepthNoise * (BSU.rng.hash(legacyIdx(i), 0x3A5) / 4294967296); t.sat[i] = ini.marshSat; }
       else if (ty === T.OPEN_WATER || ty === T.BAYOU) { t.depth[i] = Math.max(0, 0 - t.elev[i]); t.sat[i] = 1; }
       else { t.depth[i] = 0; t.sat[i] = ini.landSat; }
     }
   }
 
-  /** fill the map from `seed`: attempt 0 on rng.world, then up to maxRerolls derived re-rolls, then the template */
+  /** the legacy 64 × 64 generation (the live map must be the legacy frame): attempt 0 on rng.world, then up to maxRerolls derived re-rolls, then the template; returns the successful attempt's result */
+  function genLegacy(state, seed) {
+    BSU.rng.world.state = seed;
+    let ok = false, why = '', r = null;
+    for (let k = 0; k <= PT.maxRerolls && !ok; k++) {
+      const R = k === 0 ? BSU.rng.world : BSU.rng.derive('reroll', k);
+      r = attempt(state, R, null);
+      ok = r.ok; why = r.why;
+    }
+    if (!ok) {
+      r = attempt(state, null, M.template());
+      state.plot.template = true;
+      if (!r.ok) fail('gen', new Error('template map failed guarantees: ' + r.why + ' (last random failure: ' + why + ')'));
+    }
+    return r;
+  }
+  /** fill the map from `seed` (L1): a 64 × 64 world is generated in place as before; a larger world generates the legacy 64 × 64
+   *  content by the SAME code in the legacy frame (BSU.MAP flipped to the 64 × 64 spec for the duration, every draw in the same
+   *  order — tile-for-tile identical for the same seed), copies it to (ox, oy) and then generates the land around it (extendWorld). */
   M.gen = function (state, seed) {
     try {
       if (!state || !state.tiles) { fail('gen', new Error('no state')); return; }
       seed = finite(seed) ? (seed >>> 0) : 0;
-      BSU.rng.world.state = seed;
-      let ok = false, why = '';
-      for (let k = 0; k <= PT.maxRerolls && !ok; k++) {
-        const R = k === 0 ? BSU.rng.world : BSU.rng.derive('reroll', k);
-        const r = attempt(state, R, null);
-        ok = r.ok; why = r.why;
-      }
-      if (!ok) {
-        const r = attempt(state, null, M.template());
-        state.plot.template = true;
-        if (!r.ok) fail('gen', new Error('template map failed guarantees: ' + r.why + ' (last random failure: ' + why + ')'));
-      }
+      const world = BSU.MAP;
+      if (world.ox === 0 && world.oy === 0 && world.W === LEGACY.W && world.H === LEGACY.H) { genLegacy(state, seed); invalidate(); return; }
+      const legacySpec = BSU.mapSpec({ size: 64 });
+      let tmp = null, r = null;
+      BSU.setMap(legacySpec);
+      try { tmp = BSU.newState(seed); r = genLegacy(tmp, seed); }
+      finally { BSU.setMap(world); }
+      copyLegacy(state, tmp, world);
+      extendWorld(state, seed, r);
       invalidate();
     } catch (e) { fail('gen', e); }
   };
 
   // ---------------------------------------------------------------------------
+  // L1: larger worlds. copyLegacy moves the 64 × 64 generation into the legacy rectangle of the world; extendWorld generates
+  // the land around it with the same noise fields and biome rules (no new tile types, nothing inside the rectangle touched):
+  // north — the natural levee continuing upriver with a wider ≥ 5-ft crown (more buildable land upriver, as in life), the bayou
+  // continuing upstream to the north edge, Highway 1 running on to the edge, a bankside chenier and cypress stands;
+  // west — backswamp with cheniers and a second bayou arm that joins the main bayou's upstream reach in the north rows.
+  // ---------------------------------------------------------------------------
+  const LEGACY = { W: 64, H: 64 };
+  const NORTH_RIDGE_WIDEN = 1.5, NORTH_RISE_ROWS = 8;        // the upriver crown is 1.5× the start plot's ridge width at full crown strength 8 rows north of the legacy edge
+  const WEST_CHENIERS = [4, 6], NORTH_CYPRESS_MULT = 2.0, NORTH_CYPRESS_STANDS = 3;
+  function legacyRect(state) { const w = state && state.world; return (w && w.legacy) ? w.legacy : { x0: 0, y0: 0, x1: W - 1, y1: H - 1 }; }
+  /** the per-tile hash index that keeps a legacy tile's draws identical across world sizes (its legacy index inside the rectangle, 4096 + i outside) */
+  function legacyIdx(i) { const m = BSU.MAP; if (!m.ox && !m.oy) return i; const tx = i % W, ty = (i / W) | 0; return BSU.inLegacy(tx, ty) ? (ty - m.oy) * LEGACY.W + (tx - m.ox) : LEGACY.W * LEGACY.H + i; }
+  M._legacyIdx = legacyIdx;
+  /** copy the 64 × 64 generation in tmp (legacy frame) into state at (ox, oy): every tile array, the plot and the vegetation */
+  function copyLegacy(state, tmp, m) {
+    const ox = m.ox, oy = m.oy, names = Object.keys(BSU.TILE_ARRAYS);
+    for (let ly = 0; ly < LEGACY.H; ly++) {
+      const src0 = ly * LEGACY.W, dst0 = (ly + oy) * W + ox;
+      for (let k = 0; k < names.length; k++) { const a = tmp.tiles[names[k]], b = state.tiles[names[k]]; if (a && b) b.set(a.subarray(src0, src0 + LEGACY.W), dst0); }
+    }
+    const sh = function (i) { return (typeof i === 'number' && i >= 0) ? (((i / LEGACY.W) | 0) + oy) * W + (i % LEGACY.W) + ox : i; };
+    const shl = function (a) { return Array.isArray(a) ? a.map(sh) : []; };
+    const p = tmp.plot, q = state.plot;
+    q.bank0 = p.bank0 + ox;
+    q.rect = { x0: p.rect.x0 + ox, y0: p.rect.y0 + oy, x1: p.rect.x1 + ox, y1: p.rect.y1 + oy };
+    q.founders = { tx: p.founders.tx + ox, ty: p.founders.ty + oy };
+    q.highway = shl(p.highway); q.oaks = shl(p.oaks); q.cove = shl(p.cove); q.mouth = shl(p.mouth);
+    q.landing = sh(p.landing); q.landingShoulder = sh(p.landingShoulder); q.mounds = shl(p.mounds);
+    q.cheniers = (p.cheniers || []).map(function (c) { return { cx: c.cx + ox, cy: c.cy + oy, tiles: shl(c.tiles) }; });
+    q.bayou = shl(p.bayou); q.lake = shl(p.lake); q.template = !!p.template;
+    state.veg.length = 0;
+    for (let k = 0; k < tmp.veg.length; k++) { const v = tmp.veg[k]; state.veg.push({ type: v.type, tx: v.tx + ox, ty: v.ty + oy, stage: v.stage, plantedDay: v.plantedDay, planted: !!v.planted }); }
+  }
+  /** generate every tile outside the legacy rectangle (see the block comment above); R = a derived stream, so the legacy draws stay untouched */
+  function extendWorld(state, seed, r) {
+    const m = BSU.MAP, ox = m.ox, oy = m.oy, L = legacyRect(state);
+    const t = state.tiles, elev = t.elev, flags = t.flags, plot = state.plot;
+    const fx = (r && r.fields) || { ridgeNoise: function () { return 0; }, basinNoise: function () { return 0; }, mean: 0, sd: 1 };
+    const R = BSU.rng.derive('world96', 1);
+    const lake = PT.lake, by = PT.bayou, ch = PT.chenierAxes, veg = PT.veg;
+    const inL = function (tx, ty) { return tx >= L.x0 && tx <= L.x1 && ty >= L.y0 && ty <= L.y1; };
+    const bankW = new Int32Array(H);
+    for (let ty = 0; ty < H; ty++) bankW[ty] = M.bank(ty);
+    // --- E1: elevation ---
+    const smooth = function (u) { u = clamp(u, 0, 1); return u * u * (3 - 2 * u); };
+    const crownNorth = function (ly) { const f = PT.crownFactors; return f.flank + (f.crown - f.flank) * smooth((-ly) / NORTH_RISE_ROWS); };
+    const widthNorth = function (ly) { return PT.ridgeD * (1 + (NORTH_RIDGE_WIDEN - 1) * smooth((-ly) / (NORTH_RISE_ROWS * 1.5))); };
+    const basinAt = function (lx, ly) {
+      let e = PT.basinBase + PT.basinAmp * BASIN_NOISE_GAIN * (fx.basinNoise(lx, ly) - fx.mean) / fx.sd + (ly < BASIN_LIFT_ROWS ? BASIN_NORTH_LIFT * (1 - ly / BASIN_LIFT_ROWS) : 0);
+      e = clamp(finite(e) ? e : 0, 0, PT.basinClamp);
+      if (ly >= PT.southBeltRow) e = Math.max(0, e - PT.southBeltBias);
+      const bx = (lx - lake.cx) / (lake.rx * LAKE_BOWL_RX), byy = (ly - lake.cy) / (lake.ry * LAKE_BOWL_RY);
+      const br = Math.sqrt(bx * bx + byy * byy);
+      if (br < 1) e = Math.max(0, e - LAKE_BOWL_FT * (1 - br));
+      return e;
+    };
+    for (let ty = 0; ty < H; ty++) {
+      const bank = bankW[ty], ly = ty - oy;
+      for (let tx = 0; tx < W; tx++) {
+        if (inL(tx, ty)) continue;
+        const i = ty * W + tx, lx = tx - ox;
+        t.surface[i] = 0; t.owner[i] = -1;
+        if (tx > bank) { elev[i] = PT.riverElev; flags[i] = F.OPEN_WATER; continue; }
+        const d = bank - tx, wN = ly < 0 ? widthNorth(ly) : PT.ridgeD;
+        let e;
+        if (ly < 0 && d <= wN) e = base(0) + PT.ridgeAmp * crownNorth(ly) * Math.pow(1 - d / wN, PT.ridgeExp) + PT.noiseAmp * fx.ridgeNoise(lx, ly);
+        else e = basinAt(lx, ly);
+        elev[i] = finite(e) ? clamp(e, ELEV_MIN, ELEV_MAX) : 0;
+        flags[i] = 0;
+      }
+    }
+    // --- E2: the bayou continues upstream to the north edge; a second arm enters at the west edge and joins it in the north rows ---
+    const bayouMask = new Uint8Array(N);
+    for (let k = 0; k < plot.bayou.length; k++) bayouMask[plot.bayou[k]] = 1;
+    const carve = function (ctl, order) {   // Catmull-Rom through ctl, carved as a disk of radius width/2 (legacy, water and ≥ maxElev tiles skipped)
+      const radius = by.width / 2, r2max = radius * radius + 1e-9;
+      for (let seg = 0; seg + 1 < ctl.length; seg++) {
+        const p0 = ctl[Math.max(0, seg - 1)], p1 = ctl[seg], p2 = ctl[seg + 1], p3 = ctl[Math.min(ctl.length - 1, seg + 2)];
+        const chord = Math.hypot(p2[0] - p1[0], p2[1] - p1[1]);
+        const steps = Math.max(8, Math.ceil(chord * BAYOU_SAMPLES_PER_TILE));
+        for (let s = 0; s <= steps; s++) {
+          const u = s / steps, u2 = u * u, u3 = u2 * u;
+          const x = 0.5 * ((2 * p1[0]) + (-p0[0] + p2[0]) * u + (2 * p0[0] - 5 * p1[0] + 4 * p2[0] - p3[0]) * u2 + (-p0[0] + 3 * p1[0] - 3 * p2[0] + p3[0]) * u3);
+          const y = 0.5 * ((2 * p1[1]) + (-p0[1] + p2[1]) * u + (2 * p0[1] - 5 * p1[1] + 4 * p2[1] - p3[1]) * u2 + (-p0[1] + 3 * p1[1] - 3 * p2[1] + p3[1]) * u3);
+          for (let ty = Math.max(0, Math.floor(y - radius)); ty <= Math.min(H - 1, Math.ceil(y + radius)); ty++) {
+            for (let tx = Math.max(0, Math.floor(x - radius)); tx <= Math.min(W - 1, Math.ceil(x + radius)); tx++) {
+              const dx = tx - x, dy = ty - y;
+              if (dx * dx + dy * dy > r2max || inL(tx, ty)) continue;
+              const i = ty * W + tx;
+              if (bayouMask[i] || (flags[i] & WATER_FLAGS) || elev[i] >= by.maxElev) continue;
+              bayouMask[i] = 1; order.push(i); elev[i] = by.elev; flags[i] = F.BAYOU;
+            }
+          }
+        }
+      }
+    };
+    let jx = by.x0 + ox;
+    { let sx = 0, n = 0; for (let k = 0; k < plot.bayou.length; k++) { const i = plot.bayou[k]; if (((i / W) | 0) === L.y0) { sx += i % W; n++; } } if (n) jx = Math.round(sx / n); }
+    const footX = function (ty) { return bankW[ty] - widthNorth(ty - oy); };
+    const northOrder = [], armOrder = [];
+    if (oy > 0) {
+      const pick = function (ty, lo, hi) { const mx = Math.min(hi, Math.floor(footX(ty)) - 4), mn = Math.min(lo, mx); return mn + R.int(Math.max(1, mx - mn + 1)); };
+      const y1 = Math.round(oy * 0.33), y2 = Math.round(oy * 0.66);
+      carve([[pick(0, jx - 16, jx - 4), 0], [pick(y1, jx - 14, jx - 2), y1], [pick(y2, jx - 10, jx + 2), y2], [jx, oy - 1], [jx, oy + 1]], northOrder);
+    }
+    if (ox > 0 && northOrder.length) {
+      const ys = oy + 6 + R.int(21);
+      const cands = northOrder.filter(function (i) { const ty = (i / W) | 0; return ty >= 6 && ty <= oy - 6; });
+      const J = cands.length ? cands[R.int(cands.length)] : northOrder[northOrder.length >> 1];
+      const jxA = J % W, jyA = (J / W) | 0;
+      carve([[0, ys], [Math.round(ox * 0.4) + R.int(5) - 2, ys - 4 - R.int(6)], [ox - 6 - R.int(4), oy - 3 - R.int(6)], [Math.round((ox + jxA) / 2), Math.round((oy + jyA) / 2) - 2], [jxA, jyA]], armOrder);
+    }
+    const added = northOrder.concat(armOrder);
+    const shoulderMask = new Uint8Array(N);
+    for (let k = 0; k < added.length; k++) {
+      const nb = BSU.nbr8(added[k]);
+      for (let q = 0; q < nb.length; q++) { const n = nb[q]; if (bayouMask[n] || (flags[n] & WATER_FLAGS) || inL(n % W, (n / W) | 0)) continue; if (elev[n] < PT.typeBounds.wet) { elev[n] = by.shoulderElev; shoulderMask[n] = 1; } }
+    }
+    plot.bayou = northOrder.concat(plot.bayou);       // upstream = smaller index: the north reach comes first
+    plot.bayouArm = armOrder;                         // lazily-initialized saved plot key (ARCH §2): the west arm, west edge → junction
+    // --- E3: cheniers in the western backswamp (never touching the legacy rectangle, ≥ bayouGap from any bayou) and one bankside chenier upriver ---
+    const occupied = new Uint8Array(N), nearBayou = new Uint8Array(N);
+    for (let i = 0; i < N; i++) if (bayouMask[i]) { const tx = i % W, ty = (i / W) | 0; for (let y = Math.max(0, ty - ch.bayouGap); y <= Math.min(H - 1, ty + ch.bayouGap); y++) for (let x = Math.max(0, tx - ch.bayouGap); x <= Math.min(W - 1, tx + ch.bayouGap); x++) nearBayou[y * W + x] = 1; }
+    const scratch = [];
+    const chenierOk = function (tiles, gap) {
+      let overlap = 0;
+      for (let k = 0; k < tiles.length; k++) {
+        const i = tiles[k].i, tx = i % W, ty = (i / W) | 0;
+        if (inL(tx, ty) || tx >= L.x0 - 1 && ty >= L.y0 - 1) return false;
+        if (bayouMask[i] || shoulderMask[i] || (flags[i] & WATER_FLAGS) || (gap && nearBayou[i])) return false;
+        if (occupied[i]) overlap++;
+      }
+      return tiles.length > 0 && overlap <= CHENIER_OVERLAP * tiles.length;
+    };
+    const applyChenier = function (cx, cy, angle, crest, tiles) {
+      const list = [];
+      for (let k = 0; k < tiles.length; k++) {
+        const e = tiles[k], profile = ch.rim + (crest - ch.rim) * Math.cos(Math.PI / 2 * Math.pow(e.r, CHENIER_PLATEAU));
+        if (profile > elev[e.i]) elev[e.i] = profile;
+        list.push(e.i); occupied[e.i] = 1;
+        const nb = BSU.nbr8(e.i); for (let q = 0; q < nb.length; q++) occupied[nb[q]] = 1;
+      }
+      list.sort(function (p, q) { return p - q; });
+      plot.cheniers.push({ cx: cx, cy: cy, tiles: list });
+    };
+    const angMax = ch.angle * Math.PI / 180;
+    if (ox > 0) {
+      const want = WEST_CHENIERS[0] + R.int(WEST_CHENIERS[1] - WEST_CHENIERS[0] + 1);
+      let placed = 0;
+      for (let tries = 0; tries < CHENIER_TRIES * 2 && placed < want; tries++) {
+        const a = ch.ax[0] + (ch.ax[1] - ch.ax[0]) * Math.sqrt(R.float()), b = ch.ay[0] + (ch.ay[1] - ch.ay[0]) * Math.sqrt(R.float());
+        const angle = (R.float() * 2 - 1) * angMax, crest = R.range(ch.crest[0], ch.crest[1]), reach = Math.ceil(Math.max(a, b));
+        const cx = reach + R.int(Math.max(1, ox - 2 * reach - 1)), cy = reach + R.int(Math.max(1, H - 2 * reach));
+        ellipseTiles(cx, cy, a, b, angle, scratch);
+        if (chenierOk(scratch, true)) { applyChenier(cx, cy, angle, crest, scratch); placed++; }
+      }
+    }
+    if (oy > 0) {   // the bankside chenier: a shell ridge elongated along the river, on the levee flank 5–8 columns in from the bank
+      for (let tries = 0; tries < CHENIER_TRIES; tries++) {
+        const cy = 8 + R.int(Math.max(1, oy - 16)), cx = bankW[cy] - 5 - R.int(4), angle = Math.PI / 2 + (R.float() * 2 - 1) * 0.25;
+        ellipseTiles(cx, cy, ch.ax[1], ch.ay[0], angle, scratch);
+        if (chenierOk(scratch, false)) { applyChenier(cx, cy, angle, ch.crest[1], scratch); break; }
+      }
+    }
+    // --- E4: Highway 1 runs on from the stub to the north edge ---
+    const hwx = plot.highway.length ? plot.highway[0] % W : plot.founders.tx + 2;
+    const north = [];
+    for (let ty = 0; ty < L.y0; ty++) { const i = ty * W + hwx; if (!(flags[i] & WATER_FLAGS)) { t.surface[i] = SURF.ROAD; north.push(i); } }
+    plot.highwayNorth = north;                        // lazily-initialized saved plot key (ARCH §2)
+    // --- E5: classification, the wetland flag, initial water, walk grid ---
+    for (let k = 0; k < N; k++) { if (inL(k % W, (k / W) | 0)) continue; const ty = typeOf(elev[k], flags[k]); t.type[k] = ty; if (ty === T.MARSH) flags[k] |= F.WETLAND_ORIGINAL; }
+    seedInitial(state);
+    M.rewalk(state);
+    invalidate();
+    // --- E6: vegetation outside the rectangle (the legacy rule; cypress stands upriver) ---
+    const exclude = new Uint8Array(N);
+    for (let k = 0; k < north.length; k++) exclude[north[k]] = 1;
+    const plant = function (type, i) { state.veg.push({ type: type, tx: i % W, ty: (i / W) | 0, stage: 2, plantedDay: 0, planted: false }); exclude[i] = 1; };
+    for (let i = 0; i < N; i++) {
+      const tx = i % W, ty = (i / W) | 0;
+      if (inL(tx, ty) || exclude[i]) continue;
+      const tt = t.type[i];
+      if (tt === T.OPEN_WATER || tt === T.BAYOU) continue;
+      const mult = ty < L.y0 ? NORTH_CYPRESS_MULT : 1;
+      if (tt === T.DRY || tt === T.HIGH) { if (R.chance(veg.oak)) plant('oak', i); continue; }
+      let edge = false;
+      if (tt !== T.MARSH && tt !== T.WET) { const nb = BSU.nbr8(i); for (let q = 0; q < nb.length; q++) if (flags[nb[q]] & WATER_FLAGS) { edge = true; break; } }
+      if (tt === T.MARSH || tt === T.WET || edge) { if (R.chance(Math.min(0.6, veg.cypress * mult))) { plant('cypress', i); continue; } }
+      if (tt === T.WET && R.chance(veg.palmetto)) plant('palmetto', i);
+    }
+    if (oy > 0) {   // cypress stands: dense clusters on the upriver backswamp
+      const marsh = [];
+      for (let ty = 2; ty < L.y0 - 2; ty++) for (let tx = Math.max(2, L.x0 - 20); tx < W - 2; tx++) { const i = ty * W + tx; if (t.type[i] === T.MARSH && !nearBayou[i]) marsh.push(i); }
+      for (let s = 0; s < NORTH_CYPRESS_STANDS && marsh.length; s++) {
+        const c = marsh[R.int(marsh.length)], cx = c % W, cy = (c / W) | 0;
+        for (let y = cy - 2; y <= cy + 2; y++) for (let x = cx - 2; x <= cx + 2; x++) {
+          if (!BSU.inBounds(x, y) || inL(x, y)) continue;
+          const i = y * W + x, tt = t.type[i];
+          if (exclude[i] || (tt !== T.MARSH && tt !== T.WET)) continue;
+          if (R.chance(0.6)) plant('cypress', i);
+        }
+      }
+    }
+    void seed;
+  }
+
+  // ---------------------------------------------------------------------------
   // Guarantees G1–G8 and the distribution (GDD §3.5, §3.3)
   // ---------------------------------------------------------------------------
-  const CHUNK_SCRATCH = new Uint8Array(N), Q_SCRATCH = new Int32Array(N), D_SCRATCH = new Int32Array(N);
-  /** G1–G8 + distribution on the current state; {ok, failed: string[]} (pure over state) */
+  /** G1–G8 + distribution on the current state; {ok, failed: string[]} (pure over state). L1: evaluated over the legacy 64 × 64
+   *  rectangle (state.world.legacy) — the land generated around it is not part of the guarantees (it is deliberately more buildable). */
   M.guarantees = function (state) {
     const failed = [];
     try {
       const t = state.tiles, elev = t.elev, type = t.type, flags = t.flags, plot = state.plot;
-      const r = plot.rect;
+      const r = plot.rect, L = legacyRect(state), LN = (L.x1 - L.x0 + 1) * (L.y1 - L.y0 + 1);
+      const inL = function (k) { const tx = k % W, ty = (k / W) | 0; return tx >= L.x0 && tx <= L.x1 && ty >= L.y0 && ty <= L.y1; };
       const isDH = function (k) { return (type[k] === T.DRY || type[k] === T.HIGH) && !(flags[k] & F.MOUND); };
       // G1
       let g1 = true;
@@ -1243,8 +1482,8 @@
         if (hi - lo > PT.g1Window) { g1 = false; break; }
       }
       if (!g1) failed.push('G1');
-      // G1b + G7 reachable
-      const rc = buildReach(state);
+      // G1b + G7 reachable (within the legacy rectangle)
+      const rc = reachWithin(state, L, { reach: new Uint8Array(N), reachLand: new Uint8Array(N), high5: 0 });
       if (rc.high5 < PT.g1b[0] || rc.high5 > PT.g1b[1]) failed.push('G1b:' + rc.high5);
       let reachDH = 0;
       for (let k = 0; k < N; k++) if (rc.reach[k]) reachDH++;
@@ -1303,14 +1542,14 @@
       const comp = D_SCRATCH; comp.fill(-1);
       const compSize = [];
       for (let i = 0; i < N; i++) {
-        if (comp[i] >= 0 || !isDH(i)) continue;
+        if (comp[i] >= 0 || !isDH(i) || !inL(i)) continue;
         const id = compSize.length; let size = 0, head = 0, tail = 0;
         comp[i] = id; Q_SCRATCH[tail++] = i;
-        while (head < tail) { const cur = Q_SCRATCH[head++]; size++; const nb = BSU.nbr4(cur); for (let q = 0; q < nb.length; q++) { const n = nb[q]; if (comp[n] < 0 && isDH(n)) { comp[n] = id; Q_SCRATCH[tail++] = n; } } }
+        while (head < tail) { const cur = Q_SCRATCH[head++]; size++; const nb = BSU.nbr4(cur); for (let q = 0; q < nb.length; q++) { const n = nb[q]; if (comp[n] < 0 && isDH(n) && inL(n)) { comp[n] = id; Q_SCRATCH[tail++] = n; } } }
         compSize.push(size);
       }
       let g5 = false, chenierDH = 0;
-      const chs = plot.cheniers || [];
+      const chs = (plot.cheniers || []).filter(function (c) { return c && c.cx >= L.x0 && c.cx <= L.x1 && c.cy >= L.y0 && c.cy <= L.y1; });
       for (let c = 0; c < chs.length; c++) {
         const tiles = chs[c].tiles || [];
         let near = false, best = 0, reachable = false;
@@ -1320,7 +1559,7 @@
           if (!validI(i)) continue;
           if (isDH(i)) chenierDH++;
           if (rc.reach[i]) reachable = true;
-          const tx = i & 63, ty = i >> 6;
+          const tx = (i % W), ty = ((i / W) | 0);
           if (!near) { const dx = tx < r.x0 ? r.x0 - tx : tx > r.x1 ? tx - r.x1 : 0, dy = ty < r.y0 ? r.y0 - ty : ty > r.y1 ? ty - r.y1 : 0; if (Math.max(dx, dy) <= PT.g5Radius) near = true; }
           const id = comp[i];
           if (id >= 0 && !seenComp[id]) { seenComp[id] = 1; if (compSize[id] > best) best = compSize[id]; }
@@ -1330,16 +1569,16 @@
       if (!g5) failed.push('G5');
       // G6
       let cols = 0, good = 0;
-      for (let tx = 0; tx <= plot.bank0 - PT.g6ColOffset && tx < W; tx++) {
+      for (let tx = L.x0; tx <= plot.bank0 - PT.g6ColOffset && tx <= L.x1; tx++) {
         cols++;
         let run = 0, best = 0;
-        for (let ty = PT.g6Row; ty < H; ty++) { if (type[ty * W + tx] === T.MARSH) { run++; if (run > best) best = run; } else run = 0; }
+        for (let ty = L.y0 + PT.g6Row; ty <= L.y1; ty++) { if (type[ty * W + tx] === T.MARSH) { run++; if (run > best) best = run; } else run = 0; }
         if (best >= PT.g6Run) good++;
       }
       if (cols === 0 || good < PT.g6Share * cols) failed.push('G6:' + good + '/' + cols);
       // G7 totals + distribution
       const counts = new Int32Array(8);
-      for (let k = 0; k < N; k++) counts[type[k]]++;
+      for (let k = 0; k < N; k++) if (inL(k)) counts[type[k]]++;
       const dh = counts[T.DRY] + counts[T.HIGH] - (plot.mounds ? plot.mounds.length : 0);
       if (dh < PT.g7MapWide) failed.push('G7:dh:' + dh);
       if (chenierDH < PT.g7Chenier) failed.push('G7:chenier:' + chenierDH);
@@ -1348,11 +1587,11 @@
       const bay = plot.bayou || [];
       let g8 = bay.length > 0 && plot.landing >= 0 && mouth.length === 3;
       for (let k = 0; k < bay.length && g8; k++) { const i = bay[k]; if (!validI(i) || !(flags[i] & F.BAYOU) || elev[i] >= PT.crownElev) g8 = false; }
-      if (g8 && BSU.chebyshev(plot.landing & 63, plot.landing >> 6, mouth[1] & 63, mouth[1] >> 6) > 2) g8 = false;
+      if (g8 && BSU.chebyshev((plot.landing % W), ((plot.landing / W) | 0), (mouth[1] % W), ((mouth[1] / W) | 0)) > 2) g8 = false;
       if (!g8) failed.push('G8');
       // distribution
       const dist = PT.distribution, tol = dist.tol;
-      const share = function (n) { return n / N; };
+      const share = function (n) { return n / LN; };
       const check = function (name, n, target) { if (Math.abs(share(n) - target) > tol + 1e-9) failed.push('dist:' + name + ':' + (share(n) * 100).toFixed(1)); };
       check('water', counts[T.OPEN_WATER], dist.water);
       check('bayou', counts[T.BAYOU], dist.bayou);
@@ -1449,7 +1688,8 @@
         for (let k = 0; k < cases.length; k++) {
           const c = cases[k]; recorded.length = 0;
           M.touch(s, BSU.idx(c[0], c[1]), 'decor');
-          A(recorded.length === 1 && recorded[0].name === EV.TILE_CHANGED && recorded[0].payload.chunk === c[2] && recorded[0].payload.tx === c[0] && recorded[0].payload.ty === c[1], 'touch chunk (' + c[0] + ',' + c[1] + ') → ' + c[2]);
+          const want = (c[1] >> 3) * (W >> 3) + (c[0] >> 3);   // L1: c[2] is the 64 × 64 chunk id; the live map has W / 8 chunks per row
+          A(recorded.length === 1 && recorded[0].name === EV.TILE_CHANGED && recorded[0].payload.chunk === want && recorded[0].payload.tx === c[0] && recorded[0].payload.ty === c[1], 'touch chunk (' + c[0] + ',' + c[1] + ') → ' + want);
         }
       }
       // 6. subsidence
@@ -1489,7 +1729,7 @@
         for (let x = 6; x <= 9; x++) s.tiles.surface[BSU.idx(x, 10)] = SURF.ROAD;
         const route = M.paradeRoute(s);
         let ordered = route.length === 10;
-        for (let k = 1; k < route.length && ordered; k++) { const a = route[k - 1], b = route[k]; if (Math.abs((a & 63) - (b & 63)) + Math.abs((a >> 6) - (b >> 6)) !== 1) ordered = false; }
+        for (let k = 1; k < route.length && ordered; k++) { const a = route[k - 1], b = route[k]; if (Math.abs(((a % W)) - ((b % W))) + Math.abs((((a / W) | 0)) - (((b / W) | 0))) !== 1) ordered = false; }
         A(ordered && ((route[0] === BSU.idx(5, 5) && route[9] === BSU.idx(9, 10)) || (route[9] === BSU.idx(5, 5) && route[0] === BSU.idx(9, 10))), 'L-shaped road → 10 tiles in path order');
         const s2 = BSU.newState(9);
         for (let x = 20; x < 25; x++) s2.tiles.surface[BSU.idx(x, 3)] = SURF.PATH;
@@ -1513,9 +1753,9 @@
       // 10. plot bookkeeping
       {
         const s = states[1];
-        A(M.bank(PT.bank0Row) === s.plot.bank0 && BSU.bankAt(PT.bank0Row) === s.plot.bank0, 'bank(7) === plot.bank0');
+        A(M.bank(PT.bank0Row + BSU.MAP.oy) === s.plot.bank0 && BSU.bankAt(PT.bank0Row + BSU.MAP.oy) === s.plot.bank0, 'bank(7 + oy) === plot.bank0');
         A(s.plot.highway.length === PT.highwayTiles && s.plot.mouth.length === 3 && s.plot.mounds.length === 2 && s.plot.oaks.length === 2, 'highway 7, mouth 3, mounds 2, oaks 2');
-        A(s.plot.founders.tx === s.plot.bank0 + PT.founders.dx && s.plot.founders.ty === PT.founders.ty, 'founders origin');
+        A(s.plot.founders.tx === s.plot.bank0 + PT.founders.dx && s.plot.founders.ty === PT.founders.ty + BSU.MAP.oy, 'founders origin');
         A(s.plot.landing >= 0 && s.plot.landingShoulder >= 0 && s.tiles.type[s.plot.landing] === T.BAYOU && s.tiles.type[s.plot.landingShoulder] === T.MARSH, 'landing on the bayou, shoulder on marsh');
         A(s.veg.length > 50 && s.veg.every(function (v) { return v.stage === 2 && v.planted === false; }), 'generated veg at stage 2');
         // daily work: wear hysteresis and veg growth through tick

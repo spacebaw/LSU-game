@@ -146,8 +146,8 @@
   M.camTile = function (state, camera) {
     let cam = camera || (BSU.render && BSU.render.camera) || (state && state.ui && state.ui.camera) || null;
     if (!cam || !Number.isFinite(cam.x) || !Number.isFinite(cam.y)) cam = { x: 0, y: 0, zoom: 1 };
-    const tx = clamp(Math.round((cam.x / 32 + cam.y / 16) / 2), 0, 63);
-    const ty = clamp(Math.round((cam.y / 16 - cam.x / 32) / 2), 0, 63);
+    const tx = clamp(Math.round((cam.x / 32 + cam.y / 16) / 2), 0, BSU.MAP.W - 1);
+    const ty = clamp(Math.round((cam.y / 16 - cam.x / 32) / 2), 0, BSU.MAP.H - 1);
     return { tx: tx, ty: ty, zoom: num(cam.zoom, 1) };
   };
 
@@ -454,9 +454,9 @@
   function newVoice(name, opts) {
     const c = chain(sfxBus); c.name = name;
     let g = 1;
-    if (opts && Number.isFinite(opts.tile) && opts.tile >= 0 && opts.tile < 4096) {
+    if (opts && Number.isFinite(opts.tile) && opts.tile >= 0 && opts.tile < BSU.MAP.N) {
       const cam = M.camTile(cur());
-      const tx = opts.tile & 63, ty = opts.tile >> 6;
+      const tx = (opts.tile % BSU.MAP.W), ty = ((opts.tile / BSU.MAP.W) | 0);
       g = M.distGain(BSU.chebyshev(tx, ty, cam.tx, cam.ty));
       if (hasPanner) {
         try {
@@ -674,9 +674,9 @@
   function waterWithin(state, cam, r) {
     const tiles = state && state.tiles; if (!tiles || !tiles.flags || !tiles.type) return false;
     const mask = FLAG.BAYOU | FLAG.OPEN_WATER;
-    const x0 = Math.max(0, cam.tx - r), x1 = Math.min(63, cam.tx + r), y0 = Math.max(0, cam.ty - r), y1 = Math.min(63, cam.ty + r);
+    const x0 = Math.max(0, cam.tx - r), x1 = Math.min(BSU.MAP.W - 1, cam.tx + r), y0 = Math.max(0, cam.ty - r), y1 = Math.min(BSU.MAP.H - 1, cam.ty + r);
     for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
-      const i = y * 64 + x;
+      const i = y * BSU.MAP.W + x;
       if ((tiles.flags[i] & mask) || tiles.type[i] === T.OPEN_WATER || tiles.type[i] === T.BAYOU) return true;
     }
     return false;
@@ -967,7 +967,7 @@
     on('weather:lightning', function (p) {
       const tile = tileOf(p);
       let d = 0;
-      if (tile !== undefined) { const cam = M.camTile(cur()); d = BSU.chebyshev(tile & 63, tile >> 6, cam.tx, cam.ty); }
+      if (tile !== undefined) { const cam = M.camTile(cur()); d = BSU.chebyshev((tile % BSU.MAP.W), ((tile / BSU.MAP.W) | 0), cam.tx, cam.ty); }
       const delayMs = lerp(P.thunderDelay[0] * 1000, P.thunderDelay[1] * 1000, clamp(d / 40, 0, 1));
       M.play('thunder', { tile: tile, delayMs: delayMs });
     });
@@ -1062,7 +1062,7 @@
       const s = BSU.newState(1234);
       const ct = M.camTile(s, s.ui.camera);
       A(ct.tx === s.plot.founders.tx && ct.ty === s.plot.founders.ty, 'camTile inverts the Founders\' camera');
-      A(M.camTile(s, { x: 0, y: 1e9, zoom: 2 }).ty === 63 && M.camTile(s, { x: NaN, y: 1 }).tx === 0, 'camTile clamps / tolerates NaN');
+      A(M.camTile(s, { x: 0, y: 1e9, zoom: 2 }).ty === BSU.MAP.H - 1 && M.camTile(s, { x: NaN, y: 1 }).tx === 0, 'camTile clamps / tolerates NaN');
       A(M.camTile(null).tx >= 0, 'camTile(null) safe');
       // music constants
       A(Math.abs(barLen() - 2) < 1e-9, 'a bar at 120 BPM is 2 s');

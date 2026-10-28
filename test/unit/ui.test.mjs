@@ -100,7 +100,7 @@ ok(U.el.title.classList.contains('hidden') === !!BSU.headlessMode, 'title hidden
 
 // --- new game, update, palette ----------------------------------------------------
 const errors0 = BSU.errors.size;
-BSU.session.newGame({ seed: 11, skipTutorial: true });
+BSU.session.newGame({ seed: 11, skipTutorial: true, size: 64 });
 const s = BSU.state;
 U.showTitle(false);
 BSU.headless.tick(20); BSU.headless.render();
@@ -467,7 +467,7 @@ try {
 
 // --- issues v2 pass: the tray groups rows by kind, an In progress section, Clear all, Snooze / Dismiss, Fix arms the tool ----
 try {
-  BSU.session.newGame({ seed: 42, skipTutorial: true });
+  BSU.session.newGame({ seed: 42, skipTutorial: true, size: 64 });
   const s3 = BSU.state; U.showTitle(false); U.settings().coachSeen = true; s3.economy.cash = 5e6;
   const B = BSU.buildings, I3 = BSU.issues, H = BSU.headless; win.innerHeight = 1400; U.closeInspect(); U.closeBuildMenu(); U.selectTool(s3, null);
   H.tick(20); H.render();
@@ -591,7 +591,7 @@ try {
 
 // --- paths pass (Track P): the ghost's tie + status lines, Alt = no tie, the first-tie card once, the tie refusal's Show me, the inspect pill + Link it, N hold / tap, the drag end's tie ----
 try {
-  BSU.session.newGame({ seed: 42, skipTutorial: true });
+  BSU.session.newGame({ seed: 42, skipTutorial: true, size: 64 });
   const s = BSU.state; U.showTitle(false); U.settings().coachSeen = true; U.settings().tieCardSeen = false; s.economy.cash = 50e6;
   const B = BSU.buildings, R = BSU.render, H = BSU.headless; win.innerHeight = 1400;
   s.ui.tool = null; s.ui.panel = null; U.closeInspect(); U.closeBuildMenu(); U.closeCard(); U.dismissNotifs(); U.closeAlert();

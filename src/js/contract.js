@@ -13,7 +13,9 @@
   const root = (typeof window !== 'undefined') ? window : globalThis;
   const BSU = (root.BSU = root.BSU || {});
   const freeze = Object.freeze;
-  const W = 64, H = 64, N = W * H;
+  // L1 (world size per game): W/H/N are the LIVE map size. BSU.setMap replaces BSU.MAP per game (session.newGame / load,
+  // before any allocation) and refreshes these through BSU.onMap, so nothing in this file caches a size across games.
+  let W = 64, H = 64, N = W * H;
 
   // ---------------------------------------------------------------------------
   // 3.1 Enums (plain frozen objects)
@@ -62,8 +64,45 @@
     BSU.B = freeze(B);   // id → id, so a typo is `undefined` at the call site
   }
 
-  BSU.SAVE_VERSION = 1;
-  BSU.MAP = freeze({ W: W, H: H, N: N, TILE_W: 64, TILE_H: 32, PX_PER_FT: 6, CHUNK: 8, CHUNK_W: 512, CHUNK_H: 416 });
+  BSU.SAVE_VERSION = 2;   // L1: a v2 doc carries state.world {W, H, ox, oy, legacy}; a v1 doc loads as a 64 × 64 world (session.migrations[1])
+  // --- L1 (world size per game) ---------------------------------------------------------------------------------------
+  // BSU.MAP is a frozen per-game object replaced by BSU.setMap, which session.newGame / load call BEFORE BSU.newState
+  // allocates. The tile constants never change; W / H / N / ox / oy / size / legacy / CX / CY / NCH do. Modules read BSU.MAP
+  // live or subscribe through BSU.onMap, whose listeners run synchronously inside setMap (they refresh a module's W/H/N and
+  // reallocate any scratch sized N), so no module-level value can describe a previous game. The legacy 64 × 64 content of a
+  // larger world sits at (ox, oy) = (W − 64, H − 64): legacy tile (lx, ly) is world tile (lx + ox, ly + oy).
+  const TILE_CONST = { TILE_W: 64, TILE_H: 32, PX_PER_FT: 6, CHUNK: 8, CHUNK_W: 512, CHUNK_H: 416 };
+  const LEGACY_W = 64, LEGACY_H = 64;
+  /** {size: 64 | 96} (default 96) or {W, H, ox, oy} → the frozen map spec (W / H multiples of 8, ≥ 64; the legacy rectangle at (ox, oy)) */
+  BSU.mapSpec = function (o) {
+    o = o || {};
+    let Wd, Hd, ox, oy;
+    if (Number.isFinite(o.W) && Number.isFinite(o.H)) { Wd = o.W | 0; Hd = o.H | 0; ox = Number.isFinite(o.ox) ? o.ox | 0 : Wd - LEGACY_W; oy = Number.isFinite(o.oy) ? o.oy | 0 : Hd - LEGACY_H; }
+    else { const s = o.size === 64 ? 64 : 96; Wd = s; Hd = s; ox = s - LEGACY_W; oy = s - LEGACY_H; }
+    Wd = Math.max(LEGACY_W, Math.round(Wd / 8) * 8); Hd = Math.max(LEGACY_H, Math.round(Hd / 8) * 8);
+    ox = Math.min(Math.max(0, ox), Wd - LEGACY_W); oy = Math.min(Math.max(0, oy), Hd - LEGACY_H);
+    const spec = { W: Wd, H: Hd, N: Wd * Hd, ox: ox, oy: oy, size: Wd === Hd ? Wd : 0, CX: Wd >> 3, CY: Hd >> 3, NCH: (Wd >> 3) * (Hd >> 3),
+      legacy: freeze({ x0: ox, y0: oy, x1: ox + LEGACY_W - 1, y1: oy + LEGACY_H - 1 }), LEGACY_W: LEGACY_W, LEGACY_H: LEGACY_H };
+    for (const k in TILE_CONST) spec[k] = TILE_CONST[k];
+    return freeze(spec);
+  };
+  const mapListeners = [];
+  /** replace BSU.MAP (a spec from BSU.mapSpec, or its options) and run every BSU.onMap listener synchronously; returns BSU.MAP */
+  BSU.setMap = function (spec) {
+    if (!spec || !Object.isFrozen(spec) || !Number.isFinite(spec.N) || !spec.legacy) spec = BSU.mapSpec(spec);
+    BSU.MAP = spec;
+    for (let k = 0; k < mapListeners.length; k++) { try { mapListeners[k](spec); } catch (e) { if (typeof BSU.error === 'function') BSU.error('contract', 'setMap', e); else throw e; } }
+    return spec;
+  };
+  /** subscribe to map changes: fn(BSU.MAP) runs now and inside every setMap (modules refresh W/H/N and N-sized scratch here); returns fn */
+  BSU.onMap = function (fn) { mapListeners.push(fn); fn(BSU.MAP); return fn; };
+  BSU.offMap = function (fn) { const k = mapListeners.indexOf(fn); if (k >= 0) mapListeners.splice(k, 1); };
+  /** run fn with BSU.MAP flipped to the legacy 64 × 64 frame (selfTests that build synthetic legacy-coordinate worlds); the live map is restored after */
+  BSU.withLegacyMap = function (fn) { const live = BSU.MAP; BSU.setMap(BSU.mapSpec({ size: 64 })); try { return fn(); } finally { BSU.setMap(live); } };
+  /** true when (tx, ty) lies inside the legacy 64 × 64 rectangle of the live map */
+  BSU.inLegacy = function (tx, ty) { const l = BSU.MAP.legacy; return tx >= l.x0 && tx <= l.x1 && ty >= l.y0 && ty <= l.y1; };
+  BSU.MAP = BSU.mapSpec({ size: 64 });   // the page default is the legacy frame (headless tests that build a state without session keep it); newGame picks 96 or opts.size
+  BSU.onMap(function (m) { W = m.W; H = m.H; N = m.N; });
   BSU.SAVE_SKIP = freeze(['agents', 'vehicles', 'hydro.networks', 'hydro.risk', 'hydro.active', 'wildlife.campusMask', 'ui.tool', 'ui.panel', 'ui.perfMode', 'ui.camera.tx', 'ui.camera.ty']);
 
   // Milestone ids in GDD §10.5 order (progress.milestones keys).
@@ -965,17 +1004,17 @@
   // ---------------------------------------------------------------------------
   // 3.5 Helpers (pure)
   // ---------------------------------------------------------------------------
-  /** ty*64+tx (no bounds check) */
+  /** ty*W+tx (no bounds check; W = BSU.MAP.W, live) */
   BSU.idx = function (tx, ty) { return ty * W + tx; };
-  /** i & 63 */
-  BSU.tx = function (i) { return i & 63; };
-  /** i >> 6 */
-  BSU.ty = function (i) { return i >> 6; };
-  /** 0 ≤ tx,ty < 64 */
+  /** i % W */
+  BSU.tx = function (i) { return i % W; };
+  /** floor(i / W) */
+  BSU.ty = function (i) { return (i / W) | 0; };
+  /** 0 ≤ tx < W, 0 ≤ ty < H */
   BSU.inBounds = function (tx, ty) { return tx >= 0 && ty >= 0 && tx < W && ty < H; };
   /** N,E,S,W neighbors that exist (order: ty−1, tx+1, ty+1, tx−1) */
   BSU.nbr4 = function (i) {
-    const tx = i & 63, ty = i >> 6, out = [];
+    const tx = i % W, ty = (i / W) | 0, out = [];
     if (ty > 0) out.push(i - W);
     if (tx < W - 1) out.push(i + 1);
     if (ty < H - 1) out.push(i + W);
@@ -984,7 +1023,7 @@
   };
   /** 8 neighbors that exist, clockwise from N: N, NE, E, SE, S, SW, W, NW */
   BSU.nbr8 = function (i) {
-    const tx = i & 63, ty = i >> 6, out = [];
+    const tx = i % W, ty = (i / W) | 0, out = [];
     const n = ty > 0, s = ty < H - 1, e = tx < W - 1, w = tx > 0;
     if (n) out.push(i - W);
     if (n && e) out.push(i - W + 1);
@@ -1174,13 +1213,14 @@
   // ---------------------------------------------------------------------------
   const P = BSU.params;
   /** bank(ty) of GDD §3.4 (also exposed by terrain) */
-  BSU.bankAt = function (ty) { return Math.floor(P.terrain.bankBase + P.terrain.bankAmp * Math.sin(ty / P.terrain.bankPeriod)) - 1; };
+  /** the last land column beside the river in WORLD row ty: the legacy formula in legacy coordinates, shifted by the map offset (L1) */
+  BSU.bankAt = function (ty) { const m = BSU.MAP; return Math.floor(P.terrain.bankBase + P.terrain.bankAmp * Math.sin((ty - m.oy) / P.terrain.bankPeriod)) - 1 + m.ox; };
 
   BSU.newState = function (seed) {
     seed = (seed >>> 0);
-    const T = P.terrain;
-    const bank0 = BSU.bankAt(T.bank0Row);
-    const founders = { tx: bank0 + T.founders.dx, ty: T.founders.ty };
+    const T = P.terrain, m = BSU.MAP, ox = m.ox, oy = m.oy;   // L1: every plot position is the legacy value shifted by the map offset
+    const bank0 = BSU.bankAt(T.bank0Row + oy);
+    const founders = { tx: bank0 + T.founders.dx, ty: T.founders.ty + oy };
     const ledgerObj = function (keys) { const o = {}; for (const k of keys) o[k] = 0; return o; };
     const objectives = {};
     for (const id of BSU.OBJECTIVE_IDS) objectives[id] = { state: 'locked', progress: 0, goal: 0, since: -1, deadlineDay: -1, text: '' };
@@ -1194,6 +1234,7 @@
       playSeconds: 0,
       setPiece: null,
       saveMeta: { slot: '', savedAt: 0, label: '' },
+      world: { W: m.W, H: m.H, ox: ox, oy: oy, legacy: { x0: m.legacy.x0, y0: m.legacy.y0, x1: m.legacy.x1, y1: m.legacy.y1 } },   // L1: the per-game map (saved; L2 defines the start charter from legacy)
       calendar: { day: 0, dayTick: 0, running: false, frozen: true, year: 1, month: 1, dom: 1, season: 'winter', semester: 'break' },
       sky: { phase: BSU.SKY.DAWN, phaseTick: 0, cycleTick: 0, scripted: false, t: 0 },
       weather: {
@@ -1221,7 +1262,7 @@
       },
       plot: {
         bank0: bank0,
-        rect: { x0: bank0 + T.plotRect.dx0, y0: T.plotRect.y0, x1: bank0 + T.plotRect.dx1, y1: T.plotRect.y1 },
+        rect: { x0: bank0 + T.plotRect.dx0, y0: T.plotRect.y0 + oy, x1: bank0 + T.plotRect.dx1, y1: T.plotRect.y1 + oy },
         founders: founders,
         highway: [], oaks: [], cove: [], mouth: [], landing: -1, landingShoulder: -1, mounds: [], cheniers: [], bayou: [], lake: [],
         template: false
@@ -1420,7 +1461,17 @@
       })(BSU.params, 'params');
       notes.push('params numeric leaves ' + numeric);
       // helpers
-      BSU.assert(BSU.idx(3, 5) === 5 * 64 + 3 && BSU.tx(BSU.idx(3, 5)) === 3 && BSU.ty(BSU.idx(3, 5)) === 5, 'idx/tx/ty');
+      BSU.assert(BSU.idx(3, 5) === 5 * BSU.MAP.W + 3 && BSU.tx(BSU.idx(3, 5)) === 3 && BSU.ty(BSU.idx(3, 5)) === 5, 'idx/tx/ty');
+      {   // L1: the map spec, setMap / onMap and the legacy frame
+        const live = BSU.MAP, m96 = BSU.mapSpec({ size: 96 }), m64 = BSU.mapSpec({ size: 64 });
+        BSU.assert(m96.W === 96 && m96.H === 96 && m96.N === 9216 && m96.ox === 32 && m96.oy === 32 && m96.CX === 12 && m96.NCH === 144 && m96.legacy.x0 === 32 && m96.legacy.y1 === 95 && Object.isFrozen(m96), 'mapSpec 96');
+        BSU.assert(m64.W === 64 && m64.N === 4096 && m64.ox === 0 && m64.oy === 0 && m64.NCH === 64 && m64.legacy.x1 === 63 && BSU.mapSpec().W === 96, 'mapSpec 64 and the 96 default');
+        let seen = null; const fn = BSU.onMap(function (m) { seen = m; });
+        BSU.assert(seen === live, 'onMap calls back at once with the live map');
+        const r = BSU.withLegacyMap(function () { return [BSU.MAP.W, BSU.idx(1, 1), BSU.inLegacy(0, 0), seen === BSU.MAP]; });
+        BSU.assert(r[0] === 64 && r[1] === 65 && r[2] === true && r[3] === true && BSU.MAP === live && seen === live, 'withLegacyMap flips to the 64 × 64 frame (listeners see it) and restores the live map');
+        BSU.offMap(fn);
+      }
       BSU.assert(BSU.nbr4(0).length === 2 && BSU.nbr4(BSU.idx(10, 10)).length === 4 && BSU.nbr8(0).length === 3 && BSU.nbr8(BSU.idx(10, 10)).length === 8, 'nbr4/nbr8 bounds');
       BSU.assert(BSU.dateToDay('Aug 5', 1) === 74 && BSU.dateToDay('Jan 1', 2) === 120 && BSU.formatDate(74) === 'Aug 5, Y1', 'date math');
       BSU.assert(BSU.dayParts(4).semester === 'spring' && BSU.dayParts(0).semester === 'break' && BSU.dayParts(110).semester === 'break' && BSU.dayParts(45).semester === 'summer' && BSU.dayParts(74).semester === 'fall', 'semesters');

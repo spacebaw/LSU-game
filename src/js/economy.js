@@ -1115,7 +1115,7 @@
     const bayou = (state.plot && Array.isArray(state.plot.bayou)) ? state.plot.bayou : [];
     let best = -1;
     for (let i = 0; i < bayou.length; i++) { const t = bayou[i]; if (BSU.ty(t) === ty) { const x = BSU.tx(t); if (best < 0 || x < best) best = x; } }
-    return best >= 0 ? best : P.terrain.bayou.x0;
+    return best >= 0 ? best : P.terrain.bayou.x0 + BSU.MAP.ox;   // L1: the legacy column, shifted by the map offset
   }
   /** Second Campus (§10.8): Year 5+, $20M, a Road bridge across the bayou, ≥ 12 complete buildings west of it */
   M.charterWest = function (state) {

@@ -61,7 +61,7 @@ Load order = manifest order = `init` order = `reset` order = tick order (for the
 
 ## 2. The global state: `BSU.state`
 
-`BSU.newState(seed)` (in `contract.js`) returns the complete tree below with every field present at its initial value, every typed array allocated at length 4,096, and no module-private objects. Modules never add top-level keys; a module that needs private per-game data puts it under its own branch (e.g. `state.hydro.*`) or keeps it in a closure and rebuilds it in `reset`. `contract.js` is frozen, so a branch owner that needs a **new saved sub-key** initializes it lazily in its own `reset` (both `fresh` cases: `state.hydro.heldStage ??= 0`) and lists it in this section under "lazily initialized"; the structural save rule of §8.1 saves it automatically and `load` keeps it (unknown keys in a doc are copied, never dropped). The tree is plain data: no classes, no functions, no cycles, no `Map`/`Set` (JSON-able except the typed arrays, which the save encodes as base64). Every branch is listed with **owner** (the only writer), **saved** (yes/no) and **initial** value.
+`BSU.newState(seed)` (in `contract.js`) returns the complete tree below with every field present at its initial value, every typed array allocated at length `BSU.MAP.N` (9,216 for a 96 × 96 game, 4,096 for the legacy 64 × 64 world — L1: the map is set per game by `BSU.setMap` before this call), and no module-private objects. Modules never add top-level keys; a module that needs private per-game data puts it under its own branch (e.g. `state.hydro.*`) or keeps it in a closure and rebuilds it in `reset`. `contract.js` is frozen, so a branch owner that needs a **new saved sub-key** initializes it lazily in its own `reset` (both `fresh` cases: `state.hydro.heldStage ??= 0`) and lists it in this section under "lazily initialized"; the structural save rule of §8.1 saves it automatically and `load` keeps it (unknown keys in a doc are copied, never dropped). The tree is plain data: no classes, no functions, no cycles, no `Map`/`Set` (JSON-able except the typed arrays, which the save encodes as base64). Every branch is listed with **owner** (the only writer), **saved** (yes/no) and **initial** value.
 
 ### 2.1 Root
 
@@ -73,6 +73,7 @@ Load order = manifest order = `init` order = `reset` order = tick order (for the
 | `playSeconds` | `number` | session | 0 | yes (browser: wall-clock seconds of unpaused play; headless: `tick / 10`) |
 | `setPiece` | `null \| SetPiece` | session | null | yes (a save written mid-set-piece resumes at its tick) |
 | `saveMeta` | `{slot: string, savedAt: number, label: string}` | session | `{slot:'', savedAt:0, label:''}` | yes |
+| `world` | `{W, H, ox, oy, legacy: {x0, y0, x1, y1}}` | contract (newState, from `BSU.MAP`) | the per-game map | yes (L1; v2 docs; a v1 doc migrates to `{64, 64, 0, 0, legacy 0..63}`; L2 defines the start charter from `legacy`) |
 | `calendar` | §2.4 | weather | — | yes |
 | `sky` | §2.4 | weather | — | yes |
 | `weather` | §2.4 | weather | — | yes |
@@ -97,7 +98,7 @@ Load order = manifest order = `init` order = `reset` order = tick order (for the
 
 `SetPiece = {kind: 'landfall'|'nearMiss'|'game'|'parade'|'graduation'|'montage', tick: number (0-based within the set piece), len: number (900/150/750/250/150/50), skippable: boolean, choices: Object<string, string> (decision toast id → 'yes'|'no'|'default'), speedBefore: 0|1|2|4, cameraTouched: boolean}`.
 
-### 2.2 `state.tiles` (index `i = ty * 64 + tx`; all length 4,096; all saved)
+### 2.2 `state.tiles` (index `i = ty * W + tx` with `W = BSU.MAP.W`; all length `BSU.MAP.N`; all saved — L1: never `& 63` / `>> 6`, use `BSU.tx(i)` / `BSU.ty(i)` or `i % W` / `(i / W) | 0` on a live `W`)
 
 | Array | Ctor | Owner (writer) | Initial (land / marsh / water) | Meaning |
 |---|---|---|---|---|
@@ -135,7 +136,9 @@ state.plot = {                     // terrain; saved
   landingShoulder: number,         // the Marsh shoulder tile the Objective-2 path ends on
   mounds: number[],                // 2 tile indices
   cheniers: {cx, cy, tiles: number[]}[],
-  bayou: number[],                 // spline tiles in order from the north edge (parameter order; "upstream" = smaller index)
+  bayou: number[],                 // spline tiles in order from the north edge (parameter order; "upstream" = smaller index); L1: in a 96 × 96 world the upstream reach through the new north rows comes first, the legacy spline is the tail
+  bayouArm: number[],              // L1 (lazily initialized by terrain.gen in larger worlds): the second bayou arm, west edge → its junction with the main bayou's north reach (BAYOU-flagged tiles, not in `bayou`)
+  highwayNorth: number[],          // L1 (larger worlds): Highway 1 running on from the stub to the north edge, row 0 → oy − 1
   lake: number[],                  // cypress lake tiles
   template: boolean                // true if the hand-authored fallback map was used
 };
@@ -454,8 +457,17 @@ BSU.B    = { /* the 43 catalog ids as string constants, id → id: */ path:'path
              wildlife_post:'wildlife_post', preserve:'preserve', live_oak:'live_oak', cypress:'cypress', azalea:'azalea', bell_tower:'bell_tower',
              tiger_habitat:'tiger_habitat', surge_barrier:'surge_barrier', marsh_restoration:'marsh_restoration', rookery:'rookery' };
 BSU.B_ORDER = [ /* the 43 ids in §0.3 row order */ ];
-BSU.SAVE_VERSION = 1;
-BSU.MAP = { W: 64, H: 64, N: 4096, TILE_W: 64, TILE_H: 32, PX_PER_FT: 6, CHUNK: 8, CHUNK_W: 512, CHUNK_H: 416 };
+BSU.SAVE_VERSION = 2;   // L1: v2 docs carry state.world; a v1 doc migrates to a 64 × 64 world at (0, 0)
+// L1 (world size per game): BSU.MAP is a FROZEN PER-GAME spec, replaced by BSU.setMap(spec) — which session.newGame / load call
+// BEFORE BSU.newState allocates — and never captured at module level: modules read BSU.MAP live or subscribe with
+// BSU.onMap(fn) (fn runs now and synchronously inside every setMap, refreshing their W/H/N and reallocating N-sized scratch).
+// New games are 96 × 96 (newGame({size: 64}) = the legacy world); the legacy 64 × 64 content sits at (ox, oy) = (W − 64, H − 64).
+BSU.MAP = BSU.mapSpec({ size: 96 });   // → { W: 96, H: 96, N: 9216, ox: 32, oy: 32, size: 96, CX: 12, CY: 12, NCH: 144,
+                                       //     legacy: { x0: 32, y0: 32, x1: 95, y1: 95 }, LEGACY_W: 64, LEGACY_H: 64,
+                                       //     TILE_W: 64, TILE_H: 32, PX_PER_FT: 6, CHUNK: 8, CHUNK_W: 512, CHUNK_H: 416 }
+                                       // the page default before any game is mapSpec({size: 64}) (headless tests that build a state without session keep the legacy frame)
+BSU.mapSpec(opts) → spec; BSU.setMap(spec | opts) → BSU.MAP; BSU.onMap(fn) / BSU.offMap(fn); BSU.inLegacy(tx, ty); BSU.withLegacyMap(fn)   // L1
+BSU.bankAt(ty)   // the last land column beside the river in WORLD row ty = the legacy formula at (ty − oy), + ox
 BSU.SAVE_SKIP = ['agents', 'vehicles', 'hydro.networks', 'hydro.risk', 'hydro.active', 'wildlife.campusMask', 'ui.tool', 'ui.panel', 'ui.perfMode', 'ui.camera.tx', 'ui.camera.ty'];
 ```
 Building ids are **strings** (the catalog key); `BSU.B` exists so a typo is a `undefined` at the call site instead of a silent string. Milestone ids (strings, `progress.milestones` keys): `chartered, welcome, cajunEngineer, firstBell, wetFeet, highAndDry, stormChaser, eyeOfTheStorm, gatorWrangler, sunbather, skeeterBeater, bayouField, nightFalls, geauxBeatMagnolia, undefeated, bigBoil, throwMeSomethin, greenAndGold, fortressBayou, livingWithWater, lightsAreOn, sinkingFeeling, rebuiltFromTheRoux, flagship, laissez, untouched` (in §10.5 order; `BSU.MILESTONES` is that array).
@@ -1235,7 +1247,7 @@ Owns the Budget, Storm, Season, Milestones, Almanac and Settings panels, the deb
 
 ---
 
-## 8. Save / load schema v1
+## 8. Save / load schema v2 (v1 = the same doc without `world`)
 
 ### 8.1 JSON shape
 
@@ -1243,8 +1255,9 @@ Owns the Budget, Storm, Season, Milestones, Almanac and Settings panels, the deb
 
 ```js
 {
-  v: 1, app: 'bayou-state', savedAt: number /*Date.now(), 0 headless*/, label: string,
+  v: 2, app: 'bayou-state', savedAt: number /*Date.now(), 0 headless*/, label: string,
   seed, tick, playSeconds, setPiece, saveMeta,
+  world /* L1: {W, H, ox, oy, legacy}; load calls BSU.setMap(mapSpec({W, H, ox, oy})) BEFORE newState so the tile arrays decode at the saved size */,
   calendar, sky, weather, storms, plot, hydro /* every enumerable key minus SAVE_SKIP: riverStage, bayouStage, surge, barrierClosed, pondCap, heldStage, spillwayOffset, … */,
   tiles: { elev: b64, depth: b64, sat: b64, stand: b64, mosq: b64, subs: b64, crest: b64, integrity: b64, sandbag: b64, sandbagDay: b64, wear: b64, flags: b64, surface: b64, owner: b64, type: b64, walk: b64 },
   veg, buildings /* array with null holes */, runNames,
@@ -1263,7 +1276,7 @@ Owns the Budget, Storm, Season, Milestones, Almanac and Settings panels, the deb
 
 ### 8.3 Migration hook
 
-`session.migrations = { 1: (doc) => doc }` — a map from schema version to a function upgrading `doc` from that version to the next; `migrate` applies them in order until `doc.v === BSU.SAVE_VERSION`. A `doc.v` greater than the current version, or a missing `app` field, is refused: the title screen offers **"start fresh with the same seed"** (`newGame({seed: doc.seed})`).
+`session.migrations = { 1: (doc) => doc with world = {W: 64, H: 64, ox: 0, oy: 0, legacy: {0, 0, 63, 63}} }` (L1: a pre-L1 save stays a 64 × 64 world at (0, 0) and keeps working unchanged) — a map from schema version to a function upgrading `doc` from that version to the next; `migrate` applies them in order until `doc.v === BSU.SAVE_VERSION`. A `doc.v` greater than the current version, or a missing `app` field, is refused: the title screen offers **"start fresh with the same seed"** (`newGame({seed: doc.seed})`).
 
 ### 8.4 Autosave and slots
 
@@ -1289,7 +1302,7 @@ session.js (last IIFE) runs `boot()` synchronously at the end of its own definit
      if (BSU.headlessMode): do nothing more (no game exists until the harness calls newGame/load)
   5. if (typeof requestAnimationFrame === 'function' && !BSU.headlessMode) requestAnimationFrame(loop)
 ```
-`session.newGame({seed, skipTutorial = false, title = false})`, in exactly this order: `seed = (seed >>> 0) || random`; `state = BSU.newState(seed)`; **`BSU.state = state` immediately** (before generation, so `BSU.rng.derive('reroll', k)` mixes THIS seed and not the previous game's — D40); `BSU.rng.sim.state = state.rng.sim` (in place; never `rng.make`); `terrain.gen(state, seed)` (sets `BSU.rng.world.state = seed` itself); modules `reset(state, true)` in manifest order; then either the tutorial start (`progress.tutorialStage = 0`, speed 0, `calendar.running = false`, the Founders' ghost on the cursor after the charter card) or `skipTutorial` (§9.4); emits nothing special (`save:loaded` is not emitted for a new game). Returns `state`.
+`session.newGame({seed, skipTutorial = false, title = false, size = 96})`, in exactly this order: `seed = (seed >>> 0) || random`; `BSU.setMap(BSU.mapSpec({size}))` (L1: 96 × 96 unless `size: 64`, or `{W, H, ox, oy}`; every module's W/H/N refreshes inside it, before any allocation); `state = BSU.newState(seed)`; **`BSU.state = state` immediately** (before generation, so `BSU.rng.derive('reroll', k)` mixes THIS seed and not the previous game's — D40); `BSU.rng.sim.state = state.rng.sim` (in place; never `rng.make`); `terrain.gen(state, seed)` (sets `BSU.rng.world.state = seed` itself); modules `reset(state, true)` in manifest order; then either the tutorial start (`progress.tutorialStage = 0`, speed 0, `calendar.running = false`, the Founders' ghost on the cursor after the charter card) or `skipTutorial` (§9.4); emits nothing special (`save:loaded` is not emitted for a new game). Returns `state`.
 
 ### 9.2 Charter → first frame (browser)
 

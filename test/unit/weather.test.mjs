@@ -437,7 +437,7 @@ function shapeOk(r) {
   const manifest = JSON.parse(readFileSync(join(root, 'src', 'manifest.json'), 'utf8')).modules;
   for (const f of manifest) { const p = join(root, 'src', 'js', f); if (existsSync(p)) vm.runInContext(readFileSync(p, 'utf8'), ctx, { filename: f }); }
   const BSU = win.BSU, Wt = BSU.weather, B = BSU.buildings, H = BSU.headless;
-  BSU.session.newGame({ seed: 42, skipTutorial: true });
+  BSU.session.newGame({ seed: 42, skipTutorial: true, size: 64 });
   const s = BSU.state; s.economy.cash = 30000000;
   const put = (id) => { const sp = H.findSpot(id); return sp ? H.place(id, sp.x, sp.y) : { ok: false }; };
   for (const id of ['water_tower', 'substation', 'dorm', 'dorm', 'dining_hall', 'pump']) put(id);

@@ -163,10 +163,10 @@ S.deleteSlot('mem');
 
 // --- migrate / refusals -----------------------------------------------------
 ok(S.migrate({ v: 1, app: 'bayou-state' }) !== null, 'migrate accepts v1');
-ok(S.migrate({ v: 2, app: 'bayou-state' }) === null && S.migrate({ v: 1 }) === null, 'refuses a newer version and a missing app');
-win.localStorage.setItem('bsu.save.v2', JSON.stringify({ v: 2, app: 'bayou-state', seed: 3 }));
+ok(S.migrate({ v: 3, app: 'bayou-state' }) === null && S.migrate({ v: 1 }) === null, 'refuses a newer version and a missing app');
+win.localStorage.setItem('bsu.save.v3', JSON.stringify({ v: 3, app: 'bayou-state', seed: 3 }));
 const live = BSU.state;
-ok(S.load('v2') === null && BSU.state === live, 'load refuses a v2 doc and keeps the live game');
+ok(S.load('v3') === null && BSU.state === live, 'load refuses a v3 doc and keeps the live game');
 win.localStorage.setItem('bsu.save.junk', '{not json');
 ok(S.load('junk') === null, 'unparsable save → null');
 

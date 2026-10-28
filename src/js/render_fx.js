@@ -13,9 +13,11 @@
   const BSU = window.BSU;
   if (!BSU || !BSU.render) return;
   const R = BSU.render;
-  const PR = BSU.params.render, PAL = BSU.params.palette, MAP = BSU.MAP;
+  const PR = BSU.params.render, PAL = BSU.params.palette;
   const SKY = BSU.SKY, SPR = BSU.SPR, STORM = BSU.STORM, SPH = BSU.STORM_PHASE, EV = BSU.EV, T = BSU.T, FLAG = BSU.FLAG;
-  const W = MAP.W, HGT = MAP.H, N = MAP.N, PXFT = 6;
+  const PXFT = 6;
+  let W = 64, HGT = 64, N = 4096;
+  BSU.onMap(function (m) { W = m.W; HGT = m.H; N = m.N; });   // L1: the live map size (refreshed inside BSU.setMap, before any allocation)
   const WATER_FLAGS = (FLAG.BAYOU | 0) | (FLAG.OPEN_WATER | 0);
   const fin = (v, d) => (Number.isFinite(v) ? v : d);
   const clamp = (v, lo, hi) => (v < lo ? lo : (v > hi ? hi : v));
@@ -348,7 +350,7 @@
     const wetE = wet * 0.56;
     for (let k = 0; k < pdN && pvN < PUD_VIS; k++) {
       const a = clamp((wetE - pdTh[k]) / 0.16, 0, 1); if (a <= 0) continue;
-      const i = pdIdx[k], tx = i & 63, ty = i >> 6;
+      const i = pdIdx[k], tx = (i % W), ty = ((i / W) | 0);
       const wx = (tx - ty) * 32 + pdOx[k], wy = (tx + ty) * 16 + pdOy[k] - fin(t.elev[i], 0) * PXFT;
       const sx = (wx - cam.x) * z + vw / 2, sy = (wy - cam.y) * z + vh / 2; if (sx < -40 || sx > vw + 40 || sy < -20 || sy > vh + 20) continue;
       const rw = pdR[k] * (0.4 + 0.6 * a);
@@ -497,7 +499,7 @@
     if (adv && hotN > 0) {
       const step = Math.max(1, Math.ceil(hotN / 10)); let cnt = 0;
       for (let k = (frameNo >> 4) % step; k < hotN && cnt < 10 && n < 30; k += step) {
-        const i = hotIdx[k], tx = i & 63, ty = i >> 6, sx = ((tx - ty) * 32 - cam.x) * z + vw / 2, sy = ((tx + ty) * 16 - fin(state.tiles.elev[i], 0) * PXFT - cam.y) * z + vh / 2;
+        const i = hotIdx[k], tx = (i % W), ty = ((i / W) | 0), sx = ((tx - ty) * 32 - cam.x) * z + vw / 2, sy = ((tx + ty) * 16 - fin(state.tiles.elev[i], 0) * PXFT - cam.y) * z + vh / 2;
         if (Math.abs(sx - vw / 2) > 380 || Math.abs(sy - vh / 2) > 200) continue;
         shRX[n] = sx - 30 * z; shRY[n] = sy - 17 * z; shRW[n] = 60 * z; shRH[n] = 14 * z; shRS[n] = 3; n++; cnt++;
       }
@@ -774,7 +776,7 @@
     }
     // levee overtopping trickle
     if (overtop.size) {
-      for (const [i, left] of overtop) { if (left <= 0) { overtop.delete(i); continue; } overtop.set(i, left - 1); const tx = i & 63, ty = i >> 6; if (tx >= x0 && tx <= x1 && ty >= y0 && ty <= y1) emit('sheet', tileWorldX(tx, ty), tileWorldY(tx, ty), 2, { spread: 14, z: elevPx(state, i) + fin(t.crest ? t.crest[i] : 0, 0) * PXFT, vz: -20, vy: 20 }); }
+      for (const [i, left] of overtop) { if (left <= 0) { overtop.delete(i); continue; } overtop.set(i, left - 1); const tx = (i % W), ty = ((i / W) | 0); if (tx >= x0 && tx <= x1 && ty >= y0 && ty <= y1) emit('sheet', tileWorldX(tx, ty), tileWorldY(tx, ty), 2, { spread: 14, z: elevPx(state, i) + fin(t.crest ? t.crest[i] : 0, 0) * PXFT, vz: -20, vy: 20 }); }
     }
     // fireworks queue (game:final)
     if (burstsPending > 0 && --burstTimer <= 0) { burstTimer = burstGap; burstsPending--; fireworks(state, mtVolley ? 1 : 1.2, mtVolley ? 2.6 : 1); }
@@ -894,7 +896,7 @@
   // ---------------------------------------------------------------------------
   function pushLight(kind, x, y, r, a, rot) { if (lightsN >= lightsList.length) return null; const L = lightsList[lightsN++]; L.kind = kind; L.x = x; L.y = y; L.r = r; L.a = a; L.rot = rot || 0; L.refl = 0; L.ref = null; return L; }
   // art pass B1: a lamp beside water (its S or E neighbour is wet) mirrors as a stretched, fainter pool on the water
-  function wetBelow(state, i) { const tx = i & 63, ty = i >> 6; return (ty < HGT - 1 && isWaterTile(state, i + W)) || (tx < W - 1 && isWaterTile(state, i + 1)); }
+  function wetBelow(state, i) { const tx = (i % W), ty = ((i / W) | 0); return (ty < HGT - 1 && isWaterTile(state, i + W)) || (tx < W - 1 && isWaterTile(state, i + 1)); }
   function pushReflection(x, y, z, a) { const L = pushLight('lamp', x, y + 14 * z, 0.9, a, 0); if (L) L.refl = 1; return L; }
   function lightsCtxFor(view) {
     const c = R.composites && R.composites.lights; if (!c || typeof c.getContext !== 'function') return null;
@@ -904,7 +906,7 @@
   // art pass B5: stadium haze entries (drawn after the lights), window reflections on water near lit buildings, puddle reflections
   const hazeX = new Float32Array(2), hazeY = new Float32Array(2), hazeR = new Float32Array(2), hazeA = new Float32Array(2); let hazeN = 0;
   let tsx = 0, tsy = 0;
-  function tileScreenXY(state, i, cam, view, ft) { const tx = i & 63, ty = i >> 6, z = cam.zoom || 1; tsx = (tileWorldX(tx, ty) - cam.x) * z + view.vw / 2; tsy = (tileWorldY(tx, ty) - ft * PXFT - cam.y) * z + view.vh / 2; }
+  function tileScreenXY(state, i, cam, view, ft) { const tx = (i % W), ty = ((i / W) | 0), z = cam.zoom || 1; tsx = (tileWorldX(tx, ty) - cam.x) * z + view.vw / 2; tsy = (tileWorldY(tx, ty) - ft * PXFT - cam.y) * z + view.vh / 2; }
   /** a lit building with water 1–3 tiles off its SW or SE edge mirrors a warm smear on that water (≤ 3 per building) */
   function windowReflections(state, b, span, cam, view, a) {
     const t = state.tiles, tx0 = b.tx | 0, ty0 = b.ty | 0, w = b.w | 0, h = b.h | 0; let made = 0;
@@ -932,7 +934,7 @@
     // streetlamps
     try {
       const lamps = te && typeof te.streetlamps === 'function' ? te.streetlamps(state) : null;
-      if (lamps && lamps.length) for (let k = 0; k < lamps.length && lightsN < LMAX; k++) { const i = lamps[k] | 0; const tx = i & 63, ty = i >> 6; if (tx < view.x0 - 1 || tx > view.x1 + 1 || ty < view.y0 - 1 || ty > view.y1 + 1) continue; const p = R.tilePx(i); if (inScreen(p.x, p.y)) { pushLight('lamp', p.x, p.y - 14 * z, 1, 0.95, 0); if (wetBelow(state, i)) pushReflection(p.x, p.y, z, 0.4); } }
+      if (lamps && lamps.length) for (let k = 0; k < lamps.length && lightsN < LMAX; k++) { const i = lamps[k] | 0; const tx = (i % W), ty = ((i / W) | 0); if (tx < view.x0 - 1 || tx > view.x1 + 1 || ty < view.y0 - 1 || ty > view.y1 + 1) continue; const p = R.tilePx(i); if (inScreen(p.x, p.y)) { pushLight('lamp', p.x, p.y - 14 * z, 1, 0.95, 0); if (wetBelow(state, i)) pushReflection(p.x, p.y, z, 0.4); } }
     } catch (e) { /* no terrain */ }
     // bridge pass: the lamps on decks over water (boardwalk / road bridge / Pedestrian Bridge), at deck height
     try {
@@ -1243,7 +1245,7 @@
   // ---------------------------------------------------------------------------
   function buildingOf(p) { const s = stateLive(); if (!s || !Array.isArray(s.buildings)) return null; const id = p && Number.isFinite(p.id) ? p.id | 0 : -1; return id >= 0 ? (s.buildings[id] || null) : null; }
   function footprintCenter(b) { return { x: tileWorldX(b.tx + (b.w - 1) / 2, b.ty + (b.h - 1) / 2), y: tileWorldY(b.tx + (b.w - 1) / 2, b.ty + (b.h - 1) / 2), z: elevPx(stateLive(), clamp(b.ty + b.h - 1, 0, HGT - 1) * W + clamp(b.tx + b.w - 1, 0, W - 1)), spread: (b.w + b.h) * 10 }; }
-  function tileCenter(i) { const tx = i & 63, ty = i >> 6; return { x: tileWorldX(tx, ty), y: tileWorldY(tx, ty), z: elevPx(stateLive(), i) }; }
+  function tileCenter(i) { const tx = (i % W), ty = ((i / W) | 0); return { x: tileWorldX(tx, ty), y: tileWorldY(tx, ty), z: elevPx(stateLive(), i) }; }
   let milePending = 0, mileTimer = 0;
   /** a shell over the screen: the burst lands inside the current view (milestones) */
   function viewShell(state) {

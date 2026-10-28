@@ -223,9 +223,15 @@
   }
 
   /** New game: seed → newState → BSU.state → rng.sim in place → terrain.gen → every reset(state, true) → tutorial | skipTutorial | title. */
+  /** L1: newGame({size: 64 | 96}) or {W, H, ox, oy} → the BSU.mapSpec options (96 × 96 by default; size 64 is the legacy world) */
+  function mapOptsOf(o) {
+    if (o && Number.isFinite(o.W) && Number.isFinite(o.H)) return { W: o.W, H: o.H, ox: o.ox, oy: o.oy };
+    return { size: (o && o.size === 64) ? 64 : 96 };
+  }
   M.newGame = function (opts) {
     opts = opts || {};
     const seed = (opts.seed >>> 0) || randomUint32();
+    BSU.setMap(BSU.mapSpec(mapOptsOf(opts)));        // L1: the per-game map BEFORE any allocation (every module's W/H/N refreshes inside setMap)
     const s = BSU.newState(seed);
     BSU.state = s;                                   // before generation: rng.derive('reroll', k) mixes THIS seed (D40)
     BSU.rng.sim.state = s.rng.sim;                   // in place; the Stream is never replaced (D39)
@@ -352,7 +358,12 @@
   // ============================================================================
   // Load (§8.2–8.3)
   // ============================================================================
-  M.migrations = { 1: function (doc) { return doc; } };
+  M.migrations = {
+    1: function (doc) {   // v1 → v2 (L1): a v1 save is a 64 × 64 world with the legacy content at (0, 0)
+      if (!doc.world || typeof doc.world !== 'object') doc.world = { W: 64, H: 64, ox: 0, oy: 0, legacy: { x0: 0, y0: 0, x1: 63, y1: 63 } };
+      return doc;
+    }
+  };
   /** Upgrade `doc` in place to BSU.SAVE_VERSION; returns the doc, or null when refused (newer version / wrong app). */
   M.migrate = function (doc) {
     if (!doc || typeof doc !== 'object' || doc.app !== APP || typeof doc.v !== 'number' || !Number.isFinite(doc.v)) return null;
@@ -437,6 +448,8 @@
       return null;
     }
     doc = migratedDoc;
+    const wd = (doc.world && typeof doc.world === 'object') ? doc.world : {};
+    BSU.setMap(BSU.mapSpec({ W: fin(wd.W, 64), H: fin(wd.H, 64), ox: fin(wd.ox, NaN), oy: fin(wd.oy, NaN) }));   // L1: the saved world size BEFORE newState allocates
     const s = BSU.newState(fin(doc.seed, 0) >>> 0);
     applyDoc(s, doc);
     BSU.state = s;
@@ -774,12 +787,12 @@
       A(H.findSpot('nope') === null, 'findSpot(nope) → null');
       // 8. migrate
       const d1 = { v: 1, app: APP, seed: 5 };
-      A(M.migrate(d1) === d1 && d1.v === 1, 'migrate v1 doc unchanged');
-      A(M.migrate({ v: 2, app: APP }) === null, 'a newer version is refused');
+      A(M.migrate(d1) === d1 && d1.v === 2 && d1.world && d1.world.W === 64 && d1.world.ox === 0, 'migrate v1 doc → v2 with a 64 × 64 world at (0, 0)');
+      A(M.migrate({ v: 3, app: APP }) === null, 'a newer version is refused');
       A(M.migrate({ v: 1 }) === null, 'a doc without app is refused');
-      slots.set('__selftest_v2', JSON.stringify({ v: 2, app: APP, seed: 1 }));
-      A(M.load('__selftest_v2') === null, 'load refuses a v2 doc');
-      M.deleteSlot('__selftest_v2');
+      slots.set('__selftest_v3', JSON.stringify({ v: 3, app: APP, seed: 1 }));
+      A(M.load('__selftest_v3') === null, 'load refuses a v3 doc');
+      M.deleteSlot('__selftest_v3');
       // 9. slots
       A(M.slots().some(function (x) { return x.slot === '__selftest_backup'; }), 'slots() lists the backup while it exists');
       notes.push('ok in ' + (Date.now() - t0) + ' ms');

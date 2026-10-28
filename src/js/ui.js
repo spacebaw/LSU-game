@@ -65,7 +65,8 @@
   const M = (BSU.ui = BSU.ui || {});
   const P = BSU.params, PR = P.render || {}, PU = P.ui || {}, PT = P.time || {};
   const OV = BSU.OV, SPR = BSU.SPR, STORM = BSU.STORM, SKY = BSU.SKY, T = BSU.T, EV = BSU.EV, PLACE = BSU.PLACE;   // paths pass: PLACE for the drag status line
-  const W = BSU.MAP.W, HGT = BSU.MAP.H, N = BSU.MAP.N;
+  let W = 64, HGT = 64, N = 4096;
+  BSU.onMap(function (m) { W = m.W; HGT = m.H; N = m.N; });   // L1: the live map size (refreshed inside BSU.setMap, before any allocation)
   const fin = function (v, d) { return Number.isFinite(v) ? v : d; };
   const clamp = function (v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; };
   // numbers the brief states but params does not carry (or carries under render)

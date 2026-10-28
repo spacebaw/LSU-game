@@ -31,7 +31,8 @@
   const TPD = PT.ticksPerDay;        // 200 (time pass; every day↔tick conversion in this file derives from it)
   const DPY = PT.daysPerYear;        // 120
   const CYCLE = PT.skyCycleTicks;    // 300
-  const W = BSU.MAP.W, H = BSU.MAP.H;
+  let W = 64, H = 64;
+  BSU.onMap(function (m) { W = m.W; H = m.H; });   // L1: the live map size (refreshed inside BSU.setMap, before any allocation)
 
   // Constants the GDD states but BSU.params does not carry (noted in INTEGRATION_NOTES.md).
   const LC = {
@@ -420,13 +421,14 @@
   /** The Célestine landfall tile: the south-edge tile below the cove's longitude. */
   function celestinePoint(state) {
     const mouth = state.plot && state.plot.mouth;
-    const tx = (Array.isArray(mouth) && mouth.length >= 2) ? (mouth[1] & 63) : clamp(fin(state.plot && state.plot.founders && state.plot.founders.tx, 32), 0, W - 1);
+    const tx = (Array.isArray(mouth) && mouth.length >= 2) ? ((mouth[1] % W)) : clamp(fin(state.plot && state.plot.founders && state.plot.founders.tx, 32), 0, W - 1);
     return BSU.idx(tx, H - 1);
   }
   /** A random landfall point per the edge rule: south edge 70%, else east edge with ty > 30 (rng.sim). */
   function randomPoint() {
-    if (R.chance(PS.southEdgeP)) return BSU.idx(R.int(W), H - 1);
-    return BSU.idx(W - 1, PS.eastEdgeMinRow + 1 + R.int(H - PS.eastEdgeMinRow - 1));
+    if (R.chance(PS.southEdgeP)) return BSU.idx(BSU.MAP.ox + R.int(BSU.MAP.LEGACY_W), H - 1);   // L1: the legacy column span, shifted by the map offset (the campus keeps today's surge distances)
+    const r0 = PS.eastEdgeMinRow + BSU.MAP.oy;   // L1: the legacy row rule, shifted by the map offset
+    return BSU.idx(W - 1, r0 + 1 + R.int(H - r0 - 1));
   }
   function dirOf(point) { return (BSU.ty(point) === H - 1) ? 'S' : 'E'; }
   /** The 8 edge tiles centered on the point along its edge (clamped in bounds). */
@@ -1695,7 +1697,7 @@
       const s7c = mk7(); s7c.playSeconds = 600; M.tick(s7c);
       const c7 = s7c.storms.current;
       A(c7 && c7.cat === 2 && c7.name === 'Célestine' && c7.landfallDay === s7c.calendar.day + 6 && c7.compressed === false && c7.tLandfall === -1 && s7c.storms.celestine.state === 'cone', 'Célestine cone on Sep 2');
-      A(BSU.ty(c7.point) === 63 && BSU.tx(c7.point) === 41, 'Célestine point below the cove');
+      A(BSU.ty(c7.point) === H - 1 && BSU.tx(c7.point) === 41, 'Célestine point below the cove');
       // 8. spawnStorm compressed / day-driven.
       const s8 = fresh(5); M.reset(s8, true); log.length = 0;
       const cone6 = PS.coneDays * TPD;   // six calendar days of ticks

@@ -5,6 +5,7 @@
 import { loadGame } from './domstub.mjs';
 
 const LONG = process.argv.includes('--long');
+const SIZE = process.argv.includes('--size') ? (Number(process.argv[process.argv.indexOf('--size') + 1]) === 64 ? 64 : 96) : 96;   // L1: world size per game (96 default; --size 64 = the legacy world)
 let failures = 0;
 const ok = (cond, msg) => { if (!cond) { failures++; console.error('FAIL:', msg); } else console.log('ok  :', msg); };
 
@@ -29,8 +30,9 @@ if (failures) process.exit(1);
 
 const H = BSU.headless;
 let state;
-try { state = BSU.session.newGame({ seed: 42, skipTutorial: true }); ok(true, 'newGame(seed 42) returned'); }
+try { state = BSU.session.newGame({ seed: 42, skipTutorial: true, size: SIZE }); ok(true, 'newGame(seed 42, size ' + SIZE + ') returned'); }
 catch (e) { ok(false, 'newGame threw: ' + (e.stack || e)); process.exit(1); }
+ok(BSU.MAP.W === SIZE && state.tiles.elev.length === SIZE * SIZE, 'the world is ' + SIZE + ' × ' + SIZE);
 state = state || BSU.state;
 ok(state && typeof state === 'object', 'game state object available (return value or BSU.state)');
 

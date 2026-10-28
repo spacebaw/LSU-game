@@ -11,7 +11,7 @@ const eq = (a, b, msg) => ok(a === b, `${msg} (got ${JSON.stringify(a)}, want ${
 
 const { win } = loadGame();
 const BSU = win.BSU, H = BSU.headless, TPD = BSU.params.time.ticksPerDay;
-const fresh = () => { BSU.session.newGame({ seed: 42, skipTutorial: true }); const s = BSU.state; s.economy.cash = 90e6; s.economy.suppressCoverage = true; return s; };
+const fresh = () => { BSU.session.newGame({ seed: 42, skipTutorial: true, size: 64 }); const s = BSU.state; s.economy.cash = 90e6; s.economy.suppressCoverage = true; return s; };
 // --- 1. both rows are in the catalog, unlock gate, placement, construction ----------------------------------
 {
   const s = fresh();

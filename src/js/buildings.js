@@ -19,7 +19,8 @@
   const M = (BSU.buildings = BSU.buildings || {});
   const P = BSU.params;
   const T = BSU.T, SURF = BSU.SURF, FLAG = BSU.FLAG, PLACE = BSU.PLACE, EV = BSU.EV;
-  const W = BSU.MAP.W, H = BSU.MAP.H, N = BSU.MAP.N;
+  let W = 64, H = 64, N = 4096;
+  BSU.onMap(function (m) { W = m.W; H = m.H; N = m.N; });   // L1: the live map size (refreshed inside BSU.setMap, before any allocation)
   const PB = P.build, PE = P.econ, PS = P.storm, PSUB = P.subsidence, PH = P.hydro;
 
   // Local constants for numbers the GDD states but BSU.params does not carry
@@ -305,7 +306,7 @@
     for (const b of M.list(state, 'founders_hall')) { fx = b.tx; fy = b.ty; fw = b.w; fh = b.h; }
     if (fx >= 0) for (const i of BSU.edgeTiles(fx, fy, fw, fh)) { c.founderRing[i] = 1; seed(i); }
     while (head < tail) {
-      const i = q[head++], tx = i & 63, ty = i >> 6;
+      const i = q[head++], tx = (i % W), ty = ((i / W) | 0);
       if (ty > 0) seed(i - W);
       if (tx < W - 1) seed(i + 1);
       if (ty < H - 1) seed(i + W);
@@ -483,8 +484,8 @@
     const surfaces = []; let land = -1, water = -1, nWater = 0;
     for (const i of tiles) { if (isLand(state, i)) { surfaces.push('path'); if (land < 0) land = i; } else { surfaces.push('boardwalk'); nWater++; if (water < 0) water = i; } }
     let perLand = 0, perWater = 0;
-    if (land >= 0) { const p = M.canPlace(state, 'path', land & 63, land >> 6, { ignoreCash: true }); if (!p || !p.ok) return null; perLand = fin(p.cost, rowOf('path').cost); }
-    if (water >= 0) { const p = M.canPlace(state, 'boardwalk', water & 63, water >> 6, { ignoreCash: true }); if (!p || !p.ok) return null; perWater = fin(p.cost, rowOf('boardwalk').cost); }
+    if (land >= 0) { const p = M.canPlace(state, 'path', (land % W), ((land / W) | 0), { ignoreCash: true }); if (!p || !p.ok) return null; perLand = fin(p.cost, rowOf('path').cost); }
+    if (water >= 0) { const p = M.canPlace(state, 'boardwalk', (water % W), ((water / W) | 0), { ignoreCash: true }); if (!p || !p.ok) return null; perWater = fin(p.cost, rowOf('boardwalk').cost); }
     return { tiles: tiles, surfaces: surfaces, cost: perLand * (tiles.length - nWater) + perWater * nWater, water: nWater };
   }
   /** the tie a footprint at (tx, ty) would lay: starts beside its edges (SE face first, then SW, then the back), ≤ max tiles; null when an edge already touches the network */
@@ -502,7 +503,7 @@
       for (const n of BSU.nbr4(i)) if ((conn[n] || (anySurface && isAccessSurface(surf[n]))) && !inFoot.has(n)) return true;
       return false;
     };
-    const side = function (i) { const x = i & 63, y = i >> 6; return x >= tx + d.w ? 0 : (y >= ty + d.h ? 1 : 2); };
+    const side = function (i) { const x = (i % W), y = ((i / W) | 0); return x >= tx + d.w ? 0 : (y >= ty + d.h ? 1 : 2); };
     const starts = edges.slice().sort(function (a, b) { return side(a) - side(b); });
     return tieSearch(state, starts, function (i) { return inFoot.has(i); }, goal, max);
   }
@@ -527,7 +528,7 @@
     if (tie.snap && row.id !== 'path') {
       const scratch = {}, o = { tiles: tiles.concat(tie.tiles) };
       if (tie.tiles.every(function (i) { return dragTileRule(state, row, i, o, scratch) === ''; })) {
-        const p = M.canPlace(state, row.id, tie.tiles[0] & 63, tie.tiles[0] >> 6, { ignoreCash: true, tiles: o.tiles });
+        const p = M.canPlace(state, row.id, (tie.tiles[0] % W), ((tie.tiles[0] / W) | 0), { ignoreCash: true, tiles: o.tiles });
         if (p && p.ok) { tie.surfaces = tie.tiles.map(function () { return row.id; }); tie.cost = fin(p.cost, row.cost) * tie.tiles.length; tie.water = 0; }
       }
     }
@@ -543,7 +544,7 @@
     const po = { tiles: Array.isArray(tie.run) ? tie.run.concat(tie.tiles) : tie.tiles, ignoreCash: true };
     for (let k = 0; k < tie.tiles.length; k++) {
       const i = tie.tiles[k], sid = (tie.surfaces && tie.surfaces[k]) || 'path';
-      const pr = placeInner(state, sid, i & 63, i >> 6, po, undoRec);
+      const pr = placeInner(state, sid, (i % W), ((i / W) | 0), po, undoRec);
       if (pr.ok) { laid.push(i); surfaces.push(sid); if (sid === 'boardwalk') water++; }
     }
     let cost = tie.cost;
@@ -559,8 +560,8 @@
   function nearestNetwork(state, cx, cy) {
     const conn = connectedMask(state), ring = cache(state).founderRing;
     let best = -1, bd = Infinity;
-    for (let i = 0; i < N; i++) { if (!conn[i] && !ring[i]) continue; const d = Math.max(Math.abs((i & 63) - cx), Math.abs((i >> 6) - cy)); if (d < bd) { bd = d; best = i; } }
-    if (best >= 0) return { tx: best & 63, ty: best >> 6, i: best, d: bd };
+    for (let i = 0; i < N; i++) { if (!conn[i] && !ring[i]) continue; const d = Math.max(Math.abs(((i % W)) - cx), Math.abs((((i / W) | 0)) - cy)); if (d < bd) { bd = d; best = i; } }
+    if (best >= 0) return { tx: (best % W), ty: ((best / W) | 0), i: best, d: bd };
     const f = state.plot && state.plot.founders; if (!f) return null;
     return { tx: f.tx, ty: f.ty, i: BSU.idx(f.tx, f.ty), d: Math.max(Math.abs(f.tx - cx), Math.abs(f.ty - cy)) };
   }
@@ -622,7 +623,7 @@
     let touches = false;
     for (const n of BSU.nbr4(i)) if (isLand(state, n) || (hasWaterFlag(state, n) && surf[n] === SURF.ROAD)) touches = true;
     if (!touches) return { ok: false, reason: 'Bridges start from land' };
-    const tx = i & 63, ty = i >> 6;
+    const tx = (i % W), ty = ((i / W) | 0);
     let spanX = 1, spanY = 1;
     for (let x = tx - 1; x >= 0 && hasWaterFlag(state, BSU.idx(x, ty)) && surf[BSU.idx(x, ty)] === SURF.ROAD; x--) spanX++;
     for (let x = tx + 1; x < W && hasWaterFlag(state, BSU.idx(x, ty)) && surf[BSU.idx(x, ty)] === SURF.ROAD; x++) spanX++;
@@ -776,7 +777,7 @@
     const t = state.tiles.type[low];
     if (t !== T.WET && t !== T.DRAINED) return null;
     let rate = t === T.DRAINED ? PSUB.drainedBuilt : PSUB.wetBuilt;
-    const tx = low & 63, ty = low >> 6;
+    const tx = (low % W), ty = ((low / W) | 0);
     for (const p of M.list(state, 'pump')) if (tileDist(tx, ty, p) <= PSUB.pumpRadius) { rate += PSUB.pumpAdd; break; }
     const risk = fin(call('hydro', 'riskAt', [state, low], 0), 0);
     const yearNow = BSU.dayParts(dayOf(state)).year;
@@ -944,7 +945,7 @@
     r.tiles = run; r.cost = row.cost; r.baseCost = row.cost;
     if (run.length < PB.barrierRun[0] || run.length > PB.barrierRun[1]) return fail(r, 'Drag 4–8 tiles across the Bayou');
     for (const i of run) if (!(Number.isInteger(i) && i >= 0 && i < N)) return fail(r, 'Off the map');
-    const sameRow = run.every(i => (i >> 6) === (run[0] >> 6)), sameCol = run.every(i => (i & 63) === (run[0] & 63));
+    const sameRow = run.every(i => (((i / W) | 0)) === (((run[0] / W) | 0))), sameCol = run.every(i => ((i % W)) === ((run[0] % W)));
     if (!sameRow && !sameCol) return fail(r, 'The barrier must be a straight line');
     for (let k = 1; k < run.length; k++) if (Math.abs(run[k] - run[k - 1]) !== (sameRow ? 1 : W)) return fail(r, 'The barrier must be a straight line');
     const first = run[0], last = run[run.length - 1];
@@ -1105,8 +1106,8 @@
     let b;
     if (row.placeRule === PLACE.BARRIER) {
       const run = r.tiles;
-      const horiz = (run[0] >> 6) === (run[run.length - 1] >> 6);
-      const x0 = Math.min(run[0] & 63, run[run.length - 1] & 63), y0 = Math.min(run[0] >> 6, run[run.length - 1] >> 6);
+      const horiz = (((run[0] / W) | 0)) === (((run[run.length - 1] / W) | 0));
+      const x0 = Math.min((run[0] % W), (run[run.length - 1] % W)), y0 = Math.min(((run[0] / W) | 0), ((run[run.length - 1] / W) | 0));
       b = newBuilding(state, row, x0, y0, horiz ? run.length : 1, horiz ? 1 : run.length, 0, Object.assign({}, opts, { _pilings: true }), day);
     } else {
       b = newBuilding(state, row, tx, ty, d.w, d.h, opts.rot, Object.assign({}, opts, { _pilings: r.needsPilings || row.alwaysPilings || opts.pilings === true }), day);
@@ -1130,7 +1131,7 @@
     const laid = [];
     if (connTiles.length) {
       const po = { tiles: connTiles, ignoreCash: true }, sfs = r.connector.surfaces || [];
-      for (let k = 0; k < connTiles.length; k++) { const i = connTiles[k]; const pr = placeInner(state, sfs[k] || 'path', i & 63, i >> 6, po, undoRec); if (pr.ok) laid.push(i); }   // paths pass: planks over water
+      for (let k = 0; k < connTiles.length; k++) { const i = connTiles[k]; const pr = placeInner(state, sfs[k] || 'path', (i % W), ((i / W) | 0), po, undoRec); if (pr.ok) laid.push(i); }   // paths pass: planks over water
       if (laid.length < connTiles.length && !opts.ignoreCash) {   // a tile refused under our feet (cannot happen after canPlace, but never keep money for nothing)
         const back = Math.round(connCost * (connTiles.length - laid.length) / connTiles.length);
         if (back > 0) { refund(state, back, { key: 'construction' }); undoRec.cost -= back; }
@@ -1156,13 +1157,13 @@
       if (!run.length) return out;
       if (id === 'marsh_restoration') return paintRestoration(state, row, run, opts, out);
       if (row.placeRule === PLACE.BARRIER) {
-        const r = placeInner(state, id, run[0] & 63, run[0] >> 6, Object.assign({}, opts, { tiles: run }), null);
+        const r = placeInner(state, id, (run[0] % W), ((run[0] / W) | 0), Object.assign({}, opts, { tiles: run }), null);
         if (r.ok) { out.ok = true; out.placed = run.length; out.cost = r.cost; } else out.skipped.push({ i: run[0], reason: r.reason });
         return out;
       }
       if (row.kind !== 'drag' && row.kind !== 'paint') {
         // a footprint row dragged: place once at the first tile
-        const r = placeInner(state, id, run[0] & 63, run[0] >> 6, opts, null);
+        const r = placeInner(state, id, (run[0] % W), ((run[0] / W) | 0), opts, null);
         if (r.ok) { out.ok = true; out.placed = 1; out.cost = r.cost; } else out.skipped.push({ i: run[0], reason: r.reason });
         return out;
       }
@@ -1192,11 +1193,11 @@
       const o = Object.assign({}, opts, { tiles: run });
       for (const i of run) {
         if (landings && landings.has(i)) {   // a bare landing gets a gravel path (its own price) so the bridge meets the land properly
-          if (state.tiles.surface[i] === SURF.NONE && state.tiles.owner[i] === -1) { const lr = placeInner(state, 'path', i & 63, i >> 6, opts, undoRec); if (lr.ok) { out.placed++; out.cost += lr.cost; } }
+          if (state.tiles.surface[i] === SURF.NONE && state.tiles.owner[i] === -1) { const lr = placeInner(state, 'path', (i % W), ((i / W) | 0), opts, undoRec); if (lr.ok) { out.placed++; out.cost += lr.cost; } }
           continue;
         }
         if (bad.has(i)) { out.skipped.push({ i: i, reason: bad.get(i) }); continue; }
-        const r = placeInner(state, id, i & 63, i >> 6, o, undoRec);
+        const r = placeInner(state, id, (i % W), ((i / W) | 0), o, undoRec);
         if (r.ok) { out.placed++; out.cost += r.cost; } else out.skipped.push({ i: i, reason: r.reason });
       }
       if (out.placed > 0) {
@@ -1253,7 +1254,7 @@
         if (i < 0 || i >= N) return { ok: false, refund: 0, reason: 'Off the map' };
         if (state.tiles.owner[i] >= 0) return M.remove(state, state.tiles.owner[i], reason);
         // a planted tree on the tile?
-        const tx = i & 63, ty = i >> 6;
+        const tx = (i % W), ty = ((i / W) | 0);
         let vegIdx = -1;
         for (let k = 0; k < state.veg.length; k++) if (state.veg[k] && state.veg[k].tx === tx && state.veg[k].ty === ty) { vegIdx = k; break; }
         let amount = reason === 'demolish' ? Math.round(refundOfTile(state, i) * PE.demolishRefund) : 0;
@@ -1481,7 +1482,7 @@
       else if (t === T.WET) {
         if (f & FLAG.WETLAND_ORIGINAL) eligible = true;
         else {
-          const tx = i & 63, ty = i >> 6, R = PB.restorationNearMarsh;
+          const tx = (i % W), ty = ((i / W) | 0), R = PB.restorationNearMarsh;
           for (let y = ty - R; y <= ty + R && !eligible; y++) for (let x = tx - R; x <= tx + R; x++) if (BSU.inBounds(x, y) && isMarsh(state, BSU.idx(x, y))) { eligible = true; break; }
         }
       }
@@ -1503,7 +1504,7 @@
     try {
       const row = rowOf('lecture_hall'); if (!row) return { ok: false, reason: 'No catalog' };
       const chen = (state.plot && state.plot.cheniers) || [];
-      let cx = 8, cy = 40;
+      let cx = 8 + BSU.MAP.ox, cy = 40 + BSU.MAP.oy;   // L1: the legacy fallback site, shifted by the map offset
       if (chen.length) { let best = chen[0]; for (const c of chen) if (c.cx < best.cx) best = c; cx = best.cx; cy = best.cy; }
       for (let ring = 0; ring <= 30; ring++) for (let dy = -ring; dy <= ring; dy++) for (let dx = -ring; dx <= ring; dx++) {
         if (Math.max(Math.abs(dx), Math.abs(dy)) !== ring) continue;
@@ -1736,7 +1737,7 @@
   // stats(), upkeepTotal(), shelter() — economy reads these daily
   // ---------------------------------------------------------------------------
   function oakAdjacentTo(state, i) {
-    const tx = i & 63, ty = i >> 6;
+    const tx = (i % W), ty = ((i / W) | 0);
     for (const v of (state.veg || [])) if (v && v.type === 'oak' && cheb(v.tx, v.ty, tx, ty) <= 1) return true;
     return false;
   }
@@ -1948,12 +1949,12 @@
       const water = (f & FLAG.OPEN_WATER) || tl.type[i] === T.OPEN_WATER;
       let bay = (f & FLAG.BAYOU) || tl.type[i] === T.BAYOU;
       if (bay && bayou) { const k = bayou.indexOf(i); if (k >= 0 && k < cut) bay = false; }
-      const tx = i & 63, ty = i >> 6;
+      const tx = (i % W), ty = ((i / W) | 0);
       const edge = tx === 0 || ty === 0 || tx === W - 1 || ty === H - 1;
       if (water || bay || edge) seed(i);
     }
     while (head < tail) {
-      const i = q[head++], tx = i & 63, ty = i >> 6;
+      const i = q[head++], tx = (i % W), ty = ((i / W) | 0);
       if (ty > 0) seed(i - W);
       if (tx < W - 1) seed(i + 1);
       if (ty < H - 1) seed(i + W);
@@ -2024,10 +2025,10 @@
   function gapName(state, cx, cy) {
     const plot = state.plot || {};
     const cands = [];
-    if (plot.mouth && plot.mouth.length >= 2 && plot.mouth[1] >= 0) cands.push({ n: 'the cove mouth', x: plot.mouth[1] & 63, y: plot.mouth[1] >> 6 });
+    if (plot.mouth && plot.mouth.length >= 2 && plot.mouth[1] >= 0) cands.push({ n: 'the cove mouth', x: (plot.mouth[1] % W), y: ((plot.mouth[1] / W) | 0) });
     if (isNum(plot.bank0)) { cands.push({ n: 'the south shoulder', x: plot.bank0 - 9, y: 14 }); cands.push({ n: 'the north shoulder', x: plot.bank0 - 9, y: 5 }); }
     let bestBay = null;
-    for (const i of (plot.bayou || [])) { const d = cheb(i & 63, i >> 6, cx, cy); if (!bestBay || d < bestBay.d) bestBay = { d: d, x: i & 63, y: i >> 6 }; }
+    for (const i of (plot.bayou || [])) { const d = cheb((i % W), ((i / W) | 0), cx, cy); if (!bestBay || d < bestBay.d) bestBay = { d: d, x: (i % W), y: ((i / W) | 0) }; }
     if (bestBay) cands.push({ n: 'the bayou bank', x: bestBay.x, y: bestBay.y });
     cands.push({ n: 'the river bank', x: BSU.bankAt(cy), y: cy });
     for (const ch of (plot.cheniers || [])) cands.push({ n: 'the chenier', x: ch.cx, y: ch.cy });
@@ -2048,18 +2049,18 @@
     for (let i = 0; i < N; i++) {
       if (!crestAt(i)) continue;
       if (m[i]) { cand[i] = 1; points.push(i); continue; }             // overtopped / halved wall tile
-      const tx = i & 63, ty = i >> 6, nb = [];
+      const tx = (i % W), ty = ((i / W) | 0), nb = [];
       for (const n of BSU.nbr4(i)) if (crestAt(n)) nb.push(n);
       if (nb.length > 1) continue;                                      // interior of a wall segment
       const conts = [];
-      if (nb.length === 1) { const cx = tx + (tx - (nb[0] & 63)), cy = ty + (ty - (nb[0] >> 6)); if (BSU.inBounds(cx, cy)) conts.push(BSU.idx(cx, cy)); }
+      if (nb.length === 1) { const cx = tx + (tx - ((nb[0] % W))), cy = ty + (ty - (((nb[0] / W) | 0))); if (BSU.inBounds(cx, cy)) conts.push(BSU.idx(cx, cy)); }
       else for (const n of BSU.nbr4(i)) conts.push(n);
       for (const t of conts) if (openTile(t) && !cand[t]) { cand[t] = 1; points.push(t); }
     }
     // join candidate pairs by a straight run of reached open tiles
     for (let a = 0; a < points.length; a++) for (let b = a + 1; b < points.length; b++) {
       const pa = points[a], pb = points[b];
-      const ax = pa & 63, ay = pa >> 6, bx = pb & 63, by = pb >> 6;
+      const ax = (pa % W), ay = ((pa / W) | 0), bx = (pb % W), by = ((pb / W) | 0);
       const d = cheb(ax, ay, bx, by);
       if (d < 2 || d > R) continue;
       const line = []; let okLine = true;
@@ -2081,7 +2082,7 @@
         const i = q[head++]; tiles.push(i);
         for (const n of BSU.nbr8(i)) if (cand[n] && !seen[n]) { seen[n] = 1; q[tail++] = n; }
       }
-      let sx = 0, sy = 0; for (const i of tiles) { sx += i & 63; sy += i >> 6; }
+      let sx = 0, sy = 0; for (const i of tiles) { sx += (i % W); sy += ((i / W) | 0); }
       const cx = Math.round(sx / tiles.length), cy = Math.round(sy / tiles.length);
       gaps.push({ tiles: tiles, len: tiles.length, cx: cx, cy: cy, name: gapName(state, cx, cy) });
     }
@@ -2190,7 +2191,7 @@
         if (!tiles.length) continue;
         let min = 100, sum = 0, bagged = 0;
         for (const i of tiles) { const g = tl.integrity[i]; if (g < min) min = g; sum += g; if (tl.sandbag[i] > 0 && tl.sandbagDay[i] > day) bagged++; }
-        out.push({ key: r.key, name: r.name || ('Levee segment (' + (r.tiles[0] & 63) + ', ' + (r.tiles[0] >> 6) + ')'), length: r.tiles.length, tiles: tiles,
+        out.push({ key: r.key, name: r.name || ('Levee segment (' + ((r.tiles[0] % W)) + ', ' + (((r.tiles[0] / W) | 0)) + ')'), length: r.tiles.length, tiles: tiles,
           integrity: Math.round(sum / tiles.length), minIntegrity: min, weak: min < PS.toast1Integrity, sandbagged: bagged === tiles.length, cost: Math.ceil(tiles.length / PS.sandbagPer) * PS.sandbagCost });
       }
       return out;
@@ -2746,7 +2747,8 @@
     for (const i of footprintOf(b)) s.tiles.owner[i] = b.id;
     return b;
   }
-  M.selfTest = function () {
+  M.selfTest = function () { return BSU.withLegacyMap(selfTestInner); };   // L1: the synthetic world below is laid out in legacy (64 × 64) coordinates
+  const selfTestInner = function () {
     const notes = [], rec = [];
     const saved = Object.assign({}, M._deps), savedC = C;
     const stubs = makeStubs(rec);

@@ -6,7 +6,9 @@ import { loadGame } from './domstub.mjs';
 const { win } = loadGame();
 const BSU = win.BSU;
 if (!BSU) { console.error('no BSU'); process.exit(1); }
-try { BSU.session.newGame({ seed: 7, skipTutorial: true }); } catch (e) { console.error('newGame threw', e); process.exit(1); }
+const SIZE = process.argv.includes('--size') ? (Number(process.argv[process.argv.indexOf('--size') + 1]) === 64 ? 64 : 96) : 96;   // L1: world size per game (96 default; --size 64 = the legacy world)
+try { BSU.session.newGame({ seed: 7, skipTutorial: true, size: SIZE }); } catch (e) { console.error('newGame threw', e); process.exit(1); }
+console.log('world ' + BSU.MAP.W + ' × ' + BSU.MAP.H);
 let bad = 0, n = 0;
 const entries = Object.entries(BSU).filter(([, mod]) => mod && typeof mod.selfTest === 'function');
 entries.sort((a, b) => (a[0] === 'session') - (b[0] === 'session'));   // stable: keeps BSU insertion order, session last

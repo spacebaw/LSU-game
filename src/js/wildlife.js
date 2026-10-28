@@ -18,7 +18,7 @@
   const P = BSU.params.wildlife;
   const PG = P.gator, PM = P.mosq, PN = P.nutria, PE = P.ecology;
   const T = BSU.T, FLAG = BSU.FLAG, SURF = BSU.SURF, SKY = BSU.SKY, STORM = BSU.STORM;
-  const N = BSU.MAP.N, W = BSU.MAP.W, H = BSU.MAP.H;
+  let N = BSU.MAP.N, W = BSU.MAP.W, H = BSU.MAP.H;   // L1: live (the BSU.onMap below the scratch declarations refreshes them and reallocates)
   const R = BSU.rng.sim;                 // the sim stream (never replaced, §3.3)
 
   // Local constants for values the GDD names but BSU.params does not carry (noted in INTEGRATION_NOTES.md).
@@ -58,15 +58,15 @@
   let cacheRoot = null;                  // the state tree the caches below describe
   let campusDirty = true;  let campus = new Uint8Array(N);   // allocated per root (state.wildlife.campusMask points at it)
   let densDirty = true;    let dens = [];  let waterTiles = 0;  let marshTiles = 0;
-  let gridDirty = true;    const passable = new Uint8Array(N);  const habitat = new Uint8Array(N);
+  let gridDirty = true;    let passable = new Uint8Array(N);  let habitat = new Uint8Array(N);
   let officersDirty = true;
-  let trapDirty = true;    const trapMask = new Uint8Array(N);  let trapRoot = null, trapDay = -1;   // nutriaTraps cache (per root, per day, per building event)
-  const mudApplied = new Uint8Array(N);  // mud source applied once per mud episode (brief §4)
-  const sinkMul = new Float32Array(N);   // multiplicative mosquito sinks, rebuilt daily
-  const srcBuf = new Float32Array(N);    // mosquito sources scratch
-  const dblBuf = new Float64Array(N);    // diffusion scratch (double precision: conservation check)
-  const u8Buf = new Uint8Array(N);       // generic scratch mask
-  const disturbedBuf = new Uint8Array(N);
+  let trapDirty = true;    let trapMask = new Uint8Array(N);  let trapRoot = null, trapDay = -1;   // nutriaTraps cache (per root, per day, per building event)
+  let mudApplied = new Uint8Array(N);  // mud source applied once per mud episode (brief §4)
+  let sinkMul = new Float32Array(N);   // multiplicative mosquito sinks, rebuilt daily
+  let srcBuf = new Float32Array(N);    // mosquito sources scratch
+  let dblBuf = new Float64Array(N);    // diffusion scratch (double precision: conservation check)
+  let u8Buf = new Uint8Array(N);       // generic scratch mask
+  let disturbedBuf = new Uint8Array(N);
   let prevPhase = -1;                    // last sky phase seen by tick (Dawn/Dusk/Day transitions)
   let retreatFlag = false;               // storm:watch → true, storm:passed → false
   let wavePending = null;                // {point, nearMiss} set by the storm:passed listener; consumed in tick
@@ -79,10 +79,18 @@
   function privOf(g) { let p = priv.get(g.id); if (!p) { p = { wait: 0, wanderRoute: null, wanderFrom: -1 }; priv.set(g.id, p); } return p; }
 
   // BFS scratch (own router used when BSU.agents is absent or for water-only swims)
-  const bfsParent = new Int32Array(N);
-  const bfsSeen = new Int32Array(N);
-  const bfsQueue = new Int32Array(N);
+  let bfsParent = new Int32Array(N);
+  let bfsSeen = new Int32Array(N);
+  let bfsQueue = new Int32Array(N);
   let bfsGen = 0;
+  BSU.onMap(function (m) {   // L1: the live map size; every N-sized scratch above follows it (inside BSU.setMap, before any allocation)
+    if (m.N === N && m.W === W && m.H === H && passable.length === N) return;
+    W = m.W; H = m.H; N = m.N;
+    campus = new Uint8Array(N); campusDirty = true; densDirty = true; gridDirty = true; trapDirty = true; cacheRoot = null;
+    passable = new Uint8Array(N); habitat = new Uint8Array(N); trapMask = new Uint8Array(N); mudApplied = new Uint8Array(N);
+    sinkMul = new Float32Array(N); srcBuf = new Float32Array(N); dblBuf = new Float64Array(N); u8Buf = new Uint8Array(N); disturbedBuf = new Uint8Array(N);
+    bfsParent = new Int32Array(N); bfsSeen = new Int32Array(N); bfsQueue = new Int32Array(N); bfsGen = 0;
+  });
 
   // ---------------------------------------------------------------------------
   // Small helpers over state
@@ -181,7 +189,7 @@
     const owner = state.tiles.owner, surface = state.tiles.surface, r = PG.campusRadius;
     for (let i = 0; i < N; i++) {
       if (owner[i] < 0 && surface[i] !== SURF.PATH && surface[i] !== SURF.ROAD) continue;
-      const tx = i & 63, ty = i >> 6;
+      const tx = (i % W), ty = ((i / W) | 0);
       const x0 = Math.max(0, tx - r), x1 = Math.min(W - 1, tx + r), y0 = Math.max(0, ty - r), y1 = Math.min(H - 1, ty + r);
       for (let y = y0; y <= y1; y++) { const row = y * W; for (let x = x0; x <= x1; x++) campus[row + x] = 1; }
     }
@@ -249,7 +257,7 @@
     let found = false;
     while (head < tail) {
       const cur = bfsQueue[head++];
-      const tx = cur & 63, ty = cur >> 6;
+      const tx = (cur % W), ty = ((cur / W) | 0);
       // N, E, S, W
       for (let d = 0; d < 4; d++) {
         let nx = tx, ny = ty;
@@ -314,9 +322,9 @@
   function nearestDen(state, i) {
     const d = densOf(state);
     if (!d.length) return i;
-    const tx = i & 63, ty = i >> 6;
+    const tx = (i % W), ty = ((i / W) | 0);
     let best = d[0], bestD = 1e9;
-    for (let k = 0; k < d.length; k++) { const dd = BSU.chebyshev(tx, ty, d[k] & 63, d[k] >> 6); if (dd < bestD) { bestD = dd; best = d[k]; } }
+    for (let k = 0; k < d.length; k++) { const dd = BSU.chebyshev(tx, ty, (d[k] % W), ((d[k] / W) | 0)); if (dd < bestD) { bestD = dd; best = d[k]; } }
     return best;
   }
   /** Land tiles 8-adjacent to a den (the "bank"); passable ones first. */
@@ -335,7 +343,7 @@
   function makeGator(state, i, name, size) {
     const g = {
       id: nextGatorId++, name: name || gatorName(state, nextGatorId - 1),
-      tx: (i & 63) + 0.5, ty: (i >> 6) + 0.5, px: 0, py: 0, dir: 0,
+      tx: ((i % W)) + 0.5, ty: (((i / W) | 0)) + 0.5, px: 0, py: 0, dir: 0,
       state: 'SUN', size: size || (R.chance(PG.bigShare) ? 'big' : 'juvenile'),
       den: nearestDen(state, i), target: -1, route: [], ri: 0, lounge: 0,
       onCampus: false, lastIncidentDay: -1, tag: 0,
@@ -371,9 +379,9 @@
   /** Attractor tiles within attractRadius of the den, with weights (GDD §6.3). */
   function attractors(state, g) {
     const out = [];   // {i, w}
-    const den = g.den, dx = den & 63, dy = den >> 6, rad = PG.attractRadius, day = today(state);
+    const den = g.den, dx = (den % W), dy = ((den / W) | 0), rad = PG.attractRadius, day = today(state);
     const grid = gridOf(state);
-    const within = (i) => BSU.chebyshev(dx, dy, i & 63, i >> 6) <= rad;
+    const within = (i) => BSU.chebyshev(dx, dy, (i % W), ((i / W) | 0)) <= rad;
     const push = (i, w) => { if (isNum(i) && i >= 0 && i < N && within(i)) out.push({ i: i, w: w }); };
     const game = gameDayNow(state), advisory = !!heatInfo(state).advisory;
     const blds = listBuildings(state);
@@ -392,7 +400,7 @@
         const edge = BSU.edgeTiles(b.tx, b.ty, b.w, b.h);
         let best = -1, bestD = 1e9;
         const cx = b.tx + Math.floor(b.w / 2), cy = b.ty + Math.floor(b.h / 2);
-        for (let q = 0; q < edge.length; q++) { if (!grid[edge[q]]) continue; const d = BSU.chebyshev(dx, dy, edge[q] & 63, edge[q] >> 6); if (d < bestD) { bestD = d; best = edge[q]; } }
+        for (let q = 0; q < edge.length; q++) { if (!grid[edge[q]]) continue; const d = BSU.chebyshev(dx, dy, (edge[q] % W), ((edge[q] / W) | 0)); if (d < bestD) { bestD = d; best = edge[q]; } }
         if (best >= 0) push(best, PG.weights.pool); else push(BSU.idx(cx, cy), PG.weights.pool);
       }
     }
@@ -423,7 +431,7 @@
 
   function preserveTilesNear(state, den) {
     const flags = state.tiles.flags, grid = gridOf(state), out = [];
-    const dx = den & 63, dy = den >> 6, rad = PG.preserveRadius;
+    const dx = (den % W), dy = ((den / W) | 0), rad = PG.preserveRadius;
     const x0 = Math.max(0, dx - rad), x1 = Math.min(W - 1, dx + rad), y0 = Math.max(0, dy - rad), y1 = Math.min(H - 1, dy + rad);
     for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) { const i = y * W + x; if ((flags[i] & FLAG.PRESERVE) && grid[i]) out.push(i); }
     return out;
@@ -455,10 +463,10 @@
   }
   function goSun(state, g, atBank) {
     g.state = 'SUN'; g.target = -1; g.route = []; g.ri = 0; g.lounge = 0;
-    if (atBank) { const bank = bankTiles(state, g.den); if (bank.length) { const b = R.pick(bank); g.tx = (b & 63) + 0.5; g.ty = (b >> 6) + 0.5; } }
+    if (atBank) { const bank = bankTiles(state, g.den); if (bank.length) { const b = R.pick(bank); g.tx = ((b % W)) + 0.5; g.ty = (((b / W) | 0)) + 0.5; } }
   }
   function startSwim(state, g) {
-    const den = g.den, dx = den & 63, dy = den >> 6, rad = PG.attractRadius;
+    const den = g.den, dx = (den % W), dy = ((den / W) | 0), rad = PG.attractRadius;
     const box = { x0: Math.max(0, dx - rad), x1: Math.min(W - 1, dx + rad), y0: Math.max(0, dy - rad), y1: Math.min(H - 1, dy + rad) };
     const type = state.tiles.type, cand = [];
     for (let y = box.y0; y <= box.y1; y++) for (let x = box.x0; x <= box.x1; x++) { const i = y * W + x; if (isWaterType(type[i])) cand.push(i); }
@@ -498,13 +506,13 @@
     while (budget > 0 && g.ri < route.length && guard++ < 8) {
       const node = route[g.ri];
       if (!isNum(node) || node < 0 || node >= N) { g.ri = route.length; break; }
-      const cx = (node & 63) + 0.5, cy = (node >> 6) + 0.5;
+      const cx = ((node % W)) + 0.5, cy = (((node / W) | 0)) + 0.5;
       const dx = cx - g.tx, dy = cy - g.ty;
       const dist = Math.sqrt(dx * dx + dy * dy);
       if (dist <= budget || dist < 1e-6) { g.tx = cx; g.ty = cy; budget -= dist; g.ri++; if (dist > 1e-6) setDir(g, dx, dy); }
       else { g.tx += dx / dist * budget; g.ty += dy / dist * budget; setDir(g, dx, dy); budget = 0; }
     }
-    if (!isNum(g.tx) || !isNum(g.ty)) { g.tx = (g.den & 63) + 0.5; g.ty = (g.den >> 6) + 0.5; }
+    if (!isNum(g.tx) || !isNum(g.ty)) { g.tx = ((g.den % W)) + 0.5; g.ty = (((g.den / W) | 0)) + 0.5; }
     return g.ri >= route.length;
   }
   /** 0 = +tx (up-right), 1 = +ty (down-right), 2 = −tx, 3 = −ty (shared convention with agents/sprites). */
@@ -525,7 +533,7 @@
     switch (g.state) {
       case 'SUN': {
         // on a storm watch every gator waits it out IN the water at its den (GDD §6.2 T−3); the bank is adjacent, so a one-tile slide
-        if (retreating && gatorTile(g) !== g.den && isNum(g.den) && g.den >= 0 && g.den < N) { g.tx = (g.den & 63) + 0.5; g.ty = (g.den >> 6) + 0.5; }
+        if (retreating && gatorTile(g) !== g.den && isNum(g.den) && g.den >= 0 && g.den < N) { g.tx = ((g.den % W)) + 0.5; g.ty = (((g.den / W) | 0)) + 0.5; }
         break;
       }
       case 'WRANGLED': break;
@@ -555,8 +563,8 @@
           const from = gatorTile(g);
           if (from === g.den) { goSun(state, g, false); break; }
           const r = routeGator(state, from, g.den, g);
-          if (r === undefined) { g.tx = (g.den & 63) + 0.5; g.ty = (g.den >> 6) + 0.5; goSun(state, g, false); break; }   // stranded: slips back into the water
-          if (r === null) { if (++p.wait > ROUTE_GIVEUP_TICKS * 4) { g.tx = (g.den & 63) + 0.5; g.ty = (g.den >> 6) + 0.5; goSun(state, g, false); } break; }
+          if (r === undefined) { g.tx = ((g.den % W)) + 0.5; g.ty = (((g.den / W) | 0)) + 0.5; goSun(state, g, false); break; }   // stranded: slips back into the water
+          if (r === null) { if (++p.wait > ROUTE_GIVEUP_TICKS * 4) { g.tx = ((g.den % W)) + 0.5; g.ty = (((g.den / W) | 0)) + 0.5; goSun(state, g, false); } break; }
           if (!r.length) { goSun(state, g, false); break; }
           g.route = r; g.ri = 0; p.wait = 0;
         }
@@ -583,7 +591,7 @@
   function ticker(state, text, kind, i) { const Pr = dep('progress'); const tk = fn(Pr, 'ticker'); if (tk) tk(state, text, null, kind || 'wildlife', isNum(i) ? i : undefined); }
   /** nearest complete building within 3 of a tile → {id, name} (sightings, the inspect line) */
   function nearBuilding(state, i) {
-    const tx = i & 63, ty = i >> 6, owner = state.tiles.owner, blds = state.buildings || [];
+    const tx = (i % W), ty = ((i / W) | 0), owner = state.tiles.owner, blds = state.buildings || [];
     let best = null, bd = 99;
     for (let y = Math.max(0, ty - 3); y <= Math.min(H - 1, ty + 3); y++) for (let x = Math.max(0, tx - 3); x <= Math.min(W - 1, tx + 3); x++) {
       const o = owner[y * W + x]; if (o < 0 || !blds[o] || !isComplete(blds[o])) continue;
@@ -665,7 +673,7 @@
           if (g.state === 'WRANGLED') continue;
           const i = gatorTile(g);
           if (!cm[i]) continue;
-          const d = BSU.chebyshev(post.tx, post.ty, i & 63, i >> 6);
+          const d = BSU.chebyshev(post.tx, post.ty, (i % W), ((i / W) | 0));
           if (d <= PG.officerRadius && d < bestD) { bestD = d; best = g; }
         }
         if (best) { o.state = 'WALK'; o.target = best.id; o.route = []; o.ri = 0; }
@@ -675,7 +683,7 @@
         const g = findGator(state, o.target);
         if (!g || g.state === 'WRANGLED' || !campusOf(state)[gatorTile(g)]) { o.state = 'RETURN'; o.target = -1; o.route = []; o.ri = 0; break; }
         const gi = gatorTile(g), oi = tileOf(o.tx, o.ty);
-        if (BSU.chebyshev(oi & 63, oi >> 6, gi & 63, gi >> 6) <= 1) {
+        if (BSU.chebyshev((oi % W), ((oi / W) | 0), (gi % W), ((gi / W) | 0)) <= 1) {
           o.state = 'WRANGLE'; o.wrangle = PG.wrangleTicks; g.state = 'WRANGLED'; g.route = []; g.ri = 0; break;
         }
         if (!o.route.length || o.route[o.route.length - 1] !== gi) {
@@ -710,7 +718,7 @@
     }
   }
   function moveStraight(o, toI, speed) {
-    const cx = (toI & 63) + 0.5, cy = (toI >> 6) + 0.5, dx = cx - o.tx, dy = cy - o.ty, d = Math.sqrt(dx * dx + dy * dy);
+    const cx = ((toI % W)) + 0.5, cy = (((toI / W) | 0)) + 0.5, dx = cx - o.tx, dy = cy - o.ty, d = Math.sqrt(dx * dx + dy * dy);
     if (d <= speed || d < 1e-6) { o.tx = cx; o.ty = cy; } else { o.tx += dx / d * speed; o.ty += dy / d * speed; }
     setDir(o, dx, dy);
   }
@@ -718,11 +726,11 @@
   function relocate(state, gatorId, byPost) {
     const g = findGator(state, gatorId);
     if (!g) return;
-    const i = gatorTile(g), tx = i & 63, ty = i >> 6;
-    let best = nearestDen(state, i), bestD = BSU.chebyshev(tx, ty, best & 63, best >> 6);
+    const i = gatorTile(g), tx = (i % W), ty = ((i / W) | 0);
+    let best = nearestDen(state, i), bestD = BSU.chebyshev(tx, ty, (best % W), ((best / W) | 0));
     const flags = state.tiles.flags, grid = gridOf(state);
-    for (let j = 0; j < N; j++) if ((flags[j] & FLAG.PRESERVE) && grid[j]) { const d = BSU.chebyshev(tx, ty, j & 63, j >> 6); if (d < bestD) { bestD = d; best = j; } }
-    g.tx = (best & 63) + 0.5; g.ty = (best >> 6) + 0.5; g.px = g.tx; g.py = g.ty;
+    for (let j = 0; j < N; j++) if ((flags[j] & FLAG.PRESERVE) && grid[j]) { const d = BSU.chebyshev(tx, ty, (j % W), ((j / W) | 0)); if (d < bestD) { bestD = d; best = j; } }
+    g.tx = ((best % W)) + 0.5; g.ty = (((best / W) | 0)) + 0.5; g.px = g.tx; g.py = g.ty;
     g.den = nearestDen(state, best);
     goSun(state, g, false);
     state.wildlife.relocations = (isNum(state.wildlife.relocations) ? state.wildlife.relocations : 0) + 1;
@@ -783,7 +791,7 @@
     const owner = state.tiles.owner, surface = state.tiles.surface, r = PM.disturbRadius;
     for (let i = 0; i < N; i++) {
       if (owner[i] < 0 && (surface[i] < SURF.PATH || surface[i] > SURF.BOARDWALK) && surface[i] !== SURF.BRIDGE) continue;
-      const tx = i & 63, ty = i >> 6;
+      const tx = (i % W), ty = ((i / W) | 0);
       for (let y = Math.max(0, ty - r); y <= Math.min(H - 1, ty + r); y++) for (let x = Math.max(0, tx - r); x <= Math.min(W - 1, tx + r); x++) u8Buf[y * W + x] = 1;
     }
     for (let i = 0; i < N; i++) disturbedBuf[i] = (type[i] === T.MARSH && u8Buf[i]) ? 1 : 0;
@@ -898,7 +906,7 @@
       const v = mosq[i];
       sumBefore += v;
       if (isWaterType(type[i])) { dblBuf[i] = 0; continue; }
-      const tx = i & 63, ty = i >> 6;
+      const tx = (i % W), ty = ((i / W) | 0);
       let acc = 0;
       if (ty > 0) acc += mosq[i - W] - v;
       if (tx < W - 1) acc += mosq[i + 1] - v;
@@ -983,7 +991,7 @@
     const crest = state.tiles.crest, type = state.tiles.type, cand = [];
     for (let i = 0; i < N; i++) {
       if (crest[i] !== 6) continue;
-      const tx = i & 63, ty = i >> 6;
+      const tx = (i % W), ty = ((i / W) | 0);
       let near = false;
       for (let y = Math.max(0, ty - PN.burrowRadius); y <= Math.min(H - 1, ty + PN.burrowRadius) && !near; y++)
         for (let x = Math.max(0, tx - PN.burrowRadius); x <= Math.min(W - 1, tx + PN.burrowRadius); x++) if (type[y * W + x] === T.MARSH) { near = true; break; }
@@ -1005,7 +1013,7 @@
     const log = state.wildlife.burrowLog;
     const e = log[i] || (log[i] = { n: 0, day: -1 });
     e.n++; e.day = day;
-    emit(BSU.EV.LEVEE_BURROW, { i: i, tx: i & 63, ty: i >> 6, integrity: integ[i] });
+    emit(BSU.EV.LEVEE_BURROW, { i: i, tx: (i % W), ty: ((i / W) | 0), integrity: integ[i] });
   }
   M._burrow = function (state, i) { heal(state); ensureKeys(state); burrow(state, i, today(state)); };
 
@@ -1128,7 +1136,7 @@
     const cm = campusOf(state), depth = state.tiles.depth, grid = gridOf(state), cand = [];
     for (let i = 0; i < N; i++) if (cm[i] && depth[i] >= PG.floodedDepth && isLandTile(state, i) && grid[i]) cand.push(i);
     if (!cand.length && wl.waveEntry >= 0 && wl.waveEntry < N) {
-      const ex = wl.waveEntry & 63, ey = wl.waveEntry >> 6;
+      const ex = (wl.waveEntry % W), ey = ((wl.waveEntry / W) | 0);
       for (let y = Math.max(0, ey - 6); y <= Math.min(H - 1, ey + 6); y++) for (let x = Math.max(0, ex - 6); x <= Math.min(W - 1, ex + 6); x++) { const i = y * W + x; if (grid[i]) cand.push(i); }
     }
     for (let k = 0; k < n && wl.waveLeft > 0; k++) {
@@ -1159,7 +1167,7 @@
         const dining = listBuildings(state, 'dining_hall').filter(isComplete);
         let target = home;
         if (dining.length) { const d = dumpsterOf(state, dining[0]); target = d >= 0 ? d : BSU.idx(dining[0].tx, dining[0].ty + dining[0].h); }
-        roux = { tx: (home & 63) + 0.5, ty: (home >> 6) + 0.5, px: 0, py: 0, dir: 1, state: 'LOOSE', home: home, target: target, tickerDone: false };
+        roux = { tx: ((home % W)) + 0.5, ty: (((home / W) | 0)) + 0.5, px: 0, py: 0, dir: 1, state: 'LOOSE', home: home, target: target, tickerDone: false };
         roux.px = roux.tx; roux.py = roux.ty;
         const Pr = dep('progress'); const tk = fn(Pr, 'ticker');
         if (tk && !roux.tickerDone) { roux.tickerDone = true; tk(state, 50, {}, 'wildlife', target); }
@@ -1222,7 +1230,7 @@
     let maxId = -1;
     for (let k = 0; k < state.gators.length; k++) {
       const g = state.gators[k];
-      if (!isNum(g.tx) || !isNum(g.ty)) { g.tx = (g.den & 63) + 0.5; g.ty = (g.den >> 6) + 0.5; }
+      if (!isNum(g.tx) || !isNum(g.ty)) { g.tx = ((g.den % W)) + 0.5; g.ty = (((g.den / W) | 0)) + 0.5; }
       g.tx = clamp(g.tx, 0, W - 0.001); g.ty = clamp(g.ty, 0, H - 0.001);
       g.px = g.tx; g.py = g.ty; g.route = []; g.ri = 0;
       if (!isNum(g.lounge)) g.lounge = 0; if (!isNum(g.tag)) g.tag = 0; if (!isNum(g.lastIncidentDay)) g.lastIncidentDay = -1;
@@ -1315,12 +1323,12 @@
       target = alt;
     }
     if (!state.gators.length) spawnAtRandomDen(state);
-    const tx = target & 63, ty = target >> 6;
+    const tx = (target % W), ty = ((target / W) | 0);
     let best = null, bestD = 1e9;
     for (let k = 0; k < state.gators.length; k++) {
       const g = state.gators[k];
       if (g.state === 'WRANGLED') continue;
-      const d = BSU.chebyshev(tx, ty, g.den & 63, g.den >> 6);
+      const d = BSU.chebyshev(tx, ty, (g.den % W), ((g.den / W) | 0));
       if (d < bestD) { bestD = d; best = g; }
     }
     if (best) startWander(state, best, target);
@@ -1409,20 +1417,20 @@
       // nutria scurry on earthen levees at Night: one per ~12 levee tiles, drifting along the run
       const levees = []; for (let i = 0; i < N; i++) if (crest[i] === 6) levees.push(i);
       const n = Math.min(12, Math.floor(levees.length / 12));
-      for (let k = 0; k < n; k++) { const i = levees[(BSU.rng.hash(k, 7) + (tick >> 4)) % levees.length]; out.push({ kind: 'nutria', tx: (i & 63) + 0.5, ty: (i >> 6) + 0.5, frame: frame }); }
+      for (let k = 0; k < n; k++) { const i = levees[(BSU.rng.hash(k, 7) + (tick >> 4)) % levees.length]; out.push({ kind: 'nutria', tx: ((i % W)) + 0.5, ty: (((i / W) | 0)) + 0.5, frame: frame }); }
       const hw = state.plot && Array.isArray(state.plot.highway) ? state.plot.highway : [];
-      if (hw.length && ((tick >> 6) % 5) === 0) { const i = hw[Math.min(hw.length - 1, (tick >> 3) % hw.length)]; out.push({ kind: 'armadillo', tx: (i & 63) + 0.5, ty: (i >> 6) + 0.5, frame: frame }); }
+      if (hw.length && ((((tick / W) | 0)) % 5) === 0) { const i = hw[Math.min(hw.length - 1, (tick >> 3) % hw.length)]; out.push({ kind: 'armadillo', tx: ((i % W)) + 0.5, ty: (((i / W) | 0)) + 0.5, frame: frame }); }
     }
     if (phase === SKY.DAWN && wl.birds && wl.birds.spoonbills) {
       const flags = state.tiles.flags; let sx = 0, sy = 0, c = 0;
-      for (let i = 0; i < N; i++) if (flags[i] & FLAG.PRESERVE) { sx += i & 63; sy += i >> 6; c++; }
+      for (let i = 0; i < N; i++) if (flags[i] & FLAG.PRESERVE) { sx += (i % W); sy += ((i / W) | 0); c++; }
       if (!c) { const rk = listBuildings(state, 'rookery'); if (rk.length) { sx = rk[0].tx; sy = rk[0].ty; c = 1; } }
       if (c) { const cx = sx / c, cy = sy / c; for (let k = 0; k < 5; k++) { const a = (tick / 40) + k * (Math.PI * 2 / 5); out.push({ kind: 'spoonbill', tx: cx + Math.cos(a) * 3, ty: cy + Math.sin(a) * 3, frame: frame }); } }
     }
     const pel = wl.birds ? (wl.birds.pelicans | 0) : 0;
     if (pel > 0) {
       let placed = 0;
-      for (let k = 0; k < 64 && placed < pel; k++) { const i = (BSU.rng.hash(k, 13) % N); if (type[i] === T.OPEN_WATER) { out.push({ kind: 'pelican', tx: (i & 63) + 0.5, ty: (i >> 6) + 0.5, frame: frame }); placed++; } }
+      for (let k = 0; k < 64 && placed < pel; k++) { const i = (BSU.rng.hash(k, 13) % N); if (type[i] === T.OPEN_WATER) { out.push({ kind: 'pelican', tx: ((i % W)) + 0.5, ty: (((i / W) | 0)) + 0.5, frame: frame }); placed++; } }
     }
     return out;
   }, () => []);

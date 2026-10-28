@@ -14,16 +14,17 @@
 (function () {
   const BSU = window.BSU;
   const M = (BSU.render = BSU.render || {});
-  const PR = BSU.params.render, PAL = BSU.params.palette, MAP = BSU.MAP;
+  const PR = BSU.params.render, PAL = BSU.params.palette;
   const T = BSU.T, SPR = BSU.SPR, SKY = BSU.SKY, FLAG = BSU.FLAG, SURF = BSU.SURF, OV = BSU.OV;
-  const W = MAP.W, HGT = MAP.H, N = MAP.N, TW = 64, TH = 32, PXFT = 6;
-  const CW = PR.chunkW || 512, CHH = PR.chunkH || 416, CS = 8, NCH = 64;
+  const TW = 64, TH = 32, PXFT = 6;
+  let W = 64, HGT = 64, N = 4096, CXN = 8, CYN = 8, NCH = 64;   // L1: the live map size and its chunk grid (CXN × CYN chunks of CS tiles); refreshed in the BSU.onMap below
+  const CW = PR.chunkW || 512, CHH = PR.chunkH || 416, CS = 8;
   const ZOOMS = [0.5, 1, 2];   // the three MASTER zooms: the atlas bakes sprites at 1× / 2× (0.5× reads the 1× entry) and the chunks are baked once at 1×
   // hud + zoom pass: the player's zoom steps (params.ui.zoomSteps). Nothing is baked per step: a step draws the nearest master ≥ it
   // (2 for 1.25–2.5, 1 for 0.65–1, 0.5 at 0.5) scaled by step/master with image smoothing on whenever that scale is not 1.
   const STEPS = (function () { const src = (BSU.params.ui && Array.isArray(BSU.params.ui.zoomSteps)) ? BSU.params.ui.zoomSteps : [0.5, 0.65, 0.8, 1, 1.25, 1.5, 1.75, 2, 2.5]; const a = src.filter(function (z) { return Number.isFinite(z) && z > 0; }).slice().sort(function (p, q) { return p - q; }); return a.length ? a : ZOOMS.slice(); })();
   const WATER_FLAGS = FLAG.BAYOU | FLAG.OPEN_WATER;
-  const WORLD_X = PR.worldX || [-2016, 2016], WORLD_Y = PR.worldY || [-84, 2040];
+  let WORLD_X = [-2016, 2016], WORLD_Y = [-84, 2040];   // clamp extents at zoom 1 — computed from the live map size in the BSU.onMap below (params.render.worldX / worldY are the 64 × 64 values)
   const MARGIN = PR.cameraMargin || 200, LERP = PR.cameraLerp || 0.15;
   const BG = '#0E1230';
   const GOLD = PAL.gold || '#FDD023', GOLD_HI = PAL.goldHi || '#FFE680';
@@ -55,8 +56,9 @@
   let app = null, canvas = null, ctx = null, inited = false;
   let vw = 1280, vh = 720, dpr = 1, lastRectW = -1, lastRectH = -1;
   const comp = { tint: null, lights: null, fog: null };
-  const chunks = new Array(NCH);
-  const dirtyBits = new Uint8Array(NCH);
+  let chunks = new Array(NCH);   // one table, NCH = CXN × CYN slots (allocChunks fills it; the BSU.onMap below resizes it per game)
+  let dirtyBits = new Uint8Array(NCH);
+  let candI = new Int32Array(NCH), candD = new Float64Array(NCH);   // chunkPass candidates
   let frameNo = 0, alphaNow = 0, zoomNow = 1, atlasZoom = 1, frameSmooth = false, firstFrame = true, bakesThisFrame = 0;   // hud + zoom pass: zoomNow is the EXACT live zoom (every screen↔world transform uses it); atlasZoom is the master the sprites / tees / sheets are fetched at; frameSmooth = zoomNow !== atlasZoom
   let frameDt = 1 / 60, simSpeed = 1, poseX = 0, poseY = 0;
   // H0 pipeline pass: hdOn = at least one HD family is registered (sprites.registerHD); hdMaster = the master HD families are
@@ -79,7 +81,7 @@
   let frameMs = 0, drawCalls = 0, agentsDrawn = 0, particlesDrawn = 0, waterDrawn = 0, decksDrawn = 0;
   let movedFlag = 0;                                 // 0 none, 1 programmatic, 2 by user (camera:moved once per frame)
   const camEvent = { x: 0, y: 0, zoom: 1, byUser: false };
-  const cypStamp = new Uint16Array(N); let cypGen = 0;   // cypress adjacency marks for the knees decoration
+  let cypStamp = new Uint16Array(N); let cypGen = 0;   // cypress adjacency marks for the knees decoration
   const colorCache = new Map();
   let birdTiles = null, birdTilesFrame = -1000;
   // art pass B4: gators lunge while an agent flees from them; critters get a heading from their last distinct step
@@ -92,6 +94,16 @@
     return fin(c.frame, 0) & 1;
   }
   let minimapEl = null, mmBase = null, mmImg = null;
+  BSU.onMap(function (m) {   // L1: the live map size; the chunk table, the world clamp extents and every N-sized scratch follow it (inside BSU.setMap, before any allocation)
+    W = m.W; HGT = m.H; N = m.N; CXN = m.CX; CYN = m.CY; NCH = m.NCH;
+    WORLD_X = [-(W - 1) * 32, (W - 1) * 32]; WORLD_Y = [-84, (W + HGT - 2) * 16 + 24];
+    for (let k = 0; k < chunks.length; k++) if (chunks[k]) dropChunk(chunks[k]);
+    chunks.length = NCH; dirtyBits = new Uint8Array(NCH); candI = new Int32Array(NCH); candD = new Float64Array(NCH);
+    cypStamp = new Uint16Array(N); cypGen = 0;
+    view.x0 = 0; view.y0 = 0; view.x1 = W - 1; view.y1 = HGT - 1;
+    mmBase = null; mmImg = null;
+    allocChunks();
+  });
   let nanReported = false;
   const info = { phase: 1, day: 0, month: 1, dom: 1, wind: 0, barrierClosed: false, toppleIds: null, bloom: false, autumn: false, perfMode: false };
 
@@ -277,12 +289,12 @@
   // ---------------------------------------------------------------------------
   function allocChunks() {
     for (let k = 0; k < NCH; k++) {
-      const cx = k & 7, cy = k >> 3, o = chunkOrigin(cx, cy);
+      const cx = k % CXN, cy = (k / CXN) | 0, o = chunkOrigin(cx, cy);
       chunks[k] = { cx: cx, cy: cy, ox: o.ox, oy: o.oy, canvas: null, ctx: null, dirty: 1, lastSeen: -1, vis: 0, master: 0, bytes: 0 };
       dirtyBits[k] = 1;
     }
   }
-  function dropChunk(ch) { if (ch.canvas) { try { ch.canvas.width = 1; ch.canvas.height = 1; } catch (e) { /* stub */ } } ch.canvas = null; ch.ctx = null; ch.dirty = 1; ch.master = 0; ch.bytes = 0; dirtyBits[ch.cx + ch.cy * 8] = 1; dropDeck(ch); }
+  function dropChunk(ch) { if (ch.canvas) { try { ch.canvas.width = 1; ch.canvas.height = 1; } catch (e) { /* stub */ } } ch.canvas = null; ch.ctx = null; ch.dirty = 1; ch.master = 0; ch.bytes = 0; dirtyBits[ch.cx + ch.cy * CXN] = 1; dropDeck(ch); }
   function liveChunks() { let n = 0; for (let k = 0; k < NCH; k++) if (chunks[k] && chunks[k].canvas) n++; return n; }
   /** mark chunk i (0–63) dirty */
   M.dirtyChunk = function (i) { i = i | 0; if (i >= 0 && i < NCH) { dirtyBits[i] = 1; if (chunks[i]) chunks[i].dirty = 1; } };
@@ -291,21 +303,21 @@
   /** true while chunk i (0–63) waits for a re-bake (tests / debug) */
   M.chunkDirty = function (i) { i = i | 0; return i >= 0 && i < NCH ? dirtyBits[i] === 1 || !chunks[i] || !chunks[i].canvas : false; };
   /** the baked 1× chunk canvas (minimap/postcard) or null */
-  M.chunkCanvas = function (cx, cy) { const ch = chunks[(cx | 0) + (cy | 0) * 8]; return ch && ch.canvas ? ch.canvas : null; };
+  M.chunkCanvas = function (cx, cy) { const ch = chunks[(cx | 0) + (cy | 0) * CXN]; return ch && ch.canvas ? ch.canvas : null; };
   function onTileChanged(p) {
     if (!p) return;
     const i = Number.isFinite(p.i) ? p.i | 0 : (Number.isFinite(p.tx) ? BSU.idx(p.tx, p.ty) : -1);
     if (i < 0 || i >= N) { if (Number.isFinite(p.chunk)) M.dirtyChunk(p.chunk); return; }
-    const tx = i & 63, ty = i >> 6, cx = tx >> 3, cy = ty >> 3;
-    M.dirtyChunk(cx + cy * 8);
+    const tx = (i % W), ty = ((i / W) | 0), cx = tx >> 3, cy = ty >> 3;
+    M.dirtyChunk(cx + cy * CXN);
     teeInvalidateNear(i);
     curvesDirty = true;
     // neighbours' cliff faces / auto-tile masks live in the adjacent chunk when the tile sits on a chunk edge, and a
     // smoothed centreline bends up to ~1.5 tiles from a changed tile (smoothing pass), so one tile in also re-bakes it
-    if ((tx & 7) <= 1 && cx > 0) M.dirtyChunk(cx - 1 + cy * 8);
-    if ((ty & 7) <= 1 && cy > 0) M.dirtyChunk(cx + (cy - 1) * 8);
-    if ((tx & 7) >= 6 && cx < 7) M.dirtyChunk(cx + 1 + cy * 8);
-    if ((ty & 7) >= 6 && cy < 7) M.dirtyChunk(cx + (cy + 1) * 8);
+    if ((tx & 7) <= 1 && cx > 0) M.dirtyChunk(cx - 1 + cy * CXN);
+    if ((ty & 7) <= 1 && cy > 0) M.dirtyChunk(cx + (cy - 1) * CXN);
+    if ((tx & 7) >= 6 && cx < CXN - 1) M.dirtyChunk(cx + 1 + cy * CXN);
+    if ((ty & 7) >= 6 && cy < CYN - 1) M.dirtyChunk(cx + (cy + 1) * CXN);
   }
   function blit1(g, ref, x, y) { const k = ref.zoom === 2 ? 0.5 : 1; g.drawImage(ref.canvas, ref.sx, ref.sy, ref.sw, ref.sh, x + ref.ox * k, y + ref.oy * k, ref.sw * k, ref.sh * k); drawCalls++; }   // H0: a master-2 ref lands at half its device size in 1× units (1 art px = 1 device px under the master-scaled chunk transform)
   /** H0: the chunk / deck contexts carry their bake scale in g._bs (1 today, 2 for an HD chunk); every transform reset in the bake path goes through these */
@@ -619,7 +631,7 @@
   function extendEnds(P, raw, surf) {
     const m = P.tiles.length, ext = [null, null];
     for (let e = 0; e < 2; e++) {
-      const k = e === 0 ? 0 : m - 1, i = P.tiles[k], x = i & 63, y = i >> 6;
+      const k = e === 0 ? 0 : m - 1, i = P.tiles[k], x = (i % W), y = ((i / W) | 0);
       let same = 0, best = -1, bestScore = 0;
       for (let d = 0; d < 4; d++) { const nx = x + DX4[d], ny = y + DY4[d]; if (nx >= 0 && ny >= 0 && nx < W && ny < HGT && surf[ny * W + nx] === P.kind) same++; }
       if (same > 1) continue;   // a junction, not a dead end
@@ -632,7 +644,7 @@
         if (score > bestScore) { best = j; bestScore = score; }
       }
       if (best < 0) continue;
-      const mx = (x + (best & 63)) * 0.5, my = (y + (best >> 6)) * 0.5;
+      const mx = (x + ((best % W))) * 0.5, my = (y + (((best / W) | 0))) * 0.5;
       if (e === 0) raw.unshift(mx, my); else raw.push(mx, my);
       ext[e] = { i: i, j: best };
     }
@@ -651,7 +663,7 @@
     for (let p = 0; p < polys.length; p++) {
       const P = polys[p], w = P.w = P.stub ? STUB_W : CURVE_W[P.kind];
       if (!P.pts) {
-        const raw = []; for (let k = 0; k < P.tiles.length; k++) raw.push(P.tiles[k] & 63, P.tiles[k] >> 6);
+        const raw = []; for (let k = 0; k < P.tiles.length; k++) raw.push((P.tiles[k] % W), ((P.tiles[k] / W) | 0));
         if (!P.closed) extendEnds(P, raw, surf);
         P.pts = raw.length === 2 ? [raw[0] - 0.12, raw[1], raw[0] + 0.12, raw[1]] : smoothPoly(raw, P.closed, CHAIKIN_ITERS);
       }
@@ -659,14 +671,14 @@
       if (P.ext) for (let e = 0; e < 2; e++) {   // the step where this run meets another kind: drawn by the higher side, on the lower tile
         const ex = P.ext[e]; if (!ex) continue;
         const ea = epOf(ex.i), eb = epOf(ex.j); if (ea <= eb) continue;
-        addStep(ex.j, { p: p, j: e === 0 ? 0 : Math.max(0, n - 2), t: e === 0 ? 0 : 1, sign: e === 0 ? -1 : 1, d: ea - eb, hiEp: ea, loEp: eb, lo: ex.j, hi: ex.i, kind: P.kind, w: w, ux: (ex.j & 63) - (ex.i & 63), uy: (ex.j >> 6) - (ex.i >> 6), deck: deck[ex.i] === deck[ex.i] });
+        addStep(ex.j, { p: p, j: e === 0 ? 0 : Math.max(0, n - 2), t: e === 0 ? 0 : 1, sign: e === 0 ? -1 : 1, d: ea - eb, hiEp: ea, loEp: eb, lo: ex.j, hi: ex.i, kind: P.kind, w: w, ux: ((ex.j % W)) - ((ex.i % W)), uy: (((ex.j / W) | 0)) - (((ex.i / W) | 0)), deck: deck[ex.i] === deck[ex.i] });
       }
       if (!P.stub && DECK_KIND_FT[P.kind]) {   // lamps: every lampEvery-th deck tile along the run, on the viewer-side edge
         const off0 = P.ext && P.ext[0] ? 1 : 0;
         for (let k = 0, q = 0; k < P.tiles.length; k++) {
           const i = P.tiles[k]; if (deck[i] !== deck[i]) { q = 0; continue; }
           if ((q++ % lampEvery) !== 1 || lampAt.has(i)) continue;
-          const kk = k + off0, at = nearestOnCurve(pts, P.closed, i & 63, i >> 6, kk * lampSpan - lampSpan, kk * lampSpan + 2 * lampSpan);
+          const kk = k + off0, at = nearestOnCurve(pts, P.closed, (i % W), ((i / W) | 0), kk * lampSpan - lampSpan, kk * lampSpan + 2 * lampSpan);
           const j = at.j, j1 = P.closed ? (j + 1) % n : Math.min(n - 1, j + 1), x = pts[2 * j] + (pts[2 * j1] - pts[2 * j]) * at.t, y = pts[2 * j + 1] + (pts[2 * j1 + 1] - pts[2 * j + 1]) * at.t;
           const nrm = normalAt(pts, n, P.closed, j); let nx = nrm[0], ny = nrm[1]; if (nx + ny < 0) { nx = -nx; ny = -ny; }
           const L = { i: i, x: x + nx * (w * 0.5 + 0.1), y: y + ny * (w * 0.5 + 0.1), ft: deck[i] + 2 };
@@ -690,9 +702,9 @@
         const r2 = (r + 1) % nr; if (runs[r].ep === runs[r2].ep) continue;
         const ka = runs[r].b, kb = runs[r2].a, a = P.tiles[ka], b = P.tiles[kb], ea = runs[r].ep, eb = runs[r2].ep;
         const hi = ea > eb ? a : b, lo = ea > eb ? b : a;
-        const xm = ((a & 63) + (b & 63)) * 0.5, ym = ((a >> 6) + (b >> 6)) * 0.5;
+        const xm = (((a % W)) + ((b % W))) * 0.5, ym = ((((a / W) | 0)) + (((b / W) | 0))) * 0.5;
         const at = nearestOnCurve(pts, P.closed, xm, ym, ka * span - span, ka * span + 2 * span);
-        const st = { p: p, j: at.j, t: at.t, sign: hi === a ? 1 : -1, d: Math.abs(ea - eb), hiEp: Math.max(ea, eb), loEp: Math.min(ea, eb), lo: lo, hi: hi, kind: P.kind, w: w, ux: (lo & 63) - (hi & 63), uy: (lo >> 6) - (hi >> 6), deck: deck[hi] === deck[hi] };
+        const st = { p: p, j: at.j, t: at.t, sign: hi === a ? 1 : -1, d: Math.abs(ea - eb), hiEp: Math.max(ea, eb), loEp: Math.min(ea, eb), lo: lo, hi: hi, kind: P.kind, w: w, ux: ((lo % W)) - ((hi % W)), uy: (((lo / W) | 0)) - (((hi / W) | 0)), deck: deck[hi] === deck[hi] };
         addStep(lo, st);
       }
       void m;
@@ -1007,8 +1019,8 @@
     if (ch.deck) { try { ch.deckCtx.setTransform(1, 0, 0, 1, 0, 0); ch.deckCtx.clearRect(0, 0, ch.deck.width, ch.deck.height); } catch (e) { /* stub */ } }
     ch.deckTiles = [];
     const bx = ch.cx * CS, by = ch.cy * CS;
-    for (let s = 0; s <= 14; s++) {              // tiles by tx+ty ascending (draw order inside the chunk)
-      for (let dx = Math.max(0, s - 7); dx <= Math.min(7, s); dx++) {
+    for (let s = 0; s <= CXN + CYN - 2; s++) {              // tiles by tx+ty ascending (draw order inside the chunk)
+      for (let dx = Math.max(0, s - (CYN - 1)); dx <= Math.min(CXN - 1, s); dx++) {
         const dy = s - dx, tx = bx + dx, ty = by + dy, i = ty * W + tx;
         const e = fin(elev[i], 0), ty8 = type[i], f = fl[i];
         const ep = Math.round(e * PXFT);                       // whole-pixel elevation: no sub-pixel seams between tiles
@@ -1080,7 +1092,7 @@
       }
     }
     if (ch.deck && !ch.deckTiles.length) dropDeck(ch);
-    ch.dirty = 0; dirtyBits[ch.cx + ch.cy * 8] = 0; ch.lastSeen = frameNo; bakeM = 1;
+    ch.dirty = 0; dirtyBits[ch.cx + ch.cy * CXN] = 0; ch.lastSeen = frameNo; bakeM = 1;
     const bs = bakeStat[m]; bs.n++; bs.ms += nowMs() - tb;
     if (m === 2) hdCapCheck();
   }
@@ -1131,7 +1143,7 @@
   /** canvas px of a tile center at its (or the given) elevation */
   M.tileToScreen = function (tx, ty, elevOverride) { const e = Number.isFinite(elevOverride) ? elevOverride : elevAt(clamp(tx | 0, 0, W - 1), clamp(ty | 0, 0, HGT - 1)); return BSU.worldToScreen(tx, ty, e, camera || { x: 0, y: 0, zoom: 1 }, vw, vh); };
   /** diamond center in canvas px at the tile's elevation */
-  M.tilePx = function (i) { i = i | 0; return M.tileToScreen(i & 63, i >> 6); };
+  M.tilePx = function (i) { i = i | 0; return M.tileToScreen((i % W), ((i / W) | 0)); };
   /** interpolated foot point of a mover in canvas px */
   M.entityScreen = function (e) {
     if (!e) return { x: 0, y: 0 };
@@ -1139,7 +1151,7 @@
     let ax = fin(e.px, e.tx) + (fin(e.tx, 0) - fin(e.px, fin(e.tx, 0))) * a, ay = fin(e.py, e.ty) + (fin(e.ty, 0) - fin(e.py, fin(e.ty, 0))) * a;
     const i = clamp(Math.floor(ax), 0, W - 1) + clamp(Math.floor(ay), 0, HGT - 1) * W;
     if (e.rhSet === true && Number.isFinite(e.rdx) && Number.isFinite(e.rdy)) { ax = e.rdx; ay = e.rdy; }   // a student: where it was last drawn (curve + lateral offset)
-    return worldPx((ax - ay) * 32, (ax + ay - 1) * 16 - elevAt(i & 63, i >> 6) * PXFT);
+    return worldPx((ax - ay) * 32, (ax + ay - 1) * 16 - elevAt((i % W), ((i / W) | 0)) * PXFT);
   };
   /** world px of a building's south-corner anchor at ground elevation */
   M.anchorOf = function (b) { if (!b) return { x: 0, y: 0 }; const ax = fin(b.tx, 0) + fin(b.w, 1) - 1, ay = fin(b.ty, 0) + fin(b.h, 1) - 1; return tileWorld(ax, ay, elevAt(clamp(ax, 0, W - 1), clamp(ay, 0, HGT - 1))); };
@@ -1384,9 +1396,9 @@
     const hy = mod('hydro'), th = (BSU.params.hydro && BSU.params.hydro.thresholds) || {};
     const live = !!(hy && typeof hy.surfaceAt === 'function' && typeof hy.normalStageAt === 'function');
     g.globalAlpha = 1; g.globalCompositeOperation = 'source-over';
-    for (let s = 0; s <= 14; s++) {
-      for (let cx = Math.max(0, s - 7); cx <= Math.min(7, s); cx++) {
-        const cy = s - cx, ch = chunks[cx + cy * 8];
+    for (let s = 0; s <= CXN + CYN - 2; s++) {
+      for (let cx = Math.max(0, s - (CYN - 1)); cx <= Math.min(CXN - 1, s); cx++) {
+        const cy = s - cx, ch = chunks[cx + cy * CXN];
         if (!ch || !ch.deck || !ch.deckTiles || !ch.deckTiles.length) continue;
         if (track) deckStats.seen++;
         const dx = (ch.ox - camx) * z + hw, dy = (ch.oy - camy) * z + hh;
@@ -1780,7 +1792,7 @@
   /** a tile changed: every building whose footprint touches it (4- or 8-adjacent) recomputes its tees */
   function teeInvalidateNear(i) {
     if (!root || !root.tiles || !teeCache.size) return;
-    const own = root.tiles.owner, tx = i & 63, ty = i >> 6;
+    const own = root.tiles.owner, tx = (i % W), ty = ((i / W) | 0);
     for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
       const x = tx + dx, y = ty + dy; if (x < 0 || y < 0 || x >= W || y >= HGT) continue;
       const o = own[y * W + x]; if (o >= 0 && teeCache.has(o)) teeDrop(o);
@@ -1794,7 +1806,7 @@
     if (!(Number.isFinite(p.tx) && Number.isFinite(p.w)) && root && Array.isArray(root.buildings)) { b = null; for (let k = 0; k < root.buildings.length; k++) { const q = root.buildings[k]; if (q && q.id === p.id) { b = q; break; } } }
     if (!b) return;
     const x0 = Math.max(0, (b.tx | 0) - 1), y0 = Math.max(0, (b.ty | 0) - 1), x1 = Math.min(W - 1, (b.tx | 0) + (b.w | 0)), y1 = Math.min(HGT - 1, (b.ty | 0) + (b.h | 0));
-    for (let cy = y0 >> 3; cy <= y1 >> 3; cy++) for (let cx = x0 >> 3; cx <= x1 >> 3; cx++) M.dirtyChunk(cx + cy * 8);
+    for (let cy = y0 >> 3; cy <= y1 >> 3; cy++) for (let cx = x0 >> 3; cx <= x1 >> 3; cx++) M.dirtyChunk(cx + cy * CXN);
   }
   function teeSweep() { if (teeCache.size <= TEE_MAX) return; for (const [id, c] of teeCache) if (!c || c.used < frameNo - TEE_IDLE) teeDrop(id); }
   M.teeStats = function () { let n = 0; for (const c of teeCache.values()) if (c && c.tees) n++; return { cached: teeCache.size, withTees: n, mb: Math.round(teeBytes / 10485.76) / 100, bakesThisFrame: teeBakes }; };
@@ -2301,7 +2313,7 @@
         e.c = icons;
         tileScreen(e);
         if (b.data && Number.isFinite(b.data.dumpsterTile) && b.data.dumpsterTile >= 0 && b.data.dumpsterTile < N) {
-          const di = b.data.dumpsterTile | 0, dx = di & 63, dy = di >> 6;
+          const di = b.data.dumpsterTile | 0, dx = (di % W), dy = ((di / W) | 0);
           if (inView(dx, dy, 1)) { const d = push('decal', dx, dy, fin(elev[di], 0), 2, drawSprite); d.ref = getRef('decal:dumpster', 0, 0); d.id = 'decal:dumpster'; tileScreen(d); }
         }
       }
@@ -2389,7 +2401,7 @@
             for (let i = 0; i < N; i++) if (t.type[i] === T.POND || (t.flags[i] & FLAG.PRESERVE)) birdTiles.push(i);
           }
           for (let k = 0; k < n && birdTiles.length; k++) {
-            const i = birdTiles[hash(k, 977) % birdTiles.length], tx = i & 63, ty = i >> 6;
+            const i = birdTiles[hash(k, 977) % birdTiles.length], tx = (i % W), ty = ((i / W) | 0);
             if (!inView(tx, ty, 1)) continue;
             const e = push('bird', tx + (hash(k, 5) % 60) / 100 - 0.3, ty + (hash(k, 9) % 60) / 100 - 0.3, fin(elev[i], 0), 2, drawSprite);
             e.ref = getRefE('egret', 0, typeof sp.birdFrame === 'function' ? sp.birdFrame('egret', k, frameNo) : (((frameNo >> 5) + k) & 1)); e.id = 'egret'; tileScreen(e);
@@ -2412,7 +2424,7 @@
       }
       if (pg && typeof pg.bonfires === 'function') {
         const bf = pg.bonfires(state);
-        if (Array.isArray(bf)) for (let k = 0; k < bf.length; k++) { const i = bf[k] | 0; if (i < 0 || i >= N) continue; const tx = i & 63, ty = i >> 6; if (!inView(tx, ty, 1)) continue; const e = push('bonfire', tx, ty, fin(elev[i], 0), 2, drawSprite); e.ref = getRef('bonfire', 0, (frameNo >> 2) % 3); e.id = 'bonfire'; tileScreen(e); }
+        if (Array.isArray(bf)) for (let k = 0; k < bf.length; k++) { const i = bf[k] | 0; if (i < 0 || i >= N) continue; const tx = (i % W), ty = ((i / W) | 0); if (!inView(tx, ty, 1)) continue; const e = push('bonfire', tx, ty, fin(elev[i], 0), 2, drawSprite); e.ref = getRef('bonfire', 0, (frameNo >> 2) % 3); e.id = 'bonfire'; tileScreen(e); }
       }
       const game = state.sports && state.sports.game;
       if (game && bl && typeof bl.list === 'function') {
@@ -2421,7 +2433,7 @@
           const edge = BSU.edgeTiles(venue.tx, venue.ty, venue.w, venue.h);
           const kinds = ['tent', 'tent', 'smoker', 'tent', 'cornhole', 'tent', 'tent', 'smoker', 'tent'];
           for (let k = 0; k < kinds.length && edge.length; k++) {
-            const i = edge[hash(k, venue.id + 1) % edge.length], tx = i & 63, ty = i >> 6;
+            const i = edge[hash(k, venue.id + 1) % edge.length], tx = (i % W), ty = ((i / W) | 0);
             if (!inView(tx, ty, 1)) continue;
             const e = push('tailgate', tx, ty, fin(elev[i], 0), 2, FB.live ? drawFbSprite : drawSprite); e.ref = getRef(kinds[k], k & 3, (frameNo >> 3) & 1); e.id = kinds[k]; tileScreen(e);   // qa pass 4: tents and smokers at the field's scale during a game
           }
@@ -2467,7 +2479,7 @@
     g.globalAlpha = 1;
   }
   const OV_COLORS = { flood: PAL.danger || '#E0443E', water: PAL.waterBlue || '#4FA3D6', mosq: '#9BD44A', power: GOLD, bad: PAL.danger || '#E0443E', good: PAL.good || '#3FBF7F', eco: PAL.highGround || '#7FA347', subs: '#B5533C' };
-  function tileDiamondScreen(i, out) { const tx = i & 63, ty = i >> 6; const w = BSU.worldToScreen(tx, ty, elevAt(tx, ty), camera, vw, vh); out.x = w.x; out.y = w.y; return out; }
+  function tileDiamondScreen(i, out) { const tx = (i % W), ty = ((i / W) | 0); const w = BSU.worldToScreen(tx, ty, elevAt(tx, ty), camera, vw, vh); out.x = w.x; out.y = w.y; return out; }
   const tmpPt = { x: 0, y: 0 };
   function builtinOverlays(state, g) {
     const ov = state.ui ? state.ui.overlay | 0 : 0, t = state.tiles;
@@ -2503,7 +2515,7 @@
         g.globalAlpha = 0.15; g.fillStyle = OV_COLORS.good; for (let k = 0; k < unreached.length; k++) { tileDiamondScreen(unreached[k] | 0, tmpPt); fillDiamond(g, tmpPt.x, tmpPt.y, w, h, step); }
       }
       if (Number.isFinite(gs.radius) && gs.radius > 0 && Number.isFinite(gs.radiusCenter)) {
-        const c = gs.radiusCenter | 0, cx = c & 63, cy = c >> 6, r = gs.radius | 0;
+        const c = gs.radiusCenter | 0, cx = (c % W), cy = ((c / W) | 0), r = gs.radius | 0;
         const x0 = clamp(cx - r, 0, W - 1), y0 = clamp(cy - r, 0, HGT - 1), x1 = clamp(cx + r, 0, W - 1), y1 = clamp(cy + r, 0, HGT - 1);
         const p0 = M.tileToScreen(x0, y0), p1 = M.tileToScreen(x1, y0), p2 = M.tileToScreen(x1, y1), p3 = M.tileToScreen(x0, y1);
         g.globalAlpha = 0.8; g.strokeStyle = gs.color || GOLD; g.lineWidth = 1; g.beginPath();
@@ -2605,7 +2617,7 @@
     const el = minimapEl; if (!el || !state || !state.tiles) return;
     try {
       const g = ctx2d(el); const mw = el.width || 160, mh = el.height || 160;
-      if (!mmBase) { mmBase = makeCanvas(W, HGT); }
+      if (!mmBase || mmBase.width !== W || mmBase.height !== HGT) { mmBase = makeCanvas(W, HGT); mmImg = null; }
       const bg = ctx2d(mmBase);
       if (!mmImg) { try { mmImg = bg.createImageData(W, HGT); } catch (e) { mmImg = null; } }
       const sp = S(), t = state.tiles;
@@ -2744,7 +2756,6 @@
   // baked at master 1 first (cheap, nearest the view centre first), then ONE master-2 bake per frame when the previous frame left
   // ≥ params.art.hd.bakeSliceMs of headroom: a dirty chunk that already had an HD canvas, else the nearest visible master-1 chunk
   // (the upgrade), else a master-1 pre-bake of the ring of chunks just outside the view. Every chunk draws at its own master.
-  const candI = new Int32Array(NCH), candD = new Float64Array(NCH);
   let hdStarve = 0; const HD_STARVE_EVERY = 30;
   function chunkPass(state, g) {
     const z = zoomNow, cw = CW * z, chh = CHH * z, hw = vw / 2, hh = vh / 2, camx = camera.x, camy = camera.y;
@@ -2760,9 +2771,9 @@
     if (curves && !curvesDirty && (frameNo % 30) === 7 && curves.deckCount > 0 && stageRefOf(state) !== curves.stageRef) { curvesDirty = true; M.dirtyAll(); }
     // 1. bakes: collect the visible dirty chunks (diagonal order = today's order), nearest-first only in HD mode
     let nCand = 0;
-    for (let s = 0; s <= 14; s++) {
-      for (let cx = Math.max(0, s - 7); cx <= Math.min(7, s); cx++) {
-        const cy = s - cx, k = cx + cy * 8, ch = chunks[k];
+    for (let s = 0; s <= CXN + CYN - 2; s++) {
+      for (let cx = Math.max(0, s - (CYN - 1)); cx <= Math.min(CXN - 1, s); cx++) {
+        const cy = s - cx, k = cx + cy * CXN, ch = chunks[k];
         const dx = (ch.ox - camx) * z + hw, dy = (ch.oy - camy) * z + hh;
         if (dx > vw || dy > vh || dx + cw < 0 || dy + chh < 0) { ch.vis = 0; continue; }
         ch.vis = 1;
@@ -2783,7 +2794,7 @@
     if (hd && headroom && hdBakesThisFrame < 1) {
       let best = null, bd = Infinity;
       for (let k = 0; k < NCH; k++) { const ch = chunks[k]; if (!ch.vis || !ch.canvas || ch.master === 2 || ch.dirty) continue; const ex = (ch.ox - camx) * z + hw + cw / 2 - hw, ey = (ch.oy - camy) * z + hh + chh / 2 - hh; const d = ex * ex + ey * ey; if (d < bd) { bd = d; best = ch; } }
-      if (best) { try { bakeChunk(best, state, 2); bakesThisFrame++; hdBakesThisFrame++; lastUpgrade = best.cx + best.cy * 8; } catch (e) { rerr('bake:hd', e); best.dirty = 0; } }
+      if (best) { try { bakeChunk(best, state, 2); bakesThisFrame++; hdBakesThisFrame++; lastUpgrade = best.cx + best.cy * CXN; } catch (e) { rerr('bake:hd', e); best.dirty = 0; } }
       else if (bakesThisFrame === 0) {   // 3. nothing visible pending: pre-bake (master 1) one chunk of the ring just outside the view, so a pan shows ground at once
         for (let k = 0; k < NCH && bakesThisFrame === 0; k++) {
           const ch = chunks[k]; if (ch.vis || ch.canvas) continue;
@@ -2794,9 +2805,9 @@
       }
     }
     // 4. draw every visible chunk at its own master
-    for (let s = 0; s <= 14; s++) {
-      for (let cx = Math.max(0, s - 7); cx <= Math.min(7, s); cx++) {
-        const cy = s - cx, ch = chunks[cx + cy * 8];
+    for (let s = 0; s <= CXN + CYN - 2; s++) {
+      for (let cx = Math.max(0, s - (CYN - 1)); cx <= Math.min(CXN - 1, s); cx++) {
+        const cy = s - cx, ch = chunks[cx + cy * CXN];
         if (!ch.vis || !ch.canvas) continue;
         const dx = (ch.ox - camx) * z + hw, dy = (ch.oy - camy) * z + hh;
         ch.lastSeen = frameNo;
@@ -3007,7 +3018,7 @@
   M.reset = function (state, fresh) {
     if (!state) return;
     bind(state);
-    for (let k = 0; k < NCH; k++) if (chunks[k]) dropChunk(chunks[k]); else { const o = chunkOrigin(k & 7, k >> 3); chunks[k] = { cx: k & 7, cy: k >> 3, ox: o.ox, oy: o.oy, canvas: null, ctx: null, dirty: 1, lastSeen: -1, vis: 0, master: 0, bytes: 0 }; }
+    for (let k = 0; k < NCH; k++) if (chunks[k]) dropChunk(chunks[k]); else { const o = chunkOrigin(k % CXN, (k / CXN) | 0); chunks[k] = { cx: k % CXN, cy: (k / CXN) | 0, ox: o.ox, oy: o.oy, canvas: null, ctx: null, dirty: 1, lastSeen: -1, vis: 0, master: 0, bytes: 0 }; }
     dirtyBits.fill(1); curvesDirty = true; curves = null;
     flashes.length = 0; ghostSpec = null; gates.clear(); shakeUntil = 0; shakePx = 0; hitStopUntilMs = 0;
     for (const k in M.squash) delete M.squash[k];
@@ -3064,9 +3075,9 @@
     const o00 = chunkOrigin(0, 0), o77 = chunkOrigin(7, 7);
     ok(o00.ox === -256 && o00.oy === -100 && o77.ox === -256 && o77.oy === 1692, 'chunk origins (0,0) → (−256, −100), (7,7) → (−256, 1692)');
     let contained = true;
-    for (let cy = 0; cy < 8 && contained; cy++) for (let cx = 0; cx < 8 && contained; cx++) {
+    for (let cy = 0; cy < CYN && contained; cy++) for (let cx = 0; cx < CXN && contained; cx++) {
       const o = chunkOrigin(cx, cy);
-      const corners = [[cx * 8, cy * 8], [cx * 8 + 7, cy * 8], [cx * 8, cy * 8 + 7], [cx * 8 + 7, cy * 8 + 7]];
+      const corners = [[cx * CS, cy * CS], [cx * CS + 7, cy * CS], [cx * CS, cy * CS + 7], [cx * CS + 7, cy * CS + 7]];
       for (let c = 0; c < 4; c++) for (let e = 0; e < 2; e++) {
         const d = BSU.tileDiamond(corners[c][0], corners[c][1], e ? 14 : -4);
         if (d.x3 < o.ox || d.x1 > o.ox + CW || d.y0 < o.oy || d.y2 > o.oy + CHH) contained = false;
