@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bayou State HD style</title>
+<style>
+  :root { --bg: #0b0f1c; --ink: #F4EEE2; --mute: #9a93b5; --gold: #FDD023; --purple: #461D7C; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.4 -apple-system, "Helvetica Neue", Arial, sans-serif; padding: 18px 20px 28px; }
+  h1 { font-size: 20px; margin: 0 0 4px; letter-spacing: .02em; }
+  h1 b { color: var(--gold); font-weight: 700; }
+  p.lead { margin: 0 0 14px; color: var(--mute); max-width: 1500px; }
+  .grid { display: grid; grid-template-columns: repeat(3, max-content) max-content; gap: 14px 18px; align-items: start; }
+  .col h2 { font-size: 15px; margin: 0 0 6px; }
+  .col h2 small { color: var(--mute); font-weight: 400; margin-left: 8px; }
+  .cell { display: flex; flex-direction: column; gap: 6px; }
+  .cell .tag { font-size: 11px; color: var(--mute); text-transform: uppercase; letter-spacing: .12em; }
+  canvas, img.ref { display: block; border-radius: 8px; box-shadow: 0 2px 12px rgba(0,0,0,.5); background: #0c1222; }
+  img.ref { image-rendering: pixelated; }
+  .ref-note { font-size: 11px; color: var(--mute); max-width: 460px; }
+</style>
+</head>
+<body>
+<h1><b>BAYOU STATE</b> · HD art-style candidates</h1>
+<p class="lead">Same scene, same iso projection (64 × 32 tiles, 6 px/ft), same key light from the upper-left, drawn through three candidate brushes. Everything is procedural Canvas 2D at the device pixel ratio: no images, no integer snapping. Night = multiply tint #0E1230 @ .62 then an additive lights pass, as in the game.</p>
+<div class="grid" id="grid"></div>
+<script src="hd_common.js"></script>
+<script src="style_a.js"></script>
+<script src="style_b.js"></script>
+<script src="style_c.js"></script>
+<script>
+(function () {
+  const q = new URLSearchParams(location.search);
+  const px = q.get('px') === '1';                       // display canvases at their backing size (for the DPR-1 harness)
+  const dpr = Number(q.get('dpr')) || Math.min(2, window.devicePixelRatio || 1);
+  const refScale = px ? 1 : 0.5;
+  const styles = [['A', 'Clean vector · flat-shaded 2.5D', 'Townscaper / Two Point Campus'], ['B', 'Painterly textured', 'hand-painted strategy game'], ['C', 'Soft rendered · diorama', 'rendered miniature']];
+  const grid = document.getElementById('grid');
+  const rows = [['day', false], ['night', true]];
+  for (const [rowName, night] of rows) {
+    for (const [key, title, sub] of styles) {
+      const cell = document.createElement('div'); cell.className = 'cell col';
+      cell.innerHTML = (night ? '' : `<h2>${key}. ${title}<small>${sub}</small></h2>`) + `<div class="tag">${rowName}</div>`;
+      const c = document.createElement('canvas'); c.id = `c-${key}-${rowName}`; cell.appendChild(c); grid.appendChild(cell);
+      const brush = window.HD.styles[key];
+      if (brush) { try { window.HD.draw(c, brush, { night, dpr, px }); } catch (e) { console.error(key, rowName, e); } }
+      else { c.width = 460 * dpr; c.height = 340 * dpr; c.style.width = (px ? 460 * dpr : 460) + 'px'; c.style.height = (px ? 340 * dpr : 340) + 'px'; const g = c.getContext('2d'); g.fillStyle = '#1a1230'; g.fillRect(0, 0, c.width, c.height); g.fillStyle = '#9a93b5'; g.font = `${16 * dpr}px sans-serif`; g.fillText(`style ${key}: not loaded`, 20 * dpr, 40 * dpr); }
+    }
+    const refCell = document.createElement('div'); refCell.className = 'cell col';
+    refCell.innerHTML = (night ? '' : `<h2>Current<small>pixel art, 2× zoom, live game</small></h2>`) + `<div class="tag">${rowName}</div>`;
+    const img = document.createElement('img'); img.className = 'ref'; img.src = night ? 'ref_night.png' : 'ref_day.png'; img.width = 920 * refScale; img.height = 570 * refScale;
+    refCell.appendChild(img);
+    if (!night) { const n = document.createElement('div'); n.className = 'ref-note'; n.textContent = 'Reference: the founders’ hall crop from the live game at 2× zoom (screenshot, pixel-doubled 1× masters).'; refCell.appendChild(n); }
+    grid.appendChild(refCell);
+  }
+  window.HD_READY = true;
+})();
+</script>
+</body>
+</html>
