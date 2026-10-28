@@ -36,7 +36,8 @@
     mossMin: 6, mossMax: 10, mossSway: 3, overlayAlpha: 0.45, ghostAlpha: 0.45, ghostSpriteAlpha: 0.6,
     shadowAlpha: 0.22, shadowColor: '#0A0718',         // design pass: ground shadows under buildings and trees
     tuftPct: 34, patchPct: 5,                           // art pass B1: grass tufts / clover-dirt-limestone patches per 100 open grass tiles
-    shrubPct: 38                                        // art pass B2: moss-draped understory shrubs per 100 open marsh-edge tiles
+    shrubPct: 38,                                       // art pass B2: moss-draped understory shrubs per 100 open marsh-edge tiles
+    hdWaterLiveA: 0.2                                   // H1: the live water pass's fill alpha over an HD-baked water tile (the surface look is in the chunk)
   };
   const hash = (BSU.rng && BSU.rng.hash) ? BSU.rng.hash : function (a, b) { let h = (a * 374761393 + b * 668265263) | 0; h = Math.imul(h ^ (h >>> 13), 1274126177); return (h ^ (h >>> 16)) >>> 0; };
   const fin = (v, d) => (Number.isFinite(v) ? v : d);
@@ -62,6 +63,11 @@
   // fetched at (2 when zoom × dpr ≥ params.art.hd.masterAt or the sprite master is already 2, else 1); hdChunkWant = the master the
   // chunk bake targets (2 only while hdOn && hdMaster === 2 && no cap tripped — so the shipped game bakes 1× chunks exactly as before)
   let hdOn = false, hdMaster = 1, hdChunkWant = 1, hdFallbackChunks = false, hdBakesThisFrame = 0, bakeM = 1, debugHDOn = false, debugTile = -1, lastUpgrade = -1;
+  // H1 terrain + water pass: hdTerrain = the `tile` family is HD (sprites_terrain.js registered its painters), which switches the bake to the HD
+  // tile variants (block position bits for every type, a deep bit for water, 1–5 px terrace steps as cliff sprites), the brush strokes for the
+  // paths / roads / decks, the toned curve colours, deck canvases at the chunk's master and the lighter live water tint over the baked surface
+  let hdTerrain = false, hdEnv1 = null, hdEnv2 = null;
+  function hdEnvOf(g) { const B = BSU.brush; if (!B) return null; if ((g._bs || 1) === 2) return hdEnv2 || (hdEnv2 = B.env(2)); return hdEnv1 || (hdEnv1 = B.env(1)); }
   const FRAME_MS = 1000 / 60;   // movement pass: last frame's real seconds, the game speed (≥ 1) and the drawn position poseAgent leaves for pushMover
   const view = { vw: 1280, vh: 720, dpr: 1, x0: 0, y0: 0, x1: 63, y1: 63 };
   let shakeUntil = 0, shakePx = 0, hitStopUntilMs = 0;
@@ -120,6 +126,7 @@
   function hdRefresh() {
     const sp = S(); const n = sp && typeof sp.hdCount === 'function' ? sp.hdCount() : 0;
     hdOn = n > 0;
+    hdTerrain = n > 0 && typeof sp.isHD === 'function' && sp.isHD('tile:4') === true;
     const caps = hdOn && typeof sp.hdCaps === 'function' ? sp.hdCaps() : null;
     const at = caps ? caps.masterAt : 1.5;
     hdMaster = !hdOn ? (atlasZoom >= 2 ? 2 : 1) : ((atlasZoom >= 2 || zoomNow * dpr >= at) ? 2 : 1);
@@ -414,8 +421,28 @@
   const STUB_W = 0.25, STUB_LEN = 0.58;             // tee / entrance-walk connector: 7 px like the sprite strip, to 0.08 past the footprint edge
   const CLIP_EPS = 0.06, CHAIKIN_ITERS = 3, SEG_PAD = 0.12;
   const EMPTY_DASH = [], DASH_SPECK = [0.03, 0.13], DASH_ROAD = [0.14, 0.14], DASH_PLANK = [0.03, 0.09], DASH_WEATHER = [0.06, 0.27], DASH_JOINT = [0.02, 0.22];
-  let curves = null, curvesDirty = true, CC = null;
+  let curves = null, curvesDirty = true, CC = null, CCH = null;
+  /** H1: the curve / stair / deck colours as brush tones (one base per material, a t per role) while the terrain is HD */
+  function curveColorsHD() {
+    if (CCH) return CCH;
+    const B = BSU.brush, sp = S(), X = sp.extra || {}, tn = (c, t, a) => B.tone(c, t, a);
+    const stone = PAL.creamStone || '#F5ECD7', WOOD = X.deckWood || '#9B6A48', CONC = X.concrete || '#B8B8BC', STEEL = X.steelDark || '#6A6A70';
+    CCH = {
+      pathEdge: tn(PAL.gravel, -0.6, 0.5), path: tn(PAL.gravel, 0), pathHi: tn(PAL.gravel, 0.3, 0.5), pathDk: tn(PAL.gravel, -0.45, 0.5), pathLo: tn(PAL.gravel, -0.25), deckLo: tn(WOOD, -0.3),
+      curb: tn(PAL.asphalt, 0.6), road: tn(PAL.asphalt, 0), dash: tn(PAL.gold, 0.2), ramp: tn(PAL.asphalt, -0.3), hatch: tn(PAL.gold, 0.4),
+      rail: tn(WOOD, -0.85), deck: tn(WOOD, 0), deckHi: tn(WOOD, 0.45), gap: tn(WOOD, -0.7), post: tn(PAL.bark, -0.1), postShadow: tn(PAL.waterNight || '#1B3A3A', -0.4),
+      stoneTread: tn(stone, -0.25), stoneRiser: tn(stone, -0.8), stoneNose: tn(stone, 0.5),
+      woodTread: tn(WOOD, 0), woodRiser: tn(WOOD, -0.75), woodNose: tn(WOOD, 0.45),
+      concrete: tn(CONC, 0), steelDark: tn(STEEL, 0), steelDk2: tn(STEEL, -0.5), black: X.black || '#1B1B1B',
+      kerb: tn(CONC, -0.45), bridgeDeck: tn(CONC, 0.1), bridgeJoint: tn(CONC, -0.3), bridgeLine: tn(CONC, 0.5), bridgeRamp: tn(CONC, -0.15),
+      pier: tn(CONC, -0.1), pierDark: tn(CONC, -0.65), waterline: tn(PAL.waterDay || '#2E6B5E', 0.8), shadow: 'rgba(8, 10, 24, 0.32)',
+      lampPost: tn(STEEL, 0), lampHead: '#F5D77A', lampCap: '#3A2A1E', gold: PAL.gold,
+      purple: PAL.purple, purple2: PAL.purple2, purpleShadow: PAL.purpleShadow,
+    };
+    return CCH;
+  }
   function curveColors() {
+    if (hdTerrain && BSU.brush) return curveColorsHD();
     if (CC) return CC;
     const sp = S(), sh = sp.shade, X = sp.extra || {};
     const stone = PAL.creamStone || '#F5ECD7';
@@ -715,9 +742,13 @@
     const dx = pts[2 * b] - pts[2 * a], dy = pts[2 * b + 1] - pts[2 * a + 1], L = Math.hypot(dx, dy) || 1;
     NRM[0] = -dy / L; NRM[1] = dx / L; return NRM;
   }
+  const HD_MATERIAL = [null, 'gravel', 'asphalt', 'boardwalk', null, 'concrete'];   // by surface kind (PATH, ROAD, BOARDWALK, —, BRIDGE)
   function strokeLayers(g, C, kind, stub, seed) {
-    g.lineJoin = 'round'; g.lineCap = 'round'; g.setLineDash(EMPTY_DASH); g.lineDashOffset = 0;
     const w = stub ? STUB_W : CURVE_W[kind];
+    if (hdTerrain && BSU.brush) {   // H1: the brush's layered stroke (edge AO, body, lit crown, highlight thread, material marks) in ground units under the iso transform
+      BSU.brush.strokePath(g, w, hdEnvOf(g), { material: HD_MATERIAL[kind] || 'gravel', stub: stub, seed: seed, unit: 32 }); drawCalls += stub ? 2 : 6; return;
+    }
+    g.lineJoin = 'round'; g.lineCap = 'round'; g.setLineDash(EMPTY_DASH); g.lineDashOffset = 0;
     if (kind === SURF.PATH) {
       g.lineWidth = w + 0.07; g.strokeStyle = C.pathEdge; g.stroke();
       g.lineWidth = w; g.strokeStyle = C.path; g.stroke(); drawCalls += 2;
@@ -850,15 +881,18 @@
     }
     if (steps) for (let k = 0; k < steps.length; k++) drawStep(g, C, ch, cv, steps[k]);
   }
-  function dropDeck(ch) { if (ch.deck) { try { ch.deck.width = 1; ch.deck.height = 1; } catch (e) { /* stub */ } } ch.deck = null; ch.deckCtx = null; ch.deckTiles = null; }
+  function dropDeck(ch) { if (ch.deck) { try { ch.deck.width = 1; ch.deck.height = 1; } catch (e) { /* stub */ } } ch.deck = null; ch.deckCtx = null; ch.deckTiles = null; ch.deckMaster = 0; }
   function deckChunks() { let n = 0; for (let k = 0; k < NCH; k++) if (chunks[k] && chunks[k].deck) n++; return n; }
   /** bake one deck tile into the ground canvas (full stilts) and the chunk's deck layer; records the tile's window for deckPass */
   function bakeDeckTile(ch, g, cv, i, tx, ty, sf, bedEp, state) {
     const deckEp = Math.round(cv.deck[i] * PXFT), waterEp = Math.round(fin(cv.water[i], cv.deck[i]) * PXFT), t = state.tiles;
     const wetAt = (x, y) => { const xi = Math.round(x), yi = Math.round(y); return xi >= 0 && yi >= 0 && xi < W && yi < HGT && wetOf(t, yi * W + xi); };
     drawDeckAt(g, ch, cv, i, tx, ty, sf, deckEp, waterEp, bedEp, true, wetAt);
-    if (!ch.deck) { ch.deck = makeCanvas(CW, CHH); ch.deckCtx = ctx2d(ch.deck); }
-    const dg = ch.deckCtx; dg.globalAlpha = 1; dg.globalCompositeOperation = 'source-over';
+    const m = g._bs || 1;   // H1: the deck layer bakes at the chunk's master (H0 left it at 1×)
+    if (!ch.deck) { ch.deck = makeCanvas(CW * m, CHH * m); ch.deckCtx = ctx2d(ch.deck); }
+    else if (ch.deck.width !== CW * m || ch.deck.height !== CHH * m) { ch.deck.width = CW * m; ch.deck.height = CHH * m; }
+    ch.deckMaster = m; ch.deckCtx._bs = m;
+    const dg = ch.deckCtx; dg.globalAlpha = 1; dg.globalCompositeOperation = 'source-over'; dg.imageSmoothingEnabled = false;
     drawDeckAt(dg, ch, cv, i, tx, ty, sf, deckEp, waterEp, bedEp, false, wetAt);
     const wx = (tx - ty) * 32 - ch.ox, y0 = (tx + ty) * 16 - deckEp - ch.oy - 16 - DECK_UP, y1 = (tx + ty) * 16 - waterEp - ch.oy + 16 + 4;
     const x0 = Math.max(0, wx - 34), x1 = Math.min(CW, wx + 34), ya = Math.max(0, y0), yb = Math.min(CHH, y1);
@@ -963,13 +997,14 @@
     else if (ch.canvas.width !== pw || ch.canvas.height !== ph) { ch.canvas.width = pw; ch.canvas.height = ph; }
     const g = ch.ctx, tb = nowMs();
     g._bs = m; bakeM = m; ch.master = m; ch.bytes = pw * ph * 4;
+    hdTerrain = typeof sp.isHD === 'function' && sp.isHD('tile:4') === true;   // H1: re-read per bake (a test may register / unregister the terrain families between frames)
     tfIdent(g);
     g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; g.imageSmoothingEnabled = false;   // pen sprites pixel-double crisply under the 2× transform; brush calls set smoothing themselves
     g.clearRect(0, 0, CW, CHH);
     const t = state.tiles, elev = t.elev, type = t.type, fl = t.flags, surf = t.surface, crest = t.crest, integ = t.integrity, depth = t.depth;
     markCypress(state);
     const cv = ensureCurves(state), deck = cv ? cv.deck : null;
-    if (ch.deck) { try { ch.deckCtx.setTransform(1, 0, 0, 1, 0, 0); ch.deckCtx.clearRect(0, 0, CW, CHH); } catch (e) { /* stub */ } }
+    if (ch.deck) { try { ch.deckCtx.setTransform(1, 0, 0, 1, 0, 0); ch.deckCtx.clearRect(0, 0, ch.deck.width, ch.deck.height); } catch (e) { /* stub */ } }
     ch.deckTiles = [];
     const bx = ch.cx * CS, by = ch.cy * CS;
     for (let s = 0; s <= 14; s++) {              // tiles by tx+ty ascending (draw order inside the chunk)
@@ -980,17 +1015,19 @@
         const wx = (tx - ty) * 32 - ch.ox, wy = (tx + ty) * 16 - ep - ch.oy;
         // (a) ground (art pass B1: 8 noise variants; water beds carry bit 8 when shallow, so the cove bed reads sandy)
         const isWaterTy = waterTypeAt(t, i);
-        let ref = tref('tile:' + ty8, sp.tileVariant(tx, ty) | (isWaterTy && fin(depth[i], 0) < 1.5 ? 8 : 0) | (ty8 === T.MARSH ? ((tx & 7) | ((ty & 7) << 3)) << 4 : 0), 0, 1);   // marsh: position bits → pools cross tile edges
+        const pos = ((tx & 7) | ((ty & 7) << 3)) << 4, dpt = isWaterTy ? fin(depth[i], 0) : 0;   // block position bits: the marsh pools (pen) / every HD tile's world-anchored noise cross tile edges
+        let ref = tref('tile:' + ty8, hdTerrain ? ((dpt < 1.5 ? 8 : 0) | (dpt >= 3 ? 1024 : 0) | pos) : (sp.tileVariant(tx, ty) | (isWaterTy && dpt < 1.5 ? 8 : 0) | (ty8 === T.MARSH ? pos : 0)), 0, 1);
         if (ref) blit1(g, ref, wx, wy);
         if (!isWaterTy) {   // (a2) ground tint: world noise + height + slope, a warm or cool diamond at a small alpha
-          const k = groundTone(t, i, tx, ty, e), ka = Math.min(TONE_K.max, Math.abs(k));
+          const k = groundTone(t, i, tx, ty, e), ka = Math.min(TONE_K.max, Math.abs(k)) * (hdTerrain ? 0.5 : 1);   // H1: half strength over the smooth HD ground (a flat tint diamond stands out more than it did over dithered pixels)
           if (ka > 0.015) { ref = tref(k > 0 ? 'tone:warm' : 'tone:cool', 0, 0, 1); if (ref) { g.globalAlpha = ka; blit1(g, ref, wx, wy); g.globalAlpha = 1; } }
         }
         if (debugHDOn && i === debugTile) { ref = tref('debug:hdtest', 0, 0); if (ref) blit1(g, ref, wx, wy); }   // H0 proof: the chunk path draws the HD cube at the debug tile (BSU.render.debugHD)
         // (b) faces toward the S (lower-left edge) and E (lower-right edge) neighbours: ≥ 1 ft → the cliff sprite,
         //     smaller steps → a thin dark terrace band exactly as tall as the pixel step (no background shows through)
-        if (ty < HGT - 1) { const d = ep - Math.round(fin(elev[i + W], 0) * PXFT); if (d >= 1) { if (d >= C.cliffMin) { ref = tref('cliff', clamp(d, C.cliffMin, C.cliffMax), 0, 1); if (ref) blit1(g, ref, wx, wy); } else stepFace(g, wx, wy, d, false, ty8); } }
-        if (tx < W - 1) { const d = ep - Math.round(fin(elev[i + 1], 0) * PXFT); if (d >= 1) { if (d >= C.cliffMin) { ref = tref('cliff', clamp(d, C.cliffMin, C.cliffMax), 1, 1); if (ref) blit1(g, ref, wx, wy); } else stepFace(g, wx, wy, d, true, ty8); } }
+        //     (H1: with the HD cliff family every step ≥ 1 px is a cliff sprite — the 1–5 px variants are the toned terrace bands)
+        if (ty < HGT - 1) { const d = ep - Math.round(fin(elev[i + W], 0) * PXFT); if (d >= 1) { if (hdTerrain || d >= C.cliffMin) { ref = tref('cliff', clamp(d, hdTerrain ? 1 : C.cliffMin, C.cliffMax), 0, 1); if (ref) blit1(g, ref, wx, wy); } else stepFace(g, wx, wy, d, false, ty8); } }
+        if (tx < W - 1) { const d = ep - Math.round(fin(elev[i + 1], 0) * PXFT); if (d >= 1) { if (hdTerrain || d >= C.cliffMin) { ref = tref('cliff', clamp(d, hdTerrain ? 1 : C.cliffMin, C.cliffMax), 1, 1); if (ref) blit1(g, ref, wx, wy); } else stepFace(g, wx, wy, d, true, ty8); } }
         // (j) static faint water highlight on water tiles (always baked; pass 3 animates on top at 1×/2×)
         if ((f & WATER_FLAGS) || ty8 === T.OPEN_WATER || ty8 === T.BAYOU) { ref = tref('water', 0, 0, 1); if (ref) { g.globalAlpha = 0.35; blit1(g, ref, wx, wy); g.globalAlpha = 1; } }
         // (c) art pass B1 shorelines: a land tile beside water gets a bank along the shared edges (sand / shell on the cove,
@@ -1257,6 +1294,7 @@
         const dn = clamp(d / 4, 0, 1), q = Math.round(dn * 15);
         let col = colorFor(WATER_SHALLOW, WATER_DEEP, q / 15, q);
         let a = 0.55 + 0.3 * clamp(d / 2, 0, 1);
+        if (hdTerrain && (isWater || ty8 === T.POND)) a = C.hdWaterLiveA;   // H1: the surface is baked (HD water tiles); the live fill is only a breathing depth tint — flood water over land keeps the full depth tint
         const reached = surgeOn && hyd && typeof hyd.surgeReached === 'function' && hyd.surgeReached(state, i) === true;
         if (reached) { col = wc.surge; a = 0.86; }
         g.globalAlpha = a; g.fillStyle = col;
@@ -1356,11 +1394,18 @@
         let under = 0;
         if (live) for (let q = 0; q < ch.deckTiles.length; q++) if (deckOvertopped(state, hy, th, ch.deckTiles[q])) { under++; over.add(ch.deckTiles[q].i); }
         if (track) { deckStats.under += under; deckStats.live = live; }
-        if (!under) { if (frameSmooth) g.drawImage(ch.deck, 0, 0, CW, CHH, dx, dy, cw, chh); else g.drawImage(ch.deck, 0, 0, CW, CHH, Math.round(dx), Math.round(dy), Math.round(cw), Math.round(chh)); drawCalls++; if (track) decksDrawn += ch.deckTiles.length; continue; }
+        const m = ch.deckMaster === 2 ? 2 : 1;   // H1: the deck layer is at the chunk's master; a master-2 deck follows the chunk pass's draw rule
+        if (!under) {
+          if (m === 2) { const exact = Math.abs(z * dpr / 2 - 1) < 1e-6; g.imageSmoothingEnabled = !exact; if (exact) g.drawImage(ch.deck, 0, 0, CW * 2, CHH * 2, Math.round(dx * dpr) / dpr, Math.round(dy * dpr) / dpr, cw, chh); else g.drawImage(ch.deck, 0, 0, CW * 2, CHH * 2, dx, dy, cw, chh); g.imageSmoothingEnabled = frameSmooth; }
+          else if (frameSmooth) g.drawImage(ch.deck, 0, 0, CW, CHH, dx, dy, cw, chh); else g.drawImage(ch.deck, 0, 0, CW, CHH, Math.round(dx), Math.round(dy), Math.round(cw), Math.round(chh));
+          drawCalls++; if (track) decksDrawn += ch.deckTiles.length; continue;
+        }
+        if (m === 2) g.imageSmoothingEnabled = true;
         for (let q = 0; q < ch.deckTiles.length; q++) {   // a surge: tile by tile, the overtopped ones left under the water
           const d = ch.deckTiles[q]; if (over.has(d.i)) continue;
-          g.drawImage(ch.deck, d.x, d.y, d.w, d.h, Math.round(dx + d.x * z), Math.round(dy + d.y * z), Math.round(d.w * z), Math.round(d.h * z)); drawCalls++; if (track) decksDrawn++;
+          g.drawImage(ch.deck, d.x * m, d.y * m, d.w * m, d.h * m, Math.round(dx + d.x * z), Math.round(dy + d.y * z), Math.round(d.w * z), Math.round(d.h * z)); drawCalls++; if (track) decksDrawn++;
         }
+        if (m === 2) g.imageSmoothingEnabled = frameSmooth;
       }
     }
   }
@@ -2901,7 +2946,7 @@
   /** H0 state for tests / the console: masters, chunk counts and bytes, caps, the last upgraded chunk */
   M.hdInfo = function () {
     const sp = S(); const caps = sp && typeof sp.hdCaps === 'function' ? sp.hdCaps() : null;
-    return { on: hdOn, debug: debugHDOn, debugTile: debugTile, master: hdMaster, chunkMaster: hdChunkWant, atlasZoom: atlasZoom, zoom: zoomNow, dpr: dpr, chunks: liveChunks(), hdChunks: hdChunkCount(), chunkMB: Math.round(chunkBytes() / 10485.76) / 100, hdAtlasMB: sp && typeof sp.hdMemoryMB === 'function' ? Math.round(sp.hdMemoryMB() * 100) / 100 : 0, fallback: hdFallbackChunks, atlasFallback: !!(sp && sp.hdFallback), caps: caps, lastUpgrade: lastUpgrade, bake: { n1: bakeStat[1].n, ms1: Math.round(bakeStat[1].ms * 100) / 100, n2: bakeStat[2].n, ms2: Math.round(bakeStat[2].ms * 100) / 100 }, families: sp && typeof sp.hdFamilies === 'function' ? sp.hdFamilies() : [] };
+    return { on: hdOn, terrain: hdTerrain, debug: debugHDOn, debugTile: debugTile, master: hdMaster, chunkMaster: hdChunkWant, atlasZoom: atlasZoom, zoom: zoomNow, dpr: dpr, chunks: liveChunks(), hdChunks: hdChunkCount(), deckMasters: chunks.filter((c) => c && c.deck).map((c) => c.deckMaster | 0), chunkMB: Math.round(chunkBytes() / 10485.76) / 100, hdAtlasMB: sp && typeof sp.hdMemoryMB === 'function' ? Math.round(sp.hdMemoryMB() * 100) / 100 : 0, fallback: hdFallbackChunks, atlasFallback: !!(sp && sp.hdFallback), caps: caps, lastUpgrade: lastUpgrade, bake: { n1: bakeStat[1].n, ms1: Math.round(bakeStat[1].ms * 100) / 100, n2: bakeStat[2].n, ms2: Math.round(bakeStat[2].ms * 100) / 100 }, families: sp && typeof sp.hdFamilies === 'function' ? sp.hdFamilies() : [] };
   };
   /** H0: every chunk's master (0 = no canvas) — tests */
   M.chunkMasters = function () { const a = []; for (let k = 0; k < NCH; k++) a.push(chunks[k] && chunks[k].canvas ? (chunks[k].master | 0) : 0); return a; };

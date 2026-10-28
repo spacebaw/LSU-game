@@ -500,9 +500,10 @@ try {
   const sp = BSU.sprites; R.panToTile(sZ.plot.founders.tx + 1, sZ.plot.founders.ty + 1, false);
   const warm = (z, n) => { R.setZoom(z); for (let k = 0; k < n; k++) BSU.headless.render(); return { keys: sp.count(), mem: sp.memoryMB(), chunks: R.perf().chunks, p: R.perf() }; };
   const w125 = warm(1.25, 40); let perfOk = true, keysOk = true, chunksOk = true;
-  for (const z of [2, 1.5, 1.75, 2.5]) { const w = warm(z, 6); if (w.p.zoom !== z || w.p.atlasZoom !== 2 || w.p.smooth !== (z !== 2)) { perfOk = false; console.error('perf at', z, w.p.zoom, w.p.atlasZoom, w.p.smooth); } if (w.keys !== w125.keys) { keysOk = false; console.error('atlas grew at', z, w125.keys, '→', w.keys); } if (w.chunks > w125.chunks) { chunksOk = false; console.error('chunks grew at', z, w125.chunks, '→', w.chunks); } }
+  // (H1: the atlas can shrink here — sprites.gc drops idle lazy entries above CANVAS_LIMIT_MB now that the HD tile variants put it over — so the check is "no new key", not equality)
+  for (const z of [2, 1.5, 1.75, 2.5]) { const w = warm(z, 6); if (w.p.zoom !== z || w.p.atlasZoom !== 2 || w.p.smooth !== (z !== 2)) { perfOk = false; console.error('perf at', z, w.p.zoom, w.p.atlasZoom, w.p.smooth); } if (w.keys > w125.keys) { keysOk = false; console.error('atlas grew at', z, w125.keys, '→', w.keys); } if (w.chunks > w125.chunks) { chunksOk = false; console.error('chunks grew at', z, w125.chunks, '→', w.chunks); } }
   const w065 = warm(0.65, 40);
-  for (const z of [0.8, 1]) { const w = warm(z, 6); if (w.p.zoom !== z || w.p.atlasZoom !== 1 || w.p.smooth !== (z !== 1)) { perfOk = false; console.error('perf at', z, w.p.zoom, w.p.atlasZoom, w.p.smooth); } if (w.keys !== w065.keys) { keysOk = false; console.error('atlas grew at', z, w065.keys, '→', w.keys); } if (w.chunks > w065.chunks) { chunksOk = false; console.error('chunks grew at', z, w065.chunks, '→', w.chunks); } }
+  for (const z of [0.8, 1]) { const w = warm(z, 6); if (w.p.zoom !== z || w.p.atlasZoom !== 1 || w.p.smooth !== (z !== 1)) { perfOk = false; console.error('perf at', z, w.p.zoom, w.p.atlasZoom, w.p.smooth); } if (w.keys > w065.keys) { keysOk = false; console.error('atlas grew at', z, w065.keys, '→', w.keys); } if (w.chunks > w065.chunks) { chunksOk = false; console.error('chunks grew at', z, w065.chunks, '→', w.chunks); } }
   ok(perfOk, 'perf() reports the exact zoom, its master (2 for 1.25–2.5, 1 for 0.65–1) and smoothing on exactly at the non-master steps');
   ok(keysOk, 'the atlas gained no key at 2 / 1.5 / 1.75 / 2.5 after 1.25, nor at 0.8 / 1 after 0.65 (' + w125.keys + ' / ' + w065.keys + ' keys)');
   ok(chunksOk && R.perf().chunks <= 64, 'the chunk table never grew past the widest step of its family and stays within the single 64-slot table (' + w125.chunks + ' at 1.25, ' + w065.chunks + ' at 0.65)');
@@ -519,14 +520,16 @@ try {
   const sp = BSU.sprites, sH = BSU.state, errH = BSU.errors.size;
   for (const fn of ['debugHD', 'hdInfo', 'chunkMasters', 'hdMasterOf', 'bakeStatReset']) ok(typeof R[fn] === 'function', 'H0 public function ' + fn);
   ok(R.passes().some((p) => p.name === 'hddebug' && p.order === 4.5), 'the hddebug pass is registered at 4.5 (after entities, before weather)');
-  R.panToTile(sH.plot.founders.tx + 1, sH.plot.founders.ty + 1, false); R.setZoom(1); for (let k = 0; k < 3; k++) BSU.headless.render();
-  const i0 = R.hdInfo(), p0 = R.perf();
-  ok(i0.on === false && i0.chunkMaster === 1 && i0.hdChunks === 0 && i0.families.length === 0 && p0.hd === false && p0.chunkMaster === 1 && Number.isFinite(p0.chunkMB) && Number.isFinite(p0.atlasMB) && Number.isFinite(p0.hdAtlasMB) && p0.hdChunks === 0, 'shipped game: no HD family, chunk master 1, perf() reports hd flags and real chunk / atlas MB');
+  // H1: the terrain families ship as HD, so the shipped game already has hdOn; the chunk table is reset (reset(state, false)) so the
+  // zoom-step tour above leaves no master-2 canvases behind and the progressive-bake order is observable from a clean master-1 start
+  R.reset(sH, false); R.bakeStatReset(); R.panToTile(sH.plot.founders.tx + 1, sH.plot.founders.ty + 1, false); R.setZoom(1); for (let k = 0; k < 3; k++) BSU.headless.render();
+  const i0 = R.hdInfo(), p0 = R.perf(), TERR = sp.hdTerrainFamilies();
+  ok(i0.on === true && i0.terrain === true && i0.chunkMaster === 1 && i0.hdChunks === 0 && TERR.every((f) => i0.families.includes(f)) && i0.families.length === TERR.length && p0.hd === true && p0.chunkMaster === 1 && Number.isFinite(p0.chunkMB) && Number.isFinite(p0.atlasMB) && Number.isFinite(p0.hdAtlasMB) && p0.hdChunks === 0, 'shipped game (H1): the terrain families are the HD families, chunk master 1 at zoom 1 dpr 1, perf() reports hd flags and real chunk / atlas MB');
   ok(Math.abs(p0.chunkMB - p0.chunks * (512 * 416 * 4) / 1048576) < 0.01 && R.chunkMasters().filter((m) => m === 1).length === p0.chunks && R.chunkMasters().length === 64, 'every live chunk is one 512×416 master-1 canvas (chunkMasters)');
-  ok(R.debugHD(true) === true && R.hdInfo().on === true && R.hdInfo().families.join() === 'debug' && sp.isHD('debug:hdtest') === true, 'debugHD(true) registers the debug family as HD (the only HD family) and switches hdOn');
+  ok(R.debugHD(true) === true && R.hdInfo().on === true && R.hdInfo().families.includes('debug') && R.hdInfo().families.length === TERR.length + 1 && sp.isHD('debug:hdtest') === true, 'debugHD(true) registers the debug family as HD beside the terrain families');
   for (let k = 0; k < 3; k++) BSU.headless.render();
   const i1 = R.hdInfo();
-  ok(i1.master === 1 && i1.chunkMaster === 1 && i1.hdChunks === 0 && i1.dpr === 1, 'at zoom 1 dpr 1 the HD master is 1: chunks stay master 1 even with an HD family (master 2 needs zoom × dpr ≥ 1.5)');
+  ok(i1.master === 1 && i1.chunkMaster === 1 && i1.hdChunks === 0 && i1.dpr === 1, 'at zoom 1 dpr 1 the HD master is 1: chunks stay master 1 even with HD families (master 2 needs zoom × dpr ≥ 1.5)');
   ok(sp.get('debug:hdtest', 0, 0, 1) && sp.get('debug:hdtest', 0, 0, 1).zoom === 1 && sp.get('debug:hdtest', 0, 0, 1).sw === 64, 'the debug cube bakes through the brush at master 1 (64×72 art px)');
   const td = i1.debugTile; const tt = sH.tiles;
   ok(td >= 0 && tt.owner[td] < 0 && tt.surface[td] === 0 && tt.type[td] > BSU.T.MARSH, 'the chunk-stamped cube sits on a free land tile near the view centre');
@@ -542,7 +545,7 @@ try {
   ok(order[0] === centreChunk, `the first upgrade is the chunk nearest the view centre (chunk ${order[0]}, nearest ${centreChunk}: visible ring first)`);
   ok(i3.hdChunks >= 1 && i3.hdChunks <= i3.chunks && R.chunkMasters().every((m) => m === 0 || m === 1 || m === 2) && i3.chunks <= 64, 'chunk masters are 0 / 1 / 2 only: one canvas per chunk, no second table');
   ok(Math.abs(i3.chunkMB - R.chunkMasters().reduce((a, m) => a + (m ? (m === 2 ? 1024 * 832 * 4 : 512 * 416 * 4) : 0), 0) / 1048576) < 0.01, 'chunkMB counts every canvas at its own master (1024×832 = 3.4 MB at 2)');
-  ok(i3.bake.n2 === i3.hdChunks && i3.bake.n2 > 0 && Number.isFinite(i3.bake.ms2), 'hdInfo().bake counts the master-2 bakes');
+  ok(i3.bake.n2 >= i3.hdChunks && i3.bake.n2 > 0 && Number.isFinite(i3.bake.ms2), 'hdInfo().bake counts the master-2 bakes (≥ the live master-2 chunks: a dirtied HD chunk re-bakes at 2)');
   ok(sp.get('debug:hdtest', 0, 0, 2).zoom === 2 && sp.get('debug:hdtest', 0, 0, 2).sw === 128, 'the cube is fetched at master 2 at zoom 2 (128 device px wide)');
   // byte cap: a 1 MB chunk cap evicts off-screen chunks and then latches the fallback (chunk master 1); restoring the cap lifts it
   const hdp = BSU.params.art.hd, saveChunk = hdp.chromeChunkMB; hdp.chromeChunkMB = 1;
@@ -560,10 +563,53 @@ try {
   R.setZoom(1); for (let k = 0; k < 5; k++) BSU.headless.render();
   const i7 = R.hdInfo();
   ok(i7.chunkMaster === 1 && i7.chunks <= 64 && R.chunkMasters().filter((m) => m > 0).length === i7.chunks, 'zoom 1 again: chunk master 1, the live chunks are still one canvas each');
-  ok(R.debugHD(false) === false && R.hdInfo().on === false && R.hdInfo().families.length === 0 && sp.isHD('debug:hdtest') === false && R.hdInfo().chunkMaster === 1, 'debugHD(false) unregisters the family: no HD family, chunk master 1');
+  ok(R.debugHD(false) === false && R.hdInfo().on === true && R.hdInfo().families.length === TERR.length && !R.hdInfo().families.includes('debug') && sp.isHD('debug:hdtest') === false && R.hdInfo().chunkMaster === 1, 'debugHD(false) unregisters the debug family: the terrain families stay HD, chunk master 1 at zoom 1');
   for (let k = 0; k < 3; k++) BSU.headless.render();
   ok(BSU.errors.size === errH, 'no BSU.error across the H0 checks');
 } catch (e) { ok(false, 'H0 render: ' + (e.stack || e)); }
+
+// --- H1 terrain + water pass: HD tile variants in the bake, cliff steps, brush paths / decks at the chunk master, the live water tint ---
+try {
+  const sp = BSU.sprites, B = BSU.brush, sT = BSU.state, errT = BSU.errors.size, t = sT.tiles;
+  R.reset(sT, false); R.panToTile(sT.plot.founders.tx + 1, sT.plot.founders.ty + 1, false); R.setZoom(1); for (let k = 0; k < 3; k++) BSU.headless.render();
+  ok(R.hdInfo().terrain === true && sp.isPinned('tile') && sp.isPinned('cliff') && !sp.isPinned('shore'), 'hdInfo().terrain: the tile family is HD; tile + cliff variants are pinned against gc, the rest are lazy');
+  // the bake fetches HD tile variants with the block position bits (every type) and the depth bits for water
+  const seen = new Set(); const get0 = sp.get;
+  sp.get = function (id, v, f, z) { if (typeof id === 'string' && id.startsWith('tile:')) seen.add(id + '|' + v + '|' + z); return get0.apply(this, arguments); };
+  try { R.dirtyAll(); for (let k = 0; k < 12; k++) BSU.headless.render(); } finally { sp.get = get0; }
+  const keys = [...seen]; let posOk = keys.length > 0, hashOk = true, deepSeen = false, shallowSeen = false, master1 = true;
+  for (const k of keys) { const [id, v, z] = k.split('|'); const vv = +v; if ((vv & 7) !== 0) hashOk = false; if (id === 'tile:0' || id === 'tile:1') { if (vv & 1024) deepSeen = true; if (vv & 8) shallowSeen = true; } if (+z !== 1) master1 = false; if (((vv >> 4) & 63) === 0 && keys.length > 64) { /* position 0 is legal */ } }
+  const posSet = new Set(keys.map((k) => (+k.split('|')[1] >> 4) & 63));
+  ok(posOk && hashOk && posSet.size >= 32 && master1, `the master-1 bake fetches tile variants with position bits only (no hash variant; ${posSet.size} block positions seen, ${keys.length} keys)`);
+  ok(deepSeen || shallowSeen, 'water tiles carry the depth bits (8 shallow < 1.5 ft, 1024 deep ≥ 3 ft)');
+  // a 1–5 px elevation step is a cliff sprite (the HD terrace band), never the pen-era stepFace fillRects
+  const cl = sp.get('cliff', 3, 0, 1), cl2 = sp.get('cliff', 3, 1, 2);
+  ok(cl && cl.hd === true && cl.sw === 32 && cl.sh === 19 && cl.ox === -32 && cl2 && cl2.zoom === 2 && cl2.sh === 38 && cl2.ox === 0, 'cliff variants 1–5 bake as HD terrace steps at both masters with the pen anchors (south ox −32, east ox 0)');
+  // zoom 2: the chunk (and its deck layer) bake at master 2; the paths are stroked through brush.strokePath in ground units (unit 32)
+  let strokes = 0, units = new Set(), mats = new Set(), lods = new Set(); const sp0 = B.strokePath;
+  B.strokePath = function (ctx, w, env, o) { strokes++; units.add(o && o.unit); mats.add(o && o.material); lods.add(env && env.lod); return sp0.apply(this, arguments); };
+  let deckM2 = false, hadPath = false;
+  try {
+    R.setZoom(2); for (let k = 0; k < 60; k++) BSU.headless.render();
+    const inf = R.hdInfo(); deckM2 = inf.deckMasters.length === 0 || inf.deckMasters.some((m) => m === 2);
+    for (let i = 0; i < t.surface.length; i++) if (t.surface[i] === BSU.SURF.PATH) { hadPath = true; break; }
+  } finally { B.strokePath = sp0; }
+  ok(!hadPath || (strokes > 0 && units.has(32) && mats.has('gravel') && lods.has(0)), `the HD chunk bake strokes the paths through brush.strokePath (unit 32, ${strokes} calls, materials ${[...mats].join('/')}, lod ${[...lods].join('/')})`);
+  ok(R.hdInfo().hdChunks > 0 && deckM2, 'master-2 chunks: a deck layer baked with them is a master-2 canvas (hdInfo().deckMasters)');
+  // the live water pass fills a water tile at the light HD tint (C.hdWaterLiveA) and flood water over land at the full depth tint
+  let aWater = -1, aLand = -1; const g = R.ctx, fr0 = g.fillRect, water0 = t.type.indexOf(BSU.T.OPEN_WATER);
+  R.setZoom(1); R.panToTile(water0 % 64, (water0 / 64) | 0, false); BSU.headless.render();
+  const dep = t.depth, land0 = (() => { for (let i = 0; i < t.type.length; i++) if (t.type[i] >= BSU.T.WET && !(t.flags[i] & (BSU.FLAG.OPEN_WATER | BSU.FLAG.BAYOU))) return i; return -1; })();
+  const saved = dep[land0]; dep[land0] = 1.2;   // a flooded land tile for one frame
+  g.fillRect = function () { const a = g.globalAlpha; if (a > 0.1 && a < 0.3 && aWater < 0) aWater = a; if (a > 0.5 && a < 0.9 && aLand < 0) aLand = a; return fr0.apply(this, arguments); };
+  try { R.panToTile(land0 % 64, (land0 / 64) | 0, false); BSU.headless.render(); } finally { g.fillRect = fr0; dep[land0] = saved; }
+  ok(aWater > 0.15 && aWater < 0.25, `a baked water tile gets the light live tint (alpha ${aWater.toFixed(2)})`);
+  ok(aLand > 0.5, `flood water over land keeps the depth tint (alpha ${aLand.toFixed(2)})`);
+  R.panToTile(sT.plot.founders.tx + 1, sT.plot.founders.ty + 1, false); for (let k = 0; k < 3; k++) BSU.headless.render();
+  const tileHD = sp.isHD('tile:4'); sp.pinFamily('tile', false); const unp = sp.isPinned('tile'); sp.pinFamily('tile', true);
+  ok(tileHD && unp === false && sp.isPinned('tile'), 'pinFamily toggles the gc pin');
+  ok(R.hdInfo().terrain === true && BSU.errors.size === errT, 'no BSU.error across the H1 checks');
+} catch (e) { ok(false, 'H1 render: ' + (e.stack || e)); }
 
 console.log(`\n${passes} passed, ${failures} failed`);
 process.exit(failures ? 1 : 0);

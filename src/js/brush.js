@@ -9,9 +9,13 @@
 // patterns), no ctx.filter and no shadowBlur (Safari). Coordinates are 1× art px; the context the caller hands in
 // is already scaled to the master (sprites.beginHD / render's HD chunk bake), so a master-2 bake lands at
 // 1 art px = 2 device px of detail with no change to the painter.
-// Public: BSU.brush.{tone, toneArr, css, mix, sat, ramp, env, rng, vnoise, fbm, pnoise, poly, bbox, centroid, diamond,
-//   smoothPath, ellipse, seamWidth, seamStroke, plane, orb, softEllipse, microGrain, fillQuadShaded, roofPlane, column,
-//   groundTile, waterTile, path, tree, figure, shadow, light, glow, decal, cube, begin, selfTest}
+// Public: BSU.brush.{tone, toneArr, css, mix, sat, ramp, env, posEnv, rng, vnoise, fbm, pnoise, field, poly, bbox, centroid, diamond,
+//   diamondGrown, smoothPath, ellipse, seamWidth, seamStroke, plane, orb, softEllipse, microGrain, macroGrain, sites, edgeFade, stroke,
+//   blade, puddle, strokePath, fillQuadShaded, roofPlane, column, groundTile, waterTile, path, tree, figure, shadow, light, glow, decal,
+//   cube, begin, selfTest}
+// H1 terrain + water pass: posEnv / field / sites / macroGrain anchor a CACHED tile sprite to its 8×8-tile block position (period
+// 256×128 px), so 64 position variants of one tile family join seamlessly across tiles and chunks; strokePath is the layered stroke
+// behind every path / road / boardwalk / bridge deck (render.js strokes the smoothed centrelines through it).
 // ============================================================================
 (function () {
   const BSU = window.BSU;
@@ -28,7 +32,7 @@
   const COOL = SP.hex(SP.COOL_TINT || '#2B2550'), WARM = SP.hex(SP.WARM_TINT || '#FFE0A0');
   const KN_T = [-1, -0.5, 0, 0.5, 1], KN_K = [0.52, 0.74, 1, 1.16, 1.34], KN_A = [0.30, 0.16, 0, 0.12, 0.28];
   const cl = (v) => (v < 0 ? 0 : v > 255 ? 255 : v);
-  const arr = (c) => (typeof c === 'string' ? SP.hex(c) : c);
+  const arr = (c) => (typeof c === 'string' ? SP.hex(c.charCodeAt(0) === 35 ? c : M.ramp(c)) : c);   // a hex, or a ramp / palette name (H1: the painters pass names)
   function toneArr(c, t) {
     const C = arr(c); t = Number.isFinite(t) ? (t < -1 ? -1 : t > 1 ? 1 : t) : 0;
     let i = 0; while (i < 3 && t > KN_T[i + 1]) i++;
@@ -71,10 +75,18 @@
   M.env = function (master, o) {
     o = o || {};
     const m = master === 2 ? 2 : 1;
-    return { master: m, lod: o.lod != null ? o.lod | 0 : (m >= 2 ? 0 : 1), night: !!o.night, dpr: Number.isFinite(o.dpr) ? o.dpr : 1, originX: Number.isFinite(o.originX) ? o.originX : 0, originY: Number.isFinite(o.originY) ? o.originY : 0 };
+    return { master: m, lod: o.lod != null ? o.lod | 0 : (m >= 2 ? 0 : 1), night: !!o.night, dpr: Number.isFinite(o.dpr) ? o.dpr : 1, originX: Number.isFinite(o.originX) ? o.originX : 0, originY: Number.isFinite(o.originY) ? o.originY : 0, periodic: !!o.periodic };
   };
   const envOf = (env) => env || DEF_ENV;
   const DEF_ENV = M.env(1);
+  /** H1: the env of a CACHED tile sprite at block position pv (tx & 7 | (ty & 7) << 3), diamond centre (cx, cy) on its canvas: the
+   *  context's (0, 0) is anchored to the 8×8-tile block's screen offset (the marsh painter's X0 / Y0), and every field, grain and site
+   *  grid repeats every 256×128 px, so the 64 variants of a family join seamlessly across tiles and chunk borders */
+  M.posEnv = function (env, pv, cx, cy) {
+    env = envOf(env); pv = pv | 0;
+    const X0 = ((pv & 7) - (pv >> 3)) * 32 + 256, Y0 = ((pv & 7) + (pv >> 3)) * 16;
+    return { master: env.master, lod: env.lod, night: env.night, dpr: env.dpr, originX: X0 - cx, originY: Y0 - cy, periodic: true };
+  };
 
   // ---------------------------------------------------------------------------
   // Random + noise (world space, seamless by construction)
@@ -83,6 +95,13 @@
   M.vnoise = SP.vnoise;
   M.fbm = (s, x, y, cell, oct) => { let v = 0, amp = 0.55, sum = 0, c = cell > 0 ? cell : 8; for (let i = 0; i < (oct || 3); i++) { v += SP.vnoise(s + i * 7, x, y, c) * amp; sum += amp; amp *= 0.5; c *= 0.5; } return v / sum; };
   M.pnoise = (s, x, y, cell, per) => SP.pnoise(s, x, y, cell, cell, per, per);
+  /** H1: a world-anchored field in [0, 1) at local (x, y): periodic 256×128 px (cell × cell/2, cell a power of two ≤ 64) under a
+   *  posEnv, free world noise (iso-stretched 2:1) under a chunk env */
+  M.field = function (env, seed, x, y, cell) {
+    env = envOf(env); const wx = x + env.originX, wy = y + env.originY, c = cell > 0 ? cell : 16;
+    if (env.periodic) return SP.pnoise(seed, wx, wy, c, Math.max(1, c >> 1), 256, 128);
+    return SP.vnoise(seed, wx, wy * 2, c);
+  };
 
   // ---------------------------------------------------------------------------
   // Geometry helpers
@@ -91,6 +110,8 @@
   function bbox(pts) { let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9; for (const p of pts) { if (p[0] < x0) x0 = p[0]; if (p[1] < y0) y0 = p[1]; if (p[0] > x1) x1 = p[0]; if (p[1] > y1) y1 = p[1]; } return { x0, y0, x1, y1, w: x1 - x0, h: y1 - y0 }; }
   function centroid(pts) { let x = 0, y = 0; for (const p of pts) { x += p[0]; y += p[1]; } return [x / pts.length, y / pts.length]; }
   const diamond = (cx, cy) => [[cx, cy - 16], [cx + 32, cy], [cx, cy + 16], [cx - 32, cy]];
+  /** the diamond with every edge pushed ~g px outward (the clip for tile decorations that a neighbour finishes: no AA hairline at the edge) */
+  const diamondGrown = (cx, cy, g) => [[cx, cy - 16 - g], [cx + 32 + 2 * g, cy], [cx, cy + 16 + g], [cx - 32 - 2 * g, cy]];
   const lerp = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
   function smoothPath(ctx, pts) {
     ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]);
@@ -101,7 +122,7 @@
     }
   }
   function ellipse(ctx, x, y, rx, ry) { ctx.beginPath(); ctx.ellipse(x, y, rx, ry, 0, 0, Math.PI * 2); }
-  M.poly = poly; M.bbox = bbox; M.centroid = centroid; M.diamond = diamond; M.smoothPath = smoothPath; M.ellipse = ellipse; M.lerp = lerp;
+  M.poly = poly; M.bbox = bbox; M.centroid = centroid; M.diamond = diamond; M.diamondGrown = diamondGrown; M.smoothPath = smoothPath; M.ellipse = ellipse; M.lerp = lerp;
 
   // ---------------------------------------------------------------------------
   // Seams: antialiased diamonds leave a hairline between neighbours; stroking each tile with its own fill at ~0.9
@@ -174,6 +195,109 @@
   M.plane = plane; M.orb = orb; M.softEllipse = softEllipse; M.microGrain = microGrain;
 
   // ---------------------------------------------------------------------------
+  // H1 terrain + water pass — world-anchored ground kit (cached tile variants join across tiles and chunks)
+  // ---------------------------------------------------------------------------
+  let MACRO = null;
+  const macroPatterns = new WeakMap();
+  /** the one LOW-frequency texture: a 256×128 periodic luminance field (cells 64×32 + 32×16), applied at `overlay` so the ground drifts
+   *  light / dark over several tiles with no per-tile step; the pattern is anchored to world px (env.originX / Y mod 256 / 128) */
+  function macroTex() {
+    if (MACRO) return MACRO;
+    const c = SP.newCanvas(256, 128); const g = SP.ctx2d(c);
+    try {
+      const id = g.createImageData(256, 128); const d = id.data;
+      for (let y = 0; y < 128; y++) for (let x = 0; x < 256; x++) { const v = 0.65 * SP.pnoise(53, x, y, 64, 32, 256, 128) + 0.35 * SP.pnoise(61, x, y, 32, 16, 256, 128) - 0.5; const q = cl(128 + v * 96) | 0, i = (y * 256 + x) * 4; d[i] = q; d[i + 1] = q; d[i + 2] = q; d[i + 3] = 255; }
+      g.putImageData(id, 0, 0);
+    } catch (e) { /* stub */ }
+    MACRO = c; return c;
+  }
+  M.macroGrain = function (ctx, pts, a, env) {
+    env = envOf(env);
+    let pat = macroPatterns.get(ctx);
+    if (pat === undefined) { try { pat = ctx.createPattern(macroTex(), 'repeat') || null; } catch (e) { pat = null; } macroPatterns.set(ctx, pat); }
+    if (!pat) return;
+    const ox = ((env.originX % 256) + 256) % 256, oy = ((env.originY % 128) + 128) % 128;
+    ctx.save(); poly(ctx, pts); ctx.clip(); ctx.globalCompositeOperation = 'overlay'; ctx.globalAlpha = a; ctx.imageSmoothingEnabled = true;
+    ctx.translate(-ox, -oy); ctx.fillStyle = pat; const bb = bbox(pts); ctx.fillRect(bb.x0 + ox - 4, bb.y0 + oy - 4, bb.w + 8, bb.h + 8); ctx.restore();
+  };
+  /** world-anchored decoration sites over the diamond (cx, cy) grown by pad: one jittered candidate per cw × ch px cell of a grid that
+   *  repeats every 256×128 px under a posEnv (a patch cut by a tile edge is finished by the neighbour, which places the same site).
+   *  cb(x, y, r1, r2, r3, h) gets local coordinates, three deterministic [0, 1) values and the raw hash; returns the site count */
+  M.sites = function (env, seed, cx, cy, cw, ch, pad, cb) {
+    env = envOf(env); const ox = env.originX, oy = env.originY, per = !!env.periodic;
+    cw = cw > 0 ? cw : 32; ch = ch > 0 ? ch : 16; pad = pad > 0 ? pad : 0;
+    const nx = Math.max(1, Math.round(256 / cw)), ny = Math.max(1, Math.round(128 / ch));
+    const x0 = cx - 32 - pad + ox, x1 = cx + 32 + pad + ox, y0 = cy - 16 - pad + oy, y1 = cy + 16 + pad + oy;
+    let n = 0;
+    for (let j = Math.floor(y0 / ch); j <= Math.floor(y1 / ch); j++) for (let i = Math.floor(x0 / cw); i <= Math.floor(x1 / cw); i++) {
+      const ii = per ? ((i % nx) + nx) % nx : i, jj = per ? ((j % ny) + ny) % ny : j;
+      const h1 = hash(seed + ii * 7919, jj * 104729 + 29) >>> 0, h2 = hash(seed + 977 + ii * 7919, jj * 104729 + 31) >>> 0, h3 = hash(seed + 4441 + ii * 7919, jj * 104729 + 37) >>> 0;
+      const lx = i * cw + ((h1 & 1023) / 1024) * cw - ox, ly = j * ch + ((h2 & 1023) / 1024) * ch - oy;
+      if (Math.abs(lx - cx) / (32 + pad) + Math.abs(ly - cy) / (16 + pad) > 1) continue;
+      cb(lx, ly, ((h1 >>> 10) & 1023) / 1024, ((h2 >>> 10) & 1023) / 1024, (h3 & 1023) / 1024, h3);
+      n++;
+    }
+    return n;
+  };
+  /** a band fading from the edge a→b (col(color, t, alpha) on the edge) to transparent `depth` px inward (toward the polygon), clipped to pts */
+  M.edgeFade = function (ctx, pts, a, b, depth, color, t, alpha) {
+    const m = lerp(a, b, 0.5), c = centroid(pts); let nx = -(b[1] - a[1]), ny = b[0] - a[0]; const L = Math.hypot(nx, ny) || 1; nx /= L; ny /= L;
+    if ((c[0] - m[0]) * nx + (c[1] - m[1]) * ny < 0) { nx = -nx; ny = -ny; }
+    const g = ctx.createLinearGradient(m[0], m[1], m[0] + nx * depth, m[1] + ny * depth); g.addColorStop(0, col(color, t, alpha)); g.addColorStop(1, col(color, t, 0));
+    ctx.save(); poly(ctx, pts); ctx.clip(); ctx.fillStyle = g; const bb = bbox(pts); ctx.fillRect(bb.x0 - 1, bb.y0 - 1, bb.w + 2, bb.h + 2); ctx.restore();
+  };
+  /** a toned polyline: o = {smooth (Catmull-Rom), cap, close}; alpha a */
+  M.stroke = function (ctx, pts, w, color, t, a, o) {
+    if (!pts || pts.length < 2) return; o = o || {};
+    if (o.smooth) smoothPath(ctx, pts); else { ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]); for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]); if (o.close) ctx.closePath(); }
+    ctx.lineCap = o.cap || 'round'; ctx.lineJoin = 'round'; ctx.lineWidth = w; ctx.strokeStyle = col(color, t, a); ctx.stroke();
+  };
+  /** a lit reed / grass blade from (x, y) up h px leaning `lean` px: shadow stroke + a lighter thread on its left (no gradient: cheap at 64 variants) */
+  M.blade = function (ctx, x, y, h, lean, color, t, w) {
+    w = w || 1.5; ctx.lineCap = 'round';
+    ctx.lineWidth = w; ctx.strokeStyle = col(color, t - 0.45); ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + lean, y - h); ctx.stroke();
+    ctx.lineWidth = w * 0.5; ctx.strokeStyle = col(color, t + 0.4); ctx.beginPath(); ctx.moveTo(x - w * 0.3, y - 0.5); ctx.lineTo(x + lean * 0.9 - w * 0.3, y - h + 0.5); ctx.stroke();
+  };
+  /** standing water in the ground: a deep → shallow pool, a specular bar at the upper-left, a cool rim; o.t nudges the water tone */
+  M.puddle = function (ctx, x, y, rx, ry, env, o) {
+    env = envOf(env); o = o || {}; const t = o.t || 0;
+    ctx.save(); ctx.translate(x, y); ctx.scale(rx, ry); const pg = ctx.createRadialGradient(0.1, 0.2, 0, 0, 0, 1); pg.addColorStop(0, col(P.waterDeep, t + 0.1)); pg.addColorStop(0.8, col(P.shallows, t - 0.1)); pg.addColorStop(1, col(P.shallows, t + 0.3)); ctx.fillStyle = pg; ctx.beginPath(); ctx.arc(0, 0, 1, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+    softEllipse(ctx, x - rx * 0.3, y - ry * 0.32, rx * 0.32, ry * 0.24, env.night ? '#C9D8FF' : SPEC, o.spec == null ? 0.6 : o.spec, 0.3);
+    ctx.lineWidth = 0.8; ctx.strokeStyle = css(RIM, o.rim == null ? 0.35 : o.rim); ellipse(ctx, x, y, rx, ry); ctx.stroke();
+  };
+  const NODASH = [];
+  /** layered strokes of the CURRENT path (built by the caller under any CTM): o.material gravel | asphalt | boardwalk | concrete,
+   *  o.stub (a tee connector: edge + body only), o.seed (dash phase), o.unit = px per CTM unit (32 under render's iso ground transform,
+   *  1 in screen px). Soft dark edge (the AO where the surface meets the ground) → body → lit crown → an up-left highlight thread →
+   *  the material's marks (gravel specks, gold centre dashes, plank gaps, expansion joints); lod 1 skips the marks */
+  M.strokePath = function (ctx, w, env, o) {
+    o = o || {}; env = envOf(env); const u = o.unit > 0 ? o.unit : 1, px = 1 / u, m = o.material || 'gravel', seed = (o.seed | 0) >>> 0;
+    const X = SP.extra || {};
+    const c = m === 'asphalt' ? (PAL.asphalt || '#3A3A40') : m === 'boardwalk' ? (X.deckWood || PAL.boardwalk || '#8B7355') : m === 'concrete' ? (X.concrete || '#B8B8BC') : P.gravel;
+    ctx.save(); ctx.lineJoin = 'round'; ctx.lineCap = 'round'; ctx.setLineDash(NODASH); ctx.lineDashOffset = 0;
+    ctx.lineWidth = w + 2.4 * px; ctx.strokeStyle = col(c, -0.6, 0.5); ctx.stroke();
+    if (m === 'asphalt' || m === 'concrete') { ctx.lineWidth = w + 1.2 * px; ctx.strokeStyle = col(c, m === 'asphalt' ? 0.6 : -0.35); ctx.stroke(); }   // curb / kerb
+    if (m === 'boardwalk') { ctx.lineWidth = w + 1.2 * px; ctx.strokeStyle = col(c, -0.75); ctx.stroke(); }   // the dark cypress edge
+    ctx.lineWidth = w; ctx.strokeStyle = col(c, m === 'concrete' ? 0.1 : 0); ctx.stroke();
+    if (!o.stub) {
+      ctx.lineWidth = w * 0.55; ctx.strokeStyle = col(c, 0.3, m === 'asphalt' ? 0.3 : 0.5); ctx.stroke();
+      ctx.save(); if (u > 1) ctx.translate(-px, 0); else ctx.translate(-1.1, -0.55); ctx.lineWidth = 1.2 * px; ctx.strokeStyle = col(c, 0.85, 0.5); ctx.stroke(); ctx.restore();
+      if (env.lod === 0 || m !== 'gravel') {
+        ctx.lineCap = 'butt';
+        if (m === 'gravel') {
+          ctx.lineWidth = 1.5 * px; ctx.setLineDash([1 * px, 4.2 * px]); ctx.lineDashOffset = (seed % 7) * 0.7 * px; ctx.strokeStyle = col(c, -0.45, 0.5); ctx.stroke();
+          ctx.lineDashOffset = (seed % 5) * px + 2.2 * px; ctx.strokeStyle = col(c, 0.9, 0.55); ctx.stroke();
+        } else if (m === 'asphalt') { ctx.lineWidth = 1.4 * px; ctx.setLineDash([4.5 * px, 4.5 * px]); ctx.strokeStyle = col(P.gold, 0.2, 0.9); ctx.stroke(); }
+        else if (m === 'boardwalk') {
+          ctx.lineWidth = w - 0.6 * px; ctx.setLineDash([1 * px, 2.9 * px]); ctx.strokeStyle = col(c, -0.7, 0.6); ctx.stroke();
+          ctx.setLineDash([2 * px, 8.6 * px]); ctx.lineDashOffset = (seed % 9) * 1.6 * px + 1.3 * px; ctx.strokeStyle = col(c, 0.45, 0.4); ctx.stroke();
+        } else { ctx.lineWidth = w - 1.2 * px; ctx.setLineDash([0.7 * px, 7 * px]); ctx.lineDashOffset = (seed % 5) * 1.3 * px; ctx.strokeStyle = col(c, -0.4, 0.5); ctx.stroke(); ctx.setLineDash(NODASH); ctx.lineWidth = 1.3 * px; ctx.strokeStyle = col(c, 0.5, 0.6); ctx.stroke(); }
+      }
+    }
+    ctx.restore();
+  };
+
+  // ---------------------------------------------------------------------------
   // The primitive set (PLAN_HD_ART §1)
   // ---------------------------------------------------------------------------
   const FACE_T = { top: 0.05, sw: -0.1, se: -0.48, ne: -0.3, nw: 0.0 };
@@ -232,71 +356,75 @@
     if (T.dropS > 0) { const d = T.dropS * 6; face([[cx - 32, cy], [cx, cy + 16], [cx, cy + 16 + d], [cx - 32, cy + d]], 'sw', d); }
     if (T.dropE > 0) { const d = T.dropE * 6; face([[cx, cy + 16], [cx + 32, cy], [cx + 32, cy + d], [cx, cy + 16 + d]], 'se', d); }
   }
-  /** a ground diamond: T = {cx, cy, kind: grass | high | marsh | wet | dirt, seed, dropS, dropE, pool}; world-anchored noise */
+  /** the marsh pool field (shared with the knees overlay: the pen marsh painter's periodic field, cells 16×8 + 8×4, period 256×128) */
+  const MARSH_SEED = hash(((BSU.T && BSU.T.MARSH) || 2) * 131 + 7, 0x51);
+  M.marshField = function (env, x, y) { env = envOf(env); const wx = x + env.originX, wy = y + env.originY; return 0.55 * SP.pnoise(MARSH_SEED, wx, wy, 16, 8, 256, 128) + 0.30 * SP.pnoise(MARSH_SEED + 7, wx, wy, 8, 4, 256, 128) + 0.075; };
+  /** the ground base: fill + seam stroke, the macro drift and (lod 0) the micro grain, then the caller's decorations clipped to the grown diamond */
+  function groundBase(ctx, cx, cy, dia, fill, env, macroA, grainA) {
+    poly(ctx, dia); ctx.fillStyle = fill; ctx.fill(); M.seamStroke(ctx, dia, fill, env);
+    ctx.save(); poly(ctx, diamondGrown(cx, cy, 0.7)); ctx.clip();
+    if (macroA > 0) M.macroGrain(ctx, dia, macroA, env);
+    if (grainA > 0) M.microGrain(ctx, dia, grainA, env);
+  }
+  /** a ground diamond: T = {cx, cy, kind: grass | high | marsh | wet | dirt, seed, dropS, dropE, pool, t}; everything world-anchored through env
+   *  (a posEnv for a cached variant, the chunk origin for a direct call): the macro drift, the grain, the patch / tuft / puddle / reed sites */
   M.groundTile = function (ctx, T, env) {
-    env = envOf(env); const cx = T.cx, cy = T.cy, dia = diamond(cx, cy), r = M.rng((T.seed | 0) * 7 + 3), kind = T.kind || 'grass';
-    const wx = cx + env.originX, wy = cy + env.originY;
+    env = envOf(env); const cx = T.cx, cy = T.cy, dia = diamond(cx, cy), kind = T.kind || 'grass', seed = (T.seed | 0), lod = env.lod, t0 = T.t || 0;
     faces(ctx, T, kind, env);
-    const big = (SP.vnoise(43, wx, wy * 2, 70) - 0.5) * 0.26, half = env.lod > 0 ? 1 : 2;
     if (kind === 'grass' || kind === 'high') {
       const base = kind === 'high' ? P.highGrass : P.grass;
-      const g = ctx.createLinearGradient(cx - 200, cy - 120, cx + 200, cy + 190); g.addColorStop(0, col(base, 0.22 + big)); g.addColorStop(1, col(base, -0.1 + big));
-      poly(ctx, dia); ctx.fillStyle = g; ctx.fill(); seamStroke(ctx, dia, g, env);
-      ctx.save(); poly(ctx, dia); ctx.clip(); microGrain(ctx, dia, 0.18, env);
-      for (let i = 0; i < half; i++) softEllipse(ctx, cx + (r() - 0.5) * 40, cy + (r() - 0.5) * 18, 11 + r() * 7, 5 + r() * 3, toneArr(sat(P.highGrass, SAT_C), 0.3), 0.22, 0.1);
-      for (let i = 0; i < half; i++) { const x = cx + (r() - 0.5) * 46, y = cy + (r() - 0.5) * 20; orb(ctx, x, y - 1.5, 2.6 + r() * 1.5, 1.9 + r(), P.highGrass, 0, { spec: 0.35 }); }
+      groundBase(ctx, cx, cy, dia, col(base, t0 + (kind === 'high' ? 0.05 : 0)), env, 0.5, 0.18);
+      M.sites(env, seed + 11, cx, cy, 48, 24, 18, (x, y, r1, r2, r3) => { if (lod > 0 && r3 > 0.5) return; M.softEllipse(ctx, x, y, 10 + r1 * 8, 4.5 + r2 * 3, toneArr(sat(P.highGrass, SAT_C), 0.3), 0.24, 0.1); });
+      M.sites(env, seed + 23, cx, cy, 48, 24, 18, (x, y, r1, r2, r3) => { if (r3 > 0.45) return; M.softEllipse(ctx, x, y, 9 + r1 * 7, 4 + r2 * 2.5, toneArr(sat(base, SAT_C), -0.35), 0.2, 0.1); });
+      M.sites(env, seed + 37, cx, cy, 28, 14, 5, (x, y, r1, r2, r3) => { if (r3 > (lod > 0 ? 0.3 : 0.62)) return; M.orb(ctx, x, y - 1.2, 2.2 + r1 * 1.4, 1.6 + r2 * 0.8, kind === 'high' ? P.highGrass : P.grass, 0.1, { spec: 0.3 }); });
+      if (kind === 'high') M.sites(env, seed + 41, cx, cy, 64, 32, 10, (x, y, r1, r2, r3) => { if (r3 > 0.3) return; M.softEllipse(ctx, x, y, 6 + r1 * 5, 2.5 + r2 * 1.5, toneArr(sat(P.sand, SAT_C), 0.2), 0.22, 0.2); });
       ctx.restore();
     } else if (kind === 'dirt') {
-      const g = ctx.createLinearGradient(cx - 200, cy - 120, cx + 200, cy + 190); g.addColorStop(0, col(P.dirt, 0.2 + big)); g.addColorStop(1, col(P.dirt, -0.12 + big));
-      poly(ctx, dia); ctx.fillStyle = g; ctx.fill(); seamStroke(ctx, dia, g, env);
-      ctx.save(); poly(ctx, dia); ctx.clip(); microGrain(ctx, dia, 0.25, env);
-      for (let i = 0; i < half; i++) softEllipse(ctx, cx + (r() - 0.5) * 40, cy + (r() - 0.5) * 18, 9 + r() * 6, 4 + r() * 2, toneArr(P.dirt, -0.3), 0.3, 0.2);
+      groundBase(ctx, cx, cy, dia, col(mix(P.dirt, P.sand, 0.22), t0 + 0.08), env, 0.45, 0.25);
+      M.sites(env, seed + 13, cx, cy, 44, 22, 16, (x, y, r1, r2, r3) => { if (lod > 0 && r3 > 0.5) return; M.softEllipse(ctx, x, y, 8 + r1 * 6, 3.5 + r2 * 2, toneArr(sat(P.dirt, SAT_C), -0.3), 0.3, 0.2); });
+      M.sites(env, seed + 29, cx, cy, 40, 20, 10, (x, y, r1, r2, r3, h) => {   // cracks: short dark zig-zags
+        if (r3 > 0.55) return; const pts = [[x, y]]; let px = x, py = y; for (let k = 0; k < 4; k++) { px += ((h >> (k * 3)) & 7) - 3 + (k & 1 ? 2 : -2); py += ((h >> (k * 2 + 5)) & 3) * 0.6 + 0.4; pts.push([px, py]); }
+        M.stroke(ctx, pts, 0.9, P.dirt, -0.85, 0.7, { cap: 'round' });
+      });
       ctx.restore();
     } else {
-      const g = ctx.createLinearGradient(cx - 200, cy - 120, cx + 200, cy + 190); g.addColorStop(0, col(P.wet, 0.18 + big)); g.addColorStop(1, col(P.wet, -0.15 + big));
-      poly(ctx, dia); ctx.fillStyle = g; ctx.fill(); seamStroke(ctx, dia, g, env);
-      ctx.save(); poly(ctx, dia); ctx.clip(); microGrain(ctx, dia, 0.22, env);
-      for (let i = 0; i < half; i++) softEllipse(ctx, cx + (r() - 0.5) * 40, cy + (r() - 0.5) * 18, 10 + r() * 6, 4 + r() * 2, toneArr(sat(P.marshMud, SAT_C), -0.2), 0.4, 0.3);
-      if (T.pool) {
-        const px = cx + (r() - 0.5) * 20, py = cy + (r() - 0.5) * 8;
-        ctx.save(); ctx.translate(px, py); ctx.scale(16, 7); const pg = ctx.createRadialGradient(0.1, 0.2, 0, 0, 0, 1); pg.addColorStop(0, col(P.waterDeep, 0.1)); pg.addColorStop(0.8, col(P.shallows, -0.1)); pg.addColorStop(1, col(P.shallows, 0.3)); ctx.fillStyle = pg; ctx.beginPath(); ctx.arc(0, 0, 1, 0, Math.PI * 2); ctx.fill(); ctx.restore();
-        softEllipse(ctx, px - 5, py - 2.2, 5, 1.6, env.night ? '#C9D8FF' : SPEC, 0.75, 0.3); ctx.lineWidth = 0.8; ctx.strokeStyle = css(RIM, 0.35); ellipse(ctx, px, py, 16, 7); ctx.stroke();
+      const wet = kind === 'wet';
+      groundBase(ctx, cx, cy, dia, col(P.wet, t0 + (wet ? 0 : -0.12)), env, 0.45, 0.22);
+      M.sites(env, seed + 17, cx, cy, 44, 22, 16, (x, y, r1, r2, r3) => { if (lod > 0 && r3 > 0.5) return; M.softEllipse(ctx, x, y, 9 + r1 * 6, 4 + r2 * 2, toneArr(sat(P.marshMud, SAT_C), -0.2), 0.4, 0.3); });
+      if (kind === 'marsh') {   // standing water where the pool field is low (the knees overlay keys on the same field), a mud rim, reed clumps
+        M.sites(env, seed + 19, cx, cy, 32, 16, 12, (x, y, r1, r2) => { const n = M.marshField(env, x, y); if (n >= 0.42) return; const rx = 9 + r1 * 8, ry = 3.5 + r2 * 3; M.softEllipse(ctx, x, y + 0.5, rx + 4, ry + 2, toneArr(sat(P.marshMud, SAT_C), -0.9), 0.55, 0.4); M.puddle(ctx, x, y, rx, ry, env, { t: -0.4, spec: lod > 0 ? 0.2 : 0.32, rim: 0.18 }); });
+        M.sites(env, seed + 31, cx, cy, 36, 18, 6, (x, y, r1, r2, r3, h) => { if (M.marshField(env, x, y) < 0.44 || r3 > (lod > 0 ? 0.5 : 0.8)) return; const n = 3 + (h & 3); for (let k = 0; k < n; k++) { const dx = (k - n / 2) * 1.6; M.blade(ctx, x + dx, y, 6 + ((h >> (k + 2)) & 7) + r1 * 4, dx * 0.8 + (r2 - 0.5) * 3, P.reed, 0.1, 1.4); } });
       }
-      if (kind === 'marsh') for (let c = 0; c < (env.lod > 0 ? 2 : 3); c++) { const x = cx + (r() - 0.5) * 44, y = cy + (r() - 0.5) * 20; for (let k = 0; k < 5; k++) { const dx = (k - 2) * 1.5, hgt = 7 + r() * 7; const gg = ctx.createLinearGradient(x + dx - 1, 0, x + dx + 1, 0); gg.addColorStop(0, col(P.reed, 0.5)); gg.addColorStop(1, col(P.reed, -0.4)); ctx.strokeStyle = gg; ctx.lineCap = 'round'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(x + dx * 0.4, y); ctx.lineTo(x + dx * 1.8, y - hgt); ctx.stroke(); } }
+      if (T.pool) M.puddle(ctx, cx, cy + 1, 16, 7, env);
+      if (wet) M.sites(env, seed + 43, cx, cy, 48, 24, 8, (x, y, r1, r2, r3) => { if (r3 > (lod > 0 ? 0.3 : 0.5)) return; M.puddle(ctx, x, y, 3.5 + r1 * 3, 1.6 + r2 * 1.2, env, { t: -0.25, spec: 0.3, rim: 0.2 }); });
       ctx.restore();
     }
   };
-  /** a water diamond: T.shore = {n, e, s, w} edges that touch land; shallows bands, caustic rings, glints (silver at night) */
+  /** a water diamond: T = {cx, cy, seed, depth: 0 shallow (< 1.5 ft) | 1 mid | 2 deep (≥ 3 ft), shore: {n, e, s, w} edges that touch land
+   *  (optional: the chunk's shore:ripple overlay carries them for cached tiles), pond, bayou}: the smooth surface, the macro drift, sand ripples on
+   *  a shallow bed, caustic rings and glints (silver at night; lod 1 keeps a quarter of them so 0.5× stays calm) */
   M.waterTile = function (ctx, T, env) {
-    env = envOf(env); const cx = T.cx, cy = T.cy, dia = diamond(cx, cy), r = M.rng((T.seed | 0) * 5 + 7), night = env.night, sh = T.shore || {};
+    env = envOf(env); const cx = T.cx, cy = T.cy, dia = diamond(cx, cy), seed = T.seed | 0, night = env.night, sh = T.shore || {}, lod = env.lod;
     if (T.dropS > 0 || T.dropE > 0) faces(ctx, T, 'water', env);
-    const nShore = (sh.n ? 1 : 0) + (sh.w ? 1 : 0) + (sh.s ? 1 : 0) + (sh.e ? 1 : 0);
-    const base = mix(T.deep ? P.waterDeep : P.waterDay, P.shallows, 0.12 * nShore);
-    const g = ctx.createLinearGradient(cx - 200, cy - 120, cx + 200, cy + 190); g.addColorStop(0, col(base, 0.3)); g.addColorStop(0.6, col(base, -0.05)); g.addColorStop(1, col(base, -0.3));
-    poly(ctx, dia); ctx.fillStyle = g; ctx.fill(); seamStroke(ctx, dia, g, env);
-    ctx.save(); poly(ctx, dia); ctx.clip(); ctx.lineCap = 'round';
-    const edges = { n: [dia[3], dia[0]], e: [dia[0], dia[1]], s: [dia[1], dia[2]], w: [dia[2], dia[3]] };
-    for (const k in edges) if (sh[k]) {
-      const a = edges[k][0], b = edges[k][1]; const m = lerp(a, b, 0.5), nx = -(b[1] - a[1]), ny = (b[0] - a[0]); const L = Math.hypot(nx, ny) || 1; const sg0 = Math.sign((m[0] - cx) * nx + (m[1] - cy) * ny) || 1;
-      const sg = ctx.createLinearGradient(m[0], m[1], m[0] - (nx / L) * 10 * sg0, m[1] - (ny / L) * 10 * sg0); sg.addColorStop(0, col(P.shallows, 0.55, 0.75)); sg.addColorStop(1, col(P.shallows, 0.2, 0));
-      ctx.fillStyle = sg; ctx.fillRect(cx - 40, cy - 20, 80, 40); ctx.lineWidth = 1.2; ctx.strokeStyle = css('#F2FFF8', 0.6); ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke();
+    const d = T.depth == null ? 1 : T.depth | 0;
+    const base = T.pond ? mix(P.waterDeep, P.reed, 0.12) : d >= 2 ? P.waterDeep : d === 1 ? mix(P.waterDeep, P.waterDay, 0.55) : mix(P.waterDay, P.shallows, 0.22);
+    groundBase(ctx, cx, cy, dia, col(base, d === 0 ? 0.12 : d === 1 ? 0.05 : -0.05), env, 0.3, 0);
+    if (d === 0 && !T.pond) for (let k = -2; k <= 2; k++) {   // sand ripples on the shallow bed: pale rows that drift with the world y
+      const y = cy + k * 6 + 1.5, ph = (y + env.originY) * 0.35; const pts = []; for (let x = cx - 34; x <= cx + 34; x += 6) pts.push([x, y + 1.6 * Math.sin((x + env.originX) * 0.45 + ph)]);
+      M.stroke(ctx, pts, 1.1, P.shallows, 0.35, lod > 0 ? 0.22 : 0.32, { smooth: true, cap: 'round' });
     }
-    const rings = env.lod > 0 ? 2 : 3, glints = env.lod > 0 ? 3 : 5;
-    for (let i = 0; i < rings; i++) { const x = cx + (r() - 0.5) * 40, y = cy + (r() - 0.5) * 16; ctx.lineWidth = 0.9; ctx.strokeStyle = col(base, 0.6, 0.3); ellipse(ctx, x, y, 7 + r() * 6, 2.5 + r() * 2); ctx.stroke(); }
-    for (let i = 0; i < glints; i++) { const x = cx + (r() - 0.5) * 46, y = cy + (r() - 0.5) * 20; softEllipse(ctx, x, y, 4 + r() * 5, 0.9 + r() * 0.6, night ? '#C9D8FF' : SPEC, night ? 0.65 : 0.8, 0.25); }
+    const edges = { n: [dia[3], dia[0]], e: [dia[0], dia[1]], s: [dia[1], dia[2]], w: [dia[2], dia[3]] };
+    for (const k in edges) if (sh[k]) { M.edgeFade(ctx, dia, edges[k][0], edges[k][1], 10, P.shallows, 0.55, 0.75); M.stroke(ctx, [edges[k][0], edges[k][1]], 1.2, '#F2FFF8', 0, 0.6); }
+    M.sites(env, seed + 5, cx, cy, 40, 20, 10, (x, y, r1, r2, r3) => { if (r3 > (lod > 0 ? 0.35 : 0.7)) return; ctx.lineWidth = 0.9; ctx.strokeStyle = col(base, 0.6, 0.28); ellipse(ctx, x, y, 6 + r1 * 6, 2.2 + r2 * 2); ctx.stroke(); });
+    M.sites(env, seed + 9, cx, cy, 30, 15, 8, (x, y, r1, r2, r3) => { if (r3 > (lod > 0 ? 0.25 : 0.75)) return; M.softEllipse(ctx, x, y, 3 + r1 * 4, 0.7 + r2 * 0.5, night ? '#C9D8FF' : SPEC, night ? 0.45 : 0.5, 0.25); });
+    if (T.pond) M.sites(env, seed + 15, cx, cy, 48, 24, 8, (x, y, r1, r2, r3) => { if (r3 > 0.5) return; M.softEllipse(ctx, x, y, 3 + r1 * 3, 1.3 + r2 * 1.2, toneArr(sat(P.reed, SAT_C), -0.3), 0.55, 0.4); });   // algae
     ctx.restore();
   };
-  /** a smooth polyline of screen points, width w: gravel by default (o.material: gravel | asphalt | boardwalk later) */
+  /** a smooth polyline of screen points, width w: gravel by default (o.material: gravel | asphalt | boardwalk | concrete) — strokePath + gravel orbs */
   M.path = function (ctx, pts, w, env, o) {
     if (!pts || pts.length < 2) return; env = envOf(env); o = o || {};
-    const c = o.material === 'asphalt' ? (PAL.asphalt || '#3A3A40') : o.material === 'boardwalk' ? (PAL.boardwalk || '#8B7355') : P.gravel;
-    ctx.save(); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-    smoothPath(ctx, pts); ctx.lineWidth = w + 2; ctx.strokeStyle = col(c, -0.5, 0.5); ctx.stroke();
-    smoothPath(ctx, pts); ctx.lineWidth = w; ctx.strokeStyle = col(c, 0.05); ctx.stroke();
-    smoothPath(ctx, pts); ctx.lineWidth = w * 0.6; ctx.strokeStyle = col(c, 0.35, 0.6); ctx.stroke();
-    ctx.save(); ctx.translate(-1.2, -1 - w / 2 + 0.6); smoothPath(ctx, pts); ctx.lineWidth = 1.2; ctx.globalAlpha = 0.5; ctx.strokeStyle = col(c, 0.8); ctx.stroke(); ctx.restore();
-    if (o.material !== 'asphalt' && env.lod === 0) { const r = M.rng((pts[0][0] * 5 + 11) | 0); for (let i = 0; i < pts.length - 1; i++) for (let k = 0; k < 5; k++) { const p = lerp(pts[i], pts[i + 1], r()); orb(ctx, p[0] + (r() - 0.5) * w * 0.6, p[1] + (r() - 0.5) * w * 0.3, 1.1, 0.8, c, 0.1, { noRim: true, spec: 0.5 }); } }
-    ctx.restore();
+    smoothPath(ctx, pts); M.strokePath(ctx, w, env, { material: o.material, unit: 1, seed: (pts[0][0] * 5 + 11) | 0 });
+    if ((o.material || 'gravel') === 'gravel' && env.lod === 0) { const r = M.rng((pts[0][0] * 5 + 11) | 0); for (let i = 0; i < pts.length - 1; i++) for (let k = 0; k < 2; k++) { const p = lerp(pts[i], pts[i + 1], r()); orb(ctx, p[0] + (r() - 0.5) * w * 0.6, p[1] + (r() - 0.5) * w * 0.3, 1.1, 0.8, P.gravel, 0.1, { noRim: true, spec: 0.5 }); } }
   };
   /** a tree at trunk base (x, y): kind liveOak | cypress; o = {seed, inWater, stage} */
   M.tree = function (ctx, x, y, kind, o, env) {

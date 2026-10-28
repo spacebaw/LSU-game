@@ -81,9 +81,18 @@ Rules for every HD painter (H1–H6):
   Banding cannot occur because the ramp is continuous; if a surface reads flat, raise `amp`, do not add tones.
 - **Noise is world-anchored.** `brush.vnoise / fbm(seed, x, y, cell)` are sampled at `cx + env.originX`, `cy + env.originY`
   (the context's world origin: the chunk origin for the chunk bake, 0 for a standalone sprite), so two tiles or two chunks
-  never show a seam or a repeat; the position bits of `variant` (4–9) are no longer needed for that. `microGrain` (a 64²
-  periodic luminance texture at `overlay`, .18–.35 alpha) is the one texture, applied to stucco, stone, ground and faces, and
-  it is skipped at lod 1. `pnoise(seed, x, y, cell, per)` builds any new tileable texture.
+  never show a seam or a repeat. `microGrain` (a 64² periodic luminance texture at `overlay`, .18–.35 alpha) is the fine texture,
+  applied to stucco, stone, ground and faces, and it is skipped at lod 1; `macroGrain` (H1: a 256×128 periodic field at `overlay`,
+  .3–.5) is the coarse one — the light / dark drift of the ground over several tiles — and stays at lod 1. `pnoise(seed, x, y, cell, per)`
+  builds any new tileable texture.
+- **Cached tiles anchor through their block position (H1).** A tile sprite cannot know the chunk origin, so the chunk bake hands every
+  ground / water tile its block position in `variant` bits 4–9 (`tx & 7 | (ty & 7) << 3`, the pen marsh painter's rule, now for every type)
+  and the painter builds its env with `brush.posEnv(env, pv, cx, cy)`: the context origin becomes the 8×8-tile block's screen offset and
+  `field` / `marshField` / `sites` / `macroGrain` / `microGrain` repeat every 256×128 px, so the 64 variants of a family join across tile
+  and chunk borders. Decorations come from `sites` (one jittered site per grid cell, world-anchored): a patch cut by a tile edge is drawn
+  again by the neighbour, clipped to `diamondGrown(cx, cy, .7)`, so the two halves meet with no hairline. Bits 0–2 (the old hash variant)
+  are ignored by an HD tile; water adds bit 3 (shallow, < 1.5 ft) and bit 10 (deep, ≥ 3 ft). The `tile` and `cliff` families are pinned
+  (`registerHD(family, fn, {pin: true})`): their variants are fetched only by chunk bakes, so gc must not drop them between bakes.
 - **Seams.** Antialiased diamonds leave a hairline between neighbours; every ground and water diamond is stroked with its own
   fill at `brush.seamWidth(env)` = **0.9 device px** (0.9 art px at master 1, 0.45 at master 2), round joins. Any new tiled
   primitive must do the same (`brush.seamStroke`). Elevations stay whole pixels (`round(elev·6)`).
@@ -132,6 +141,14 @@ at the trunk base, decals bottom-centre, lights centre).
 | `glow` | `glow(ctx, pts, color, env)` | a lit pane in the BASE pass (window at night, lantern): `fillQuadShaded` with `glow` |
 | `decal` | `decal(ctx, {x, y, w, h, color, trim, shape: rect/disc/diamond, face}, env)` | emblems on faces: banners, signs, stripes, crests (bottom-centre anchored) |
 | `cube` | `cube(ctx, x, y, size, color, env)` | the H0 proof shape (three faces + decal + shadow); a reference composition, not for art |
+| `posEnv` (H1) | `posEnv(env, pv, cx, cy) → env` | the env of a CACHED tile variant at block position `pv = tx & 7 \| (ty & 7) << 4`: the context origin is anchored to the 8×8-tile block's screen offset, `periodic: true` (256×128 px) |
+| `field` / `marshField` (H1) | `field(env, seed, x, y, cell)`, `marshField(env, x, y)` | world-anchored noise at local px (periodic under a posEnv, free `vnoise` under a chunk env); the marsh pool field shared by the marsh tile and the knees overlay |
+| `sites` (H1) | `sites(env, seed, cx, cy, cw, ch, pad, cb(x, y, r1, r2, r3, h)) → n` | world-anchored decoration sites (one jittered site per cw × ch cell, 256×128-periodic): a patch cut by a tile edge is finished by the neighbour |
+| `macroGrain` (H1) | `macroGrain(ctx, pts, a, env)` | the LOW-frequency texture: a 256×128 periodic luminance field at `overlay` (the ground's light / dark drift across several tiles, no per-tile step); kept at lod 1 |
+| `edgeFade` (H1) | `edgeFade(ctx, pts, a, b, depth, color, t, alpha)` | a band from edge a→b inward: shore sand / mud, shallows, the AO under a cliff lip or at its foot |
+| `stroke` / `blade` / `puddle` (H1) | `stroke(ctx, pts, w, color, t, a, {smooth, cap, close})`, `blade(ctx, x, y, h, lean, color, t, w)`, `puddle(ctx, x, y, rx, ry, env, {t, spec, rim})` | toned polylines (strata, cracks, roots, lips), lit reed / grass blades (no gradient), standing water with a specular bar and cool rim |
+| `strokePath` (H1) | `strokePath(ctx, w, env, {material: gravel \| asphalt \| boardwalk \| concrete, stub, seed, unit})` | the layered stroke of the CURRENT path under any CTM (`unit` = px per unit, 32 under render's iso ground transform): edge AO → curb / edge → body → lit crown → up-left highlight thread → the material's marks (lod 0) |
+| `diamondGrown` (H1) | `diamondGrown(cx, cy, g) → 4 pts` | the clip for tile decorations: every edge pushed g px out so a site drawn by two neighbours leaves no AA hairline |
 
 ## 4. Accent colours
 
@@ -275,3 +292,38 @@ not done in B1 because the deck windows, clip hexes and curve transforms are all
   scaled with smoothing; frame, slab, deck and padlock are integer pixel art on the pen.
 - **Delivery.** `render.drawIcon(el, id, locked)` draws the 128 master at the element's device pixels (CSS size × dpr) so thumbnails stay 1:1 under `image-rendering: pixelated`; locked rows grey out
   with a padlock (`.locked` ancestor detected after attach, or the `locked` argument).
+
+## Style C palette (settled in pass H1 — H2–H5 match these knots)
+
+Every HD terrain / water surface is one ramp base and a `t`; nothing is hand-picked. Faces keep the brush offsets (`sw` lit −.08 … −.10,
+`se` shadow −.42 … −.48). Masters: the same knots at 1 and 2; lod 1 (master 1, the 0.5× source) keeps the base, the seam stroke and the
+macro drift and halves the sites (no micro grain, a quarter of the glints).
+
+| surface | base (ramp / palette) | t and layers |
+|---|---|---|
+| grass (DRY) | `grass` #6E8F3C | base t 0; macro drift `overlay` .5; micro grain .18 (lod 0); light patches `highGrass` +.3 @ .24; dark patches base −.35 @ .2; tufts = orbs `grass` +.1 spec .3 |
+| high ground | `highGrass` #7FA347 | base +.05; the grass layers; sandy patches `sand` +.2 @ .22 |
+| wet ground | `wet` #5A6B3A | base t 0; mud patches `marshMud` −.2 @ .4; puddles `puddle` t −.25 spec .3 rim .2 |
+| marsh | `wet` −.12 | pools where `marshField` < .42: `puddle` t −.4 (deep → `waterShallow`), AO ring `marshMud` −.9 @ .55; mud rim; reed clumps = `blade` `reed` +.1 (3–6 per clump) |
+| drained / sinking | mix(`dirt`, `sand`, .22) +.08 | macro .45, grain .25; dark patches `dirt` −.3 @ .3; cracks = `stroke` `dirt` −.85 @ .7 |
+| cliff / terrace face | `dirt` | plane t −.08 (S, lit) / −.42 (E, shadow), vert amp .22; topsoil +.12; strata `clay` −.05 with a `limestone` seam −.1 on faces ≥ 24 px; lip AO .38 over 9 px; foot AO .3; grass overhang orbs (`highGrass` +.15 S / `grass` −.2 E); 1–5 px steps: the band t −.23 / −.57 + a `grass` +.35 lip on the south edge |
+| water deep (≥ 3 ft) | `waterDeep` #1B3A3A | base −.05; macro .3; rings base +.6 @ .28; glints `#FFFBEA` @ .5 (night `#C9D8FF` @ .45) |
+| water mid | mix(`waterDeep`, `waterDay` #2E6B5E, .55) | base +.05 |
+| water shallow (< 1.5 ft) | mix(`waterDay`, `waterShallow`, .22) | base +.12; sand ripples `waterShallow` +.35 @ .32 (lod 1 .22) |
+| pond | mix(`waterDeep`, `reed`, .12) | base +.05; algae `reed` −.3 @ .55 |
+| shore sand (land side) | `sand` #D9C9A1 | `edgeFade` +.2 @ .92 over 13 px, wet line −.35 @ .5 over 4.5 px, waterline stroke −.6 @ .45; shell flecks `limestone` +.6 |
+| shore mud | `mud` #4A3B2A | `edgeFade` −.45 @ .9 over 9 px, −.95 @ .6 over 3 px; sheen `waterShallow` +.3 @ .4 |
+| shallows (water side) | `waterShallow` #6FA895 | `edgeFade` +.55 @ .6 over 11 px; foam thread `#F2FFF8` @ .55; a second ripple +.5 @ .35 (lod 0) |
+| cove beach | `sand` +.08 | macro .4, grain .2; damp toward the S / E edges −.4 @ .55 / −.3 @ .35 |
+| gravel path | `gravel` #C9B47C | `strokePath`: edge −.6 @ .5 (w + 2.4 px), body 0, crown +.3 @ .5 (.55 w), thread +.85 @ .5, specks −.45 / +.9 (lod 0) |
+| road | `asphalt` #3A3A40 | curb +.6 (w + 1.2 px), body 0, crown +.3 @ .3, gold centre dashes `gold` +.2 |
+| boardwalk / deck | `deckWood` #9B6A48 | edge −.75, body 0, crown +.3 @ .5, plank gaps −.7 @ .6, weathered planks +.45 @ .4; posts `bark` −.1, rails `deckWood` −.85 |
+| pedestrian bridge | `concrete` #B8B8BC | kerb −.35, body +.1, joints −.4 @ .5, centre line +.5 @ .6; piers −.1 / −.65 |
+| stairs | `creamStone` / `deckWood` | tread −.25 / 0, riser −.8 / −.75, nosing +.5 / +.45 |
+| levee | `grass` | crown plane +.12 (amp .1) with a gravel `strokePath` path; slope plane −.2 (vert, amp .22) + toe AO .35; back edge +.75 @ .6, lip −.7 @ .55; cracks `bark` −.6 when weak |
+| floodwall | `steel` #8A8A8E / `concrete` | cap metal top +.25, face metal sw/se +.05, footing stone −.25; gauge stripes `purple`, ticks `gold` +.2 |
+| canal | `waterDeep` | cut plane −.1 (vert amp .22), bank AO .45 over 4 px, mid line +.65 @ .45, lips `concrete` +.1 / −.3; gate `purple` metal, caps `gold` |
+| ground tint (render) | `tone:warm` / `tone:cool` | the per-tile height / slope / noise diamond at HALF the pen strength (≤ .14) over the smooth ground |
+| live water (render) | `waterShallow` → `waterDeep` by depth | fill alpha .2 over a baked HD water tile (`C.hdWaterLiveA`); flood water over land keeps .55–.85; surge .86 as before |
+
+AO is always `#1E1946` (`edgeFade` / `softEllipse`), the specular `#FFFBEA`, the cool rim `#B8C8FF`; night glints `#C9D8FF` through `env.night`.

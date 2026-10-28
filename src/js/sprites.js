@@ -379,16 +379,22 @@
   let hdBytesNow = 0;                         // own-canvas bytes of master-2 HD entries
   M.hdFallback = false;                       // latched when hdBytesNow passes the browser's atlas cap: HD families bake at master 1 until gc frees enough
   /** register an HD painter (replaces any painter of that family); fn.hd is set so bake() hands it the master-scaled context */
-  M.registerHD = function (family, fn) {
+  M.registerHD = function (family, fn, opts) {
     if (typeof family !== 'string' || !family || typeof fn !== 'function') { BSU.error('sprites', 'registerHD', new Error('bad HD painter for ' + family)); return; }
     fn.hd = true;
     M.registerPainter(family, fn);
     hdFamilies[family] = true; hdIdCache.clear();
+    if (opts && opts.pin) pinned[family] = true; else delete pinned[family];
   };
+  // H1: a pinned family's entries are never dropped by gc() (lazy = false): the ground tile and cliff variants are fetched only when a chunk
+  // bakes, so an idle-600-frame rule would evict them between bakes and the next pan would re-bake up to 64 variants in one frame
+  const pinned = Object.create(null);
+  M.pinFamily = function (family, on) { if (typeof family !== 'string' || !family) return; if (on === false) delete pinned[family]; else pinned[family] = true; };
+  M.isPinned = function (family) { return pinned[family] === true; };
   /** remove a family's painter (HD or legacy) and every cached entry of it; ids of that family resolve to null again */
   M.unregisterPainter = function (family) {
     if (typeof family !== 'string' || !painters[family]) return false;
-    delete painters[family]; delete hdFamilies[family]; hdIdCache.clear(); dropFamily(family);
+    delete painters[family]; delete hdFamilies[family]; delete pinned[family]; hdIdCache.clear(); dropFamily(family);
     for (const id of [...erroredIds]) { const r = resolve(id); if (r && r.family === family) erroredIds.delete(id); }
     return true;
   };
@@ -523,7 +529,7 @@
       sw: Number.isFinite(g.sw) ? g.sw : w * z, sh: Number.isFinite(g.sh) ? g.sh : h * z,
       ox: Math.round(ox * z), oy: Math.round(oy * z),
       w: w * z, h: h * z, zoom: z, id: id, variant: variant, frame: frame, hd: hd,
-      own: !g.canvas, bytes: (g.canvas ? 0 : (cv.width | 0) * (cv.height | 0) * 4), lazy: !baking, used: frameNo
+      own: !g.canvas, bytes: (g.canvas ? 0 : (cv.width | 0) * (cv.height | 0) * 4), lazy: !baking && pinned[r.family] !== true, used: frameNo
     };
     if (cv !== canvas) { try { canvas.width = 1; canvas.height = 1; } catch (err) { /* stub */ } }
     return e;

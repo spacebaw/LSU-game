@@ -13,6 +13,7 @@
     "sports.js",
     "sprites.js",
     "brush.js",
+    "sprites_terrain.js",
     "sprites_buildings.js",
     "sprites_entities.js",
     "render.js",
