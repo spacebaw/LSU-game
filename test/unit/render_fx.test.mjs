@@ -214,6 +214,48 @@ try {
   I.reset(sb);
 } catch (e) { ok(false, 'calm alerts render_fx: ' + (e.stack || e)); }
 // selfTest hook
+// paths pass (Track P): the 'network' pass at 9.2 draws the sheen / amber dash / Campus hub badge while ui.networkView() and the dashed tie preview
+try {
+  const U = BSU.ui, B = BSU.buildings;
+  ok(R.passes().some((p) => p.name === 'network' && p.order === 9.2 && !p.builtin), 'network@9.2 registered (after overlays 9, before spotlight 9.5)');
+  ok(typeof R.tiePreview === 'function' && typeof R.tiePreviewSpec === 'function' && typeof R.networkStats === 'function' && R._network && typeof R._network.pass === 'function', 'tiePreview / networkStats / _network API');
+  BSU.session.newGame({ seed: 42, skipTutorial: true });
+  const sn = BSU.state; U.showTitle(false); U.settings().coachSeen = true;
+  BSU.headless.tick(3); BSU.headless.render();
+  let fills = 0, strokes = 0, texts = [], dashes = 0;
+  const gs = new Proxy({}, { get: (t, k) => { if (k === 'fill') return () => { fills++; }; if (k === 'stroke') return () => { strokes++; }; if (k === 'setLineDash') return (d) => { if (d && d.length) dashes++; }; if (k === 'fillText') return (s2) => { texts.push(String(s2)); }; if (k === 'measureText') return () => ({ width: 60 }); if (k === 'createLinearGradient') return () => ({ addColorStop() {} }); return () => {}; }, set: () => true });
+  const view = Object.assign({}, R.view);
+  const f = sn.plot.founders; R.panToTile(f.tx, f.ty, false); BSU.headless.render();
+  sn.ui.tool = null;
+  R._network.pass(sn, gs, view); let ns = R.networkStats();
+  ok(ns.sheen === 0 && ns.dashed === 0 && ns.badge === false && ns.tie === 0 && fills === 0, 'at rest (no N, no drag tool): nothing drawn');
+  U.selectTool(sn, 'path');
+  ok(U.networkView() === true, 'the path tool armed: ui.networkView()');
+  R._network.pass(sn, gs, view); ns = R.networkStats();
+  const conn = B.connectedMask(sn); let connectedInView = 0; for (let ty = Math.max(0, view.y0 | 0); ty <= Math.min(63, view.y1 | 0); ty++) for (let tx = Math.max(0, view.x0 | 0); tx <= Math.min(63, view.x1 | 0); tx++) { const i = ty * 64 + tx; if (conn[i] && sn.tiles.surface[i] > 0) connectedInView++; }
+  ok(ns.sheen === connectedInView && ns.sheen > 0 && fills >= 1, 'the sheen covers every connected surface in view (' + ns.sheen + ')');
+  ok(ns.badge === true && texts.indexOf('Campus hub') >= 0, 'the Campus hub badge over Founders\' Hall');
+  // an unconnected run in view → the amber dash
+  let lane = null; for (let ty = (view.y0 | 0) + 2; ty < (view.y1 | 0) - 2 && !lane; ty++) for (let tx = (view.x0 | 0) + 2; tx < (view.x1 | 0) - 2; tx++) { if (!BSU.inBounds(tx, ty)) continue; const i = ty * 64 + tx; if (sn.tiles.owner[i] === -1 && sn.tiles.surface[i] === 0 && !conn[i] && !BSU.nbr4(i).some((n) => conn[n]) && B.canPlace(sn, 'path', tx, ty, { ignoreCash: true }).ok) { lane = i; break; } }
+  if (lane != null) {
+    BSU.terrain.setSurface(sn, lane, BSU.SURF.PATH); B.tick(sn, {});
+    fills = 0; strokes = 0; dashes = 0; R._network.pass(sn, gs, view); ns = R.networkStats();
+    ok(ns.dashed >= 1 && dashes >= 1 && strokes >= 1, 'an unconnected path tile in view: the amber dash (' + ns.dashed + ')');
+    BSU.terrain.setSurface(sn, lane, BSU.SURF.NONE); B.tick(sn, {});
+  } else ok(true, 'no free tile for the amber-dash check (skipped)');
+  // the tie preview draws its diamonds and the dashed centre line regardless of the network view
+  U.selectTool(sn, null);
+  R.tiePreview({ tiles: [f.ty * 64 + f.tx + 4, f.ty * 64 + f.tx + 5, (f.ty + 1) * 64 + f.tx + 5], surfaces: ['path', 'boardwalk', 'path'], snap: false, water: 1 });
+  fills = 0; strokes = 0; dashes = 0; R._network.pass(sn, gs, view); ns = R.networkStats();
+  ok(ns.tie === 3 && ns.sheen === 0 && fills >= 1 && strokes >= 3 && dashes >= 3, 'a 3-tile tie preview: diamonds, the plank dash and the dashed centre line (' + strokes + ' strokes)');
+  R.tiePreview(null); ok(R.tiePreviewSpec() === null, 'tiePreview(null) clears it');
+  R.tiePreview({ tiles: [] }); ok(R.tiePreviewSpec() === null, 'an empty tie clears it');
+  // a whole frame through render with N held and a tie preview never throws or BSU.error
+  const errs0 = (BSU.errors || []).length; U.keydown('n', { ctrl: false, shift: false, meta: false, alt: false }); R.tiePreview({ tiles: [f.ty * 64 + f.tx + 4], surfaces: ['path'], snap: true, water: 0 });
+  BSU.headless.render(); BSU.headless.render(); U.keyup('n'); R.tiePreview(null); U.openPanel(null);
+  ok((BSU.errors || []).length === errs0, 'frames with the network view + tie preview: no BSU.error');
+} catch (e) { ok(false, 'paths pass render_fx: ' + (e.stack || e)); }
+
 BSU.SELFTEST = true; let st; try { st = R.selfTest(); } finally { BSU.SELFTEST = false; }
 ok(st && st.ok && /render_fx/.test(st.notes || ''), 'render.selfTest runs the render_fx tests: ' + (st && st.notes));
 

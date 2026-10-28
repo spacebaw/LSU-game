@@ -602,3 +602,8 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
 .issue-row.lead{grid-template-columns:1.8rem minmax(0,1fr) auto auto auto auto auto auto}
 .issue-row .btn.bell{font-size:1.2rem} .issue-row .btn.bell.muted{color:var(--gold-hi)}
 #issues-tray.collapsed #issues-suggest{display:none}
+/* paths pass (Track P): the inspect card's network pill, the Link it button, the first-tie card */
+.insp-pill{display:inline-block;padding:.2rem .9rem;border-radius:1.2rem;font-size:1.2rem;font-weight:700;line-height:1.5;margin:0 0 .6rem;border:1px solid transparent}
+.insp-pill.grey{background:#3B3A46;color:#C9C7D4;border-color:#5A5868}
+#insp-actions .btn.link{border-color:var(--gold)}
+#card-firstTie .card-kicker{color:var(--gold)}

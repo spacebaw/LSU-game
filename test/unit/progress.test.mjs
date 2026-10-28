@@ -295,5 +295,20 @@ BSU.events.emit('setpiece:end', { kind: 'parade', len: 250 }); H.tick(1);
 eq(s.progress.setPiecesSeen.game, false, 'a parade ending does not mark the game seen');
 eq(progressErrors().length, 0, 'no progress BSU.error through the set-piece flag checks');
 
+// --- paths pass (Track P): the path step teaches the access rule once ---
+try {
+  const P = BSU.progress;
+  ok(P.TIE_LINE === 'Everything you build must link back to this path. If you build near it, we lay the tie for you.', 'progress.TIE_LINE is the sentence');
+  const st = BSU.newState(7); st.plot.founders = st.plot.founders || { tx: 30, ty: 10 };
+  P.reset(st, true); BSU.state = st;
+  P.advanceTutorial(st, 3); for (let k = 0; k < 3; k++) P.tick(st, {});   // the offer activates on the next tick
+  const o = P.objective(st);
+  ok(o && o.id === '2' && /Drag a path from the front door to the Pirogue Landing\./.test(o.text) && o.text.indexOf(P.TIE_LINE) > 0, 'Objective 2 (the path step) carries the sentence: ' + (o && o.text));
+  ok(BSU.data.objectives['2'].text.indexOf('link back') < 0, 'data.js keeps the original text (progress adds the line)');
+  P.advanceTutorial(st, 4); for (let k = 0; k < 3; k++) P.tick(st, {});
+  const o3 = P.objective(st);
+  ok(!o3 || o3.id !== '2' || o3.text.indexOf(P.TIE_LINE) > 0, 'other objectives are untouched');
+} catch (e) { ok(false, 'paths pass progress: ' + (e.stack || e)); }
+
 console.log(`\n${passes} passed, ${failures} failed`);
 process.exit(failures ? 1 : 0);

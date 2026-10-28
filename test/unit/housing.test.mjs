@@ -116,7 +116,9 @@ const fresh = () => { BSU.session.newGame({ seed: 42, skipTutorial: true }); con
   let placed = null;
   for (let dx = -8; dx <= 8 && !placed; dx++) for (let dy = -8; dy <= 8 && !placed; dy++) {
     const x = su.tx + dx, y = su.ty + dy, c = BSU.buildings.canPlace(s, 'bunkhouse', x, y, { rot: 0, ignoreCash: true });
-    if (c && c.ok && Math.abs(dx) <= 4 + 3 && Math.abs(dy) <= 4 + 3 && (dx >= 3 || dx <= -3 || dy >= 3 || dy <= -3)) { const q = BSU.buildings.place(s, 'bunkhouse', x, y, { rot: 0, ignoreCash: true }); if (q && q.ok) placed = { x, y }; }
+    // paths pass: the 12-tile auto-tie makes farther spots legal too, so pick one whose footprint sits within the aura's radius (4) of the Suites tile under test
+    const reaches = c && c.ok && c.tiles.some((i) => Math.max(Math.abs((i & 63) - (su.tx + 1)), Math.abs((i >> 6) - (su.ty + 1))) <= 4);
+    if (reaches && Math.abs(dx) <= 4 + 3 && Math.abs(dy) <= 4 + 3 && (dx >= 3 || dx <= -3 || dy >= 3 || dy <= -3)) { const q = BSU.buildings.place(s, 'bunkhouse', x, y, { rot: 0, ignoreCash: true }); if (q && q.ok) placed = { x, y }; }
   }
   ok(!!placed, 'a Bunkhouse fits near the Suites');
   if (placed) {

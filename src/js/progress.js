@@ -879,7 +879,7 @@
       if (o.state !== 'active') { id = p.background; if (!id || ost(state, id).state !== 'active') return null; }
       const def = objDef(id) || {};
       const c = ctx(state);
-      return { id: id, kind: kindOf(id), title: def.title || '', text: (id === '11' && c.obj11Text) ? (o.text + ' ' + c.obj11Text) : o.text || def.text || '', progress: o.progress, goal: o.goal, showMe: def.showMe || 'target', deadline: o.deadlineDay, deadlineText: def.deadlineText || '', background: (background && background.id !== id) ? background : null };
+      return { id: id, kind: kindOf(id), title: def.title || '', text: (id === '11' && c.obj11Text) ? (o.text + ' ' + c.obj11Text) : (id === '2' ? ((o.text || def.text || '') + ' ' + TIE_LINE) : o.text || def.text || ''), progress: o.progress, goal: o.goal, showMe: def.showMe || 'target', deadline: o.deadlineDay, deadlineText: def.deadlineText || '', background: (background && background.id !== id) ? background : null };
     } catch (e) { BSU.error('progress', 'objective', e); return null; }
   };
   /** camera target for an objective id or a showMe key */
@@ -908,6 +908,9 @@
   // ---------------------------------------------------------------------------
   // Tutorial (§10.1; stages 0–6)
   // ---------------------------------------------------------------------------
+  /** paths pass: the sentence the path step (Objective 2) carries — the one place the access rule is taught */
+  const TIE_LINE = 'Everything you build must link back to this path. If you build near it, we lay the tie for you.';
+  M.TIE_LINE = TIE_LINE;
   M.tutorialStage = function (state) { return fin(state && state.progress && state.progress.tutorialStage, 0); };
   function introduceAllTabs(state) { for (const t of (data().tabs || [])) ui(state, 'introduceTab', t.id); }
   function enterStage(state, stage) {

@@ -64,7 +64,7 @@
   const BSU = window.BSU;
   const M = (BSU.ui = BSU.ui || {});
   const P = BSU.params, PR = P.render || {}, PU = P.ui || {}, PT = P.time || {};
-  const OV = BSU.OV, SPR = BSU.SPR, STORM = BSU.STORM, SKY = BSU.SKY, T = BSU.T, EV = BSU.EV;
+  const OV = BSU.OV, SPR = BSU.SPR, STORM = BSU.STORM, SKY = BSU.SKY, T = BSU.T, EV = BSU.EV, PLACE = BSU.PLACE;   // paths pass: PLACE for the drag status line
   const W = BSU.MAP.W, HGT = BSU.MAP.H, N = BSU.MAP.N;
   const fin = function (v, d) { return Number.isFinite(v) ? v : d; };
   const clamp = function (v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; };
@@ -72,7 +72,7 @@
   const L = {
     dragThreshold: fin(PR.dragThreshold, 4), tooltipMs: fin(PR.tooltipMs, 300), tickerPxPerSec: fin(PR.tickerPxPerSec, 60),
     notifMs: fin(PR.notifMs, 12000), notifMax: fin(PR.notifMax, 3), notifTicks: 120, bubbleIdleMs: fin(PR.bubbleIdleMs, 8000),
-    bubbleMs: fin(PR.bubbleMs, 6000), hintMs: 6000, hintTicks: 60, panPx: fin(PR.panPxPerFrame, 12), refreshMs: fin(PU.panelRefreshMs, 500),
+    bubbleMs: fin(PR.bubbleMs, 6000), hintMs: 6000, hintTicks: 60, nTapMs: 350, panPx: fin(PR.panPxPerFrame, 12), refreshMs: fin(PU.panelRefreshMs, 500),
     deltaMs: 600, odoMs: 150, holdTicks: 600, logMax: fin(PU.tickerMax, 30), popLines: 7, minimapPx: fin(PR.minimapPx, 160),
     compactWidth: fin(PU.compactWidth, 1180), hudStaggerMs: fin(PT.hudStaggerMs, 100), ringThrottleMs: 50, skipAfterTick: fin(PT.skipAfterTick, 150),
     autoCardTicksPerSec: 10, toastTicks: fin(PT.toastTicks, 80), cardWords: fin(PU.cardWordsMax, 12)
@@ -133,6 +133,7 @@
   let root = null, inited = false, dry = false, clock = 0, titleOn = false, focusedInput = null;
   let toolLocked = false, undoAtMs = -1e9, lastRunLen = 0, lastGhost = null, ghostPin = null, lastArm = null, lastRingMs = -1e9, shakeUntil = 0, ghostCache = null;
   let heldShift = false;   // design pass: Shift held → the footprint ghost places flush (no setback snap)
+  let heldAlt = false, heldN = false, nDownAt = -1e9, nHeldLong = false;   // paths pass: Alt held → "no tie" while placing / dragging; N held → the network view (a tap still opens the Season panel on release)
   let hoverKey = '', hoverSince = 0, hoverPx = 0, hoverPy = 0, tipShown = '', lastPx = 0, lastPy = 0;
   const notifs = [];                       // {spec, el, born, bornTick, closed}
   let toast = null; const toastQueue = [];
@@ -563,7 +564,7 @@
           } catch (err) { uerr('keydown', err); }
         });
         window.addEventListener('keyup', function (e) { try { keyup(e.key); } catch (err) { uerr('keyup', err); } });
-        window.addEventListener('blur', function () { try { for (const k in held) held[k] = false; if (live.down || live.state === 'DRAGGING') M.pointer('cancel', lastPx, lastPy, 0, M0); } catch (err) { uerr('blur', err); } });
+        window.addEventListener('blur', function () { try { for (const k in held) held[k] = false; heldAlt = false; heldN = false; if (live.down || live.state === 'DRAGGING') M.pointer('cancel', lastPx, lastPy, 0, M0); } catch (err) { uerr('blur', err); } });
         window.addEventListener('pointerup', function (e) { try { if (live.down && e.target !== world) M.pointer('up', lastPx, lastPy, fin(e.button, 0), modsOf(e)); } catch (err) { uerr('pointerup:window', err); } });
         window.addEventListener('resize', function () { try { const w = fin(window.innerWidth, 1280); cls(E.palette, 'compact', w < L.compactWidth); } catch (err) { /* stub */ } try { applyScale(uiMode); } catch (err) { /* stub */ } fitTopbar(); paletteFade(); });
       }
@@ -741,7 +742,7 @@
     tileAt: function (px, py) { return tileIndexAt(px, py); },
     pan: function (dx, dy) { call('render', 'panBy', dx, dy, true); },
     hover: function (px, py) { hoverEntity(stateOf(), px, py); },
-    ghost: function (px, py) { if (px == null) { call('render', 'ghost', null); show(E['ghost-label'], false); lastGhost = null; } else updateGhost(stateOf(), px, py); },
+    ghost: function (px, py) { if (px == null) { call('render', 'ghost', null); call('render', 'tiePreview', null); show(E['ghost-label'], false); lastGhost = null; } else updateGhost(stateOf(), px, py); },
     place: function (px, py, mods) { return clickPlace(stateOf(), px, py, mods); },
     placeRun: function (run) { finishRun(stateOf(), run); },
     inspectAt: function (px, py) { return clickInspect(stateOf(), px, py); },
@@ -756,7 +757,7 @@
       const s = stateOf(); if (!s || !s.ui) return;
       px = fin(px, 0); py = fin(py, 0); lastPx = px; lastPy = py; mods = mods || M0;
       if (ghostPin && ghostPin.fresh && type === 'move' && Math.hypot(px - ghostPin.px0, py - ghostPin.py0) > 12) ghostPin.fresh = false;   // issues v2: the armed ghost follows the pointer once it travels onto the map (it still snaps back within ~2 tiles of the spot)
-      heldShift = !!mods.shift;
+      heldShift = !!mods.shift; heldAlt = !!mods.alt;
       if (titleOn) return;
       if (type === 'down' && s.ui.panel && !s.ui.tool && !bm.open) { M.openPanel(null); return; }   // a map click dismisses an open panel
       if (type === 'down') { if (call('progress', 'tutorialStage', s) === 1) { call('progress', 'skipSwoop', s); return; } if (s.setPiece) call('render', 'captureCameraTouch', s); show(E.popover, false); if (bm.open) M.closeBuildMenu(); }   // a press on the map while the menu is up (Build it keeps it open) is the player's answer: close it and place   // the swoop-skipping click must not also open the tile inspector behind the charter card
@@ -806,12 +807,26 @@
     }
     return null;
   }
-  function keyup(key) { const d = panDirOf(key); if (d) held[d] = false; if (key === 'Shift') { heldShift = false; if (live.state === 'PLACING') updateGhostQuiet(); } if (key === 'i' || key === 'I') { if (heldI) { heldI = false; applySpotlight(); } } }   // issue spotlight pass: releasing I restores the map
+  function keyup(key) {
+    const d = panDirOf(key); if (d) held[d] = false;
+    if (key === 'Shift') { heldShift = false; if (live.state === 'PLACING') updateGhostQuiet(); }
+    if (key === 'Alt') { heldAlt = false; if (live.state === 'PLACING' || live.state === 'DRAGGING') updateGhostQuiet(); }   // paths pass: the tie comes back
+    if (key === 'i' || key === 'I') { if (heldI) { heldI = false; applySpotlight(); } }   // issue spotlight pass: releasing I restores the map
+    if ((key === 'n' || key === 'N') && heldN) {   // paths pass: a TAP opens the Season panel on release; a hold was the network view
+      heldN = false; const tap = !nHeldLong && clock - nDownAt < L.nTapMs; nHeldLong = false;
+      if (tap) { const s = stateOf(); if (s && s.ui) doAction(s, 'season', M0); }
+    }
+  }
+  /** paths pass: true while the map shows the network (N held, or any drag tool armed): render_fx's sheen / amber dash / Campus hub badge */
+  M.networkView = function () { try { if (heldN) return true; const s = stateOf(); const t = s && s.ui ? s.ui.tool : null; const row = t ? rowOf(t.id) : null; return !!(row && row.kind === 'drag'); } catch (e) { return false; } };
+  /** keyup(key) (also headless): Shift / Alt / I / N releases */
+  M.keyup = function (key) { try { keyup(String(key)); } catch (e) { uerr('keyup', e); } };
   /** keydown(key, mods) → true when handled (also headless.key) */
   M.keydown = function (key, mods) {
     try {
       mods = mods || M0; const s = stateOf(); if (!s || !s.ui) return false;
       if (key === 'Shift') { if (!heldShift) { heldShift = true; if (live.state === 'PLACING') updateGhostQuiet(); } return false; }   // design pass: flush placement while held
+      if (key === 'Alt') { if (!heldAlt) { heldAlt = true; if (live.state === 'PLACING' || live.state === 'DRAGGING') updateGhostQuiet(); } return false; }   // paths pass: "no tie" while held
       const isBackquote = mods.code === 'Backquote' || key === '`';
       // (1) decision toast
       if (toast) {
@@ -856,6 +871,12 @@
         if (mods.shift) { toggleSpotlight(); return true; }
         if (!mods.repeat) cycleIssue(s, 1);
         heldI = true; applySpotlight(); return true;
+      }
+      // paths pass: N held = the network view (connected surfaces green, unconnected amber, the Campus hub badge); the Season panel opens on a TAP's release (keyup)
+      if ((key === 'n' || key === 'N') && !mods.ctrl && !mods.meta && !mods.alt && !mods.shift) {
+        if (mods.repeat) nHeldLong = true;
+        else if (!heldN) { heldN = true; nDownAt = clock; nHeldLong = false; }
+        return true;
       }
       let k = key;
       if (k === '+') k = '=';   // hud + zoom pass: + (Shift+=) and = both zoom in
@@ -1001,8 +1022,9 @@
     const isRing = row.id === 'levee' || row.id === 'floodwall';
     const shrank = dragging && live.run.length < lastRunLen; lastRunLen = dragging ? live.run.length : 0;   // a backtrack changes the ring maths at once: never serve the throttled copy
     if (dragging && isRing && !shrank && clock - lastRingMs < L.ringThrottleMs && lastGhost) { drawGhost(s, tool, row, lastGhost.r, g, px, py, dragging); return; }
-    const opts = { rot: tool.rot }; if (dragging) opts.tiles = live.run;
+    const opts = { rot: tool.rot, noTie: heldAlt }; if (dragging) opts.tiles = live.run;
     const r = call('buildings', 'canPlace', s, tool.id, g.tx, g.ty, opts); if (!r) return;
+    if (dragging) { r.tie = heldAlt ? null : (call('buildings', 'runTie', s, tool.id, live.run) || null); r.tieTouching = !r.tie && !heldAlt && runTouches(s, live.run); }   // paths pass: the drag end's tie / snap preview
     if (dragging && isRing) lastRingMs = clock;
     lastGhost = { r: r, tx: g.tx, ty: g.ty };
     drawGhost(s, tool, row, r, g, px, py, dragging);
@@ -1016,26 +1038,60 @@
     let tiles = r.tiles && r.tiles.length ? r.tiles : [g.ty * W + g.tx];
     if (dragging && live.run.length) tiles = live.run;
     if (g.cove && s.plot && s.plot.cove) tiles = s.plot.cove;
-    const conn = (!dragging && !g.cove && r.connector && Array.isArray(r.connector.tiles) && r.connector.tiles.length) ? r.connector : null;   // connector pass: the gravel tie this placement would lay
-    const spec = { tiles: tiles, color: color, connectorTiles: conn ? conn.tiles : null, ringTiles: r.ring && Array.isArray(r.ring.tiles) ? r.ring.tiles : null, label: '', radius: fin(r.radius, 0), radiusCenter: { tx: g.tx, ty: g.ty } };
+    const conn = (!dragging && !g.cove && r.connector && Array.isArray(r.connector.tiles) && r.connector.tiles.length) ? r.connector : (dragging && r.tie && r.tie.tiles.length ? r.tie : null);   // paths pass: the tie this placement (or this drag's end) would lay
+    const spec = { tiles: tiles, color: color, connectorTiles: null, ringTiles: r.ring && Array.isArray(r.ring.tiles) ? r.ring.tiles : null, label: '', radius: fin(r.radius, 0), radiusCenter: { tx: g.tx, ty: g.ty } };
     if (row.kind === 'footprint' || row.kind === 'upgrade') spec.sprite = { id: tool.id, variant: r.needsPilings ? SPR.PILINGS : 0, tx: g.tx, ty: g.ty, rot: tool.rot };
     call('render', 'ghost', spec);
+    call('render', 'tiePreview', conn ? { tiles: conn.tiles, surfaces: conn.surfaces || null, snap: !!conn.snap, water: fin(conn.water, 0) } : null);   // render_fx draws it as a dashed gold path (planks over water)
     if (!dom()) return;
     let l1, l2 = '';
-    if (dragging) { const n = live.run.length; const per = fin(r.cost, row.cost) || row.cost; l1 = n + (n === 1 ? ' tile' : ' tiles') + ' · ' + money(per * n); if (r.ring && r.ring.text) l2 = r.ring.text; else if (r.ring && typeof r.ring.closed === 'boolean') l2 = r.ring.closed ? 'closes the ring' : (r.ring.shortText || ('still ' + fin(r.ring.short, 0) + ' tiles short')); if (!l2 && n > 1) l2 = 'Drag back to shorten · Esc cancels'; }
+    const netRow = !!(row.kind === 'footprint' && row.pathAdjacency && row.id !== 'founders_hall');
+    if (dragging) {
+      const n = live.run.length; const per = fin(r.cost, row.cost) || row.cost; l1 = n + (n === 1 ? ' tile' : ' tiles') + ' · ' + money(per * n);
+      if (conn) l1 += ' + ' + money(conn.cost) + (conn.snap ? ' snap' : ' tie');   // "12 tiles · $24k + $8k tie"
+      if (r.ring && r.ring.text) l2 = r.ring.text; else if (r.ring && typeof r.ring.closed === 'boolean') l2 = r.ring.closed ? 'closes the ring' : (r.ring.shortText || ('still ' + fin(r.ring.short, 0) + ' tiles short'));
+      const st = dragStatus(s, row, r, conn); if (st) l2 = st + (l2 ? ' · ' + l2 : '');
+      if (!l2 && n > 1) l2 = 'Drag back to shorten · Esc cancels'; else if (st && n > 1) l2 += ' · Drag back to shorten';
+    }
     else if (g.cove) { l1 = 'Not here'; l2 = 'The cove floods every rain. Build on the ridge.'; }
-    else if (!r.ok) { l1 = r.reason || 'Cannot build here'; l2 = ridgeText(r.ridgeFull) || sinkText(r.sink) || ''; }
+    else if (!r.ok) { l1 = r.reason || 'Cannot build here'; l2 = r.reason === tieReason() ? 'Hold N to see the campus network' : (ridgeText(r.ridgeFull) || sinkText(r.sink) || ''); }
     else {
       l1 = money(r.cost); if (row.kind === 'drag') l1 += ' / tile';
-      if (conn) { const n = conn.tiles.length; l1 += ' + ' + n + (n === 1 ? ' path tile ' : ' path tiles ') + money(conn.cost); }   // "+ 3 path tiles $6k"
+      if (conn) l1 += ' + ' + money(conn.cost) + ' tie';   // "$600k + $8k tie"
       if (r.needsGrading) l1 += ' · Grade the site +' + money(r.gradingCost || 0); else if (r.needsPilings) l1 += ' · Pilings +' + money(r.pilingsCost || 0);
       if (ridgeText(r.ridgeFull)) l2 = ridgeText(r.ridgeFull); else if (sinkText(r.sink)) l2 = sinkText(r.sink); else if (r.ring && r.ring.text) l2 = r.ring.text; else if (!r.affordable) l2 = 'Not enough cash';
       else { const uw = utilityWarning(s, row, r); if (uw) l2 = uw; }
-      if (r.unlinked) l2 = "This path isn't linked to campus yet — connect it to the Founders' Hall path" + (l2 ? ' · ' + l2 : '');
+      if (netRow) { const st = netStatus(r, conn); l2 = st + (l2 ? ' · ' + l2 : ''); }   // paths pass: Connected / Ties in (+$8k, 4 tiles) / Can't reach a path…
       if (g.setback) l2 = (l2 ? l2 + ' · ' : '') + 'Setback · hold Shift to place flush';
       if (tool.rot) l1 += ' · rotated (R)';
     }
     ghostLabel(px, py, l1, l2, color);
+  }
+  // paths pass: the ghost's network status line (one of three, the Alt note appended) and the drag end's
+  function tieReason() { const B = BSU.buildings; return (B && B.TIE_REASON) || "Can't reach a path: draw one from campus first"; }
+  function tieWords(t) { const n = t.tiles.length; return '+' + money(t.cost) + ', ' + n + (n === 1 ? ' tile' : ' tiles') + (t.water > 0 ? ', ' + t.water + ' over water' : ''); }
+  function netStatus(r, conn) {
+    if (conn) return 'Ties in (' + tieWords(conn) + ')';
+    if (r.tieSkipped && r.tieSkipped.tiles) return 'No tie (Alt held): ' + r.tieSkipped.tiles.length + ' tiles of gravel skipped';
+    if (r.unlinked) return tieReason();
+    return 'Connected';
+  }
+  function runTouches(s, run) { return call('buildings', 'runTouches', s, run) === true; }
+  function dragStatus(s, row, r, conn) {
+    if (!row || row.kind !== 'drag' || [PLACE.PATH, PLACE.ROAD, PLACE.BOARDWALK].indexOf(row.placeRule) < 0) return '';
+    if (conn) return (conn.snap ? 'Snaps onto the network (' : 'Ties in (') + tieWords(conn) + ')';
+    if (heldAlt) return 'No tie (Alt held)';
+    return r.tieTouching ? 'Connected' : tieReason();
+  }
+  /** paths pass: the one-time "Tied in" card the first time an auto-tie is laid (settings.tieCardSeen persists it; never again) */
+  function firstTieCard(s, tie) {
+    try {
+      if (!tie || !Array.isArray(tie.tiles) || !tie.tiles.length) return false;
+      const st = M.settings(); if (st.tieCardSeen) return false;
+      st.tieCardSeen = true; M.saveSettings();
+      M.card(s, 'firstTie', { n: tie.tiles.length, cost: fin(tie.cost, 0), water: fin(tie.water, 0), snap: !!tie.snap });
+      return true;
+    } catch (e) { uerr('firstTieCard', e); return false; }
   }
   // ---------------------------------------------------------------------------
   // Undo (undo pass): Ctrl/Cmd+Z and the chip both land here. buildings.undo restores the last placement / drag run exactly
@@ -1090,27 +1146,39 @@
     const g = ghostTarget(s, tool, px, py); if (!g) return false;
     if (g.cove) { call('audio', 'play', 'invalid'); if (dom()) shakeLabel(); return false; }
     const pre = (lastGhost && lastGhost.tx === g.tx && lastGhost.ty === g.ty) ? lastGhost.r : null;
-    const r = call('buildings', 'place', s, tool.id, g.tx, g.ty, { rot: tool.rot });
+    const r = call('buildings', 'place', s, tool.id, g.tx, g.ty, { rot: tool.rot, noTie: heldAlt });
     if (r && r.ok) {
       call('audio', 'play', 'place'); undoAtMs = clock;
       if (toolLocked) toolLocked = false;
-      if (dom()) ghostLabel(px, py, 'Placed · ' + money(r.cost), 'Ctrl+Z to undo', 'green');
+      const tie = r.connector && r.connector.tiles && r.connector.tiles.length ? r.connector : null;
+      if (dom()) ghostLabel(px, py, 'Placed · ' + money(r.cost) + (tie ? ' (incl. ' + money(tie.cost) + ' tie)' : ''), 'Ctrl+Z to undo', 'green');
       placedHint(s, row, pre);
+      if (tie) firstTieCard(s, tie);
       return true;
     }
     call('audio', 'play', 'invalid');
-    if (dom()) { ghostLabel(px, py, r && r.reason ? r.reason : 'Cannot build here', '', 'red'); shakeLabel(); }
+    if (dom()) { ghostLabel(px, py, r && r.reason ? r.reason : 'Cannot build here', (r && r.reason === tieReason()) ? 'Hold N to see the campus network' : '', 'red'); shakeLabel(); }
+    if (r && r.reason === tieReason()) tieRefusal(s, pre, g);   // paths pass: the P2 reason with a Show me that pans to the nearest network tile
     return false;
+  }
+  function tieRefusal(s, pre, g) {
+    const near = (pre && pre.nearest) || call('buildings', 'nearestNetwork', s, g.tx, g.ty) || null;
+    M.notify(s, { kind: 'info', text: tieReason() + (near ? ' (the nearest campus path is ' + Math.round(fin(near.d, 0)) + ' tiles away)' : ''), ttl: 7000, stamp: 'tieRefusal', showMe: near ? { tx: near.tx, ty: near.ty, tiles: [near.i] } : undefined });
   }
   function shakeLabel() { const g = E['ghost-label']; if (!g) return; cls(g, 'shake', true); shakeUntil = clock + 400; }
   function finishRun(s, run) {
     if (!s || !s.ui.tool || !run || !run.length) return;
     const tool = s.ui.tool;
-    const r = call('buildings', 'placeRun', s, tool.id, run, {});
+    const r = call('buildings', 'placeRun', s, tool.id, run, { noTie: heldAlt });
     if (!r) return;
     const placed = fin(r.placed, 0);
     for (let k = 0; k < Math.min(placed, 24); k++) call('audio', 'play', 'tick', { delayMs: 60 * k });
-    if (placed > 0) { undoAtMs = clock; if (dom()) ghostLabel(lastPx, lastPy, placed + (placed === 1 ? ' tile' : ' tiles') + ' · ' + money(r.cost), 'Ctrl+Z to undo', 'green'); }
+    if (placed > 0) {
+      undoAtMs = clock;
+      const tie = r.tie && r.tie.tiles && r.tie.tiles.length ? r.tie : null;
+      if (dom()) ghostLabel(lastPx, lastPy, placed + (placed === 1 ? ' tile' : ' tiles') + ' · ' + money(r.cost) + (tie ? ' (incl. ' + money(tie.cost) + (tie.snap ? ' snap)' : ' tie)') : ''), 'Ctrl+Z to undo', 'green');
+      if (tie) firstTieCard(s, tie);
+    }
     else { const sk = r.skipped && r.skipped[0]; call('audio', 'play', 'invalid'); if (dom()) { ghostLabel(lastPx, lastPy, sk && sk.reason ? sk.reason : 'Nothing placed', '', 'red'); shakeLabel(); } }
   }
 
@@ -1293,7 +1361,15 @@
       acts.appendChild(action('Rename', function () { startRename(b); return null; }));
       if (!b.pilings && r.kind === 'footprint' && b.built >= 1 && !b.ruin) acts.appendChild(action('Pilings', function (st) { return call('buildings', 'retrofitPilings', st, b.id, {}); }));
       if (b.hp < 1 && !b.ruin) acts.appendChild(action('Repair', function (st) { return call('buildings', 'repair', st, b.id); }));
-      if (issuesApi()) { const li = issuesApi().byId(s, 'unlinked:' + b.id); if (li && li.action && li.action.link) acts.appendChild(action(li.resolvable ? 'Link to campus · ' + money(li.cost) : 'Link to campus', function (st) { const r2 = call('buildings', 'linkBuilding', st, b.id); if (r2 && r2.ok && issuesApi()) issuesApi().invalidate(); return r2; })); }   // issues v2: the gravel tie from the inspect panel too
+      // paths pass: a grey "Not connected" pill on a building off the network, with the tray's Link it (the tie from linkQuote: gravel, planks over water)
+      if (r.pathAdjacency && b.type !== 'founders_hall') {
+        const lq = call('buildings', 'linkQuote', s, b.id) || null;
+        if (lq && lq.reason !== 'Already linked') {
+          const pill = el('div', 'insp-pill grey', 'Not connected'); pill.id = 'insp-netpill'; pill.title = lq.ok ? ('No path reaches Founders\' Hall: Link it lays ' + lq.tiles.length + (lq.tiles.length === 1 ? ' tile' : ' tiles') + ' for ' + money(lq.cost)) : (lq.reason || 'No path reaches Founders\' Hall');
+          body.insertBefore(pill, body.firstChild);
+          acts.appendChild(action(lq.ok ? 'Link it · ' + money(lq.cost) : 'Link it', function (st) { const r2 = call('buildings', 'linkBuilding', st, b.id); if (r2 && r2.ok) { if (issuesApi()) issuesApi().invalidate(); inspDirty = true; M.notify(st, { kind: 'info', text: 'Linked to campus: ' + r2.placed + (r2.placed === 1 ? ' tile' : ' tiles') + ' of path · ' + money(r2.cost), ttl: 3500 }); } return r2; }, 'link'));
+        }
+      }
       if (r.tiers && r.tiers.length > fin(b.tier, 0)) acts.appendChild(action('Upgrade', function (st) { return call('buildings', 'upgrade', st, b.id); }));
       if (b.type === 'generator') acts.appendChild(action('Refuel +3 days $5k', function (st) { return call('buildings', 'refuel', st, b.id); }));
       if (b.type === 'wildlife_post') acts.appendChild(action((b.data && b.data.nutriaBounty ? '✓ ' : '') + 'Nutria bounty', function (st) { return call('buildings', 'setPolicy', st, b.id, 'nutriaBounty', !(b.data && b.data.nutriaBounty)); }));
@@ -2042,7 +2118,7 @@
     const I = issuesApi(), sd = fin(P.issues && P.issues.snoozeDays, 3);
     if (opts.count > 1) { const bd = btn(null, '×' + opts.count, 'small badge', function () { const o = opts.suggest ? tray.sopen : tray.open; o[it.kind] = !o[it.kind]; tray.key = ''; }); bd.title = opts.count + ' ' + (I ? I.labelOf(it.kind).toLowerCase() : it.kind) + ' issues: click to ' + (opts.expanded ? 'fold them' : 'list them all'); row.appendChild(bd); }
     let fix = null;
-    if (!opts.progress) { fix = btn(null, 'Fix', 'small fix', function () { const st = stateOf(); if (st) fixIssue(st, issuesApi().byId(st, it.id) || it); }); fix.title = it.fix || 'Fix it'; row.appendChild(fix); }
+    if (!opts.progress) { fix = btn(null, it.kind === 'unlinkedPath' ? 'Link it' : 'Fix', 'small fix', function () { const st = stateOf(); if (st) fixIssue(st, issuesApi().byId(st, it.id) || it); }); fix.title = it.fix || 'Fix it'; row.appendChild(fix); }   // paths pass: the Not linked suggestion's button reads Link it
     const loc = btn(null, '⌖', 'small icon-sm locate', function () { const st = stateOf(); if (st) locateIssue(st, issuesApi().byId(st, it.id) || it); }); loc.title = 'Locate: ease the camera there (I cycles)'; loc.dataset.act = 'locate'; row.appendChild(loc);
     if (!opts.progress) {
       const zz = btn(null, 'zz', 'small icon-sm', function () { const st = stateOf(); const I2 = issuesApi(); if (st && I2 && I2.snooze(st, it.id)) { tray.key = ''; M.notify(st, { kind: 'info', text: 'Snoozed ' + sd + ' days: ' + it.title, ttl: 2500 }); } }); zz.title = 'Snooze ' + sd + ' days: hides this row until ' + BSU.formatDate(dayOf(s) + sd) + '; it comes back sooner if it gets worse'; zz.dataset.act = 'snooze'; row.appendChild(zz);
@@ -2348,6 +2424,11 @@
       const txt = (BSU.data && BSU.data.tutorial && BSU.data.tutorial[1] && BSU.data.tutorial[1].card) || '$4,000,000, one ridge, and a swamp. Build a university. Geaux.';
       return { id: 'charter', kicker: 'The charter', title: 'BAYOU STATE', body: txt, actions: [{ label: 'Geaux', primary: true }], autoMs: fin(p && p.autoMs, fin(PT.charterCardMs, 3000)), clickToClose: true, onClose: function (st) { call('progress', 'advanceTutorial', st, 2); } };
     });
+    reg('firstTie', function (s, p) {   // paths pass: the first auto-tie, once per browser (settings.tieCardSeen)
+      p = p || {}; const n = fin(p.n, 0), water = fin(p.water, 0), land = n - water;
+      const what = land > 0 && water > 0 ? (land + (land === 1 ? ' tile' : ' tiles') + ' of gravel and ' + water + ' of boardwalk') : water > 0 ? (water + (water === 1 ? ' tile' : ' tiles') + ' of boardwalk') : (n + (n === 1 ? ' tile' : ' tiles') + ' of gravel');
+      return { id: 'firstTie', kicker: p.snap ? 'Snapped on' : 'Tied in', title: 'Tied in: ' + what + ', ' + money(p.cost), body: "Paths that reach Founders' Hall are what make a building work. Build near the campus network and we lay the last few tiles for you (planks over water). Hold Alt to skip the tie; hold N to see the network.", actions: [{ label: 'Got it', primary: true }] };
+    });
     reg('obj8', function (s, p) { return { id: 'obj8', kicker: 'Objective 8', title: 'Capped', body: (p && p.text) || ('Enrollment is capped at ' + fin(p && p.students, 0) + '. Beds, seats and dining set the ceiling.'), actions: [{ label: 'Show me the Budget', fn: function () { M.openPanel('budget'); } }, { label: 'OK', primary: true }] }; });
     reg('voice', function (s, p) { p = p || {}; return { id: 'voice', side: 'voice', voiceId: p.id, student: p.student, major: p.major, text: p.text, payoff: p.payoff }; });
     reg('board', function (s, p) {
@@ -2441,7 +2522,7 @@
     call('session', 'newGame', seed === undefined ? {} : { seed: seed });
     void s;
   }
-  M.settings = function () { const s = stateOf(); if (s && s.ui && s.ui.settings) return s.ui.settings; return { volume: 0.5, muted: false, particles: 'high', shake: true, colorblind: false, autoSimHint: false, hudMode: 'full', hudCollapsed: {}, alerts: 'normal', mutedIssues: {} }; };
+  M.settings = function () { const s = stateOf(); if (s && s.ui && s.ui.settings) return s.ui.settings; return { volume: 0.5, muted: false, particles: 'high', shake: true, colorblind: false, autoSimHint: false, hudMode: 'full', hudCollapsed: {}, alerts: 'normal', mutedIssues: {}, tieCardSeen: false }; };
   /** mirror state.ui.settings to localStorage['bsu.settings'] (a failure → one 'saveUnavailable' hint) */
   M.saveSettings = function () { try { window.localStorage.setItem('bsu.settings', JSON.stringify(M.settings())); } catch (e) { const s = stateOf(); if (s) M.hint(s, 'saveUnavailable'); } };
   /** stat popover from economy.breakdown */

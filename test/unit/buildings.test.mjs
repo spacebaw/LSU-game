@@ -100,8 +100,9 @@ const pd2 = B.place(s, 'dorm', 46, 9, { rot: 0 });
 ok(pd2.ok && s.buildings[pd2.id].name === 'Fontenot Hall', 'second dorm is Fontenot Hall (' + (pd2.ok ? s.buildings[pd2.id].name : pd2.reason) + ')');
 
 // --- scenario: illegal placements carry the documented reasons ----------------
-eq(B.canPlace(s, 'dorm', 20, 40, {}).reason, 'No path within 4 tiles', 'no path reason (connector pass wording)');
-eq(B.canPlace(s, 'stadium', 40, 20, {}).reason, 'No path within 4 tiles', 'stadium: access checked before road (order)');
+const TIE_REASON = B.TIE_REASON; ok(TIE_REASON === "Can't reach a path: draw one from campus first", 'paths pass: the tie reason is exported');
+{ const nr = B.canPlace(s, 'dorm', 20, 40, {}); ok(!nr.ok && nr.reason === TIE_REASON && nr.nearest && Number.isInteger(nr.nearest.i) && nr.unlinked === true, 'no path within 12 while the window is open: refused with the tie reason and the nearest network tile (' + JSON.stringify(nr.nearest) + ')'); }
+{ const st = B.canPlace(s, 'stadium', 40, 20, {}); ok(!st.ok && (st.reason === TIE_REASON || (st.connector && /^Needs a Road/.test(st.reason))), 'stadium: access checked before road (order): ' + st.reason); }
 eq(B.canPlace(s, 'dorm', 50, 8, {}).reason, 'Occupied', 'occupied reason');
 eq(B.canPlace(s, 'founders_hall', 10, 10, {}).reason, 'Founders’ Hall goes on the ridge', 'founders elsewhere');
 for (let y = 10; y <= 16; y++) lay(50, y);
@@ -112,7 +113,7 @@ s.economy.cash = 4000000;
 // preserve refused for a dorm; marsh gives pilings
 for (let x = 20; x <= 25; x++) for (let y = 20; y <= 25; y++) { const i = BSU.idx(x, y); s.tiles.elev[i] = 1; s.tiles.type[i] = BSU.T.MARSH; }
 for (let x = 26; x <= 40; x++) lay(x, 22);   // a path (unconnected)
-{ const ru = B.canPlace(s, 'dorm', 23, 21, {}); ok(ru.ok === true && ru.unlinked === true, 'unlinked path counts as adjacency but is flagged unlinked (playtest fix; was a refusal)'); }
+{ const ru = B.canPlace(s, 'dorm', 23, 21, {}); ok(ru.ok === false && ru.reason === TIE_REASON && ru.unlinked === true && ru.connector === null, 'paths pass: beside an unlinked path with no network within 12 → refused while fewer than 5 buildings stand (' + ru.reason + ')'); }
 for (let y = 8; y <= 22; y++) lay(40, y);    // connect it to the Founders' ring
 for (let x = 40; x <= 49; x++) lay(x, 8);    // (49,8) is a Founders' west edge tile
 B.tick(s, {});
@@ -167,9 +168,9 @@ const pg = B.place(s, 'dorm', 30, 12, {});
 ok(pg.ok && Math.abs(s.tiles.elev[BSU.idx(30, 12)] - s.tiles.elev[BSU.idx(31, 12)]) < 1e-6, 'grading levelled the footprint');
 
 // --- scenario: coverage + effective + undo/demolish on the live bus ---------------
-// connector pass: (44,3) is now 3 tiles from the y=8 path (it would tie in), so the "needs a path" case moves out of connector reach
-const ps = B.place(s, 'substation', 44, 1, {}), pt = B.place(s, 'water_tower', 44, 0, {});
-ok(!ps.ok && ps.reason === 'No path within 4 tiles' && !pt.ok, 'substation needs a path too (beyond connector reach): ' + ps.reason + ' / ' + pt.reason);
+// paths pass: (44,1) is within the 12-tile auto-tie now, so the "needs a path" case moves to x=20 (beyond reach of every path)
+const ps = B.place(s, 'substation', 20, 1, {}), pt = B.place(s, 'water_tower', 20, 4, {});
+ok(!ps.ok && ps.reason === TIE_REASON && !pt.ok, 'substation needs a path too (beyond tie reach): ' + ps.reason + ' / ' + pt.reason);
 ok(B.canPlace(s, 'substation', 44, 3, {}).connector && B.canPlace(s, 'substation', 44, 3, {}).connector.tiles.length === 3, 'substation 3 tiles above the path: a 3-tile connector is offered');
 for (let x = 41; x <= 46; x++) lay(x, 9);
 for (let y = 3; y <= 9; y++) lay(43, y);
@@ -403,19 +404,29 @@ ok(lr.length === 1 && lr[0].tiles.length === 36 && lr[0].name === 'The Great Wal
   const pt3 = B.place(sc, 'dining_hall', 36, 8, { rot: 0 });
   ok(pt3.ok && pt3.connector === null && pt3.cost === 500000 && sc.economy.cash === cashT - 500000 && pathCount() === paths0, 'touching: placed for $500k, no gravel laid');
   ok(B.undo(sc).ok && pathCount() === paths0, 'touching undo leaves the path count alone');
-  // 3. beyond 4 tiles: rejected with the reason
-  const cfar = B.canPlace(sc, 'dining_hall', 36, 13, { rot: 0 });
-  ok(!cfar.ok && cfar.reason === 'No path within 4 tiles' && cfar.connector === null, 'dining hall 5 tiles away: ' + cfar.reason);
-  ok(B.connectorFor(sc, 'dining_hall', 36, 13, 0) === null && !B.place(sc, 'dining_hall', 36, 13, { rot: 0 }).ok, 'connectorFor null beyond reach, place refuses');
+  // 3. paths pass: 5 tiles away ties in (was "No path within 4 tiles"); 13 tiles is beyond autoTieMax 12 → refused with the tie reason while the window is open
+  const c5 = B.canPlace(sc, 'dining_hall', 36, 13, { rot: 0 });
+  ok(c5.ok && c5.connector && c5.connector.tiles.length === 5 && c5.connector.cost === 10000 && c5.connector.water === 0, 'dining hall 5 tiles away: a 5-tile tie (' + c5.reason + ')');
+  const c12 = B.canPlace(sc, 'dining_hall', 36, 20, { rot: 0 });
+  ok(c12.ok && c12.connector && c12.connector.tiles.length === 12, 'exactly 12 tiles away still ties in (12-tile connector)');
+  const cfar = B.canPlace(sc, 'dining_hall', 36, 21, { rot: 0 });
+  ok(!cfar.ok && cfar.reason === TIE_REASON && cfar.connector === null && cfar.nearest && cfar.nearest.d <= 13, 'dining hall 13 tiles away: ' + cfar.reason + ' · nearest ' + JSON.stringify(cfar.nearest));
+  ok(B.connectorFor(sc, 'dining_hall', 36, 21, 0) === null && !B.place(sc, 'dining_hall', 36, 21, { rot: 0 }).ok, 'connectorFor null beyond reach, place refuses');
   const c4 = B.canPlace(sc, 'dining_hall', 36, 12, { rot: 0 });
   ok(c4.ok && c4.connector && c4.connector.tiles.length === 4, 'exactly 4 tiles away still ties in (4-tile connector)');
-  // 4. water in the way: the tie routes around it (never through)
+  // 4. paths pass: water across the straight line → the tie crosses it as a boardwalk at boardwalk cost (was a 4-tile detour); laid as planks, undone with the hall
   for (const x of [36, 37, 38]) { const i = BSU.idx(x, 9); sc.tiles.type[i] = BSU.T.OPEN_WATER; sc.tiles.flags[i] |= BSU.FLAG.OPEN_WATER; }
   BSU.terrain.rewalk(sc); B.tick(sc, {});
   const cw = B.canPlace(sc, 'dining_hall', 36, 11, { rot: 0 });
-  ok(cw.ok && cw.connector && cw.connector.tiles.length === 4, 'water across the straight line: a 4-tile detour (' + cw.reason + ' ' + (cw.connector ? cw.connector.tiles.length : '-') + ')');
-  ok(cw.connector.tiles.every(t => !(sc.tiles.flags[t] & BSU.FLAG.OPEN_WATER) && sc.tiles.type[t] !== BSU.T.OPEN_WATER), 'connector avoids water');
-  ok(cw.connector.tiles.every((t, k) => k === 0 || adj4(t, cw.connector.tiles[k - 1])) && BSU.nbr4(cw.connector.tiles[3]).some(n => sc.tiles.surface[n] === PATH), 'detour is 4-connected and reaches the path');
+  const walkCost = BSU.data.catalog.boardwalk.cost;
+  ok(cw.ok && cw.connector && cw.connector.tiles.length === 3 && cw.connector.water === 1 && cw.connector.surfaces.join() === 'path,boardwalk,path' && cw.connector.cost === 2 * 2000 + walkCost, 'water across the straight line: a 3-tile tie with one plank tile at boardwalk cost (' + JSON.stringify(cw.connector) + ')');
+  ok(cw.connector.tiles.every((t, k) => k === 0 || adj4(t, cw.connector.tiles[k - 1])) && BSU.nbr4(cw.connector.tiles[2]).some(n => sc.tiles.surface[n] === PATH), 'the tie is 4-connected and reaches the path');
+  { const cashW = sc.economy.cash, pathsW = pathCount(); sc.tick = 3000;
+    const pw = B.place(sc, 'dining_hall', 36, 11, { rot: 0 });
+    ok(pw.ok && pw.cost === 500000 + 4000 + walkCost && pw.connector && pw.connector.tiles.length === 3, 'placed with the water tie in one purchase: ' + pw.cost);
+    ok(sc.tiles.surface[BSU.idx(36, 9)] === BSU.SURF.BOARDWALK && sc.tiles.surface[BSU.idx(36, 10)] === PATH && sc.tiles.surface[BSU.idx(36, 8)] === PATH, 'planks on the water tile, gravel on land');
+    sc.tick = 3010; const uw = B.undo(sc);
+    ok(uw.ok && uw.connector === 3 && uw.refund === 504000 + walkCost && sc.economy.cash === cashW && sc.tiles.surface[BSU.idx(36, 9)] === NONE && pathCount() === pathsW, 'undo takes the hall, the gravel and the planks back: ' + JSON.stringify(uw)); }
   for (const x of [36, 37, 38]) { const i = BSU.idx(x, 9); sc.tiles.type[i] = BSU.T.DRY; sc.tiles.flags[i] &= ~BSU.FLAG.OPEN_WATER; }
   // 5. not enough cash for the tie: one purchase, refused as a whole
   sc.economy.cash = 503000 - sc.economy.loanLimit;
@@ -526,12 +537,12 @@ try {
   const q2 = B.linkQuote(sl, p2.id);
   ok(q2.ok && q2.tiles.length === 5 && q2.cost === 10000, 'linkQuote reaches 5 tiles (' + JSON.stringify(q2.tiles) + ')');
   ok(B.linkBuilding(sl, p2.id).ok && B.linkQuote(sl, p2.id).reason === 'Already linked', 'Link it at 5 tiles');
-  // beyond 8 tiles: refused with the reason; cash short: refused with the reason
-  for (let y = 8; y <= 18; y++) BSU.terrain.setSurface(sl, BSU.idx(32, y), PATH); B.tick(sl, {});
-  const p3 = B.place(sl, 'dining_hall', 29, 19, { rot: 0 }); ok(p3.ok, 'a hall 11 tiles below the path placed beside a temporary path');
-  for (let y = 8; y <= 18; y++) B.remove(sl, { tile: BSU.idx(32, y) }, 'demolish');
+  // beyond 12 tiles (paths pass: linkMax 8 → 12): refused with the reason; cash short: refused with the reason
+  for (let y = 8; y <= 22; y++) BSU.terrain.setSurface(sl, BSU.idx(32, y), PATH); B.tick(sl, {});
+  const p3 = B.place(sl, 'dining_hall', 29, 22, { rot: 0 }); ok(p3.ok, 'a hall 14 tiles below the path placed beside a temporary path');
+  for (let y = 8; y <= 22; y++) B.remove(sl, { tile: BSU.idx(32, y) }, 'demolish');
   const q3 = B.linkQuote(sl, p3.id);
-  ok(q3.ok === false && /within 8 tiles/.test(q3.reason) && !B.linkBuilding(sl, p3.id).ok, 'no route within 8 tiles: ' + q3.reason);
+  ok(q3.ok === false && /within 12 tiles/.test(q3.reason) && !B.linkBuilding(sl, p3.id).ok, 'no route within 12 tiles: ' + q3.reason);
   for (let y = 8; y <= 12; y++) BSU.terrain.setSurface(sl, BSU.idx(46, y), PATH); B.tick(sl, {});
   const p4 = B.place(sl, 'dining_hall', 45, 13, { rot: 0 }); for (let y = 8; y <= 12; y++) B.remove(sl, { tile: BSU.idx(46, y) }, 'demolish');
   const cash4 = sl.economy.cash; sl.economy.cash = 1000;
@@ -553,6 +564,104 @@ try {
   ok(sn && B.canPlace(sl, 'substation', sn.tx, sn.ty, { rot: 0 }).ok && sn.d <= 4, 'spotNear finds a legal substation spot beside the hall: ' + JSON.stringify(sn));
   ok(B.spotNear(sl, 'substation', 0, 0, { radius: 0 }) === null || B.canPlace(sl, 'substation', 0, 0, {}).ok, 'spotNear with radius 0 only tests the one spot');
 } catch (e) { ok(false, 'issues v2 buildings: ' + (e.stack || e)); }
+
+// --- paths pass (PLAN_PATHS_LAND Track P): Alt opt-out, the refusal window, drag-end ties and snaps, nearestNetwork / connectedMask ----
+try {
+  const sp = BSU.newState(44);
+  for (let i = 0; i < 4096; i++) { sp.tiles.owner[i] = -1; sp.tiles.elev[i] = 6; sp.tiles.type[i] = BSU.T.DRY; sp.tiles.surface[i] = 0; sp.tiles.crest[i] = 0; sp.tiles.flags[i] = 0; sp.tiles.integrity[i] = 100; }
+  sp.plot.bank0 = 57; sp.plot.founders = { tx: 50, ty: 7 }; sp.plot.highway = []; sp.plot.cove = []; sp.plot.mouth = [0, 0, 0]; sp.plot.bayou = []; sp.plot.cheniers = []; sp.plot.mounds = [];
+  sp.economy.suppressCoverage = true; sp.economy.cash = 50000000; sp.economy.loanLimit = 0;
+  BSU.state = sp; B.reset(sp, true); BSU.terrain.rewalk(sp);
+  ok(B.place(sp, 'founders_hall', 50, 7, { ignoreCash: true, instant: true }).ok, 'paths world: Founders\' placed');
+  for (let x = 30; x <= 49; x++) BSU.terrain.setSurface(sp, BSU.idx(x, 7), BSU.SURF.PATH);
+  B.tick(sp, {});
+  const PATH = BSU.SURF.PATH, NONE = BSU.SURF.NONE, ROAD = BSU.SURF.ROAD;
+  const surfCount = (v) => { let n = 0; for (let i = 0; i < 4096; i++) if (sp.tiles.surface[i] === v) n++; return n; };
+  const TIE = B.TIE_REASON;
+  ok(BSU.params.build.autoTieMax === 12 && BSU.params.build.tieSnap === 2 && BSU.params.build.tieRefuseUntil === 5 && BSU.params.issues.linkMax === 12 && !('connectorMax' in BSU.params.build), 'params: autoTieMax 12, tieSnap 2, tieRefuseUntil 5, linkMax 12, connectorMax gone');
+  // connectedMask / nearestNetwork
+  const cm = B.connectedMask(sp);
+  ok(cm && cm.length === 4096 && cm[BSU.idx(30, 7)] === 1 && cm[BSU.idx(30, 9)] === 0, 'connectedMask: the path row reaches the hall, bare ground does not');
+  const nn = B.nearestNetwork(sp, 36, 20);
+  ok(nn && nn.ty === 7 && nn.d === 13 && nn.i === BSU.idx(nn.tx, 7) && sp.tiles.surface[nn.i] === BSU.SURF.PATH, 'nearestNetwork from (36,20): a path tile 13 rows up (' + JSON.stringify(nn) + ')');
+  // Alt (opts.noTie): the tie is quoted as tieSkipped, the placement goes in unlinked and nothing extra is laid or charged
+  const q0 = B.canPlace(sp, 'dining_hall', 36, 11, { rot: 0 });
+  ok(q0.ok && q0.connector && q0.connector.tiles.length === 3 && q0.tieSkipped === null && q0.unlinked === false, 'dining hall 3 tiles below the path: a 3-tile tie by default');
+  const qn = B.canPlace(sp, 'dining_hall', 36, 11, { rot: 0, noTie: true });
+  ok(qn.ok && qn.connector === null && qn.unlinked === true && qn.tieSkipped && qn.tieSkipped.tiles.length === 3 && qn.nearest && qn.nearest.ty === 7, 'noTie: allowed, unlinked, the skipped tie quoted (' + JSON.stringify(qn.tieSkipped) + ')');
+  { const cash = sp.economy.cash, paths = surfCount(PATH); sp.tick = 100;
+    const pn = B.place(sp, 'dining_hall', 36, 11, { rot: 0, noTie: true });
+    ok(pn.ok && pn.cost === 500000 && pn.connector === null && sp.economy.cash === cash - 500000 && surfCount(PATH) === paths, 'noTie place: $500k, no gravel laid');
+    const lq = B.linkQuote(sp, pn.id); ok(lq.ok && lq.tiles.length === 3 && lq.cost === 6000, 'the untied hall is unlinked: Link it quotes the same 3 tiles');
+    sp.tick = 105; ok(B.undo(sp).ok && sp.buildings[pn.id] === null && sp.economy.cash === cash, 'undone'); }
+  // the enforcement window: refused with the tie reason until five buildings are complete, then allowed as "Not linked"
+  ok(B.tieEnforced(sp) === true && B.completedCount(sp) === 0, 'window open: Founders\' does not count');
+  const far = B.canPlace(sp, 'dining_hall', 36, 22, { rot: 0 });
+  ok(!far.ok && far.reason === TIE && far.unlinked === true && far.nearest && far.nearest.i >= 0, 'nothing within 12: refused with the tie reason + nearest');
+  ok(!B.canPlace(sp, 'dining_hall', 36, 22, { rot: 0, noTie: true }).ok, 'noTie does not bypass the refusal (nothing to skip)');
+  const built = [];
+  for (let k = 0; k < 5; k++) { const pb = B.place(sp, 'dorm', 30 + k * 4, 9, { rot: 0 }); ok(pb.ok, 'dorm ' + k + ' placed beside the path: ' + pb.reason); if (pb.ok) built.push(pb.id); }
+  ok(B.tieEnforced(sp) === true && B.completedCount(sp) === 0, 'five dorms under construction still count for nothing');
+  for (const id of built) { const b = B.get(sp, id); b.built = 1; }
+  ok(B.completedCount(sp) === 5 && B.tieEnforced(sp) === false, 'five complete dorms close the window');
+  const far2 = B.canPlace(sp, 'dining_hall', 36, 22, { rot: 0 });
+  ok(far2.ok && far2.unlinked === true && far2.connector === null && far2.nearest, 'after the window: allowed, unlinked (the tray\'s "Not linked" suggestion), no tie');
+  { sp.tick = 200; const pf = B.place(sp, 'dining_hall', 36, 22, { rot: 0 }); ok(pf.ok && pf.connector === null, 'placed far off the network'); const lq2 = B.linkQuote(sp, pf.id); ok(lq2.ok === false && /within 12 tiles/.test(lq2.reason), 'Link it finds no route within 12: ' + lq2.reason); sp.tick = 205; ok(B.undo(sp).ok, 'undone'); }
+  for (const id of built) B.remove(sp, id, 'demolish');
+  for (let x = 20; x < 50; x++) { const i = BSU.idx(x, 8); if (sp.tiles.surface[i] !== NONE) B.remove(sp, { tile: i }, 'demolish'); }   // the dorms' one-tile ties stay when a building goes (as in life): clear them for the run tests
+  B.tick(sp, {});
+  // drag-end ties: a path run ending 5 tiles short of the network ties in; ≤ 2 snaps; touching → nothing
+  const col = (x, y0, y1) => { const t = []; for (let y = y0; y <= y1; y++) t.push(BSU.idx(x, y)); return t; };
+  const run5 = col(36, 13, 20);   // 8 tiles straight down column 36, the top one 5 tiles below the y=7 path
+  const rt5 = B.runTie(sp, 'path', run5);
+  ok(rt5 && rt5.tiles.length === 5 && rt5.snap === false && rt5.cost === 10000 && rt5.water === 0 && rt5.surfaces.every((v) => v === 'path'), 'runTie: 5 tiles of gravel from the run\'s top to the path (' + JSON.stringify(rt5 && rt5.tiles) + ')');
+  ok(rt5.tiles.every((t) => (t & 63) === 36 && (t >> 6) >= 8 && (t >> 6) <= 12) && run5.indexOf(rt5.tiles[0]) < 0, 'the tie sits outside the run, straight up column 36');
+  const rtSnap = B.runTie(sp, 'path', col(36, 10, 20));
+  ok(rtSnap && rtSnap.tiles.length === 2 && rtSnap.snap === true && rtSnap.cost === 4000, 'a run ending 2 short snaps on (2 tiles)');
+  ok(B.runTie(sp, 'path', col(36, 8, 20)) === null, 'a run touching the path: no tie');
+  ok(B.runTie(sp, 'path', col(36, 21, 30)) === null, 'a run 13 tiles short: no tie within 12');
+  ok(B.runTie(sp, 'levee', col(36, 13, 20)) === null && B.runTie(sp, 'canal', col(36, 13, 20)) === null, 'levees and canals never tie');
+  { const cash = sp.economy.cash, paths = surfCount(PATH); sp.tick = 300;
+    const pr5 = B.placeRun(sp, 'path', run5, {});
+    ok(pr5.ok && pr5.placed === 8 && pr5.tie && pr5.tie.tiles.length === 5 && pr5.tie.cost === 10000 && pr5.cost === 16000 + 10000, 'placeRun lays the 8 tiles and the 5-tile tie in one purchase: ' + JSON.stringify({ placed: pr5.placed, cost: pr5.cost, tie: pr5.tie }));
+    ok(sp.economy.cash === cash - 26000 && surfCount(PATH) === paths + 13 && rt5.tiles.every((t) => sp.tiles.surface[t] === PATH) && B.connectedMask(sp)[run5[7]] === 1, 'cash −$26k, 13 gravel tiles, the run\'s far end is connected');
+    const ui5 = B.undoInfo(sp);
+    ok(ui5 && ui5.n === 8 && ui5.connector === 5 && ui5.refund === 26000 && /Gravel/.test(ui5.name), 'undoInfo: 8 × Gravel Path + 5 path tiles, refund $26k: ' + JSON.stringify(ui5));
+    sp.tick = 310; const u5 = B.undo(sp);
+    ok(u5.ok && u5.refund === 26000 && u5.connector === 5 && sp.economy.cash === cash && surfCount(PATH) === paths && rt5.tiles.every((t) => sp.tiles.surface[t] === NONE), 'undo takes the run and its tie back together'); }
+  { const paths = surfCount(PATH); sp.tick = 400;
+    const prn = B.placeRun(sp, 'path', run5, { noTie: true });
+    ok(prn.ok && prn.placed === 8 && !prn.tie && prn.cost === 16000 && surfCount(PATH) === paths + 8 && B.connectedMask(sp)[run5[0]] === 0, 'noTie run: 8 tiles, no tie, unconnected');
+    sp.tick = 405; ok(B.undo(sp).ok && surfCount(PATH) === paths, 'undone'); }
+  // a road ending 2 short of the gravel path snaps on as ROAD (its own material and price)
+  const road = col(40, 10, 16);
+  const rtRoad = B.runTie(sp, 'road', road);
+  const roadPer = B.canPlace(sp, 'road', 40, 9, { ignoreCash: true }).cost;
+  ok(rtRoad && rtRoad.snap === true && rtRoad.tiles.length === 2 && rtRoad.surfaces.every((v) => v === 'road') && rtRoad.cost === 2 * roadPer, 'a road 2 short of the network snaps on as road: ' + JSON.stringify(rtRoad));
+  { const roads = surfCount(ROAD); sp.tick = 500;
+    const prr = B.placeRun(sp, 'road', road, {});
+    ok(prr.ok && prr.tie && prr.tie.tiles.length === 2 && surfCount(ROAD) === roads + 9 && sp.tiles.surface[BSU.idx(40, 8)] === ROAD && B.connectedMask(sp)[road[6]] === 1, 'the snap is laid as road and the run is connected');
+    sp.tick = 505; ok(B.undo(sp).ok && surfCount(ROAD) === roads, 'undone'); }
+  // a road ending 5 short gets a gravel tie (not road)
+  const rtRoad5 = B.runTie(sp, 'road', col(40, 13, 16));
+  ok(rtRoad5 && rtRoad5.snap === false && rtRoad5.tiles.length === 5 && rtRoad5.surfaces.every((v) => v === 'path') && rtRoad5.cost === 10000, 'a road 5 short ties in with gravel');
+  // a run over water ties in with planks
+  for (const y of [10, 11]) { const i = BSU.idx(44, y); sp.tiles.type[i] = BSU.T.OPEN_WATER; sp.tiles.flags[i] |= BSU.FLAG.OPEN_WATER; }
+  BSU.terrain.rewalk(sp); B.tick(sp, {});
+  const rtW = B.runTie(sp, 'path', col(44, 12, 16));
+  ok(rtW && rtW.tiles.length === 4 && rtW.water === 2 && rtW.surfaces.join() === 'boardwalk,boardwalk,path,path' && rtW.cost === 2 * 2000 + 2 * BSU.data.catalog.boardwalk.cost, 'a run across a channel: planks, planks, gravel, gravel (' + JSON.stringify(rtW) + ')');
+  for (const y of [10, 11]) { const i = BSU.idx(44, y); sp.tiles.type[i] = BSU.T.DRY; sp.tiles.flags[i] &= ~BSU.FLAG.OPEN_WATER; }
+  BSU.terrain.rewalk(sp); B.tick(sp, {});
+  // Link it still works for the Issues tray (an unlinked hall, a boardwalk tie over water)
+  { for (const y of [9, 10]) { const i = BSU.idx(37, y); sp.tiles.type[i] = BSU.T.OPEN_WATER; sp.tiles.flags[i] |= BSU.FLAG.OPEN_WATER; } BSU.terrain.rewalk(sp); B.tick(sp, {});
+    sp.tick = 600; const ph = B.place(sp, 'dining_hall', 36, 11, { rot: 0, noTie: true }); ok(ph.ok, 'an untied hall beside a channel');
+    const lq = B.linkQuote(sp, ph.id); ok(lq.ok && lq.tiles.length === 3 && lq.surfaces && lq.water === 0, 'Link it: a 3-tile gravel tie up column 36 (the channel is in column 37): ' + JSON.stringify(lq));
+    const cash = sp.economy.cash; const lb = B.linkBuilding(sp, ph.id);
+    ok(lb.ok && lb.placed === 3 && lb.cost === 6000 && sp.economy.cash === cash - 6000 && B.linkQuote(sp, ph.id).reason === 'Already linked', 'Link it lays it and the hall is linked');
+    const ui6 = B.undoInfo(sp); ok(ui6 && ui6.n === 3 && ui6.connector === 0 && ui6.refund === 6000, 'Link it undo record: 3 × Gravel Path, refund $6k: ' + JSON.stringify(ui6));
+    sp.tick = 610; ok(B.undo(sp).ok && sp.economy.cash === cash && B.linkQuote(sp, ph.id).ok, 'Link it undone');
+    for (const y of [9, 10]) { const i = BSU.idx(37, y); sp.tiles.type[i] = BSU.T.DRY; sp.tiles.flags[i] &= ~BSU.FLAG.OPEN_WATER; } }
+} catch (e) { ok(false, 'paths pass buildings: ' + (e.stack || e)); }
 
 console.log(`\n${passes} passed, ${failures} failed`);
 process.exit(failures ? 1 : 0);

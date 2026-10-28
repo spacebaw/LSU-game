@@ -589,5 +589,148 @@ try {
   ok(BSU.errors.size === 0, 'no BSU.error in the hud + zoom checks');
 } catch (e) { ok(false, 'hud + zoom ui: ' + (e.stack || e)); }
 
+// --- paths pass (Track P): the ghost's tie + status lines, Alt = no tie, the first-tie card once, the tie refusal's Show me, the inspect pill + Link it, N hold / tap, the drag end's tie ----
+try {
+  BSU.session.newGame({ seed: 42, skipTutorial: true });
+  const s = BSU.state; U.showTitle(false); U.settings().coachSeen = true; U.settings().tieCardSeen = false; s.economy.cash = 50e6;
+  const B = BSU.buildings, R = BSU.render, H = BSU.headless; win.innerHeight = 1400;
+  s.ui.tool = null; s.ui.panel = null; U.closeInspect(); U.closeBuildMenu(); U.closeCard(); U.dismissNotifs(); U.closeAlert();
+  H.tick(5); H.render(); U.update(s, 300);
+  const TIE = B.TIE_REASON, MS = { ctrl: false, shift: true, meta: false, alt: false }, MA = { ctrl: false, shift: true, meta: false, alt: true };
+  const l1 = () => U.el['ghost-l1'].textContent, l2 = () => U.el['ghost-l2'].textContent;
+  ok(typeof U.networkView === 'function' && typeof U.keyup === 'function' && typeof R.tiePreview === 'function' && typeof R.tiePreviewSpec === 'function', 'API: ui.networkView / ui.keyup / render.tiePreview');
+  ok(U.settings().tieCardSeen === false && 'tieCardSeen' in BSU.newState(1).ui.settings, 'settings.tieCardSeen defaults false');
+  // a dining hall spot with a 2–8 tile tie
+  const f = s.plot.founders; let spot = null;
+  for (let ty = f.ty - 14; ty <= f.ty + 14 && !spot; ty++) for (let tx = f.tx - 14; tx <= f.tx + 14; tx++) { const r = B.canPlace(s, 'dining_hall', tx, ty, { rot: 0 }); if (r.ok && r.connector && r.connector.tiles.length >= 2 && r.connector.tiles.length <= 8 && r.color === 'green') { spot = { tx, ty, r }; break; } }
+  ok(!!spot, 'a dining hall spot with a tie exists near the plot' + (spot ? ' (' + spot.tx + ',' + spot.ty + ': ' + spot.r.connector.tiles.length + ' tiles)' : ''));
+  if (spot) {
+    U.selectTool(s, 'dining_hall');
+    const px = R.tileToScreen(spot.tx, spot.ty);
+    U.pointer('move', px.x, px.y, 0, MS);   // Shift: flush, no setback snap
+    const tp = R.tiePreviewSpec();
+    ok(tp && tp.tiles.join() === spot.r.connector.tiles.join() && Array.isArray(tp.surfaces), 'the ghost hands render_fx the tie preview (dashed gold): ' + JSON.stringify(tp && tp.tiles));
+    ok(/\+ \$[\d,.]+k? tie$/.test(l1()) || / \+ \$.* tie/.test(l1()), 'price line "$500k + $6k tie": ' + l1());
+    ok(/^Ties in \(\+\$[\d,.]+k?, \d+ tiles?\)/.test(l2()), 'status line "Ties in (+$6k, 3 tiles)": ' + l2());
+    ok(R.ghostSpec && R.ghostSpec.connectorTiles === null, 'render.ghost no longer fills the tie green (render_fx draws it)');
+    // Alt = no tie
+    ok(U.keydown('Alt', M0) === false && R.tiePreviewSpec() === null && /^No tie \(Alt held\)/.test(l2()) && !/tie/.test(l1()), 'Alt held: no tie preview, the status says what is skipped: ' + l2());
+    U.keyup('Alt'); ok(R.tiePreviewSpec() !== null && /^Ties in/.test(l2()), 'Alt released: the tie is back');
+    // place: the tie is laid, the first-time card shows once
+    const n0 = s.buildings.filter(Boolean).length, cash0 = s.economy.cash;
+    U.pointer('down', px.x, px.y, 0, MS); U.pointer('up', px.x, px.y, 0, MS);
+    const b1 = s.buildings[s.buildings.length - 1];
+    ok(s.buildings.filter(Boolean).length === n0 + 1 && b1 && b1.type === 'dining_hall' && s.economy.cash === cash0 - spot.r.cost - spot.r.connector.cost, 'placed with the tie in one purchase (' + (cash0 - s.economy.cash) + ')');
+    ok(spot.r.connector.tiles.every((t) => s.tiles.surface[t] !== BSU.SURF.NONE), 'the tie is on the ground');
+    ok(l1() === 'Occupied', 'Shift kept the tool: the ghost re-reads the taken spot (the placed label is covered by the drag flow below)');
+    ok(!U.el.cards.classList.contains('hidden') && U.el.cards.children[0] && U.el.cards.children[0].id === 'card-firstTie' && /^Tied in: \d+ tiles? of gravel, \$/.test(U.el.cards.children[0].children[1].textContent) && U.settings().tieCardSeen === true, 'the first auto-tie opens the one-time card (flag persisted): ' + (U.el.cards.children[0] && U.el.cards.children[0].children[1].textContent));
+    U.keydown('Enter', M0); ok(U.el.cards.classList.contains('hidden'), 'Got it closes it');
+    U.selectTool(s, null); U.closeInspect();
+    // a second tie: no card
+    let spot2 = null;
+    for (let ty = f.ty - 14; ty <= f.ty + 14 && !spot2; ty++) for (let tx = f.tx - 14; tx <= f.tx + 14; tx++) { const r = B.canPlace(s, 'dorm', tx, ty, { rot: 0 }); if (r.ok && r.connector && r.connector.tiles.length >= 2 && r.color === 'green') { spot2 = { tx, ty, r }; break; } }
+    if (spot2) { U.selectTool(s, 'dorm'); const p2 = R.tileToScreen(spot2.tx, spot2.ty); U.pointer('move', p2.x, p2.y, 0, MS); U.pointer('down', p2.x, p2.y, 0, MS); U.pointer('up', p2.x, p2.y, 0, MS); ok(U.el.cards.classList.contains('hidden'), 'the second tie shows no card'); U.selectTool(s, null); U.closeInspect(); }
+    else ok(true, 'no second tie spot (skipped)');
+    // Alt-placed building: unlinked → the inspect pill + Link it
+    let spot3 = null;
+    for (let ty = f.ty - 14; ty <= f.ty + 14 && !spot3; ty++) for (let tx = f.tx - 14; tx <= f.tx + 14; tx++) { const r = B.canPlace(s, 'dorm', tx, ty, { rot: 0, noTie: true }); if (r.ok && r.tieSkipped && r.tieSkipped.tiles.length >= 2 && r.color === 'green') { spot3 = { tx, ty, r }; break; } }
+    ok(!!spot3, 'a dorm spot with a skippable tie exists');
+    if (spot3) {
+      U.selectTool(s, 'dorm'); const p3 = R.tileToScreen(spot3.tx, spot3.ty);
+      U.pointer('move', p3.x, p3.y, 0, MA); ok(/^No tie \(Alt held\)/.test(l2()) && R.tiePreviewSpec() === null, 'pointer mods.alt → no tie');
+      const paths0 = (() => { let n = 0; for (let i = 0; i < 4096; i++) if (s.tiles.surface[i] === BSU.SURF.PATH) n++; return n; })();
+      U.pointer('down', p3.x, p3.y, 0, MA); U.pointer('up', p3.x, p3.y, 0, MA);
+      const b3 = s.buildings[s.buildings.length - 1];
+      const paths1 = (() => { let n = 0; for (let i = 0; i < 4096; i++) if (s.tiles.surface[i] === BSU.SURF.PATH) n++; return n; })();
+      ok(b3 && b3.type === 'dorm' && paths1 === paths0 && B.linkQuote(s, b3.id).ok, 'Alt-click placed the dorm with no gravel: it is unlinked');
+      U.selectTool(s, null); U.pointer('move', p3.x, p3.y, 0, M0);
+      U.inspect(s, { kind: 'building', id: b3.id });
+      const pill = U.el['insp-body'].children.find((c) => c.id === 'insp-netpill');
+      ok(!!pill && pill.textContent === 'Not connected' && pill.classList.contains('grey') && U.el['insp-body'].children[0] === pill, 'inspect card: a grey "Not connected" pill first in the body');
+      const linkBtn = U.el['insp-actions'].children.find((c) => /^Link it/.test(c.textContent));
+      ok(!!linkBtn && /^Link it · \$/.test(linkBtn.textContent) && !U.el['insp-actions'].children.some((c) => /Link to campus/.test(c.textContent)), 'the action reads "Link it · $N": ' + (linkBtn && linkBtn.textContent));
+      const cashL = s.economy.cash; linkBtn.dispatchEvent({ type: 'click' });
+      ok(B.linkQuote(s, b3.id).reason === 'Already linked' && s.economy.cash < cashL, 'Link it lays the tie from the inspect card');
+      U.inspect(s, { kind: 'building', id: b3.id });
+      ok(!U.el['insp-body'].children.some((c) => c.id === 'insp-netpill') && !U.el['insp-actions'].children.some((c) => /^Link it/.test(c.textContent)), 'linked: the pill and the button are gone');
+      U.closeInspect();
+    }
+  }
+  // the tie refusal: a dorm far from every path → the P2 reason on the ghost, a Show me toast on the click
+  s.ui.tool = null; U.closeInspect(); U.dismissNotifs();
+  let farSpot = null;
+  for (let ty = 2; ty < 62 && !farSpot; ty++) for (let tx = 2; tx < 62; tx++) { const r = B.canPlace(s, 'dorm', tx, ty, { rot: 0 }); if (!r.ok && r.reason === TIE && r.nearest && !(s.plot.cove || []).includes(ty * 64 + tx)) { farSpot = { tx, ty, r }; break; } }
+  ok(!!farSpot && B.tieEnforced(s), 'a refused far spot exists while the window is open' + (farSpot ? ' (' + farSpot.tx + ',' + farSpot.ty + ')' : ''));
+  if (farSpot) {
+    U.selectTool(s, 'dorm'); const pf = R.tileToScreen(farSpot.tx, farSpot.ty); U.pointer('move', pf.x, pf.y, 0, MS);
+    ok(l1() === TIE && /Hold N/.test(l2()) && U.el['ghost-label'].dataset.color === 'red', 'ghost: "' + l1() + '" / ' + l2());
+    const nb = U.el.notifications.children.length;
+    U.pointer('down', pf.x, pf.y, 0, MS); U.pointer('up', pf.x, pf.y, 0, MS);
+    const deepText = (el) => !el ? '' : ((el.textContent || '') + ' ' + (Array.isArray(el.children) ? el.children.map(deepText).join(' ') : ''));
+    const toast = Array.from(U.el.notifications.children).find((c) => /Can't reach a path/.test(deepText(c)));
+    const hasShowMe = (el) => !!el && (el.textContent === 'Show me' || (Array.isArray(el.children) && el.children.some(hasShowMe)));
+    ok(U.el.notifications.children.length > nb && !!toast && hasShowMe(toast), 'the refused click raises a toast with Show me: ' + deepText(toast).trim());
+    U.selectTool(s, null); U.dismissNotifs();
+  }
+  // N: hold = the network view, a tap opens the Season panel on release
+  s.ui.panel = null;
+  ok(U.networkView() === false, 'no network view at rest');
+  ok(U.keydown('n', M0) === true && U.networkView() === true && s.ui.panel === null, 'N down: network view on, no panel yet');
+  U.update(s, 16); U.update(s, 16);
+  U.keyup('n'); ok(U.networkView() === false && s.ui.panel === 'season', 'a quick release: the Season panel (tap)');
+  U.openPanel(null);
+  U.keydown('n', M0); U.update(s, 300); U.update(s, 300); U.keyup('n'); ok(U.networkView() === false && s.ui.panel === null, 'a long hold: no panel');
+  U.keydown('n', M0); U.keydown('n', { ctrl: false, shift: false, meta: false, alt: false, repeat: true }); U.update(s, 16); U.keyup('n'); ok(s.ui.panel === null, 'a key repeat marks the hold: no panel'); U.openPanel(null);
+  U.selectTool(s, 'path'); ok(U.networkView() === true, 'the path tool armed: network view'); U.selectTool(s, 'dorm'); ok(U.networkView() === false, 'a footprint tool: not'); U.selectTool(s, null);
+  // the tray's Not linked suggestion reads Link it
+  ok(/unlinkedPath' \? 'Link it' : 'Fix'/.test(src), "the tray's unlinkedPath row button reads Link it");
+  // a path drag ending short of the network: the tie preview during the drag, laid with the run on one undo record
+  // (a straight lane of nine free tiles off a connected path tile, cleared to dry ground at that tile's height so the run and its tie are legal)
+  let drag = null;
+  const conn = B.connectedMask(s);
+  const freeTile = (x, y) => BSU.inBounds(x, y) && s.tiles.owner[y * 64 + x] === -1 && s.tiles.crest[y * 64 + x] === 0 && !conn[y * 64 + x] && !(s.plot.cove || []).includes(y * 64 + x);
+  for (let i = 0; i < 4096 && !drag; i++) {
+    if (!conn[i]) continue; const cx = i & 63, cy = i >> 6;
+    for (const [dx, dy] of [[0, 1], [1, 0], [0, -1], [-1, 0]]) {
+      let good = true; for (let k = 1; k <= 9; k++) { const x = cx + dx * k, y = cy + dy * k; if (!freeTile(x, y) || BSU.nbr4(y * 64 + x).some((n) => conn[n] && n !== i && k > 1)) { good = false; break; } }
+      if (!good) continue;
+      for (let k = 1; k <= 9; k++) { const j = (cy + dy * k) * 64 + cx + dx * k; s.tiles.type[j] = BSU.T.DRY; s.tiles.elev[j] = s.tiles.elev[i]; s.tiles.flags[j] = 0; if (s.tiles.surface[j] !== BSU.SURF.NONE) BSU.terrain.setSurface(s, j, BSU.SURF.NONE); }
+      BSU.terrain.rewalk(s); B.tick(s, {});
+      let legal = true; for (let k = 1; k <= 9; k++) if (!B.canPlace(s, 'path', cx + dx * k, cy + dy * k, { ignoreCash: true }).ok) { legal = false; break; }
+      const run = [4, 5, 6, 7, 8, 9].map((k) => (cy + dy * k) * 64 + cx + dx * k);
+      const rt = legal ? B.runTie(s, 'path', run) : null;
+      if (rt && rt.tiles.length === 3 && !B.runTouches(s, run)) { drag = { from: { x: cx + dx * 4, y: cy + dy * 4 }, to: { x: cx + dx * 9, y: cy + dy * 9 }, tie: 3, run: run }; break; }
+    }
+  }
+  ok(!!drag, 'a straight 9-tile lane off a connected tile exists' + (drag ? ' from (' + drag.from.x + ',' + drag.from.y + ') to (' + drag.to.x + ',' + drag.to.y + ')' : ''));
+  if (drag) { const rtd = B.runTie(s, 'path', drag.run); ok(rtd && rtd.tiles.length === 3 && !rtd.snap, 'buildings.runTie on the lane run: a 3-tile tie (' + JSON.stringify(rtd) + ')'); }
+  if (drag) {
+    U.selectTool(s, 'path');
+    const a = R.tileToScreen(drag.from.x, drag.from.y), b = R.tileToScreen(drag.to.x, drag.to.y);
+    U.pointer('move', a.x, a.y, 0, M0); U.pointer('down', a.x, a.y, 0, M0); U.pointer('move', b.x, b.y, 0, M0);
+    ok(U.state === 'DRAGGING' && U.el['ghost-l1'] && / tiles · \$[\d,.]+k? \+ \$[\d,.]+k? tie$/.test(l1()) && /^Ties in \(\+\$[\d,.]+k?, 3 tiles\)/.test(l2()), 'dragging: "' + l1() + '" / "' + l2() + '"');
+    const tp = R.tiePreviewSpec(); ok(tp && tp.tiles.length === 3 && tp.snap === false, 'a 3-tile tie preview during the drag');
+    const cashD = s.economy.cash;
+    U.pointer('up', b.x, b.y, 0, M0);
+    const info = B.undoInfo(s);
+    ok(info && info.n === 6 && info.connector === 3 && /Gravel/.test(info.name) && s.economy.cash === cashD - 9 * 2000, 'released: 6 tiles + a 3-tile tie on one record, $18k: ' + JSON.stringify(info));
+    ok(l1() === 'Already a path', 'after the release the ghost re-reads the tile under the cursor (the placed label is transient, as before)');
+    ok(tp.tiles.every((t) => s.tiles.surface[t] === BSU.SURF.PATH) && B.connectedMask(s)[drag.to.y * 64 + drag.to.x] === 1, 'the tie is laid and the run is connected');
+    ok(U.keydown('z', { ctrl: true, shift: false, meta: false, alt: false }) === true && s.economy.cash === cashD && tp.tiles.every((t) => s.tiles.surface[t] === BSU.SURF.NONE), 'Ctrl+Z takes the run and the tie back');
+    // the snap: the same lane dragged from 2 tiles short of the network
+    const snapRun = drag.run.slice(); const step = drag.run[1] - drag.run[0]; const s0 = drag.run[0] - 2 * step, s1 = drag.run[0] - step;
+    const rtS = B.runTie(s, 'path', [s0, s1].concat(snapRun));
+    ok(rtS === null || (rtS.snap === true && rtS.tiles.length <= 2), 'a run starting 2 short: a snap (' + JSON.stringify(rtS && rtS.tiles) + ')');
+    const sa = R.tileToScreen(s0 & 63, s0 >> 6);
+    U.pointer('move', sa.x, sa.y, 0, M0); U.pointer('down', sa.x, sa.y, 0, M0); U.pointer('move', b.x, b.y, 0, M0);
+    ok(U.state === 'DRAGGING' && (/snap$/.test(l1()) || /^Connected/.test(l2())) && (/^Snaps onto the network/.test(l2()) || /^Connected/.test(l2())), 'dragging from 2 short: "' + l1() + '" / "' + l2() + '"');
+    U.pointer('up', b.x, b.y, 0, M0);
+    ok(B.connectedMask(s)[drag.to.y * 64 + drag.to.x] === 1, 'released: the run is connected');
+    U.keydown('z', { ctrl: true, shift: false, meta: false, alt: false });
+    U.selectTool(s, null);
+  }
+  s.ui.tool = null; U.closeInspect(); U.closeCard(); U.dismissNotifs();
+} catch (e) { ok(false, 'paths pass ui: ' + (e.stack || e)); }
+
 console.log(`\n${passes} passed, ${failures} failed`);
 process.exit(failures ? 1 : 0);

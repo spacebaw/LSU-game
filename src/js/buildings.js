@@ -441,40 +441,32 @@
       ok: false, color: 'red', reason: '', cost: 0, baseCost: 0, tiles: [],
       needsGrading: false, gradingCost: 0, needsPilings: false, pilingsCost: 0, terrainMod: 0, summer: false,
       access: true, roadOk: true, power: false, water: false, radius: 0, ridgeFull: null, sink: null, ring: null, affordable: true,
-      connector: null   // connector pass: {tiles, cost} of the gravel tie this placement would lay (null when the footprint already touches the network)
+      connector: null,   // connector pass: {tiles, surfaces, cost, water} of the tie this placement would lay (null when the footprint already touches the network)
+      unlinked: false, nearest: null, tieSkipped: null   // paths pass: off the network with no tie; the nearest network tile {tx, ty, i, d} (Show me); the tie Alt is skipping
     };
   }
   // ---------------------------------------------------------------------------
-  // Connector pass (GDD §3.6 access): a path-adjacency building that sits up to params.build.connectorMax
-  // tiles from the access network lays its own gravel tie — the shortest 4-connected run from a tile beside
-  // its edge to the nearest CONNECTED path/road/boardwalk (or onto a Founders' ring tile, the network root),
-  // through tiles where the path drag tool could go (dragTileRule PATH), skipping the Founders' reservation.
-  // The SE face (east neighbours, the default door of the design pass) is tried first, then the SW face.
+  // Paths pass (GDD §3.6 access; PLAN_PATHS_LAND Track P): the network is what the player builds, the game lays the
+  // last few tiles. tieSearch is a multi-source BFS from `starts` (in order: the first start wins equal routes) through
+  // tiles where the path drag tool could go on land and the boardwalk tool over water, ≤ max tiles, to a tile 4-adjacent
+  // to a CONNECTED access surface or onto a Founders' ring tile (the network root); the Founders' reservation, mounds and
+  // `blocked` tiles are never crossed. A tie is priced through the drag tools' own canPlace (summer discount, unlock gates):
+  // gravel on land, planks over water. connectorInner (buildings) and runTieInner (drag ends) sit on it.
   // ---------------------------------------------------------------------------
-  function connectorMax() { return Math.max(0, Math.floor(fin(PB.connectorMax, 4))); }
-  function connectorInner(state, row, tx, ty, rot, anySurface, maxOverride) {
-    const pathRow = rowOf('path');
-    if (!pathRow || !row || row.kind !== 'footprint' || row.id === 'founders_hall') return null;
-    const max = Number.isFinite(maxOverride) ? (maxOverride | 0) : connectorMax(); if (max <= 0) return null;   // issues v2: linkQuote reaches params.issues.linkMax
-    const d = dims(row, rot), foot = BSU.footprintTiles(tx, ty, d.w, d.h);
-    if (!foot) return null;
-    const conn = connectedMask(state), ring = cache(state).founderRing, surf = state.tiles.surface;
-    const edges = BSU.edgeTiles(tx, ty, d.w, d.h);
-    for (const e of edges) if ((isAccessSurface(surf[e]) && conn[e]) || ring[e]) return null;   // already touching: never lay a tie
+  const TIE_REASON = "Can't reach a path: draw one from campus first";
+  function tieMax() { return Math.max(0, Math.floor(fin(PB.autoTieMax, 12))); }
+  function tieSearch(state, starts, blocked, goal, max) {
+    const pathRow = rowOf('path'), walkRow = rowOf('boardwalk');
+    if (!pathRow || !(max > 0)) return null;
+    const waterOk = !!walkRow && M.unlocked(state, 'boardwalk').ok === true;
     const res = reservedTiles(state), scratch = {};
     const legal = function (i) {
-      if (foot.indexOf(i) >= 0 || (res && res.indexOf(i) >= 0) || isMound(state, i)) return false;
-      return dragTileRule(state, pathRow, i, {}, scratch) === '';
+      if (blocked(i) || (res && res.indexOf(i) >= 0) || isMound(state, i)) return false;
+      if (isLand(state, i)) return dragTileRule(state, pathRow, i, {}, scratch) === '';
+      return waterOk && dragTileRule(state, walkRow, i, {}, scratch) === '';
     };
-    const goal = function (i) {
-      if (ring[i]) return true;
-      for (const n of BSU.nbr4(i)) if ((conn[n] || (anySurface && isAccessSurface(surf[n]))) && foot.indexOf(n) < 0) return true;
-      return false;
-    };
-    const side = function (i) { const x = i & 63, y = i >> 6; return x >= tx + d.w ? 0 : (y >= ty + d.h ? 1 : 2); };
-    const starts = edges.filter(legal).sort(function (a, b) { return side(a) - side(b); });
     const parent = new Map(), depth = new Map(), q = [];
-    for (const e of starts) { parent.set(e, -1); depth.set(e, 1); q.push(e); }
+    for (const e of starts) { if (parent.has(e) || !legal(e)) continue; parent.set(e, -1); depth.set(e, 1); q.push(e); }
     let found = -1;
     for (let head = 0; head < q.length && found < 0; head++) {
       const t = q[head];
@@ -484,11 +476,118 @@
     }
     if (found < 0) return null;
     const tiles = []; for (let c = found; c !== -1; c = parent.get(c)) tiles.push(c); tiles.reverse();
-    const per = M.canPlace(state, 'path', tiles[0] & 63, tiles[0] >> 6, { ignoreCash: true });   // the drag tool's own per-tile price (summer discount included) and its unlock gate
-    if (!per || !per.ok) return null;
-    return { tiles: tiles, cost: fin(per.cost, pathRow.cost) * tiles.length };
+    return priceTie(state, tiles);
   }
-  /** the gravel tie a footprint placement at (tx, ty) would lay to reach the access network: {tiles, cost} or null (already touching, or none within params.build.connectorMax) */
+  /** {tiles, surfaces ('path' | 'boardwalk' per tile), cost, water (tile count)} at the drag tools' own per-tile prices, or null when a tool is locked */
+  function priceTie(state, tiles) {
+    const surfaces = []; let land = -1, water = -1, nWater = 0;
+    for (const i of tiles) { if (isLand(state, i)) { surfaces.push('path'); if (land < 0) land = i; } else { surfaces.push('boardwalk'); nWater++; if (water < 0) water = i; } }
+    let perLand = 0, perWater = 0;
+    if (land >= 0) { const p = M.canPlace(state, 'path', land & 63, land >> 6, { ignoreCash: true }); if (!p || !p.ok) return null; perLand = fin(p.cost, rowOf('path').cost); }
+    if (water >= 0) { const p = M.canPlace(state, 'boardwalk', water & 63, water >> 6, { ignoreCash: true }); if (!p || !p.ok) return null; perWater = fin(p.cost, rowOf('boardwalk').cost); }
+    return { tiles: tiles, surfaces: surfaces, cost: perLand * (tiles.length - nWater) + perWater * nWater, water: nWater };
+  }
+  /** the tie a footprint at (tx, ty) would lay: starts beside its edges (SE face first, then SW, then the back), ≤ max tiles; null when an edge already touches the network */
+  function connectorInner(state, row, tx, ty, rot, anySurface, maxOverride) {
+    if (!row || row.kind !== 'footprint' || row.id === 'founders_hall') return null;
+    const max = Number.isFinite(maxOverride) ? (maxOverride | 0) : tieMax(); if (max <= 0) return null;   // issues v2: linkQuote reaches params.issues.linkMax
+    const d = dims(row, rot), foot = BSU.footprintTiles(tx, ty, d.w, d.h);
+    if (!foot) return null;
+    const conn = connectedMask(state), ring = cache(state).founderRing, surf = state.tiles.surface;
+    const edges = BSU.edgeTiles(tx, ty, d.w, d.h);
+    for (const e of edges) if ((isAccessSurface(surf[e]) && conn[e]) || ring[e]) return null;   // already touching: never lay a tie
+    const inFoot = new Set(foot);
+    const goal = function (i) {
+      if (ring[i]) return true;
+      for (const n of BSU.nbr4(i)) if ((conn[n] || (anySurface && isAccessSurface(surf[n]))) && !inFoot.has(n)) return true;
+      return false;
+    };
+    const side = function (i) { const x = i & 63, y = i >> 6; return x >= tx + d.w ? 0 : (y >= ty + d.h ? 1 : 2); };
+    const starts = edges.slice().sort(function (a, b) { return side(a) - side(b); });
+    return tieSearch(state, starts, function (i) { return inFoot.has(i); }, goal, max);
+  }
+  /** the tie the end of a path / road / boardwalk drag would lay: null when the run already touches the network (or the row is no access surface, or nothing
+   *  within autoTieMax). Starts beside the LAST tile of the run first (then walks back), so equal routes hang off the drag's end; ≤ params.build.tieSnap
+   *  tiles is a `snap`, closed in the drag's own material when its rule allows every tile (a road reaches a road as road), else as gravel / planks. */
+  function runTieInner(state, row, run) {
+    if (!row || row.kind !== 'drag' || !Array.isArray(run)) return null;
+    if (row.placeRule !== PLACE.PATH && row.placeRule !== PLACE.ROAD && row.placeRule !== PLACE.BOARDWALK) return null;
+    const tiles = [], inRun = new Set();
+    for (const i of run) if (Number.isInteger(i) && i >= 0 && i < N && !inRun.has(i)) { inRun.add(i); tiles.push(i); }
+    if (!tiles.length) return null;
+    const conn = connectedMask(state), ring = cache(state).founderRing;
+    const touches = function (i) { if (ring[i]) return true; for (const n of BSU.nbr4(i)) if (conn[n] && !inRun.has(n)) return true; return false; };
+    for (const i of tiles) if (touches(i)) return null;   // the run reaches the network by itself
+    const starts = [];
+    for (let k = tiles.length - 1; k >= 0; k--) for (const n of BSU.nbr4(tiles[k])) if (!inRun.has(n) && starts.indexOf(n) < 0) starts.push(n);
+    const tie = tieSearch(state, starts, function (i) { return inRun.has(i); }, touches, tieMax());
+    if (!tie) return null;
+    tie.run = tiles;
+    tie.snap = tie.tiles.length <= Math.max(0, fin(PB.tieSnap, 2) | 0);
+    if (tie.snap && row.id !== 'path') {
+      const scratch = {}, o = { tiles: tiles.concat(tie.tiles) };
+      if (tie.tiles.every(function (i) { return dragTileRule(state, row, i, o, scratch) === ''; })) {
+        const p = M.canPlace(state, row.id, tie.tiles[0] & 63, tie.tiles[0] >> 6, { ignoreCash: true, tiles: o.tiles });
+        if (p && p.ok) { tie.surfaces = tie.tiles.map(function () { return row.id; }); tie.cost = fin(p.cost, row.cost) * tie.tiles.length; tie.water = 0; }
+      }
+    }
+    return tie;
+  }
+  /** lay a priced tie on an undo record: one charge (unless opts.ignoreCash), every tile through the drag tools' own placeInner (surface, walk, chunk,
+   *  events, tees); a tile refused under our feet refunds its share. Returns {tiles (laid), surfaces, cost, water, snap} or null. */
+  function layTie(state, tie, undoRec, opts) {
+    if (!tie || !Array.isArray(tie.tiles) || !tie.tiles.length) return null;
+    opts = opts || {};
+    if (!opts.ignoreCash) { if (!charge(state, tie.cost, 'construction', { i: tie.tiles[0] })) return null; undoRec.cost += tie.cost; }
+    const laid = [], surfaces = []; let water = 0;
+    const po = { tiles: Array.isArray(tie.run) ? tie.run.concat(tie.tiles) : tie.tiles, ignoreCash: true };
+    for (let k = 0; k < tie.tiles.length; k++) {
+      const i = tie.tiles[k], sid = (tie.surfaces && tie.surfaces[k]) || 'path';
+      const pr = placeInner(state, sid, i & 63, i >> 6, po, undoRec);
+      if (pr.ok) { laid.push(i); surfaces.push(sid); if (sid === 'boardwalk') water++; }
+    }
+    let cost = tie.cost;
+    if (laid.length < tie.tiles.length) {
+      const back = Math.round(tie.cost * (tie.tiles.length - laid.length) / tie.tiles.length);
+      if (back > 0 && !opts.ignoreCash) { refund(state, back, { key: 'construction' }); undoRec.cost -= back; }
+      cost -= back;
+    }
+    undoRec.connector = fin(undoRec.connector, 0) + laid.length;
+    return laid.length ? { tiles: laid, surfaces: surfaces, cost: cost, water: water, snap: !!tie.snap } : null;
+  }
+  /** the network tile nearest (Chebyshev) to (cx, cy): {tx, ty, i, d}; the Founders' plot before any network exists; null without a plot */
+  function nearestNetwork(state, cx, cy) {
+    const conn = connectedMask(state), ring = cache(state).founderRing;
+    let best = -1, bd = Infinity;
+    for (let i = 0; i < N; i++) { if (!conn[i] && !ring[i]) continue; const d = Math.max(Math.abs((i & 63) - cx), Math.abs((i >> 6) - cy)); if (d < bd) { bd = d; best = i; } }
+    if (best >= 0) return { tx: best & 63, ty: best >> 6, i: best, d: bd };
+    const f = state.plot && state.plot.founders; if (!f) return null;
+    return { tx: f.tx, ty: f.ty, i: BSU.idx(f.tx, f.ty), d: Math.max(Math.abs(f.tx - cx), Math.abs(f.ty - cy)) };
+  }
+  M.TIE_REASON = TIE_REASON;
+  /** complete, standing footprint buildings other than Founders' Hall (the tie-enforcement window counts these) */
+  M.completedCount = function (state) { try { let n = 0; for (const b of M.list(state)) { if (!b || b.type === 'founders_hall' || !isComplete(b)) continue; const row = rowOf(b.type); if (row && row.kind === 'footprint') n++; } return n; } catch (e) { if (BSU.SELFTEST) throw e; BSU.error('buildings', 'completedCount', e); return 0; } };
+  /** true while a footprint that cannot be tied to the network is refused (fewer than params.build.tieRefuseUntil complete buildings) */
+  M.tieEnforced = function (state) { try { return M.completedCount(state) < Math.max(0, fin(PB.tieRefuseUntil, 5) | 0); } catch (e) { return false; } };
+  /** the network tile nearest (tx, ty) for the ghost's Show me: {tx, ty, i, d} or null */
+  M.nearestNetwork = function (state, tx, ty) { try { if (!state || !state.tiles) return null; return nearestNetwork(state, fin(tx, 0), fin(ty, 0)); } catch (e) { if (BSU.SELFTEST) throw e; BSU.error('buildings', 'nearestNetwork', e); return null; } };
+  /** the connected-access mask (Uint8Array over tiles, 1 = reaches Founders' Hall): read-only, rebuilt lazily */
+  M.connectedMask = function (state) { try { if (!state || !state.tiles) return null; return connectedMask(state); } catch (e) { if (BSU.SELFTEST) throw e; BSU.error('buildings', 'connectedMask', e); return null; } };
+  /** true when a run laid on these tiles would reach the network by itself (a tile on the Founders' ring, or 4-adjacent to a connected surface) */
+  M.runTouches = function (state, tiles) {
+    try {
+      if (!state || !state.tiles || !Array.isArray(tiles) || !tiles.length) return false;
+      const conn = connectedMask(state), ring = cache(state).founderRing, inRun = new Set(tiles);
+      for (const i of tiles) { if (!Number.isInteger(i) || i < 0 || i >= N) continue; if (ring[i]) return true; for (const n of BSU.nbr4(i)) if (conn[n] && !inRun.has(n)) return true; }
+      return false;
+    } catch (e) { if (BSU.SELFTEST) throw e; BSU.error('buildings', 'runTouches', e); return false; }
+  };
+  /** the tie a path / road / boardwalk run (tiles) would lay from its end to the network: {tiles, surfaces, cost, water, snap} or null (touching, or none within autoTieMax) */
+  M.runTie = function (state, rowId, tiles) {
+    try { const row = rowOf(rowId); if (!state || !state.tiles || !row) return null; return runTieInner(state, row, tiles); }
+    catch (e) { if (BSU.SELFTEST) throw e; BSU.error('buildings', 'runTie', e); return null; }
+  };
+  /** the tie a footprint placement at (tx, ty) would lay to reach the access network: {tiles, surfaces, cost, water} or null (already touching, or none within params.build.autoTieMax) */
   M.connectorFor = function (state, rowId, tx, ty, rot) {
     try {
       const row = rowOf(rowId); if (!state || !state.tiles || !row) return null;
@@ -775,14 +874,17 @@
       for (const e of BSU.edgeTiles(tx, ty, d.w, d.h)) { const sf = state.tiles.surface[e]; if (isAccessSurface(sf)) { adjacentAny = true; if (conn[e]) { ok = true; break; } } if (ring[e]) { ok = true; break; } }
       r.access = ok;
       if (!ok) {
-        // connector pass: no edge on the network → the building brings its own tie to a LINKED path when one is near
-        const cn = connectorInner(state, row, tx, ty, opts.rot);
-        if (cn) { r.connector = cn; r.access = true; }
-        else if (adjacentAny) { r.unlinked = true; }   // beside a path that does not reach campus yet: allowed, warned (playtest: 'No path within 4 tiles' while touching a path)
+        // paths pass: no edge on the network → the building brings its own tie (gravel, planks over water) to the network within autoTieMax,
+        // unless opts.noTie (Alt held) skips it. No tie at all: refused while the enforcement window is open (fewer than tieRefuseUntil
+        // complete buildings), afterwards allowed as "Not linked" (a tie to any nearby path, linked or not, still comes along as before).
+        const can = connectorInner(state, row, tx, ty, opts.rot);
+        if (can && !opts.noTie) { r.connector = can; r.access = true; }
         else {
-          const cn2 = connectorInner(state, row, tx, ty, opts.rot, true);   // any path nearby, linked or not
-          if (cn2) { r.connector = cn2; r.unlinked = true; }
-          else return fail(r, 'No path within ' + connectorMax() + ' tiles');
+          r.unlinked = true;
+          r.nearest = nearestNetwork(state, tx + (d.w - 1) / 2, ty + (d.h - 1) / 2);
+          if (can) r.tieSkipped = can;
+          else if (M.tieEnforced(state)) return fail(r, TIE_REASON);
+          else if (!adjacentAny) { const cn2 = connectorInner(state, row, tx, ty, opts.rot, true); if (cn2) r.connector = cn2; }
         }
       }
     }
@@ -1027,8 +1129,8 @@
     // connector pass: lay the tie through the drag tool's own code path (surface, walk, chunk, events, tees), on the same undo record
     const laid = [];
     if (connTiles.length) {
-      const po = { tiles: connTiles, ignoreCash: true };
-      for (const i of connTiles) { const pr = placeInner(state, 'path', i & 63, i >> 6, po, undoRec); if (pr.ok) laid.push(i); }
+      const po = { tiles: connTiles, ignoreCash: true }, sfs = r.connector.surfaces || [];
+      for (let k = 0; k < connTiles.length; k++) { const i = connTiles[k]; const pr = placeInner(state, sfs[k] || 'path', i & 63, i >> 6, po, undoRec); if (pr.ok) laid.push(i); }   // paths pass: planks over water
       if (laid.length < connTiles.length && !opts.ignoreCash) {   // a tile refused under our feet (cannot happen after canPlace, but never keep money for nothing)
         const back = Math.round(connCost * (connTiles.length - laid.length) / connTiles.length);
         if (back > 0) { refund(state, back, { key: 'construction' }); undoRec.cost -= back; }
@@ -1084,6 +1186,8 @@
         }
         if (landings.size === run.length) { out.skipped.push({ i: run[0], reason: 'Bridges go over water' }); return out; }
       }
+      // paths pass: the end of a path / road / boardwalk run ties itself to the network (quoted before the run is laid; opts.noTie = Alt held)
+      const tie = opts.noTie ? null : runTieInner(state, row, run);
       const undoRec = { tick: fin(state.tick, 0), entries: [], cost: 0 };
       const o = Object.assign({}, opts, { tiles: run });
       for (const i of run) {
@@ -1095,7 +1199,12 @@
         const r = placeInner(state, id, i & 63, i >> 6, o, undoRec);
         if (r.ok) { out.placed++; out.cost += r.cost; } else out.skipped.push({ i: i, reason: r.reason });
       }
-      if (out.placed > 0) { pushUndo(state, undoRec, id); out.ok = true; dirtyAll(cache(state)); }
+      if (out.placed > 0) {
+        if (tie) { const t = layTie(state, tie, undoRec, opts); if (t) { out.tie = t; out.cost += t.cost; } else out.tieSkipped = 'Not enough cash for the tie'; }
+        pushUndo(state, undoRec, id);
+        if (out.tie) undoRec.n = Math.max(1, undoRec.n - out.tie.tiles.length);   // the chip says "12 × Gravel Path + 4 path tiles"
+        out.ok = true; dirtyAll(cache(state));
+      }
       return out;
     } catch (e) { if (BSU.SELFTEST) throw e; BSU.error('buildings', 'placeRun', e); out.skipped.push({ i: -1, reason: 'Cannot place here' }); return out; }
   };
@@ -1242,7 +1351,7 @@
     } catch (e) { if (BSU.SELFTEST) throw e; BSU.error('buildings', 'undo', e); return { ok: false, reason: 'Cannot undo' }; }
   };
   /** documented opts of place(): {rot, pilings, grade, tiles, ignoreCash, instant, target} */
-  M.placeOpts = Object.freeze({ rot: '0|1', pilings: 'boolean', grade: 'boolean', tiles: 'number[] (drag run)', ignoreCash: 'boolean', instant: 'boolean', target: 'building id (pilings)' });
+  M.placeOpts = Object.freeze({ rot: '0|1', pilings: 'boolean', grade: 'boolean', tiles: 'number[] (drag run)', ignoreCash: 'boolean', instant: 'boolean', target: 'building id (pilings)', noTie: 'boolean (paths pass: skip the auto-tie)' });
 
   // ---------------------------------------------------------------------------
   // Upgrades, retrofit, re-grade, policies, refuel, restoration paint, BSU West
@@ -1401,7 +1510,7 @@
         for (const rot of [0, 1]) {
           const tx = cx + dx, ty = cy + dy;
           const r = M.canPlace(state, 'lecture_hall', tx, ty, { rot: rot, ignoreCash: true });
-          if (!r.ok && r.reason !== 'Needs a path' && !/^No path within/.test(r.reason)) continue;   // West Hall is scripted: it needs no tie
+          if (!r.ok && r.reason !== 'Needs a path' && !/^No path within/.test(r.reason) && r.reason !== TIE_REASON) continue;   // West Hall is scripted: it needs no tie
           const d = dims(row, rot), tiles = BSU.footprintTiles(tx, ty, d.w, d.h);
           if (!tiles || tiles.some(function (i) { return !isLand(state, i) || state.tiles.owner[i] !== -1 || isMound(state, i) || isPreserve(state, i); })) continue;
           const b = newBuilding(state, row, tx, ty, d.w, d.h, rot, { instant: true, _pilings: r.needsPilings }, dayOf(state));
@@ -2217,29 +2326,32 @@
       return { ok: n > 0, cost: total, repaired: n, reason: n > 0 ? '' : 'Nothing to repair' };
     } catch (e) { if (BSU.SELFTEST) throw e; BSU.error('buildings', 'repairLeveeRun', e); return { ok: false, cost: 0, repaired: 0, reason: 'Cannot repair' }; }
   };
-  /** the gravel tie that would link an existing (unlinked) building to the campus network: {ok, tiles, cost, reason}; the BFS reaches params.issues.linkMax (8) tiles, against any CONNECTED surface */
+  /** the tie that would link an existing (unlinked) building to the campus network: {ok, tiles, surfaces, cost, water, reason}; the BFS reaches params.issues.linkMax (12) tiles, against any CONNECTED surface */
   M.linkQuote = function (state, id) {
     try {
       const b = M.get(state, id); if (!b) return { ok: false, tiles: [], cost: 0, reason: 'Pick a building' };
       const row = rowOf(b.type); if (!row || row.kind !== 'footprint') return { ok: false, tiles: [], cost: 0, reason: 'Not a building' };
-      const max = Math.max(1, fin(BSU.params.issues && BSU.params.issues.linkMax, 8) | 0);
+      const max = Math.max(1, fin(BSU.params.issues && BSU.params.issues.linkMax, tieMax()) | 0);
       const c = connectorInner(state, row, b.tx | 0, b.ty | 0, b.rot | 0, false, max);
       if (!c) {
         const conn = connectedMask(state), ring = cache(state).founderRing, surf = state.tiles.surface;
         for (const e of BSU.edgeTiles(b.tx | 0, b.ty | 0, b.w | 0, b.h | 0)) if ((isAccessSurface(surf[e]) && conn[e]) || ring[e]) return { ok: false, tiles: [], cost: 0, reason: 'Already linked' };
         return { ok: false, tiles: [], cost: 0, reason: 'No route to a campus path within ' + max + ' tiles: lay a Path toward it first' };
       }
-      if (!affordable(state, c.cost)) return { ok: false, tiles: c.tiles, cost: c.cost, reason: 'Not enough cash (' + BSU.formatMoney(c.cost) + ')' };
-      return { ok: true, tiles: c.tiles, cost: c.cost, reason: '' };
+      if (!affordable(state, c.cost)) return { ok: false, tiles: c.tiles, surfaces: c.surfaces, cost: c.cost, water: c.water, reason: 'Not enough cash (' + BSU.formatMoney(c.cost) + ')' };
+      return { ok: true, tiles: c.tiles, surfaces: c.surfaces, cost: c.cost, water: c.water, reason: '' };
     } catch (e) { if (BSU.SELFTEST) throw e; BSU.error('buildings', 'linkQuote', e); return { ok: false, tiles: [], cost: 0, reason: 'Cannot link' }; }
   };
-  /** lay that tie (the path tool's own placeRun: charged, undoable, the network rebuilt): {ok, cost, placed, tiles, reason} */
+  /** lay that tie (gravel on land, planks over water, through the drag tools' own placement: charged, one undo record, the network rebuilt): {ok, cost, placed, tiles, reason} */
   M.linkBuilding = function (state, id) {
     try {
       const q = M.linkQuote(state, id); if (!q.ok) return { ok: false, cost: q.cost, placed: 0, tiles: q.tiles, reason: q.reason };
-      const r = M.placeRun(state, 'path', q.tiles, { rot: 0 });
-      if (!r.ok) return { ok: false, cost: 0, placed: 0, tiles: q.tiles, reason: (r.skipped[0] && r.skipped[0].reason) || 'Cannot lay the path' };
-      return { ok: true, cost: fin(r.cost, q.cost), placed: r.placed, tiles: q.tiles, reason: '' };
+      const undoRec = { tick: fin(state.tick, 0), entries: [], cost: 0 };
+      const t = layTie(state, { tiles: q.tiles, surfaces: q.surfaces, cost: q.cost, water: q.water }, undoRec, {});
+      if (!t) return { ok: false, cost: 0, placed: 0, tiles: q.tiles, reason: 'Cannot lay the path' };
+      pushUndo(state, undoRec, t.water === t.tiles.length ? 'boardwalk' : 'path'); undoRec.connector = 0;   // a Link it run IS the tie: "3 × Gravel Path"
+      dirtyAll(cache(state));
+      return { ok: true, cost: t.cost, placed: t.tiles.length, tiles: t.tiles, reason: '' };
     } catch (e) { if (BSU.SELFTEST) throw e; BSU.error('buildings', 'linkBuilding', e); return { ok: false, cost: 0, placed: 0, tiles: [], reason: 'Cannot link' }; }
   };
   /** the nearest legal top-left for catalog id around (tx, ty) (Chebyshev rings out to opts.radius, 12): {tx, ty, rot, d} or null;
@@ -2654,9 +2766,9 @@
       r = M.canPlace(s, 'dorm', 53, 3, { rot: 0 });
       A(r.ok && r.color === 'green' && r.cost === 700000 && r.terrainMod === 0, 'dorm on the crown by the highway: green $700k (' + r.reason + ' ' + r.cost + ')');
       r = M.canPlace(s, 'dorm', 44, 14, { rot: 0 });
-      // connector pass: off the network → either a ≤ connectorMax gravel tie comes along, or the reason says how far the path is
-      A((r.ok && r.connector && r.connector.tiles.length >= 1 && r.connector.tiles.length <= PB.connectorMax && r.connector.cost === 2000 * r.connector.tiles.length) || (!r.ok && /^No path within \d+ tiles$/.test(r.reason)), 'no touching path → connector or "No path within N tiles": ' + r.reason + ' ' + JSON.stringify(r.connector));
-      A(M.connectorFor(s, 'dorm', 2, 50, 0) === null && !M.canPlace(s, 'dorm', 2, 50, { rot: 0 }).ok, 'far corner: no connector');
+      // paths pass: off the network → a ≤ autoTieMax tie comes along (gravel $2k a tile on land), or the placement is refused with the tie reason while the window is open
+      A((r.ok && r.connector && r.connector.tiles.length >= 1 && r.connector.tiles.length <= PB.autoTieMax && r.connector.cost === 2000 * (r.connector.tiles.length - r.connector.water) + r.connector.water * (catalog().boardwalk ? catalog().boardwalk.cost : 0)) || (!r.ok && r.reason === TIE_REASON && r.nearest), 'no touching path → connector or the tie reason: ' + r.reason + ' ' + JSON.stringify(r.connector));
+      { const far = M.canPlace(s, 'dorm', 2, 50, { rot: 0 }); A(M.connectorFor(s, 'dorm', 2, 50, 0) === null && !far.ok && far.reason === TIE_REASON && far.nearest && M.tieEnforced(s), 'far corner: no connector, refused while fewer than ' + PB.tieRefuseUntil + ' buildings stand: ' + far.reason); }
       r = M.canPlace(s, 'dorm', 47, 20, { rot: 0 });
       A(r.ok && Math.abs(r.terrainMod - 0.2) < 1e-9 && r.cost === 840000, 'cove dorm: Wet +20% = $840k (' + r.reason + ' ' + r.cost + ')');
       r = M.canPlace(s, 'dorm', 40, 7, { rot: 0 });

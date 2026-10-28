@@ -670,7 +670,9 @@
       bridgeMaxSpan: 3, bridgeCostMult: 4,   // §3.6
       roadWithin: 4, nearWater: 3,           // §0.3 rows 7, 19, 24, 28
       accessSurfaces: [1, 2, 3],             // §3.6 access
-      connectorMax: 4,                       // §3.6 access, connector pass: a path-adjacency building up to this many tiles from the network lays its own gravel tie (charged + undone with it)
+      autoTieMax: 12,                        // §3.6 access, paths pass (was connectorMax 4): a placement — a path-adjacency building or the end of a path / road / boardwalk drag — up to this many tiles from the network lays its own gravel tie (a boardwalk over water), charged and undone with it
+      tieSnap: 2,                            // paths pass: a drag whose last tile is within this many tiles of the network snaps onto it in the drag's own material
+      tieRefuseUntil: 5,                     // paths pass: until this many buildings are complete (Founders' excluded) a footprint that cannot be tied to the network is refused; afterwards it is allowed and becomes the tray's "Not linked" suggestion
       pilingsMult: 0.4, pilingsUpkeep: 0.05, // §0.3 row 30
       demolishRefund: 0.4, ruinRebuild: 0.6, // §4.11, §6.1.6
       regradeCost: 15000, regradeDays: 3, regradeFt: 1,   // §6.5
@@ -685,7 +687,7 @@
     issues: {                                // issues v2 pass: the Issues tray's lifecycle
       refreshTicks: 25,                      // the registry recomputes at most this often without an event (every event listed in issues.js recomputes at once)
       snoozeDays: 3,                         // a snoozed row hides for this many days (it comes back earlier if the issue gets worse)
-      linkMax: 8,                            // "Link it": the gravel tie from an unlinked building reaches this many tiles to any connected surface
+      linkMax: 12,                           // "Link it": the gravel tie from an unlinked building reaches this many tiles to any connected surface (paths pass: raised from 8 to params.build.autoTieMax)
       // calm alerts pass: the alert budget. Beacons only from beaconMin (Normal) / 3 (Quiet) / none (Off), at most beaconMax on screen
       // (most severe, then nearest the camera); severity-1 KINDS (unlinkedPath, mosquitoHotspot) and muted kinds never beacon
       // and sit in the tray's collapsed Suggestions group; an issue toast needs toastMinSeverity and fires once per kind per toastPerKindDays
@@ -1279,7 +1281,7 @@
         camera: { x: (founders.tx - founders.ty) * 32, y: (founders.tx + founders.ty) * 16, zoom: 1, tx: 0, ty: 0, follow: -1 },
         overlay: BSU.OV.NONE, speed: 1, speedBefore: 1, tool: null, panel: null, paletteTab: 'essentials',
         tabsSeen: {}, newPips: {}, tabsIntroduced: {},
-        settings: { volume: P.audio.defaultVolume, muted: false, particles: 'high', shake: true, colorblind: false, autoSimHint: false, coachSeen: false, hudMode: 'full', hudCollapsed: { goals: false, needs: false, minimap: false, issues: false, palette: false }, alerts: 'normal', mutedIssues: {} },   // hud + zoom pass: hudMode full | compact | hidden; hudCollapsed = per-element pills in full mode (ui.hudCollapse). calm alerts pass: alerts normal | quiet | off, mutedIssues {kind: true}
+        settings: { volume: P.audio.defaultVolume, muted: false, particles: 'high', shake: true, colorblind: false, autoSimHint: false, coachSeen: false, hudMode: 'full', hudCollapsed: { goals: false, needs: false, minimap: false, issues: false, palette: false }, alerts: 'normal', mutedIssues: {}, tieCardSeen: false },   // paths pass: tieCardSeen = the one-time "Tied in" card has shown. hud + zoom pass: hudMode full | compact | hidden; hudCollapsed = per-element pills in full mode (ui.hudCollapse). calm alerts pass: alerts normal | quiet | off, mutedIssues {kind: true}
         issues: { snoozed: {}, dismissed: {} },   // calm alerts pass: the Issues tray's snoozes {id: {until (tick), severity, days}} and dismissals {id: sig}, saved with the game
         perfMode: false
       },

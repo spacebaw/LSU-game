@@ -1580,12 +1580,90 @@
   R.issueStats = function () { return { drawn: issStats.drawn, arrows: issStats.arrows, labels: issStats.labels, ms: issStats.ms, capped: issStats.capped, frames: issStats.frames, max: ISS_MAX, arrowsMax: ISS_ARROWS }; };
   R._issueDraw = { beacons: drawBeacons, label: drawIssueLabel, arrows: drawEdgeArrows, glyph: drawIssueGlyph };
 
+  // ---------------------------------------------------------------------------
+  // Paths pass (PLAN_PATHS_LAND Track P): the network view and the tie preview, a draw-over at 9.2 (after render's
+  // built-in overlays pass, which draws the ghost; before the spotlight). While BSU.ui.networkView() is true (N held, or
+  // any drag tool armed) every access surface that reaches Founders' Hall gets a faint green sheen, every run that does
+  // not an amber dash, and Founders' Hall wears a "Campus hub" badge. R.tiePreview(spec) — {tiles, surfaces, snap, water}
+  // from the ui's ghost — draws the tie a placement or a drag end would lay as a dashed gold path (planks over water get a
+  // second, bark-coloured dash); null clears it. Nothing here writes state.
+  // ---------------------------------------------------------------------------
+  let tieSpec = null;
+  const netStats = { sheen: 0, dashed: 0, badge: false, tie: 0, ms: 0, frames: 0 };
+  const NET_GREEN = 'rgba(63,191,127,', NET_AMBER = 'rgba(255,176,46,', NET_GOLD = 'rgba(253,208,35,';
+  R.tiePreview = function (spec) { tieSpec = (spec && Array.isArray(spec.tiles) && spec.tiles.length) ? spec : null; };
+  R.tiePreviewSpec = function () { return tieSpec; };
+  R.networkStats = function () { return { sheen: netStats.sheen, dashed: netStats.dashed, badge: netStats.badge, tie: netStats.tie, ms: netStats.ms, frames: netStats.frames }; };
+  function networkOn() { const U = BSU.ui; if (!U || typeof U.networkView !== 'function') return false; try { return !!U.networkView(); } catch (e) { return false; } }
+  function netAccess(sf) { const S = BSU.SURF; return sf === S.PATH || sf === S.ROAD || sf === S.BOARDWALK || sf === S.BRIDGE; }
+  function netDiamond(g, i, z, inset) { const p = R.tilePx(i); const hw = Math.max(2, 32 * z - inset), hh = Math.max(1, 16 * z - inset * 0.5); g.moveTo(p.x, p.y - hh); g.lineTo(p.x + hw, p.y); g.lineTo(p.x, p.y + hh); g.lineTo(p.x - hw, p.y); g.closePath(); }
+  function passNetwork(state, g, view) {
+    netStats.sheen = 0; netStats.dashed = 0; netStats.badge = false; netStats.tie = 0; netStats.frames++;
+    if (!state || !state.tiles || state.setPiece) return;
+    const t0 = nowMs(), z = (camOf(state).zoom) || 1, B = mod('buildings');
+    if (networkOn() && B && typeof B.connectedMask === 'function') {
+      const conn = B.connectedMask(state), surf = state.tiles.surface;
+      if (conn && surf) {
+        const x0 = Math.max(0, view.x0 | 0), y0 = Math.max(0, view.y0 | 0), x1 = Math.min(W - 1, view.x1 | 0), y1 = Math.min(HGT - 1, view.y1 | 0);
+        // 1. the sheen: one fill over every connected surface in view
+        g.beginPath(); let n = 0;
+        for (let ty = y0; ty <= y1; ty++) for (let tx = x0; tx <= x1; tx++) { const i = ty * W + tx; if (!netAccess(surf[i]) || !conn[i]) continue; netDiamond(g, i, z, 0); n++; }
+        if (n) { g.globalAlpha = 1; g.fillStyle = NET_GREEN + '0.34)'; g.fill(); g.strokeStyle = 'rgba(150,255,190,0.6)'; g.lineWidth = Math.max(1, 0.9 * z); g.stroke(); }
+        netStats.sheen = n;
+        // 2. the amber dash on runs that do not reach the hall
+        g.beginPath(); let m = 0;
+        for (let ty = y0; ty <= y1; ty++) for (let tx = x0; tx <= x1; tx++) { const i = ty * W + tx; if (!netAccess(surf[i]) || conn[i]) continue; netDiamond(g, i, z, 1.5 * z); m++; }
+        if (m) { g.fillStyle = NET_AMBER + '0.14)'; g.fill(); g.setLineDash([4 * z, 3 * z]); g.lineDashOffset = -((nowMs() / 60) % 7) * z; g.strokeStyle = NET_AMBER + '0.95)'; g.lineWidth = Math.max(1, 1.2 * z); g.stroke(); g.setLineDash([]); g.lineDashOffset = 0; }
+        netStats.dashed = m;
+        // 3. the Campus hub badge over Founders' Hall
+        const hall = (typeof B.list === 'function' ? (B.list(state, 'founders_hall') || []) : [])[0];
+        if (hall) netStats.badge = drawHubBadge(g, hall, z, view);
+      }
+    }
+    if (tieSpec) netStats.tie = drawTiePreview(g, tieSpec, z);
+    netStats.ms = nowMs() - t0;
+  }
+  /** a small gold "Campus hub" pill above the hall's roof with a stem down to its top corner; false when off screen */
+  function drawHubBadge(g, hall, z, view) {
+    const top = R.tileToScreen(hall.tx | 0, hall.ty | 0);
+    const px = top.x, py = top.y - 16 * z - 78 * z;
+    const fs = Math.round(11 * clamp(z, 0.8, 1.6)); g.font = '700 ' + fs + 'px system-ui, -apple-system, Segoe UI, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    const label = 'Campus hub', tw = fin(g.measureText(label).width, 60), w = tw + 16, h = fs + 10, x = px - w / 2, y = py - h;
+    if (x > view.vw + 20 || x + w < -20 || y > view.vh + 20 || y + h < -40) { g.textAlign = 'left'; g.textBaseline = 'alphabetic'; return false; }
+    g.globalAlpha = 0.96; g.fillStyle = NET_GOLD + '1)'; g.strokeStyle = 'rgba(70,29,124,0.9)'; g.lineWidth = 1;
+    g.beginPath(); g.moveTo(x + 4, y); g.lineTo(x + w - 4, y); g.lineTo(x + w, y + 4); g.lineTo(x + w, y + h - 4); g.lineTo(x + w - 4, y + h); g.lineTo(px + 5, y + h); g.lineTo(px, y + h + 6); g.lineTo(px - 5, y + h); g.lineTo(x + 4, y + h); g.lineTo(x, y + h - 4); g.lineTo(x, y + 4); g.closePath(); g.fill(); g.stroke();
+    g.fillStyle = '#461D7C'; g.fillText(label, px, y + h / 2 + 0.5);
+    g.globalAlpha = 1; g.textAlign = 'left'; g.textBaseline = 'alphabetic';
+    return true;
+  }
+  /** the dashed gold tie: an inset diamond per tile (a bark dash under it on plank tiles), then a moving dashed centre line; returns the tiles drawn */
+  function drawTiePreview(g, spec, z) {
+    const tiles = spec.tiles, sf = Array.isArray(spec.surfaces) ? spec.surfaces : null; let n = 0;
+    g.beginPath();
+    for (let k = 0; k < tiles.length; k++) { const i = tiles[k] | 0; if (i < 0 || i >= N) continue; netDiamond(g, i, z, 2 * z); n++; }
+    if (!n) return 0;
+    g.globalAlpha = 1; g.fillStyle = NET_GOLD + '0.16)'; g.fill();
+    g.setLineDash([5 * z, 4 * z]); g.lineDashOffset = -((nowMs() / 50) % 9) * z; g.strokeStyle = spec.snap ? 'rgba(140,235,170,0.95)' : NET_GOLD + '0.95)'; g.lineWidth = Math.max(1, 1.5 * z); g.stroke();
+    if (sf) {
+      g.beginPath(); let w = 0;
+      for (let k = 0; k < tiles.length; k++) { if (sf[k] !== 'boardwalk') continue; const i = tiles[k] | 0; if (i < 0 || i >= N) continue; netDiamond(g, i, z, 6 * z); w++; }
+      if (w) { g.setLineDash([3 * z, 3 * z]); g.strokeStyle = 'rgba(201,160,99,0.95)'; g.lineWidth = Math.max(1, 1.2 * z); g.stroke(); }
+    }
+    g.beginPath();
+    for (let k = 0; k < tiles.length; k++) { const i = tiles[k] | 0; if (i < 0 || i >= N) continue; const p = R.tilePx(i); if (k === 0) g.moveTo(p.x, p.y); else g.lineTo(p.x, p.y); }
+    g.setLineDash([6 * z, 5 * z]); g.lineDashOffset = -((nowMs() / 30) % 11) * z; g.strokeStyle = NET_GOLD + '0.9)'; g.lineWidth = Math.max(1.5, 2.5 * z); g.lineCap = 'round'; g.stroke();
+    g.setLineDash([]); g.lineDashOffset = 0; g.lineCap = 'butt';
+    return n;
+  }
+  R._network = { pass: passNetwork, tie: drawTiePreview, badge: drawHubBadge };
+
   // Passes (same-name registrations replace render's fallbacks for 'tint'; overlays/hud stay render's)
   R.registerPass('weather', function (s, g, v, a, dt) { try { passWeather(s, g, v, a, dt); } finally { g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; } }, 5);
   R.registerPass('tint', function (s, g, v) { try { passTint(s, g, v); } finally { g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; } }, 6);
   R.registerPass('lights', function (s, g, v) { try { passLights(s, g, v); } finally { g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; } }, 7);
   R.registerPass('beacons', function (s, g, v) { try { passBeacons(s, g, v); } finally { g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; g.lineWidth = 1; } }, 7.5);   // issue spotlight pass
   R.registerPass('spotlight', function (s, g, v) { try { passSpotlight(s, g, v); } finally { g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; g.lineWidth = 1; } }, 9.5);
+  R.registerPass('network', function (s, g, v) { try { passNetwork(s, g, v); } catch (e) { ferr('network', e); } finally { g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; g.lineWidth = 1; try { g.setLineDash([]); g.lineDashOffset = 0; } catch (e2) { /* stub */ } } }, 9.2);   // paths pass: sheen / amber dash / Campus hub badge / the dashed tie
   R.registerPass('fog', function (s, g, v, a, dt) { try { passFog(s, g, v, a, dt); } finally { g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; } }, 8);
   R.registerPass('fireworks', function (s, g, v) { try { passFireworks(s, g, v); } finally { g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; } }, 8.2);
   R.registerPass('storm', function (s, g, v, a, dt) { try { passStorm(s, g, v, a, dt); } finally { g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; } }, 8.5);

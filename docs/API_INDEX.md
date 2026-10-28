@@ -218,7 +218,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - brush.selfTest()
 
 ## BSU.buildings
-- values: _deps:object, placeOpts:object
+- values: _deps:object, TIE_REASON:string, placeOpts:object
 - buildings.get(state, id)
 - buildings.list(state, type)
 - buildings.at(state, tx, ty)
@@ -236,6 +236,12 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - buildings.setMenu(state, id, ids)
 - buildings.toggleDish(state, id, dishId)
 - buildings.applyMenuPreset(state, id, key)
+- buildings.completedCount(state)
+- buildings.tieEnforced(state)
+- buildings.nearestNetwork(state, tx, ty)
+- buildings.connectedMask(state)
+- buildings.runTouches(state, tiles)
+- buildings.runTie(state, rowId, tiles)
 - buildings.connectorFor(state, rowId, tx, ty, rot)
 - buildings.canPlace(state, id, tx, ty, opts)
 - buildings.place(state, id, tx, ty, opts)
@@ -505,7 +511,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - BSU.newState(seed)
 
 ## BSU.progress
-- values: _deps:object, TIMER_IDS:array[51]
+- values: _deps:object, TIMER_IDS:array[51], TIE_LINE:string
 - progress.ticker(state, textOrLineNo, fields, kind, subject)
 - progress.addTimer(state, id, value, days, meta)
 - progress.removeTimer(state, id)
@@ -556,7 +562,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - progress.selfTest()
 
 ## BSU.render
-- values: drawList:array[0], alpha:number, frameNo:number, hoverTile:number, squash:object, titleDrift:boolean, _tests:array[1], teesEnabled:boolean, particleColors:array[16], particles:object, hitStopUntil:number, camera:object, ctx:object, canvas:object, view:object, ghostSpec:object, flashes:array[0], composites:object, overlayFadeStart:number, curves:object, fbEnabled:boolean, lightsList:array[306], fxOpts:object, _issueDraw:object
+- values: drawList:array[0], alpha:number, frameNo:number, hoverTile:number, squash:object, titleDrift:boolean, _tests:array[1], teesEnabled:boolean, particleColors:array[16], particles:object, hitStopUntil:number, camera:object, ctx:object, canvas:object, view:object, ghostSpec:object, flashes:array[0], composites:object, overlayFadeStart:number, curves:object, fbEnabled:boolean, lightsList:array[306], fxOpts:object, _issueDraw:object, _network:object
 - render.hdMasterOf(z, d)
 - render.sortKey(ax, ay, elev, rank)
 - render.chunkOrigin(cx, cy)
@@ -635,6 +641,9 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - render.addShell(wx, wy, z0, z1, scale)
 - render.drawIssueGlyph(g, kind, cx, cy, r, color)
 - render.issueStats()
+- render.tiePreview(spec)
+- render.tiePreviewSpec()
+- render.networkStats()
 
 ## BSU.rng
 - values: world:object, sim:object, fx:object
@@ -948,6 +957,8 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - ui._machine(cb)
 - ui.pointer(type, px, py, button, mods)
 - ui.wheel(px, py, dx, dy, ctrl)
+- ui.networkView()
+- ui.keyup(key)
 - ui.keydown(key, mods)
 - ui.selectTool(state, id)
 - ui.tool()
@@ -1075,7 +1086,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 
 - BSU.worldToScreen(tx, ty, elev, cam, vw, vh)
 
-## BSU.params groups (19): time[30], terrain[59], hydro[47], storm[116], wildlife[4], subsidence[17], heat[21], weather[18], econ[64], sports[81], agents[30], build[34], issues[8], render[59], ui[18], art[1], audio[6], palette[34], progress[16]
+## BSU.params groups (19): time[30], terrain[59], hydro[47], storm[116], wildlife[4], subsidence[17], heat[21], weather[18], econ[64], sports[81], agents[30], build[36], issues[8], render[59], ui[18], art[1], audio[6], palette[34], progress[16]
 
 ## BSU.newState(seed) tree
 - v:number

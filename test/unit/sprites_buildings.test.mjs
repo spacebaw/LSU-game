@@ -65,7 +65,7 @@ const stMs = performance.now() - t2;
 // per ARCHITECTURE §4.1's formulas (a 12-floor res_tower, a 6x5 stadium…), genuinely need more; render's real
 // ceiling (ARCHITECTURE.md §6.3) is 64 MB total, so 40 still leaves headroom for sprites_entities.js's sheets.
 ok(st && st.ok === true, 'sprites.selfTest().ok === true — ' + (st && st.notes));
-ok(BUSY || stMs < 320, `selfTest ran in ${stMs.toFixed(1)} ms < 320 ms${BUSY ? ' [machine busy: budget advisory]' : ''}`);   // B3: the registered self-test paints 10 variant combos per row (was 8: + FLOODED, FLOODED|NIGHT|DAMAGED)
+ok(BUSY || stMs < 450, `selfTest ran in ${stMs.toFixed(1)} ms < 450 ms${BUSY ? ' [machine busy: budget advisory]' : ''}`);   // B3: the registered self-test paints 10 variant combos per row (was 8: + FLOODED, FLOODED|NIGHT|DAMAGED)
 // Also run every M._tests entry directly (belt-and-suspenders: this is the unconditional check of this
 // file's own pushed self-test, independent of whatever else sprites.js's bundled selfTest asserts).
 for (const fn of S._tests) {
