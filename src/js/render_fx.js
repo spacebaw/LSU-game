@@ -962,11 +962,18 @@
           else if (b.type === 'generator' && b.data && fin(b.data.fuelDays, 0) > 0 && b.built >= 1) pushLight('glow', cx, cy - 6 * z, 1.5 + 0.2 * Math.sin(frameNo * 0.3), 0.85, 0);
           else if ((b.type === 'dining_hall' || b.type === 'poboy') && (v & SPR.NIGHT)) pushLight('pot', e.sx + 10 * z, e.sy - 8 * z, 1.6, 0.75 + 0.25 * ((frameNo >> 2) & 1), 0);
           else if (b.type === 'stadium' && (b.tier | 0) >= 2 && b.built >= 1 && !b.ruin && !b.blackout && game && game.home) {
-            // six masts around the bowl, cones rotated toward the field
-            const rx = (span) * 14 * z, ry = span * 7 * z, fy = cy - 18 * z;
-            for (let m = 0; m < 6 && lightsN < LMAX; m++) { const ang = (m / 6) * Math.PI * 2 + 0.3; const mx = cx + Math.cos(ang) * rx, my = fy + Math.sin(ang) * ry - 40 * z; pushLight('mast', mx, my, 1.9, 0.13, Math.atan2(fy - my, cx - mx) - Math.PI / 2); }   // qa pass 4: 0.26 × six cones + the glow still whited out midfield (fireworks vanished)   // qa pass 3: 0.42 still whited out midfield at the game camera's 2×, hiding the band and the ball   // B5: six overlapping cones used to white out the bowl; the haze below carries the glow now
+            // six masts around the bowl, cones rotated toward the field: at the painted mast heads (sprites_buildings.stadiumGeom, stadium scale pass), else the old ellipse
+            const rx = (span) * 14 * z, ry = span * 7 * z, fy = cy - 18 * z, Sp = mod('sprites');
+            let SG = null; try { SG = Sp && typeof Sp.stadiumGeom === 'function' ? Sp.stadiumGeom(b.tier | 0, b.w | 0, b.h | 0) : null; } catch (err) { SG = null; }
+            const rim = SG ? fin(SG.farRim, 0) : 0, fw = b.w | 0, fh = b.h | 0;
+            for (let m = 0; m < 6 && lightsN < LMAX; m++) {
+              let mx, my;
+              if (SG && SG.masts && SG.masts[m]) { const M6 = SG.masts[m]; mx = e.sx + (fh - fw + M6[0] - M6[1]) * 32 * z; my = e.sy + (16 + (M6[0] + M6[1] - fw - fh) * 16 - M6[2] - M6[3]) * z; }
+              else { const ang = (m / 6) * Math.PI * 2 + 0.3; mx = cx + Math.cos(ang) * rx; my = fy + Math.sin(ang) * ry - 40 * z; }
+              pushLight('mast', mx, my, 1.9, 0.13, Math.atan2(fy - my, cx - mx) - Math.PI / 2);   // qa pass 4: 0.26 × six cones + the glow still whited out midfield (fireworks vanished)   // qa pass 3: 0.42 still whited out midfield at the game camera's 2×, hiding the band and the ball   // B5: six overlapping cones used to white out the bowl; the haze below carries the glow now
+            }
             pushLight('glow', cx, fy, 7 * span * 0.25, 0.14, 0);
-            if (FXO.haze && hazeN < 2) { hazeX[hazeN] = cx; hazeY[hazeN] = fy - 22 * z; hazeR[hazeN] = span * 38 * z * (1 + 0.15 * ((b.tier | 0) - 2)); hazeA[hazeN] = 0.5; hazeN++; }
+            if (FXO.haze && hazeN < 2) { hazeX[hazeN] = cx; hazeY[hazeN] = fy - (22 + rim * 0.3) * z; hazeR[hazeN] = span * 38 * z * (1 + 0.15 * ((b.tier | 0) - 2)) * (1 + rim / 280); hazeA[hazeN] = 0.5; hazeN++; }   // stadium scale pass: the dome rises and widens with the far rim (tier II ×1.24, III ×1.4); QA 4's 0.5 alpha stays
           }
         } else if (!inScreen(e.sx, e.sy)) continue;
         else if (e.kind === 'bonfire') pushLight('fire', e.sx, e.sy - 8 * z, 1.4 + 0.3 * ((frameNo >> 1) % 3) / 2, 0.95, 0);
@@ -1238,10 +1245,12 @@
     else if (Array.isArray(state.buildings)) for (const b of state.buildings) if (b && (b.type === 'stadium' || b.type === 'practice_field') && b.built >= 1) { at = footprintCenter(b); if (b.type === 'stadium') break; }
     if (!at && state.plot && state.plot.founders) at = { x: tileWorldX(state.plot.founders.tx + 1, state.plot.founders.ty + 1), y: tileWorldY(state.plot.founders.tx + 1, state.plot.founders.ty + 1), z: 0, spread: 20 };
     if (!at) return;
-    const r = rng(), ox = (r.float() - 0.5) * 90 * scale, oy = (r.float() - 0.5) * 30 * scale, zz = at.z + 90 + r.float() * 40;
+    let rim = 0;   // stadium scale pass: the shells climb past the new far rim (tier II 66 px, III 112) so the burst opens above the decks, the confetti over the crown
+    if (vb && vb.type === 'stadium') { try { const Sp = mod('sprites'); const SG = Sp && typeof Sp.stadiumGeom === 'function' ? Sp.stadiumGeom(vb.tier | 0, vb.w | 0, vb.h | 0) : null; rim = SG ? fin(SG.farRim, 0) : 0; } catch (e) { rim = 0; } }
+    const r = rng(), ox = (r.float() - 0.5) * 90 * scale, oy = (r.float() - 0.5) * 30 * scale, zz = at.z + 90 + rim * 0.6 + r.float() * 40;
     emit('confetti', at.x + ox, at.y + oy, Math.round(30 * scale), { z: zz, vx: 0, vy: 0, vz: 40, spread: 6, jitter: 1, size: 3, life: 1500 });
     const zc = Math.max(1, fin(camOf(state).zoom, 1));   // qa pass 4: at the 2× game camera a 150–210 px apex burst under the top bar; scale the climb so the burst stays over the bowl
-    addShell(at.x + ox, at.y + oy, at.z, (150 + 60 * r.float()) / Math.sqrt(zc), 1);   // B5: a rising rocket and a trailed burst with bloom (render_fx passFireworks)
+    addShell(at.x + ox, at.y + oy, at.z, (150 + 60 * r.float()) / Math.sqrt(zc) + rim * 0.7, 1);   // B5: a rising rocket and a trailed burst with bloom (render_fx passFireworks)
   }
   function subscribe() {
     if (subscribed || !BSU.events || typeof BSU.events.on !== 'function') return; subscribed = true;

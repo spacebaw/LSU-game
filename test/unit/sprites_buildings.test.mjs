@@ -118,6 +118,52 @@ const bowlT0 = S.buildingBox(cat.stadium, 0, 1).bowlRect;
 ok(bowlT3 !== null, 'stadium tier 3 has a non-null bowlRect');
 eq(bowlT0, null, 'stadium tier 0 (unbuilt) has a null bowlRect');
 
+// --- stadium scale pass: the tier geometry render reads, the canvas growing with the tiers, the field kept clear ---
+{
+  const G0 = S.stadiumGeom(0), G1 = S.stadiumGeom(1), G2 = S.stadiumGeom(2), G3 = S.stadiumGeom(3);
+  ok(typeof S.stadiumGeom === 'function' && G1 && G2 && G3, 'sprites.stadiumGeom(tier) exists');
+  ok(G1.farRim === 28 && G2.farRim === 66 && G3.farRim === 112, 'far rims I 28 / II 66 / III 112 px (2× / 3× / 5× the old 14 / 22 / 22): ' + [G1.farRim, G2.farRim, G3.farRim].join('/'));
+  ok(G2.endRim === 60 && G3.endRim === 88 && G1.nearRim === 14 && G2.nearRim === 24 && G3.nearRim === 26, 'left end II 60 / III 88; near rims 14 / 24 / 26');
+  for (const G of [G1, G2, G3]) {
+    ok(G.field.x0 === 1 && G.field.y0 === 1 && G.field.x1 === 5 && G.field.y1 === 4, 'tier ' + G.tier + ' field {1,1,fw-1,fh-1} (render.fieldQuad)');
+    // a stand seen from behind lifts its back wall h px, covering the ground h/32 tiles toward the field: must stop at the field edge
+    for (const st of G.stands) {
+      if (st.inner === 'y0') ok(st.r.y1 - st.hOut / 32 >= G.field.y1 - 1e-9, 'tier ' + G.tier + ' near stand (' + st.hOut + ' px) stays off the near sideline');
+      if (st.inner === 'x0') ok(st.r.x1 - st.hOut / 32 >= G.field.x1 - 1e-9, 'tier ' + G.tier + ' right end (' + st.hOut + ' px) stays off the right end line');
+      ok(st.hOut > st.hIn && st.steps >= 3, 'tier ' + G.tier + ' ' + st.inner + ' deck ' + st.deck + ' rises ' + st.hIn + '→' + st.hOut);
+    }
+    ok(G.clip.length === G.stands.length && G.clip.every(q => q.length === 4), 'tier ' + G.tier + ' one 4-point shader clip quad per stand');
+    ok(G.fanRows.length > 0 && G.fanRows.every(r => r.lift <= G.farRim && r.lift >= 0), 'tier ' + G.tier + ' fan rows sit between the turf and the far rim (' + G.fanRows.length + ' rows)');
+    // no mast base inside the field quad and none on the near rim east of the field's left tip (it would cross the field on screen)
+    for (const m of G.masts) {
+      const inField = m[0] > G.field.x0 && m[0] < G.field.x1 && m[1] > G.field.y0 && m[1] < G.field.y1;
+      ok(!inField, 'tier ' + G.tier + ' mast at (' + m[0] + ', ' + m[1] + ') is off the field');
+      if (m[1] >= G.field.y1) ok(m[0] <= 1.0 + 1e-9, 'tier ' + G.tier + ' near-side mast (' + m[0] + ') stands at the near-left corner, not in front of the field');
+      if (m[0] >= G.field.x1) ok(m[1] <= 1.2 + 1e-9, 'tier ' + G.tier + ' right-side mast (' + m[1] + ') stands past the far-right tip, not in front of the field');
+    }
+  }
+  ok(G1.masts.length === 4 && G2.masts.length === 6 && G3.masts.length === 6, 'masts 4 / 6 / 6');
+  ok(G1.pressBox && !G2.pressBox && G2.board && G2.board.kind === 'score' && G3.board && G3.board.kind === 'jumbo' && G3.crown && G3.boxes, 'I press box; II scoreboard; III jumbotron, crown and luxury boxes');
+  ok(G0.cranes.length === 2 && G0.stands.length === 0, 'the site (tier 0) has two cranes and no stands');
+  ok(G2.fanRows.length > G1.fanRows.length && G3.fanRows.length > G2.fanRows.length, 'more fan rows per tier: ' + [G1.fanRows.length, G2.fanRows.length, G3.fanRows.length].join('/'));
+  ok(G3.fanRows.some(r => r.lift >= 84), 'tier III seats fans on the third deck');
+  // canvases: the sprite grows with the tier (every tier shared one height before), 2× is exactly double, night shares the day size
+  const h = [0, 1, 2, 3].map(t => S.get('stadium', t << SPR.TIER_SHIFT, 0, 1).sh), h2 = S.get('stadium', 3 << SPR.TIER_SHIFT, 0, 2).sh;
+  ok(h[1] < h[2] && h[2] < h[3] && h[3] >= h[1] + 100, 'stadium canvas height grows I→II→III: ' + h.join('/'));
+  ok(h2 === 2 * h[3], 'tier III 2× canvas is double the 1× height');
+  ok(S.get('stadium', (3 << SPR.TIER_SHIFT) | SPR.NIGHT, 0, 1).sh === h[3], 'tier III night shares the day size');
+  // every painted top (mast heads, the board, the crown) fits inside the canvas allowance above the far corner
+  for (const G of [G1, G2, G3]) {
+    const box = S.buildingBox(cat.stadium, G.tier << SPR.TIER_SHIFT, 1);
+    const y = (X, Y, up) => box.ay + 16 + (X + Y - box.fw - box.fh) * 16 - up;
+    let top = Infinity;
+    for (const m of G.masts) top = Math.min(top, y(m[0], m[1], m[2] + m[3]) - 8);
+    if (G.board) top = Math.min(top, y(G.board.X, G.board.Y, G.board.z) - 16 - G.board.h - 4);
+    ok(top >= 0, 'tier ' + G.tier + ' highest painted point (' + top.toFixed(0) + ') is inside the canvas (extraTop ' + box.extraTop + ')');
+    ok(box.bowlRect && box.bowlRect.y <= y(0.3, 0.1, G.farRim) - box.ay, 'tier ' + G.tier + ' bowlRect reaches the far rim');
+  }
+}
+
 // --- design pass: setback geometry (the structure is the footprint quad inset per axis) -----
 {
   const g = S.buildingBox(cat.dorm, 0, 1);               // 3×2: 12 px per side along the 3-tile axis, 10 px along the 2-tile axis

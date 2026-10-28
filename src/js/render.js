@@ -1857,7 +1857,9 @@
     if (ph === 'live' || ph === 'snap') { u = clamp(fin(lv.ball && lv.ball.x, 50), -10, 110); v = FB_YD_V / 2 + clamp(fin(lv.ball && lv.ball.y, 0), -26.6, 26.6) * 0.4; }
     else if (ph === 'huddle' || ph === 'decision' || ph === 'pregame') u = clamp(fin(lv.anim ? lv.anim.end : lv.spot, 50), 0, 100);
     const w = M.fieldToWorld(b, u, v, 0, q); if (!w) return;
-    cam.tx = w.x; cam.ty = w.y; cam.hasTarget = true;     // eased by the camera LERP below
+    let lift = 0;   // stadium scale pass: the far decks and masts tower over the field, so the frame slides toward them (world px; the near sideline and its low stand keep the lower half of the view)
+    if (b.type === 'stadium') { const SG = fbStadiumGeom(b); if (SG) lift = SG.farRim * (cam.zoom >= 2 ? 0.45 : 0.3); }
+    cam.tx = w.x; cam.ty = w.y - lift; cam.hasTarget = true;     // eased by the camera LERP below
   }
   // -- entity helpers -----------------------------------------------------------------------
   const fbScr = { x: 0, y: 0 };
@@ -1896,6 +1898,12 @@
   function drawFbBall(e, g) { if (!e.ref) return; blit(g, e.ref, e.sx, e.sy, zoomNow * 0.65 / (e.ref.zoom || 1)); }
   // -- the crowd: the shader backdrop (render_fx's R.crowd) under fan sprites on the visible stand treads --
   const FB_ROWS1 = [[0, 0.8875, 3], [2, 0.4375, 8.5]];                                  // tier I far bleachers: [tread, Y, lift]
+  /** stadium scale pass: the painted structure of a stadium (sprites_buildings.stadiumGeom): stands, fan rows, shader clip, rims, masts; null before the painter loads */
+  function fbStadiumGeom(b) {
+    const sp = mod('sprites'); if (!sp || typeof sp.stadiumGeom !== 'function') return null;
+    try { return sp.stadiumGeom(clamp(fin(b.tier, 0) | 0, 1, 3), Math.max(1, fin(b.w, 6)), Math.max(1, fin(b.h, 5))); } catch (e) { return null; }
+  }
+  M.stadiumGeom = function (b) { return b ? fbStadiumGeom(b) : null; };
   function fbStandRows(tier) {
     if (tier <= 1) return { far: FB_ROWS1, farX: [1, 0], end: null, upper: null };
     const dh = tier === 3 ? 3 : 3.8, rows = [[0, 0.91, 3], [2, 0.55, 3 + 2 * dh], [4, 0.19, 3 + 4 * dh]];
@@ -1915,11 +1923,10 @@
       } else { fbScreen(G, G.q.fw / 2, 0.45, 0); rect = { x: fbScr.x - 24 * z, y: fbScr.y - 10 * z, w: 48 * z, h: 9 * z }; }
       if (rect) {
         g.save();
-        if (b.type === 'stadium' && (b.tier | 0) <= 1) {   // qa pass 3: tier I is two long stands with open ends — clip the shader to the stands' lifted treads (the bowl ellipse leaked onto the lawn past the stand ends)
-          const Q = G.q, fw = fin(Q.fw, 6), fh = fin(Q.fh, 5), hOut = 14;
+        const SG = b.type === 'stadium' ? fbStadiumGeom(b) : null;
+        if (SG && SG.clip && SG.clip.length) {   // stadium scale pass: every tier clips the shader to the painted stands' lifted tread quads (the decks rise far above the old bowl ellipse)   // qa pass 3: tier I is two long stands with open ends — clip the shader to the stands' lifted treads (the bowl ellipse leaked onto the lawn past the stand ends)
           g.beginPath();
-          const stands = [[[1, 0.1, hOut], [fw - 1, 0.1, hOut], [fw - 1, 1.0, 3], [1, 1.0, 3]], [[1, fh - 1.0, 0], [fw - 1, fh - 1.0, 0], [fw - 1, fh - 0.1, hOut], [1, fh - 0.1, hOut]]];
-          for (let s = 0; s < 2; s++) { const pts = stands[s]; for (let k = 0; k < 4; k++) { fbScreen(G, pts[k][0], pts[k][1], pts[k][2]); if (k === 0) g.moveTo(fbScr.x, fbScr.y); else g.lineTo(fbScr.x, fbScr.y); } g.closePath(); }
+          for (let s = 0; s < SG.clip.length; s++) { const pts = SG.clip[s]; for (let k = 0; k < 4; k++) { fbScreen(G, pts[k][0], pts[k][1], pts[k][2]); if (k === 0) g.moveTo(fbScr.x, fbScr.y); else g.lineTo(fbScr.x, fbScr.y); } g.closePath(); }
           g.clip();
         } else if (b.type === 'stadium') {   // the bowl ellipse covers the turf: keep the shader off the field quad
           g.beginPath(); g.rect(0, 0, vw, vh);
@@ -1958,10 +1965,14 @@
     };
     const fw = G.q.fw, fh = G.q.fh;
     if (b.type === 'stadium') {
-      const SR = fbStandRows(clamp(b.tier | 0, 1, 3));
-      if (SR.upper) for (let r = SR.upper.length - 1; r >= 0; r--) { const w = SR.upper[r]; row(30 + r, 0.1, w[1], fw - 0.1, w[1], w[2], 1, 0, 0.6); row(40 + r, w[1], fh - 0.5, w[1], 0.5, w[2], 0, 0.75, 1); }
-      for (let r = SR.far.length - 1; r >= 0; r--) { const w = SR.far[r]; row(r, SR.farX[0], w[1], fw - SR.farX[0], w[1], w[2], 1, 0, 0.6); }
-      if (SR.end) for (let r = SR.end.length - 1; r >= 0; r--) { const w = SR.end[r]; row(10 + r, w[1], fh - 1, w[1], 1, w[2], 0, 0.75, 1); }
+      const SG = fbStadiumGeom(b);
+      if (SG && SG.fanRows) { for (let r = 0; r < SG.fanRows.length; r++) { const w = SG.fanRows[r]; row(w.idx, w.X0, w.Y0, w.X1, w.Y1, w.lift, w.dir, w.t0, w.t1); } }   // stadium scale pass: the painted treads of every deck, back to front
+      else {
+        const SR = fbStandRows(clamp(b.tier | 0, 1, 3));
+        if (SR.upper) for (let r = SR.upper.length - 1; r >= 0; r--) { const w = SR.upper[r]; row(30 + r, 0.1, w[1], fw - 0.1, w[1], w[2], 1, 0, 0.6); row(40 + r, w[1], fh - 0.5, w[1], 0.5, w[2], 0, 0.75, 1); }
+        for (let r = SR.far.length - 1; r >= 0; r--) { const w = SR.far[r]; row(r, SR.farX[0], w[1], fw - SR.farX[0], w[1], w[2], 1, 0, 0.6); }
+        if (SR.end) for (let r = SR.end.length - 1; r >= 0; r--) { const w = SR.end[r]; row(10 + r, w[1], fh - 1, w[1], 1, w[2], 0, 0.75, 1); }
+      }
     } else row(0, fw / 2 - 0.72, 0.45, fw / 2 + 0.72, 0.45, 6, 1, 0, 1);
   }
   // -- players, ball, officials, sideline ------------------------------------------------------
@@ -2143,7 +2154,7 @@
         const b = B[k]; if (!b) continue;
         const ax = (b.tx | 0) + (b.w | 0) - 1, ay = (b.ty | 0) + (b.h | 0) - 1;
         if (ax < 0 || ay < 0 || ax >= W || ay >= HGT) continue;
-        if (!inView(ax, ay, 6)) continue;
+        if (!inView(ax, ay, b.type === 'stadium' ? 18 : 6)) continue;   // stadium scale pass: the bowl's decks and masts reach ~300 px above the anchor (18 tile rows), so it stays drawn when only its top is on screen
         let eff = 1; try { if (bl && typeof bl.effective === 'function') eff = fin(bl.effective(state, b.id), 1); } catch (err) { eff = 1; }
         const row = cat[b.type];
         const ci = { phase: info.phase, day: info.day, effective: eff, wind: info.wind, barrierClosed: info.barrierClosed, toppleIds: info.toppleIds, frontLeft: !!(row && row.pathAdjacency) && frontLeftOf(t, b) };

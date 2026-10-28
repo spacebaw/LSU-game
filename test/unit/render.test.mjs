@@ -351,6 +351,15 @@ s.setPiece = { kind: 'x', cameraTouched: false }; R.panBy(1, 0, true); ok(s.setP
   ok(qs && qs.x0 === 1 && qs.y0 === 1 && qs.x1 === 5 && qs.y1 === 4, 'stadium field quad {1,1,fw-1,fh-1}: ' + JSON.stringify(qs));
   ok(qp && Math.abs(qp.x0 - 0.6) < 1e-9 && Math.abs(qp.y0 - 0.3) < 1e-9 && Math.abs(qp.x1 - 3.4) < 1e-9 && Math.abs(qp.y1 - 2.7) < 1e-9, 'practice field quad {0.6,0.3,fw-0.6,fh-0.3}: ' + JSON.stringify(qp));
   ok(R.fieldQuad({ type: 'dorm', w: 2, h: 2 }) === null && R.fieldQuad(null) === null, 'no field quad for other buildings');
+  // stadium scale pass: the painter's geometry (sprites_buildings.stadiumGeom) is what the crowd rows, the shader clip and the camera lift read; its field is the mapped quad
+  for (const tier of [1, 2, 3]) {
+    const SG = R.stadiumGeom({ type: 'stadium', w: 6, h: 5, tier: tier });
+    if (!SG) { ok(true, 'stadiumGeom unavailable (sprites_buildings not loaded): skipped'); continue; }
+    ok(SG.field.x0 === qs.x0 && SG.field.y0 === qs.y0 && SG.field.x1 === qs.x1 && SG.field.y1 === qs.y1, 'tier ' + tier + ' stadiumGeom.field === render.fieldQuad');
+    ok(Array.isArray(SG.fanRows) && SG.fanRows.length >= 4 && SG.fanRows.every(w => Number.isFinite(w.X0 + w.Y0 + w.X1 + w.Y1 + w.lift) && (w.dir === 0 || w.dir === 1)), 'tier ' + tier + ' fan rows are well-formed');
+    ok(SG.clip.length >= 2 && SG.farRim >= 28 && SG.nearRim <= 28, 'tier ' + tier + ' clip quads, far rim ' + SG.farRim + ' ≥ 28, near rim ' + SG.nearRim + ' ≤ 28');
+  }
+  ok(R.stadiumGeom(null) === null && R.stadiumGeom({ type: 'stadium', w: 6, h: 5, tier: 1 }) !== undefined, 'stadiumGeom(null) is null');
   // (c) corners: u -10 / 110 (the end lines) and v 0 / 53.3 (the sidelines) land on the quad corners, in footprint units along +tx / +ty
   for (const [b, q] of [[st, qs], [pf, qp]]) {
     const c00 = R.fieldToTile(b, -10, 0), c11 = R.fieldToTile(b, 110, 53.3), c10 = R.fieldToTile(b, 110, 0), mid = R.fieldToTile(b, 50, 53.3 / 2);
