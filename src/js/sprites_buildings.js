@@ -2665,6 +2665,12 @@
       pl.items.push({ id: 'preservePost', v: 9, ax: 0, ay: 0 });
       for (const r of [[-7, -1, 0], [6, 1, 1], [-1, 7, 2]]) pl.items.push({ id: 'reeds', v: r[2], ax: r[0], ay: r[1] });
       pl.items.push({ id: 'preservePost', v: 6, ax: 0, ay: 0 });
+    } else if (id === 'dredge_fill') {   // L3: a marsh patch with the finished spoil heap (mound variant 3) and its dredge pipe, a reed tuft beside it
+      pl.ground = 'marsh'; pl.T = 58;
+      pl.poly = [uv(-0.6, -0.6), uv(0.6, -0.6), uv(0.6, 0.6), uv(-0.6, 0.6)];
+      pl.items.push({ id: 'reeds', v: 0, ax: -17, ay: 6 });
+      pl.items.push({ id: 'mound', v: 3, ax: 0, ay: 4 });
+      pl.items.push({ id: 'reeds', v: 1, ax: 17, ay: 7 });
     } else if (id === 'live_oak' || id === 'cypress' || id === 'azalea') {
       pl.ground = 'grass';
       if (id === 'live_oak') { pl.items.push({ id: 'oak', v: M.treeVariant(2, false, false, 0), ax: 0, ay: 0 }); pl.poly = diamondPts(56, 28); pl.T = ICON_BOX; }

@@ -18,7 +18,7 @@ const eq = (a, b, msg) => ok(a === b, `${msg} (got ${JSON.stringify(a)}, want ${
 const src = readFileSync(join(root, 'src', 'js', 'data.js'), 'utf8');
 ok(!/<\/script/i.test(src), 'no "</script" in source');
 ok(!/Math\.random/.test(src), 'no Math.random in source');
-ok(src.length <= 140 * 1024, `file size ${(src.length / 1024).toFixed(1)} KB ≤ 140 KB`);   // P6 dining menus: 24 dishes + 3 presets (136 → 140 KB); P7 housing tiers: two rows, two blurbs, two name pools (130 → 136 KB); UX pass: blurbs + guide/needs/requirements/coach tables (was 80 KB, then 100 KB); football pass A: roster/prospect/formation/phrase tables (130 KB)
+ok(src.length <= 142 * 1024, `file size ${(src.length / 1024).toFixed(1)} KB ≤ 142 KB`);   // L3 Dredge & Fill: a row, a blurb, a milestone, a requirement (140 → 142 KB); P6 dining menus: 24 dishes + 3 presets (136 → 140 KB); P7 housing tiers: two rows, two blurbs, two name pools (130 → 136 KB); UX pass: blurbs + guide/needs/requirements/coach tables (was 80 KB, then 100 KB); football pass A: roster/prospect/formation/phrase tables (130 KB)
 
 const win = makeWindow();
 win.BSU_FORCE_HEADLESS = true;
@@ -51,8 +51,8 @@ ok(st && st.ok === true, 'selfTest().ok === true — ' + (st && st.notes));
 ok(stMs < 50, `selfTest ran in ${stMs.toFixed(1)} ms < 50 ms`);
 
 // --- scenario 1: 43 rows, ids, order -----------------------------------------
-eq(D.catalogList.length, 46, '46 catalog rows (43 + the bridge pass row + bunkhouse and suites)');
-eq(Object.keys(D.catalog).length, 46, '46 catalog keys');
+eq(D.catalogList.length, 47, '47 catalog rows (43 + the bridge pass row + bunkhouse and suites + L3 dredge_fill)');
+eq(Object.keys(D.catalog).length, 47, '47 catalog keys');
 { const br = D.catalog.bridge; ok(br && br.n === 44 && br.kind === 'drag' && br.tab === 'paths' && br.cost === 45000 && br.upkeep === 300 && br.wr === 4 && br.placeRule === BSU.PLACE.BRIDGE && br.effects.surfaceId === BSU.SURF.BRIDGE, 'bridge row: n 44, drag, paths, $45k/tile, $300 upkeep, WR 4, PLACE.BRIDGE, SURF.BRIDGE');
   ok(br && Array.isArray(br.unlock.any) && br.unlock.any.length === 2 && br.unlock.any[0].students === 800 && br.unlock.any[1].building === 'engineering', 'bridge unlocks at 800 students or Engineering Hall');
   const paths = D.tabs.find(t => t.id === 'paths'); ok(paths && paths.rows.indexOf('bridge') === paths.rows.indexOf('boardwalk') + 1, 'bridge sits after boardwalk in the Paths tab');
@@ -68,8 +68,8 @@ eq(Object.keys(D.catalog).length, 46, '46 catalog keys');
   ok(BSU.LEDGER_INCOME_KEYS.indexOf('roomFees') === 1, "ledger income has a 'roomFees' key"); }
 ok(BSU.B_ORDER.every((id, i) => D.catalogList[i].id === id && D.catalogList[i].n === i + 1), 'catalogList matches B_ORDER and n');
 ok(D.catalogList.every(r => BSU.validateCatalogRow(r).ok), 'every row passes BSU.validateCatalogRow');
-ok(D.catalogList.every(r => typeof r.blurb === 'string' && r.blurb.length > 0 && r.blurb.split(/\s+/).length <= 18), 'all 46 rows have a plain blurb (≤ 18 words)');
-ok(D.catalogList.every(r => typeof r.why === 'string' && r.why.length > 0), 'all 46 rows have a why line');
+ok(D.catalogList.every(r => typeof r.blurb === 'string' && r.blurb.length > 0 && r.blurb.split(/\s+/).length <= 18), 'all 47 rows have a plain blurb (≤ 18 words)');
+ok(D.catalogList.every(r => typeof r.why === 'string' && r.why.length > 0), 'all 47 rows have a why line');
 ok(D.catalog.dorm.blurb === '300 beds for first-years.' && /enrollment ceiling/.test(D.catalog.dorm.why), 'dorm blurb/why read as the brief asks');
 ok(BSU.OBJECTIVE_IDS.concat(['p1', 'p2']).every(id => D.guide[id] && D.guide[id].why.length > 0 && Array.isArray(D.guide[id].build)), 'guide covers every objective');
 ok(D.guide['3'].build.join(',') === 'dorm,dining_hall' && D.guide['5'].build.join(',') === 'substation,water_tower', 'guide build lists for objectives 3 and 5');

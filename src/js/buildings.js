@@ -21,7 +21,7 @@
   const T = BSU.T, SURF = BSU.SURF, FLAG = BSU.FLAG, PLACE = BSU.PLACE, EV = BSU.EV;
   let W = 64, H = 64, N = 4096;
   BSU.onMap(function (m) { W = m.W; H = m.H; N = m.N; });   // L1: the live map size (refreshed inside BSU.setMap, before any allocation)
-  const PB = P.build, PE = P.econ, PS = P.storm, PSUB = P.subsidence, PH = P.hydro;
+  const PB = P.build, PE = P.econ, PS = P.storm, PSUB = P.subsidence, PH = P.hydro, PF = P.terrain.fill;   // PF: L3 Dredge & fill
 
   // Local constants for numbers the GDD states but BSU.params does not carry
   // (listed in docs/INTEGRATION_NOTES.md '## buildings.js').
@@ -124,6 +124,7 @@
         heat: new Float32Array(N), mosq: new Float32Array(N), noise: new Float32Array(N)
       },
       undo: null,
+      fillMask: null, fillRev: -1,   // L3: Uint8Array (stage + 1 per tile of a run in progress), rebuilt when state.fill.rev changes
       pendingPulses: [],
       pendingRolls: false, rollsApplied: false, toppled: [],
       boilWindow: false, boilWaterFlag: false,
@@ -667,6 +668,7 @@
     const surf = state.tiles.surface[i], owner = state.tiles.owner[i];
     const water = !isLand(state, i);
     if (isMound(state, i)) return 'The Mounds';
+    if (row.placeRule !== PLACE.FILL && fillBusy(state, i)) return 'Being filled';   // L3: a tile in a Dredge & fill run takes nothing else until it is dry ground (the tie search goes through here too)
     switch (row.placeRule) {
       case PLACE.PATH:
         if (water) return 'Not on water';
@@ -722,6 +724,7 @@
         if (surf === SURF.PATH || surf === SURF.ROAD) return 'Occupied';
         if (isPreserve(state, i)) return 'Already preserved';
         return '';
+      case PLACE.FILL: return fillRule(state, i);   // L3
       default:
         return '';
     }
@@ -832,6 +835,7 @@
       for (const i of tiles) {
         if (isMound(state, i)) return fail(r, 'The Mounds');
         if (isPreserve(state, i) && row.id !== 'rookery') return fail(r, 'Preserve');
+        if (fillBusy(state, i)) return fail(r, 'Being filled');   // L3
       }
       // 5. free + the Founders' reservation
       if (row.id === 'founders_hall') {
@@ -1029,6 +1033,138 @@
     for (const [x, y] of order) { if (!BSU.inBounds(x, y)) continue; const i = BSU.idx(x, y); if (edges.indexOf(i) >= 0 && free(i)) return i; }
     return -1;
   }
+  // ---------------------------------------------------------------------------
+  // Dredge & fill (PLAN_PATHS_LAND Track L3). A drag tool over Marsh: every tile of a run is charged on commit, takes
+  // params.terrain.fill.days calendar days (one timer per run) and then becomes Dry ground (elevation raised to
+  // fill.raiseTo, depth / sat cleared, through terrain.setElev so the type, the walk grid, hydro's tables and the chunk
+  // follow). The ecology cost (−1 per fill.ecologyPer tiles) is a permanent one-time term taken at commit. State:
+  // state.fill = {runs: [{id, day0, day1, stage, tiles}], nextId, rev, done, runsDone}; rev bumps whenever the per-tile
+  // mask changes (a tile joined / left a run, a stage grew), so render and terrain re-read fillMask lazily.
+  // ---------------------------------------------------------------------------
+  function fillState(state) {
+    let f = state.fill;
+    if (!f || typeof f !== 'object') f = state.fill = { runs: [], nextId: 1, rev: 0, done: 0, runsDone: 0 };
+    if (!Array.isArray(f.runs)) f.runs = [];
+    if (!isNum(f.nextId) || f.nextId < 1) f.nextId = 1;
+    if (!isNum(f.rev)) f.rev = 0;
+    if (!isNum(f.done)) f.done = 0;
+    if (!isNum(f.runsDone)) f.runsDone = 0;
+    return f;
+  }
+  function fillRunOf(state, id) { const rs = fillState(state).runs; for (let k = 0; k < rs.length; k++) if (rs[k] && rs[k].id === id) return rs[k]; return null; }
+  /** Uint8Array over tiles: stage + 1 for every tile of a run in progress, 0 elsewhere; null when nothing is filling (render's spoil mound, terrain's mosquito rule, the placement refusals) */
+  M.fillMask = function (state) {
+    try {
+      if (!state || !state.tiles) return null;
+      const f = fillState(state); if (!f.runs.length) return null;
+      const c = cache(state);
+      if (!c.fillMask || c.fillRev !== f.rev || c.fillMask.length !== N) {
+        const m = new Uint8Array(N);
+        for (const run of f.runs) for (const i of run.tiles) if (i >= 0 && i < N) m[i] = 1 + (run.stage | 0);
+        c.fillMask = m; c.fillRev = f.rev;
+      }
+      return c.fillMask;
+    } catch (e) { if (BSU.SELFTEST) throw e; BSU.error('buildings', 'fillMask', e); return null; }
+  };
+  function fillBusy(state, i) { const m = M.fillMask(state); return !!(m && m[i]); }
+  /** a Preserve tile within params.terrain.fill.preserveRadius (Chebyshev) of tile i (the tile itself included) */
+  function nearPreserve(state, i) {
+    const r = Math.max(0, fin(PF.preserveRadius, 2) | 0), tx = (i % W), ty = ((i / W) | 0), fl = state.tiles.flags;
+    for (let y = Math.max(0, ty - r); y <= Math.min(H - 1, ty + r); y++) for (let x = Math.max(0, tx - r); x <= Math.min(W - 1, tx + r); x++) if (fl[y * W + x] & FLAG.PRESERVE) return true;
+    return false;
+  }
+  /** the Dredge & fill rule for one tile: '' or the refusal reason (water, dry ground, protected marsh, occupied …) */
+  function fillRule(state, i) {
+    const tl = state.tiles, t = tl.type[i];
+    if (!isLand(state, i)) return 'Not on water';
+    if (fillBusy(state, i)) return 'Already filling';
+    if (t === T.DRY || t === T.HIGH) return 'Already dry ground';
+    if (!isMarsh(state, i)) return 'Marsh only';
+    if (nearPreserve(state, i)) return 'Protected marsh';
+    if (tl.owner[i] >= 0 || tl.surface[i] !== SURF.NONE || tl.crest[i] > 0 || isCanal(state, i)) return 'Occupied';
+    return '';
+  }
+  /** the quote of a drag run (or any tile list): which tiles would fill, which are skipped and why, the cash, the ecology and the days.
+   *  {n, tiles (eligible, in order), skipped [{i, reason}], reason (the first refusal), charter (the first charter refusal), unit, cost, ecology, days, affordable} */
+  M.fillQuote = function (state, tiles) {
+    const out = { n: 0, tiles: [], skipped: [], reason: '', charter: null, unit: 0, cost: 0, ecology: 0, days: fin(PF.days, 10), affordable: true };
+    try {
+      const row = rowOf('dredge_fill');
+      if (!state || !state.tiles || !row || !Array.isArray(tiles)) { out.reason = 'Unknown building'; return out; }
+      const seen = new Set();
+      for (const i of tiles) {
+        if (!Number.isInteger(i) || i < 0 || i >= N || seen.has(i)) continue;
+        seen.add(i);
+        const r = M.canPlace(state, 'dredge_fill', (i % W), ((i / W) | 0), { ignoreCash: true });
+        if (r.ok) { out.tiles.push(i); out.cost += r.cost; out.unit = r.cost; }
+        else { out.skipped.push({ i: i, reason: r.reason }); if (!out.reason) out.reason = r.reason; if (!out.charter && r.charter) out.charter = r.charter; }
+      }
+      out.n = out.tiles.length;
+      out.ecology = -out.n * Math.abs(fin(row.effects.ecologyPerTile, 0));
+      out.affordable = canAfford(state, out.cost);
+      if (!out.n && !out.reason) out.reason = 'Marsh only';
+      else if (out.n) out.reason = '';
+    } catch (e) { if (BSU.SELFTEST) throw e; BSU.error('buildings', 'fillQuote', e); }
+    return out;
+  };
+  /** the run a drag commit adds its tiles to (created with the first tile: one timer, one ticker line, one undo record) */
+  function startFillRun(state, undoRec, day) {
+    const f = fillState(state);
+    if (undoRec.fillRun && f.runs.indexOf(undoRec.fillRun) >= 0) return undoRec.fillRun;
+    const run = { id: f.nextId++, day0: day, day1: day + Math.max(1, fin(PF.days, 10) | 0), stage: 0, tiles: [] };
+    f.runs.push(run); undoRec.fillRun = run;
+    return run;
+  }
+  /** undo: the tile leaves its run (an empty run disappears) */
+  function cancelFillTile(state, runId, i) {
+    const f = fillState(state), run = fillRunOf(state, runId); if (!run) return;
+    const k = run.tiles.indexOf(i); if (k >= 0) run.tiles.splice(k, 1);
+    if (!run.tiles.length) f.runs.splice(f.runs.indexOf(run), 1);
+    f.rev++;
+  }
+  function fillStageOf(run, day) {
+    const st = Math.max(1, fin(PF.stages, 3) | 0), span = Math.max(1, run.day1 - run.day0);
+    return BSU.clamp(Math.floor(st * (day - run.day0) / span), 0, st - 1);
+  }
+  /** a run reaches its day: every tile becomes Dry ground (depth / sat / standing water cleared, elevation raised, reclassified, re-walked, hydro told, chunk re-baked) */
+  function completeFillRun(state, run) {
+    const tl = state.tiles, f = fillState(state), landSat = fin(PH.initial && PH.initial.landSat, 0.5);
+    let n = 0;
+    for (const i of run.tiles) {
+      if (!(i >= 0 && i < N) || !isLand(state, i)) continue;
+      tl.depth[i] = 0; tl.stand[i] = 0; tl.sat[i] = landSat;
+      if (tl.flags[i] & FLAG.DRAINED) { tl.flags[i] &= ~FLAG.DRAINED; }   // hydro flipped it while it filled: dry ground is not "drained marsh"
+      setElev(state, i, Math.max(fin(PF.raiseTo, 4), tl.elev[i]));
+      rewalk(state, i); touch(state, i, 'decor');
+      n++;
+    }
+    f.done += n; f.runsDone++;
+    if (n > 0) call('progress', 'ticker', [state, n === 1 ? 'Dredge crews finished a tile of new ground. The marsh took it personally.' : 'Dredge crews finished {n} tiles of new ground. The marsh took it personally.', { n: n }, 'info', run.tiles[0]], null);
+    return n;
+  }
+  /** once a day: finish the runs whose day has come, grow the spoil mound of the rest */
+  function fillDaily(state, day) {
+    const f = state && state.fill; if (!f || !Array.isArray(f.runs) || !f.runs.length) return;
+    let changed = false;
+    for (let k = f.runs.length - 1; k >= 0; k--) {
+      const run = f.runs[k];
+      if (day >= run.day1) { completeFillRun(state, run); f.runs.splice(k, 1); changed = true; continue; }
+      const st = fillStageOf(run, day);
+      if (st !== run.stage) { run.stage = st; changed = true; for (const i of run.tiles) touch(state, i, 'decor'); }
+    }
+    if (changed) { f.rev++; cache(state).statsCache = null; }
+  }
+  /** {tiles (in progress), runs, done (tiles completed), runsDone, nextDay (the next completion day or −1)} for the panels and the tests */
+  M.fillStats = function (state) {
+    const out = { tiles: 0, runs: 0, done: 0, runsDone: 0, nextDay: -1 };
+    try {
+      if (!state) return out;
+      const f = fillState(state);
+      for (const run of f.runs) { out.tiles += run.tiles.length; out.runs++; if (out.nextDay < 0 || run.day1 < out.nextDay) out.nextDay = run.day1; }
+      out.done = f.done; out.runsDone = f.runsDone;
+    } catch (e) { if (BSU.SELFTEST) throw e; BSU.error('buildings', 'fillStats', e); }
+    return out;
+  };
   /** one undo record per placement or run: entries (reverse-applied by undo), the full cost, and a label for the Undo chip */
   function pushUndo(state, rec, id) {
     const row = rowOf(id); let n = 0, nb = 0;
@@ -1058,6 +1194,13 @@
         break;
       case PLACE.PRESERVE:
         setFlag(state, i, FLAG.PRESERVE, true); break;
+      case PLACE.FILL: {   // L3: the tile joins this drag's run (one timer, one ticker line); the ecology cost is taken now and given back by undo
+        const run = startFillRun(state, undoRec, day);
+        run.tiles.push(i); fillState(state).rev++;
+        ent.fill = run.id; ent.eco = fin(row.effects.ecologyPerTile, 0);
+        if (ent.eco) call('wildlife', 'applyEcologyOnce', [state, ent.eco], null);
+        break;
+      }
       default: break;
     }
     ent.post = { surface: tl.surface[i], crest: tl.crest[i], flags: tl.flags[i] & (FLAG.CANAL | FLAG.PRESERVE), owner: tl.owner[i] };
@@ -1310,6 +1453,7 @@
       if (e.kind === 'tile' && e.post) {
         const i = e.prev.i, q = e.post;
         if (tl.surface[i] !== q.surface || (tl.crest[i] > 0) !== (q.crest > 0) || (tl.flags[i] & (FLAG.CANAL | FLAG.PRESERVE)) !== q.flags || tl.owner[i] !== q.owner) return "Can't undo: that ground has been changed since";
+        if (e.fill) { const fr = fillRunOf(state, e.fill); if (!fr || fr.tiles.indexOf(i) < 0) return "Can't undo: that ground has been changed since"; }   // L3: the run finished (or was cancelled) since
       } else if (e.kind === 'building') {
         const b = state.buildings[e.id];
         if (!b || b.type !== e.type) return "Can't undo: that building is gone or replaced";
@@ -1344,6 +1488,7 @@
           if (tl.crest[i] !== p.crest || tl.integrity[i] !== p.integrity) { tl.crest[i] = p.crest; tl.integrity[i] = p.integrity; markLeveeChange(state, i); }
           if (Math.abs(tl.elev[i] - p.elev) > 1e-6) setElev(state, i, p.elev);
           if (e.eco) call('wildlife', 'applyEcologyOnce', [state, -e.eco], null);
+          if (e.fill) cancelFillTile(state, e.fill, i);   // L3: the tile leaves its run; an empty run disappears
           rewalk(state, i); touch(state, i, 'decor');
         } else if (e.kind === 'eco') {
           call('wildlife', 'applyEcologyOnce', [state, -e.amount], null);
@@ -2605,6 +2750,7 @@
       }
     }
     c.generatorsRunning = genRunning;
+    fillDaily(state, day);   // L3: Dredge & fill runs advance, finish and turn their tiles to dry ground
     if (autoRepair) M.repairAllLevees(state);
     boardCrews(state, day);
     checkBoilWater(state);

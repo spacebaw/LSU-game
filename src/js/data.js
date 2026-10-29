@@ -1,7 +1,7 @@
 'use strict';
 // ============================================================================
 // BAYOU STATE — data.js (module 1; immutable tables)
-// Owner: nothing at runtime. Assigns BSU.data: the 43-row building catalog (+ row 44 'bridge', bridge pass; rows 45 'bunkhouse' and 46 'suites', housing tiers pass P7),
+// Owner: nothing at runtime. Assigns BSU.data: the 43-row building catalog (+ row 44 'bridge', bridge pass; rows 45 'bunkhouse' and 46 'suites', housing tiers pass P7; row 47 'dredge_fill', L3),
 // tabs, decals, name pools, students/coaches/gators/storms, opponents and the
 // schedule, the calendar, the 62 ticker lines, objectives, milestones, Student
 // Voice and Board cards, failure cards, the tutorial script, overlays, the key
@@ -87,7 +87,7 @@
     if (n <= 17) return 'dining';
     if (n <= 19) return 'sports';
     if (n <= 24) return 'life';
-    if (n <= 35 || n === 41 || n === 42) return 'swamp';
+    if (n <= 35 || n === 41 || n === 42 || n === 47) return 'swamp';   // 47 = Dredge & fill (L3), placed right after the canal below
     return 'grounds';
   };
 
@@ -138,6 +138,7 @@
     tiger_habitat: 'Landmark +8, +5 happiness within 15, home win +5%; the gators give Roux a wide berth.',
     surge_barrier: 'A gate that closes the bayou when the stage passes 2 ft. Needs 2 powered Pumps.',
     marsh_restoration: 'Turns 10–40 tiles back into marsh over 30 days; up to +15 ecology.',
+    dredge_fill: 'Raises marsh to dry land in ten days at $40k a tile. Ecology pays for it.',   // L3
     rookery: 'Landmark +6, +2 happiness within 8, and spoonbills every dawn.'
   };
 
@@ -435,7 +436,13 @@
       paint: P({ wall: ['#A5503C', '#843F31'], roof: 'hip', roofColor: '#4C5566', floors: 3, windows: { cols: 4, rows: 3 }, decals: [], special: 'suites', material: 'brick', trim: '#F0EBDD', accent: '#2E5C2A', features: ['gallery:both', 'shutters', 'planters', 'gutters'] }),
       namePool: 'suites',
       why: 'Bigger rooms, a courtyard and a parking apron. Students pay for it.',
-      desc: '240 beds; quality 3; +3 happiness radius 6; 60 parking spaces count toward the lot requirement; room fee $400 a bed a semester; shelters its own residents on ≥ 5-ft ground or Pilings.' })
+      desc: '240 beds; quality 3; +3 happiness radius 6; 60 parking spaces count toward the lot requirement; room fee $400 a bed a semester; shelters its own residents on ≥ 5-ft ground or Pilings.' }),
+    // L3 — row 47, Swamp tab right after the canal: a 1×1 drag over Marsh only, on chartered land, ≥ 3 tiles from a Preserve; each run fills over params.terrain.fill.days
+    row({ n: 47, name: 'Dredge & Fill', kind: 'drag', cost: BSU.params.terrain.fill.cost, upkeep: 0, placeRule: PLACE.FILL,
+      effects: { ecologyPerTile: -1 / BSU.params.terrain.fill.ecologyPer, special: ['fill'] },
+      paint: flat(['#8A7A5A', '#5E5238'], ['pipes']),
+      why: 'Spoil from the bayou raises marsh to dry land. Ecology pays.',
+      desc: 'Marsh only, on chartered land; $40k a tile, ten days to fill; −1 ecology per 4 tiles (permanent); refused within 2 tiles of a Preserve; the tile becomes Dry ground.' })
   ];
   const catalog = {};
   for (const r of catalogList) catalog[r.id] = r;
@@ -450,6 +457,7 @@
     const ids = catalogList.filter(r => r.tab === t[0] && r.id !== 'founders_hall').map(r => r.id);
     const order = TAB_ORDER[t[0]];
     if (order) ids.sort((a, b) => order.indexOf(a) - order.indexOf(b));
+    if (t[0] === 'swamp') { const k = ids.indexOf('dredge_fill'), c = ids.indexOf('canal'); if (k >= 0 && c >= 0) { ids.splice(k, 1); ids.splice(ids.indexOf('canal') + 1, 0, 'dredge_fill'); } }   // L3: Dredge & fill sits right after the canal
     tabs.push({ id: t[0], name: t[1], rows: ids });
   }
 
@@ -1133,7 +1141,8 @@
     ['Flagship', '10,000 students and prestige 60', { effect: 'titleCampus' }],
     ['Laissez les Bons Temps Rouler', '20,000 students, prestige 85, ecology ≥ 50', {}],
     ['Untouched', 'Reach Flagship without draining a single marsh tile', {}],
-    ['Land Baron', 'Charter 5 sections at the Land Office', { prestige: 2 }]   // L2
+    ['Land Baron', 'Charter 5 sections at the Land Office', { prestige: 2 }],   // L2
+    ['Reclaimed', 'Fill 50 marsh tiles to dry land with Dredge & Fill', {}]   // L3
   ];
   const RETIRED_MILESTONES = { gatorWrangler: true, sunbather: true };   // calm alerts + ambient gators pass: never earned again, hidden in the panel
   const milestones = BSU.MILESTONES.map(function (id, i) {
@@ -1393,6 +1402,7 @@
   requirements.place[PLACE.MARSH_OR_PRESERVE] = { glyph: '🌊', text: 'Marsh or Wetland Preserve only' };
   requirements.place[PLACE.BARRIER] = { glyph: '↔', text: 'Drag across the mouth of the bayou' };
   requirements.place[PLACE.RESTORE] = { glyph: '🖌', text: 'Paint drained land back to marsh' };
+  requirements.place[PLACE.FILL] = { glyph: '↔', text: 'Drag over marsh on your own land, away from a Preserve' };   // L3
   requirements.place[PLACE.UPGRADE] = { glyph: '⤴', text: 'Click a standing building to lift it' };
   /** the 60-second coach-mark tour (ui.js; first game only, replayable from Settings); target = a BSU.ui.el key, '' = none */
   const coach = [
@@ -1434,8 +1444,8 @@
     try {
       const D = BSU.data, L = D.catalogList, C = D.catalog;
       // 1. row count and numbering
-      check(L.length === 46, 'catalogList.length === 46 (got ' + L.length + ')');
-      check(Object.keys(C).length === 46, 'catalog has 46 keys');
+      check(L.length === 47, 'catalogList.length === 47 (got ' + L.length + ')');   // L3: dredge_fill
+      check(Object.keys(C).length === 47, 'catalog has 47 keys');
       for (let i = 0; i < L.length; i++) {
         check(L[i].n === i + 1, 'row ' + (i + 1) + ' has n ' + L[i].n);
         check(C[L[i].id] === L[i], 'catalog[' + L[i].id + '] is the same object as catalogList[' + i + ']');
@@ -1510,7 +1520,7 @@
       check(D.students.modernShare === 0.25 && D.students.nicknameShare === 0.12, 'student shares');
       check(D.voiceCards.length === 12 && D.voiceCards.every((c, i) => c.id === BSU.VOICE_CARDS[i]), '12 voice cards in BSU.VOICE_CARDS order');
       check(D.boardCards.length === 8 && D.boardCards.every((c, i) => c.id === BSU.BOARD_CARDS[i]), '8 board cards in BSU.BOARD_CARDS order');
-      check(D.milestones.length === 27 && D.milestones.every((m, i) => m.id === BSU.MILESTONES[i] && m.name.length > 0 && m.text.length > 0), '27 milestones in BSU.MILESTONES order');   // L2: landBaron
+      check(D.milestones.length === 28 && D.milestones.every((m, i) => m.id === BSU.MILESTONES[i] && m.name.length > 0 && m.text.length > 0), '28 milestones in BSU.MILESTONES order');   // L2: landBaron, L3: reclaimed
       const objIds = Object.keys(D.objectives);
       check(objIds.length === 25 && BSU.OBJECTIVE_IDS.every(id => !!D.objectives[id]), '25 objectives keyed by BSU.OBJECTIVE_IDS');
       for (const id of objIds) {
@@ -1528,7 +1538,7 @@
       // 7b. UX tables: a guide line for every objective (+ the accreditation pair), needs/requirements/coach shapes
       for (const id of BSU.OBJECTIVE_IDS.concat(['p1', 'p2'])) { const g = D.guide[id]; check(!!g && g.why.length > 0 && Array.isArray(g.build) && g.build.every(b => !!C[b]), 'guide ' + id); }
       check(['beds', 'seats', 'dining', 'power', 'water', 'wastewater', 'parking'].every(k => D.needs[k] && !!C[D.needs[k].build] && D.needs[k].label.length > 0), 'needs table');
-      check(['power', 'water', 'path', 'road', 'marsh'].every(k => D.requirements[k].glyph && D.requirements[k].text) && Object.keys(D.requirements.place).length === 16, 'requirements table');
+      check(['power', 'water', 'path', 'road', 'marsh'].every(k => D.requirements[k].glyph && D.requirements[k].text) && Object.keys(D.requirements.place).length === 17, 'requirements table')   // L3: + PLACE.FILL;
       check(D.coach.length === 6 && D.coach.every(c => c.id && c.title && c.text.length > 0 && typeof c.target === 'string'), '6 coach steps');
       check(D.keys.some(k => k.key === 'g' && k.action === 'buildMenu' && !k.ctrl && !k.shift) && !D.keys.some(k => k.key === 'q'), 'G opens the build menu; Q stays unbound');
       check(D.overlays.length === 6 && D.overlays[2].legend.join() === 'Ambient,Annoying,Biblical,State Bird', '6 overlays, K legend');
@@ -1606,7 +1616,7 @@
       }
       for (const k of Object.keys(D.opponents)) { const o = D.opponents[k]; check(['ground', 'balanced', 'air'].indexOf(o.style) >= 0 && Number.isInteger(o.defBias) && Math.abs(o.defBias) <= 4 && o.colors.length === 2 && o.colors.every(c => /^#[0-9A-Fa-f]{6}$/.test(c)), 'opponent ' + k + ' has style, defBias ±4 and two colors'); }
       check(D.coaches.every(c => ['ground', 'balanced', 'air'].indexOf(c.style) >= 0), 'every coach has a playbook style');
-      notes.push('ticker 62, storms 26, gators 14, milestones 27, objectives 25, keys ' + D.keys.length + ', football formations ' + Object.keys(D.football.formations).length + ', archetypes ' + D.football.prospects.archetypes.length);
+      notes.push('ticker 62, storms 26, gators 14, milestones 28, objectives 25, keys ' + D.keys.length + ', football formations ' + Object.keys(D.football.formations).length + ', archetypes ' + D.football.prospects.archetypes.length);
     } catch (e) {
       fails.push('threw: ' + ((e && e.message) || String(e)));
     }

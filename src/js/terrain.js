@@ -512,16 +512,17 @@
     } catch (e) { fail('paradeRoute', e); return []; }
   };
 
-  /** Marsh within Chebyshev 2 of any footprint tile or surface 1–3 tile (wildlife's mosquito nursery rule); cached mask */
+  /** Marsh within Chebyshev 2 of any footprint tile, surface 1–3 tile or Dredge & fill tile in progress (wildlife's mosquito nursery rule); cached mask */
   M.isDisturbedMarsh = function (state, i) {
     try {
       if (!validI(i)) return false;
       const c = ensure(state);
       if (!c.disturbed) {
         const t = state.tiles, mask = new Uint8Array(N), rad = P.wildlife.mosq.disturbRadius;
+        const bm = buildingsMod(), fm = (bm && typeof bm.fillMask === 'function') ? bm.fillMask(state) : null;   // L3: a Dredge & fill tile in progress disturbs the marsh around it like a path does
         for (let k = 0; k < N; k++) {
           const s = t.surface[k];
-          if (t.owner[k] < 0 && !(s === SURF.PATH || s === SURF.ROAD || s === SURF.BOARDWALK || s === SURF.BRIDGE)) continue;
+          if (t.owner[k] < 0 && !(s === SURF.PATH || s === SURF.ROAD || s === SURF.BOARDWALK || s === SURF.BRIDGE) && !(fm && fm[k])) continue;
           const tx = (k % W), ty = ((k / W) | 0);
           for (let dy = -rad; dy <= rad; dy++) { const y = ty + dy; if (y < 0 || y >= H) continue; for (let dx = -rad; dx <= rad; dx++) { const x = tx + dx; if (x >= 0 && x < W) mask[y * W + x] = 1; } }
         }

@@ -83,7 +83,7 @@
   const SKY_GLYPH = ['🌅', '☀', '🌅', '🌆', '🌙'];
   const SKY_NAME = ['Dawn', 'Day', 'Golden', 'Dusk', 'Night'];
   const MOOD_FACES = ['😞', '🙁', '😐', '🙂', '😄'];
-  const HINT_TEXT = { saveUnavailable: 'Saves unavailable in this browser mode', perfMode: 'Performance mode', mute: '🔊 on · M to mute', pauseToPlan: 'Pause to plan', desireLine: 'Students want a path here' };
+  const HINT_TEXT = { dredgeFill: 'Dredge spoil from the bayou raises marsh to dry land in ten days. Ecology pays for it.', saveUnavailable: 'Saves unavailable in this browser mode', perfMode: 'Performance mode', mute: '🔊 on · M to mute', pauseToPlan: 'Pause to plan', desireLine: 'Students want a path here' };
   const PANEL_KEYS = { budget: 'Budget', season: 'Season', storm: 'Storm', land: 'Land Office', almanac: 'Almanac', milestones: 'Milestones', settings: 'Settings', debug: 'Debug' };   // L2: land
 
   // ---------------------------------------------------------------------------
@@ -820,7 +820,7 @@
     }
   }
   /** paths pass: true while the map shows the network (N held, or any drag tool armed): render_fx's sheen / amber dash / Campus hub badge */
-  M.networkView = function () { try { if (heldN) return true; const s = stateOf(); const t = s && s.ui ? s.ui.tool : null; const row = t ? rowOf(t.id) : null; return !!(row && row.kind === 'drag'); } catch (e) { return false; } };
+  M.networkView = function () { try { if (heldN) return true; const s = stateOf(); const t = s && s.ui ? s.ui.tool : null; const row = t ? rowOf(t.id) : null; return !!(row && row.kind === 'drag' && row.placeRule !== PLACE.FILL); } catch (e) { return false; } };   // L3: the campus network view is for paths; the Dredge & Fill drag has its own preview
   /** keyup(key) (also headless): Shift / Alt / I / N releases */
   M.keyup = function (key) { try { keyup(String(key)); } catch (e) { uerr('keyup', e); } };
   /** keydown(key, mods) → true when handled (also headless.key) */
@@ -962,6 +962,7 @@
       if (s.setPiece && !toolLocked && id !== 'founders_hall') return;
       if (insp && dom()) closeInspectDom();
       mcStep(live, { type: 'tool', id: id, px: lastPx, py: lastPy });
+      if (id === 'dredge_fill') M.hint(s, 'dredgeFill');   // L3: one line, once per save, the first time the Dredge & Fill tool is armed
     } catch (e) { uerr('selectTool', e); }
   };
   M.tool = function () { const s = stateOf(); return s && s.ui ? s.ui.tool : null; };
@@ -1037,19 +1038,23 @@
   function sinkText(sk) { if (!sk) return ''; if (typeof sk === 'string') return sk; if (typeof sk !== 'object') return ''; if (sk.text) return sk.text; return Number.isFinite(sk.rate) ? 'Wet ground: sinks ' + sk.rate + ' ft/yr' + (Number.isFinite(sk.year) ? ' · needs Pilings by Y' + sk.year : '') + (Number.isFinite(sk.retrofit) ? ' (' + money(sk.retrofit) + ' later)' : '') : ''; }
   function ridgeText(rf) { if (!rf) return ''; if (typeof rf === 'string') return rf; if (typeof rf !== 'object') return ''; if (rf.text || rf.reason) return rf.text || rf.reason; return Number.isFinite(rf.tx) ? 'Ridge full · best open site (' + rf.tx + ', ' + rf.ty + ') at ' + rf.elev + ' ft floods at ' + (rf.floodsAt || 'rain') : ''; }
   function drawGhost(s, tool, row, r, g, px, py, dragging) {
-    const color = g.cove ? 'red' : (r.color || (r.ok ? 'green' : 'red'));
+    let color = g.cove ? 'red' : (r.color || (r.ok ? 'green' : 'red'));
     let tiles = r.tiles && r.tiles.length ? r.tiles : [g.ty * W + g.tx];
     if (dragging && live.run.length) tiles = live.run;
+    // L3: a Dredge & Fill drag previews the tiles it WILL fill (the cursor tile alone cannot say), the skipped ones in red, and quotes the whole run
+    const fq = (dragging && row.placeRule === PLACE.FILL && live.run.length) ? call('buildings', 'fillQuote', s, live.run) : null;
+    if (fq) { color = (fq.n === 0 || !fq.affordable) ? 'red' : (fq.skipped.length ? 'yellow' : 'green'); if (fq.n) tiles = fq.tiles; }
     if (g.cove && s.plot && s.plot.cove) tiles = s.plot.cove;
     const conn = (!dragging && !g.cove && r.connector && Array.isArray(r.connector.tiles) && r.connector.tiles.length) ? r.connector : (dragging && r.tie && r.tie.tiles.length ? r.tie : null);   // paths pass: the tie this placement (or this drag's end) would lay
-    const spec = { tiles: tiles, color: color, connectorTiles: null, ringTiles: r.ring && Array.isArray(r.ring.tiles) ? r.ring.tiles : null, label: '', radius: fin(r.radius, 0), radiusCenter: { tx: g.tx, ty: g.ty } };
+    const spec = { tiles: tiles, skipTiles: fq ? fq.skipped.map(function (x) { return x.i; }) : null, color: color, connectorTiles: null, ringTiles: r.ring && Array.isArray(r.ring.tiles) ? r.ring.tiles : null, label: '', radius: fin(r.radius, 0), radiusCenter: { tx: g.tx, ty: g.ty } };
     if (row.kind === 'footprint' || row.kind === 'upgrade') spec.sprite = { id: tool.id, variant: r.needsPilings ? SPR.PILINGS : 0, tx: g.tx, ty: g.ty, rot: tool.rot };
     call('render', 'ghost', spec);
     call('render', 'tiePreview', conn ? { tiles: conn.tiles, surfaces: conn.surfaces || null, snap: !!conn.snap, water: fin(conn.water, 0) } : null);   // render_fx draws it as a dashed gold path (planks over water)
     if (!dom()) return;
     let l1, l2 = '';
     const netRow = !!(row.kind === 'footprint' && row.pathAdjacency && row.id !== 'founders_hall');
-    if (dragging) {
+    if (fq) { const t2 = fillLines(s, fq, r); l1 = t2[0]; l2 = t2[1]; }
+    else if (dragging) {
       const n = live.run.length; const per = fin(r.cost, row.cost) || row.cost; l1 = n + (n === 1 ? ' tile' : ' tiles') + ' · ' + money(per * n);
       if (conn) l1 += ' + ' + money(conn.cost) + (conn.snap ? ' snap' : ' tie');   // "12 tiles · $24k + $8k tie"
       if (r.ring && r.ring.text) l2 = r.ring.text; else if (r.ring && typeof r.ring.closed === 'boolean') l2 = r.ring.closed ? 'closes the ring' : (r.ring.shortText || ('still ' + fin(r.ring.short, 0) + ' tiles short'));
@@ -1067,8 +1072,20 @@
       if (netRow) { const st = netStatus(r, conn); l2 = st + (l2 ? ' · ' + l2 : ''); }   // paths pass: Connected / Ties in (+$8k, 4 tiles) / Can't reach a path…
       if (g.setback) l2 = (l2 ? l2 + ' · ' : '') + 'Setback · hold Shift to place flush';
       if (tool.rot) l1 += ' · rotated (R)';
+      if (row.placeRule === PLACE.FILL && r.ok) { const t2 = fillLines(s, { n: 1, cost: fin(r.cost, row.cost), ecology: fin(row.effects.ecologyPerTile, 0), days: fin(BSU.params.terrain.fill.days, 10), skipped: [], affordable: r.affordable !== false }, r); l1 = t2[0]; l2 = 'Drag to fill a run · ' + t2[1]; }   // L3
     }
     ghostLabel(px, py, l1, l2, color);
+  }
+  /** L3: the two ghost lines of a Dredge & Fill quote ({n, cost, ecology, days, skipped, affordable, reason, charter}): "Fills 12 marsh tiles · $480k · 10 days" / the ecology cost or why tiles are skipped */
+  function fillLines(s, q, r) {
+    const n = q.n | 0, days = fin(q.days, 10);
+    if (n <= 0) return [q.reason || (r && r.reason) || 'Cannot fill here', q.charter ? 'State land · click to open the Land Office (O)' : ''];
+    const eco = Math.round(Math.abs(fin(q.ecology, 0)) * 10) / 10, sk = q.skipped || [];
+    const l1 = 'Fills ' + n + ' marsh ' + (n === 1 ? 'tile' : 'tiles') + ' · ' + money(q.cost) + ' · ' + days + ' days';
+    let l2 = eco > 0 ? 'Ecology −' + eco + ' · permanent' : '';
+    if (!q.affordable) l2 = 'Not enough cash' + (l2 ? ' · ' + l2 : '');
+    else if (sk.length) l2 = sk.length + (sk.length === 1 ? ' tile' : ' tiles') + ' skipped: ' + (sk[0].reason || 'not fillable') + (l2 ? ' · ' + l2 : '');
+    return [l1, l2];
   }
   // paths pass: the ghost's network status line (one of three, the Alt note appended) and the drag end's
   function tieReason() { const B = BSU.buildings; return (B && B.TIE_REASON) || "Can't reach a path: draw one from campus first"; }
@@ -1154,7 +1171,7 @@
       call('audio', 'play', 'place'); undoAtMs = clock;
       if (toolLocked) toolLocked = false;
       const tie = r.connector && r.connector.tiles && r.connector.tiles.length ? r.connector : null;
-      if (dom()) ghostLabel(px, py, 'Placed · ' + money(r.cost) + (tie ? ' (incl. ' + money(tie.cost) + ' tie)' : ''), 'Ctrl+Z to undo', 'green');
+      if (dom()) ghostLabel(px, py, row.placeRule === PLACE.FILL ? 'Filling 1 marsh tile · ' + money(r.cost) + ' · ready in ' + fin(BSU.params.terrain.fill.days, 10) + ' days' : 'Placed · ' + money(r.cost) + (tie ? ' (incl. ' + money(tie.cost) + ' tie)' : ''), 'Ctrl+Z to undo', 'green');
       placedHint(s, row, pre);
       if (tie) firstTieCard(s, tie);
       return true;
@@ -1195,7 +1212,10 @@
     if (placed > 0) {
       undoAtMs = clock;
       const tie = r.tie && r.tie.tiles && r.tie.tiles.length ? r.tie : null;
-      if (dom()) ghostLabel(lastPx, lastPy, placed + (placed === 1 ? ' tile' : ' tiles') + ' · ' + money(r.cost) + (tie ? ' (incl. ' + money(tie.cost) + (tie.snap ? ' snap)' : ' tie)') : ''), 'Ctrl+Z to undo', 'green');
+      if (dom()) {
+        const fillRun = tool.id === 'dredge_fill';   // L3
+        ghostLabel(lastPx, lastPy, fillRun ? 'Filling ' + placed + ' marsh ' + (placed === 1 ? 'tile' : 'tiles') + ' · ' + money(r.cost) + ' · ready in ' + fin(BSU.params.terrain.fill.days, 10) + ' days' : placed + (placed === 1 ? ' tile' : ' tiles') + ' · ' + money(r.cost) + (tie ? ' (incl. ' + money(tie.cost) + (tie.snap ? ' snap)' : ' tie)') : ''), 'Ctrl+Z to undo', 'green');
+      }
       if (tie) firstTieCard(s, tie);
     }
     else {
@@ -2467,7 +2487,7 @@
     });
     reg('landFirst', function (s, p) {   // L2: the first section bought, once per save (state.charter.cardSeen)
       p = p || {}; const c = p.counts || {};
-      return { id: 'landFirst', kicker: 'Land Office', title: 'Section ' + fin(p.id, 0) + ' is yours · ' + money(p.cost != null ? p.cost : p.price), body: 'The state sells land in 16 × 16 sections next to your charter: dry ground costs more, swamp is cheap (this one: ' + fin(c.dry, 0) + ' dry, ' + fin(c.high, 0) + ' high, ' + fin(c.marsh, 0) + ' marsh). Build on it like any other land. A Dredge tool that fills marsh into dry ground is coming.', actions: [{ label: 'Open the Land Office', fn: function () { M.openPanel('land'); } }, { label: 'Got it', primary: true }] };
+      return { id: 'landFirst', kicker: 'Land Office', title: 'Section ' + fin(p.id, 0) + ' is yours · ' + money(p.cost != null ? p.cost : p.price), body: 'The state sells land in 16 × 16 sections next to your charter: dry ground costs more, swamp is cheap (this one: ' + fin(c.dry, 0) + ' dry, ' + fin(c.high, 0) + ' high, ' + fin(c.marsh, 0) + ' marsh). Build on it like any other land. The Dredge & Fill tool (Swamp tab) turns marsh inside your charter into dry ground.', actions: [{ label: 'Open the Land Office', fn: function () { M.openPanel('land'); } }, { label: 'Got it', primary: true }] };
     });
     reg('obj8', function (s, p) { return { id: 'obj8', kicker: 'Objective 8', title: 'Capped', body: (p && p.text) || ('Enrollment is capped at ' + fin(p && p.students, 0) + '. Beds, seats and dining set the ceiling.'), actions: [{ label: 'Show me the Budget', fn: function () { M.openPanel('budget'); } }, { label: 'OK', primary: true }] }; });
     reg('voice', function (s, p) { p = p || {}; return { id: 'voice', side: 'voice', voiceId: p.id, student: p.student, major: p.major, text: p.text, payoff: p.payoff }; });

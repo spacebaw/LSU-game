@@ -1017,6 +1017,7 @@
     const t = state.tiles, elev = t.elev, type = t.type, fl = t.flags, surf = t.surface, crest = t.crest, integ = t.integrity, depth = t.depth;
     markCypress(state);
     const cv = ensureCurves(state), deck = cv ? cv.deck : null;
+    const fillM = (BSU.buildings && typeof BSU.buildings.fillMask === 'function') ? BSU.buildings.fillMask(state) : null;   // L3: stage + 1 per tile of a Dredge & fill run in progress (null = none)
     if (ch.deck) { try { ch.deckCtx.setTransform(1, 0, 0, 1, 0, 0); ch.deckCtx.clearRect(0, 0, ch.deck.width, ch.deck.height); } catch (e) { /* stub */ } }
     ch.deckTiles = [];
     const bx = ch.cx * CS, by = ch.cy * CS;
@@ -1088,6 +1089,7 @@
         // (h) preserve posts, (i) mounds
         if (f & FLAG.PRESERVE) { const v = flagMask(fl, i, tx, ty, FLAG.PRESERVE, true); if (v) { ref = tref('preservePost', v, 0, 1); if (ref) blit1(g, ref, wx, wy); } }
         if (f & FLAG.MOUND) { ref = tref('mound', 0, 0, 1); if (ref) blit1(g, ref, wx, wy); }
+        if (fillM !== null && fillM[i] > 0) { ref = tref('mound', fillM[i], 0, 1); if (ref) blit1(g, ref, wx, wy); }   // L3: the spoil heap and its dredge pipe (mound variants 1–3 = stage 0–2)
         if (f & FLAG.DEBRIS) { ref = tref('decal:debris', 0, hash(tx, ty) & 3, 1); if (ref) blit1(g, ref, wx, wy); }
         if (isDeck && cv) { try { bakeDeckTile(ch, g, cv, i, tx, ty, sf, ep, state); } catch (err) { rerr('deck:bake', err); } }
       }
@@ -2506,6 +2508,7 @@
     // ghost preview
     const gs = ghostSpec;
     if (gs) {
+      if (Array.isArray(gs.skipTiles) && gs.skipTiles.length) { g.globalAlpha = C.ghostAlpha * 0.55; g.fillStyle = OV_COLORS.bad; for (let k = 0; k < gs.skipTiles.length; k++) { const i = gs.skipTiles[k] | 0; if (i < 0 || i >= N) continue; tileDiamondScreen(i, tmpPt); fillDiamond(g, tmpPt.x, tmpPt.y, w, h, step); } }   // L3: the tiles of a drag the tool will skip, in red
       if (Array.isArray(gs.tiles)) { g.globalAlpha = C.ghostAlpha; g.fillStyle = gs.color || GOLD; for (let k = 0; k < gs.tiles.length; k++) { const i = gs.tiles[k] | 0; if (i < 0 || i >= N) continue; tileDiamondScreen(i, tmpPt); fillDiamond(g, tmpPt.x, tmpPt.y, w, h, step); } }
       // connector pass: the gravel tie a footprint placement would lay, in the path drag's own ghost style
       if (Array.isArray(gs.connectorTiles)) { g.globalAlpha = C.ghostAlpha; g.fillStyle = gs.color || GOLD; for (let k = 0; k < gs.connectorTiles.length; k++) { const i = gs.connectorTiles[k] | 0; if (i < 0 || i >= N) continue; tileDiamondScreen(i, tmpPt); fillDiamond(g, tmpPt.x, tmpPt.y, w, h, step); } }

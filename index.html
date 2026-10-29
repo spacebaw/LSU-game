@@ -682,17 +682,18 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
   BSU.OBJ = freeze({ INTERRUPT: 0, BACKGROUND: 1 });
   BSU.PLACE = freeze({
     LAND: 0, PATH: 1, ROAD: 2, BOARDWALK: 3, LEVEE: 4, CANAL: 5, FENCE: 6, PRESERVE: 7, NEAR_WATER: 8, TOUCH_MARSH_BAYOU: 9,
-    TOUCH_CANAL_WATER: 10, CYPRESS: 11, MARSH_OR_PRESERVE: 12, BARRIER: 13, RESTORE: 14, UPGRADE: 15, BRIDGE: 16
-  });   // catalog placeRule (BRIDGE: bridge pass — water-only drag, both ends on land)
+    TOUCH_CANAL_WATER: 10, CYPRESS: 11, MARSH_OR_PRESERVE: 12, BARRIER: 13, RESTORE: 14, UPGRADE: 15, BRIDGE: 16, FILL: 17
+  });   // catalog placeRule (BRIDGE: bridge pass — water-only drag, both ends on land; FILL: L3 Dredge & fill — Marsh only, chartered land, ≥ 3 tiles from a Preserve)
   BSU.SPR = freeze({ NIGHT: 1, DAMAGED: 2, PILINGS: 4, SCAFFOLD: 8, RUIN: 16, TIER_SHIFT: 5, TIER_MASK: 3 << 5, BOARDED: 128, FRONT_L: 256, FLOODED: 512 });   // FLOODED (art pass B3): waterline stain + sandbags; render.variantOf sets it from b.flooded   // building sprite variant bits (D17); FRONT_L = entrance (door, walk, lamps) on the SW face (design pass)
 
-  // The 43 catalog ids in GDD §0.3 row order (BSU.B_ORDER[n-1] is row n) + row 44 'bridge' (bridge pass) + rows 45 'bunkhouse' / 46 'suites' (housing tiers pass, PLAN_V2 P7).
+  // The 43 catalog ids in GDD §0.3 row order (BSU.B_ORDER[n-1] is row n) + row 44 'bridge' (bridge pass) + rows 45 'bunkhouse' / 46 'suites' (housing tiers pass, PLAN_V2 P7) + row 47 'dredge_fill' (L3: Dredge & fill, Swamp tab after the canal).
   BSU.B_ORDER = freeze([
     'path', 'road', 'boardwalk', 'substation', 'water_tower', 'generator', 'wastewater', 'founders_hall', 'lecture_hall',
     'library', 'engineering', 'coastal_institute', 'dorm', 'res_tower', 'greek_house', 'dining_hall', 'poboy', 'practice_field',
     'stadium', 'union', 'rec_center', 'health_center', 'quad', 'parking', 'levee', 'floodwall', 'canal', 'pump', 'pond',
     'pilings', 'gator_fence', 'abatement', 'bat_house', 'wildlife_post', 'preserve', 'live_oak', 'cypress', 'azalea',
-    'bell_tower', 'tiger_habitat', 'surge_barrier', 'marsh_restoration', 'rookery', 'bridge', 'bunkhouse', 'suites'
+    'bell_tower', 'tiger_habitat', 'surge_barrier', 'marsh_restoration', 'rookery', 'bridge', 'bunkhouse', 'suites',
+    'dredge_fill'
   ]);
   {
     const B = {};
@@ -747,7 +748,8 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     'sunbather', 'skeeterBeater', 'bayouField', 'nightFalls', 'geauxBeatMagnolia', 'undefeated', 'bigBoil', 'throwMeSomethin',
     'greenAndGold', 'fortressBayou', 'livingWithWater', 'lightsAreOn', 'sinkingFeeling', 'rebuiltFromTheRoux', 'flagship',
     'laissez', 'untouched',
-    'landBaron'   // L2: five sections chartered at the Land Office
+    'landBaron',  // L2: five sections chartered at the Land Office
+    'reclaimed'   // L3: 50 marsh tiles filled to dry land
   ]);
   // Objective ids in GDD §10.2 order (progress.objectives keys).
   BSU.OBJECTIVE_IDS = freeze(['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '11a', '12', '13', '14', '15', '16', '17', '18a', '18b', '18', '19', '20', '21', '22']);
@@ -848,7 +850,15 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
       plotRect: { dx0: -9, dx1: -1, y0: 6, y1: 13 },   // G1 rectangle (§3.5)
       oaks: [[-8, 8], [-4, 8]],              // flanking oaks (§3.4 step 7)
       oakStages: 3, oakGrowDays: 240,        // 3 growth stages over 2 years (§0.3 row 36)
-      subsidenceDay: 'Jan 1'                 // yearly subsidence step (§6.5)
+      subsidenceDay: 'Jan 1',                // yearly subsidence step (§6.5)
+      fill: {                                // PLAN_PATHS_LAND Track L3: Dredge & fill (a drag tool that raises Marsh to Dry)
+        cost: 40000, days: 10,               // $ per tile, charged on commit; every tile of a run fills over `days` calendar days
+        ecologyPer: 4,                       // −1 ecology per this many tiles (permanent: one-time term, like clearing); −1 / ecologyPer per tile, taken at commit
+        raiseTo: 4.0,                        // the Dry bound (typeBounds.wet 3.5) + 0.5 ft; a tile already higher keeps its own elevation
+        preserveRadius: 2,                   // a fill within this many tiles (Chebyshev) of a Preserve tile is refused: "Protected marsh"
+        stages: 3,                           // the spoil mound grows through this many looks while a run is in progress
+        reclaimed: 50                        // the Reclaimed milestone: tiles filled
+      }
     },
     hydro: {                                 // GDD §6.1
       stepsPerBlock: [0, 2, 5, 7],           // hydro steps on these ticks of each 10-tick block (§6.1.1)
@@ -1880,6 +1890,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
       setPiece: null,
       saveMeta: { slot: '', savedAt: 0, label: '' },
       world: { W: m.W, H: m.H, ox: ox, oy: oy, legacy: { x0: m.legacy.x0, y0: m.legacy.y0, x1: m.legacy.x1, y1: m.legacy.y1 } },   // L1: the per-game map (saved; L2 defines the start charter from legacy)
+      fill: { runs: [], nextId: 1, rev: 0, done: 0, runsDone: 0 },   // L3: Dredge & fill — runs in progress {id, day0, day1, stage, tiles}; rev bumps whenever a mask-visible thing changes; tiles / runs completed (the Reclaimed milestone)
       charter: { owned: [], cardSeen: false, refusedDay: -1 },   // L2: section ids bought at the Land Office (the start charter is world.legacy); the first-purchase card; the first charter refusal (the goal's trigger)
       calendar: { day: 0, dayTick: 0, running: false, frozen: true, year: 1, month: 1, dom: 1, season: 'winter', semester: 'break' },
       sky: { phase: BSU.SKY.DAWN, phaseTick: 0, cycleTick: 0, scripted: false, t: 0 },
@@ -2082,8 +2093,8 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     BSU.SELFTEST = true;
     try {
       for (const k of ['T', 'SURF', 'FLAG', 'SKY', 'OV', 'STORM', 'STORM_PHASE', 'OBJ', 'PLACE', 'SPR', 'B', 'EV', 'MAP']) BSU.assert(Object.isFrozen(BSU[k]), k + ' frozen');
-      BSU.assert(BSU.B_ORDER.length === 46 && Object.keys(BSU.B).length === 46, '46 catalog ids');
-      BSU.assert(BSU.MILESTONES.length === 27, '27 milestones');   // L2: landBaron
+      BSU.assert(BSU.B_ORDER.length === 47 && Object.keys(BSU.B).length === 47, '47 catalog ids');   // L3: dredge_fill
+      BSU.assert(BSU.MILESTONES.length === 28, '28 milestones');   // L2: landBaron, L3: reclaimed
       BSU.assert(new Set(BSU.EV_LIST).size === BSU.EV_LIST.length, 'event names unique');
       BSU.assert(Object.keys(BSU.EV).length === BSU.EV_LIST.length, 'EV constants unique');
       BSU.assert(BSU.SKY_TICKS.reduce((a, b) => a + b, 0) === 300, 'sky cycle sums to 300');
@@ -2161,7 +2172,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
 'use strict';
 // ============================================================================
 // BAYOU STATE — data.js (module 1; immutable tables)
-// Owner: nothing at runtime. Assigns BSU.data: the 43-row building catalog (+ row 44 'bridge', bridge pass; rows 45 'bunkhouse' and 46 'suites', housing tiers pass P7),
+// Owner: nothing at runtime. Assigns BSU.data: the 43-row building catalog (+ row 44 'bridge', bridge pass; rows 45 'bunkhouse' and 46 'suites', housing tiers pass P7; row 47 'dredge_fill', L3),
 // tabs, decals, name pools, students/coaches/gators/storms, opponents and the
 // schedule, the calendar, the 62 ticker lines, objectives, milestones, Student
 // Voice and Board cards, failure cards, the tutorial script, overlays, the key
@@ -2247,7 +2258,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     if (n <= 17) return 'dining';
     if (n <= 19) return 'sports';
     if (n <= 24) return 'life';
-    if (n <= 35 || n === 41 || n === 42) return 'swamp';
+    if (n <= 35 || n === 41 || n === 42 || n === 47) return 'swamp';   // 47 = Dredge & fill (L3), placed right after the canal below
     return 'grounds';
   };
 
@@ -2298,6 +2309,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     tiger_habitat: 'Landmark +8, +5 happiness within 15, home win +5%; the gators give Roux a wide berth.',
     surge_barrier: 'A gate that closes the bayou when the stage passes 2 ft. Needs 2 powered Pumps.',
     marsh_restoration: 'Turns 10–40 tiles back into marsh over 30 days; up to +15 ecology.',
+    dredge_fill: 'Raises marsh to dry land in ten days at $40k a tile. Ecology pays for it.',   // L3
     rookery: 'Landmark +6, +2 happiness within 8, and spoonbills every dawn.'
   };
 
@@ -2595,7 +2607,13 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
       paint: P({ wall: ['#A5503C', '#843F31'], roof: 'hip', roofColor: '#4C5566', floors: 3, windows: { cols: 4, rows: 3 }, decals: [], special: 'suites', material: 'brick', trim: '#F0EBDD', accent: '#2E5C2A', features: ['gallery:both', 'shutters', 'planters', 'gutters'] }),
       namePool: 'suites',
       why: 'Bigger rooms, a courtyard and a parking apron. Students pay for it.',
-      desc: '240 beds; quality 3; +3 happiness radius 6; 60 parking spaces count toward the lot requirement; room fee $400 a bed a semester; shelters its own residents on ≥ 5-ft ground or Pilings.' })
+      desc: '240 beds; quality 3; +3 happiness radius 6; 60 parking spaces count toward the lot requirement; room fee $400 a bed a semester; shelters its own residents on ≥ 5-ft ground or Pilings.' }),
+    // L3 — row 47, Swamp tab right after the canal: a 1×1 drag over Marsh only, on chartered land, ≥ 3 tiles from a Preserve; each run fills over params.terrain.fill.days
+    row({ n: 47, name: 'Dredge & Fill', kind: 'drag', cost: BSU.params.terrain.fill.cost, upkeep: 0, placeRule: PLACE.FILL,
+      effects: { ecologyPerTile: -1 / BSU.params.terrain.fill.ecologyPer, special: ['fill'] },
+      paint: flat(['#8A7A5A', '#5E5238'], ['pipes']),
+      why: 'Spoil from the bayou raises marsh to dry land. Ecology pays.',
+      desc: 'Marsh only, on chartered land; $40k a tile, ten days to fill; −1 ecology per 4 tiles (permanent); refused within 2 tiles of a Preserve; the tile becomes Dry ground.' })
   ];
   const catalog = {};
   for (const r of catalogList) catalog[r.id] = r;
@@ -2610,6 +2628,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     const ids = catalogList.filter(r => r.tab === t[0] && r.id !== 'founders_hall').map(r => r.id);
     const order = TAB_ORDER[t[0]];
     if (order) ids.sort((a, b) => order.indexOf(a) - order.indexOf(b));
+    if (t[0] === 'swamp') { const k = ids.indexOf('dredge_fill'), c = ids.indexOf('canal'); if (k >= 0 && c >= 0) { ids.splice(k, 1); ids.splice(ids.indexOf('canal') + 1, 0, 'dredge_fill'); } }   // L3: Dredge & fill sits right after the canal
     tabs.push({ id: t[0], name: t[1], rows: ids });
   }
 
@@ -3293,7 +3312,8 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     ['Flagship', '10,000 students and prestige 60', { effect: 'titleCampus' }],
     ['Laissez les Bons Temps Rouler', '20,000 students, prestige 85, ecology ≥ 50', {}],
     ['Untouched', 'Reach Flagship without draining a single marsh tile', {}],
-    ['Land Baron', 'Charter 5 sections at the Land Office', { prestige: 2 }]   // L2
+    ['Land Baron', 'Charter 5 sections at the Land Office', { prestige: 2 }],   // L2
+    ['Reclaimed', 'Fill 50 marsh tiles to dry land with Dredge & Fill', {}]   // L3
   ];
   const RETIRED_MILESTONES = { gatorWrangler: true, sunbather: true };   // calm alerts + ambient gators pass: never earned again, hidden in the panel
   const milestones = BSU.MILESTONES.map(function (id, i) {
@@ -3553,6 +3573,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
   requirements.place[PLACE.MARSH_OR_PRESERVE] = { glyph: '🌊', text: 'Marsh or Wetland Preserve only' };
   requirements.place[PLACE.BARRIER] = { glyph: '↔', text: 'Drag across the mouth of the bayou' };
   requirements.place[PLACE.RESTORE] = { glyph: '🖌', text: 'Paint drained land back to marsh' };
+  requirements.place[PLACE.FILL] = { glyph: '↔', text: 'Drag over marsh on your own land, away from a Preserve' };   // L3
   requirements.place[PLACE.UPGRADE] = { glyph: '⤴', text: 'Click a standing building to lift it' };
   /** the 60-second coach-mark tour (ui.js; first game only, replayable from Settings); target = a BSU.ui.el key, '' = none */
   const coach = [
@@ -3594,8 +3615,8 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     try {
       const D = BSU.data, L = D.catalogList, C = D.catalog;
       // 1. row count and numbering
-      check(L.length === 46, 'catalogList.length === 46 (got ' + L.length + ')');
-      check(Object.keys(C).length === 46, 'catalog has 46 keys');
+      check(L.length === 47, 'catalogList.length === 47 (got ' + L.length + ')');   // L3: dredge_fill
+      check(Object.keys(C).length === 47, 'catalog has 47 keys');
       for (let i = 0; i < L.length; i++) {
         check(L[i].n === i + 1, 'row ' + (i + 1) + ' has n ' + L[i].n);
         check(C[L[i].id] === L[i], 'catalog[' + L[i].id + '] is the same object as catalogList[' + i + ']');
@@ -3670,7 +3691,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
       check(D.students.modernShare === 0.25 && D.students.nicknameShare === 0.12, 'student shares');
       check(D.voiceCards.length === 12 && D.voiceCards.every((c, i) => c.id === BSU.VOICE_CARDS[i]), '12 voice cards in BSU.VOICE_CARDS order');
       check(D.boardCards.length === 8 && D.boardCards.every((c, i) => c.id === BSU.BOARD_CARDS[i]), '8 board cards in BSU.BOARD_CARDS order');
-      check(D.milestones.length === 27 && D.milestones.every((m, i) => m.id === BSU.MILESTONES[i] && m.name.length > 0 && m.text.length > 0), '27 milestones in BSU.MILESTONES order');   // L2: landBaron
+      check(D.milestones.length === 28 && D.milestones.every((m, i) => m.id === BSU.MILESTONES[i] && m.name.length > 0 && m.text.length > 0), '28 milestones in BSU.MILESTONES order');   // L2: landBaron, L3: reclaimed
       const objIds = Object.keys(D.objectives);
       check(objIds.length === 25 && BSU.OBJECTIVE_IDS.every(id => !!D.objectives[id]), '25 objectives keyed by BSU.OBJECTIVE_IDS');
       for (const id of objIds) {
@@ -3688,7 +3709,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
       // 7b. UX tables: a guide line for every objective (+ the accreditation pair), needs/requirements/coach shapes
       for (const id of BSU.OBJECTIVE_IDS.concat(['p1', 'p2'])) { const g = D.guide[id]; check(!!g && g.why.length > 0 && Array.isArray(g.build) && g.build.every(b => !!C[b]), 'guide ' + id); }
       check(['beds', 'seats', 'dining', 'power', 'water', 'wastewater', 'parking'].every(k => D.needs[k] && !!C[D.needs[k].build] && D.needs[k].label.length > 0), 'needs table');
-      check(['power', 'water', 'path', 'road', 'marsh'].every(k => D.requirements[k].glyph && D.requirements[k].text) && Object.keys(D.requirements.place).length === 16, 'requirements table');
+      check(['power', 'water', 'path', 'road', 'marsh'].every(k => D.requirements[k].glyph && D.requirements[k].text) && Object.keys(D.requirements.place).length === 17, 'requirements table')   // L3: + PLACE.FILL;
       check(D.coach.length === 6 && D.coach.every(c => c.id && c.title && c.text.length > 0 && typeof c.target === 'string'), '6 coach steps');
       check(D.keys.some(k => k.key === 'g' && k.action === 'buildMenu' && !k.ctrl && !k.shift) && !D.keys.some(k => k.key === 'q'), 'G opens the build menu; Q stays unbound');
       check(D.overlays.length === 6 && D.overlays[2].legend.join() === 'Ambient,Annoying,Biblical,State Bird', '6 overlays, K legend');
@@ -3766,7 +3787,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
       }
       for (const k of Object.keys(D.opponents)) { const o = D.opponents[k]; check(['ground', 'balanced', 'air'].indexOf(o.style) >= 0 && Number.isInteger(o.defBias) && Math.abs(o.defBias) <= 4 && o.colors.length === 2 && o.colors.every(c => /^#[0-9A-Fa-f]{6}$/.test(c)), 'opponent ' + k + ' has style, defBias ±4 and two colors'); }
       check(D.coaches.every(c => ['ground', 'balanced', 'air'].indexOf(c.style) >= 0), 'every coach has a playbook style');
-      notes.push('ticker 62, storms 26, gators 14, milestones 27, objectives 25, keys ' + D.keys.length + ', football formations ' + Object.keys(D.football.formations).length + ', archetypes ' + D.football.prospects.archetypes.length);
+      notes.push('ticker 62, storms 26, gators 14, milestones 28, objectives 25, keys ' + D.keys.length + ', football formations ' + Object.keys(D.football.formations).length + ', archetypes ' + D.football.prospects.archetypes.length);
     } catch (e) {
       fails.push('threw: ' + ((e && e.message) || String(e)));
     }
@@ -4293,16 +4314,17 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     } catch (e) { fail('paradeRoute', e); return []; }
   };
 
-  /** Marsh within Chebyshev 2 of any footprint tile or surface 1–3 tile (wildlife's mosquito nursery rule); cached mask */
+  /** Marsh within Chebyshev 2 of any footprint tile, surface 1–3 tile or Dredge & fill tile in progress (wildlife's mosquito nursery rule); cached mask */
   M.isDisturbedMarsh = function (state, i) {
     try {
       if (!validI(i)) return false;
       const c = ensure(state);
       if (!c.disturbed) {
         const t = state.tiles, mask = new Uint8Array(N), rad = P.wildlife.mosq.disturbRadius;
+        const bm = buildingsMod(), fm = (bm && typeof bm.fillMask === 'function') ? bm.fillMask(state) : null;   // L3: a Dredge & fill tile in progress disturbs the marsh around it like a path does
         for (let k = 0; k < N; k++) {
           const s = t.surface[k];
-          if (t.owner[k] < 0 && !(s === SURF.PATH || s === SURF.ROAD || s === SURF.BOARDWALK || s === SURF.BRIDGE)) continue;
+          if (t.owner[k] < 0 && !(s === SURF.PATH || s === SURF.ROAD || s === SURF.BOARDWALK || s === SURF.BRIDGE) && !(fm && fm[k])) continue;
           const tx = (k % W), ty = ((k / W) | 0);
           for (let dy = -rad; dy <= rad; dy++) { const y = ty + dy; if (y < 0 || y >= H) continue; for (let dx = -rad; dx <= rad; dx++) { const x = tx + dx; if (x >= 0 && x < W) mask[y * W + x] = 1; } }
         }
@@ -10767,7 +10789,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
   const T = BSU.T, SURF = BSU.SURF, FLAG = BSU.FLAG, PLACE = BSU.PLACE, EV = BSU.EV;
   let W = 64, H = 64, N = 4096;
   BSU.onMap(function (m) { W = m.W; H = m.H; N = m.N; });   // L1: the live map size (refreshed inside BSU.setMap, before any allocation)
-  const PB = P.build, PE = P.econ, PS = P.storm, PSUB = P.subsidence, PH = P.hydro;
+  const PB = P.build, PE = P.econ, PS = P.storm, PSUB = P.subsidence, PH = P.hydro, PF = P.terrain.fill;   // PF: L3 Dredge & fill
 
   // Local constants for numbers the GDD states but BSU.params does not carry
   // (listed in docs/INTEGRATION_NOTES.md '## buildings.js').
@@ -10870,6 +10892,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
         heat: new Float32Array(N), mosq: new Float32Array(N), noise: new Float32Array(N)
       },
       undo: null,
+      fillMask: null, fillRev: -1,   // L3: Uint8Array (stage + 1 per tile of a run in progress), rebuilt when state.fill.rev changes
       pendingPulses: [],
       pendingRolls: false, rollsApplied: false, toppled: [],
       boilWindow: false, boilWaterFlag: false,
@@ -11413,6 +11436,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     const surf = state.tiles.surface[i], owner = state.tiles.owner[i];
     const water = !isLand(state, i);
     if (isMound(state, i)) return 'The Mounds';
+    if (row.placeRule !== PLACE.FILL && fillBusy(state, i)) return 'Being filled';   // L3: a tile in a Dredge & fill run takes nothing else until it is dry ground (the tie search goes through here too)
     switch (row.placeRule) {
       case PLACE.PATH:
         if (water) return 'Not on water';
@@ -11468,6 +11492,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
         if (surf === SURF.PATH || surf === SURF.ROAD) return 'Occupied';
         if (isPreserve(state, i)) return 'Already preserved';
         return '';
+      case PLACE.FILL: return fillRule(state, i);   // L3
       default:
         return '';
     }
@@ -11578,6 +11603,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
       for (const i of tiles) {
         if (isMound(state, i)) return fail(r, 'The Mounds');
         if (isPreserve(state, i) && row.id !== 'rookery') return fail(r, 'Preserve');
+        if (fillBusy(state, i)) return fail(r, 'Being filled');   // L3
       }
       // 5. free + the Founders' reservation
       if (row.id === 'founders_hall') {
@@ -11775,6 +11801,138 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     for (const [x, y] of order) { if (!BSU.inBounds(x, y)) continue; const i = BSU.idx(x, y); if (edges.indexOf(i) >= 0 && free(i)) return i; }
     return -1;
   }
+  // ---------------------------------------------------------------------------
+  // Dredge & fill (PLAN_PATHS_LAND Track L3). A drag tool over Marsh: every tile of a run is charged on commit, takes
+  // params.terrain.fill.days calendar days (one timer per run) and then becomes Dry ground (elevation raised to
+  // fill.raiseTo, depth / sat cleared, through terrain.setElev so the type, the walk grid, hydro's tables and the chunk
+  // follow). The ecology cost (−1 per fill.ecologyPer tiles) is a permanent one-time term taken at commit. State:
+  // state.fill = {runs: [{id, day0, day1, stage, tiles}], nextId, rev, done, runsDone}; rev bumps whenever the per-tile
+  // mask changes (a tile joined / left a run, a stage grew), so render and terrain re-read fillMask lazily.
+  // ---------------------------------------------------------------------------
+  function fillState(state) {
+    let f = state.fill;
+    if (!f || typeof f !== 'object') f = state.fill = { runs: [], nextId: 1, rev: 0, done: 0, runsDone: 0 };
+    if (!Array.isArray(f.runs)) f.runs = [];
+    if (!isNum(f.nextId) || f.nextId < 1) f.nextId = 1;
+    if (!isNum(f.rev)) f.rev = 0;
+    if (!isNum(f.done)) f.done = 0;
+    if (!isNum(f.runsDone)) f.runsDone = 0;
+    return f;
+  }
+  function fillRunOf(state, id) { const rs = fillState(state).runs; for (let k = 0; k < rs.length; k++) if (rs[k] && rs[k].id === id) return rs[k]; return null; }
+  /** Uint8Array over tiles: stage + 1 for every tile of a run in progress, 0 elsewhere; null when nothing is filling (render's spoil mound, terrain's mosquito rule, the placement refusals) */
+  M.fillMask = function (state) {
+    try {
+      if (!state || !state.tiles) return null;
+      const f = fillState(state); if (!f.runs.length) return null;
+      const c = cache(state);
+      if (!c.fillMask || c.fillRev !== f.rev || c.fillMask.length !== N) {
+        const m = new Uint8Array(N);
+        for (const run of f.runs) for (const i of run.tiles) if (i >= 0 && i < N) m[i] = 1 + (run.stage | 0);
+        c.fillMask = m; c.fillRev = f.rev;
+      }
+      return c.fillMask;
+    } catch (e) { if (BSU.SELFTEST) throw e; BSU.error('buildings', 'fillMask', e); return null; }
+  };
+  function fillBusy(state, i) { const m = M.fillMask(state); return !!(m && m[i]); }
+  /** a Preserve tile within params.terrain.fill.preserveRadius (Chebyshev) of tile i (the tile itself included) */
+  function nearPreserve(state, i) {
+    const r = Math.max(0, fin(PF.preserveRadius, 2) | 0), tx = (i % W), ty = ((i / W) | 0), fl = state.tiles.flags;
+    for (let y = Math.max(0, ty - r); y <= Math.min(H - 1, ty + r); y++) for (let x = Math.max(0, tx - r); x <= Math.min(W - 1, tx + r); x++) if (fl[y * W + x] & FLAG.PRESERVE) return true;
+    return false;
+  }
+  /** the Dredge & fill rule for one tile: '' or the refusal reason (water, dry ground, protected marsh, occupied …) */
+  function fillRule(state, i) {
+    const tl = state.tiles, t = tl.type[i];
+    if (!isLand(state, i)) return 'Not on water';
+    if (fillBusy(state, i)) return 'Already filling';
+    if (t === T.DRY || t === T.HIGH) return 'Already dry ground';
+    if (!isMarsh(state, i)) return 'Marsh only';
+    if (nearPreserve(state, i)) return 'Protected marsh';
+    if (tl.owner[i] >= 0 || tl.surface[i] !== SURF.NONE || tl.crest[i] > 0 || isCanal(state, i)) return 'Occupied';
+    return '';
+  }
+  /** the quote of a drag run (or any tile list): which tiles would fill, which are skipped and why, the cash, the ecology and the days.
+   *  {n, tiles (eligible, in order), skipped [{i, reason}], reason (the first refusal), charter (the first charter refusal), unit, cost, ecology, days, affordable} */
+  M.fillQuote = function (state, tiles) {
+    const out = { n: 0, tiles: [], skipped: [], reason: '', charter: null, unit: 0, cost: 0, ecology: 0, days: fin(PF.days, 10), affordable: true };
+    try {
+      const row = rowOf('dredge_fill');
+      if (!state || !state.tiles || !row || !Array.isArray(tiles)) { out.reason = 'Unknown building'; return out; }
+      const seen = new Set();
+      for (const i of tiles) {
+        if (!Number.isInteger(i) || i < 0 || i >= N || seen.has(i)) continue;
+        seen.add(i);
+        const r = M.canPlace(state, 'dredge_fill', (i % W), ((i / W) | 0), { ignoreCash: true });
+        if (r.ok) { out.tiles.push(i); out.cost += r.cost; out.unit = r.cost; }
+        else { out.skipped.push({ i: i, reason: r.reason }); if (!out.reason) out.reason = r.reason; if (!out.charter && r.charter) out.charter = r.charter; }
+      }
+      out.n = out.tiles.length;
+      out.ecology = -out.n * Math.abs(fin(row.effects.ecologyPerTile, 0));
+      out.affordable = canAfford(state, out.cost);
+      if (!out.n && !out.reason) out.reason = 'Marsh only';
+      else if (out.n) out.reason = '';
+    } catch (e) { if (BSU.SELFTEST) throw e; BSU.error('buildings', 'fillQuote', e); }
+    return out;
+  };
+  /** the run a drag commit adds its tiles to (created with the first tile: one timer, one ticker line, one undo record) */
+  function startFillRun(state, undoRec, day) {
+    const f = fillState(state);
+    if (undoRec.fillRun && f.runs.indexOf(undoRec.fillRun) >= 0) return undoRec.fillRun;
+    const run = { id: f.nextId++, day0: day, day1: day + Math.max(1, fin(PF.days, 10) | 0), stage: 0, tiles: [] };
+    f.runs.push(run); undoRec.fillRun = run;
+    return run;
+  }
+  /** undo: the tile leaves its run (an empty run disappears) */
+  function cancelFillTile(state, runId, i) {
+    const f = fillState(state), run = fillRunOf(state, runId); if (!run) return;
+    const k = run.tiles.indexOf(i); if (k >= 0) run.tiles.splice(k, 1);
+    if (!run.tiles.length) f.runs.splice(f.runs.indexOf(run), 1);
+    f.rev++;
+  }
+  function fillStageOf(run, day) {
+    const st = Math.max(1, fin(PF.stages, 3) | 0), span = Math.max(1, run.day1 - run.day0);
+    return BSU.clamp(Math.floor(st * (day - run.day0) / span), 0, st - 1);
+  }
+  /** a run reaches its day: every tile becomes Dry ground (depth / sat / standing water cleared, elevation raised, reclassified, re-walked, hydro told, chunk re-baked) */
+  function completeFillRun(state, run) {
+    const tl = state.tiles, f = fillState(state), landSat = fin(PH.initial && PH.initial.landSat, 0.5);
+    let n = 0;
+    for (const i of run.tiles) {
+      if (!(i >= 0 && i < N) || !isLand(state, i)) continue;
+      tl.depth[i] = 0; tl.stand[i] = 0; tl.sat[i] = landSat;
+      if (tl.flags[i] & FLAG.DRAINED) { tl.flags[i] &= ~FLAG.DRAINED; }   // hydro flipped it while it filled: dry ground is not "drained marsh"
+      setElev(state, i, Math.max(fin(PF.raiseTo, 4), tl.elev[i]));
+      rewalk(state, i); touch(state, i, 'decor');
+      n++;
+    }
+    f.done += n; f.runsDone++;
+    if (n > 0) call('progress', 'ticker', [state, n === 1 ? 'Dredge crews finished a tile of new ground. The marsh took it personally.' : 'Dredge crews finished {n} tiles of new ground. The marsh took it personally.', { n: n }, 'info', run.tiles[0]], null);
+    return n;
+  }
+  /** once a day: finish the runs whose day has come, grow the spoil mound of the rest */
+  function fillDaily(state, day) {
+    const f = state && state.fill; if (!f || !Array.isArray(f.runs) || !f.runs.length) return;
+    let changed = false;
+    for (let k = f.runs.length - 1; k >= 0; k--) {
+      const run = f.runs[k];
+      if (day >= run.day1) { completeFillRun(state, run); f.runs.splice(k, 1); changed = true; continue; }
+      const st = fillStageOf(run, day);
+      if (st !== run.stage) { run.stage = st; changed = true; for (const i of run.tiles) touch(state, i, 'decor'); }
+    }
+    if (changed) { f.rev++; cache(state).statsCache = null; }
+  }
+  /** {tiles (in progress), runs, done (tiles completed), runsDone, nextDay (the next completion day or −1)} for the panels and the tests */
+  M.fillStats = function (state) {
+    const out = { tiles: 0, runs: 0, done: 0, runsDone: 0, nextDay: -1 };
+    try {
+      if (!state) return out;
+      const f = fillState(state);
+      for (const run of f.runs) { out.tiles += run.tiles.length; out.runs++; if (out.nextDay < 0 || run.day1 < out.nextDay) out.nextDay = run.day1; }
+      out.done = f.done; out.runsDone = f.runsDone;
+    } catch (e) { if (BSU.SELFTEST) throw e; BSU.error('buildings', 'fillStats', e); }
+    return out;
+  };
   /** one undo record per placement or run: entries (reverse-applied by undo), the full cost, and a label for the Undo chip */
   function pushUndo(state, rec, id) {
     const row = rowOf(id); let n = 0, nb = 0;
@@ -11804,6 +11962,13 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
         break;
       case PLACE.PRESERVE:
         setFlag(state, i, FLAG.PRESERVE, true); break;
+      case PLACE.FILL: {   // L3: the tile joins this drag's run (one timer, one ticker line); the ecology cost is taken now and given back by undo
+        const run = startFillRun(state, undoRec, day);
+        run.tiles.push(i); fillState(state).rev++;
+        ent.fill = run.id; ent.eco = fin(row.effects.ecologyPerTile, 0);
+        if (ent.eco) call('wildlife', 'applyEcologyOnce', [state, ent.eco], null);
+        break;
+      }
       default: break;
     }
     ent.post = { surface: tl.surface[i], crest: tl.crest[i], flags: tl.flags[i] & (FLAG.CANAL | FLAG.PRESERVE), owner: tl.owner[i] };
@@ -12056,6 +12221,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
       if (e.kind === 'tile' && e.post) {
         const i = e.prev.i, q = e.post;
         if (tl.surface[i] !== q.surface || (tl.crest[i] > 0) !== (q.crest > 0) || (tl.flags[i] & (FLAG.CANAL | FLAG.PRESERVE)) !== q.flags || tl.owner[i] !== q.owner) return "Can't undo: that ground has been changed since";
+        if (e.fill) { const fr = fillRunOf(state, e.fill); if (!fr || fr.tiles.indexOf(i) < 0) return "Can't undo: that ground has been changed since"; }   // L3: the run finished (or was cancelled) since
       } else if (e.kind === 'building') {
         const b = state.buildings[e.id];
         if (!b || b.type !== e.type) return "Can't undo: that building is gone or replaced";
@@ -12090,6 +12256,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
           if (tl.crest[i] !== p.crest || tl.integrity[i] !== p.integrity) { tl.crest[i] = p.crest; tl.integrity[i] = p.integrity; markLeveeChange(state, i); }
           if (Math.abs(tl.elev[i] - p.elev) > 1e-6) setElev(state, i, p.elev);
           if (e.eco) call('wildlife', 'applyEcologyOnce', [state, -e.eco], null);
+          if (e.fill) cancelFillTile(state, e.fill, i);   // L3: the tile leaves its run; an empty run disappears
           rewalk(state, i); touch(state, i, 'decor');
         } else if (e.kind === 'eco') {
           call('wildlife', 'applyEcologyOnce', [state, -e.amount], null);
@@ -13351,6 +13518,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
       }
     }
     c.generatorsRunning = genRunning;
+    fillDaily(state, day);   // L3: Dredge & fill runs advance, finish and turn their tiles to dry ground
     if (autoRepair) M.repairAllLevees(state);
     boardCrews(state, day);
     checkBoilWater(state);
@@ -24763,7 +24931,38 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     }
     return { w: TW, h: TH, ox: -(TW >> 1), oy: -(TH >> 1) };
   });
+  // L3 Dredge & fill: mound variants 1–3 are the SPOIL HEAP of a run in progress (stage 0–2; HD only: this registration replaces the pen painter of the family), 60×36 anchored (−30, −26): a wet mud heap
+  // that grows with the stage, a darker apron where the slurry runs out, and the steel dredge pipe lying in from the north-west with
+  // its flanges and the outflow at the crown. Variant 0 stays the grassy Mound.
+  function spoilHD(ctx, spec, stage) {
+    const Br = B(); const g = Br.begin(ctx, 60, 36, spec), env = g.env, lod = env.lod;
+    const s = clamp(stage | 0, 0, 2), seed = hash(0x5b0, s), cx = 30, base = 27;
+    const rx = 10 + s * 5.5, hgt = 4.5 + s * 4.2, ry = 4.2 + s * 1.7;
+    Br.softEllipse(ctx, cx, base + 1.2, rx + 7, ry + 3.4, AO, 0.38, 0.3);                       // the ground shadow
+    Br.softEllipse(ctx, cx, base + 0.4, rx + 5, ry + 2.2, 'marshMud', 0.85, 0.5);               // the wet apron where the slurry spreads
+    Br.orb(ctx, cx, base - hgt * 0.42, rx, ry + hgt * 0.55, 'marshMud', -0.12, { spec: 0.14 }); // the heap: dark wet mud
+    Br.orb(ctx, cx - 1.2, base - hgt * 0.8, rx * 0.66, (ry + hgt * 0.55) * 0.6, 'dirt', 0.08, { noRim: true, spec: 0.2 });   // the drying crown
+    for (let k = 0; k < 6 + s * 2; k++) {                                                        // spoil clods and drying cracks
+      const a = (hash(seed, 11 + k) % 1000) / 1000, b = (hash(seed, 31 + k) % 1000) / 1000;
+      const x = cx + (a - 0.5) * rx * 1.5, y = base - hgt * (0.2 + b * 0.7);
+      if (lod > 0 && (k & 1)) continue;
+      Br.orb(ctx, x, y, 1.1 + a * 1.3, 0.8 + b * 0.5, k % 3 === 0 ? 'sand' : 'dirt', (k & 1) ? 0.25 : -0.3, { noRim: true, spec: 0 });
+    }
+    // the dredge pipe: in from the north-west tile edge to the crown, along the iso axis (2 px across per 1 px down)
+    const x1 = cx - 3, y1 = base - hgt * 0.95 - 1, x0 = 12, y0 = y1 - (x1 - x0) / 2;
+    const px = (t) => x0 + (x1 - x0) * t, py = (t) => y0 + (y1 - y0) * t;
+    Br.softEllipse(ctx, (x0 + x1) / 2 + 1, (y0 + y1) / 2 + 4.2, (x1 - x0) / 2 + 2, 2.2, AO, 0.3, 0.3);    // its shadow on the ground
+    Br.stroke(ctx, [[x0, y0], [x1, y1]], 4.2, '#22232B', -0.2, 1, { cap: 'round' });              // the dark under-edge
+    Br.stroke(ctx, [[x0, y0 - 0.4], [x1, y1 - 0.4]], 3.2, '#8E9299', 0.05, 1, { cap: 'round' });  // the steel body
+    Br.stroke(ctx, [[x0 + 1, y0 - 1.2], [x1 - 1, y1 - 1.2]], 1, '#D8DCE2', 0.4, 0.8, { cap: 'round' });   // the lit thread
+    for (let k = 1; k <= 2; k++) { const t = k / 3; Br.stroke(ctx, [[px(t), py(t) - 2.2], [px(t) + 0.2, py(t) + 2.1]], 1.3, k === 2 ? '#B8651E' : '#4A4D57', -0.1, 1, { cap: 'butt' }); }   // flanges: steel joint, rust joint
+    Br.orb(ctx, x1, y1 + 0.5, 3.2, 2, '#2A2A33', -0.2, { noRim: true, spec: 0 });                  // the mouth
+    Br.softEllipse(ctx, x1 + 4.5, y1 + 4.6, 5.5 + s, 2.3, 'marshMud', 0.9, 0.5);                  // the slurry running off the crown
+    Br.stroke(ctx, [[x1 + 2, y1 + 4.2], [x1 + 6 + s, y1 + 5.4]], 0.9, '#D8CFA8', 0.2, lod > 0 ? 0.18 : 0.3, { cap: 'round' });   // a wet glint on it
+    return { w: g.w, h: g.h, ox: -30, oy: -26 };
+  }
   M.registerHD('mound', function (ctx, spec) {
+    if ((spec.variant | 0) >= 1) return spoilHD(ctx, spec, (spec.variant | 0) - 1);   // L3: variants 1–3 = the spoil heap of a Dredge & fill run
     const Br = B(); const g = Br.begin(ctx, 24, 14, spec), env = g.env;
     Br.softEllipse(ctx, 12, 13, 11.5, 1.6, AO, 0.45, 0.3);
     Br.orb(ctx, 12, 8.2, 11.5, 5.6, 'highGrass', 0.05, { spec: 0.22 });
@@ -27567,6 +27766,12 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
       pl.items.push({ id: 'preservePost', v: 9, ax: 0, ay: 0 });
       for (const r of [[-7, -1, 0], [6, 1, 1], [-1, 7, 2]]) pl.items.push({ id: 'reeds', v: r[2], ax: r[0], ay: r[1] });
       pl.items.push({ id: 'preservePost', v: 6, ax: 0, ay: 0 });
+    } else if (id === 'dredge_fill') {   // L3: a marsh patch with the finished spoil heap (mound variant 3) and its dredge pipe, a reed tuft beside it
+      pl.ground = 'marsh'; pl.T = 58;
+      pl.poly = [uv(-0.6, -0.6), uv(0.6, -0.6), uv(0.6, 0.6), uv(-0.6, 0.6)];
+      pl.items.push({ id: 'reeds', v: 0, ax: -17, ay: 6 });
+      pl.items.push({ id: 'mound', v: 3, ax: 0, ay: 4 });
+      pl.items.push({ id: 'reeds', v: 1, ax: 17, ay: 7 });
     } else if (id === 'live_oak' || id === 'cypress' || id === 'azalea') {
       pl.ground = 'grass';
       if (id === 'live_oak') { pl.items.push({ id: 'oak', v: M.treeVariant(2, false, false, 0), ax: 0, ay: 0 }); pl.poly = diamondPts(56, 28); pl.T = ICON_BOX; }
@@ -32782,6 +32987,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     const t = state.tiles, elev = t.elev, type = t.type, fl = t.flags, surf = t.surface, crest = t.crest, integ = t.integrity, depth = t.depth;
     markCypress(state);
     const cv = ensureCurves(state), deck = cv ? cv.deck : null;
+    const fillM = (BSU.buildings && typeof BSU.buildings.fillMask === 'function') ? BSU.buildings.fillMask(state) : null;   // L3: stage + 1 per tile of a Dredge & fill run in progress (null = none)
     if (ch.deck) { try { ch.deckCtx.setTransform(1, 0, 0, 1, 0, 0); ch.deckCtx.clearRect(0, 0, ch.deck.width, ch.deck.height); } catch (e) { /* stub */ } }
     ch.deckTiles = [];
     const bx = ch.cx * CS, by = ch.cy * CS;
@@ -32853,6 +33059,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
         // (h) preserve posts, (i) mounds
         if (f & FLAG.PRESERVE) { const v = flagMask(fl, i, tx, ty, FLAG.PRESERVE, true); if (v) { ref = tref('preservePost', v, 0, 1); if (ref) blit1(g, ref, wx, wy); } }
         if (f & FLAG.MOUND) { ref = tref('mound', 0, 0, 1); if (ref) blit1(g, ref, wx, wy); }
+        if (fillM !== null && fillM[i] > 0) { ref = tref('mound', fillM[i], 0, 1); if (ref) blit1(g, ref, wx, wy); }   // L3: the spoil heap and its dredge pipe (mound variants 1–3 = stage 0–2)
         if (f & FLAG.DEBRIS) { ref = tref('decal:debris', 0, hash(tx, ty) & 3, 1); if (ref) blit1(g, ref, wx, wy); }
         if (isDeck && cv) { try { bakeDeckTile(ch, g, cv, i, tx, ty, sf, ep, state); } catch (err) { rerr('deck:bake', err); } }
       }
@@ -34271,6 +34478,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     // ghost preview
     const gs = ghostSpec;
     if (gs) {
+      if (Array.isArray(gs.skipTiles) && gs.skipTiles.length) { g.globalAlpha = C.ghostAlpha * 0.55; g.fillStyle = OV_COLORS.bad; for (let k = 0; k < gs.skipTiles.length; k++) { const i = gs.skipTiles[k] | 0; if (i < 0 || i >= N) continue; tileDiamondScreen(i, tmpPt); fillDiamond(g, tmpPt.x, tmpPt.y, w, h, step); } }   // L3: the tiles of a drag the tool will skip, in red
       if (Array.isArray(gs.tiles)) { g.globalAlpha = C.ghostAlpha; g.fillStyle = gs.color || GOLD; for (let k = 0; k < gs.tiles.length; k++) { const i = gs.tiles[k] | 0; if (i < 0 || i >= N) continue; tileDiamondScreen(i, tmpPt); fillDiamond(g, tmpPt.x, tmpPt.y, w, h, step); } }
       // connector pass: the gravel tie a footprint placement would lay, in the path drag's own ghost style
       if (Array.isArray(gs.connectorTiles)) { g.globalAlpha = C.ghostAlpha; g.fillStyle = gs.color || GOLD; for (let k = 0; k < gs.connectorTiles.length; k++) { const i = gs.connectorTiles[k] | 0; if (i < 0 || i >= N) continue; tileDiamondScreen(i, tmpPt); fillDiamond(g, tmpPt.x, tmpPt.y, w, h, step); } }
@@ -36748,7 +36956,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
   const SKY_GLYPH = ['🌅', '☀', '🌅', '🌆', '🌙'];
   const SKY_NAME = ['Dawn', 'Day', 'Golden', 'Dusk', 'Night'];
   const MOOD_FACES = ['😞', '🙁', '😐', '🙂', '😄'];
-  const HINT_TEXT = { saveUnavailable: 'Saves unavailable in this browser mode', perfMode: 'Performance mode', mute: '🔊 on · M to mute', pauseToPlan: 'Pause to plan', desireLine: 'Students want a path here' };
+  const HINT_TEXT = { dredgeFill: 'Dredge spoil from the bayou raises marsh to dry land in ten days. Ecology pays for it.', saveUnavailable: 'Saves unavailable in this browser mode', perfMode: 'Performance mode', mute: '🔊 on · M to mute', pauseToPlan: 'Pause to plan', desireLine: 'Students want a path here' };
   const PANEL_KEYS = { budget: 'Budget', season: 'Season', storm: 'Storm', land: 'Land Office', almanac: 'Almanac', milestones: 'Milestones', settings: 'Settings', debug: 'Debug' };   // L2: land
 
   // ---------------------------------------------------------------------------
@@ -37485,7 +37693,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     }
   }
   /** paths pass: true while the map shows the network (N held, or any drag tool armed): render_fx's sheen / amber dash / Campus hub badge */
-  M.networkView = function () { try { if (heldN) return true; const s = stateOf(); const t = s && s.ui ? s.ui.tool : null; const row = t ? rowOf(t.id) : null; return !!(row && row.kind === 'drag'); } catch (e) { return false; } };
+  M.networkView = function () { try { if (heldN) return true; const s = stateOf(); const t = s && s.ui ? s.ui.tool : null; const row = t ? rowOf(t.id) : null; return !!(row && row.kind === 'drag' && row.placeRule !== PLACE.FILL); } catch (e) { return false; } };   // L3: the campus network view is for paths; the Dredge & Fill drag has its own preview
   /** keyup(key) (also headless): Shift / Alt / I / N releases */
   M.keyup = function (key) { try { keyup(String(key)); } catch (e) { uerr('keyup', e); } };
   /** keydown(key, mods) → true when handled (also headless.key) */
@@ -37627,6 +37835,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
       if (s.setPiece && !toolLocked && id !== 'founders_hall') return;
       if (insp && dom()) closeInspectDom();
       mcStep(live, { type: 'tool', id: id, px: lastPx, py: lastPy });
+      if (id === 'dredge_fill') M.hint(s, 'dredgeFill');   // L3: one line, once per save, the first time the Dredge & Fill tool is armed
     } catch (e) { uerr('selectTool', e); }
   };
   M.tool = function () { const s = stateOf(); return s && s.ui ? s.ui.tool : null; };
@@ -37702,19 +37911,23 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
   function sinkText(sk) { if (!sk) return ''; if (typeof sk === 'string') return sk; if (typeof sk !== 'object') return ''; if (sk.text) return sk.text; return Number.isFinite(sk.rate) ? 'Wet ground: sinks ' + sk.rate + ' ft/yr' + (Number.isFinite(sk.year) ? ' · needs Pilings by Y' + sk.year : '') + (Number.isFinite(sk.retrofit) ? ' (' + money(sk.retrofit) + ' later)' : '') : ''; }
   function ridgeText(rf) { if (!rf) return ''; if (typeof rf === 'string') return rf; if (typeof rf !== 'object') return ''; if (rf.text || rf.reason) return rf.text || rf.reason; return Number.isFinite(rf.tx) ? 'Ridge full · best open site (' + rf.tx + ', ' + rf.ty + ') at ' + rf.elev + ' ft floods at ' + (rf.floodsAt || 'rain') : ''; }
   function drawGhost(s, tool, row, r, g, px, py, dragging) {
-    const color = g.cove ? 'red' : (r.color || (r.ok ? 'green' : 'red'));
+    let color = g.cove ? 'red' : (r.color || (r.ok ? 'green' : 'red'));
     let tiles = r.tiles && r.tiles.length ? r.tiles : [g.ty * W + g.tx];
     if (dragging && live.run.length) tiles = live.run;
+    // L3: a Dredge & Fill drag previews the tiles it WILL fill (the cursor tile alone cannot say), the skipped ones in red, and quotes the whole run
+    const fq = (dragging && row.placeRule === PLACE.FILL && live.run.length) ? call('buildings', 'fillQuote', s, live.run) : null;
+    if (fq) { color = (fq.n === 0 || !fq.affordable) ? 'red' : (fq.skipped.length ? 'yellow' : 'green'); if (fq.n) tiles = fq.tiles; }
     if (g.cove && s.plot && s.plot.cove) tiles = s.plot.cove;
     const conn = (!dragging && !g.cove && r.connector && Array.isArray(r.connector.tiles) && r.connector.tiles.length) ? r.connector : (dragging && r.tie && r.tie.tiles.length ? r.tie : null);   // paths pass: the tie this placement (or this drag's end) would lay
-    const spec = { tiles: tiles, color: color, connectorTiles: null, ringTiles: r.ring && Array.isArray(r.ring.tiles) ? r.ring.tiles : null, label: '', radius: fin(r.radius, 0), radiusCenter: { tx: g.tx, ty: g.ty } };
+    const spec = { tiles: tiles, skipTiles: fq ? fq.skipped.map(function (x) { return x.i; }) : null, color: color, connectorTiles: null, ringTiles: r.ring && Array.isArray(r.ring.tiles) ? r.ring.tiles : null, label: '', radius: fin(r.radius, 0), radiusCenter: { tx: g.tx, ty: g.ty } };
     if (row.kind === 'footprint' || row.kind === 'upgrade') spec.sprite = { id: tool.id, variant: r.needsPilings ? SPR.PILINGS : 0, tx: g.tx, ty: g.ty, rot: tool.rot };
     call('render', 'ghost', spec);
     call('render', 'tiePreview', conn ? { tiles: conn.tiles, surfaces: conn.surfaces || null, snap: !!conn.snap, water: fin(conn.water, 0) } : null);   // render_fx draws it as a dashed gold path (planks over water)
     if (!dom()) return;
     let l1, l2 = '';
     const netRow = !!(row.kind === 'footprint' && row.pathAdjacency && row.id !== 'founders_hall');
-    if (dragging) {
+    if (fq) { const t2 = fillLines(s, fq, r); l1 = t2[0]; l2 = t2[1]; }
+    else if (dragging) {
       const n = live.run.length; const per = fin(r.cost, row.cost) || row.cost; l1 = n + (n === 1 ? ' tile' : ' tiles') + ' · ' + money(per * n);
       if (conn) l1 += ' + ' + money(conn.cost) + (conn.snap ? ' snap' : ' tie');   // "12 tiles · $24k + $8k tie"
       if (r.ring && r.ring.text) l2 = r.ring.text; else if (r.ring && typeof r.ring.closed === 'boolean') l2 = r.ring.closed ? 'closes the ring' : (r.ring.shortText || ('still ' + fin(r.ring.short, 0) + ' tiles short'));
@@ -37732,8 +37945,20 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
       if (netRow) { const st = netStatus(r, conn); l2 = st + (l2 ? ' · ' + l2 : ''); }   // paths pass: Connected / Ties in (+$8k, 4 tiles) / Can't reach a path…
       if (g.setback) l2 = (l2 ? l2 + ' · ' : '') + 'Setback · hold Shift to place flush';
       if (tool.rot) l1 += ' · rotated (R)';
+      if (row.placeRule === PLACE.FILL && r.ok) { const t2 = fillLines(s, { n: 1, cost: fin(r.cost, row.cost), ecology: fin(row.effects.ecologyPerTile, 0), days: fin(BSU.params.terrain.fill.days, 10), skipped: [], affordable: r.affordable !== false }, r); l1 = t2[0]; l2 = 'Drag to fill a run · ' + t2[1]; }   // L3
     }
     ghostLabel(px, py, l1, l2, color);
+  }
+  /** L3: the two ghost lines of a Dredge & Fill quote ({n, cost, ecology, days, skipped, affordable, reason, charter}): "Fills 12 marsh tiles · $480k · 10 days" / the ecology cost or why tiles are skipped */
+  function fillLines(s, q, r) {
+    const n = q.n | 0, days = fin(q.days, 10);
+    if (n <= 0) return [q.reason || (r && r.reason) || 'Cannot fill here', q.charter ? 'State land · click to open the Land Office (O)' : ''];
+    const eco = Math.round(Math.abs(fin(q.ecology, 0)) * 10) / 10, sk = q.skipped || [];
+    const l1 = 'Fills ' + n + ' marsh ' + (n === 1 ? 'tile' : 'tiles') + ' · ' + money(q.cost) + ' · ' + days + ' days';
+    let l2 = eco > 0 ? 'Ecology −' + eco + ' · permanent' : '';
+    if (!q.affordable) l2 = 'Not enough cash' + (l2 ? ' · ' + l2 : '');
+    else if (sk.length) l2 = sk.length + (sk.length === 1 ? ' tile' : ' tiles') + ' skipped: ' + (sk[0].reason || 'not fillable') + (l2 ? ' · ' + l2 : '');
+    return [l1, l2];
   }
   // paths pass: the ghost's network status line (one of three, the Alt note appended) and the drag end's
   function tieReason() { const B = BSU.buildings; return (B && B.TIE_REASON) || "Can't reach a path: draw one from campus first"; }
@@ -37819,7 +38044,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
       call('audio', 'play', 'place'); undoAtMs = clock;
       if (toolLocked) toolLocked = false;
       const tie = r.connector && r.connector.tiles && r.connector.tiles.length ? r.connector : null;
-      if (dom()) ghostLabel(px, py, 'Placed · ' + money(r.cost) + (tie ? ' (incl. ' + money(tie.cost) + ' tie)' : ''), 'Ctrl+Z to undo', 'green');
+      if (dom()) ghostLabel(px, py, row.placeRule === PLACE.FILL ? 'Filling 1 marsh tile · ' + money(r.cost) + ' · ready in ' + fin(BSU.params.terrain.fill.days, 10) + ' days' : 'Placed · ' + money(r.cost) + (tie ? ' (incl. ' + money(tie.cost) + ' tie)' : ''), 'Ctrl+Z to undo', 'green');
       placedHint(s, row, pre);
       if (tie) firstTieCard(s, tie);
       return true;
@@ -37860,7 +38085,10 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     if (placed > 0) {
       undoAtMs = clock;
       const tie = r.tie && r.tie.tiles && r.tie.tiles.length ? r.tie : null;
-      if (dom()) ghostLabel(lastPx, lastPy, placed + (placed === 1 ? ' tile' : ' tiles') + ' · ' + money(r.cost) + (tie ? ' (incl. ' + money(tie.cost) + (tie.snap ? ' snap)' : ' tie)') : ''), 'Ctrl+Z to undo', 'green');
+      if (dom()) {
+        const fillRun = tool.id === 'dredge_fill';   // L3
+        ghostLabel(lastPx, lastPy, fillRun ? 'Filling ' + placed + ' marsh ' + (placed === 1 ? 'tile' : 'tiles') + ' · ' + money(r.cost) + ' · ready in ' + fin(BSU.params.terrain.fill.days, 10) + ' days' : placed + (placed === 1 ? ' tile' : ' tiles') + ' · ' + money(r.cost) + (tie ? ' (incl. ' + money(tie.cost) + (tie.snap ? ' snap)' : ' tie)') : ''), 'Ctrl+Z to undo', 'green');
+      }
       if (tie) firstTieCard(s, tie);
     }
     else {
@@ -39132,7 +39360,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     });
     reg('landFirst', function (s, p) {   // L2: the first section bought, once per save (state.charter.cardSeen)
       p = p || {}; const c = p.counts || {};
-      return { id: 'landFirst', kicker: 'Land Office', title: 'Section ' + fin(p.id, 0) + ' is yours · ' + money(p.cost != null ? p.cost : p.price), body: 'The state sells land in 16 × 16 sections next to your charter: dry ground costs more, swamp is cheap (this one: ' + fin(c.dry, 0) + ' dry, ' + fin(c.high, 0) + ' high, ' + fin(c.marsh, 0) + ' marsh). Build on it like any other land. A Dredge tool that fills marsh into dry ground is coming.', actions: [{ label: 'Open the Land Office', fn: function () { M.openPanel('land'); } }, { label: 'Got it', primary: true }] };
+      return { id: 'landFirst', kicker: 'Land Office', title: 'Section ' + fin(p.id, 0) + ' is yours · ' + money(p.cost != null ? p.cost : p.price), body: 'The state sells land in 16 × 16 sections next to your charter: dry ground costs more, swamp is cheap (this one: ' + fin(c.dry, 0) + ' dry, ' + fin(c.high, 0) + ' high, ' + fin(c.marsh, 0) + ' marsh). Build on it like any other land. The Dredge & Fill tool (Swamp tab) turns marsh inside your charter into dry ground.', actions: [{ label: 'Open the Land Office', fn: function () { M.openPanel('land'); } }, { label: 'Got it', primary: true }] };
     });
     reg('obj8', function (s, p) { return { id: 'obj8', kicker: 'Objective 8', title: 'Capped', body: (p && p.text) || ('Enrollment is capped at ' + fin(p && p.students, 0) + '. Beds, seats and dining set the ceiling.'), actions: [{ label: 'Show me the Budget', fn: function () { M.openPanel('budget'); } }, { label: 'OK', primary: true }] }; });
     reg('voice', function (s, p) { p = p || {}; return { id: 'voice', side: 'voice', voiceId: p.id, student: p.student, major: p.major, text: p.text, payoff: p.payoff }; });
@@ -42549,7 +42777,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
 (function () {
   const BSU = window.BSU;
   const M = (BSU.progress = BSU.progress || {});
-  const EV = BSU.EV, P = BSU.params, PP = P.progress, PT = P.time, PE = P.econ, PS = P.storm, PL = P.land || {};   // L2: PL = the Land Office
+  const EV = BSU.EV, P = BSU.params, PP = P.progress, PT = P.time, PE = P.econ, PS = P.storm, PL = P.land || {}, PFILL = (P.terrain && P.terrain.fill) || {};   // L2: PL = the Land Office; L3: PFILL = Dredge & fill
   let W = 64, HGT = 64, N = 4096;
   BSU.onMap(function (m) { W = m.W; HGT = m.H; N = m.N; });   // L1: the live map size (refreshed inside BSU.setMap, before any allocation)
   const SKY = BSU.SKY, SURF = BSU.SURF, FLAG = BSU.FLAG, T = BSU.T, OBJ = BSU.OBJ, OV = BSU.OV;
@@ -42880,6 +43108,8 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     const m = pr(state).milestones[otherId];
     return !!(m && m.earned && yearOf(m.day) === yearOf(today(state)));
   }
+  /** L3: marsh tiles Dredge & Fill has turned to dry ground (state.fill.done, kept by buildings) */
+  function filledTiles(s) { return fin(s && s.fill && s.fill.done, 0); }
   const MILESTONE_COND = {
     chartered: null, welcome: null, cajunEngineer: null, wetFeet: null, stormChaser: null, eyeOfTheStorm: null, sunbather: null,
     bayouField: null, nightFalls: null, geauxBeatMagnolia: null, undefeated: null, bigBoil: null, throwMeSomethin: null, skeeterBeater: null,
@@ -42895,9 +43125,11 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     flagship: function (s) { const g = MG.flagship || {}; return students(s) >= fin(g.students, 10000) && prestige(s) >= fin(g.prestige, 60); },
     laissez: function (s) { const g = MG.laissez || {}; return students(s) >= fin(g.students, 20000) && prestige(s) >= fin(g.prestige, 85) && ecology(s) >= fin(g.ecology, 50); },
     untouched: function (s) { return M.earned(s, 'flagship') && !pr(s).drainedEver; },
-    landBaron: function (s) { return fin(call('land', 'count', s), 0) >= fin(PL.landBaron, 5); }   // L2
+    landBaron: function (s) { return fin(call('land', 'count', s), 0) >= fin(PL.landBaron, 5); },   // L2
+    reclaimed: function (s) { return filledTiles(s) >= fin(PFILL.reclaimed, 50); }   // L3
   };
   const MILESTONE_PROGRESS = {
+    reclaimed: function (s) { return { progress: filledTiles(s), goal: fin(PFILL.reclaimed, 50) }; },   // L3
     landBaron: function (s) { return { progress: fin(call('land', 'count', s), 0), goal: fin(PL.landBaron, 5) }; },   // L2
     firstBell: function (s) { return { progress: students(s), goal: fin(MG.firstBell, 600) }; },
     gatorWrangler: function () { return { progress: 0, goal: fin(MG.gatorWrangler, 10) }; },
@@ -45006,9 +45238,15 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
         speed: fin(s.ui && s.ui.speed, 0)
       };
     },
-    /** {x, y} of a legal placement for a catalog id near plot.founders (D21), or null */
+    /** L3: commit a Dredge & Fill drag over `tiles` (tile indices, or {tx, ty} / [tx, ty] pairs) through buildings.placeRun, one run, one undo record; {ok, placed, cost, skipped: [{i, reason}]}. opts {ignoreCash} skips the charge */
+    fill: function (tiles, opts) {
+      const s = BSU.state; if (!s || !has('buildings', 'placeRun')) return { ok: false, placed: 0, cost: 0, skipped: [{ i: -1, reason: 'buildings unavailable' }] };
+      const list = (Array.isArray(tiles) ? tiles : []).map(function (t) { return Array.isArray(t) ? BSU.idx(t[0] | 0, t[1] | 0) : (t && typeof t === 'object' ? BSU.idx(t.tx | 0, t.ty | 0) : t); });
+      return call('buildings', 'placeRun', s, 'dredge_fill', list, Object.assign({}, opts || {}));
+    },
     /** L2: buy section `id` at the Land Office through land.buy (force = skip the cash check and the prestige gate); {ok, reason, price, id, n} */
     charter: function (id, force) { const s = BSU.state; if (!s || !has('land', 'buy')) return { ok: false, reason: 'land unavailable' }; return BSU.land.buy(s, id | 0, { force: !!force }); },
+    /** {x, y} of a legal placement for a catalog id near plot.founders (D21), or null */
     findSpot: function (id) {
       const s = BSU.state;
       const row = BSU.data && BSU.data.catalog ? BSU.data.catalog[id] : null;

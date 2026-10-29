@@ -46,17 +46,18 @@
   BSU.OBJ = freeze({ INTERRUPT: 0, BACKGROUND: 1 });
   BSU.PLACE = freeze({
     LAND: 0, PATH: 1, ROAD: 2, BOARDWALK: 3, LEVEE: 4, CANAL: 5, FENCE: 6, PRESERVE: 7, NEAR_WATER: 8, TOUCH_MARSH_BAYOU: 9,
-    TOUCH_CANAL_WATER: 10, CYPRESS: 11, MARSH_OR_PRESERVE: 12, BARRIER: 13, RESTORE: 14, UPGRADE: 15, BRIDGE: 16
-  });   // catalog placeRule (BRIDGE: bridge pass — water-only drag, both ends on land)
+    TOUCH_CANAL_WATER: 10, CYPRESS: 11, MARSH_OR_PRESERVE: 12, BARRIER: 13, RESTORE: 14, UPGRADE: 15, BRIDGE: 16, FILL: 17
+  });   // catalog placeRule (BRIDGE: bridge pass — water-only drag, both ends on land; FILL: L3 Dredge & fill — Marsh only, chartered land, ≥ 3 tiles from a Preserve)
   BSU.SPR = freeze({ NIGHT: 1, DAMAGED: 2, PILINGS: 4, SCAFFOLD: 8, RUIN: 16, TIER_SHIFT: 5, TIER_MASK: 3 << 5, BOARDED: 128, FRONT_L: 256, FLOODED: 512 });   // FLOODED (art pass B3): waterline stain + sandbags; render.variantOf sets it from b.flooded   // building sprite variant bits (D17); FRONT_L = entrance (door, walk, lamps) on the SW face (design pass)
 
-  // The 43 catalog ids in GDD §0.3 row order (BSU.B_ORDER[n-1] is row n) + row 44 'bridge' (bridge pass) + rows 45 'bunkhouse' / 46 'suites' (housing tiers pass, PLAN_V2 P7).
+  // The 43 catalog ids in GDD §0.3 row order (BSU.B_ORDER[n-1] is row n) + row 44 'bridge' (bridge pass) + rows 45 'bunkhouse' / 46 'suites' (housing tiers pass, PLAN_V2 P7) + row 47 'dredge_fill' (L3: Dredge & fill, Swamp tab after the canal).
   BSU.B_ORDER = freeze([
     'path', 'road', 'boardwalk', 'substation', 'water_tower', 'generator', 'wastewater', 'founders_hall', 'lecture_hall',
     'library', 'engineering', 'coastal_institute', 'dorm', 'res_tower', 'greek_house', 'dining_hall', 'poboy', 'practice_field',
     'stadium', 'union', 'rec_center', 'health_center', 'quad', 'parking', 'levee', 'floodwall', 'canal', 'pump', 'pond',
     'pilings', 'gator_fence', 'abatement', 'bat_house', 'wildlife_post', 'preserve', 'live_oak', 'cypress', 'azalea',
-    'bell_tower', 'tiger_habitat', 'surge_barrier', 'marsh_restoration', 'rookery', 'bridge', 'bunkhouse', 'suites'
+    'bell_tower', 'tiger_habitat', 'surge_barrier', 'marsh_restoration', 'rookery', 'bridge', 'bunkhouse', 'suites',
+    'dredge_fill'
   ]);
   {
     const B = {};
@@ -111,7 +112,8 @@
     'sunbather', 'skeeterBeater', 'bayouField', 'nightFalls', 'geauxBeatMagnolia', 'undefeated', 'bigBoil', 'throwMeSomethin',
     'greenAndGold', 'fortressBayou', 'livingWithWater', 'lightsAreOn', 'sinkingFeeling', 'rebuiltFromTheRoux', 'flagship',
     'laissez', 'untouched',
-    'landBaron'   // L2: five sections chartered at the Land Office
+    'landBaron',  // L2: five sections chartered at the Land Office
+    'reclaimed'   // L3: 50 marsh tiles filled to dry land
   ]);
   // Objective ids in GDD §10.2 order (progress.objectives keys).
   BSU.OBJECTIVE_IDS = freeze(['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '11a', '12', '13', '14', '15', '16', '17', '18a', '18b', '18', '19', '20', '21', '22']);
@@ -212,7 +214,15 @@
       plotRect: { dx0: -9, dx1: -1, y0: 6, y1: 13 },   // G1 rectangle (§3.5)
       oaks: [[-8, 8], [-4, 8]],              // flanking oaks (§3.4 step 7)
       oakStages: 3, oakGrowDays: 240,        // 3 growth stages over 2 years (§0.3 row 36)
-      subsidenceDay: 'Jan 1'                 // yearly subsidence step (§6.5)
+      subsidenceDay: 'Jan 1',                // yearly subsidence step (§6.5)
+      fill: {                                // PLAN_PATHS_LAND Track L3: Dredge & fill (a drag tool that raises Marsh to Dry)
+        cost: 40000, days: 10,               // $ per tile, charged on commit; every tile of a run fills over `days` calendar days
+        ecologyPer: 4,                       // −1 ecology per this many tiles (permanent: one-time term, like clearing); −1 / ecologyPer per tile, taken at commit
+        raiseTo: 4.0,                        // the Dry bound (typeBounds.wet 3.5) + 0.5 ft; a tile already higher keeps its own elevation
+        preserveRadius: 2,                   // a fill within this many tiles (Chebyshev) of a Preserve tile is refused: "Protected marsh"
+        stages: 3,                           // the spoil mound grows through this many looks while a run is in progress
+        reclaimed: 50                        // the Reclaimed milestone: tiles filled
+      }
     },
     hydro: {                                 // GDD §6.1
       stepsPerBlock: [0, 2, 5, 7],           // hydro steps on these ticks of each 10-tick block (§6.1.1)
@@ -1244,6 +1254,7 @@
       setPiece: null,
       saveMeta: { slot: '', savedAt: 0, label: '' },
       world: { W: m.W, H: m.H, ox: ox, oy: oy, legacy: { x0: m.legacy.x0, y0: m.legacy.y0, x1: m.legacy.x1, y1: m.legacy.y1 } },   // L1: the per-game map (saved; L2 defines the start charter from legacy)
+      fill: { runs: [], nextId: 1, rev: 0, done: 0, runsDone: 0 },   // L3: Dredge & fill — runs in progress {id, day0, day1, stage, tiles}; rev bumps whenever a mask-visible thing changes; tiles / runs completed (the Reclaimed milestone)
       charter: { owned: [], cardSeen: false, refusedDay: -1 },   // L2: section ids bought at the Land Office (the start charter is world.legacy); the first-purchase card; the first charter refusal (the goal's trigger)
       calendar: { day: 0, dayTick: 0, running: false, frozen: true, year: 1, month: 1, dom: 1, season: 'winter', semester: 'break' },
       sky: { phase: BSU.SKY.DAWN, phaseTick: 0, cycleTick: 0, scripted: false, t: 0 },
@@ -1446,8 +1457,8 @@
     BSU.SELFTEST = true;
     try {
       for (const k of ['T', 'SURF', 'FLAG', 'SKY', 'OV', 'STORM', 'STORM_PHASE', 'OBJ', 'PLACE', 'SPR', 'B', 'EV', 'MAP']) BSU.assert(Object.isFrozen(BSU[k]), k + ' frozen');
-      BSU.assert(BSU.B_ORDER.length === 46 && Object.keys(BSU.B).length === 46, '46 catalog ids');
-      BSU.assert(BSU.MILESTONES.length === 27, '27 milestones');   // L2: landBaron
+      BSU.assert(BSU.B_ORDER.length === 47 && Object.keys(BSU.B).length === 47, '47 catalog ids');   // L3: dredge_fill
+      BSU.assert(BSU.MILESTONES.length === 28, '28 milestones');   // L2: landBaron, L3: reclaimed
       BSU.assert(new Set(BSU.EV_LIST).size === BSU.EV_LIST.length, 'event names unique');
       BSU.assert(Object.keys(BSU.EV).length === BSU.EV_LIST.length, 'EV constants unique');
       BSU.assert(BSU.SKY_TICKS.reduce((a, b) => a + b, 0) === 300, 'sky cycle sums to 300');

@@ -573,9 +573,15 @@
         speed: fin(s.ui && s.ui.speed, 0)
       };
     },
-    /** {x, y} of a legal placement for a catalog id near plot.founders (D21), or null */
+    /** L3: commit a Dredge & Fill drag over `tiles` (tile indices, or {tx, ty} / [tx, ty] pairs) through buildings.placeRun, one run, one undo record; {ok, placed, cost, skipped: [{i, reason}]}. opts {ignoreCash} skips the charge */
+    fill: function (tiles, opts) {
+      const s = BSU.state; if (!s || !has('buildings', 'placeRun')) return { ok: false, placed: 0, cost: 0, skipped: [{ i: -1, reason: 'buildings unavailable' }] };
+      const list = (Array.isArray(tiles) ? tiles : []).map(function (t) { return Array.isArray(t) ? BSU.idx(t[0] | 0, t[1] | 0) : (t && typeof t === 'object' ? BSU.idx(t.tx | 0, t.ty | 0) : t); });
+      return call('buildings', 'placeRun', s, 'dredge_fill', list, Object.assign({}, opts || {}));
+    },
     /** L2: buy section `id` at the Land Office through land.buy (force = skip the cash check and the prestige gate); {ok, reason, price, id, n} */
     charter: function (id, force) { const s = BSU.state; if (!s || !has('land', 'buy')) return { ok: false, reason: 'land unavailable' }; return BSU.land.buy(s, id | 0, { force: !!force }); },
+    /** {x, y} of a legal placement for a catalog id near plot.founders (D21), or null */
     findSpot: function (id) {
       const s = BSU.state;
       const row = BSU.data && BSU.data.catalog ? BSU.data.catalog[id] : null;

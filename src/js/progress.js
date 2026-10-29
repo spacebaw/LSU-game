@@ -14,7 +14,7 @@
 (function () {
   const BSU = window.BSU;
   const M = (BSU.progress = BSU.progress || {});
-  const EV = BSU.EV, P = BSU.params, PP = P.progress, PT = P.time, PE = P.econ, PS = P.storm, PL = P.land || {};   // L2: PL = the Land Office
+  const EV = BSU.EV, P = BSU.params, PP = P.progress, PT = P.time, PE = P.econ, PS = P.storm, PL = P.land || {}, PFILL = (P.terrain && P.terrain.fill) || {};   // L2: PL = the Land Office; L3: PFILL = Dredge & fill
   let W = 64, HGT = 64, N = 4096;
   BSU.onMap(function (m) { W = m.W; HGT = m.H; N = m.N; });   // L1: the live map size (refreshed inside BSU.setMap, before any allocation)
   const SKY = BSU.SKY, SURF = BSU.SURF, FLAG = BSU.FLAG, T = BSU.T, OBJ = BSU.OBJ, OV = BSU.OV;
@@ -345,6 +345,8 @@
     const m = pr(state).milestones[otherId];
     return !!(m && m.earned && yearOf(m.day) === yearOf(today(state)));
   }
+  /** L3: marsh tiles Dredge & Fill has turned to dry ground (state.fill.done, kept by buildings) */
+  function filledTiles(s) { return fin(s && s.fill && s.fill.done, 0); }
   const MILESTONE_COND = {
     chartered: null, welcome: null, cajunEngineer: null, wetFeet: null, stormChaser: null, eyeOfTheStorm: null, sunbather: null,
     bayouField: null, nightFalls: null, geauxBeatMagnolia: null, undefeated: null, bigBoil: null, throwMeSomethin: null, skeeterBeater: null,
@@ -360,9 +362,11 @@
     flagship: function (s) { const g = MG.flagship || {}; return students(s) >= fin(g.students, 10000) && prestige(s) >= fin(g.prestige, 60); },
     laissez: function (s) { const g = MG.laissez || {}; return students(s) >= fin(g.students, 20000) && prestige(s) >= fin(g.prestige, 85) && ecology(s) >= fin(g.ecology, 50); },
     untouched: function (s) { return M.earned(s, 'flagship') && !pr(s).drainedEver; },
-    landBaron: function (s) { return fin(call('land', 'count', s), 0) >= fin(PL.landBaron, 5); }   // L2
+    landBaron: function (s) { return fin(call('land', 'count', s), 0) >= fin(PL.landBaron, 5); },   // L2
+    reclaimed: function (s) { return filledTiles(s) >= fin(PFILL.reclaimed, 50); }   // L3
   };
   const MILESTONE_PROGRESS = {
+    reclaimed: function (s) { return { progress: filledTiles(s), goal: fin(PFILL.reclaimed, 50) }; },   // L3
     landBaron: function (s) { return { progress: fin(call('land', 'count', s), 0), goal: fin(PL.landBaron, 5) }; },   // L2
     firstBell: function (s) { return { progress: students(s), goal: fin(MG.firstBell, 600) }; },
     gatorWrangler: function () { return { progress: 0, goal: fin(MG.gatorWrangler, 10) }; },

@@ -4,12 +4,12 @@ Loaded: contract.js, data.js, terrain.js, hydro.js, weather.js, wildlife.js, bui
 
 Read this instead of the module sources. Signatures are the real ones. See docs/ARCHITECTURE.md for semantics.
 
-## BSU.B  — enum/table, 46 keys (e.g. path, road, boardwalk, substation, water_tower, generator, wastewater, founders_hall)
+## BSU.B  — enum/table, 47 keys (e.g. path, road, boardwalk, substation, water_tower, generator, wastewater, founders_hall)
 
 ## BSU.BOARD_CARDS
 - values: 0:string, 1:string, 2:string, 3:string, 4:string, 5:string, 6:string, 7:string
 
-## BSU.B_ORDER  — enum/table, 46 keys (e.g. 0, 1, 2, 3, 4, 5, 6, 7)
+## BSU.B_ORDER  — enum/table, 47 keys (e.g. 0, 1, 2, 3, 4, 5, 6, 7)
 
 ## BSU.EV  — enum/table, 112 keys (e.g. TILE_CHANGED, BUILDING_PLACED, BUILDING_REMOVED, BUILDING_COMPLETE, BUILDING_UPGRADED, BUILDING_FLOODED, BUILDING_DRIED, BUILDING_DAMAGED)
 
@@ -31,7 +31,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - values: W:number, H:number, N:number, ox:number, oy:number, size:number, CX:number, CY:number, NCH:number, legacy:object, LEGACY_W:number, LEGACY_H:number, TILE_W:number, TILE_H:number, PX_PER_FT:number, CHUNK:number, CHUNK_W:number, CHUNK_H:number
 
 ## BSU.MILESTONES
-- values: 0:string, 1:string, 2:string, 3:string, 4:string, 5:string, 6:string, 7:string, 8:string, 9:string, 10:string, 11:string, 12:string, 13:string, 14:string, 15:string, 16:string, 17:string, 18:string, 19:string, 20:string, 21:string, 22:string, 23:string, 24:string, 25:string, 26:string
+- values: 0:string, 1:string, 2:string, 3:string, 4:string, 5:string, 6:string, 7:string, 8:string, 9:string, 10:string, 11:string, 12:string, 13:string, 14:string, 15:string, 16:string, 17:string, 18:string, 19:string, 20:string, 21:string, 22:string, 23:string, 24:string, 25:string, 26:string, 27:string
 
 ## BSU.MONTHS
 - values: 0:string, 1:string, 2:string, 3:string, 4:string, 5:string, 6:string, 7:string, 8:string, 9:string, 10:string, 11:string
@@ -46,7 +46,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - values: NONE:number, FLOOD:number, WATER:number, MOSQUITO:number, POWER:number, COVERAGE:number, ECOLOGY:number
 
 ## BSU.PLACE
-- values: LAND:number, PATH:number, ROAD:number, BOARDWALK:number, LEVEE:number, CANAL:number, FENCE:number, PRESERVE:number, NEAR_WATER:number, TOUCH_MARSH_BAYOU:number, TOUCH_CANAL_WATER:number, CYPRESS:number, MARSH_OR_PRESERVE:number, BARRIER:number, RESTORE:number, UPGRADE:number, BRIDGE:number
+- values: LAND:number, PATH:number, ROAD:number, BOARDWALK:number, LEVEE:number, CANAL:number, FENCE:number, PRESERVE:number, NEAR_WATER:number, TOUCH_MARSH_BAYOU:number, TOUCH_CANAL_WATER:number, CYPRESS:number, MARSH_OR_PRESERVE:number, BARRIER:number, RESTORE:number, UPGRADE:number, BRIDGE:number, FILL:number
 
 ## BSU.SAVE_SKIP
 - values: 0:string, 1:string, 2:string, 3:string, 4:string, 5:string, 6:string, 7:string, 8:string, 9:string, 10:string
@@ -244,6 +244,9 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - buildings.runTie(state, rowId, tiles)
 - buildings.connectorFor(state, rowId, tx, ty, rot)
 - buildings.canPlace(state, id, tx, ty, opts)
+- buildings.fillMask(state)
+- buildings.fillQuote(state, tiles)
+- buildings.fillStats(state)
 - buildings.place(state, id, tx, ty, opts)
 - buildings.placeRun(state, id, tiles, opts)
 - buildings.remove(state, idOrTile, reason)
@@ -310,7 +313,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - contract.selfTest()
 
 ## BSU.data
-- values: catalog:object, catalogList:array[46], tabs:array[10], decals:object, names:object, students:object, coaches:array[10], coachQuotes:array[12], staff:object, gatorNames:array[14], leGrand:string, stormNames:array[26], opponents:object, schedule:array[8], calendar:object, ticker:array[62], tickerKinds:object, tickerKindList:array[7], objectives:object, milestones:array[27], voiceCards:array[12], boardCards:array[8], failureCards:object, tutorial:array[7], thibodeaux:array[12], stormQuotes:array[8], overlays:array[6], keys:array[50], toastKeys:object, panKeys:object, rainKinds:object, guide:object, needs:object, requirements:object, coach:array[6], football:object, dishes:array[24], menuPresets:object, menuDefaults:object
+- values: catalog:object, catalogList:array[47], tabs:array[10], decals:object, names:object, students:object, coaches:array[10], coachQuotes:array[12], staff:object, gatorNames:array[14], leGrand:string, stormNames:array[26], opponents:object, schedule:array[8], calendar:object, ticker:array[62], tickerKinds:object, tickerKindList:array[7], objectives:object, milestones:array[28], voiceCards:array[12], boardCards:array[8], failureCards:object, tutorial:array[7], thibodeaux:array[12], stormQuotes:array[8], overlays:array[6], keys:array[50], toastKeys:object, panKeys:object, rainKinds:object, guide:object, needs:object, requirements:object, coach:array[6], football:object, dishes:array[24], menuPresets:object, menuDefaults:object
 - data.selfTest()
 
 - BSU.dateToDay(str, year)
@@ -389,6 +392,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - headless.tick(n)
 - headless.render()
 - headless.snapshot()
+- headless.fill(tiles, opts)
 - headless.charter(id, force)
 - headless.findSpot(id)
 - headless.place(id, x, y)
@@ -923,7 +927,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - sprites.entitiesSelfTest()
 
 ## BSU.state
-- values: v:number, seed:number, tick:number, playSeconds:number, setPiece:object, saveMeta:object, world:object, charter:object, calendar:object, sky:object, weather:object, storms:object, tiles:object, plot:object, veg:array[0], buildings:array[0], runNames:object, hydro:object, agents:array[0], vehicles:array[0], gators:array[0], wildlife:object, economy:object, ledger:object, sports:object, progress:object, ticker:array[0], ui:object, rng:object
+- values: v:number, seed:number, tick:number, playSeconds:number, setPiece:object, saveMeta:object, world:object, fill:object, charter:object, calendar:object, sky:object, weather:object, storms:object, tiles:object, plot:object, veg:array[0], buildings:array[0], runNames:object, hydro:object, agents:array[0], vehicles:array[0], gators:array[0], wildlife:object, economy:object, ledger:object, sports:object, progress:object, ticker:array[0], ui:object, rng:object
 
 - BSU.strHash(str)
 
@@ -1124,7 +1128,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 
 - BSU.worldToScreen(tx, ty, elev, cam, vw, vh)
 
-## BSU.params groups (20): time[30], terrain[59], hydro[47], storm[116], wildlife[4], subsidence[17], heat[21], weather[18], econ[64], sports[81], agents[30], build[36], issues[8], render[59], ui[18], art[1], audio[6], palette[34], progress[16], land[8]
+## BSU.params groups (20): time[30], terrain[60], hydro[47], storm[116], wildlife[4], subsidence[17], heat[21], weather[18], econ[64], sports[81], agents[30], build[36], issues[8], render[59], ui[18], art[1], audio[6], palette[34], progress[16], land[8]
 
 ## BSU.newState(seed) tree
 - v:number
@@ -1134,6 +1138,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - setPiece:null
 - saveMeta:{slot:string, savedAt:number, label:string}
 - world:{W:number, H:number, ox:number, oy:number, legacy:object}
+- fill:{runs:array[0], nextId:number, rev:number, done:number, runsDone:number}
 - charter:{owned:array[0], cardSeen:boolean, refusedDay:number}
 - calendar:{day:number, dayTick:number, running:boolean, frozen:boolean, year:number, month:number, dom:number, season:string, semester:string}
 - sky:{phase:number, phaseTick:number, cycleTick:number, scripted:boolean, t:number}
@@ -1176,7 +1181,7 @@ time. The ONLY window reads are inside the BSU.headlessMode try/catch (§3.5).
 'use strict';
 ============================================================================
 BAYOU STATE — data.js (module 1; immutable tables)
-Owner: nothing at runtime. Assigns BSU.data: the 43-row building catalog (+ row 44 'bridge', bridge pass; rows 45 'bunkhouse' and 46 'suites', housing tiers pass P7),
+Owner: nothing at runtime. Assigns BSU.data: the 43-row building catalog (+ row 44 'bridge', bridge pass; rows 45 'bunkhouse' and 46 'suites', housing tiers pass P7; row 47 'dredge_fill', L3),
 tabs, decals, name pools, students/coaches/gators/storms, opponents and the
 schedule, the calendar, the 62 ticker lines, objectives, milestones, Student
 Voice and Board cards, failure cards, the tutorial script, overlays, the key

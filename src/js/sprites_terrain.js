@@ -229,7 +229,38 @@
     }
     return { w: TW, h: TH, ox: -(TW >> 1), oy: -(TH >> 1) };
   });
+  // L3 Dredge & fill: mound variants 1–3 are the SPOIL HEAP of a run in progress (stage 0–2; HD only: this registration replaces the pen painter of the family), 60×36 anchored (−30, −26): a wet mud heap
+  // that grows with the stage, a darker apron where the slurry runs out, and the steel dredge pipe lying in from the north-west with
+  // its flanges and the outflow at the crown. Variant 0 stays the grassy Mound.
+  function spoilHD(ctx, spec, stage) {
+    const Br = B(); const g = Br.begin(ctx, 60, 36, spec), env = g.env, lod = env.lod;
+    const s = clamp(stage | 0, 0, 2), seed = hash(0x5b0, s), cx = 30, base = 27;
+    const rx = 10 + s * 5.5, hgt = 4.5 + s * 4.2, ry = 4.2 + s * 1.7;
+    Br.softEllipse(ctx, cx, base + 1.2, rx + 7, ry + 3.4, AO, 0.38, 0.3);                       // the ground shadow
+    Br.softEllipse(ctx, cx, base + 0.4, rx + 5, ry + 2.2, 'marshMud', 0.85, 0.5);               // the wet apron where the slurry spreads
+    Br.orb(ctx, cx, base - hgt * 0.42, rx, ry + hgt * 0.55, 'marshMud', -0.12, { spec: 0.14 }); // the heap: dark wet mud
+    Br.orb(ctx, cx - 1.2, base - hgt * 0.8, rx * 0.66, (ry + hgt * 0.55) * 0.6, 'dirt', 0.08, { noRim: true, spec: 0.2 });   // the drying crown
+    for (let k = 0; k < 6 + s * 2; k++) {                                                        // spoil clods and drying cracks
+      const a = (hash(seed, 11 + k) % 1000) / 1000, b = (hash(seed, 31 + k) % 1000) / 1000;
+      const x = cx + (a - 0.5) * rx * 1.5, y = base - hgt * (0.2 + b * 0.7);
+      if (lod > 0 && (k & 1)) continue;
+      Br.orb(ctx, x, y, 1.1 + a * 1.3, 0.8 + b * 0.5, k % 3 === 0 ? 'sand' : 'dirt', (k & 1) ? 0.25 : -0.3, { noRim: true, spec: 0 });
+    }
+    // the dredge pipe: in from the north-west tile edge to the crown, along the iso axis (2 px across per 1 px down)
+    const x1 = cx - 3, y1 = base - hgt * 0.95 - 1, x0 = 12, y0 = y1 - (x1 - x0) / 2;
+    const px = (t) => x0 + (x1 - x0) * t, py = (t) => y0 + (y1 - y0) * t;
+    Br.softEllipse(ctx, (x0 + x1) / 2 + 1, (y0 + y1) / 2 + 4.2, (x1 - x0) / 2 + 2, 2.2, AO, 0.3, 0.3);    // its shadow on the ground
+    Br.stroke(ctx, [[x0, y0], [x1, y1]], 4.2, '#22232B', -0.2, 1, { cap: 'round' });              // the dark under-edge
+    Br.stroke(ctx, [[x0, y0 - 0.4], [x1, y1 - 0.4]], 3.2, '#8E9299', 0.05, 1, { cap: 'round' });  // the steel body
+    Br.stroke(ctx, [[x0 + 1, y0 - 1.2], [x1 - 1, y1 - 1.2]], 1, '#D8DCE2', 0.4, 0.8, { cap: 'round' });   // the lit thread
+    for (let k = 1; k <= 2; k++) { const t = k / 3; Br.stroke(ctx, [[px(t), py(t) - 2.2], [px(t) + 0.2, py(t) + 2.1]], 1.3, k === 2 ? '#B8651E' : '#4A4D57', -0.1, 1, { cap: 'butt' }); }   // flanges: steel joint, rust joint
+    Br.orb(ctx, x1, y1 + 0.5, 3.2, 2, '#2A2A33', -0.2, { noRim: true, spec: 0 });                  // the mouth
+    Br.softEllipse(ctx, x1 + 4.5, y1 + 4.6, 5.5 + s, 2.3, 'marshMud', 0.9, 0.5);                  // the slurry running off the crown
+    Br.stroke(ctx, [[x1 + 2, y1 + 4.2], [x1 + 6 + s, y1 + 5.4]], 0.9, '#D8CFA8', 0.2, lod > 0 ? 0.18 : 0.3, { cap: 'round' });   // a wet glint on it
+    return { w: g.w, h: g.h, ox: -30, oy: -26 };
+  }
   M.registerHD('mound', function (ctx, spec) {
+    if ((spec.variant | 0) >= 1) return spoilHD(ctx, spec, (spec.variant | 0) - 1);   // L3: variants 1–3 = the spoil heap of a Dredge & fill run
     const Br = B(); const g = Br.begin(ctx, 24, 14, spec), env = g.env;
     Br.softEllipse(ctx, 12, 13, 11.5, 1.6, AO, 0.45, 0.3);
     Br.orb(ctx, 12, 8.2, 11.5, 5.6, 'highGrass', 0.05, { spec: 0.22 });
