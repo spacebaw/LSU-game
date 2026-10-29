@@ -64,7 +64,7 @@
   // H0 pipeline pass: hdOn = at least one HD family is registered (sprites.registerHD); hdMaster = the master HD families are
   // fetched at (2 when zoom × dpr ≥ params.art.hd.masterAt or the sprite master is already 2, else 1); hdChunkWant = the master the
   // chunk bake targets (2 only while hdOn && hdMaster === 2 && no cap tripped — so the shipped game bakes 1× chunks exactly as before)
-  let hdOn = false, hdMaster = 1, hdChunkWant = 1, hdFallbackChunks = false, hdBakesThisFrame = 0, bakeM = 1, debugHDOn = false, debugTile = -1, lastUpgrade = -1;
+  let hdOn = false, hdMaster = 1, hdMasterHalf = 1, hdChunkWant = 1, hdFallbackChunks = false, hdBakesThisFrame = 0, bakeM = 1, debugHDOn = false, debugTile = -1, lastUpgrade = -1;
   // H1 terrain + water pass: hdTerrain = the `tile` family is HD (sprites_terrain.js registered its painters), which switches the bake to the HD
   // tile variants (block position bits for every type, a deep bit for water, 1–5 px terrace steps as cliff sprites), the brush strokes for the
   // paths / roads / decks, the toned curve colours, deck canvases at the chunk's master and the lighter live water tint over the baked surface
@@ -144,6 +144,7 @@
     const at = caps ? caps.masterAt : 1.5;
     hdMaster = !hdOn ? (atlasZoom >= 2 ? 2 : 1) : ((atlasZoom >= 2 || zoomNow * dpr >= at) ? 2 : 1);
     hdChunkWant = (hdOn && hdMaster === 2 && !hdFallbackChunks && !sp.hdFallback) ? 2 : 1;
+    hdMasterHalf = hdOn ? M.hdMasterOf(zoomNow * FB_SCALE, dpr) : 1;   // H4: the football layer draws its sprites at half the zoom (FB_SCALE), so its HD families are fetched at the master that lands 1:1 at THAT scale (zoom 2 / dpr 1 → master 1 crisp; zoom 2 / dpr 2 → master 2)
   }
   M.hdMasterOf = function (z, d) { const az = masterOf(z); return (az >= 2 || fin(z, 1) * fin(d, 1) >= ((S() && S().hdCaps) ? S().hdCaps().masterAt : 1.5)) ? 2 : 1; };
   /** clamp x,y into the world extents ± cameraMargin/zoom; repairs non-finite numbers */
@@ -1254,7 +1255,8 @@
   }
   function getRef(id, variant, frame) { const sp = S(); const r = sp.get(id, variant, frame, (hdOn && sp.isHD(id)) ? hdMaster : atlasZoom); return r || null; }   // hud + zoom pass: the atlas is asked at the MASTER zoom (no bake per step); zsOf scales it to the exact live zoom. H2a: an HD family (buildings) is asked at hdMaster, so at zoom 1 on a Retina its master-2 entry lands 1 art px = 1 device px (zsOf = 0.5 under the dpr-2 transform)
   /** art pass B4: the character / wildlife / vehicle sheets are pure pixel-doubles at 2× (every art pixel is a 2×2 block), so the entity pass asks for the 1× entry at 2× and lets blit() scale it (nearest-neighbour, integer): the 2× sheets are never baked in play (saves ~6 MB of canvases in a crowd) */
-  function getRefE(id, variant, frame) { const sp = S(); const r = sp.get(id, variant, frame, atlasZoom > 1 ? 1 : atlasZoom); return r || null; }
+  function getRefE(id, variant, frame) { const sp = S(); const r = sp.get(id, variant, frame, (hdOn && sp.isHD(id)) ? hdMaster : (atlasZoom > 1 ? 1 : atlasZoom)); return r || null; }   // H4: an HD character family (sprites_entities_hd) is asked at hdMaster like getRef (its master-2 sheet cells land 1 art px = 1 device px at zoom 1 on a Retina); the pen families keep the B4 rule
+  function getRefF(id, variant, frame) { const sp = S(); const r = sp.get(id, variant, frame, (hdOn && sp.isHD(id)) ? hdMasterHalf : 1); return r || null; }   // H4: the football layer (players, officials, fans at FB_SCALE) at the half-scale master
   function zsOf(ref) { return zoomNow / (ref.zoom || 1); }
 
   // ---------------------------------------------------------------------------
@@ -2013,7 +2015,7 @@
     const X = G.q.x0 + (u + 10) * G.kx, Y = G.q.y0 + v * G.ky;
     const e = push(kind, G.ax, G.ay, G.el, 1 + clamp((X + Y) / (G.q.fw + G.q.fh), 0, 1) * 58, draw || drawFbSprite);
     fbScreen(G, X, Y, up); e.sx = fbScr.x; e.sy = fbScr.y;
-    e.id = id; e.variant = variant; e.frame = frame; e.ref = id ? (G.sp.get(id, variant, frame, 1) || null) : null;
+    e.id = id; e.variant = variant; e.frame = frame; e.ref = id ? getRefF(id, variant, frame) : null;
     FB.drawn++;
     return e;
   }
@@ -2097,9 +2099,10 @@
         else if (cheer) { pose = 'wave'; fr = ((frameNo >> 3) + k) & 1; }
         else if (up && ((h >> 7) & 3) !== 0) { pose = 'standing'; fr = ((frameNo >> 3) + k) & 1; }
         const id = 'fbfan:' + pose, v = (look & 63) | (((h >> 2) % 6) << 6) | (((h >> 5) & 7) << 9) | (((h >> 9) & 1) << 12);
-        const ref = sp.get(id, v, sp.fbFrame(id, dir, fr), 1); if (!ref || !ref.canvas) continue;
+        const ref = getRefF(id, v, sp.fbFrame(id, dir, fr)); if (!ref || !ref.canvas) continue;
         fbScreen(G, X0 + (X1 - X0) * f, Y0 + (Y1 - Y0) * f, lift);
-        g.drawImage(ref.canvas, ref.sx, ref.sy, ref.sw, ref.sh, Math.round(fbScr.x + ref.ox * zs), Math.round(fbScr.y + ref.oy * zs), ref.sw * zs, ref.sh * zs); drawCalls++; FB.fans++;
+        const ks = zs / (ref.zoom || 1);   // H4: a master-2 fan cell draws at half its device size
+        g.drawImage(ref.canvas, ref.sx, ref.sy, ref.sw, ref.sh, Math.round(fbScr.x + ref.ox * ks), Math.round(fbScr.y + ref.oy * ks), ref.sw * ks, ref.sh * ks); drawCalls++; FB.fans++;
       }
     };
     const fw = G.q.fw, fh = G.q.fh;
@@ -2966,7 +2969,7 @@
   /** H0 state for tests / the console: masters, chunk counts and bytes, caps, the last upgraded chunk */
   M.hdInfo = function () {
     const sp = S(); const caps = sp && typeof sp.hdCaps === 'function' ? sp.hdCaps() : null;
-    return { on: hdOn, terrain: hdTerrain, debug: debugHDOn, debugTile: debugTile, master: hdMaster, chunkMaster: hdChunkWant, atlasZoom: atlasZoom, zoom: zoomNow, dpr: dpr, chunks: liveChunks(), hdChunks: hdChunkCount(), deckMasters: chunks.filter((c) => c && c.deck).map((c) => c.deckMaster | 0), chunkMB: Math.round(chunkBytes() / 10485.76) / 100, hdAtlasMB: sp && typeof sp.hdMemoryMB === 'function' ? Math.round(sp.hdMemoryMB() * 100) / 100 : 0, fallback: hdFallbackChunks, atlasFallback: !!(sp && sp.hdFallback), caps: caps, lastUpgrade: lastUpgrade, bake: { n1: bakeStat[1].n, ms1: Math.round(bakeStat[1].ms * 100) / 100, n2: bakeStat[2].n, ms2: Math.round(bakeStat[2].ms * 100) / 100 }, families: sp && typeof sp.hdFamilies === 'function' ? sp.hdFamilies() : [] };
+    return { on: hdOn, terrain: hdTerrain, debug: debugHDOn, debugTile: debugTile, master: hdMaster, masterHalf: hdMasterHalf, chunkMaster: hdChunkWant, atlasZoom: atlasZoom, zoom: zoomNow, dpr: dpr, chunks: liveChunks(), hdChunks: hdChunkCount(), deckMasters: chunks.filter((c) => c && c.deck).map((c) => c.deckMaster | 0), chunkMB: Math.round(chunkBytes() / 10485.76) / 100, hdAtlasMB: sp && typeof sp.hdMemoryMB === 'function' ? Math.round(sp.hdMemoryMB() * 100) / 100 : 0, fallback: hdFallbackChunks, atlasFallback: !!(sp && sp.hdFallback), caps: caps, lastUpgrade: lastUpgrade, bake: { n1: bakeStat[1].n, ms1: Math.round(bakeStat[1].ms * 100) / 100, n2: bakeStat[2].n, ms2: Math.round(bakeStat[2].ms * 100) / 100 }, families: sp && typeof sp.hdFamilies === 'function' ? sp.hdFamilies() : [] };
   };
   /** H0: every chunk's master (0 = no canvas) — tests */
   M.chunkMasters = function () { const a = []; for (let k = 0; k < NCH; k++) a.push(chunks[k] && chunks[k].canvas ? (chunks[k].master | 0) : 0); return a; };

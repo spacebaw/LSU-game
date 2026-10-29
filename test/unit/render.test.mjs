@@ -528,10 +528,10 @@ try {
   // H1: the terrain families ship as HD, so the shipped game already has hdOn; the chunk table is reset (reset(state, false)) so the
   // zoom-step tour above leaves no master-2 canvases behind and the progressive-bake order is observable from a clean master-1 start
   R.reset(sH, false); R.bakeStatReset(); R.panToTile(sH.plot.founders.tx + 1, sH.plot.founders.ty + 1, false); R.setZoom(1); for (let k = 0; k < 3; k++) BSU.headless.render();
-  const i0 = R.hdInfo(), p0 = R.perf(), TERR = sp.hdTerrainFamilies();
-  ok(i0.on === true && i0.terrain === true && i0.chunkMaster === 1 && i0.hdChunks === 0 && TERR.every((f) => i0.families.includes(f)) && i0.families.every((f) => TERR.includes(f) || f === 'building' || f === 'bldlight' || f === 'habfront') && p0.hd === true && p0.chunkMaster === 1 && Number.isFinite(p0.chunkMB) && Number.isFinite(p0.atlasMB) && Number.isFinite(p0.hdAtlasMB) && p0.hdChunks === 0, 'shipped game (H1): the terrain families are the HD families, chunk master 1 at zoom 1 dpr 1, perf() reports hd flags and real chunk / atlas MB');
+  const i0 = R.hdInfo(), p0 = R.perf(), TERR = sp.hdTerrainFamilies(), ENT = sp.hdEntityFamilies ? sp.hdEntityFamilies() : [];   // H4: the character families of sprites_entities_hd.js are HD too
+  ok(i0.on === true && i0.terrain === true && i0.chunkMaster === 1 && i0.hdChunks === 0 && TERR.every((f) => i0.families.includes(f)) && i0.families.every((f) => TERR.includes(f) || f === 'building' || f === 'bldlight' || f === 'habfront' || ENT.includes(f)) && p0.hd === true && p0.chunkMaster === 1 && Number.isFinite(p0.chunkMB) && Number.isFinite(p0.atlasMB) && Number.isFinite(p0.hdAtlasMB) && p0.hdChunks === 0, 'shipped game (H1): the terrain families are the HD families, chunk master 1 at zoom 1 dpr 1, perf() reports hd flags and real chunk / atlas MB');
   ok(Math.abs(p0.chunkMB - p0.chunks * (512 * 416 * 4) / 1048576) < 0.01 && R.chunkMasters().filter((m) => m === 1).length === p0.chunks && R.chunkMasters().length === 64, 'every live chunk is one 512×416 master-1 canvas (chunkMasters)');
-  ok(R.debugHD(true) === true && R.hdInfo().on === true && R.hdInfo().families.includes('debug') && R.hdInfo().families.every((f) => TERR.includes(f) || f === 'debug' || f === 'building' || f === 'bldlight' || f === 'habfront') && sp.isHD('debug:hdtest') === true, 'debugHD(true) registers the debug family as HD beside the terrain families');
+  ok(R.debugHD(true) === true && R.hdInfo().on === true && R.hdInfo().families.includes('debug') && R.hdInfo().families.every((f) => TERR.includes(f) || f === 'debug' || f === 'building' || f === 'bldlight' || f === 'habfront' || ENT.includes(f)) && sp.isHD('debug:hdtest') === true, 'debugHD(true) registers the debug family as HD beside the terrain families');
   for (let k = 0; k < 3; k++) BSU.headless.render();
   const i1 = R.hdInfo();
   ok(i1.master === 1 && i1.chunkMaster === 1 && i1.hdChunks === 0 && i1.dpr === 1, 'at zoom 1 dpr 1 the HD master is 1: chunks stay master 1 even with HD families (master 2 needs zoom × dpr ≥ 1.5)');
@@ -568,7 +568,7 @@ try {
   R.setZoom(1); for (let k = 0; k < 5; k++) BSU.headless.render();
   const i7 = R.hdInfo();
   ok(i7.chunkMaster === 1 && i7.chunks <= 64 && R.chunkMasters().filter((m) => m > 0).length === i7.chunks, 'zoom 1 again: chunk master 1, the live chunks are still one canvas each');
-  ok(R.debugHD(false) === false && R.hdInfo().on === true && R.hdInfo().families.every((f) => TERR.includes(f) || f === 'building' || f === 'bldlight' || f === 'habfront') && !R.hdInfo().families.includes('debug') && sp.isHD('debug:hdtest') === false && R.hdInfo().chunkMaster === 1, 'debugHD(false) unregisters the debug family: the terrain families stay HD, chunk master 1 at zoom 1');
+  ok(R.debugHD(false) === false && R.hdInfo().on === true && R.hdInfo().families.every((f) => TERR.includes(f) || f === 'building' || f === 'bldlight' || f === 'habfront' || ENT.includes(f)) && !R.hdInfo().families.includes('debug') && sp.isHD('debug:hdtest') === false && R.hdInfo().chunkMaster === 1, 'debugHD(false) unregisters the debug family: the terrain families stay HD, chunk master 1 at zoom 1');
   for (let k = 0; k < 3; k++) BSU.headless.render();
   ok(BSU.errors.size === errH, 'no BSU.error across the H0 checks');
 } catch (e) { ok(false, 'H0 render: ' + (e.stack || e)); }

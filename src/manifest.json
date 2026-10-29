@@ -18,6 +18,7 @@
     "sprites_buildings.js",
     "sprites_buildings_hd.js",
     "sprites_entities.js",
+    "sprites_entities_hd.js",
     "render.js",
     "render_fx.js",
     "ui.js",

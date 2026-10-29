@@ -1274,3 +1274,118 @@ PLAN_PATHS_LAND.md Track L3: a Swamp-tab drag tool (row 47, "Dredge & Fill", rig
 - **progress.js / session.js.** `MILESTONE_COND.reclaimed` = `state.fill.done ≥ params.terrain.fill.reclaimed` (50), `MILESTONE_PROGRESS.reclaimed` = `{progress: done, goal: 50}`; the milestone row is "Reclaimed · Fill 50 marsh tiles to dry land with Dredge & Fill" (no reward; `BSU.MILESTONES` is 28, `reclaimed` appended last, ids stable). `BSU.headless.fill(tiles, opts)` = `buildings.placeRun(state, 'dredge_fill', tiles, opts)` over tile indices, `{tx, ty}` or `[tx, ty]` pairs → `{ok, placed, cost, skipped}`.
 - **Tests.** `node build.mjs --check` (25 modules, 3376.1 KB); `smoke` ALL OK at 96 and `--size 64`; `modules` 19 self-tests 0 failed; `contract` 230; every `test/unit/*.test.mjs` 0 failed (`fill` 130: the row / params / tab slot / milestone, a 96 world's tile classes (Bayou, Open Water, Wet, Dry, High, path, levee, canal, boardwalk, building: each refusal), "Already filling" and "Being filled" for the other tools, the Preserve ring (0, 1, 2 refused, 3 fine), the charter refusal and the same tile after `headless.charter`, the quote (12 · $480k · 10 days · −3), the commit charge and the one-time ecology term, stages 0 → 2, still Marsh on day 9 and Dry on day 10 (type, elevation ≥ 4.0, depth / stand / sat, walk 2, WETLAND_ORIGINAL kept, ticker line, the mask gone), hydro (`riskAt` 0, and at a 2.5-ft stage the unfilled marsh beside the water floods 1.9 ft while the filled tile stays at 0), undo (refund, ecology and one-time term, run and mask gone, the tiles untouched Marsh and fillable again, a second run, "Not enough cash" skips), bulldoze, the save round trip on day 4 (the doc, the run, the mask rebuilt, finishing on time, `done` saved, a doc without `fill`), Reclaimed (40 → 50 over two runs), the 64 world, the ghost / commit / hint lines through the ui, the sprite variants and the icon plan). Timing budgets advisory (loadavg 4–5 during the run).
 - **Found, not changed.** (1) Filling does not set `progress.drainedEver`: "Untouched" (Flagship without draining marsh) stays earnable after a fill. (2) The Marsh Restoration paint cannot give filled land back (only Drained Marsh and Wet Ground are eligible, and a filled tile is Dry). (3) A filled tile stands 4.0 ft over neighbours at 0.2–1.4 ft: the raised block shows a 3-ft dirt face on the sides that meet marsh, and nothing grades the neighbours. (4) `fillQuote` runs one `canPlace` per tile per ghost update (0.9 ms for 200 tiles); a 1,000-tile drag would be 5 ms, not throttled. (5) The Reclaimed milestone is polled by progress's daily step, which runs before buildings' in the same tick: it is earned the day after the 50th tile completes. (6) `docs/ARCHITECTURE.md` §4 / §10.5 still list 46 catalog rows and 27 milestones (docs only). (7) A hydro-flipped DRAINED flag on a filling tile is cleared at completion; the tile then counts as plain Dry (its EV.MARSH_DRAINED already ran). (8) The hint is once per save (`progress.hints`), unlike Track P's once-per-browser tie card.
+
+## H4 characters pass
+
+The character rollout of docs/PLAN_HD_ART.md §4 (style C): every family that walks, swims, drives or sits in a stand is composed through
+`BSU.brush` and registered over the B4 pen painters. Files: `src/js/sprites_entities_hd.js` (new, ~1,250 lines; in `src/manifest.json`
+right AFTER `sprites_entities.js`, as `sprites_buildings_hd.js` sits after `sprites_buildings.js`), `src/js/brush.js` (two body-kit
+primitives: `capsule` — a tapered capsule lit ACROSS its width with the cool rim on the shadow flank — and `digits` — 3 × 5-grid strokes for
+jersey numbers and the down marker; selfTest draws both), `src/js/sprites_entities.js` (two lines: `M.fbLookDef = lookDef` so the HD
+composer reads the same jersey / pants / helmet / number colours incl. the dynamic opponent looks; selfTest block 7 counts the HD module's
+deferred queue beside the pen's), `src/js/render.js` (`getRefE` asks an HD family at `hdMaster` like `getRef`; a new `getRefF` fetches the
+football layer — `fbPush` and the fan rows — at `hdMasterHalf = hdMasterOf(zoomNow × FB_SCALE, dpr)`, the master that lands 1:1 at the
+field's half scale; the fan row scales a master-2 cell by `zs / ref.zoom`; `hdInfo().masterHalf`), `test/unit/entities_hd.test.mjs` (new,
+60), `test/unit/{render,terrain_hd}.test.mjs` (the "no other HD family" lists allow `sprites.hdEntityFamilies()`), `docs/ART_STYLE.md`
+(`## Style C palette` character rows), `docs/API_INDEX.md` (regenerated). `agents.js`, `sports.js`, `render_fx.js`, `ui*.js` untouched.
+
+- **Families converted (33).** `agent` (15 anims × 8 facings: walk 8, idle 3, flee 4, splash 6, slap 2, cheer 2, sit 2, wave 2, tube 4,
+  umbrella 4, cap 8, beads 8, foam 8, selfie 2, binoculars 2; the 112 pooled looks with 6 skins, 8 hair colours, 6 hair styles, 16 outfits,
+  4 hats, 7 carried items, 3 builds, 8 accents — the look bits and `sprites.stuStyle`'s varied outfit are read, not re-derived),
+  `agentfar` (the 0.5× two-pose sheets), `officer` (+ `officer:wrangle`), `band`, `krewe`, `gator` (3 sizes × swim / walk / bask / lunge,
+  the tail's sinusoid by frame), `roux` (on all fours: pace / idle / lie / yawn), `nutria`, `egret`, `spoonbill`, `fogger`, `bus`,
+  `pirogue`, `navy`, `float` (4 variants), `fbplayer` (8 poses; home / away jerseys, helmets with facemask bars, numbers, cleats, gloves,
+  pads, the ball, the QB's towel), `fbref`, `fbcrew`, `fbcheer`, `fbband`, `fbstaff`, `fbroux` (the upright mascot), `fbfan` (seated /
+  standing / wave), `fbball`, `fbdown`, `fbstick`, and the props `tent`, `smoker`, `cornhole`, `snoball`, `bonfire`, `pelican`, `armadillo`.
+  **Kept on the pen:** `gate`, `barrierGate`, `nest`, `bubble` (not characters). Cells, feet anchors and frame tables are the pen's exactly
+  (`entityCells`, `fbSizes` / `fbAnchor`, `entFrames` / `fbFrames`; asserted against a snapshot of the pen's bakes), so `agentFrame` /
+  `fbFrame` packing, render's sort keys, shadow boxes and the 0.5× two-pose rule are untouched.
+- **One rig (`drawFigure`).** The pen's pose solver (joints → two-bone IK → yaw; the pose tables are shared data) feeds depth-sorted brush
+  parts: thighs / shins / shoes / sleeves / forearms as `capsule`s, the torso a waisted `plane` (the lateral AND depth extents project, so a
+  side view is as wide as the chest is deep) with the outfit's marks clipped to it (waistband, belt, stripe / hoops / jacket block / logos /
+  badge / stole / sash / band stripe / fan band / ref stripes / vest, polo collar + placket, hood pocket + cords, pack and tote straps, the
+  neckline), hands / heads / pads as `orb`s, every mark a `stroke` (a dot is a zero-length round-capped stroke: a face costs no gradient).
+  Head: hood / afro / long hair behind, the skull, a hair cap (an orb clipped to the crown, cover .42 front → .72 back; bob side orbs,
+  ponytail capsule + tie, bun, afro), eyes + glasses + an open mouth (lod 0), hats (cap with a brim that flips behind for back facings,
+  bucket + brim ring, beanie + cuff, ranger, shako + plume, tricorn + feather, the cheer ponytail + bow, the mortarboard + tassel), the
+  helmet (shell, crown stripe, dark face patch, facemask bars at lod 0, side logo). Props as parts: backpack (two capsules behind, a flap),
+  tote, books, coffee, po'boy, phone, binoculars, umbrella (shaft + clipped canopy orb + gores + scallop), foam finger, the inner tube (a
+  white ring with red segments split into its back and front halves), beads, the sit-pose fan, pom-poms, instruments (horn / snare / bass),
+  headset, jug, the ball + lace, the towel. Projection: `sy = gy − Y + Z · pitch` (a nearer point lies LOWER on screen); humans pitch .42,
+  ground creatures and vehicles .5. Water line (splash / tube): a `source-atop` shallows wash below the line + a ripple thread.
+- **Creatures and vehicles.** Gators: the pen's spine, flank capsules (flat), back capsules with scute dots (lod 0), IK legs with foot dots,
+  skull orb + jaw capsules + mouth / teeth / eyes / nostril, moss + scar on Le Grand, a dashed ripple ring (the far half before the body, the
+  near half after) + V wake while swimming. Roux: belly capsules under the flank, striped body segments, tail rings, IK legs with paws, the
+  tiger head (ears, muzzle, nose, eyes, forehead / cheek stripes, the yawn's jaw). Nutria, egret / spoonbill (neck as a smooth stroke, three
+  feather capsules per wing). Vehicles: `box` (the visible faces of an oriented box as `plane`s, tone from the key light, culled against the
+  view) + `wheel` capsules: fogger (chassis, steel tank with the purple band and gold line, cab with glass, bonnet, headlights, beacon,
+  nozzle, 4 growing plume puffs), bus (body with a gold belt plane, windows — one band at lod 1 — windshield, headlights, roof), pirogue /
+  navy (hull capsules, two paddlers through `drawFigure` on the ground projection, paddles, the Navy's pole + flag), floats (deck, crepe
+  skirt planes, tiger head / gator on knees / fleur-de-lis + balloons / king cake + baby, two krewe riders at .72).
+- **Sheets at the master.** The atlas keeps serving sub-rects of lazily baked sheets (one canvas per family | anim | variant | facing |
+  master, every frame in a row, each cell clipped), now baked here at `spec.master` (1 = art px, 2 = HD) with `env.lod` 0 at master 2 / 1
+  at master 1; a frame is still one `drawImage` of a cached cell, so the per-frame cost is unchanged. `agentfar` bakes at master 1 lod 1
+  then box-reduces each cell to 2 × 2 blocks (the B4 rule). The pen's per-frame bake window (`M._bake`: armed by `agentFrame`, 3.2 ms) is
+  shared; over it the default student's sheet stands in and the real look queues on `M._hdBake.queue`, pumped from the wrapped
+  `agentFrame` (which also stamps the sheets an agent shows, both masters). `gcSheets` (over `HD_SHEET_LIMIT_MB` 24: drop sheets nobody
+  showed for GC_FRAMES), `clearSheets`, `clearFootball`, `sheetBytes` / `sheetCount` / `sheetStats` / `fbSheetBytes` / `pumpBakes` are
+  wrapped: the pen's re-registration of its painters (which would take the families back to the pen) is answered by re-registering the HD
+  painters. Public: `hdEntityFamilies()`, `hdEntityCells`, `hdSheetBytes()` / `hdSheetCount()` / `hdSheetStats()`, `hdCompose`,
+  `entitiesHDSelfTest` (in `sprites._tests`).
+- **Masters in play.** Zoom 1 on a Retina: `hdMaster` 2 → the master-2 cell lands 1 art px = 1 device px (eyes, hair, marks); zoom 1 at
+  dpr 1 and zoom 0.5: master 1 (lod 1: silhouette + outfit colours + hats + numbers); zoom 2 at dpr 1: master 2 at 1:1. The football layer
+  draws at FB_SCALE (.5), so it fetches `hdMasterHalf`: zoom 2 / dpr 1 → master 1 (crisp 1:1, the numbers a 3 × 5 px glyph as the pen's),
+  zoom 2 / dpr 2 → master 2. Night: the figures take the tint pass, no self-glow (the helmet / visor glint under mast light was skipped: it
+  needs a light companion per cell, not cheap).
+- **Atlas bytes (master 2, per sheet = one facing).** Student walk 43 KB per look (8 facings 344 KB; the 112-look worst case 38.5 MB),
+  idle 16 KB, umbrella 35 KB, cap / beads / foam 57–115 KB; officer walk 43 KB, wrangle 37 KB; band / krewe 29 KB; gator 173 / 276 / 486 KB
+  (juvenile / big / Le Grand; ×8 facings 1.4 / 2.2 / 3.9 MB); Roux 218 KB (1.7 MB); nutria 8 KB, egret / spoonbill 37 KB; fogger 84 KB,
+  bus 44 KB, pirogue / navy 65 KB, float 169 KB per variant (1.35 MB); player stance 14 KB / run 41 KB per (look, role, number); fans 6–11
+  KB. The H4 tour (160 agents, seed 42, 60 buildings) held 4.0 MB of HD sheets at 2× by day and 6.3 MB after the night pass (291 sheets);
+  the 300-agent crowd (zoom 1, dpr 2, every look walking in every facing) climbs to 55 MB (the pen: 14 MB at 1×: the same sheets × 4).
+  `hdAtlasMB` does not count them (sub-rects are not `own`): `hdSheetBytes()` does, and `totalMemoryMB` includes them through `sheetBytes`.
+- **Bake cost (Chrome, software raster, forced raster through a 1-px readback).** A student's 8-frame walk sheet 1.04 ms at master 2 /
+  0.65 ms at master 1 (the pen: 0.75 / 0.56), a far sheet 0.22 ms (0.23), a gator facing (10 frames) 2.1 ms (1.1), a player's run sheet
+  0.91 ms (1.01) — recording alone 0.39 ms for the walk sheet (0.48). The crowd's first-sight hitch is therefore the pen's: the placeholder
+  rule hands out the default student's sheet and the queue finishes under the 3.2 ms window.
+- **Gates (headless Chrome 1440×900, software raster, seed 42).** *fps, the 42-building campus at zoom 1 dpr 2* (`fps_check.mjs 96`,
+  machine under load): HEAD 45 / 48 fps (22.3 / 21.0 ms mean), H4 **45 / 48 fps** (22.1 / 20.9 ms) — within 1 %. *300 agents*
+  (`h4/crowd_fps.mjs`: students 9,000, 295 live agents, zoom 1 dpr 2, three 150-frame samples after a 12 s warm-up): HEAD 18 / 37 / 56 fps
+  (54.6 / 27.1 / 17.9 ms mean), H4 **18 / 36 / 55 fps** (56.2 / 27.6 / 18.2 ms) — within 3 % sample by sample, 532 deferred sheets all
+  pumped by the end of the warm-up, 0 queued during the samples.
+  *Watched home game at 2× (`h4/game.mjs`, a Cauldron tier II):* day, tick 334 live — **161 fans** on the treads (seated / standing /
+  waving, home purple + gold bands, the opponent's colours one in seven), **22 players** aligned on the field in home purple / gold helmets
+  and the opponent's colours, the officials, chain crew, cheerleaders, the Bayou Brass, the mascot, tailgaters outside at the field's scale
+  (the QA 3 weak spot: the tailgate ring keeps the qa-pass-4 half scale, so nothing full-size stands beside a half-size player); night
+  (the game's dusk script) — 235 fans, 17 lights, the figures tinted; the montage's final wide 1× shot. *Gators* (`h4/wild.mjs`: six on
+  a bank, juvenile / big / Le Grand, swim / sun / wander / lounge): swimmers low in a dashed ring with the V wake, baskers with the jaw open,
+  eyes and scutes readable at 2×. *Vehicles:* the bus (purple, gold belt, windows), the fogger truck (tank, cab, beacon, plume) and a pirogue
+  with paddlers. *0.5×:* students (purple / gold blocks with a head) and gators (dark olive silhouettes) separate from the ground. 0 console
+  errors, 0 `BSU.error` in every run (tour before / after, sheet, game, wild, fps ×2, crowd ×2).
+- **Tests.** `entities_hd.test` 60 (source rules — brush calls only, no gradients / patterns / text / Math.random, registerHD only, the
+  manifest slot, the brush primitives, render's `getRefE` / `getRefF` / `hdMasterHalf` rules by source; the pen's geometry snapshotted
+  before the module loads, then 396 bakes = every family × variant × first / mid / last frame × master 1 + 2 with the pen's cell, anchor
+  and frame count and `hd: true`, no BSU.error; frame totals; `fbSize` / `fbAnchor`; recorded brush calls: skin / outfit / hat / backpack /
+  umbrella / glasses bits, lod 0 vs 1 for students and gators, a swimming cell's ripples and no shadow, home vs scrimmage jerseys, numbers
+  12 vs 7 through `digits`, the helmet strokes, the fan cap bit, the down marker's digit, float variants, the fogger's puffs, the bus's
+  planes, a pirogue's capsules; sheets shared per facing, bytes accounted in `hdSheetBytes` / `sheetBytes`, `hdSheetStats` keys, agentfar's
+  cell, the placeholder + queue on the shared budget, `pumpBakes`, the wrapped `agentFrame`, `gcSheets` / `clearSheets` / `clearFootball`
+  keep the families HD, the limit's LRU reclaim; both entity selfTests under SELFTEST; a master-2 walk sheet records in < 25 ms in the stub).
+  Battery green: `build --check` (26 modules, 3509 KB), `smoke` ALL OK at 96 and `--size 64`, `modules` 19 self-tests 0 failed, `contract`
+  230, every `test/unit/*.test.mjs` (render 244, sprites 145, sprites_entities 61, brush 61, terrain_hd 34, buildings_hd 74, render_fx
+  93, sports 418, wildlife 101, …) 0 failed — except `sprites_buildings.test`'s wall-clock init budget (611–615 ms vs 600, load-sensitive
+  and advisory only above loadavg 3): the HEAD build measures 607–620 ms on the same machine in the same minute, and that test loads only
+  up to `sprites_buildings.js` (`initEntities` through the HD painters is 10 ms cold in the stub vs the pen's 39 ms).
+- **Screenshots** (scratchpad): `h4-before-2x.png` / `h4-after-2x.png` (the HEAD build vs this one, same seed, tick and camera over the
+  busy path at Founders' Hall), `h4-before-1x.png` / `h4-after-1x.png`, `h4-after-0.5x.png`, `h4-after-1x-dpr2.png`, `h4-after-night.png`,
+  `h4-game-2x.png`, `h4-game-night.png`, `h4-game-montage.png`, `h4-gators.png`, `h4-vehicles.png`, `h4-compare.png` (before / after at
+  2× + every converted family, one master-2 cell facing SE), `h4/sheet-zoom3.png` (the same cells at 3×), `h4/zoom-*.png` crops.
+- **Found, not changed.** (1) The pen's human projection (`scr`: `gy − y − z · pitch`) put a point nearer the viewer HIGHER on screen;
+  the HD rig uses the physically consistent one (nearer = lower), with the same pose tables — strides read the right way round. (2) The
+  vehicles keep the B4 "toy" scale (the bus body is 25 art px long beside a 24-px student). (3) `get('agentfar:…', v, f, 2)` bakes a
+  master-2 far sheet only for a direct call (render asks the far sheets at zoom 0.5, master 1). (4) The helmet / visor mast-light glint
+  was skipped (needs a per-cell light companion). (5) `render_fx`'s night gator eye glow keeps its fixed offset (`gatorEyes` is the pen's).
+  (6) The 300-agent crowd's 55 MB of master-2 sheets is the pen's 14 MB × 4: the GC limit (24 MB) reclaims only idle sheets, so a crowd
+  that shows every look in every facing holds them — H7's memory audit decides a Safari cap (e.g. master 1 for `agent` above a budget).
+  (7) At zoom 2 on dpr 1 the football layer fetches master 1 (crisp at 1:1); its numbers are 3 × 5 px glyphs like the pen's. (8) The fan
+  row's `const k` shadowing of its loop variable was caught by render.test's BSU.error count and fixed before the gates ran.

@@ -644,6 +644,7 @@
     const c0 = cols[0], c1 = cols[1];
     return { jersey: c0, pants: c1, helmet: shade(c0, 0.92), stripe: c1, logo: c1, num: readable(c1, c0), sock: c1, glove: c1 };
   }
+  M.fbLookDef = lookDef;   // H4: the HD composer reads the same jersey / pants / helmet / number colours (dynamic opponent looks included)
   /** pack a player variant: look 0–63 | role 0–4 << 6 | jersey number 0–99 << 9 (0 = the role default) | carry << 16 */
   M.fbVariant = function (look, role, num, carry) {
     const r = typeof role === 'string' ? M.fbRole(role) : (role | 0);
@@ -2314,10 +2315,11 @@
       check(M.gcSheets(1) === 0, 'gcSheets below budget drops nothing');
       if (M.ZOOM2) { const z2 = M.get('agent', 0, 0, 2); check(z2 && z2.sw === 28 && z2.sh === 48 && z2.ox === -14 && z2.oy === -44, '2× agent sheet 28×48 at (−14, −44)'); const gz = M.get('gator', 2, 3, 2); check(gz && gz.sw === GATORS[2].cw * 2 && gz.sh === GATORS[2].ch * 2, '2× legend gator'); }
       // 7. the bake budget: over budget a look gets the default student's sheet at once and bakes later
-      const wasArmed = BAKE.armed, wasBudget = BAKE.budget, wasClock = BAKE.clock; BAKE.armed = true; BAKE.budget = -1; BAKE.clock = () => 1e6; const q0 = BAKE.queue.length, d0 = BAKE.deferred;
+      const qLen = () => BAKE.queue.length + (M._hdBake ? M._hdBake.queue.length : 0), nDef = () => BAKE.deferred + (M._hdBake ? M._hdBake.deferred : 0);   // H4: the HD composer keeps its own deferred queue on the shared budget window
+      const wasArmed = BAKE.armed, wasBudget = BAKE.budget, wasClock = BAKE.clock; BAKE.armed = true; BAKE.budget = -1; BAKE.clock = () => 1e6; const q0 = qLen(), d0 = nDef();
       const run = selfRuns++, ld = M.lookPack({ outfit: 9, style: 3, skin: 5, hat: 2, acc: 6, hairC: run & 7, build: (run >> 3) % 3, glasses: (run >> 5) & 1 }); const placeholder = g('agent', ld, 40);
-      check(placeholder && placeholder.sw === 14 && BAKE.deferred === d0 + 1 && BAKE.queue.length === q0 + 1, 'over budget: a placeholder sheet is handed out and the real look queues (' + BAKE.deferred + ' deferred)');
-      BAKE.budget = wasBudget; check(M.pumpBakes(true) >= 1 && BAKE.queue.length === 0, 'pumpBakes finishes the queue'); BAKE.armed = wasArmed; BAKE.clock = wasClock;
+      check(placeholder && placeholder.sw === 14 && nDef() === d0 + 1 && qLen() === q0 + 1, 'over budget: a placeholder sheet is handed out and the real look queues (' + nDef() + ' deferred)');
+      BAKE.budget = wasBudget; check(M.pumpBakes(true) >= 1 && qLen() === 0, 'pumpBakes finishes the queue'); BAKE.armed = wasArmed; BAKE.clock = wasClock;
       // 8. gators: 3 sizes × 8 facings × (swim 2, walk 4, bask 2, lunge 2)
       for (let v = 0; v < 3; v++) {
         const bs = []; for (let d = 0; d < 8; d++) bs.push(composeGator(v, d, 2));

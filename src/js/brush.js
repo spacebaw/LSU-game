@@ -11,8 +11,10 @@
 // 1 art px = 2 device px of detail with no change to the painter.
 // Public: BSU.brush.{tone, toneArr, css, mix, sat, ramp, env, posEnv, rng, vnoise, fbm, pnoise, field, poly, bbox, centroid, diamond,
 //   diamondGrown, smoothPath, ellipse, seamWidth, seamStroke, plane, orb, softEllipse, microGrain, macroGrain, sites, edgeFade, stroke,
-//   blade, puddle, strokePath, fillQuadShaded, roofPlane, column, groundTile, waterTile, path, tree, figure, shadow, light, glow, decal,
-//   cube, begin, selfTest}
+//   blade, puddle, strokePath, fillQuadShaded, roofPlane, column, groundTile, waterTile, path, tree, figure, capsule, digits, shadow, light,
+//   glow, decal, cube, begin, selfTest}
+// H4 characters pass: capsule (a limb / body / hull lit across its width) and digits (jersey numbers as strokes) are the body kit the
+// character families compose (sprites_entities_hd.js); figure stays the H0 reference composition.
 // H1 terrain + water pass: posEnv / field / sites / macroGrain anchor a CACHED tile sprite to its 8×8-tile block position (period
 // 256×128 px), so 64 position variants of one tile family join seamlessly across tiles and chunks; strokePath is the layered stroke
 // behind every path / road / boardwalk / bridge deck (render.js strokes the smoothed centrelines through it).
@@ -467,6 +469,44 @@
     ctx.fillStyle = grad(hair, -3, 3, 0.3, -0.4); ctx.beginPath(); ctx.arc(0, -19.2, 3.5, Math.PI * (back ? 0.05 : 1.05), Math.PI * (back ? 0.95 : 1.95)); ctx.fill(); if (back) ctx.fillRect(-3.5, -19.2, 7, 2.5);
     ctx.restore();
   };
+  // ---------------------------------------------------------------------------
+  // H4 characters pass — the body kit primitives (sprites_entities_hd.js composes every limb, body, tail and hull from these)
+  // ---------------------------------------------------------------------------
+  /** a tapered capsule A → B (art px) lit ACROSS its width: the flank that faces the key light (upper-left) is light, the other
+   *  carries the cool rim; limbs, bodies, tails, hulls, poles. o: {amp (.3), rim (alpha .22), spec (alpha), a (alpha), flat (no rim)} */
+  M.capsule = function (ctx, ax, ay, bx, by, ra, rb, color, t, o) {
+    o = o || {}; ra = ra > 0 ? ra : 0; rb = rb > 0 ? rb : 0; if (!ra && !rb) return;
+    const dx = bx - ax, dy = by - ay, L = Math.sqrt(dx * dx + dy * dy);
+    if (L < 0.05) { orb(ctx, ax, ay, Math.max(ra, rb), Math.max(ra, rb), color, t, { spec: o.spec, noRim: o.flat }); return; }
+    const amp = o.amp == null ? 0.3 : o.amp, ang = Math.atan2(dy, dx);
+    let nx = -dy / L, ny = dx / L; if (nx + ny > 0) { nx = -nx; ny = -ny; }   // the normal that faces the key light (upper-left)
+    const rm = Math.max(ra, rb), mx = (ax + bx) / 2, my = (ay + by) / 2;
+    const g = ctx.createLinearGradient(mx + nx * rm, my + ny * rm, mx - nx * rm, my - ny * rm);
+    g.addColorStop(0, col(color, t + amp, o.a)); g.addColorStop(0.42, col(color, t + amp * 0.3, o.a)); g.addColorStop(1, col(color, t - amp * 1.5, o.a));
+    ctx.beginPath(); ctx.arc(ax, ay, ra, ang + Math.PI / 2, ang + Math.PI * 1.5); ctx.arc(bx, by, rb, ang - Math.PI / 2, ang + Math.PI / 2); ctx.closePath();
+    ctx.fillStyle = g; ctx.fill();
+    if (!o.flat && rm > 0.9) { ctx.lineCap = 'round'; ctx.lineWidth = 0.7; ctx.strokeStyle = css(RIM, o.rim == null ? 0.22 : o.rim); ctx.beginPath(); ctx.moveTo(ax - nx * (ra - 0.4), ay - ny * (ra - 0.4)); ctx.lineTo(bx - nx * (rb - 0.4), by - ny * (rb - 0.4)); ctx.stroke(); }
+    if (o.spec) { ctx.fillStyle = css(SPEC, o.spec); ctx.beginPath(); ctx.ellipse(ax + dx * 0.3 + nx * rm * 0.45, ay + dy * 0.3 + ny * rm * 0.45, Math.max(0.5, L * 0.18), Math.max(0.3, rm * 0.22), ang, 0, Math.PI * 2); ctx.fill(); }
+  };
+  const GLYPH = {
+    0: [[[0, 0], [2, 0], [2, 4], [0, 4], [0, 0]]], 1: [[[1, 0], [1, 4]]], 2: [[[0, 0], [2, 0], [2, 2], [0, 2], [0, 4], [2, 4]]], 3: [[[0, 0], [2, 0], [2, 4], [0, 4]], [[0, 2], [2, 2]]],
+    4: [[[0, 0], [0, 2], [2, 2]], [[2, 0], [2, 4]]], 5: [[[2, 0], [0, 0], [0, 2], [2, 2], [2, 4], [0, 4]]], 6: [[[2, 0], [0, 0], [0, 4], [2, 4], [2, 2], [0, 2]]],
+    7: [[[0, 0], [2, 0], [2, 4]]], 8: [[[0, 0], [2, 0], [2, 4], [0, 4], [0, 0]], [[0, 2], [2, 2]]], 9: [[[2, 2], [0, 2], [0, 0], [2, 0], [2, 4], [0, 4]]]
+  };
+  /** a string of digits as round-capped strokes on a 3 × 5 grid, h px tall, centred on (x, y): jersey numbers, the down marker
+   *  (fonts are not deterministic across machines, strokes are). o: {w stroke width, a alpha, sx horizontal squash (a turned torso), skew} */
+  M.digits = function (ctx, x, y, str, h, color, t, o) {
+    o = o || {}; str = String(str == null ? '' : str); if (!str.length || !(h > 0)) return;
+    const u = h / 4, sx = o.sx == null ? 1 : Math.max(0.15, o.sx), cw = 2 * u * sx, gap = u * sx * 0.9, W = str.length * cw + (str.length - 1) * gap, skew = o.skew || 0;
+    ctx.save(); ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.lineWidth = o.w || Math.max(0.5, h * 0.2); ctx.strokeStyle = col(color, t, o.a);
+    let x0 = x - W / 2;
+    for (const ch of str) {
+      const gl = GLYPH[ch];
+      if (gl) for (const seg of gl) { ctx.beginPath(); for (let i = 0; i < seg.length; i++) { const px = x0 + seg[i][0] * u * sx + (seg[i][1] - 2) * u * skew, py = y + (seg[i][1] - 2) * u; if (i) ctx.lineTo(px, py); else ctx.moveTo(px, py); } ctx.stroke(); }
+      x0 += cw + gap;
+    }
+    ctx.restore();
+  };
   /** contact / cast shadow (multiply): {x, y, rx, ry, a} ellipse or {poly, soft, a} */
   M.shadow = function (ctx, s, env) {
     void env; ctx.save(); ctx.globalCompositeOperation = 'multiply'; const a = Number.isFinite(s.a) ? s.a : 0.3;
@@ -531,7 +571,7 @@
         M.fillQuadShaded(g, [[10, 10], [60, 10], [60, 50], [10, 50]], '#F5ECD7', { face: 'sw', material: 'stucco' }, env);
         M.roofPlane(g, [[10, 60], [70, 60], [50, 30], [30, 30]], '#B5533C', { facing: 'sw' }, env);
         M.column(g, 40, 100, 30, 3, '#F5ECD7', env); M.path(g, [[0, 100], [40, 90], [100, 110]], 12, env); M.tree(g, 64, 100, 'liveOak', { seed: 4 }, env); M.tree(g, 64, 100, 'cypress', { seed: 5, inWater: true }, env);
-        M.figure(g, 64, 100, { facing: 'sw', walk: 0.3, shirt: 'purple', seed: 6 }, env); M.shadow(g, { x: 64, y: 100, rx: 10, ry: 4, a: 0.3 }, env); M.shadow(g, { poly: [[0, 0], [10, 0], [10, 10]], soft: 4, a: 0.3 }, env);
+        M.figure(g, 64, 100, { facing: 'sw', walk: 0.3, shirt: 'purple', seed: 6 }, env); M.capsule(g, 10, 10, 30, 40, 2, 1.5, P.purple, 0, { spec: 0.3 }); M.capsule(g, 10, 10, 10, 10, 2, 2, P.gold, 0); M.digits(g, 40, 40, '28', 5, P.gold, 0, { sx: 0.7 }); M.shadow(g, { x: 64, y: 100, rx: 10, ry: 4, a: 0.3 }, env); M.shadow(g, { poly: [[0, 0], [10, 0], [10, 10]], soft: 4, a: 0.3 }, env);
         M.light(g, { x: 20, y: 20, r: 8, color: '#FFE2A0', a: 0.9 }, env); M.light(g, { quad: [[10, 10], [20, 10], [20, 20], [10, 20]], color: '#FFD27A' }, env); M.light(g, { x: 20, y: 20, rx: 20, ry: 8, pool: true, color: '#FFD98A', a: 0.5 }, env);
         M.glow(g, [[10, 10], [20, 10], [20, 20], [10, 20]], null, env); M.decal(g, { x: 30, y: 30, w: 10, h: 6, shape: 'rect' }, env); M.decal(g, { x: 30, y: 30, w: 10, h: 10, shape: 'disc' }, env); M.cube(g, 64, 90, 20, P.purple, env);
         drew++;
