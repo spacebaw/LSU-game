@@ -1132,7 +1132,8 @@
     ['Rebuilt from the Roux', 'Reach prestige 50 after a bankruptcy card', { cash: 500000 }],
     ['Flagship', '10,000 students and prestige 60', { effect: 'titleCampus' }],
     ['Laissez les Bons Temps Rouler', '20,000 students, prestige 85, ecology ≥ 50', {}],
-    ['Untouched', 'Reach Flagship without draining a single marsh tile', {}]
+    ['Untouched', 'Reach Flagship without draining a single marsh tile', {}],
+    ['Land Baron', 'Charter 5 sections at the Land Office', { prestige: 2 }]   // L2
   ];
   const RETIRED_MILESTONES = { gatorWrangler: true, sunbather: true };   // calm alerts + ambient gators pass: never earned again, hidden in the panel
   const milestones = BSU.MILESTONES.map(function (id, i) {
@@ -1250,6 +1251,7 @@
     { key: ' ', action: 'pause' },
     { key: '1', action: 'speed1' }, { key: '2', action: 'speed2' }, { key: '3', action: 'speed4' }, { key: '4', action: 'speed8' },
     { key: 'b', action: 'budget' }, { key: 'n', action: 'season' }, { key: 't', action: 'storm' }, { key: 'l', action: 'milestones' },
+    { key: 'o', action: 'land' },   // L2: the Land Office (L is taken by Milestones)
     { key: 'f', action: 'overlayFlood' }, { key: 'w', action: 'overlayWater' }, { key: 'k', action: 'overlayMosquito' },
     { key: 'p', action: 'overlayPower' }, { key: 'c', action: 'overlayCoverage' }, { key: 'e', action: 'overlayEcology' },
     { key: '-', action: 'zoomOut' }, { key: '=', action: 'zoomIn' },
@@ -1508,7 +1510,7 @@
       check(D.students.modernShare === 0.25 && D.students.nicknameShare === 0.12, 'student shares');
       check(D.voiceCards.length === 12 && D.voiceCards.every((c, i) => c.id === BSU.VOICE_CARDS[i]), '12 voice cards in BSU.VOICE_CARDS order');
       check(D.boardCards.length === 8 && D.boardCards.every((c, i) => c.id === BSU.BOARD_CARDS[i]), '8 board cards in BSU.BOARD_CARDS order');
-      check(D.milestones.length === 26 && D.milestones.every((m, i) => m.id === BSU.MILESTONES[i] && m.name.length > 0 && m.text.length > 0), '26 milestones in BSU.MILESTONES order');
+      check(D.milestones.length === 27 && D.milestones.every((m, i) => m.id === BSU.MILESTONES[i] && m.name.length > 0 && m.text.length > 0), '27 milestones in BSU.MILESTONES order');   // L2: landBaron
       const objIds = Object.keys(D.objectives);
       check(objIds.length === 25 && BSU.OBJECTIVE_IDS.every(id => !!D.objectives[id]), '25 objectives keyed by BSU.OBJECTIVE_IDS');
       for (const id of objIds) {
@@ -1604,7 +1606,7 @@
       }
       for (const k of Object.keys(D.opponents)) { const o = D.opponents[k]; check(['ground', 'balanced', 'air'].indexOf(o.style) >= 0 && Number.isInteger(o.defBias) && Math.abs(o.defBias) <= 4 && o.colors.length === 2 && o.colors.every(c => /^#[0-9A-Fa-f]{6}$/.test(c)), 'opponent ' + k + ' has style, defBias ±4 and two colors'); }
       check(D.coaches.every(c => ['ground', 'balanced', 'air'].indexOf(c.style) >= 0), 'every coach has a playbook style');
-      notes.push('ticker 62, storms 26, gators 14, milestones 26, objectives 25, keys ' + D.keys.length + ', football formations ' + Object.keys(D.football.formations).length + ', archetypes ' + D.football.prospects.archetypes.length);
+      notes.push('ticker 62, storms 26, gators 14, milestones 27, objectives 25, keys ' + D.keys.length + ', football formations ' + Object.keys(D.football.formations).length + ', archetypes ' + D.football.prospects.archetypes.length);
     } catch (e) {
       fails.push('threw: ' + ((e && e.message) || String(e)));
     }

@@ -574,6 +574,8 @@
       };
     },
     /** {x, y} of a legal placement for a catalog id near plot.founders (D21), or null */
+    /** L2: buy section `id` at the Land Office through land.buy (force = skip the cash check and the prestige gate); {ok, reason, price, id, n} */
+    charter: function (id, force) { const s = BSU.state; if (!s || !has('land', 'buy')) return { ok: false, reason: 'land unavailable' }; return BSU.land.buy(s, id | 0, { force: !!force }); },
     findSpot: function (id) {
       const s = BSU.state;
       const row = BSU.data && BSU.data.catalog ? BSU.data.catalog[id] : null;

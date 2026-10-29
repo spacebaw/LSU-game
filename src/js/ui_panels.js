@@ -1367,6 +1367,116 @@
   UI.registerPanel('milestones', { build: buildMilestones, refresh: refreshMilestones, events: ['milestone:earned', 'objective:dismissed'] });
 
   // ===========================================================================
+  // LAND OFFICE panel (PLAN_PATHS_LAND Track L2): the sections map (the world in 16 × 16 cells: the charter, owned sections gold,
+  // for-sale ones with their price, locked ones with the prestige gate), the selected section's counts and price, Buy with a confirm.
+  // UI.panels.land.selected is the section id the ghost's refusal / the goal's Show me opened it on (ui.openLandOffice).
+  // ===========================================================================
+  UI.panels.land = UI.panels.land || { selected: null, confirm: null, confirmAt: 0 };
+  const LAND_CELL = 40, LAND_CONFIRM_MS = 6000;
+  const LAND_COL = { charter: '#4B2C7F', charterLine: '#8E6BC9', owned: '#C9A227', ownedLine: '#FDD023', sale: '#1F5E3A', saleLine: '#5FD38A', locked: '#3D3A28', lockedLine: '#B89A3E', far: '#1A1A2E', farLine: '#3C3C5A', sel: '#FFFFFF' };
+  function landApi() { return BSU.land || null; }
+  function landSections(s) { const L = landApi(); return L && typeof L.sections === 'function' ? (L.sections(s) || []) : []; }
+  function landGrid(s) { const L = landApi(); return L && typeof L.grid === 'function' ? L.grid(s) : { cols: 0, rows: 0, size: 16 }; }
+  function landStatus(sec) { return sec.owned ? 'Chartered' : (!sec.forSale ? 'Not next to your land yet' : (sec.locked ? 'Needs prestige ' + sec.gate : 'For sale')); }
+  function buildLand(host) {
+    host.appendChild(el('div', 'panel-title', 'Land Office'));
+    host._note = el('div', 'sp-note', ''); host.appendChild(host._note);
+    const wrap = el('div', 'land-wrap'); host.appendChild(wrap);
+    const cv = el('canvas', 'land-map'); cv.setAttribute('role', 'img'); cv.setAttribute('aria-label', 'Sections map'); cv.title = 'Click a section';
+    wrap.appendChild(cv); host._map = cv;
+    cv.addEventListener('click', function (ev) {
+      try {
+        const s = BSU.state; if (!s) return;
+        const q = cv.getBoundingClientRect(); const g = landGrid(s); const cw = q.width / Math.max(1, g.cols), chh = q.height / Math.max(1, g.rows);
+        const cx = Math.floor((ev.clientX - q.left) / cw), cy = Math.floor((ev.clientY - q.top) / chh);
+        const sec = landSections(s).find(function (x) { return x.cx === cx && x.cy === cy; });
+        if (sec) { UI.panels.land.selected = sec.id; UI.panels.land.confirm = null; refreshLand(s, host); }
+      } catch (e) { BSU.error('ui_panels', 'land:click', e); }
+    });
+    host._detail = el('div', 'land-detail'); wrap.appendChild(host._detail);
+    host._legend = el('div', 'land-legend'); host.appendChild(host._legend);
+    [['charter', 'Your charter'], ['owned', 'Chartered section'], ['sale', 'For sale'], ['locked', 'Prestige gate'], ['far', 'Not next to your land']].forEach(function (d) {
+      const c = el('span', 'land-chip'); const sw = el('span', 'land-swatch'); sw.style.background = LAND_COL[d[0]]; sw.style.borderColor = LAND_COL[d[0] + 'Line']; c.appendChild(sw); c.appendChild(el('span', '', d[1])); host._legend.appendChild(c);
+    });
+  }
+  function drawLandMap(s, cv, secs, selected) {
+    const g2 = landGrid(s), cols = g2.cols, rows = g2.rows; if (!cols || !rows) return;
+    let dpr = 1; try { dpr = Math.max(1, Math.min(3, window.devicePixelRatio || 1)); } catch (e) { dpr = 1; }
+    const wpx = cols * LAND_CELL, hpx = rows * LAND_CELL;
+    if (cv.width !== Math.round(wpx * dpr) || cv.height !== Math.round(hpx * dpr)) { cv.width = Math.round(wpx * dpr); cv.height = Math.round(hpx * dpr); cv.style.width = wpx + 'px'; cv.style.height = hpx + 'px'; }
+    const g = cv.getContext ? cv.getContext('2d') : null; if (!g) return;
+    try { g.setTransform(dpr, 0, 0, dpr, 0, 0); } catch (e) { /* stub */ }
+    g.fillStyle = '#120C24'; g.fillRect(0, 0, wpx, hpx);
+    const L = landApi(); const cells = L && typeof L.cells === 'function' ? L.cells(s) : [];
+    // the charter: one block, "Charter" at its centre
+    let lx0 = Infinity, ly0 = Infinity, lx1 = -Infinity, ly1 = -Infinity;
+    for (const c of cells) { if (!c.legacy) continue; g.fillStyle = LAND_COL.charter; g.fillRect(c.cx * LAND_CELL, c.cy * LAND_CELL, LAND_CELL, LAND_CELL); lx0 = Math.min(lx0, c.cx); ly0 = Math.min(ly0, c.cy); lx1 = Math.max(lx1, c.cx); ly1 = Math.max(ly1, c.cy); }
+    if (lx0 <= lx1) { g.strokeStyle = LAND_COL.charterLine; g.lineWidth = 1.5; g.strokeRect(lx0 * LAND_CELL + 1, ly0 * LAND_CELL + 1, (lx1 - lx0 + 1) * LAND_CELL - 2, (ly1 - ly0 + 1) * LAND_CELL - 2); }
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    for (const sec of secs) {
+      const x = sec.cx * LAND_CELL, y = sec.cy * LAND_CELL, kind = sec.owned ? 'owned' : (!sec.forSale ? 'far' : (sec.locked ? 'locked' : 'sale'));
+      g.fillStyle = LAND_COL[kind]; g.fillRect(x, y, LAND_CELL, LAND_CELL);
+      g.strokeStyle = LAND_COL[kind + 'Line']; g.lineWidth = 1; try { g.setLineDash(kind === 'locked' ? [3, 2] : []); } catch (e) { /* stub */ } g.strokeRect(x + 0.5, y + 0.5, LAND_CELL - 1, LAND_CELL - 1); try { g.setLineDash([]); } catch (e) { /* stub */ }
+      g.fillStyle = kind === 'owned' ? '#2A1A44' : '#EDE6F7'; g.font = '700 10px system-ui, -apple-system, Segoe UI, sans-serif'; g.fillText(String(sec.id), x + LAND_CELL / 2, y + 11);
+      g.font = '600 9px system-ui, -apple-system, Segoe UI, sans-serif';
+      if (kind === 'sale') g.fillText(money(sec.price), x + LAND_CELL / 2, y + LAND_CELL - 10);
+      else if (kind === 'locked') g.fillText('P' + sec.gate, x + LAND_CELL / 2, y + LAND_CELL - 10);
+      else if (kind === 'owned') g.fillText('yours', x + LAND_CELL / 2, y + LAND_CELL - 10);
+      if (sec.id === selected) { g.strokeStyle = LAND_COL.sel; g.lineWidth = 2; g.strokeRect(x + 1.5, y + 1.5, LAND_CELL - 3, LAND_CELL - 3); }
+    }
+    if (lx0 <= lx1) { g.fillStyle = '#EDE6F7'; g.font = '700 12px system-ui, -apple-system, Segoe UI, sans-serif'; g.fillText('Charter', (lx0 + lx1 + 1) * LAND_CELL / 2, (ly0 + ly1 + 1) * LAND_CELL / 2); }
+    g.textAlign = 'left'; g.textBaseline = 'alphabetic';
+  }
+  function refreshLand(s, host) {
+    if (!host || !host._detail) return;
+    const LP = UI.panels.land, secs = landSections(s), st = call('land', 'stats', s) || { sections: 0, owned: 0, forSale: 0, cheapest: 0, nextGate: 0 };
+    if (!secs.length) {
+      setText(host._note, 'Your charter covers the whole map: the state has no land to sell here. (New campuses are 96 × 96 with 20 sections of state land around the charter.)');
+      show(host._map, false); clear(host._detail); show(host._legend, false); return;
+    }
+    show(host._map, true); show(host._legend, true);
+    const pres = Math.floor(fin(s.economy && s.economy.prestige, 0));
+    setText(host._note, 'The state sells land in 16 × 16 sections next to your charter. ' + st.owned + ' of ' + st.sections + ' chartered · ' + st.forSale + ' for sale' + (st.cheapest ? ' from ' + money(st.cheapest) : '') + (st.nextGate > pres ? ' · the next needs prestige ' + st.nextGate + ' (you have ' + pres + ')' : '') + '. Price follows the land: $9k a dry tile, $20k high ground, $2k marsh, water free, on a $400k deed.');
+    if (!secs.some(function (x) { return x.id === LP.selected; })) { const first = secs.find(function (x) { return x.forSale && !x.locked; }) || secs.find(function (x) { return x.forSale; }) || secs[0]; LP.selected = first ? first.id : null; LP.confirm = null; }
+    drawLandMap(s, host._map, secs, LP.selected);
+    const d = host._detail; clear(d);
+    const sec = secs.find(function (x) { return x.id === LP.selected; }); if (!sec) return;
+    d.appendChild(el('div', 'card-kicker', 'Section ' + sec.id + ' · tiles ' + sec.x0 + '–' + sec.x1 + ', ' + sec.y0 + '–' + sec.y1));
+    const c = sec.counts || {};
+    const row = function (k, v, cls_) { const r = el('div', 'row' + (cls_ ? ' ' + cls_ : '')); r.appendChild(el('span', 'k', k)); r.appendChild(el('span', 'v', v)); d.appendChild(r); return r; };
+    row('Dry ground', fin(c.dry, 0) + ' tiles · ' + money(fin(c.dry, 0) * fin((P.land || {}).perDry, 9000)));
+    row('High ground', fin(c.high, 0) + ' tiles · ' + money(fin(c.high, 0) * fin((P.land || {}).perHigh, 20000)));
+    row('Marsh', fin(c.marsh, 0) + ' tiles · ' + money(fin(c.marsh, 0) * fin((P.land || {}).perMarsh, 2000)));
+    row('Water', fin(c.water, 0) + ' tiles · free');
+    row('Deed', money(fin((P.land || {}).base, 400000)));
+    row('Price', money(sec.price), 'land-price');
+    row('Status', landStatus(sec));
+    const q = call('land', 'quote', s, sec.id) || { ok: false, reason: '' };
+    if (!sec.owned) {
+      const now = Date.now(); if (LP.confirm !== sec.id || now - LP.confirmAt > LAND_CONFIRM_MS) LP.confirm = null;
+      const arming = LP.confirm === sec.id;
+      const b = btn('btn-land-buy', arming ? 'Confirm · ' + money(sec.price) : 'Buy · ' + money(sec.price), 'primary' + (arming ? ' confirm' : ''), function () {
+        const st2 = BSU.state; if (!st2) return;
+        if (LP.confirm !== sec.id || Date.now() - LP.confirmAt > LAND_CONFIRM_MS) { LP.confirm = sec.id; LP.confirmAt = Date.now(); refreshLand(st2, host); return; }
+        LP.confirm = null;
+        const r = call('land', 'buy', st2, sec.id, {}) || { ok: false, reason: 'Error' };
+        if (r.ok) { notify(st2, 'Section ' + sec.id + ' chartered · ' + money(r.price), 'info'); try { call('audio', 'play', 'cash'); } catch (e) { /* optional */ } }
+        else reasonLine(d, 'landbuy', r);
+        refreshLand(st2, host);
+      });
+      b.disabled = !q.ok; b.title = q.ok ? (arming ? 'Click again to charter it' : 'Click, then confirm') : (q.reason || '');
+      const actions = el('div', 'land-actions'); actions.appendChild(b);
+      if (arming) actions.appendChild(btn(null, 'Cancel', 'small', function () { LP.confirm = null; refreshLand(BSU.state, host); }));
+      actions.appendChild(btn('btn-land-show', 'Show me', 'small', function () { try { call('render', 'panToTile', (sec.x0 + sec.x1) >> 1, (sec.y0 + sec.y1) >> 1); } catch (e) { /* optional */ } }));
+      d.appendChild(actions);
+      if (!q.ok && q.reason) { const why = el('div', 'sp-note land-why', q.reason); d.appendChild(why); }
+    } else {
+      const actions = el('div', 'land-actions'); actions.appendChild(btn('btn-land-show', 'Show me', 'small', function () { try { call('render', 'panToTile', (sec.x0 + sec.x1) >> 1, (sec.y0 + sec.y1) >> 1); } catch (e) { /* optional */ } })); d.appendChild(actions);
+    }
+  }
+  UI.registerPanel('land', { build: buildLand, refresh: refreshLand, events: ['land:chartered', 'econ:month'] });
+
+  // ===========================================================================
   // ALMANAC panel
   // ===========================================================================
   function buildAlmanac(host) {

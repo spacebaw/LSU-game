@@ -110,7 +110,8 @@
     'chartered', 'welcome', 'cajunEngineer', 'firstBell', 'wetFeet', 'highAndDry', 'stormChaser', 'eyeOfTheStorm', 'gatorWrangler',
     'sunbather', 'skeeterBeater', 'bayouField', 'nightFalls', 'geauxBeatMagnolia', 'undefeated', 'bigBoil', 'throwMeSomethin',
     'greenAndGold', 'fortressBayou', 'livingWithWater', 'lightsAreOn', 'sinkingFeeling', 'rebuiltFromTheRoux', 'flagship',
-    'laissez', 'untouched'
+    'laissez', 'untouched',
+    'landBaron'   // L2: five sections chartered at the Land Office
   ]);
   // Objective ids in GDD §10.2 order (progress.objectives keys).
   BSU.OBJECTIVE_IDS = freeze(['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '11a', '12', '13', '14', '15', '16', '17', '18a', '18b', '18', '19', '20', '21', '22']);
@@ -811,6 +812,13 @@
       milestoneEffects: { wetFeetDiscount: 0.25, sinkingDiscount: 0.25, sinkingDays: 120, wranglerUpkeep: 0.5, sunbatherDays: 30, bigBoilDays: 10, greenGoldResearch: 1.1, undefeatedDonationDays: 120 },   // §10.5 rewards
       parade: { floats: 1, floatsUnion: 3, minRoadRun: 4, krewe: 12, beadsPerVolley: 8, beadTargets: 3, catchesPerPoint: 10, beadsCap: 3 },   // §14.3
       recapFromYear: 2                       // §10.8 Founders' Day
+    },
+    land: {                                  // PLAN_PATHS_LAND Track L2: the Land Office
+      sectionSize: 16,                       // sections are 16 × 16 tile blocks outside the start charter (state.world.legacy)
+      base: 400000, perDry: 9000, perHigh: 20000, perMarsh: 2000,   // price = base + per-tile by type (water free; Wet / Drained count as Dry)
+      gates: [[3, 20], [6, 40]],             // [nth section, prestige needed]: the 3rd section and on need prestige ≥ 20, the 6th and on ≥ 40
+      firstGoalFreeShare: 0.15,              // the "Charter your first section" goal is offered when fewer than this share of the charter's Dry + High tiles are free
+      landBaron: 5                           // the Land Baron milestone: sections owned
     }
   };
 
@@ -896,6 +904,7 @@
     'board:offered', 'board:resolved', 'voice:offered', 'voice:resolved',
     'milestone:earned',
     'objective:offered', 'objective:complete', 'objective:dismissed', 'objective:progress',
+    'land:chartered',   // L2: a section bought at the Land Office {id, price, n, rect}
     'timer:added', 'timer:expired', 'unlock:changed',
     'setpiece:start', 'setpiece:end', 'setpiece:skip', 'speed:changed',
     'decision:open', 'decision:closed',
@@ -1235,6 +1244,7 @@
       setPiece: null,
       saveMeta: { slot: '', savedAt: 0, label: '' },
       world: { W: m.W, H: m.H, ox: ox, oy: oy, legacy: { x0: m.legacy.x0, y0: m.legacy.y0, x1: m.legacy.x1, y1: m.legacy.y1 } },   // L1: the per-game map (saved; L2 defines the start charter from legacy)
+      charter: { owned: [], cardSeen: false, refusedDay: -1 },   // L2: section ids bought at the Land Office (the start charter is world.legacy); the first-purchase card; the first charter refusal (the goal's trigger)
       calendar: { day: 0, dayTick: 0, running: false, frozen: true, year: 1, month: 1, dom: 1, season: 'winter', semester: 'break' },
       sky: { phase: BSU.SKY.DAWN, phaseTick: 0, cycleTick: 0, scripted: false, t: 0 },
       weather: {
@@ -1437,7 +1447,7 @@
     try {
       for (const k of ['T', 'SURF', 'FLAG', 'SKY', 'OV', 'STORM', 'STORM_PHASE', 'OBJ', 'PLACE', 'SPR', 'B', 'EV', 'MAP']) BSU.assert(Object.isFrozen(BSU[k]), k + ' frozen');
       BSU.assert(BSU.B_ORDER.length === 46 && Object.keys(BSU.B).length === 46, '46 catalog ids');
-      BSU.assert(BSU.MILESTONES.length === 26, '26 milestones');
+      BSU.assert(BSU.MILESTONES.length === 27, '27 milestones');   // L2: landBaron
       BSU.assert(new Set(BSU.EV_LIST).size === BSU.EV_LIST.length, 'event names unique');
       BSU.assert(Object.keys(BSU.EV).length === BSU.EV_LIST.length, 'EV constants unique');
       BSU.assert(BSU.SKY_TICKS.reduce((a, b) => a + b, 0) === 300, 'sky cycle sums to 300');

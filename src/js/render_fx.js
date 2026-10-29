@@ -1657,6 +1657,78 @@
     g.setLineDash([]); g.lineDashOffset = 0; g.lineCap = 'butt';
     return n;
   }
+  // ---------------------------------------------------------------------------
+  // L2: the charter overlay (a draw-over at 6.5, above the day tint and below the lights / fog / beacons / ghost; nothing in the chunk
+  // bake). Every UNOWNED section in view gets a dark navy tint, a dashed boundary and, at zoom ≥ 1, a small "State land" pill at its centre
+  // (plus the price when it is for sale). A section outline follows its edge tiles' own elevation (the NE / SE / SW / NW faces of the
+  // boundary tiles), cached in world space per charter state and rebuilt once a day; the per-frame work is one path per visible section.
+  // ---------------------------------------------------------------------------
+  const CH_FILL = 'rgba(14, 18, 52, 0.36)', CH_LINE = 'rgba(196, 204, 255, 0.85)', CH_PILL = 'rgba(14, 18, 52, 0.88)', CH_TEXT = '#DCE2FF';
+  const chStats = { sections: 0, labels: 0, ms: 0, frames: 0 };
+  let chCache = null;   // {state, key, tick, polys: [{id, pts: number[] (world x, y pairs), x0, y0, x1, y1, cwx, cwy}]}
+  function chVert(pts, elev, tx, ty, corner) {   // corner 0 top, 1 right, 2 bottom, 3 left of tile (tx, ty) at its own elevation (world px)
+    const e = elev[ty * W + tx] || 0, cx = tileWorldX(tx, ty), cy = tileWorldY(tx, ty) - e * PXFT;
+    pts.push(corner === 3 ? cx - 32 : (corner === 1 ? cx + 32 : cx), corner === 0 ? cy - 16 : (corner === 2 ? cy + 16 : cy));
+  }
+  function chPolys(state, secs) {
+    let key = ''; for (let k = 0; k < secs.length; k++) if (!secs[k].owned) key += secs[k].id + ',';
+    const tick = fin(state.tick, 0);
+    if (chCache && chCache.state === state && chCache.key === key && tick >= chCache.tick && tick - chCache.tick < 600) return chCache.polys;
+    const elev = state.tiles.elev, polys = [];
+    for (let k = 0; k < secs.length; k++) {
+      const s = secs[k]; if (s.owned) continue;
+      const pts = [];
+      for (let x = s.x0; x <= s.x1; x++) { chVert(pts, elev, x, s.y0, 0); chVert(pts, elev, x, s.y0, 1); }   // NE edge, west → east
+      for (let y = s.y0; y <= s.y1; y++) { chVert(pts, elev, s.x1, y, 1); chVert(pts, elev, s.x1, y, 2); }   // SE edge, north → south
+      for (let x = s.x1; x >= s.x0; x--) { chVert(pts, elev, x, s.y1, 2); chVert(pts, elev, x, s.y1, 3); }   // SW edge, east → west
+      for (let y = s.y1; y >= s.y0; y--) { chVert(pts, elev, s.x0, y, 3); chVert(pts, elev, s.x0, y, 0); }   // NW edge, south → north
+      const mx = (s.x0 + s.x1) >> 1, my = (s.y0 + s.y1) >> 1;
+      polys.push({ id: s.id, pts: pts, x0: s.x0, y0: s.y0, x1: s.x1, y1: s.y1, cwx: tileWorldX(mx, my), cwy: tileWorldY(mx, my) - (elev[my * W + mx] || 0) * PXFT });
+    }
+    chCache = { state: state, key: key, tick: tick, polys: polys };
+    return polys;
+  }
+  function passCharter(state, g, view) {
+    chStats.sections = 0; chStats.labels = 0; chStats.frames++;
+    const L = mod('land'); if (!state || !state.tiles || !L || typeof L.sections !== 'function' || !view) return;
+    const t0 = nowMs();
+    const secs = L.sections(state); if (!secs.length) { chStats.ms = nowMs() - t0; return; }
+    const polys = chPolys(state, secs), cam = camOf(state), z = cam.zoom || 1, ox = view.vw / 2 - cam.x * z, oy = view.vh / 2 - cam.y * z;
+    const vx0 = view.x0 | 0, vy0 = view.y0 | 0, vx1 = view.x1 | 0, vy1 = view.y1 | 0;
+    g.beginPath(); let n = 0;
+    for (let k = 0; k < polys.length; k++) {
+      const p = polys[k]; if (p.x1 < vx0 || p.x0 > vx1 || p.y1 < vy0 || p.y0 > vy1) continue;
+      const pts = p.pts; g.moveTo(pts[0] * z + ox, pts[1] * z + oy);
+      for (let j = 2; j < pts.length; j += 2) g.lineTo(pts[j] * z + ox, pts[j + 1] * z + oy);
+      g.closePath(); n++;
+    }
+    chStats.sections = n;
+    if (n) {
+      g.globalAlpha = 1; g.fillStyle = CH_FILL; g.fill();
+      g.setLineDash([6 * z, 4 * z]); g.lineDashOffset = 0; g.strokeStyle = CH_LINE; g.lineWidth = Math.max(1, 1.2 * z); g.lineJoin = 'round'; g.stroke(); g.setLineDash([]);
+      if (z >= 1) {
+        const fs = Math.round(11 * clamp(z, 1, 1.6)); g.font = '700 ' + fs + 'px system-ui, -apple-system, Segoe UI, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+        for (let k = 0; k < polys.length; k++) {
+          const p = polys[k]; if (p.x1 < vx0 || p.x0 > vx1 || p.y1 < vy0 || p.y0 > vy1) continue;
+          const sec = secs.find(function (x) { return x.id === p.id; }); if (!sec) continue;
+          const px = p.cwx * z + ox, py = p.cwy * z + oy;
+          const line2 = sec.forSale ? (sec.locked ? 'Prestige ' + sec.gate : BSU.formatMoney(sec.price)) : '';
+          const w1 = fin(g.measureText('State land').width, 60), w2 = line2 ? fin(g.measureText(line2).width, 40) : 0, w = Math.max(w1, w2) + 14, h = line2 ? fs * 2 + 12 : fs + 10;
+          const x = px - w / 2, y = py - h / 2;
+          if (x > view.vw + 20 || x + w < -20 || y > view.vh + 20 || y + h < -20) continue;
+          g.fillStyle = CH_PILL; g.strokeStyle = CH_LINE; g.lineWidth = 1;
+          g.beginPath(); g.moveTo(x + 4, y); g.lineTo(x + w - 4, y); g.lineTo(x + w, y + 4); g.lineTo(x + w, y + h - 4); g.lineTo(x + w - 4, y + h); g.lineTo(x + 4, y + h); g.lineTo(x, y + h - 4); g.lineTo(x, y + 4); g.closePath(); g.fill(); g.stroke();
+          g.fillStyle = CH_TEXT; g.fillText('State land', px, line2 ? y + 6 + fs / 2 : py + 0.5);
+          if (line2) { g.fillStyle = sec.locked ? '#F2C97D' : '#9FE8B6'; g.fillText(line2, px, y + 6 + fs + fs / 2 + 1); }
+          chStats.labels++;
+        }
+        g.textAlign = 'left'; g.textBaseline = 'alphabetic';
+      }
+    }
+    chStats.ms = nowMs() - t0;
+  }
+  R.charterStats = function () { return { sections: chStats.sections, labels: chStats.labels, ms: chStats.ms, frames: chStats.frames }; };
+  R._charter = { pass: passCharter, polys: chPolys };
   R._network = { pass: passNetwork, tie: drawTiePreview, badge: drawHubBadge };
 
   // Passes (same-name registrations replace render's fallbacks for 'tint'; overlays/hud stay render's)
@@ -1665,6 +1737,7 @@
   R.registerPass('lights', function (s, g, v) { try { passLights(s, g, v); } finally { g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; } }, 7);
   R.registerPass('beacons', function (s, g, v) { try { passBeacons(s, g, v); } finally { g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; g.lineWidth = 1; } }, 7.5);   // issue spotlight pass
   R.registerPass('spotlight', function (s, g, v) { try { passSpotlight(s, g, v); } finally { g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; g.lineWidth = 1; } }, 9.5);
+  R.registerPass('charter', function (s, g, v) { try { passCharter(s, g, v); } catch (e) { ferr('charter', e); } finally { g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; g.lineWidth = 1; g.lineJoin = 'miter'; try { g.setLineDash([]); g.lineDashOffset = 0; } catch (e2) { /* stub */ } } }, 6.5);   // L2: the state-land tint / dashed section boundary / label
   R.registerPass('network', function (s, g, v) { try { passNetwork(s, g, v); } catch (e) { ferr('network', e); } finally { g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; g.lineWidth = 1; try { g.setLineDash([]); g.lineDashOffset = 0; } catch (e2) { /* stub */ } } }, 9.2);   // paths pass: sheen / amber dash / Campus hub badge / the dashed tie
   R.registerPass('fog', function (s, g, v, a, dt) { try { passFog(s, g, v, a, dt); } finally { g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; } }, 8);
   R.registerPass('fireworks', function (s, g, v) { try { passFireworks(s, g, v); } finally { g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; } }, 8.2);

@@ -607,3 +607,15 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
 .insp-pill.grey{background:#3B3A46;color:#C9C7D4;border-color:#5A5868}
 #insp-actions .btn.link{border-color:var(--gold)}
 #card-firstTie .card-kicker{color:var(--gold)}
+/* land office (L2): the sections map, the detail block, the Grounds-tab card */
+#panel-land .land-wrap{display:flex;gap:2rem;align-items:flex-start;flex-wrap:wrap;margin:1.2rem 0}
+#panel-land canvas.land-map{display:block;border:1px solid rgba(255,255,255,.14);border-radius:.6rem;cursor:pointer;image-rendering:auto;flex:0 0 auto}
+#panel-land .land-detail{flex:1 1 24rem;min-width:22rem}
+#panel-land .land-detail .row.land-price .v{color:var(--gold-hi);font-weight:700}
+#panel-land .land-actions{display:flex;gap:.8rem;flex-wrap:wrap;margin-top:1.2rem}
+#panel-land .btn.confirm{background:var(--gold);color:#2A1A44}
+#panel-land .land-why{color:#F2C97D;margin-top:.6rem}
+#panel-land .land-legend{display:flex;gap:1.2rem;flex-wrap:wrap;font-size:1.2rem;opacity:.85;margin-top:.6rem}
+#panel-land .land-chip{display:inline-flex;align-items:center;gap:.5rem}
+#panel-land .land-swatch{display:inline-block;width:1.2rem;height:1.2rem;border-radius:.2rem;border:1px solid}
+#palette .item.land-card .icon.glyph{display:flex;align-items:center;justify-content:center;font-size:3.2rem;width:6.4rem;height:6.4rem;border:1px solid rgba(253,208,35,.5);border-radius:.6rem;background:rgba(75,44,127,.5)}

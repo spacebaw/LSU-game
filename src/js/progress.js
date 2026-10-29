@@ -14,7 +14,7 @@
 (function () {
   const BSU = window.BSU;
   const M = (BSU.progress = BSU.progress || {});
-  const EV = BSU.EV, P = BSU.params, PP = P.progress, PT = P.time, PE = P.econ, PS = P.storm;
+  const EV = BSU.EV, P = BSU.params, PP = P.progress, PT = P.time, PE = P.econ, PS = P.storm, PL = P.land || {};   // L2: PL = the Land Office
   let W = 64, HGT = 64, N = 4096;
   BSU.onMap(function (m) { W = m.W; HGT = m.H; N = m.N; });   // L1: the live map size (refreshed inside BSU.setMap, before any allocation)
   const SKY = BSU.SKY, SURF = BSU.SURF, FLAG = BSU.FLAG, T = BSU.T, OBJ = BSU.OBJ, OV = BSU.OV;
@@ -359,9 +359,11 @@
     rebuiltFromTheRoux: function (s) { return fin(pr(s).failure.bankruptcy, 0) > 0 && prestige(s) >= fin(MG.rebuiltFromTheRoux, 50); },
     flagship: function (s) { const g = MG.flagship || {}; return students(s) >= fin(g.students, 10000) && prestige(s) >= fin(g.prestige, 60); },
     laissez: function (s) { const g = MG.laissez || {}; return students(s) >= fin(g.students, 20000) && prestige(s) >= fin(g.prestige, 85) && ecology(s) >= fin(g.ecology, 50); },
-    untouched: function (s) { return M.earned(s, 'flagship') && !pr(s).drainedEver; }
+    untouched: function (s) { return M.earned(s, 'flagship') && !pr(s).drainedEver; },
+    landBaron: function (s) { return fin(call('land', 'count', s), 0) >= fin(PL.landBaron, 5); }   // L2
   };
   const MILESTONE_PROGRESS = {
+    landBaron: function (s) { return { progress: fin(call('land', 'count', s), 0), goal: fin(PL.landBaron, 5) }; },   // L2
     firstBell: function (s) { return { progress: students(s), goal: fin(MG.firstBell, 600) }; },
     gatorWrangler: function () { return { progress: 0, goal: fin(MG.gatorWrangler, 10) }; },
     greenAndGold: function (s) { const g = MG.greenAndGold || {}; return { progress: Math.min(ecology(s) / fin(g.ecology, 70), students(s) / fin(g.students, 3000)), goal: 1 }; },
@@ -458,6 +460,7 @@
   const G = PP.goals || {};
   function od(id) { return (data().objectives || {})[id] || null; }
   function kindOf(id) {
+    if (EXTRA_OBJ[id]) return EXTRA_OBJ[id].kind;   // L2: land1 is a background goal
     if (id.indexOf('v:') === 0 || id.indexOf('p') === 0) return OBJ.BACKGROUND;
     const d = od(id); return d ? d.kind : OBJ.INTERRUPT;
   }
@@ -468,7 +471,8 @@
   const EXTRA_OBJ = {
     p1: { kind: OBJ.BACKGROUND, title: 'Accreditation Task Force: a Library', text: 'Build a Library.', showMe: 'target' },
     p2: { kind: OBJ.BACKGROUND, title: 'Accreditation Task Force: seats', text: 'Lecture seats for 5 of every 6 students.', showMe: 'target' },
-    p3: { kind: OBJ.BACKGROUND, title: 'Accreditation Task Force: dry feet', text: 'No flooded buildings for 30 days.', showMe: 'ring' }
+    p3: { kind: OBJ.BACKGROUND, title: 'Accreditation Task Force: dry feet', text: 'No flooded buildings for 30 days.', showMe: 'ring' },
+    land1: { kind: OBJ.BACKGROUND, title: 'Charter your first section', text: 'The charter is filling up. Buy a section of state land at the Land Office (O).', showMe: 'land' }   // L2
   };
   function objDef(id) {
     if (EXTRA_OBJ[id]) return EXTRA_OBJ[id];
@@ -589,6 +593,7 @@
     '20': function (s) { return students(s) >= fin(G.students20, 1500); },
     '21': function (s) { return students(s) >= fin(G.students21, 5000); },
     '22': function (s) { return done(s, '21'); },
+    land1: function (s) { const L = call('land', 'stats', s); if (!L || !L.sections) return false; if (fin(s.charter && s.charter.refusedDay, NONE) >= 0) return true; const fs = call('land', 'freeShare', s); return !!fs && fs.total > 0 && fs.share < fin(PL.firstGoalFreeShare, 0.15); },   // L2: the first charter refusal, or the charter's buildable land nearly spent
     p2: function (s) { return done(s, 'p1'); },
     p3: function (s) { return done(s, 'p2'); }
   };
@@ -619,6 +624,7 @@
     '20': function (s) { return { progress: (bhas(s, 'stadium', 2) ? 1 : 0) + (M.earned(s, 'nightFalls') ? 1 : 0), goal: 2 }; },
     '21': function (s) { return { progress: (bhas(s, 'surge_barrier') || bhas(s, 'marsh_restoration')) ? 1 : 0, goal: 1 }; },
     '22': function (s) { return { progress: (students(s) >= fin(G.students22, 10000) ? 1 : 0) + (prestige(s) >= fin(G.prestige22, 60) ? 1 : 0), goal: 2 }; },
+    land1: function (s) { return { progress: fin(call('land', 'count', s), 0) >= 1 ? 1 : 0, goal: 1 }; },   // L2
     p1: function (s) { return { progress: bhas(s, 'library') ? 1 : 0, goal: 1 }; },
     p2: function (s) { const st = call('buildings', 'stats', s) || {}; return { progress: fin(st.seats, 0) >= students(s) / 1.2 ? 1 : 0, goal: 1 }; },
     p3: function (s) { const o = ost(s, 'p3'); return { progress: Math.min(fin(o.progress, 0), 30), goal: 30, daily: true }; }
@@ -894,6 +900,7 @@
       if (key === 'cove') { const t = tilesOf((state.plot && state.plot.cove) || []); const cc = center(t, coveCenter(state)); return { tx: cc.tx, ty: cc.ty, tiles: t }; }
       if (key === 'landing') { const l = fin(state.plot && state.plot.landing, NONE); if (l >= 0) return { tx: l % W, ty: (l / W) | 0, tiles: [l] }; return { tx: fb.tx, ty: fb.ty }; }
       if (key === 'crown') { const r = call('terrain', 'reachableHigh5', state); const t = Array.isArray(r) ? tilesOf(r).filter(function (i) { return state.tiles.owner[i] < 0; }) : []; const cc = center(t, fb); return { tx: cc.tx, ty: cc.ty, tiles: t }; }
+      if (key === 'land') { const sec = (call('land', 'sections', state) || []).find(function (x) { return x.forSale; }); ui(state, 'openLandOffice', sec ? sec.id : undefined); if (sec) return { tx: (sec.x0 + sec.x1) >> 1, ty: (sec.y0 + sec.y1) >> 1 }; return { tx: fb.tx, ty: fb.ty }; }   // L2: the goal's Show me opens the Land Office on the first section for sale
       if (key === 'ring') { const g = call('buildings', 'gaps', state, fin(G.ringH11, 5)); let t = []; if (g && g.gaps) for (const gap of g.gaps) t = t.concat(gap.tiles || []); if (!t.length) t = tilesOf((state.plot && state.plot.mouth) || []); const cc = center(t, coveCenter(state)); return { tx: cc.tx, ty: cc.ty, tiles: t }; }
       // target: per objective
       const c = ctx(state);

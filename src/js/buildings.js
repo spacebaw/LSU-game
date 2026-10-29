@@ -51,7 +51,8 @@
     economy: function () { return BSU.economy; },
     progress: function () { return BSU.progress; },
     weather: function () { return BSU.weather; },
-    wildlife: function () { return BSU.wildlife; }
+    wildlife: function () { return BSU.wildlife; },
+    land: function () { return BSU.land; }   // L2: the Land Office (loads after this module; reached per call)
   };
   const dep = M._deps;
   function emit(name, payload) { try { dep.emit(name, payload); } catch (e) { if (BSU.SELFTEST) throw e; BSU.error('buildings', 'emit:' + name, e); } }
@@ -443,7 +444,8 @@
       needsGrading: false, gradingCost: 0, needsPilings: false, pilingsCost: 0, terrainMod: 0, summer: false,
       access: true, roadOk: true, power: false, water: false, radius: 0, ridgeFull: null, sink: null, ring: null, affordable: true,
       connector: null,   // connector pass: {tiles, surfaces, cost, water} of the tie this placement would lay (null when the footprint already touches the network)
-      unlinked: false, nearest: null, tieSkipped: null   // paths pass: off the network with no tie; the nearest network tile {tx, ty, i, d} (Show me); the tie Alt is skipping
+      unlinked: false, nearest: null, tieSkipped: null,   // paths pass: off the network with no tie; the nearest network tile {tx, ty, i, d} (Show me); the tie Alt is skipping
+      charter: null   // L2: {id, price, forSale, locked, gate, tx, ty, i, reason} when the footprint / tile lies on unchartered land (the reason names the section's price)
     };
   }
   // ---------------------------------------------------------------------------
@@ -455,14 +457,19 @@
   // gravel on land, planks over water. connectorInner (buildings) and runTieInner (drag ends) sit on it.
   // ---------------------------------------------------------------------------
   const TIE_REASON = "Can't reach a path: draw one from campus first";
+  // L2: the Land Office. charterMask → the live chartered mask (null when the land module is absent or the charter covers the world);
+  // charterRefusal → land.refusal(state, tiles) (null when every tile is chartered). Both reach BSU.land per call (it loads after this module).
+  function charterMask(state) { const m = call('land', 'mask', [state], null); return (m && m.length === N) ? m : null; }
+  function charterRefusal(state, tiles) { return call('land', 'refusal', [state, tiles], null); }
   function tieMax() { return Math.max(0, Math.floor(fin(PB.autoTieMax, 12))); }
   function tieSearch(state, starts, blocked, goal, max) {
     const pathRow = rowOf('path'), walkRow = rowOf('boardwalk');
     if (!pathRow || !(max > 0)) return null;
     const waterOk = !!walkRow && M.unlocked(state, 'boardwalk').ok === true;
     const res = reservedTiles(state), scratch = {};
+    const cmask = charterMask(state);   // L2: a tie never routes through unchartered land
     const legal = function (i) {
-      if (blocked(i) || (res && res.indexOf(i) >= 0) || isMound(state, i)) return false;
+      if (blocked(i) || (res && res.indexOf(i) >= 0) || isMound(state, i) || (cmask && cmask[i] !== 1)) return false;
       if (isLand(state, i)) return dragTileRule(state, pathRow, i, {}, scratch) === '';
       return waterOk && dragTileRule(state, walkRow, i, {}, scratch) === '';
     };
@@ -812,6 +819,8 @@
     if (!tiles) return fail(r, 'Off the map');
     r.tiles = tiles;
     r.radius = largestRadius(row);
+    // 2b. the charter (L2): every tool is refused on unchartered land, before any terrain / access rule, with the Land Office reason
+    { const ch = charterRefusal(state, tiles); if (ch) { r.charter = ch; return fail(r, ch.reason); } }
     // 3. terrain rule
     if (!isFoot) {
       const why = dragTileRule(state, row, tiles[0], opts, r);
@@ -945,6 +954,7 @@
     r.tiles = run; r.cost = row.cost; r.baseCost = row.cost;
     if (run.length < PB.barrierRun[0] || run.length > PB.barrierRun[1]) return fail(r, 'Drag 4–8 tiles across the Bayou');
     for (const i of run) if (!(Number.isInteger(i) && i >= 0 && i < N)) return fail(r, 'Off the map');
+    { const ch = charterRefusal(state, run); if (ch) { r.charter = ch; return fail(r, ch.reason); } }   // L2
     const sameRow = run.every(i => (((i / W) | 0)) === (((run[0] / W) | 0))), sameCol = run.every(i => ((i % W)) === ((run[0] % W)));
     if (!sameRow && !sameCol) return fail(r, 'The barrier must be a straight line');
     for (let k = 1; k < run.length; k++) if (Math.abs(run[k] - run[k - 1]) !== (sameRow ? 1 : W)) return fail(r, 'The barrier must be a straight line');
@@ -1068,7 +1078,7 @@
       return { ok: rr.ok, reason: rr.reason || '', id: target, tiles: rr.ok ? M.footprint(state, target) : [], cost: rr.cost };
     }
     const r = M.canPlace(state, id, tx, ty, opts);
-    if (!r.ok) return { ok: false, reason: r.reason, cost: r.cost };
+    if (!r.ok) return { ok: false, reason: r.reason, cost: r.cost, charter: r.charter || null };   // L2: the ui's refusal toast reads charter
     const day = dayOf(state);
     const c = cache(state);
     // connector pass: the building and its gravel tie are ONE purchase (one charge, one undo record, one refund)

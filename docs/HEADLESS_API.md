@@ -18,6 +18,7 @@ BSU.headless.snapshot()       // → plain JSON-able summary:
    //   buildings, agents, gators, floodedTiles, floodedBuildings, storm: null|{name,cat,phase}, speed }
 BSU.headless.findSpot(id)     // → {x,y} of a legal placement for catalog id (searches near the start plot; drag tools: a legal start tile) or null
 BSU.headless.place(id, x, y)  // → {ok, reason} using the SAME validation/cost path as the UI (charges cash)
+BSU.headless.charter(id, force) // L2: buy section `id` at the Land Office through land.buy → {ok, reason, price, id, n}; force skips the cash check and the prestige gate
 BSU.headless.forceHurricane(category) // schedule a storm to make landfall within ~600 ticks, skipping the cone wait
 BSU.headless.click(px, py)    // optional: synthesize a pointer click at canvas pixel coords through the UI input state machine
 BSU.headless.key(name)        // optional: synthesize a keydown (e.g. 'Escape', '1', ' ')

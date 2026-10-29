@@ -50,7 +50,7 @@ eq(BSU.B_ORDER[7], 'founders_hall', 'row 8 is founders_hall');
 eq(BSU.B_ORDER[42], 'rookery', 'row 43 is rookery');
 eq(BSU.SAVE_VERSION, 2, 'SAVE_VERSION = 2 (L1: v2 stores state.world)');
 eq(BSU.MAP.N, 4096, 'MAP.N = 4096');
-eq(BSU.MILESTONES.length, 26, '26 milestone ids');
+eq(BSU.MILESTONES.length, 27, '27 milestone ids (L2: landBaron)');
 eq(BSU.OBJECTIVE_IDS.length, 25, '25 objective ids');
 ok(Array.isArray(BSU.SAVE_SKIP) && BSU.SAVE_SKIP.includes('agents'), 'SAVE_SKIP lists agents');
 eq(BSU.EV.TILE_CHANGED, 'tile:changed', 'EV.TILE_CHANGED');
@@ -147,7 +147,7 @@ eq(st.calendar.season, 'winter', 'Jan 1 is winter');
 eq(st.calendar.semester, 'break', 'Jan 1 is break');
 eq(st.plot.bank0, 58, 'plot.bank0 = bank(7) = 58');
 eq(st.plot.founders.tx, 51, 'plot.founders.tx = bank0 − 7');
-eq(Object.keys(st.progress.milestones).length, 26, 'progress.milestones pre-keyed');
+eq(Object.keys(st.progress.milestones).length, 27, 'progress.milestones pre-keyed');
 eq(Object.keys(st.progress.objectives).length, 25, 'progress.objectives pre-keyed');
 ok(st.hydro.networks === null && st.wildlife.campusMask === null, 'non-saved caches start null');
 // plain data: JSON-able apart from typed arrays

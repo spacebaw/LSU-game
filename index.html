@@ -614,6 +614,18 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
 .insp-pill.grey{background:#3B3A46;color:#C9C7D4;border-color:#5A5868}
 #insp-actions .btn.link{border-color:var(--gold)}
 #card-firstTie .card-kicker{color:var(--gold)}
+/* land office (L2): the sections map, the detail block, the Grounds-tab card */
+#panel-land .land-wrap{display:flex;gap:2rem;align-items:flex-start;flex-wrap:wrap;margin:1.2rem 0}
+#panel-land canvas.land-map{display:block;border:1px solid rgba(255,255,255,.14);border-radius:.6rem;cursor:pointer;image-rendering:auto;flex:0 0 auto}
+#panel-land .land-detail{flex:1 1 24rem;min-width:22rem}
+#panel-land .land-detail .row.land-price .v{color:var(--gold-hi);font-weight:700}
+#panel-land .land-actions{display:flex;gap:.8rem;flex-wrap:wrap;margin-top:1.2rem}
+#panel-land .btn.confirm{background:var(--gold);color:#2A1A44}
+#panel-land .land-why{color:#F2C97D;margin-top:.6rem}
+#panel-land .land-legend{display:flex;gap:1.2rem;flex-wrap:wrap;font-size:1.2rem;opacity:.85;margin-top:.6rem}
+#panel-land .land-chip{display:inline-flex;align-items:center;gap:.5rem}
+#panel-land .land-swatch{display:inline-block;width:1.2rem;height:1.2rem;border-radius:.2rem;border:1px solid}
+#palette .item.land-card .icon.glyph{display:flex;align-items:center;justify-content:center;font-size:3.2rem;width:6.4rem;height:6.4rem;border:1px solid rgba(253,208,35,.5);border-radius:.6rem;background:rgba(75,44,127,.5)}
 
 </style>
 </head>
@@ -734,7 +746,8 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     'chartered', 'welcome', 'cajunEngineer', 'firstBell', 'wetFeet', 'highAndDry', 'stormChaser', 'eyeOfTheStorm', 'gatorWrangler',
     'sunbather', 'skeeterBeater', 'bayouField', 'nightFalls', 'geauxBeatMagnolia', 'undefeated', 'bigBoil', 'throwMeSomethin',
     'greenAndGold', 'fortressBayou', 'livingWithWater', 'lightsAreOn', 'sinkingFeeling', 'rebuiltFromTheRoux', 'flagship',
-    'laissez', 'untouched'
+    'laissez', 'untouched',
+    'landBaron'   // L2: five sections chartered at the Land Office
   ]);
   // Objective ids in GDD §10.2 order (progress.objectives keys).
   BSU.OBJECTIVE_IDS = freeze(['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '11a', '12', '13', '14', '15', '16', '17', '18a', '18b', '18', '19', '20', '21', '22']);
@@ -1435,6 +1448,13 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
       milestoneEffects: { wetFeetDiscount: 0.25, sinkingDiscount: 0.25, sinkingDays: 120, wranglerUpkeep: 0.5, sunbatherDays: 30, bigBoilDays: 10, greenGoldResearch: 1.1, undefeatedDonationDays: 120 },   // §10.5 rewards
       parade: { floats: 1, floatsUnion: 3, minRoadRun: 4, krewe: 12, beadsPerVolley: 8, beadTargets: 3, catchesPerPoint: 10, beadsCap: 3 },   // §14.3
       recapFromYear: 2                       // §10.8 Founders' Day
+    },
+    land: {                                  // PLAN_PATHS_LAND Track L2: the Land Office
+      sectionSize: 16,                       // sections are 16 × 16 tile blocks outside the start charter (state.world.legacy)
+      base: 400000, perDry: 9000, perHigh: 20000, perMarsh: 2000,   // price = base + per-tile by type (water free; Wet / Drained count as Dry)
+      gates: [[3, 20], [6, 40]],             // [nth section, prestige needed]: the 3rd section and on need prestige ≥ 20, the 6th and on ≥ 40
+      firstGoalFreeShare: 0.15,              // the "Charter your first section" goal is offered when fewer than this share of the charter's Dry + High tiles are free
+      landBaron: 5                           // the Land Baron milestone: sections owned
     }
   };
 
@@ -1520,6 +1540,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     'board:offered', 'board:resolved', 'voice:offered', 'voice:resolved',
     'milestone:earned',
     'objective:offered', 'objective:complete', 'objective:dismissed', 'objective:progress',
+    'land:chartered',   // L2: a section bought at the Land Office {id, price, n, rect}
     'timer:added', 'timer:expired', 'unlock:changed',
     'setpiece:start', 'setpiece:end', 'setpiece:skip', 'speed:changed',
     'decision:open', 'decision:closed',
@@ -1859,6 +1880,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
       setPiece: null,
       saveMeta: { slot: '', savedAt: 0, label: '' },
       world: { W: m.W, H: m.H, ox: ox, oy: oy, legacy: { x0: m.legacy.x0, y0: m.legacy.y0, x1: m.legacy.x1, y1: m.legacy.y1 } },   // L1: the per-game map (saved; L2 defines the start charter from legacy)
+      charter: { owned: [], cardSeen: false, refusedDay: -1 },   // L2: section ids bought at the Land Office (the start charter is world.legacy); the first-purchase card; the first charter refusal (the goal's trigger)
       calendar: { day: 0, dayTick: 0, running: false, frozen: true, year: 1, month: 1, dom: 1, season: 'winter', semester: 'break' },
       sky: { phase: BSU.SKY.DAWN, phaseTick: 0, cycleTick: 0, scripted: false, t: 0 },
       weather: {
@@ -2061,7 +2083,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     try {
       for (const k of ['T', 'SURF', 'FLAG', 'SKY', 'OV', 'STORM', 'STORM_PHASE', 'OBJ', 'PLACE', 'SPR', 'B', 'EV', 'MAP']) BSU.assert(Object.isFrozen(BSU[k]), k + ' frozen');
       BSU.assert(BSU.B_ORDER.length === 46 && Object.keys(BSU.B).length === 46, '46 catalog ids');
-      BSU.assert(BSU.MILESTONES.length === 26, '26 milestones');
+      BSU.assert(BSU.MILESTONES.length === 27, '27 milestones');   // L2: landBaron
       BSU.assert(new Set(BSU.EV_LIST).size === BSU.EV_LIST.length, 'event names unique');
       BSU.assert(Object.keys(BSU.EV).length === BSU.EV_LIST.length, 'EV constants unique');
       BSU.assert(BSU.SKY_TICKS.reduce((a, b) => a + b, 0) === 300, 'sky cycle sums to 300');
@@ -3270,7 +3292,8 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     ['Rebuilt from the Roux', 'Reach prestige 50 after a bankruptcy card', { cash: 500000 }],
     ['Flagship', '10,000 students and prestige 60', { effect: 'titleCampus' }],
     ['Laissez les Bons Temps Rouler', '20,000 students, prestige 85, ecology ≥ 50', {}],
-    ['Untouched', 'Reach Flagship without draining a single marsh tile', {}]
+    ['Untouched', 'Reach Flagship without draining a single marsh tile', {}],
+    ['Land Baron', 'Charter 5 sections at the Land Office', { prestige: 2 }]   // L2
   ];
   const RETIRED_MILESTONES = { gatorWrangler: true, sunbather: true };   // calm alerts + ambient gators pass: never earned again, hidden in the panel
   const milestones = BSU.MILESTONES.map(function (id, i) {
@@ -3388,6 +3411,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     { key: ' ', action: 'pause' },
     { key: '1', action: 'speed1' }, { key: '2', action: 'speed2' }, { key: '3', action: 'speed4' }, { key: '4', action: 'speed8' },
     { key: 'b', action: 'budget' }, { key: 'n', action: 'season' }, { key: 't', action: 'storm' }, { key: 'l', action: 'milestones' },
+    { key: 'o', action: 'land' },   // L2: the Land Office (L is taken by Milestones)
     { key: 'f', action: 'overlayFlood' }, { key: 'w', action: 'overlayWater' }, { key: 'k', action: 'overlayMosquito' },
     { key: 'p', action: 'overlayPower' }, { key: 'c', action: 'overlayCoverage' }, { key: 'e', action: 'overlayEcology' },
     { key: '-', action: 'zoomOut' }, { key: '=', action: 'zoomIn' },
@@ -3646,7 +3670,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
       check(D.students.modernShare === 0.25 && D.students.nicknameShare === 0.12, 'student shares');
       check(D.voiceCards.length === 12 && D.voiceCards.every((c, i) => c.id === BSU.VOICE_CARDS[i]), '12 voice cards in BSU.VOICE_CARDS order');
       check(D.boardCards.length === 8 && D.boardCards.every((c, i) => c.id === BSU.BOARD_CARDS[i]), '8 board cards in BSU.BOARD_CARDS order');
-      check(D.milestones.length === 26 && D.milestones.every((m, i) => m.id === BSU.MILESTONES[i] && m.name.length > 0 && m.text.length > 0), '26 milestones in BSU.MILESTONES order');
+      check(D.milestones.length === 27 && D.milestones.every((m, i) => m.id === BSU.MILESTONES[i] && m.name.length > 0 && m.text.length > 0), '27 milestones in BSU.MILESTONES order');   // L2: landBaron
       const objIds = Object.keys(D.objectives);
       check(objIds.length === 25 && BSU.OBJECTIVE_IDS.every(id => !!D.objectives[id]), '25 objectives keyed by BSU.OBJECTIVE_IDS');
       for (const id of objIds) {
@@ -3742,7 +3766,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
       }
       for (const k of Object.keys(D.opponents)) { const o = D.opponents[k]; check(['ground', 'balanced', 'air'].indexOf(o.style) >= 0 && Number.isInteger(o.defBias) && Math.abs(o.defBias) <= 4 && o.colors.length === 2 && o.colors.every(c => /^#[0-9A-Fa-f]{6}$/.test(c)), 'opponent ' + k + ' has style, defBias ±4 and two colors'); }
       check(D.coaches.every(c => ['ground', 'balanced', 'air'].indexOf(c.style) >= 0), 'every coach has a playbook style');
-      notes.push('ticker 62, storms 26, gators 14, milestones 26, objectives 25, keys ' + D.keys.length + ', football formations ' + Object.keys(D.football.formations).length + ', archetypes ' + D.football.prospects.archetypes.length);
+      notes.push('ticker 62, storms 26, gators 14, milestones 27, objectives 25, keys ' + D.keys.length + ', football formations ' + Object.keys(D.football.formations).length + ', archetypes ' + D.football.prospects.archetypes.length);
     } catch (e) {
       fails.push('threw: ' + ((e && e.message) || String(e)));
     }
@@ -10773,7 +10797,8 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     economy: function () { return BSU.economy; },
     progress: function () { return BSU.progress; },
     weather: function () { return BSU.weather; },
-    wildlife: function () { return BSU.wildlife; }
+    wildlife: function () { return BSU.wildlife; },
+    land: function () { return BSU.land; }   // L2: the Land Office (loads after this module; reached per call)
   };
   const dep = M._deps;
   function emit(name, payload) { try { dep.emit(name, payload); } catch (e) { if (BSU.SELFTEST) throw e; BSU.error('buildings', 'emit:' + name, e); } }
@@ -11165,7 +11190,8 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
       needsGrading: false, gradingCost: 0, needsPilings: false, pilingsCost: 0, terrainMod: 0, summer: false,
       access: true, roadOk: true, power: false, water: false, radius: 0, ridgeFull: null, sink: null, ring: null, affordable: true,
       connector: null,   // connector pass: {tiles, surfaces, cost, water} of the tie this placement would lay (null when the footprint already touches the network)
-      unlinked: false, nearest: null, tieSkipped: null   // paths pass: off the network with no tie; the nearest network tile {tx, ty, i, d} (Show me); the tie Alt is skipping
+      unlinked: false, nearest: null, tieSkipped: null,   // paths pass: off the network with no tie; the nearest network tile {tx, ty, i, d} (Show me); the tie Alt is skipping
+      charter: null   // L2: {id, price, forSale, locked, gate, tx, ty, i, reason} when the footprint / tile lies on unchartered land (the reason names the section's price)
     };
   }
   // ---------------------------------------------------------------------------
@@ -11177,14 +11203,19 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
   // gravel on land, planks over water. connectorInner (buildings) and runTieInner (drag ends) sit on it.
   // ---------------------------------------------------------------------------
   const TIE_REASON = "Can't reach a path: draw one from campus first";
+  // L2: the Land Office. charterMask → the live chartered mask (null when the land module is absent or the charter covers the world);
+  // charterRefusal → land.refusal(state, tiles) (null when every tile is chartered). Both reach BSU.land per call (it loads after this module).
+  function charterMask(state) { const m = call('land', 'mask', [state], null); return (m && m.length === N) ? m : null; }
+  function charterRefusal(state, tiles) { return call('land', 'refusal', [state, tiles], null); }
   function tieMax() { return Math.max(0, Math.floor(fin(PB.autoTieMax, 12))); }
   function tieSearch(state, starts, blocked, goal, max) {
     const pathRow = rowOf('path'), walkRow = rowOf('boardwalk');
     if (!pathRow || !(max > 0)) return null;
     const waterOk = !!walkRow && M.unlocked(state, 'boardwalk').ok === true;
     const res = reservedTiles(state), scratch = {};
+    const cmask = charterMask(state);   // L2: a tie never routes through unchartered land
     const legal = function (i) {
-      if (blocked(i) || (res && res.indexOf(i) >= 0) || isMound(state, i)) return false;
+      if (blocked(i) || (res && res.indexOf(i) >= 0) || isMound(state, i) || (cmask && cmask[i] !== 1)) return false;
       if (isLand(state, i)) return dragTileRule(state, pathRow, i, {}, scratch) === '';
       return waterOk && dragTileRule(state, walkRow, i, {}, scratch) === '';
     };
@@ -11534,6 +11565,8 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     if (!tiles) return fail(r, 'Off the map');
     r.tiles = tiles;
     r.radius = largestRadius(row);
+    // 2b. the charter (L2): every tool is refused on unchartered land, before any terrain / access rule, with the Land Office reason
+    { const ch = charterRefusal(state, tiles); if (ch) { r.charter = ch; return fail(r, ch.reason); } }
     // 3. terrain rule
     if (!isFoot) {
       const why = dragTileRule(state, row, tiles[0], opts, r);
@@ -11667,6 +11700,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     r.tiles = run; r.cost = row.cost; r.baseCost = row.cost;
     if (run.length < PB.barrierRun[0] || run.length > PB.barrierRun[1]) return fail(r, 'Drag 4–8 tiles across the Bayou');
     for (const i of run) if (!(Number.isInteger(i) && i >= 0 && i < N)) return fail(r, 'Off the map');
+    { const ch = charterRefusal(state, run); if (ch) { r.charter = ch; return fail(r, ch.reason); } }   // L2
     const sameRow = run.every(i => (((i / W) | 0)) === (((run[0] / W) | 0))), sameCol = run.every(i => ((i % W)) === ((run[0] % W)));
     if (!sameRow && !sameCol) return fail(r, 'The barrier must be a straight line');
     for (let k = 1; k < run.length; k++) if (Math.abs(run[k] - run[k - 1]) !== (sameRow ? 1 : W)) return fail(r, 'The barrier must be a straight line');
@@ -11790,7 +11824,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
       return { ok: rr.ok, reason: rr.reason || '', id: target, tiles: rr.ok ? M.footprint(state, target) : [], cost: rr.cost };
     }
     const r = M.canPlace(state, id, tx, ty, opts);
-    if (!r.ok) return { ok: false, reason: r.reason, cost: r.cost };
+    if (!r.ok) return { ok: false, reason: r.reason, cost: r.cost, charter: r.charter || null };   // L2: the ui's refusal toast reads charter
     const day = dayOf(state);
     const c = cache(state);
     // connector pass: the building and its gravel tie are ONE purchase (one charge, one undo record, one refund)
@@ -14337,6 +14371,327 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     }
     resetAll();
     return { ok: true, notes: notes.join('; ') };
+  };
+})();
+
+;
+;// ===== land.js =====
+'use strict';
+// ============================================================================
+// BAYOU STATE — land.js (module 7b, after issues.js) → BSU.land
+// The Land Office (docs/PLAN_PATHS_LAND.md Track L2). The start charter is the
+// legacy rectangle of state.world; the land outside it is divided into
+// params.land.sectionSize (16 × 16) sections the state sells one at a time:
+// only a section that shares an edge with chartered land is for sale, the
+// price follows the land (base + per Dry / High / Marsh tile, water free) and
+// the 3rd / 6th purchase need prestige. A 64 × 64 world has no sections.
+// Owner of: state.charter {owned: [section ids], cardSeen, refusedDay}.
+// Reads tiles.type / owner / surface / crest / flags; writes nothing else.
+// buildings.canPlace refuses every tool on an unchartered tile through
+// M.refusal; tieSearch avoids unchartered land through M.mask; render_fx
+// draws the overlay from M.sections; ui_panels builds the panel on it.
+// Zero DOM / timer access. Every emit goes through M._deps.emit, every other
+// module through M._deps.<name>() so selfTest can stub them. No state on the
+// module object: everything per game is in state.charter or in a WeakMap
+// cache keyed on the root object (self-healing, like buildings).
+// ============================================================================
+(function () {
+  const BSU = window.BSU;
+  const M = (BSU.land = BSU.land || {});
+  const P = BSU.params, PL = P.land || {};
+  const T = BSU.T, SURF = BSU.SURF, FLAG = BSU.FLAG, EV = BSU.EV;
+  let W = 64, H = 64, N = 4096;
+  BSU.onMap(function (m) { W = m.W; H = m.H; N = m.N; });   // L1: the live map size (refreshed inside BSU.setMap, before any allocation)
+  const fin = function (v, d) { return Number.isFinite(v) ? v : d; };
+  const NONE = -1;
+
+  M._deps = {
+    emit: function (name, payload) { BSU.events.emit(name, payload); },
+    economy: function () { return BSU.economy; },
+    progress: function () { return BSU.progress; },
+    ui: function () { return BSU.ui; }
+  };
+  const dep = M._deps;
+  function emit(name, payload) { try { dep.emit(name, payload); } catch (e) { if (BSU.SELFTEST) throw e; BSU.error('land', 'emit:' + name, e); } }
+  function call(which, fn, args, fallback) {
+    const mod = dep[which] ? dep[which]() : null;
+    if (mod && typeof mod[fn] === 'function') return mod[fn].apply(mod, args);
+    return (typeof fallback === 'function') ? fallback() : fallback;
+  }
+  function money(n) { return BSU.formatMoney(fin(n, 0)); }
+  function today(state) { return fin(state && state.calendar && state.calendar.day, 0); }
+  function size() { return Math.max(4, Math.floor(fin(PL.sectionSize, 16))); }
+
+  const CHARTER_REASON = 'Charter this section at the Land Office';
+  M.CHARTER_REASON = CHARTER_REASON;
+
+  // ---------------------------------------------------------------------------
+  // state.charter (lazy for saves written before L2: "legacy only")
+  // ---------------------------------------------------------------------------
+  function charter(state) {
+    if (!state) return { owned: [], cardSeen: false, refusedDay: NONE };
+    let c = state.charter;
+    if (!c || typeof c !== 'object') c = state.charter = { owned: [], cardSeen: false, refusedDay: NONE };
+    if (!Array.isArray(c.owned)) c.owned = [];
+    if (typeof c.cardSeen !== 'boolean') c.cardSeen = false;
+    if (!Number.isFinite(c.refusedDay)) c.refusedDay = NONE;
+    return c;
+  }
+  function legacyRect(state) {
+    const l = state && state.world && state.world.legacy;
+    if (l && Number.isFinite(l.x0)) return l;
+    const m = BSU.MAP; return m.legacy || { x0: 0, y0: 0, x1: W - 1, y1: H - 1 };
+  }
+
+  // ---------------------------------------------------------------------------
+  // The cache (WeakMap on the root): the grid, the sections, the mask, the counts
+  // ---------------------------------------------------------------------------
+  const CACHE = new WeakMap();
+  function cache(state) {
+    let c = CACHE.get(state);
+    const key = W + 'x' + H + '|' + charter(state).owned.join(',');
+    if (!c || c.key !== key) {
+      c = { key: key, cells: null, sections: null, mask: null, countsTick: -1e9, free: null, freeTick: -1e9 };
+      CACHE.set(state, c);
+      buildGrid(state, c);
+    }
+    return c;
+  }
+  function buildGrid(state, c) {
+    const SZ = size(), L = legacyRect(state), cols = Math.ceil(W / SZ), rows = Math.ceil(H / SZ);
+    const cells = [], sections = [];
+    let id = 0;
+    for (let cy = 0; cy < rows; cy++) for (let cx = 0; cx < cols; cx++) {
+      const x0 = cx * SZ, y0 = cy * SZ, x1 = Math.min(W - 1, x0 + SZ - 1), y1 = Math.min(H - 1, y0 + SZ - 1);
+      const legacy = !(x1 < L.x0 || x0 > L.x1 || y1 < L.y0 || y0 > L.y1);
+      const cell = { cx: cx, cy: cy, x0: x0, y0: y0, x1: x1, y1: y1, legacy: legacy, id: 0 };
+      if (!legacy) { cell.id = ++id; sections.push({ id: id, cx: cx, cy: cy, x0: x0, y0: y0, x1: x1, y1: y1, owned: false, forSale: false, price: 0, counts: null, gate: 0, locked: false }); }
+      cells.push(cell);
+    }
+    c.cols = cols; c.rows = rows; c.cells = cells; c.sections = sections;
+    const owned = new Set(charter(state).owned);
+    const at = function (cx, cy) { return (cx < 0 || cy < 0 || cx >= cols || cy >= rows) ? null : cells[cy * cols + cx]; };
+    const chartered = function (cell) { return !!cell && (cell.legacy || owned.has(cell.id)); };
+    for (const s of sections) {
+      s.owned = owned.has(s.id);
+      s.forSale = !s.owned && (chartered(at(s.cx - 1, s.cy)) || chartered(at(s.cx + 1, s.cy)) || chartered(at(s.cx, s.cy - 1)) || chartered(at(s.cx, s.cy + 1)));
+    }
+    // the mask: 1 = chartered (the legacy rectangle + owned sections)
+    const mask = new Uint8Array(N);
+    for (const cell of cells) {
+      if (!chartered(cell)) continue;
+      for (let y = cell.y0; y <= cell.y1; y++) { const row = y * W; for (let x = cell.x0; x <= cell.x1; x++) mask[row + x] = 1; }
+    }
+    c.mask = mask;
+  }
+  function isWaterType(t) { return t === T.OPEN_WATER || t === T.BAYOU || t === T.POND; }
+  function countsOf(state, s) {
+    const type = state.tiles.type; let dry = 0, high = 0, marsh = 0, water = 0;
+    for (let y = s.y0; y <= s.y1; y++) { const row = y * W; for (let x = s.x0; x <= s.x1; x++) { const t = type[row + x]; if (t === T.HIGH) high++; else if (t === T.MARSH) marsh++; else if (isWaterType(t)) water++; else dry++; } }
+    return { dry: dry, high: high, marsh: marsh, water: water };
+  }
+  function priceOf(counts) { return Math.round(fin(PL.base, 400000) + fin(PL.perDry, 9000) * counts.dry + fin(PL.perHigh, 20000) * counts.high + fin(PL.perMarsh, 2000) * counts.marsh); }
+  /** prestige needed to buy the nth section (1-based), per params.land.gates */
+  function gateFor(nth) {
+    let need = 0;
+    for (const g of (Array.isArray(PL.gates) ? PL.gates : [])) if (Array.isArray(g) && nth >= fin(g[0], Infinity)) need = Math.max(need, fin(g[1], 0));
+    return need;
+  }
+  function prestige(state) { return fin(state && state.economy && state.economy.prestige, 0); }
+  function cash(state) { return fin(state && state.economy && state.economy.cash, 0); }
+  /** the sections with live counts / price / gate (counts re-read once a day: only subsidence or a later Dredge can change a type outside the charter) */
+  function live(state) {
+    const c = cache(state);
+    const tick = fin(state.tick, 0), TPD = fin(P.time && P.time.ticksPerDay, 600);
+    if (tick < c.countsTick || tick - c.countsTick >= TPD) {
+      for (const s of c.sections) { s.counts = countsOf(state, s); s.price = priceOf(s.counts); }
+      c.countsTick = tick;
+    }
+    const nth = charter(state).owned.length + 1, gate = gateFor(nth), pres = prestige(state);
+    for (const s of c.sections) { s.gate = s.owned ? 0 : gate; s.locked = !s.owned && pres < gate; }
+    return c;
+  }
+
+  // ---------------------------------------------------------------------------
+  // API
+  // ---------------------------------------------------------------------------
+  /** every 16 × 16 cell of the world: {cx, cy, x0, y0, x1, y1, legacy, id (0 for the charter)} — the panel's map */
+  M.cells = function (state) { try { if (!state || !state.tiles) return []; return cache(state).cells.map(function (c) { return Object.assign({}, c); }); } catch (e) { if (BSU.SELFTEST) throw e; BSU.error('land', 'cells', e); return []; } };
+  M.grid = function (state) { try { const c = cache(state); return { cols: c.cols, rows: c.rows, size: size() }; } catch (e) { return { cols: 0, rows: 0, size: size() }; } };
+  /** [{id, cx, cy, x0, y0, x1, y1, owned, forSale, price, counts: {dry, high, marsh, water}, gate, locked}] — [] in a world the charter covers */
+  M.sections = function (state) {
+    try { if (!state || !state.tiles) return []; return live(state).sections.map(function (s) { return Object.assign({}, s, { counts: Object.assign({}, s.counts) }); }); }
+    catch (e) { if (BSU.SELFTEST) throw e; BSU.error('land', 'sections', e); return []; }
+  };
+  M.section = function (state, id) { try { if (!state || !state.tiles) return null; const s = live(state).sections.find(function (x) { return x.id === (id | 0); }); return s ? Object.assign({}, s, { counts: Object.assign({}, s.counts) }) : null; } catch (e) { if (BSU.SELFTEST) throw e; BSU.error('land', 'section', e); return null; } };
+  M.owned = function (state) { return charter(state).owned.slice(); };
+  M.count = function (state) { return charter(state).owned.length; };
+  /** the live chartered mask (read-only Uint8Array of N; 1 = chartered); null without tiles */
+  M.mask = function (state) { try { if (!state || !state.tiles) return null; return cache(state).mask; } catch (e) { if (BSU.SELFTEST) throw e; BSU.error('land', 'mask', e); return null; } };
+  M.isChartered = function (state, tx, ty) {
+    try { if (!state || !state.tiles || !BSU.inBounds(tx, ty)) return false; return cache(state).mask[(ty | 0) * W + (tx | 0)] === 1; }
+    catch (e) { if (BSU.SELFTEST) throw e; BSU.error('land', 'isChartered', e); return false; }
+  };
+  /** the section holding (tx, ty), or null (the charter, off the map) */
+  M.sectionAt = function (state, tx, ty) {
+    try {
+      if (!state || !state.tiles || !BSU.inBounds(tx, ty)) return null;
+      const c = live(state), SZ = size(), cell = c.cells[Math.floor((ty | 0) / SZ) * c.cols + Math.floor((tx | 0) / SZ)];
+      if (!cell || cell.legacy) return null;
+      const s = c.sections[cell.id - 1]; return s ? Object.assign({}, s, { counts: Object.assign({}, s.counts) }) : null;
+    } catch (e) { if (BSU.SELFTEST) throw e; BSU.error('land', 'sectionAt', e); return null; }
+  };
+  /** the section nearest (tx, ty) (Chebyshev distance to its rectangle): the one under the tile, else the nearest UNOWNED one (for-sale first), else the nearest */
+  M.nearestSection = function (state, tx, ty) {
+    try {
+      if (!state || !state.tiles) return null;
+      const here = M.sectionAt(state, tx, ty); if (here) return here;
+      const c = live(state); let best = null, bd = Infinity, bestRank = 9;
+      for (const s of c.sections) {
+        const dx = tx < s.x0 ? s.x0 - tx : (tx > s.x1 ? tx - s.x1 : 0), dy = ty < s.y0 ? s.y0 - ty : (ty > s.y1 ? ty - s.y1 : 0), d = Math.max(dx, dy);
+        const rank = s.forSale ? 0 : (s.owned ? 2 : 1);
+        if (rank < bestRank || (rank === bestRank && d < bd)) { best = s; bd = d; bestRank = rank; }
+      }
+      return best ? Object.assign({}, best, { counts: Object.assign({}, best.counts) }) : null;
+    } catch (e) { if (BSU.SELFTEST) throw e; BSU.error('land', 'nearestSection', e); return null; }
+  };
+  /** the ghost reason for a tool on `tiles` (indices): null when every tile is chartered (or the charter covers the world), else
+   *  {id, price, forSale, locked, gate, tx, ty, reason: "Charter this section at the Land Office ($2.4M)"} for the first unchartered tile */
+  M.refusal = function (state, tiles) {
+    try {
+      if (!state || !state.tiles || !Array.isArray(tiles) || !tiles.length) return null;
+      const c = cache(state); if (!c.sections.length) return null;
+      const mask = c.mask;
+      for (const i of tiles) {
+        if (!(Number.isInteger(i) && i >= 0 && i < N) || mask[i] === 1) continue;
+        const tx = i % W, ty = (i / W) | 0, s = M.sectionAt(state, tx, ty);
+        if (!s) continue;
+        return { id: s.id, price: s.price, forSale: s.forSale, locked: s.locked, gate: s.gate, tx: tx, ty: ty, i: i, reason: CHARTER_REASON + ' (' + money(s.price) + ')' };
+      }
+      return null;
+    } catch (e) { if (BSU.SELFTEST) throw e; BSU.error('land', 'refusal', e); return null; }
+  };
+  /** record the first charter refusal (the goal's trigger); true the first time */
+  M.noteRefusal = function (state) { try { const c = charter(state); if (c.refusedDay >= 0) return false; c.refusedDay = today(state); return true; } catch (e) { return false; } };
+  /** {ok, reason, price, id, gate, prestige, section} — why a Buy would or would not go through */
+  M.quote = function (state, id) {
+    try {
+      const out = { ok: false, reason: '', price: 0, id: id | 0, gate: 0, prestige: prestige(state), section: null };
+      if (!state || !state.tiles) { out.reason = 'No game'; return out; }
+      const s = M.section(state, id); if (!s) { out.reason = 'No such section'; return out; }
+      out.section = s; out.price = s.price; out.gate = s.gate;
+      if (s.owned) { out.reason = 'Already chartered'; return out; }
+      if (!s.forSale) { out.reason = 'Not next to your land yet'; return out; }
+      if (s.locked) { out.reason = 'Needs prestige ' + s.gate + ' (you have ' + Math.floor(out.prestige) + ')'; return out; }
+      if (cash(state) < s.price) { out.reason = 'Needs ' + money(s.price) + ' in cash'; return out; }
+      out.ok = true; return out;
+    } catch (e) { if (BSU.SELFTEST) throw e; BSU.error('land', 'quote', e); return { ok: false, reason: 'Error', price: 0, id: id | 0, gate: 0, prestige: 0, section: null }; }
+  };
+  /** buy section `id`: the cash check and the prestige gate (opts.force skips both, headless / tests), the ledger line "Land charter: section N",
+   *  the land:chartered event, the ticker line and the one-time first-purchase card. {ok, reason, price, id, n} */
+  M.buy = function (state, id, opts) {
+    opts = opts || {};
+    try {
+      const q = M.quote(state, id);
+      if (!q.ok && !(opts.force && q.section && !q.section.owned)) return { ok: false, reason: q.reason, price: q.price, id: id | 0, n: M.count(state) };
+      const s = q.section, price = s.price;
+      if (!opts.force) { if (!call('economy', 'charge', [state, price, 'construction', { note: 'Land charter: section ' + s.id, i: s.y0 * W + s.x0 }], false)) return { ok: false, reason: 'Not enough cash', price: price, id: s.id, n: M.count(state) }; }
+      const c = charter(state); c.owned.push(s.id);
+      const n = c.owned.length;
+      cache(state);   // the key changed: rebuild the grid + mask
+      emit(EV.LAND_CHARTERED || 'land:chartered', { id: s.id, price: price, n: n, rect: { x0: s.x0, y0: s.y0, x1: s.x1, y1: s.y1 }, counts: s.counts });
+      call('progress', 'ticker', [state, 'Land Office: section {n} chartered for {price}. The surveyors are already lost.', { n: s.id, price: money(price) }, 'money', s.y0 * W + s.x0], undefined);
+      if (!c.cardSeen) { c.cardSeen = true; call('ui', 'card', [state, 'landFirst', { id: s.id, price: price, n: n, counts: s.counts }], undefined); }
+      return { ok: true, reason: '', price: price, id: s.id, n: n };
+    } catch (e) { if (BSU.SELFTEST) throw e; BSU.error('land', 'buy', e); return { ok: false, reason: 'Error', price: 0, id: id | 0, n: 0 }; }
+  };
+  /** the charter's buildable land: {total: Dry + High (+ Wet / Drained) tiles inside chartered land, free: of those, untouched, share} (cached 100 ticks) */
+  M.freeShare = function (state) {
+    try {
+      if (!state || !state.tiles) return { total: 0, free: 0, share: 1 };
+      const c = cache(state), tick = fin(state.tick, 0);
+      if (c.free && tick >= c.freeTick && tick - c.freeTick < 100) return c.free;
+      const t = state.tiles, mask = c.mask; let total = 0, free = 0;
+      for (let i = 0; i < N; i++) {
+        if (mask[i] !== 1) continue;
+        const ty = t.type[i]; if (ty === T.MARSH || isWaterType(ty)) continue;
+        total++;
+        if (t.owner[i] === -1 && t.surface[i] === SURF.NONE && t.crest[i] === 0 && !(t.flags[i] & (FLAG.MOUND | FLAG.PRESERVE | FLAG.CANAL))) free++;
+      }
+      c.free = { total: total, free: free, share: total ? free / total : 1 }; c.freeTick = tick;
+      return c.free;
+    } catch (e) { if (BSU.SELFTEST) throw e; BSU.error('land', 'freeShare', e); return { total: 0, free: 0, share: 1 }; }
+  };
+  M.stats = function (state) {
+    try {
+      const secs = M.sections(state); let owned = 0, forSale = 0, cheapest = 0;
+      for (const s of secs) { if (s.owned) owned++; else if (s.forSale) { forSale++; if (!cheapest || s.price < cheapest) cheapest = s.price; } }
+      return { sections: secs.length, owned: owned, forSale: forSale, cheapest: cheapest, nextGate: gateFor(owned + 1), prestige: prestige(state) };
+    } catch (e) { return { sections: 0, owned: 0, forSale: 0, cheapest: 0, nextGate: 0, prestige: 0 }; }
+  };
+  M.gateFor = gateFor;
+  M.priceOf = function (counts) { return priceOf({ dry: fin(counts && counts.dry, 0), high: fin(counts && counts.high, 0), marsh: fin(counts && counts.marsh, 0), water: 0 }); };
+
+  // ---------------------------------------------------------------------------
+  // selfTest (§10.6): a synthetic state on the live map, deps stubbed
+  // ---------------------------------------------------------------------------
+  M.selfTest = function () {
+    const notes = []; let fails = 0;
+    const A = function (cond, msg) { if (!cond) { fails++; notes.push('FAIL ' + msg); } };
+    const saved = Object.assign({}, M._deps);
+    try {
+      const events = [], cards = [], lines = [];
+      let cashNow = 50e6;
+      Object.assign(M._deps, {
+        emit: function (name, p) { events.push({ name: name, p: p }); },
+        economy: function () { return { charge: function (s, amt) { if (cashNow < amt) return false; cashNow -= amt; s.economy.cash = cashNow; return true; } }; },
+        progress: function () { return { ticker: function (s, text, fields) { lines.push(String(text)); } }; },
+        ui: function () { return { card: function (s, id, p) { cards.push(id); } }; }
+      });
+      const s = BSU.newState(7); s.economy.cash = cashNow; s.economy.prestige = 0;
+      const L = legacyRect(s), secs = M.sections(s), SZ = size();
+      const cols = Math.ceil(W / SZ), rows = Math.ceil(H / SZ);
+      let expect = 0; for (let cy = 0; cy < rows; cy++) for (let cx = 0; cx < cols; cx++) { const x0 = cx * SZ, y0 = cy * SZ, x1 = Math.min(W - 1, x0 + SZ - 1), y1 = Math.min(H - 1, y0 + SZ - 1); if (x1 < L.x0 || x0 > L.x1 || y1 < L.y0 || y0 > L.y1) expect++; }
+      A(secs.length === expect, 'sections = the cells outside the legacy rectangle (' + secs.length + ' vs ' + expect + ')');
+      A(M.isChartered(s, L.x0, L.y0) && M.isChartered(s, L.x1, L.y1), 'the legacy rectangle is chartered');
+      A(!M.isChartered(s, -1, 0) && !M.isChartered(s, W, 0), 'off the map is not chartered');
+      if (secs.length) {
+        const forSale = secs.filter(function (x) { return x.forSale; }), far = secs.filter(function (x) { return !x.forSale; });
+        A(forSale.length > 0, 'some sections are for sale at the start');
+        A(secs.every(function (x) { return x.counts.dry + x.counts.high + x.counts.marsh + x.counts.water === (x.x1 - x.x0 + 1) * (x.y1 - x.y0 + 1); }), 'counts cover every tile');
+        A(secs.every(function (x) { return x.price === priceOf(x.counts) && x.price >= fin(PL.base, 400000); }), 'price = base + per-tile');
+        A(!M.isChartered(s, secs[0].x0, secs[0].y0), 'an unowned section is not chartered');
+        const ref = M.refusal(s, [secs[0].y0 * W + secs[0].x0]); A(!!ref && ref.id === secs[0].id && ref.reason.indexOf(CHARTER_REASON) === 0 && /\$/.test(ref.reason), 'refusal names the section and its price');
+        A(M.refusal(s, [L.y0 * W + L.x0]) === null, 'no refusal inside the charter');
+        if (far.length) { const q = M.quote(s, far[0].id); A(!q.ok && /next to/.test(q.reason), 'a section away from the charter is not for sale: ' + q.reason); }
+        const first = forSale[0];
+        s.economy.cash = cashNow = first.price - 1; let q = M.quote(s, first.id); A(!q.ok && /cash/.test(q.reason), 'cash check: ' + q.reason);
+        s.economy.cash = cashNow = 50e6; q = M.quote(s, first.id); A(q.ok && q.price === first.price, 'quote ok with cash');
+        const r = M.buy(s, first.id, {}); A(r.ok && r.n === 1 && cashNow === 50e6 - first.price, 'buy charges the price (' + JSON.stringify(r) + ')');
+        A(M.isChartered(s, first.x0, first.y0) && M.section(s, first.id).owned, 'bought → chartered');
+        A(events.length === 1 && events[0].name === 'land:chartered' && events[0].p.id === first.id && cards.length === 1 && cards[0] === 'landFirst' && lines.length === 1, 'event + first-purchase card + ticker once');
+        A(!M.buy(s, first.id, {}).ok, 'cannot buy twice');
+        // the prestige gate: the 3rd section needs params.land.gates[0][1]
+        const g3 = gateFor(3); if (g3 > 0 && secs.length >= 3) {
+          const next = M.sections(s).filter(function (x) { return x.forSale; });
+          if (next.length >= 2) {
+            M.buy(s, next[0].id, { force: true });
+            const third = M.sections(s).filter(function (x) { return x.forSale; })[0];
+            s.economy.prestige = g3 - 1; q = M.quote(s, third.id); A(!q.ok && /prestige/.test(q.reason) && third.locked && third.gate === g3, 'third section gated by prestige: ' + q.reason);
+            s.economy.prestige = g3; q = M.quote(s, third.id); A(q.ok, 'gate opens at prestige ' + g3);
+          }
+        }
+        A(cards.length === 1, 'the first-purchase card shows once');
+        // freeShare over a synthetic charter: 4 × 4 dry tiles, one owned → 15 of 16 free
+        for (let y = L.y0; y < L.y0 + 4; y++) for (let x = L.x0; x < L.x0 + 4; x++) s.tiles.type[y * W + x] = T.DRY;
+        s.tiles.owner[L.y0 * W + L.x0] = 0; s.tick = fin(s.tick, 0) + 1000;
+        const fs = M.freeShare(s); A(fs.total === 16 && fs.free === 15 && Math.abs(fs.share - 15 / 16) < 1e-9, 'freeShare counts the charter\'s free dry tiles (' + JSON.stringify(fs) + ')');
+      } else {
+        A(M.refusal(s, [0]) === null && M.nearestSection(s, 0, 0) === null && !M.quote(s, 1).ok, 'a world the charter covers: no sections, no refusal');
+      }
+    } catch (e) { fails++; notes.push('threw: ' + (e && e.message)); }
+    finally { Object.assign(M._deps, saved); }
+    return { ok: fails === 0, notes: notes.join('; ') || 'ok' };
   };
 })();
 
@@ -34051,6 +34406,10 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
       g.imageSmoothingEnabled = false;
       g.setTransform(s, s / 2, -s, s / 2, mw / 2, mh / 2 - (HGT * s) / 2);
       g.drawImage(mmBase, 0, 0);
+      try {   // L2: unchartered sections shaded navy (the transform is in tile units; ≤ 20 rects)
+        const LD = mod('land'); const secs = LD && typeof LD.sections === 'function' ? LD.sections(state) : null;
+        if (secs && secs.length) { g.fillStyle = 'rgba(14,18,52,0.5)'; for (let k = 0; k < secs.length; k++) { const sc = secs[k]; if (sc.owned) continue; g.fillRect(sc.x0, sc.y0, sc.x1 - sc.x0 + 1, sc.y1 - sc.y0 + 1); } }
+      } catch (e) { rerr('minimap:land', e); }
       tfIdent(g);
       if (camera) {                                                     // camera rect: the 4 screen corners → tile coords → minimap px
         g.strokeStyle = GOLD_HI; g.lineWidth = 1; g.beginPath();
@@ -36185,6 +36544,78 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     g.setLineDash([]); g.lineDashOffset = 0; g.lineCap = 'butt';
     return n;
   }
+  // ---------------------------------------------------------------------------
+  // L2: the charter overlay (a draw-over at 6.5, above the day tint and below the lights / fog / beacons / ghost; nothing in the chunk
+  // bake). Every UNOWNED section in view gets a dark navy tint, a dashed boundary and, at zoom ≥ 1, a small "State land" pill at its centre
+  // (plus the price when it is for sale). A section outline follows its edge tiles' own elevation (the NE / SE / SW / NW faces of the
+  // boundary tiles), cached in world space per charter state and rebuilt once a day; the per-frame work is one path per visible section.
+  // ---------------------------------------------------------------------------
+  const CH_FILL = 'rgba(14, 18, 52, 0.36)', CH_LINE = 'rgba(196, 204, 255, 0.85)', CH_PILL = 'rgba(14, 18, 52, 0.88)', CH_TEXT = '#DCE2FF';
+  const chStats = { sections: 0, labels: 0, ms: 0, frames: 0 };
+  let chCache = null;   // {state, key, tick, polys: [{id, pts: number[] (world x, y pairs), x0, y0, x1, y1, cwx, cwy}]}
+  function chVert(pts, elev, tx, ty, corner) {   // corner 0 top, 1 right, 2 bottom, 3 left of tile (tx, ty) at its own elevation (world px)
+    const e = elev[ty * W + tx] || 0, cx = tileWorldX(tx, ty), cy = tileWorldY(tx, ty) - e * PXFT;
+    pts.push(corner === 3 ? cx - 32 : (corner === 1 ? cx + 32 : cx), corner === 0 ? cy - 16 : (corner === 2 ? cy + 16 : cy));
+  }
+  function chPolys(state, secs) {
+    let key = ''; for (let k = 0; k < secs.length; k++) if (!secs[k].owned) key += secs[k].id + ',';
+    const tick = fin(state.tick, 0);
+    if (chCache && chCache.state === state && chCache.key === key && tick >= chCache.tick && tick - chCache.tick < 600) return chCache.polys;
+    const elev = state.tiles.elev, polys = [];
+    for (let k = 0; k < secs.length; k++) {
+      const s = secs[k]; if (s.owned) continue;
+      const pts = [];
+      for (let x = s.x0; x <= s.x1; x++) { chVert(pts, elev, x, s.y0, 0); chVert(pts, elev, x, s.y0, 1); }   // NE edge, west → east
+      for (let y = s.y0; y <= s.y1; y++) { chVert(pts, elev, s.x1, y, 1); chVert(pts, elev, s.x1, y, 2); }   // SE edge, north → south
+      for (let x = s.x1; x >= s.x0; x--) { chVert(pts, elev, x, s.y1, 2); chVert(pts, elev, x, s.y1, 3); }   // SW edge, east → west
+      for (let y = s.y1; y >= s.y0; y--) { chVert(pts, elev, s.x0, y, 3); chVert(pts, elev, s.x0, y, 0); }   // NW edge, south → north
+      const mx = (s.x0 + s.x1) >> 1, my = (s.y0 + s.y1) >> 1;
+      polys.push({ id: s.id, pts: pts, x0: s.x0, y0: s.y0, x1: s.x1, y1: s.y1, cwx: tileWorldX(mx, my), cwy: tileWorldY(mx, my) - (elev[my * W + mx] || 0) * PXFT });
+    }
+    chCache = { state: state, key: key, tick: tick, polys: polys };
+    return polys;
+  }
+  function passCharter(state, g, view) {
+    chStats.sections = 0; chStats.labels = 0; chStats.frames++;
+    const L = mod('land'); if (!state || !state.tiles || !L || typeof L.sections !== 'function' || !view) return;
+    const t0 = nowMs();
+    const secs = L.sections(state); if (!secs.length) { chStats.ms = nowMs() - t0; return; }
+    const polys = chPolys(state, secs), cam = camOf(state), z = cam.zoom || 1, ox = view.vw / 2 - cam.x * z, oy = view.vh / 2 - cam.y * z;
+    const vx0 = view.x0 | 0, vy0 = view.y0 | 0, vx1 = view.x1 | 0, vy1 = view.y1 | 0;
+    g.beginPath(); let n = 0;
+    for (let k = 0; k < polys.length; k++) {
+      const p = polys[k]; if (p.x1 < vx0 || p.x0 > vx1 || p.y1 < vy0 || p.y0 > vy1) continue;
+      const pts = p.pts; g.moveTo(pts[0] * z + ox, pts[1] * z + oy);
+      for (let j = 2; j < pts.length; j += 2) g.lineTo(pts[j] * z + ox, pts[j + 1] * z + oy);
+      g.closePath(); n++;
+    }
+    chStats.sections = n;
+    if (n) {
+      g.globalAlpha = 1; g.fillStyle = CH_FILL; g.fill();
+      g.setLineDash([6 * z, 4 * z]); g.lineDashOffset = 0; g.strokeStyle = CH_LINE; g.lineWidth = Math.max(1, 1.2 * z); g.lineJoin = 'round'; g.stroke(); g.setLineDash([]);
+      if (z >= 1) {
+        const fs = Math.round(11 * clamp(z, 1, 1.6)); g.font = '700 ' + fs + 'px system-ui, -apple-system, Segoe UI, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+        for (let k = 0; k < polys.length; k++) {
+          const p = polys[k]; if (p.x1 < vx0 || p.x0 > vx1 || p.y1 < vy0 || p.y0 > vy1) continue;
+          const sec = secs.find(function (x) { return x.id === p.id; }); if (!sec) continue;
+          const px = p.cwx * z + ox, py = p.cwy * z + oy;
+          const line2 = sec.forSale ? (sec.locked ? 'Prestige ' + sec.gate : BSU.formatMoney(sec.price)) : '';
+          const w1 = fin(g.measureText('State land').width, 60), w2 = line2 ? fin(g.measureText(line2).width, 40) : 0, w = Math.max(w1, w2) + 14, h = line2 ? fs * 2 + 12 : fs + 10;
+          const x = px - w / 2, y = py - h / 2;
+          if (x > view.vw + 20 || x + w < -20 || y > view.vh + 20 || y + h < -20) continue;
+          g.fillStyle = CH_PILL; g.strokeStyle = CH_LINE; g.lineWidth = 1;
+          g.beginPath(); g.moveTo(x + 4, y); g.lineTo(x + w - 4, y); g.lineTo(x + w, y + 4); g.lineTo(x + w, y + h - 4); g.lineTo(x + w - 4, y + h); g.lineTo(x + 4, y + h); g.lineTo(x, y + h - 4); g.lineTo(x, y + 4); g.closePath(); g.fill(); g.stroke();
+          g.fillStyle = CH_TEXT; g.fillText('State land', px, line2 ? y + 6 + fs / 2 : py + 0.5);
+          if (line2) { g.fillStyle = sec.locked ? '#F2C97D' : '#9FE8B6'; g.fillText(line2, px, y + 6 + fs + fs / 2 + 1); }
+          chStats.labels++;
+        }
+        g.textAlign = 'left'; g.textBaseline = 'alphabetic';
+      }
+    }
+    chStats.ms = nowMs() - t0;
+  }
+  R.charterStats = function () { return { sections: chStats.sections, labels: chStats.labels, ms: chStats.ms, frames: chStats.frames }; };
+  R._charter = { pass: passCharter, polys: chPolys };
   R._network = { pass: passNetwork, tie: drawTiePreview, badge: drawHubBadge };
 
   // Passes (same-name registrations replace render's fallbacks for 'tint'; overlays/hud stay render's)
@@ -36193,6 +36624,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
   R.registerPass('lights', function (s, g, v) { try { passLights(s, g, v); } finally { g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; } }, 7);
   R.registerPass('beacons', function (s, g, v) { try { passBeacons(s, g, v); } finally { g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; g.lineWidth = 1; } }, 7.5);   // issue spotlight pass
   R.registerPass('spotlight', function (s, g, v) { try { passSpotlight(s, g, v); } finally { g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; g.lineWidth = 1; } }, 9.5);
+  R.registerPass('charter', function (s, g, v) { try { passCharter(s, g, v); } catch (e) { ferr('charter', e); } finally { g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; g.lineWidth = 1; g.lineJoin = 'miter'; try { g.setLineDash([]); g.lineDashOffset = 0; } catch (e2) { /* stub */ } } }, 6.5);   // L2: the state-land tint / dashed section boundary / label
   R.registerPass('network', function (s, g, v) { try { passNetwork(s, g, v); } catch (e) { ferr('network', e); } finally { g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; g.lineWidth = 1; try { g.setLineDash([]); g.lineDashOffset = 0; } catch (e2) { /* stub */ } } }, 9.2);   // paths pass: sheen / amber dash / Campus hub badge / the dashed tie
   R.registerPass('fog', function (s, g, v, a, dt) { try { passFog(s, g, v, a, dt); } finally { g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; } }, 8);
   R.registerPass('fireworks', function (s, g, v) { try { passFireworks(s, g, v); } finally { g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; } }, 8.2);
@@ -36317,7 +36749,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
   const SKY_NAME = ['Dawn', 'Day', 'Golden', 'Dusk', 'Night'];
   const MOOD_FACES = ['😞', '🙁', '😐', '🙂', '😄'];
   const HINT_TEXT = { saveUnavailable: 'Saves unavailable in this browser mode', perfMode: 'Performance mode', mute: '🔊 on · M to mute', pauseToPlan: 'Pause to plan', desireLine: 'Students want a path here' };
-  const PANEL_KEYS = { budget: 'Budget', season: 'Season', storm: 'Storm', almanac: 'Almanac', milestones: 'Milestones', settings: 'Settings', debug: 'Debug' };
+  const PANEL_KEYS = { budget: 'Budget', season: 'Season', storm: 'Storm', land: 'Land Office', almanac: 'Almanac', milestones: 'Milestones', settings: 'Settings', debug: 'Debug' };   // L2: land
 
   // ---------------------------------------------------------------------------
   // Small helpers (stub-safe: textContent/classList/style/dataset only)
@@ -36443,6 +36875,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     pb.appendChild(topbarButton('btn-budget', '◆', 'Budget', 'Budget (B)', function () { M.openPanel('budget'); }));
     pb.appendChild(topbarButton('btn-season', '🏈', 'Season', 'Season (N)', function () { M.openPanel('season'); }));
     const storm = topbarButton('btn-storm', '🌀', 'Storm', 'Storm (T)', function () { M.openPanel('storm'); }); const dot = el('span', 'dot'); storm.appendChild(dot); E['btn-storm-dot'] = dot; storm.disabled = true; pb.appendChild(storm);
+    pb.appendChild(topbarButton('btn-land', '📜', 'Land', 'Land Office (O)', function () { M.openPanel('land'); }));   // L2: the Land Office (a deed)
     pb.appendChild(topbarButton('btn-almanac', '📖', 'Almanac', 'Almanac', function () { M.openPanel('almanac'); }));
     pb.appendChild(topbarButton('btn-menu', '☰', '', 'Settings', function () { M.openPanel('settings'); }));
     pb.appendChild(topbarButton('btn-mute', '🔊', '', 'Mute (M)', function () { toggleMute(); }));
@@ -37133,6 +37566,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
       case 'season': M.openPanel(s.ui.panel === 'season' ? null : 'season'); return true;
       case 'storm': M.openPanel(s.ui.panel === 'storm' ? null : 'storm'); return true;   // qa pass 4: no cone gate — since P4 the panel offers precautions with no storm (the topbar button never had the gate)
       case 'milestones': M.openPanel(s.ui.panel === 'milestones' ? null : 'milestones'); return true;
+      case 'land': M.openPanel(s.ui.panel === 'land' ? null : 'land'); return true;   // L2: O (L is the Milestones panel)
       case 'overlayFlood': case 'overlayWater': case 'overlayMosquito': case 'overlayPower': case 'overlayCoverage': case 'overlayEcology': {
         const ov = { overlayFlood: OV.FLOOD, overlayWater: OV.WATER, overlayMosquito: OV.MOSQUITO, overlayPower: OV.POWER, overlayCoverage: OV.COVERAGE, overlayEcology: OV.ECOLOGY }[action];
         M.setOverlay(s, s.ui.overlay === ov ? OV.NONE : ov); return true;
@@ -37288,7 +37722,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
       if (!l2 && n > 1) l2 = 'Drag back to shorten · Esc cancels'; else if (st && n > 1) l2 += ' · Drag back to shorten';
     }
     else if (g.cove) { l1 = 'Not here'; l2 = 'The cove floods every rain. Build on the ridge.'; }
-    else if (!r.ok) { l1 = r.reason || 'Cannot build here'; l2 = r.reason === tieReason() ? 'Hold N to see the campus network' : (ridgeText(r.ridgeFull) || sinkText(r.sink) || ''); }
+    else if (!r.ok) { l1 = r.reason || 'Cannot build here'; l2 = r.charter ? 'State land · click to open the Land Office (O)' : (r.reason === tieReason() ? 'Hold N to see the campus network' : (ridgeText(r.ridgeFull) || sinkText(r.sink) || '')); }   // L2: the charter line
     else {
       l1 = money(r.cost); if (row.kind === 'drag') l1 += ' / tile';
       if (conn) l1 += ' + ' + money(conn.cost) + ' tie';   // "$600k + $8k tie"
@@ -37391,10 +37825,26 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
       return true;
     }
     call('audio', 'play', 'invalid');
-    if (dom()) { ghostLabel(px, py, r && r.reason ? r.reason : 'Cannot build here', (r && r.reason === tieReason()) ? 'Hold N to see the campus network' : '', 'red'); shakeLabel(); }
-    if (r && r.reason === tieReason()) tieRefusal(s, pre, g);   // paths pass: the P2 reason with a Show me that pans to the nearest network tile
+    if (dom()) { ghostLabel(px, py, r && r.reason ? r.reason : 'Cannot build here', r && r.charter ? 'State land · click to open the Land Office (O)' : ((r && r.reason === tieReason()) ? 'Hold N to see the campus network' : ''), 'red'); shakeLabel(); }
+    if (r && r.charter) charterRefusal(s, r.charter);   // L2: the Land Office reason with a button that opens the panel on that section
+    else if (r && r.reason === tieReason()) tieRefusal(s, pre, g);   // paths pass: the P2 reason with a Show me that pans to the nearest network tile
     return false;
   }
+  // L2: a tool refused on unchartered land. The first refusal is noted (the "Charter your first section" goal's trigger); the toast carries
+  // the reason, a Land Office button that opens the panel on that section and a Show me that pans to the section's centre.
+  function charterReason() { const L = BSU.land; return (L && L.CHARTER_REASON) || 'Charter this section at the Land Office'; }
+  function charterRefusal(s, ch) {
+    try {
+      if (!ch) return;
+      call('land', 'noteRefusal', s);
+      const sec = call('land', 'section', s, ch.id) || null;
+      const cx = sec ? ((sec.x0 + sec.x1) >> 1) : fin(ch.tx, -1), cy = sec ? ((sec.y0 + sec.y1) >> 1) : fin(ch.ty, -1);
+      const why = sec && !sec.forSale ? ' It is not next to your land yet.' : (sec && sec.locked ? ' Needs prestige ' + sec.gate + '.' : '');
+      M.notify(s, { kind: 'info', text: (ch.reason || charterReason()) + '.' + why, ttl: 7000, stamp: 'charterRefusal', action: { label: 'Land Office', fn: function () { M.openLandOffice(ch.id); } }, showMe: cx >= 0 ? { tx: cx, ty: cy } : undefined });
+    } catch (e) { uerr('charterRefusal', e); }
+  }
+  /** open the Land Office with section `id` selected (ui_panels' panel; a plain open when it is absent) */
+  M.openLandOffice = function (a, b) { try { const id = (a && typeof a === 'object') ? b : a; const LP = M.panels && M.panels.land; if (LP) { LP.selected = Number.isFinite(id) ? (id | 0) : LP.selected; LP.confirm = null; } M.openPanel('land'); } catch (e) { uerr('openLandOffice', e); } };   // (id) or (state, id): progress's ui() passes the state first
   function tieRefusal(s, pre, g) {
     const near = (pre && pre.nearest) || call('buildings', 'nearestNetwork', s, g.tx, g.ty) || null;
     M.notify(s, { kind: 'info', text: tieReason() + (near ? ' (the nearest campus path is ' + Math.round(fin(near.d, 0)) + ' tiles away)' : ''), ttl: 7000, stamp: 'tieRefusal', showMe: near ? { tx: near.tx, ty: near.ty, tiles: [near.i] } : undefined });
@@ -37413,7 +37863,12 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
       if (dom()) ghostLabel(lastPx, lastPy, placed + (placed === 1 ? ' tile' : ' tiles') + ' · ' + money(r.cost) + (tie ? ' (incl. ' + money(tie.cost) + (tie.snap ? ' snap)' : ' tie)') : ''), 'Ctrl+Z to undo', 'green');
       if (tie) firstTieCard(s, tie);
     }
-    else { const sk = r.skipped && r.skipped[0]; call('audio', 'play', 'invalid'); if (dom()) { ghostLabel(lastPx, lastPy, sk && sk.reason ? sk.reason : 'Nothing placed', '', 'red'); shakeLabel(); } }
+    else {
+      const sk = r.skipped && r.skipped[0]; call('audio', 'play', 'invalid');
+      const ch = sk && typeof sk.reason === 'string' && sk.reason.indexOf(charterReason()) === 0 ? (call('land', 'refusal', s, [sk.i]) || null) : null;   // L2: a drag onto state land
+      if (dom()) { ghostLabel(lastPx, lastPy, sk && sk.reason ? sk.reason : 'Nothing placed', ch ? 'State land · open the Land Office (O)' : '', 'red'); shakeLabel(); }
+      if (ch) charterRefusal(s, ch);
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -37801,10 +38256,22 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
         it.addEventListener('pointerleave', function () { if (itemHover && itemHover.id === id) { itemHover = null; hideTooltip(); } });
         items.appendChild(it); E.itemEls[id] = it;
       }
+      if (cur && cur.id === 'grounds' && BSU.land) items.appendChild(landCard(s));   // L2: the "Charter land" card opens the Land Office
       if (tabChanged) { try { items.scrollLeft = 0; } catch (e) { /* stub */ } }
       refreshPips(s); markToolDom(s); paletteFade();
     } catch (e) { uerr('refreshPalette', e); }
   };
+  /** L2: the Grounds tab's "Charter land" card: a deed glyph, the cheapest section for sale (or the reason there is none), click = the Land Office */
+  function landCard(s) {
+    const st = call('land', 'stats', s) || {};
+    const it = el('div', 'item land-card'); it.dataset.id = 'land'; it.setAttribute('tabindex', '0'); it.setAttribute('role', 'button');
+    const ic = el('div', 'icon glyph', '📜'); it.appendChild(ic);
+    const nm = el('div', 'name'); nm.appendChild(el('span', '', 'Charter land')); it.appendChild(nm);
+    it.appendChild(el('div', 'cost', !fin(st.sections, 0) ? 'Charter complete' : (fin(st.forSale, 0) ? 'from ' + money(st.cheapest) : 'Land Office')));
+    it.title = 'Land Office (O): buy 16 × 16 sections of state land next to your campus';
+    it.addEventListener('click', function () { M.openPanel('land'); });
+    return it;
+  }
   function refreshPips(s) { const pk = JSON.stringify(s.ui.newPips || {}) + '|' + s.ui.paletteTab; if (pk === pipKey) return; pipKey = pk; for (const id in E.tabEls) { show(E.tabEls[id].pip, !!s.ui.newPips[id]); cls(E.tabEls[id].el, 'active', id === s.ui.paletteTab); } }
   function itemTooltip(s, id) {
     const r = rowOf(id); if (!r) return ''; const u = unlockOf(s, id);
@@ -38663,6 +39130,10 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
       const what = land > 0 && water > 0 ? (land + (land === 1 ? ' tile' : ' tiles') + ' of gravel and ' + water + ' of boardwalk') : water > 0 ? (water + (water === 1 ? ' tile' : ' tiles') + ' of boardwalk') : (n + (n === 1 ? ' tile' : ' tiles') + ' of gravel');
       return { id: 'firstTie', kicker: p.snap ? 'Snapped on' : 'Tied in', title: 'Tied in: ' + what + ', ' + money(p.cost), body: "Paths that reach Founders' Hall are what make a building work. Build near the campus network and we lay the last few tiles for you (planks over water). Hold Alt to skip the tie; hold N to see the network.", actions: [{ label: 'Got it', primary: true }] };
     });
+    reg('landFirst', function (s, p) {   // L2: the first section bought, once per save (state.charter.cardSeen)
+      p = p || {}; const c = p.counts || {};
+      return { id: 'landFirst', kicker: 'Land Office', title: 'Section ' + fin(p.id, 0) + ' is yours · ' + money(p.cost != null ? p.cost : p.price), body: 'The state sells land in 16 × 16 sections next to your charter: dry ground costs more, swamp is cheap (this one: ' + fin(c.dry, 0) + ' dry, ' + fin(c.high, 0) + ' high, ' + fin(c.marsh, 0) + ' marsh). Build on it like any other land. A Dredge tool that fills marsh into dry ground is coming.', actions: [{ label: 'Open the Land Office', fn: function () { M.openPanel('land'); } }, { label: 'Got it', primary: true }] };
+    });
     reg('obj8', function (s, p) { return { id: 'obj8', kicker: 'Objective 8', title: 'Capped', body: (p && p.text) || ('Enrollment is capped at ' + fin(p && p.students, 0) + '. Beds, seats and dining set the ceiling.'), actions: [{ label: 'Show me the Budget', fn: function () { M.openPanel('budget'); } }, { label: 'OK', primary: true }] }; });
     reg('voice', function (s, p) { p = p || {}; return { id: 'voice', side: 'voice', voiceId: p.id, student: p.student, major: p.major, text: p.text, payoff: p.payoff }; });
     reg('board', function (s, p) {
@@ -39200,7 +39671,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
       A(tabVisible('housing', true, 0) === false && tabVisible('housing', true, 2) === true && tabVisible('essentials', true, 0) === true && tabVisible('paths', false, 3) === false, 'tab visibility rule');
       // 9. skeleton through M.el
       if (inited) {
-        const ids = ['hud', 'topbar', 'brand', 'stat-cash', 'stat-students', 'chip-capacity', 'stat-prestige', 'stat-happiness', 'stat-ecology', 'stat-date', 'sky-glyph', 'chip-weather', 'speed', 'btn-budget', 'btn-season', 'btn-storm', 'btn-almanac', 'btn-menu', 'btn-mute', 'chip-endowed', 'alert-strip', 'alert-icon', 'alert-text', 'alert-action', 'alert-gator', 'minimap-wrap', 'minimap', 'minimap-viewport', 'overlay-buttons', 'legend', 'objective-card', 'obj-portrait', 'obj-title', 'obj-text', 'obj-progress', 'obj-count', 'btn-showme', 'btn-obj-dismiss', 'obj-background', 'speech-bubble', 'voice-card', 'milestones-card', 'notifications', 'decision-toast', 'dt-text', 'dt-countdown', 'btn-dt-yes', 'btn-dt-no', 'inspect', 'insp-title', 'insp-sub', 'btn-insp-close', 'insp-sprite', 'insp-body', 'insp-actions', 'ghost-label', 'undo-chip', 'tooltip', 'popover', 'pop-title', 'pop-next', 'ticker', 'ticker-track', 'btn-ticker-log', 'ticker-log', 'palette', 'palette-tabs', 'palette-items', 'btn-bulldoze', 'btn-palette-info', 'cards', 'perf-chip', 'perfmode-chip', 'hint', 'panels', 'title', 'title-name', 'title-tag', 'btn-charter', 'btn-continue', 'title-seed', 'btn-title-settings', 'btn-title-mute', 'title-campus'];
+        const ids = ['hud', 'topbar', 'brand', 'stat-cash', 'stat-students', 'chip-capacity', 'stat-prestige', 'stat-happiness', 'stat-ecology', 'stat-date', 'sky-glyph', 'chip-weather', 'speed', 'btn-budget', 'btn-season', 'btn-storm', 'btn-land', 'btn-almanac', 'btn-menu', 'btn-mute', 'chip-endowed', 'alert-strip', 'alert-icon', 'alert-text', 'alert-action', 'alert-gator', 'minimap-wrap', 'minimap', 'minimap-viewport', 'overlay-buttons', 'legend', 'objective-card', 'obj-portrait', 'obj-title', 'obj-text', 'obj-progress', 'obj-count', 'btn-showme', 'btn-obj-dismiss', 'obj-background', 'speech-bubble', 'voice-card', 'milestones-card', 'notifications', 'decision-toast', 'dt-text', 'dt-countdown', 'btn-dt-yes', 'btn-dt-no', 'inspect', 'insp-title', 'insp-sub', 'btn-insp-close', 'insp-sprite', 'insp-body', 'insp-actions', 'ghost-label', 'undo-chip', 'tooltip', 'popover', 'pop-title', 'pop-next', 'ticker', 'ticker-track', 'btn-ticker-log', 'ticker-log', 'palette', 'palette-tabs', 'palette-items', 'btn-bulldoze', 'btn-palette-info', 'cards', 'perf-chip', 'perfmode-chip', 'hint', 'panels', 'title', 'title-name', 'title-tag', 'btn-charter', 'btn-continue', 'title-seed', 'btn-title-settings', 'btn-title-mute', 'title-campus'];
         for (const id of ids) A(isEl(E[id]) && E[id].id === id, 'skeleton id through M.el: ' + id);
         A(E.msRows.length === 3 && E.popLines.length === L.popLines && Object.keys(E.speedBtns).length === 5 && Object.keys(E.ovBtns).length === 6, 'ms-rows, pop-lines, speed and overlay buttons exist');
       } else notes.push('skeleton check skipped (init not run)');
@@ -40614,6 +41085,116 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
   UI.registerPanel('milestones', { build: buildMilestones, refresh: refreshMilestones, events: ['milestone:earned', 'objective:dismissed'] });
 
   // ===========================================================================
+  // LAND OFFICE panel (PLAN_PATHS_LAND Track L2): the sections map (the world in 16 × 16 cells: the charter, owned sections gold,
+  // for-sale ones with their price, locked ones with the prestige gate), the selected section's counts and price, Buy with a confirm.
+  // UI.panels.land.selected is the section id the ghost's refusal / the goal's Show me opened it on (ui.openLandOffice).
+  // ===========================================================================
+  UI.panels.land = UI.panels.land || { selected: null, confirm: null, confirmAt: 0 };
+  const LAND_CELL = 40, LAND_CONFIRM_MS = 6000;
+  const LAND_COL = { charter: '#4B2C7F', charterLine: '#8E6BC9', owned: '#C9A227', ownedLine: '#FDD023', sale: '#1F5E3A', saleLine: '#5FD38A', locked: '#3D3A28', lockedLine: '#B89A3E', far: '#1A1A2E', farLine: '#3C3C5A', sel: '#FFFFFF' };
+  function landApi() { return BSU.land || null; }
+  function landSections(s) { const L = landApi(); return L && typeof L.sections === 'function' ? (L.sections(s) || []) : []; }
+  function landGrid(s) { const L = landApi(); return L && typeof L.grid === 'function' ? L.grid(s) : { cols: 0, rows: 0, size: 16 }; }
+  function landStatus(sec) { return sec.owned ? 'Chartered' : (!sec.forSale ? 'Not next to your land yet' : (sec.locked ? 'Needs prestige ' + sec.gate : 'For sale')); }
+  function buildLand(host) {
+    host.appendChild(el('div', 'panel-title', 'Land Office'));
+    host._note = el('div', 'sp-note', ''); host.appendChild(host._note);
+    const wrap = el('div', 'land-wrap'); host.appendChild(wrap);
+    const cv = el('canvas', 'land-map'); cv.setAttribute('role', 'img'); cv.setAttribute('aria-label', 'Sections map'); cv.title = 'Click a section';
+    wrap.appendChild(cv); host._map = cv;
+    cv.addEventListener('click', function (ev) {
+      try {
+        const s = BSU.state; if (!s) return;
+        const q = cv.getBoundingClientRect(); const g = landGrid(s); const cw = q.width / Math.max(1, g.cols), chh = q.height / Math.max(1, g.rows);
+        const cx = Math.floor((ev.clientX - q.left) / cw), cy = Math.floor((ev.clientY - q.top) / chh);
+        const sec = landSections(s).find(function (x) { return x.cx === cx && x.cy === cy; });
+        if (sec) { UI.panels.land.selected = sec.id; UI.panels.land.confirm = null; refreshLand(s, host); }
+      } catch (e) { BSU.error('ui_panels', 'land:click', e); }
+    });
+    host._detail = el('div', 'land-detail'); wrap.appendChild(host._detail);
+    host._legend = el('div', 'land-legend'); host.appendChild(host._legend);
+    [['charter', 'Your charter'], ['owned', 'Chartered section'], ['sale', 'For sale'], ['locked', 'Prestige gate'], ['far', 'Not next to your land']].forEach(function (d) {
+      const c = el('span', 'land-chip'); const sw = el('span', 'land-swatch'); sw.style.background = LAND_COL[d[0]]; sw.style.borderColor = LAND_COL[d[0] + 'Line']; c.appendChild(sw); c.appendChild(el('span', '', d[1])); host._legend.appendChild(c);
+    });
+  }
+  function drawLandMap(s, cv, secs, selected) {
+    const g2 = landGrid(s), cols = g2.cols, rows = g2.rows; if (!cols || !rows) return;
+    let dpr = 1; try { dpr = Math.max(1, Math.min(3, window.devicePixelRatio || 1)); } catch (e) { dpr = 1; }
+    const wpx = cols * LAND_CELL, hpx = rows * LAND_CELL;
+    if (cv.width !== Math.round(wpx * dpr) || cv.height !== Math.round(hpx * dpr)) { cv.width = Math.round(wpx * dpr); cv.height = Math.round(hpx * dpr); cv.style.width = wpx + 'px'; cv.style.height = hpx + 'px'; }
+    const g = cv.getContext ? cv.getContext('2d') : null; if (!g) return;
+    try { g.setTransform(dpr, 0, 0, dpr, 0, 0); } catch (e) { /* stub */ }
+    g.fillStyle = '#120C24'; g.fillRect(0, 0, wpx, hpx);
+    const L = landApi(); const cells = L && typeof L.cells === 'function' ? L.cells(s) : [];
+    // the charter: one block, "Charter" at its centre
+    let lx0 = Infinity, ly0 = Infinity, lx1 = -Infinity, ly1 = -Infinity;
+    for (const c of cells) { if (!c.legacy) continue; g.fillStyle = LAND_COL.charter; g.fillRect(c.cx * LAND_CELL, c.cy * LAND_CELL, LAND_CELL, LAND_CELL); lx0 = Math.min(lx0, c.cx); ly0 = Math.min(ly0, c.cy); lx1 = Math.max(lx1, c.cx); ly1 = Math.max(ly1, c.cy); }
+    if (lx0 <= lx1) { g.strokeStyle = LAND_COL.charterLine; g.lineWidth = 1.5; g.strokeRect(lx0 * LAND_CELL + 1, ly0 * LAND_CELL + 1, (lx1 - lx0 + 1) * LAND_CELL - 2, (ly1 - ly0 + 1) * LAND_CELL - 2); }
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    for (const sec of secs) {
+      const x = sec.cx * LAND_CELL, y = sec.cy * LAND_CELL, kind = sec.owned ? 'owned' : (!sec.forSale ? 'far' : (sec.locked ? 'locked' : 'sale'));
+      g.fillStyle = LAND_COL[kind]; g.fillRect(x, y, LAND_CELL, LAND_CELL);
+      g.strokeStyle = LAND_COL[kind + 'Line']; g.lineWidth = 1; try { g.setLineDash(kind === 'locked' ? [3, 2] : []); } catch (e) { /* stub */ } g.strokeRect(x + 0.5, y + 0.5, LAND_CELL - 1, LAND_CELL - 1); try { g.setLineDash([]); } catch (e) { /* stub */ }
+      g.fillStyle = kind === 'owned' ? '#2A1A44' : '#EDE6F7'; g.font = '700 10px system-ui, -apple-system, Segoe UI, sans-serif'; g.fillText(String(sec.id), x + LAND_CELL / 2, y + 11);
+      g.font = '600 9px system-ui, -apple-system, Segoe UI, sans-serif';
+      if (kind === 'sale') g.fillText(money(sec.price), x + LAND_CELL / 2, y + LAND_CELL - 10);
+      else if (kind === 'locked') g.fillText('P' + sec.gate, x + LAND_CELL / 2, y + LAND_CELL - 10);
+      else if (kind === 'owned') g.fillText('yours', x + LAND_CELL / 2, y + LAND_CELL - 10);
+      if (sec.id === selected) { g.strokeStyle = LAND_COL.sel; g.lineWidth = 2; g.strokeRect(x + 1.5, y + 1.5, LAND_CELL - 3, LAND_CELL - 3); }
+    }
+    if (lx0 <= lx1) { g.fillStyle = '#EDE6F7'; g.font = '700 12px system-ui, -apple-system, Segoe UI, sans-serif'; g.fillText('Charter', (lx0 + lx1 + 1) * LAND_CELL / 2, (ly0 + ly1 + 1) * LAND_CELL / 2); }
+    g.textAlign = 'left'; g.textBaseline = 'alphabetic';
+  }
+  function refreshLand(s, host) {
+    if (!host || !host._detail) return;
+    const LP = UI.panels.land, secs = landSections(s), st = call('land', 'stats', s) || { sections: 0, owned: 0, forSale: 0, cheapest: 0, nextGate: 0 };
+    if (!secs.length) {
+      setText(host._note, 'Your charter covers the whole map: the state has no land to sell here. (New campuses are 96 × 96 with 20 sections of state land around the charter.)');
+      show(host._map, false); clear(host._detail); show(host._legend, false); return;
+    }
+    show(host._map, true); show(host._legend, true);
+    const pres = Math.floor(fin(s.economy && s.economy.prestige, 0));
+    setText(host._note, 'The state sells land in 16 × 16 sections next to your charter. ' + st.owned + ' of ' + st.sections + ' chartered · ' + st.forSale + ' for sale' + (st.cheapest ? ' from ' + money(st.cheapest) : '') + (st.nextGate > pres ? ' · the next needs prestige ' + st.nextGate + ' (you have ' + pres + ')' : '') + '. Price follows the land: $9k a dry tile, $20k high ground, $2k marsh, water free, on a $400k deed.');
+    if (!secs.some(function (x) { return x.id === LP.selected; })) { const first = secs.find(function (x) { return x.forSale && !x.locked; }) || secs.find(function (x) { return x.forSale; }) || secs[0]; LP.selected = first ? first.id : null; LP.confirm = null; }
+    drawLandMap(s, host._map, secs, LP.selected);
+    const d = host._detail; clear(d);
+    const sec = secs.find(function (x) { return x.id === LP.selected; }); if (!sec) return;
+    d.appendChild(el('div', 'card-kicker', 'Section ' + sec.id + ' · tiles ' + sec.x0 + '–' + sec.x1 + ', ' + sec.y0 + '–' + sec.y1));
+    const c = sec.counts || {};
+    const row = function (k, v, cls_) { const r = el('div', 'row' + (cls_ ? ' ' + cls_ : '')); r.appendChild(el('span', 'k', k)); r.appendChild(el('span', 'v', v)); d.appendChild(r); return r; };
+    row('Dry ground', fin(c.dry, 0) + ' tiles · ' + money(fin(c.dry, 0) * fin((P.land || {}).perDry, 9000)));
+    row('High ground', fin(c.high, 0) + ' tiles · ' + money(fin(c.high, 0) * fin((P.land || {}).perHigh, 20000)));
+    row('Marsh', fin(c.marsh, 0) + ' tiles · ' + money(fin(c.marsh, 0) * fin((P.land || {}).perMarsh, 2000)));
+    row('Water', fin(c.water, 0) + ' tiles · free');
+    row('Deed', money(fin((P.land || {}).base, 400000)));
+    row('Price', money(sec.price), 'land-price');
+    row('Status', landStatus(sec));
+    const q = call('land', 'quote', s, sec.id) || { ok: false, reason: '' };
+    if (!sec.owned) {
+      const now = Date.now(); if (LP.confirm !== sec.id || now - LP.confirmAt > LAND_CONFIRM_MS) LP.confirm = null;
+      const arming = LP.confirm === sec.id;
+      const b = btn('btn-land-buy', arming ? 'Confirm · ' + money(sec.price) : 'Buy · ' + money(sec.price), 'primary' + (arming ? ' confirm' : ''), function () {
+        const st2 = BSU.state; if (!st2) return;
+        if (LP.confirm !== sec.id || Date.now() - LP.confirmAt > LAND_CONFIRM_MS) { LP.confirm = sec.id; LP.confirmAt = Date.now(); refreshLand(st2, host); return; }
+        LP.confirm = null;
+        const r = call('land', 'buy', st2, sec.id, {}) || { ok: false, reason: 'Error' };
+        if (r.ok) { notify(st2, 'Section ' + sec.id + ' chartered · ' + money(r.price), 'info'); try { call('audio', 'play', 'cash'); } catch (e) { /* optional */ } }
+        else reasonLine(d, 'landbuy', r);
+        refreshLand(st2, host);
+      });
+      b.disabled = !q.ok; b.title = q.ok ? (arming ? 'Click again to charter it' : 'Click, then confirm') : (q.reason || '');
+      const actions = el('div', 'land-actions'); actions.appendChild(b);
+      if (arming) actions.appendChild(btn(null, 'Cancel', 'small', function () { LP.confirm = null; refreshLand(BSU.state, host); }));
+      actions.appendChild(btn('btn-land-show', 'Show me', 'small', function () { try { call('render', 'panToTile', (sec.x0 + sec.x1) >> 1, (sec.y0 + sec.y1) >> 1); } catch (e) { /* optional */ } }));
+      d.appendChild(actions);
+      if (!q.ok && q.reason) { const why = el('div', 'sp-note land-why', q.reason); d.appendChild(why); }
+    } else {
+      const actions = el('div', 'land-actions'); actions.appendChild(btn('btn-land-show', 'Show me', 'small', function () { try { call('render', 'panToTile', (sec.x0 + sec.x1) >> 1, (sec.y0 + sec.y1) >> 1); } catch (e) { /* optional */ } })); d.appendChild(actions);
+    }
+  }
+  UI.registerPanel('land', { build: buildLand, refresh: refreshLand, events: ['land:chartered', 'econ:month'] });
+
+  // ===========================================================================
   // ALMANAC panel
   // ===========================================================================
   function buildAlmanac(host) {
@@ -41968,7 +42549,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
 (function () {
   const BSU = window.BSU;
   const M = (BSU.progress = BSU.progress || {});
-  const EV = BSU.EV, P = BSU.params, PP = P.progress, PT = P.time, PE = P.econ, PS = P.storm;
+  const EV = BSU.EV, P = BSU.params, PP = P.progress, PT = P.time, PE = P.econ, PS = P.storm, PL = P.land || {};   // L2: PL = the Land Office
   let W = 64, HGT = 64, N = 4096;
   BSU.onMap(function (m) { W = m.W; HGT = m.H; N = m.N; });   // L1: the live map size (refreshed inside BSU.setMap, before any allocation)
   const SKY = BSU.SKY, SURF = BSU.SURF, FLAG = BSU.FLAG, T = BSU.T, OBJ = BSU.OBJ, OV = BSU.OV;
@@ -42313,9 +42894,11 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     rebuiltFromTheRoux: function (s) { return fin(pr(s).failure.bankruptcy, 0) > 0 && prestige(s) >= fin(MG.rebuiltFromTheRoux, 50); },
     flagship: function (s) { const g = MG.flagship || {}; return students(s) >= fin(g.students, 10000) && prestige(s) >= fin(g.prestige, 60); },
     laissez: function (s) { const g = MG.laissez || {}; return students(s) >= fin(g.students, 20000) && prestige(s) >= fin(g.prestige, 85) && ecology(s) >= fin(g.ecology, 50); },
-    untouched: function (s) { return M.earned(s, 'flagship') && !pr(s).drainedEver; }
+    untouched: function (s) { return M.earned(s, 'flagship') && !pr(s).drainedEver; },
+    landBaron: function (s) { return fin(call('land', 'count', s), 0) >= fin(PL.landBaron, 5); }   // L2
   };
   const MILESTONE_PROGRESS = {
+    landBaron: function (s) { return { progress: fin(call('land', 'count', s), 0), goal: fin(PL.landBaron, 5) }; },   // L2
     firstBell: function (s) { return { progress: students(s), goal: fin(MG.firstBell, 600) }; },
     gatorWrangler: function () { return { progress: 0, goal: fin(MG.gatorWrangler, 10) }; },
     greenAndGold: function (s) { const g = MG.greenAndGold || {}; return { progress: Math.min(ecology(s) / fin(g.ecology, 70), students(s) / fin(g.students, 3000)), goal: 1 }; },
@@ -42412,6 +42995,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
   const G = PP.goals || {};
   function od(id) { return (data().objectives || {})[id] || null; }
   function kindOf(id) {
+    if (EXTRA_OBJ[id]) return EXTRA_OBJ[id].kind;   // L2: land1 is a background goal
     if (id.indexOf('v:') === 0 || id.indexOf('p') === 0) return OBJ.BACKGROUND;
     const d = od(id); return d ? d.kind : OBJ.INTERRUPT;
   }
@@ -42422,7 +43006,8 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
   const EXTRA_OBJ = {
     p1: { kind: OBJ.BACKGROUND, title: 'Accreditation Task Force: a Library', text: 'Build a Library.', showMe: 'target' },
     p2: { kind: OBJ.BACKGROUND, title: 'Accreditation Task Force: seats', text: 'Lecture seats for 5 of every 6 students.', showMe: 'target' },
-    p3: { kind: OBJ.BACKGROUND, title: 'Accreditation Task Force: dry feet', text: 'No flooded buildings for 30 days.', showMe: 'ring' }
+    p3: { kind: OBJ.BACKGROUND, title: 'Accreditation Task Force: dry feet', text: 'No flooded buildings for 30 days.', showMe: 'ring' },
+    land1: { kind: OBJ.BACKGROUND, title: 'Charter your first section', text: 'The charter is filling up. Buy a section of state land at the Land Office (O).', showMe: 'land' }   // L2
   };
   function objDef(id) {
     if (EXTRA_OBJ[id]) return EXTRA_OBJ[id];
@@ -42543,6 +43128,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     '20': function (s) { return students(s) >= fin(G.students20, 1500); },
     '21': function (s) { return students(s) >= fin(G.students21, 5000); },
     '22': function (s) { return done(s, '21'); },
+    land1: function (s) { const L = call('land', 'stats', s); if (!L || !L.sections) return false; if (fin(s.charter && s.charter.refusedDay, NONE) >= 0) return true; const fs = call('land', 'freeShare', s); return !!fs && fs.total > 0 && fs.share < fin(PL.firstGoalFreeShare, 0.15); },   // L2: the first charter refusal, or the charter's buildable land nearly spent
     p2: function (s) { return done(s, 'p1'); },
     p3: function (s) { return done(s, 'p2'); }
   };
@@ -42573,6 +43159,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     '20': function (s) { return { progress: (bhas(s, 'stadium', 2) ? 1 : 0) + (M.earned(s, 'nightFalls') ? 1 : 0), goal: 2 }; },
     '21': function (s) { return { progress: (bhas(s, 'surge_barrier') || bhas(s, 'marsh_restoration')) ? 1 : 0, goal: 1 }; },
     '22': function (s) { return { progress: (students(s) >= fin(G.students22, 10000) ? 1 : 0) + (prestige(s) >= fin(G.prestige22, 60) ? 1 : 0), goal: 2 }; },
+    land1: function (s) { return { progress: fin(call('land', 'count', s), 0) >= 1 ? 1 : 0, goal: 1 }; },   // L2
     p1: function (s) { return { progress: bhas(s, 'library') ? 1 : 0, goal: 1 }; },
     p2: function (s) { const st = call('buildings', 'stats', s) || {}; return { progress: fin(st.seats, 0) >= students(s) / 1.2 ? 1 : 0, goal: 1 }; },
     p3: function (s) { const o = ost(s, 'p3'); return { progress: Math.min(fin(o.progress, 0), 30), goal: 30, daily: true }; }
@@ -42848,6 +43435,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
       if (key === 'cove') { const t = tilesOf((state.plot && state.plot.cove) || []); const cc = center(t, coveCenter(state)); return { tx: cc.tx, ty: cc.ty, tiles: t }; }
       if (key === 'landing') { const l = fin(state.plot && state.plot.landing, NONE); if (l >= 0) return { tx: l % W, ty: (l / W) | 0, tiles: [l] }; return { tx: fb.tx, ty: fb.ty }; }
       if (key === 'crown') { const r = call('terrain', 'reachableHigh5', state); const t = Array.isArray(r) ? tilesOf(r).filter(function (i) { return state.tiles.owner[i] < 0; }) : []; const cc = center(t, fb); return { tx: cc.tx, ty: cc.ty, tiles: t }; }
+      if (key === 'land') { const sec = (call('land', 'sections', state) || []).find(function (x) { return x.forSale; }); ui(state, 'openLandOffice', sec ? sec.id : undefined); if (sec) return { tx: (sec.x0 + sec.x1) >> 1, ty: (sec.y0 + sec.y1) >> 1 }; return { tx: fb.tx, ty: fb.ty }; }   // L2: the goal's Show me opens the Land Office on the first section for sale
       if (key === 'ring') { const g = call('buildings', 'gaps', state, fin(G.ringH11, 5)); let t = []; if (g && g.gaps) for (const gap of g.gaps) t = t.concat(gap.tiles || []); if (!t.length) t = tilesOf((state.plot && state.plot.mouth) || []); const cc = center(t, coveCenter(state)); return { tx: cc.tx, ty: cc.ty, tiles: t }; }
       // target: per objective
       const c = ctx(state);
@@ -44419,6 +45007,8 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
       };
     },
     /** {x, y} of a legal placement for a catalog id near plot.founders (D21), or null */
+    /** L2: buy section `id` at the Land Office through land.buy (force = skip the cash check and the prestige gate); {ok, reason, price, id, n} */
+    charter: function (id, force) { const s = BSU.state; if (!s || !has('land', 'buy')) return { ok: false, reason: 'land unavailable' }; return BSU.land.buy(s, id | 0, { force: !!force }); },
     findSpot: function (id) {
       const s = BSU.state;
       const row = BSU.data && BSU.data.catalog ? BSU.data.catalog[id] : null;

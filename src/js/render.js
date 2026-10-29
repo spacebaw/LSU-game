@@ -2641,6 +2641,10 @@
       g.imageSmoothingEnabled = false;
       g.setTransform(s, s / 2, -s, s / 2, mw / 2, mh / 2 - (HGT * s) / 2);
       g.drawImage(mmBase, 0, 0);
+      try {   // L2: unchartered sections shaded navy (the transform is in tile units; ≤ 20 rects)
+        const LD = mod('land'); const secs = LD && typeof LD.sections === 'function' ? LD.sections(state) : null;
+        if (secs && secs.length) { g.fillStyle = 'rgba(14,18,52,0.5)'; for (let k = 0; k < secs.length; k++) { const sc = secs[k]; if (sc.owned) continue; g.fillRect(sc.x0, sc.y0, sc.x1 - sc.x0 + 1, sc.y1 - sc.y0 + 1); } }
+      } catch (e) { rerr('minimap:land', e); }
       tfIdent(g);
       if (camera) {                                                     // camera rect: the 4 screen corners → tile coords → minimap px
         g.strokeStyle = GOLD_HI; g.lineWidth = 1; g.beginPath();

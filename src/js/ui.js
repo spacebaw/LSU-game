@@ -84,7 +84,7 @@
   const SKY_NAME = ['Dawn', 'Day', 'Golden', 'Dusk', 'Night'];
   const MOOD_FACES = ['😞', '🙁', '😐', '🙂', '😄'];
   const HINT_TEXT = { saveUnavailable: 'Saves unavailable in this browser mode', perfMode: 'Performance mode', mute: '🔊 on · M to mute', pauseToPlan: 'Pause to plan', desireLine: 'Students want a path here' };
-  const PANEL_KEYS = { budget: 'Budget', season: 'Season', storm: 'Storm', almanac: 'Almanac', milestones: 'Milestones', settings: 'Settings', debug: 'Debug' };
+  const PANEL_KEYS = { budget: 'Budget', season: 'Season', storm: 'Storm', land: 'Land Office', almanac: 'Almanac', milestones: 'Milestones', settings: 'Settings', debug: 'Debug' };   // L2: land
 
   // ---------------------------------------------------------------------------
   // Small helpers (stub-safe: textContent/classList/style/dataset only)
@@ -210,6 +210,7 @@
     pb.appendChild(topbarButton('btn-budget', '◆', 'Budget', 'Budget (B)', function () { M.openPanel('budget'); }));
     pb.appendChild(topbarButton('btn-season', '🏈', 'Season', 'Season (N)', function () { M.openPanel('season'); }));
     const storm = topbarButton('btn-storm', '🌀', 'Storm', 'Storm (T)', function () { M.openPanel('storm'); }); const dot = el('span', 'dot'); storm.appendChild(dot); E['btn-storm-dot'] = dot; storm.disabled = true; pb.appendChild(storm);
+    pb.appendChild(topbarButton('btn-land', '📜', 'Land', 'Land Office (O)', function () { M.openPanel('land'); }));   // L2: the Land Office (a deed)
     pb.appendChild(topbarButton('btn-almanac', '📖', 'Almanac', 'Almanac', function () { M.openPanel('almanac'); }));
     pb.appendChild(topbarButton('btn-menu', '☰', '', 'Settings', function () { M.openPanel('settings'); }));
     pb.appendChild(topbarButton('btn-mute', '🔊', '', 'Mute (M)', function () { toggleMute(); }));
@@ -900,6 +901,7 @@
       case 'season': M.openPanel(s.ui.panel === 'season' ? null : 'season'); return true;
       case 'storm': M.openPanel(s.ui.panel === 'storm' ? null : 'storm'); return true;   // qa pass 4: no cone gate — since P4 the panel offers precautions with no storm (the topbar button never had the gate)
       case 'milestones': M.openPanel(s.ui.panel === 'milestones' ? null : 'milestones'); return true;
+      case 'land': M.openPanel(s.ui.panel === 'land' ? null : 'land'); return true;   // L2: O (L is the Milestones panel)
       case 'overlayFlood': case 'overlayWater': case 'overlayMosquito': case 'overlayPower': case 'overlayCoverage': case 'overlayEcology': {
         const ov = { overlayFlood: OV.FLOOD, overlayWater: OV.WATER, overlayMosquito: OV.MOSQUITO, overlayPower: OV.POWER, overlayCoverage: OV.COVERAGE, overlayEcology: OV.ECOLOGY }[action];
         M.setOverlay(s, s.ui.overlay === ov ? OV.NONE : ov); return true;
@@ -1055,7 +1057,7 @@
       if (!l2 && n > 1) l2 = 'Drag back to shorten · Esc cancels'; else if (st && n > 1) l2 += ' · Drag back to shorten';
     }
     else if (g.cove) { l1 = 'Not here'; l2 = 'The cove floods every rain. Build on the ridge.'; }
-    else if (!r.ok) { l1 = r.reason || 'Cannot build here'; l2 = r.reason === tieReason() ? 'Hold N to see the campus network' : (ridgeText(r.ridgeFull) || sinkText(r.sink) || ''); }
+    else if (!r.ok) { l1 = r.reason || 'Cannot build here'; l2 = r.charter ? 'State land · click to open the Land Office (O)' : (r.reason === tieReason() ? 'Hold N to see the campus network' : (ridgeText(r.ridgeFull) || sinkText(r.sink) || '')); }   // L2: the charter line
     else {
       l1 = money(r.cost); if (row.kind === 'drag') l1 += ' / tile';
       if (conn) l1 += ' + ' + money(conn.cost) + ' tie';   // "$600k + $8k tie"
@@ -1158,10 +1160,26 @@
       return true;
     }
     call('audio', 'play', 'invalid');
-    if (dom()) { ghostLabel(px, py, r && r.reason ? r.reason : 'Cannot build here', (r && r.reason === tieReason()) ? 'Hold N to see the campus network' : '', 'red'); shakeLabel(); }
-    if (r && r.reason === tieReason()) tieRefusal(s, pre, g);   // paths pass: the P2 reason with a Show me that pans to the nearest network tile
+    if (dom()) { ghostLabel(px, py, r && r.reason ? r.reason : 'Cannot build here', r && r.charter ? 'State land · click to open the Land Office (O)' : ((r && r.reason === tieReason()) ? 'Hold N to see the campus network' : ''), 'red'); shakeLabel(); }
+    if (r && r.charter) charterRefusal(s, r.charter);   // L2: the Land Office reason with a button that opens the panel on that section
+    else if (r && r.reason === tieReason()) tieRefusal(s, pre, g);   // paths pass: the P2 reason with a Show me that pans to the nearest network tile
     return false;
   }
+  // L2: a tool refused on unchartered land. The first refusal is noted (the "Charter your first section" goal's trigger); the toast carries
+  // the reason, a Land Office button that opens the panel on that section and a Show me that pans to the section's centre.
+  function charterReason() { const L = BSU.land; return (L && L.CHARTER_REASON) || 'Charter this section at the Land Office'; }
+  function charterRefusal(s, ch) {
+    try {
+      if (!ch) return;
+      call('land', 'noteRefusal', s);
+      const sec = call('land', 'section', s, ch.id) || null;
+      const cx = sec ? ((sec.x0 + sec.x1) >> 1) : fin(ch.tx, -1), cy = sec ? ((sec.y0 + sec.y1) >> 1) : fin(ch.ty, -1);
+      const why = sec && !sec.forSale ? ' It is not next to your land yet.' : (sec && sec.locked ? ' Needs prestige ' + sec.gate + '.' : '');
+      M.notify(s, { kind: 'info', text: (ch.reason || charterReason()) + '.' + why, ttl: 7000, stamp: 'charterRefusal', action: { label: 'Land Office', fn: function () { M.openLandOffice(ch.id); } }, showMe: cx >= 0 ? { tx: cx, ty: cy } : undefined });
+    } catch (e) { uerr('charterRefusal', e); }
+  }
+  /** open the Land Office with section `id` selected (ui_panels' panel; a plain open when it is absent) */
+  M.openLandOffice = function (a, b) { try { const id = (a && typeof a === 'object') ? b : a; const LP = M.panels && M.panels.land; if (LP) { LP.selected = Number.isFinite(id) ? (id | 0) : LP.selected; LP.confirm = null; } M.openPanel('land'); } catch (e) { uerr('openLandOffice', e); } };   // (id) or (state, id): progress's ui() passes the state first
   function tieRefusal(s, pre, g) {
     const near = (pre && pre.nearest) || call('buildings', 'nearestNetwork', s, g.tx, g.ty) || null;
     M.notify(s, { kind: 'info', text: tieReason() + (near ? ' (the nearest campus path is ' + Math.round(fin(near.d, 0)) + ' tiles away)' : ''), ttl: 7000, stamp: 'tieRefusal', showMe: near ? { tx: near.tx, ty: near.ty, tiles: [near.i] } : undefined });
@@ -1180,7 +1198,12 @@
       if (dom()) ghostLabel(lastPx, lastPy, placed + (placed === 1 ? ' tile' : ' tiles') + ' · ' + money(r.cost) + (tie ? ' (incl. ' + money(tie.cost) + (tie.snap ? ' snap)' : ' tie)') : ''), 'Ctrl+Z to undo', 'green');
       if (tie) firstTieCard(s, tie);
     }
-    else { const sk = r.skipped && r.skipped[0]; call('audio', 'play', 'invalid'); if (dom()) { ghostLabel(lastPx, lastPy, sk && sk.reason ? sk.reason : 'Nothing placed', '', 'red'); shakeLabel(); } }
+    else {
+      const sk = r.skipped && r.skipped[0]; call('audio', 'play', 'invalid');
+      const ch = sk && typeof sk.reason === 'string' && sk.reason.indexOf(charterReason()) === 0 ? (call('land', 'refusal', s, [sk.i]) || null) : null;   // L2: a drag onto state land
+      if (dom()) { ghostLabel(lastPx, lastPy, sk && sk.reason ? sk.reason : 'Nothing placed', ch ? 'State land · open the Land Office (O)' : '', 'red'); shakeLabel(); }
+      if (ch) charterRefusal(s, ch);
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -1568,10 +1591,22 @@
         it.addEventListener('pointerleave', function () { if (itemHover && itemHover.id === id) { itemHover = null; hideTooltip(); } });
         items.appendChild(it); E.itemEls[id] = it;
       }
+      if (cur && cur.id === 'grounds' && BSU.land) items.appendChild(landCard(s));   // L2: the "Charter land" card opens the Land Office
       if (tabChanged) { try { items.scrollLeft = 0; } catch (e) { /* stub */ } }
       refreshPips(s); markToolDom(s); paletteFade();
     } catch (e) { uerr('refreshPalette', e); }
   };
+  /** L2: the Grounds tab's "Charter land" card: a deed glyph, the cheapest section for sale (or the reason there is none), click = the Land Office */
+  function landCard(s) {
+    const st = call('land', 'stats', s) || {};
+    const it = el('div', 'item land-card'); it.dataset.id = 'land'; it.setAttribute('tabindex', '0'); it.setAttribute('role', 'button');
+    const ic = el('div', 'icon glyph', '📜'); it.appendChild(ic);
+    const nm = el('div', 'name'); nm.appendChild(el('span', '', 'Charter land')); it.appendChild(nm);
+    it.appendChild(el('div', 'cost', !fin(st.sections, 0) ? 'Charter complete' : (fin(st.forSale, 0) ? 'from ' + money(st.cheapest) : 'Land Office')));
+    it.title = 'Land Office (O): buy 16 × 16 sections of state land next to your campus';
+    it.addEventListener('click', function () { M.openPanel('land'); });
+    return it;
+  }
   function refreshPips(s) { const pk = JSON.stringify(s.ui.newPips || {}) + '|' + s.ui.paletteTab; if (pk === pipKey) return; pipKey = pk; for (const id in E.tabEls) { show(E.tabEls[id].pip, !!s.ui.newPips[id]); cls(E.tabEls[id].el, 'active', id === s.ui.paletteTab); } }
   function itemTooltip(s, id) {
     const r = rowOf(id); if (!r) return ''; const u = unlockOf(s, id);
@@ -2430,6 +2465,10 @@
       const what = land > 0 && water > 0 ? (land + (land === 1 ? ' tile' : ' tiles') + ' of gravel and ' + water + ' of boardwalk') : water > 0 ? (water + (water === 1 ? ' tile' : ' tiles') + ' of boardwalk') : (n + (n === 1 ? ' tile' : ' tiles') + ' of gravel');
       return { id: 'firstTie', kicker: p.snap ? 'Snapped on' : 'Tied in', title: 'Tied in: ' + what + ', ' + money(p.cost), body: "Paths that reach Founders' Hall are what make a building work. Build near the campus network and we lay the last few tiles for you (planks over water). Hold Alt to skip the tie; hold N to see the network.", actions: [{ label: 'Got it', primary: true }] };
     });
+    reg('landFirst', function (s, p) {   // L2: the first section bought, once per save (state.charter.cardSeen)
+      p = p || {}; const c = p.counts || {};
+      return { id: 'landFirst', kicker: 'Land Office', title: 'Section ' + fin(p.id, 0) + ' is yours · ' + money(p.cost != null ? p.cost : p.price), body: 'The state sells land in 16 × 16 sections next to your charter: dry ground costs more, swamp is cheap (this one: ' + fin(c.dry, 0) + ' dry, ' + fin(c.high, 0) + ' high, ' + fin(c.marsh, 0) + ' marsh). Build on it like any other land. A Dredge tool that fills marsh into dry ground is coming.', actions: [{ label: 'Open the Land Office', fn: function () { M.openPanel('land'); } }, { label: 'Got it', primary: true }] };
+    });
     reg('obj8', function (s, p) { return { id: 'obj8', kicker: 'Objective 8', title: 'Capped', body: (p && p.text) || ('Enrollment is capped at ' + fin(p && p.students, 0) + '. Beds, seats and dining set the ceiling.'), actions: [{ label: 'Show me the Budget', fn: function () { M.openPanel('budget'); } }, { label: 'OK', primary: true }] }; });
     reg('voice', function (s, p) { p = p || {}; return { id: 'voice', side: 'voice', voiceId: p.id, student: p.student, major: p.major, text: p.text, payoff: p.payoff }; });
     reg('board', function (s, p) {
@@ -2967,7 +3006,7 @@
       A(tabVisible('housing', true, 0) === false && tabVisible('housing', true, 2) === true && tabVisible('essentials', true, 0) === true && tabVisible('paths', false, 3) === false, 'tab visibility rule');
       // 9. skeleton through M.el
       if (inited) {
-        const ids = ['hud', 'topbar', 'brand', 'stat-cash', 'stat-students', 'chip-capacity', 'stat-prestige', 'stat-happiness', 'stat-ecology', 'stat-date', 'sky-glyph', 'chip-weather', 'speed', 'btn-budget', 'btn-season', 'btn-storm', 'btn-almanac', 'btn-menu', 'btn-mute', 'chip-endowed', 'alert-strip', 'alert-icon', 'alert-text', 'alert-action', 'alert-gator', 'minimap-wrap', 'minimap', 'minimap-viewport', 'overlay-buttons', 'legend', 'objective-card', 'obj-portrait', 'obj-title', 'obj-text', 'obj-progress', 'obj-count', 'btn-showme', 'btn-obj-dismiss', 'obj-background', 'speech-bubble', 'voice-card', 'milestones-card', 'notifications', 'decision-toast', 'dt-text', 'dt-countdown', 'btn-dt-yes', 'btn-dt-no', 'inspect', 'insp-title', 'insp-sub', 'btn-insp-close', 'insp-sprite', 'insp-body', 'insp-actions', 'ghost-label', 'undo-chip', 'tooltip', 'popover', 'pop-title', 'pop-next', 'ticker', 'ticker-track', 'btn-ticker-log', 'ticker-log', 'palette', 'palette-tabs', 'palette-items', 'btn-bulldoze', 'btn-palette-info', 'cards', 'perf-chip', 'perfmode-chip', 'hint', 'panels', 'title', 'title-name', 'title-tag', 'btn-charter', 'btn-continue', 'title-seed', 'btn-title-settings', 'btn-title-mute', 'title-campus'];
+        const ids = ['hud', 'topbar', 'brand', 'stat-cash', 'stat-students', 'chip-capacity', 'stat-prestige', 'stat-happiness', 'stat-ecology', 'stat-date', 'sky-glyph', 'chip-weather', 'speed', 'btn-budget', 'btn-season', 'btn-storm', 'btn-land', 'btn-almanac', 'btn-menu', 'btn-mute', 'chip-endowed', 'alert-strip', 'alert-icon', 'alert-text', 'alert-action', 'alert-gator', 'minimap-wrap', 'minimap', 'minimap-viewport', 'overlay-buttons', 'legend', 'objective-card', 'obj-portrait', 'obj-title', 'obj-text', 'obj-progress', 'obj-count', 'btn-showme', 'btn-obj-dismiss', 'obj-background', 'speech-bubble', 'voice-card', 'milestones-card', 'notifications', 'decision-toast', 'dt-text', 'dt-countdown', 'btn-dt-yes', 'btn-dt-no', 'inspect', 'insp-title', 'insp-sub', 'btn-insp-close', 'insp-sprite', 'insp-body', 'insp-actions', 'ghost-label', 'undo-chip', 'tooltip', 'popover', 'pop-title', 'pop-next', 'ticker', 'ticker-track', 'btn-ticker-log', 'ticker-log', 'palette', 'palette-tabs', 'palette-items', 'btn-bulldoze', 'btn-palette-info', 'cards', 'perf-chip', 'perfmode-chip', 'hint', 'panels', 'title', 'title-name', 'title-tag', 'btn-charter', 'btn-continue', 'title-seed', 'btn-title-settings', 'btn-title-mute', 'title-campus'];
         for (const id of ids) A(isEl(E[id]) && E[id].id === id, 'skeleton id through M.el: ' + id);
         A(E.msRows.length === 3 && E.popLines.length === L.popLines && Object.keys(E.speedBtns).length === 5 && Object.keys(E.ovBtns).length === 6, 'ms-rows, pop-lines, speed and overlay buttons exist');
       } else notes.push('skeleton check skipped (init not run)');
