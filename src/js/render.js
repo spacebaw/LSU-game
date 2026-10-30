@@ -2333,7 +2333,7 @@
         if (!BSU.inBounds(tx, ty) || !inView(tx, ty, 4)) continue;
         const stage = clamp(fin(v.stage, 0) | 0, 0, 2), hv = hash(tx, ty), ti = ty * W + tx;
         const wet = v.type === 'cypress' && (t.type[ti] <= T.MARSH || fin(t.depth[ti], 0) > 0.05);   // art pass B2: a waterline base on marsh / water
-        const variant = sp.treeVariant(stage, info.autumn && v.type === 'cypress', info.bloom && v.type === 'azalea', hv & 3, wet);   // bits 4–5: one of four silhouettes per tile
+        const variant = sp.treeVariant(stage, info.autumn && v.type === 'cypress', info.bloom && v.type === 'azalea', hv & 3, wet, (hv >> 2) & 3);   // bits 4–5: one of four silhouettes per tile; H3: bits 7–8 a layout jitter (hv >> 2), so a stand of one silhouette is not a stamp
         const e = push('tree', tx, ty, fin(elev[ti], 0), 1, drawTree);
         e.id = v.type; e.variant = stage; e.a = hv; e.ref = getRef(v.type, variant, 0);
         tileScreen(e);

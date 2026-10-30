@@ -1389,3 +1389,74 @@ field's half scale; the fan row scales a master-2 cell by `zs / ref.zoom`; `hdIn
   that shows every look in every facing holds them — H7's memory audit decides a Safari cap (e.g. master 1 for `agent` above a budget).
   (7) At zoom 2 on dpr 1 the football layer fetches master 1 (crisp at 1:1); its numbers are 3 × 5 px glyphs like the pen's. (8) The fan
   row's `const k` shadowing of its loop variable was caught by render.test's BSU.error count and fixed before the gates ran.
+
+## H3 vegetation pass
+
+Every vegetation family now bakes through the brush (style C) at master 1 (zoom 0.5 / 1, lod 1) and master 2 (zoom 2 / Retina, lod 0), registered over the B2 pen
+painters of `sprites.js` through `registerHD`. Files: `src/js/sprites_vegetation_hd.js` (new, ~445 lines; in `src/manifest.json` right after `sprites_terrain.js`, i.e. after
+`sprites.js` + `brush.js` and before the building painters that call `brush.tree`), `src/js/sprites.js` (`treeVariant`'s optional 6th argument `jit` → bits 7–8, `TREE_JIT_SHIFT`),
+`src/js/render.js` (ONE argument: the tree entity passes `(hv >> 2) & 3` as that jitter — see "Found"), `test/unit/vegetation_hd.test.mjs` (new, 58), `test/unit/{render,terrain_hd,buildings_hd}.test.mjs`
+(the "no other HD family" lists allow `sprites.hdVegetationFamilies()`; the buildings test's pen-row check now expects cypress / azalea to be HD tree families), `docs/ART_STYLE.md` (`## Style C palette`, vegetation rows), `docs/API_INDEX.md` (regenerated).
+`sprites_terrain.js`, `sprites_buildings_hd.js`, `sprites_entities_hd.js`, `agents.js`, `ui*.js`, `render_fx.js` untouched; `render.js` fetches every tree through `getRef` (HD families at
+`hdMaster`) and the marsh-edge shrub through `tref` (HD families at the chunk's master), so neither fetch needed a change.
+
+- **Families HD now (5, `sprites.hdVegetationFamilies()`):** `oak` (stage 0 / 1 / 2: 8×14, 40×36, 96×56; four silhouettes), `cypress` (6×16, 16×48, 24×80; autumn bit, water bit, four silhouettes, the
+  flat-topped old tree at silhouette 3), `palmetto` (12×10, 18×15, 24×20; spreading / upright), `azalea` (10×6 shredded, 16×10; bloom bit), `shrub` (22×12, four variants, anchored at its base).
+  Cells, trunk-base anchors (`ox −w/2, oy −h + 4`; shrub −11 / −10) and frame counts (1) are the pen's exactly (asserted against a snapshot of the pen's bakes at both masters for every
+  stage × silhouette × season × water bit).
+- **What a tree is.** A canopy is layered soft orbs lit from the upper left: one `orb` per cluster (the pen's cluster layouts, so the silhouettes keep their shapes), at lod 0 a rim of soft leaf masses
+  that melt into it, lit mounds, leaf dabs, and per-cluster / whole-crown underside shading and sun patch through `source-atop` softEllipses (only painted leaves are touched); the live oak
+  has four canopy tones (deep `oakLeaf`, warm +`highGrass`, cool +`cypressLeaf`, fresh +`grass`) assigned from a cluster's place in the crown, a tapered capsule trunk with two surface roots, limbs
+  that show through the gaps, dapples and sun flecks, and 9–11 curved moss strands that thin and fade. The bald cypress is a spindle of tiers (the pen's widths and silhouettes): each tier a few
+  soft lobes (lit left, shaded right), drooping branchlet strokes along its lower edge (lod 0), a dark core so a tuck shows shade, a cast shadow on the tier below, new growth in the light, a
+  flared base with knees; autumn swaps the ramp to `cypressRust` mixed toward `cypressLeaf` with depth; a cypress in water (bit 64) stands in a waterline ring over a soft trunk reflection with no
+  ground shadow. Palmetto: petioles and 5–7 tapered ray capsules per frond with the pen's fan geometry. Azalea: three clusters, blossom clusters of five petal orbs; lod 1 keeps three soft pink
+  masses so the bloom still reads at 0.5×. Shrub: a mound of three clusters draped with moss on a mud pad. Contact is the building / character kit: `brush.shadow` @ .3 + a tight AO at the foot.
+- **Variant bits and the stand.** `treeVariant(stage, autumn, bloom, sil, water, jit)`: stage 0–2 | autumn 4 | bloom 8 | silhouette << 4 | water 64 | **jitter << 7** (new). Render passes `hash(tx, ty) >> 2`
+  as the jitter, so one silhouette in one stage has four layouts (cluster positions ±2 px, canopy tones, trunk lean, tier widths and lobes, branchlet and moss placement): a stand of 20 mature
+  cypresses shows 16 distinct trees per season instead of 4, a quad row of oaks 16 instead of 4. Jitter 0 is the pen's layout. Atlas: 16 mature oak variants 1.4 MB at master 2, 64 cypress
+  (2 seasons × water × 4 × 4) 2 MB worst case — see Gates for the real numbers.
+- **`brush.tree` is the cached cell.** The quad, the rookery and the Tiger Habitat call `brush.tree` from `sprites_buildings_hd.js` (H2b); `sprites_vegetation_hd.js` replaces it with a `drawImage` of the oak
+  / cypress cell (liveOak stage 0 / 1 / 2 → the stage-2 oak at .8 / 1.1 / 1.4, silhouette = seed & 3, jitter = seed >> 2; cypress → the cypress cell with the water bit from `inWater` at 1.25 / 1.05 /
+  1.3), so a quad's oak is the same oak as the map's and a building bake no longer runs ~150 gradient calls per tree. A host canvas is never painted with `source-atop` (the cell is composited,
+  not drawn into); if the cell is missing the H0 composition runs unchanged.
+- **Wind.** The sprite is one frame (the pen's `FRAMES` are 1 for every vegetation family and still are); the sway is `render.drawTree`'s live moss strokes (≥ 1×, wind × `C.mossSway`), untouched. The
+  baked strands (lod 0 only) are the still picture under them.
+- **lod.** lod 1 (master 1: zoom 1 at dpr 1, the 0.5× source): cluster orbs with a cool rim, trunk / limbs / roots, the cluster and crown underside, the lit side, cypress lobes with their underside — a single
+  soft silhouette with its lit side; no rim masses, mounds, dabs, flecks, dapples, moss strands, frond hairs, blossoms (the bloom → three pink masses) or reflection ring #2.
+- **Palette knots:** docs/ART_STYLE.md `## Style C palette`, "Vegetation (settled in pass H3)". H5 (effects, icons) picks from the same table.
+- **Atlas bytes (master 2, one canvas per entry).** Per cell: oak stage 2 86 KB (192×112), stage 1 23 KB, stage 0 2 KB; cypress stage 2 31 KB (48×160), stage 1 12 KB, stage 0 1.5 KB; palmetto
+  stage 2 7.5 KB; azalea 2.5 KB (stage 0 1 KB); shrub 4.1 KB. Every variant the seed-42 96×96 map can show (1,470 trees: 16 oak, 64 cypress incl. autumn + water, 16 palmetto, 4 shrub entries; the map has no
+  azaleas until the player plants them) is **3.32 MB** at master 2 (the pen's 4 / 16 / 4 variants were 0.84 MB); oak 1,344 KB, cypress 1,920 KB, palmetto 120 KB, shrub 17 KB. After the
+  pan + zoom tour `hdAtlasMB` 19.9 (HEAD 17.5; cap 96), `atlasMB` 48.3 (HEAD 45.5), `chunkMB` 72.3 (HEAD 71.5; cap 120), **no fallback** (`hdInfo().fallback` / `atlasFallback` false).
+  Bake cost per cell (Chrome, software raster, forced through a 1-px readback): master 2 / master 1 — oak stage 2 0.93 / 0.18 ms, stage 1 0.42 / 0.10, cypress stage 2 0.95 / 0.33, stage 1 0.50 /
+  0.22, palmetto 0.48 / 0.33, azalea in bloom 0.30 / 0.08, shrub 0.17 / 0.08.
+- **Gates (headless Chrome 1440×900, software raster, seed 42, 40 placed buildings incl. 5 quads + 60 days + 440 ticks, daylight, camera over the quad with the most oaks and a cypress stand
+  by the water at (79, 39); load 3.1).** *fps* (`fps_check.mjs 96`, the 42-building campus at zoom 1 dpr 2, two runs each, same minute): median frame HEAD 24.7 / 19.3 and 24.7 / 20.8 ms, H3 **23.3 /
+  18.6 and 23.9 / 19.2 ms**; `frameMs` mean HEAD 20.3 / 20.1 / 20.7 / 20.4, H3 20.0 / 19.4 / 20.0 / 20.1 — within 5 % (3–5 % faster: the quad's oak is one `drawImage` now). *Master-2 chunk bake*
+  (`h3/chunkbake.mjs`, 90 / 80 bakes per run, the shrubs are the only vegetation in a chunk): HEAD 1.52 / 1.41 ms (zoom 2 dpr 1) and 1.43 / 1.42 (zoom 1 dpr 2), H3 1.37 / 1.36 ms (zoom 2 dpr 1) and 1.46 / 1.42 (zoom 1 dpr 2) in quiet runs (1.77 / 1.53 / 1.63 in runs that overlapped another process) — H2b's 1.12–1.19 ms was a lighter scene on
+  a quieter machine; the same-minute HEAD run is the gate (master 1: 0.63–0.69 vs 0.62–0.70). *Tour:* 30 pan steps + the 2 / 0.5 / 1.25 / 1 / 2.5 / 1 zoom tour at dpr 2: p95 frame 19.1 ms and worst 38.5 ms (the
+  warm-up frames; HEAD 19.3 / 38.2), chunk 44 live / 15 HD. *Readability:* at 0.5× oaks are soft dark-green balls and cypresses dark spires that separate from the ground, the red roofs and the water
+  (`h3-after-0.5x.png`); at 2× a cypress stand has no visible repetition (silhouette × jitter = 16 trees per season; `h3/stand-after.png`); at night the crowns stay a dark green silhouette with the lit side
+  gone and the trunk / cypress spires readable under the multiply (`h3-after-night.png`). 0 console errors, 0 `BSU.error` in every run (tour, gates, sheets, fps ×4, chunk bake).
+- **Tests.** `vegetation_hd.test` (58: source rules — brush calls only, no gradients / patterns / text / Math.random, `registerHD` only, the manifest slot between `sprites_terrain.js` and
+  `sprites_buildings_hd.js`, render's `getRef` / `tref` / jitter by source; the pen's geometry snapshotted before the module loads, then every family × stage × silhouette × season × water bit × master 1 + 2
+  keeps the pen's cell, trunk-base anchor and frame count (`hd: true`), the jitter bits change the layout and never the cell, `treeVariant` packing; recorded brush calls — the autumn bit swaps green to the rust
+  ramp, the bloom bit draws petal orbs (and three soft masses at lod 1), moss strands and rim masses only at lod 0, an oak lod 1 is 20 brush calls vs 213 at lod 0, 3–4 canopy tones, one contact shadow, none for a
+  cypress in water, jitter 0 / 1 / 3 and the four cypress jitters are distinct layouts, determinism; `brush.tree` draws the cached cells (1:1 for a quad's oak, the water bit for a rookery's cypress);
+  atlas bytes accounted in `hdMemoryMB`; the selfTest), `render.test` + `terrain_hd.test` (the "no other HD family" lists allow `hdVegetationFamilies()`), `buildings_hd.test` (the live_oak row stays the pen,
+  cypress / azalea resolve to their HD tree families). Battery green: `build --check` (27 modules, 3545 KB), `smoke` ALL OK at 96 and `--size 64`, `modules` 19 self-tests 0 failed, `contract` 230, every
+  `test/unit/*.test.mjs` 0 failed (vegetation_hd 58, buildings_hd 74, render 244, sprites 145, brush 61, terrain_hd 34, entities_hd 60, sprites_buildings 206, …) at loadavg ~3.
+- **Screenshots** (scratchpad): `h3-before-2x.png` / `h3-after-2x.png` (the HEAD build vs this one: same seed, tick and camera over the quad), `h3-before-1x.png` / `h3-after-1x.png`, `h3-after-0.5x.png`,
+  `h3-after-1x-dpr2.png`, `h3-after-autumn.png` (month 11: the rust cypresses), `h3-after-spring-bloom.png` (month 3, 14 azaleas planted on open grass: the blossom clusters), `h3-after-night.png`,
+  `h3-compare.png` (before / after at 2× and every converted family, one master-2 cell each + the autumn cypress, the blooming azalea and a cypress in water), `h3/sheet_*.png` (the quick contact
+  sheets, oak / cypress / small), `h3/stand-after.png` (a cypress stand with oaks at 2×).
+- **Found, not changed.** (1) There is **no crepe myrtle** (nor any other flowering tree) anywhere in the game (`Crape Myrtle Suites` is a name in `data.js`), no winter / bare variant and no sway frame in the
+  pen vegetation (`FRAMES` are 1; the only seasons are cypress autumn = month 11 and azalea bloom = month 3 → the first 10 days of April): adding a crepe myrtle needs a new `Veg` type + catalog row (game data
+  and `terrain.plantVeg`), not art. (2) `render.js` got one argument (`(hv >> 2) & 3` → `treeVariant`'s new `jit`), the only way to put variety into a stand of one silhouette without new art tables; reverting
+  it changes nothing but the repetition (the painters read jitter 0 = the pen's layout). Every vegetation fetch was already at `hdMaster` (`getRef`) or the chunk master (`tref`). (3) `render.drawTree`'s live moss
+  strokes (≥ 1×, 1 px straight, wind-swayed) draw over the baked strands, so an oak at 1× / 2× shows both; the baked strands are the 0.5× / perf-mode art and the still picture under the sway — H5 may curve the live
+  strokes. (4) `icon:live_oak | cypress | azalea` compose the oak / cypress / azalea cells through `M.get(id, v, 0, zoom)`, so the palette icons show the HD trees on the pen slab (`h3/icons.png`) — H5 re-bakes icons.
+  (5) The `live_oak` catalog row's building sprite still delegates to the pen (no consumer: buildings.place makes veg entities). (6) The HD chunk shrub is blitted from the master-2 cell at half its device size
+  (`blit1`), so the 4 variants are the only vegetation inside a chunk bake: the chunk cost is unchanged within noise. (7) Master 1 at zoom 1 dpr 1 is lod 1: a mature oak there has no leaf texture (a smooth lit
+  silhouette) — by the brief (the 0.5× source); Retina shows lod 0 at zoom 1.

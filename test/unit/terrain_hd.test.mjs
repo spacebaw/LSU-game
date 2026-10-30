@@ -40,7 +40,7 @@ for (const f of manifest.slice(0, manifest.indexOf('sprites_terrain.js') + 1)) {
 const BSU = win.BSU, S = BSU.sprites, B = BSU.brush, T = BSU.T;
 const FAM = S.hdTerrainFamilies();
 ok(Array.isArray(FAM) && FAM.length === 14 && ['tile', 'cliff', 'tuft', 'patch', 'shore', 'tone', 'reeds', 'knees', 'worn', 'mound', 'levee', 'floodwall', 'canal', 'water'].every((f) => FAM.includes(f)), 'hdTerrainFamilies(): the 14 terrain / water families');
-ok(FAM.every((f) => S.hdFamilies().includes(f)) && S.hdFamilies().every((f) => FAM.includes(f) || f === 'building' || f === 'bldlight' || f === 'habfront' || (S.hdEntityFamilies && S.hdEntityFamilies().includes(f))), 'every terrain family is HD-registered (the only other HD families are H2\'s building / bldlight / habfront and H4\'s character families)');
+ok(FAM.every((f) => S.hdFamilies().includes(f)) && S.hdFamilies().every((f) => FAM.includes(f) || f === 'building' || f === 'bldlight' || f === 'habfront' || (S.hdEntityFamilies && S.hdEntityFamilies().includes(f)) || (S.hdVegetationFamilies && S.hdVegetationFamilies().includes(f))), 'every terrain family is HD-registered (the only other HD families are H2\'s building / bldlight / habfront, H4\'s character families and H3\'s vegetation families)');
 ok(!S.isHD('surf:4') && !S.isHD('preservePost') && !S.isHD('decal:sandbags') && !S.isHD('light:lamp'), 'the fence stamp, preserve posts, decals and lights keep their pen painters');
 ok(S.isPinned('tile') && S.isPinned('cliff') && !S.isPinned('shore') && !S.isPinned('water'), 'tile + cliff are pinned against gc (fetched only by chunk bakes), the rest are lazy');
 ok(S.TILE_SHALLOW === 8 && S.TILE_DEEP === 1024 && S.TILE_POS_SHIFT === 4, 'tile variant contract: 8 shallow, 1024 deep, position << 4');

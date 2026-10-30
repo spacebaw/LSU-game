@@ -1306,8 +1306,10 @@
   // shadow side and the bottom of every silhouette, tone 3/4 on the lit top edge; dappled undersides in tones 0–1.
   // ---------------------------------------------------------------------------
   /** stage | (autumn ? 4 : 0) | (bloom ? 8 : 0) | (sil & 3) << 4 | (water ? 64 : 0) */
-  M.treeVariant = function (stage, autumn, bloom, sil, water) { return (Math.max(0, Math.min(2, stage | 0))) | (autumn ? 4 : 0) | (bloom ? 8 : 0) | (((sil | 0) & 3) << 4) | (water ? 64 : 0); };
-  M.TREE_SIL_SHIFT = 4; M.TREE_WATER = 64;
+  /** H3: an optional 6th argument `jit` (0–3) lands in bits 7–8; the HD painters (sprites_vegetation_hd.js) shift their layout by it so a stand of
+   *  one silhouette is not a stamp (the pen painters ignore it: jit 0 = the pen's layout) */
+  M.treeVariant = function (stage, autumn, bloom, sil, water, jit) { return (Math.max(0, Math.min(2, stage | 0))) | (autumn ? 4 : 0) | (bloom ? 8 : 0) | (((sil | 0) & 3) << 4) | (water ? 64 : 0) | (((jit | 0) & 3) << 7); };
+  M.TREE_SIL_SHIFT = 4; M.TREE_WATER = 64; M.TREE_JIT_SHIFT = 7;
   const TH_LEAF = [0.12, 0.34, 0.68, 0.90];
 
   /** a lit, dithered canopy of ellipse blobs [cx, cy, rx, ry] from a 5-tone ramp R; returns the bottom-edge points (for moss)

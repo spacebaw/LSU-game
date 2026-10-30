@@ -95,8 +95,8 @@ S.get('water_tower', 0, 3, 2); ok(true, 'water_tower toppled frame at master 2')
 const PENDING = Object.keys(cat).filter((id) => !ROWS.includes(id) && cat[id].kind === 'footprint');
 let penBad = [];
 S.clear();
-for (const id of PENDING) { const a = S.get(id, 0, 0, 1), b = S.get(id, 0, 0, 2); if (!a || !b || b.w !== a.w * 2 || b.h !== a.h * 2 || b.ox !== a.ox * 2 || a.hd || b.hd) penBad.push(id); }
-ok(PENDING.length === 3 && penBad.length === 0, `the vegetation rows (${PENDING.join(',')}) bake through the pen (hd false) at master 1 and pixel-double at master 2` + (penBad.length ? ': ' + penBad.join(',') : ''));
+for (const id of PENDING) { const a = S.get(id, 0, 0, 1), b = S.get(id, 0, 0, 2), tree = id === 'cypress' || id === 'azalea'; if (!a || !b || b.w !== a.w * 2 || b.h !== a.h * 2 || b.ox !== a.ox * 2 || (tree ? !(a.hd && b.hd) : (a.hd || b.hd))) penBad.push(id); }   // H3: the cypress / azalea ids are also the TREE families, which sprites_vegetation_hd.js (loaded before this file) bakes HD; live_oak has no tree family of its own (the oak is 'oak') and stays the pen
+ok(PENDING.length === 3 && penBad.length === 0, `the vegetation rows (${PENDING.join(',')}): live_oak bakes through the pen (hd false) at master 1 and pixel-doubles at master 2; cypress / azalea resolve to their H3 tree families (hd true at both masters)` + (penBad.length ? ': ' + penBad.join(',') : ''));
 ok(S.get('union', SPR.NIGHT, 0, 1).hd && S.frames('union', SPR.NIGHT) === 4 && S.get('stadium', 0, 0, 1).hd && S.get('tiger_habitat', SPR.DAMAGED, 0, 1).hd, 'union NIGHT (4 frames), stadium, tiger_habitat DAMAGED bake HD');
 ok(S.get('icon:dorm', 0, 0, 1) && S.get('icon:dorm', 0, 0, 1).sw === 64, 'icon:dorm stays the pen icon (64×64)');
 
