@@ -10,6 +10,10 @@
 // closures are allocated); render_fx's lights pass reads `ax, ay, elev, ref, kind` from drawList.
 // Built-in fallbacks for the 'tint', 'overlays' and 'hud' passes, `minimap` and `postcard` exist so the
 // game is playable before render_fx.js; render_fx replaces them by registering the same pass names.
+// H5 effects pass: `fillDiamond` is an anti-aliased path, the placement ghost / drag run / connector tie are `ghostTiles` (one union path fill + a rounded inset outline), the cursor
+// ring and the radius outline carry a soft halo and round joins, world particles are drawn by kind (`drawParticle`: cached blobs for the soft ones, AA shapes for the hard ones),
+// swimmer ripples are `ring` blobs, the lights composite is 1 px (render_fx blits blobs straight onto the frame), and `perf().passMs` reports the smoothed cost of every stage / pass
+// (`passFn(name)` returns a registered pass for tests and perf tools).
 // =============================================================================
 (function () {
   const BSU = window.BSU;
@@ -76,6 +80,9 @@
   const flashes = [];
   let ghostSpec = null, overlayFadeStart = 0;
   const passes = [];                                 // {name, fn, order, builtin}
+  const passMs = Object.create(null);
+  /** H5: fold the time since `t0` into passMs[name] (EMA .1) and return now, so the next stage reads one clock call */
+  function passTick(name, t0) { const t = nowMs(); const v = passMs[name]; passMs[name] = v === undefined ? t - t0 : v + (t - t0 - v) * 0.1; return t; }
   const gates = new Map();                           // tile → {closed, t0 (frameNo)}
   const perfRing = new Float32Array(PR.perfFrames || 60); let perfI = 0, perfFilled = false, perfTripped = false;
   let frameMs = 0, drawCalls = 0, agentsDrawn = 0, particlesDrawn = 0, waterDrawn = 0, decksDrawn = 0;
@@ -267,8 +274,7 @@
     if (canvas.height !== ph) canvas.height = ph;
     try { canvas.style.width = vw + 'px'; canvas.style.height = vh + 'px'; } catch (e) { /* stub */ }
     try { ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.imageSmoothingEnabled = false; } catch (e) { /* stub */ }
-    const perf = root && root.ui && root.ui.perfMode;
-    const lightsDiv = perf ? (perfTripped ? 4 : 2) : 1;
+    const lightsDiv = 1e9;   // H5: the lights pass draws its cached blobs straight onto the frame; the `lights` composite stays registered at 1 × 1 (was a full-frame canvas, ÷ 2 / ÷ 4 in perf mode)
     for (const k in comp) {
       const c = comp[k]; if (!c) continue;
       const div = k === 'lights' ? lightsDiv : 1;
@@ -1221,7 +1227,8 @@
     let atlasMB = 0, hdAtlasMB = 0; try { const sp = S(); atlasMB = fin(sp.memoryMB(), 0); hdAtlasMB = typeof sp.hdMemoryMB === 'function' ? fin(sp.hdMemoryMB(), 0) : 0; } catch (e) { atlasMB = 0; }
     return { frameMs: fin(frameMs, 0), drawCalls: drawCalls | 0, particles: parts, agentsDrawn: agentsDrawn | 0, hydroActive: hydroActive, chunks: liveChunks(), memMB: Math.round(mem * 100) / 100, tees: teeCache.size, water: waterDrawn | 0, frameNo: frameNo, zoom: zoomNow, atlasZoom: atlasZoom, smooth: frameSmooth, perfMode: !!(root && root.ui && root.ui.perfMode),
       // H0 pipeline pass: HD state and real byte counts (chunkMB = every live chunk canvas at its own master; the legacy memMB keeps its 0.85 MB-per-chunk estimate)
-      hd: hdOn, hdMaster: hdMaster, chunkMaster: hdChunkWant, hdChunks: hdChunkCount(), chunkMB: Math.round(chunkBytes() / 10485.76) / 100, atlasMB: Math.round(atlasMB * 100) / 100, hdAtlasMB: Math.round(hdAtlasMB * 100) / 100, hdFallback: hdFallbackChunks || !!(S() && S().hdFallback), hdBakes: hdBakesThisFrame, dpr: dpr };
+      hd: hdOn, hdMaster: hdMaster, chunkMaster: hdChunkWant, hdChunks: hdChunkCount(), chunkMB: Math.round(chunkBytes() / 10485.76) / 100, atlasMB: Math.round(atlasMB * 100) / 100, hdAtlasMB: Math.round(hdAtlasMB * 100) / 100, hdFallback: hdFallbackChunks || !!(S() && S().hdFallback), hdBakes: hdBakesThisFrame, dpr: dpr,
+      passMs: Object.assign({}, passMs) };   // H5: smoothed ms per stage / pass (chunks, water, deck, entities, weather, tint, lights, fog, …)
   };
   /** render_fx / ui register or replace a named pass: order 5 weather, 6 tint, 7 lights, 8 fog, 9 overlays, 10 hud */
   M.registerPass = function (name, fn, order_, builtin) {
@@ -1232,6 +1239,8 @@
   };
   /** the registered passes (read-only view) */
   M.passes = function () { return passes.map((p) => ({ name: p.name, order: p.order, builtin: p.builtin })); };
+  /** H5: the function registered under a pass name (tests and perf tools call a pass on a context of their own, or swap it for a no-op and back); null when there is none */
+  M.passFn = function (name) { for (let k = 0; k < passes.length; k++) if (passes[k].name === name) return passes[k].fn; return null; };
   /** ui hands render the #minimap canvas */
   M.attachMinimap = function (el) { minimapEl = el || null; };
 
@@ -1239,14 +1248,27 @@
   // Draw primitives
   // ---------------------------------------------------------------------------
   function colorFor(a, b, t, q) { const key = a + b + q; let c = colorCache.get(key); if (!c) { c = S().mix(a, b, t); colorCache.set(key, c); } return c; }
-  /** translucent 2:1 diamond from fillRect runs (row step 1 at 1×, 2 at 0.5×/2×) */
-  function fillDiamond(g, cx, cy, w, h, step) {
-    const top = cy - h / 2;
-    for (let r = 0; r < h; r += step) {
-      const half = (w / 2) * (1 - Math.abs(r + step / 2 - h / 2) / (h / 2));
-      if (half > 0.5) { g.fillRect(Math.round(cx - half), Math.round(top + r), Math.round(2 * half), step); drawCalls++; }
-    }
+  /** H5: a translucent 2:1 diamond as an anti-aliased path (B-era: fillRect runs with hard, stair-stepped edges). `grow` pushes every edge out by that many
+   *  px, so two neighbours of a high-alpha fill overlap a hair instead of leaving an AA dip at the shared edge (a = .86 surge water: grow .3; the faint
+   *  overlays and the live water: 0 – .12). Ghost footprints do not come through here: `ghostTiles` fills ONE union path (no seam at all). */
+  function fillDiamond(g, cx, cy, w, h, grow) {
+    const gx = grow || 0, hw = w / 2 + gx * 2, hh = h / 2 + gx;
+    g.beginPath(); g.moveTo(cx, cy - hh); g.lineTo(cx + hw, cy); g.lineTo(cx, cy + hh); g.lineTo(cx - hw, cy); g.closePath(); g.fill(); drawCalls++;
   }
+  /** H5: a tile set as soft-edged footprint tiles: ONE union path fill (no seams, no double alpha where tiles meet), then a rounded 1.6-px outline inset
+   *  0.8 px inside every tile (round joins), same colour — the placement ghost, the drag run, the connector tie. Returns the tiles drawn. */
+  function ghostTiles(g, list, color, alpha, w, h) {
+    if (!Array.isArray(list) || !list.length) return 0;
+    let n = 0; g.beginPath();
+    for (let k = 0; k < list.length; k++) { const i = list[k] | 0; if (i < 0 || i >= N) continue; tileDiamondScreen(i, tmpPt); gdX[n] = tmpPt.x; gdY[n] = tmpPt.y; n++; if (n >= gdX.length) break; g.moveTo(tmpPt.x, tmpPt.y - h / 2); g.lineTo(tmpPt.x + w / 2, tmpPt.y); g.lineTo(tmpPt.x, tmpPt.y + h / 2); g.lineTo(tmpPt.x - w / 2, tmpPt.y); g.closePath(); }
+    if (!n) return 0;
+    g.globalAlpha = alpha; g.fillStyle = color; g.fill();
+    const ix = 0.8 * 2, iy = 0.8; g.beginPath();
+    for (let k = 0; k < n; k++) { const x = gdX[k], y = gdY[k]; g.moveTo(x, y - h / 2 + iy); g.lineTo(x + w / 2 - ix, y); g.lineTo(x, y + h / 2 - iy); g.lineTo(x - w / 2 + ix, y); g.closePath(); }
+    g.lineJoin = 'round'; g.lineWidth = 1.6; g.strokeStyle = color; g.globalAlpha = Math.min(1, alpha * 1.15); g.stroke(); g.lineJoin = 'miter'; drawCalls += 2;
+    return n;
+  }
+  const gdX = new Float32Array(4096), gdY = new Float32Array(4096);
   function diamondPath(g, cx, cy, w, h) { g.moveTo(cx, cy - h / 2); g.lineTo(cx + w / 2, cy); g.lineTo(cx, cy + h / 2); g.lineTo(cx - w / 2, cy); g.closePath(); }
   /** drawImage a SpriteRef at anchor (sx, sy) in CSS px, scaled from the ref's zoom to the live zoom */
   function blit(g, ref, sx, sy, zs) {
@@ -1281,7 +1303,7 @@
   }
   function waterPass(state, g) {
     const t = state.tiles, elev = t.elev, depth = t.depth, type = t.type, fl = t.flags;
-    const z = zoomNow, w = TW * z, h = TH * z, step = (z >= 1 && z < 2) ? 1 : 2;   // hud + zoom pass: every 1×-detail step (1 … 1.75) keeps the per-tile stride
+    const z = zoomNow, w = TW * z, h = TH * z;
     const surgeOn = !!(state.hydro && state.hydro.surge);
     const hyd = mod('hydro'), te = mod('terrain');
     const cap = surgeOn ? C.waterCapSurge : (z >= 1 ? C.waterCapZoom : C.waterCap);   // art pass B1: the detail zooms cover more of the river
@@ -1315,13 +1337,13 @@
         const reached = surgeOn && hyd && typeof hyd.surgeReached === 'function' && hyd.surgeReached(state, i) === true;
         if (reached) { col = wc.surge; a = 0.86; }
         g.globalAlpha = a; g.fillStyle = col;
-        fillDiamond(g, sx, sy, w, h, step);
+        fillDiamond(g, sx, sy, w, h, a > 0.5 ? 0.3 : 0);
         const hv = hash(tx, ty);
-        if (reached) {   // surge: debris flecks and short chop strokes that jitter every 4 frames
+        if (reached) {   // surge: debris flecks and short chop strokes that jitter every 4 frames (H5: sub-pixel placed — anti-aliased ends, no whole-pixel stepping)
           const j = (frameNo >> 2) + tx;
-          g.globalAlpha = 0.8; g.fillStyle = wc.debris; g.fillRect(Math.round(sx - 10 * z + (hv % 16) * z), Math.round(sy - 3 * z + (hash(ty, tx) % 6) * z), 3 * z, z); g.fillRect(Math.round(sx + (hash(tx + 1, ty) % 12) * z), Math.round(sy + (hash(ty, tx + 1) % 5) * z), 2 * z, z);
-          g.globalAlpha = 0.55; g.fillStyle = wc.chopL; g.fillRect(Math.round(sx - 18 * z + ((hv >> 3) % 24) * z), Math.round(sy - 6 * z + ((j * 5 + hv) % 12) * z), 5 * z, z); g.fillRect(Math.round(sx - 4 * z + ((hv >> 7) % 20) * z), Math.round(sy - 2 * z + ((j * 3 + (hv >> 5)) % 9) * z), 4 * z, z);
-          g.globalAlpha = 0.6; g.fillStyle = wc.chopD; g.fillRect(Math.round(sx - 14 * z + ((hv >> 9) % 28) * z), Math.round(sy - 5 * z + 1 * z + ((j * 7 + (hv >> 2)) % 10) * z), 6 * z, z);
+          g.globalAlpha = 0.8; g.fillStyle = wc.debris; g.fillRect((sx - 10 * z + (hv % 16) * z), (sy - 3 * z + (hash(ty, tx) % 6) * z), 3 * z, z); g.fillRect((sx + (hash(tx + 1, ty) % 12) * z), (sy + (hash(ty, tx + 1) % 5) * z), 2 * z, z);
+          g.globalAlpha = 0.55; g.fillStyle = wc.chopL; g.fillRect((sx - 18 * z + ((hv >> 3) % 24) * z), (sy - 6 * z + ((j * 5 + hv) % 12) * z), 5 * z, z); g.fillRect((sx - 4 * z + ((hv >> 7) % 20) * z), (sy - 2 * z + ((j * 3 + (hv >> 5)) % 9) * z), 4 * z, z);
+          g.globalAlpha = 0.6; g.fillStyle = wc.chopD; g.fillRect((sx - 14 * z + ((hv >> 9) % 28) * z), (sy - 5 * z + 1 * z + ((j * 7 + (hv >> 2)) % 10) * z), 6 * z, z);
           drawCalls += 5;
         }
         if (lines && !reached) {
@@ -1506,17 +1528,36 @@
   /** qa pass 4: fans on the ring of tiles around a live venue are drawn at the field's scale (FB_SCALE), so they no longer tower over the half-size players */
   function drawAgentHalf(e, g) { const ref = e.ref; if (!ref) return; blit(g, ref, e.sx, e.sy, zsOf(ref) * FB_SCALE); }
   function fbRing(v, x, y) { return !!v && x >= v.tx - 2 && x < v.tx + v.w + 2 && y >= v.ty - 2 && y < v.ty + v.h + 2; }
-  function drawParticle(e, g) {
-    const col = M.particleColors[(e.variant | 0) & 15] || GOLD;
-    g.fillStyle = typeof e.id === 'string' && e.id ? e.id : col;
-    const sz = Math.max(1, e.a * zoomNow);
-    g.fillRect(Math.round(e.sx), Math.round(e.sy), sz, sz); drawCalls++; particlesDrawn++;
+  // H5: world particles are drawn by kind, not as square pixels: the soft kinds (dust, smoke, steam, foam, fog wisps, lightning bloom, sparks) are cached
+  // brush blobs scaled to the particle (a puff swells and fades as it ages); the hard kinds (rain / water drops, beads, coins, leaves, petals, confetti,
+  // debris) are anti-aliased discs, ellipses and tumbling chips placed at sub-pixel positions. `e.b` carries the life left (1 → 0).
+  const TAU = Math.PI * 2;
+  const PK = { dust: 1, smoke: 1, steam: 1, fogWisp: 1, foam: 2, mosqDot: 3, firefly: 3, sparks: 4, splash: 5, rain: 5, sheet: 5, gush: 5, bead: 6, coin: 7, confetti: 8, leaf: 9, petal: 9, debris: 10, lightningBloom: 11 };
+  function drawParticle(e, g) { drawParticleKind(e, g); g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; }   // the sorted entity loop assumes alpha 1: a particle never leaves its fade behind
+  function drawParticleKind(e, g) {
+    const col = typeof e.id === 'string' && e.id ? e.id : (M.particleColors[(e.variant | 0) & 15] || GOLD), z = zoomNow, k = e.b, x = e.sx, y = e.sy, sz = Math.max(1, e.a) * z, BR = BSU.brush, kind = PK[e.d] | 0, ph = x * 0.37 + y * 0.21;
+    particlesDrawn++; drawCalls++;
+    switch (kind) {
+      case 1: { const r = sz * (2.6 + 2.4 * (1 - k)), a = (e.d === 'steam' ? 0.5 : e.d === 'fogWisp' ? 0.22 : 0.6) * Math.min(1, k * 2.2); if (BR && BR.drawBlob(g, 'puff', col, x, y, r, r * 0.85, a, dpr)) return; break; }   // dust / smoke / steam: a swelling, fading puff
+      case 2: { const r = sz * 2.4; if (BR && BR.drawBlob(g, 'halo', col, x, y, r, r * 0.6, 0.8 * Math.min(1, k * 2), dpr)) return; break; }   // foam: a soft white smear
+      case 3: g.fillStyle = col; g.globalAlpha = e.d === 'firefly' ? 0.9 : 0.6; g.beginPath(); g.arc(x, y, Math.max(0.7, 0.8 * z), 0, TAU); g.fill(); return;   // a mosquito / a firefly seed: one anti-aliased dot (the lights pass adds the glow)
+      case 4: { const r = sz * 3.2; g.globalCompositeOperation = 'lighter'; const ok = BR && BR.drawBlob(g, 'dot', col, x, y, r, r, Math.min(1, k * 2.4), dpr); g.globalCompositeOperation = 'source-over'; if (ok) return; break; }   // sparks: a hot dot
+      case 5: g.fillStyle = col; g.globalAlpha = Math.min(1, 0.4 + k); g.beginPath(); g.arc(x, y, Math.max(0.7, sz * 0.62), 0, TAU); g.fill(); return;   // water drops
+      case 6: g.fillStyle = col; g.globalAlpha = 1; g.beginPath(); g.arc(x, y, sz * 0.95, 0, TAU); g.fill(); g.fillStyle = '#FFFFFF'; g.globalAlpha = 0.5; g.beginPath(); g.arc(x - sz * 0.3, y - sz * 0.3, sz * 0.3, 0, TAU); g.fill(); g.globalAlpha = 1; return;   // a bead: a lit orb
+      case 7: g.fillStyle = col; g.globalAlpha = 1; g.beginPath(); g.ellipse(x, y, sz * 1.1 * (0.45 + 0.55 * Math.abs(Math.sin(k * 14 + ph))), sz * 1.1, 0, 0, TAU); g.fill(); g.fillStyle = '#FFF6C0'; g.globalAlpha = 0.6; g.beginPath(); g.arc(x - sz * 0.25, y - sz * 0.35, sz * 0.3, 0, TAU); g.fill(); g.globalAlpha = 1; return;   // a coin turning over
+      case 8: { const a = k * 9 + ph; g.fillStyle = col; g.globalAlpha = Math.min(1, k * 4); g.save(); g.translate(x, y); g.rotate(a); g.fillRect(-sz * 0.8, -sz * 0.45 * (0.4 + 0.6 * Math.abs(Math.sin(a * 1.3))), sz * 1.6, sz * 0.9 * (0.4 + 0.6 * Math.abs(Math.sin(a * 1.3)))); g.restore(); g.globalAlpha = 1; return; }   // confetti: a chip that tumbles and flips
+      case 9: g.fillStyle = col; g.globalAlpha = Math.min(1, k * 3); g.beginPath(); g.ellipse(x, y, sz * 1.7, sz * 0.85, Math.sin(k * 6 + ph) * 1.1, 0, TAU); g.fill(); g.globalAlpha = 1; return;   // a leaf / a petal: a tilted ellipse
+      case 10: { const a = k * 7 + ph; g.fillStyle = col; g.globalAlpha = Math.min(1, k * 3); g.save(); g.translate(x, y); g.rotate(a); g.fillRect(-sz * 0.65, -sz * 0.4, sz * 1.3, sz * 0.8); g.restore(); g.globalAlpha = 1; return; }   // storm debris: a dark chip, tumbling
+      case 11: { const r = 14 * z; g.globalCompositeOperation = 'lighter'; const ok = BR && BR.drawBlob(g, 'halo', col, x, y, r, r, k, dpr); g.globalCompositeOperation = 'source-over'; if (ok) return; break; }
+      default: break;
+    }
+    g.fillStyle = col; g.globalAlpha = 1; g.beginPath(); g.arc(x, y, Math.max(0.7, sz * 0.6), 0, TAU); g.fill();   // anything else (and a missing brush): a dot
   }
-  function particleCb(x, y, z, size, colorIdx, type) {
+  function particleCb(x, y, z, size, colorIdx, type, life) {
     if (!Number.isFinite(x) || !Number.isFinite(y)) return;
     const ax = (x / 32 + y / 16) / 2, ay = (y / 16 - x / 32) / 2, zz = fin(z, 0);
     const e = push('particle', ax, ay, zz / PXFT, 3, drawParticle);
-    e.a = fin(size, 1); e.variant = typeof colorIdx === 'number' ? colorIdx : 0; e.id = typeof colorIdx === 'string' ? colorIdx : ''; e.d = type;
+    e.a = fin(size, 1); e.variant = typeof colorIdx === 'number' ? colorIdx : 0; e.id = typeof colorIdx === 'string' ? colorIdx : ''; e.d = type; e.b = clamp(fin(life, 1), 0, 1);
     e.sx = (x - camera.x) * zoomNow + vw / 2; e.sy = (y - zz - camera.y) * zoomNow + vh / 2;
   }
   /**
@@ -1580,18 +1621,12 @@
     const zs = zsOf(ref), cut = Math.round(8 * (ref.zoom || 1));
     g.drawImage(ref.canvas, ref.sx, ref.sy, ref.sw, ref.sh - cut, Math.round(e.sx + ref.ox * zs), Math.round(e.sy + ref.oy * zs), ref.sw * zs, (ref.sh - cut) * zs); drawCalls++;
   }
-  function drawRipple(e, g) {                      // three expanding 2:1 ring outlines of fillRects around a swimmer
-    const z = zoomNow, ph = ((frameNo >> 1) + (e.d | 0)) % 30 / 30, fy = e.sy + 16 * z;   // the mover origin is 16 art px above its foot point
-    g.fillStyle = '#E9F7F0';
+  function drawRipple(e, g) {                      // H5: three expanding 2:1 rings (cached 'ring' blobs, faded as they grow) around a swimmer — were pixel-stepped fillRect outlines
+    const z = zoomNow, ph = ((frameNo >> 1) + (e.d | 0)) % 30 / 30, fy = e.sy + 16 * z, BR = BSU.brush;   // the mover origin is 16 art px above its foot point
     for (let r = 0; r < 3; r++) {
-      const t = (ph + r / 3) % 1, rx = Math.max(3, Math.round(6 + t * 13)), ry = Math.max(1, rx >> 1);
-      g.globalAlpha = (1 - t) * 0.85;
-      for (let dy = -ry; dy <= ry; dy++) {
-        const half = Math.round(Math.sqrt(1 - (dy * dy) / (ry * ry + 0.01)) * rx);
-        if (Math.abs(dy) === ry) g.fillRect(Math.round(e.sx - half * z), Math.round(fy + dy * z), 2 * half * z, z);
-        else { g.fillRect(Math.round(e.sx - half * z), Math.round(fy + dy * z), z, z); g.fillRect(Math.round(e.sx + (half - 1) * z), Math.round(fy + dy * z), z, z); }
-      }
-      drawCalls++;
+      const t = (ph + r / 3) % 1, rx = (6 + t * 13) * z;
+      if (BR && BR.drawBlob(g, 'ring', '#E9F7F0', e.sx, fy, rx, rx * 0.5, (1 - t) * 0.85, dpr)) { drawCalls++; continue; }
+      g.strokeStyle = '#E9F7F0'; g.globalAlpha = (1 - t) * 0.85; g.lineWidth = Math.max(1, z); g.beginPath(); g.ellipse(e.sx, fy, rx, rx * 0.5, 0, 0, TAU); g.stroke(); drawCalls++;
     }
     g.globalAlpha = 1;
   }
@@ -2489,7 +2524,7 @@
   const tmpPt = { x: 0, y: 0 };
   function builtinOverlays(state, g) {
     const ov = state.ui ? state.ui.overlay | 0 : 0, t = state.tiles;
-    const z = zoomNow, w = TW * z, h = TH * z, step = (z >= 1 && z < 2) ? 1 : 2;
+    const z = zoomNow, w = TW * z, h = TH * z;
     const fade = clamp((nowMs() - overlayFadeStart) / (PR.overlayFadeMs || 150), 0, 1) || (BSU.headlessMode ? 1 : 0);
     if (ov !== OV.NONE) {
       let risk = null, auras = null;
@@ -2505,28 +2540,28 @@
         else if (ov === OV.ECOLOGY) { if (t.flags[i] & FLAG.WETLAND_ORIGINAL) { col = OV_COLORS.eco; a = 0.2; } const s = fin(t.subs[i], 0); if (s > 0.2) { col = OV_COLORS.subs; a = 0.2 + 0.3 * clamp(s / 2, 0, 1); } }
         if (!col) continue;
         tileDiamondScreen(i, tmpPt);
-        g.globalAlpha = a * fade; g.fillStyle = col; fillDiamond(g, tmpPt.x, tmpPt.y, w, h, step);
+        g.globalAlpha = a * fade; g.fillStyle = col; fillDiamond(g, tmpPt.x, tmpPt.y, w, h, 0.12);
       }
     }
     // ghost preview
     const gs = ghostSpec;
     if (gs) {
-      if (Array.isArray(gs.skipTiles) && gs.skipTiles.length) { g.globalAlpha = C.ghostAlpha * 0.55; g.fillStyle = OV_COLORS.bad; for (let k = 0; k < gs.skipTiles.length; k++) { const i = gs.skipTiles[k] | 0; if (i < 0 || i >= N) continue; tileDiamondScreen(i, tmpPt); fillDiamond(g, tmpPt.x, tmpPt.y, w, h, step); } }   // L3: the tiles of a drag the tool will skip, in red
-      if (Array.isArray(gs.tiles)) { g.globalAlpha = C.ghostAlpha; g.fillStyle = gs.color || GOLD; for (let k = 0; k < gs.tiles.length; k++) { const i = gs.tiles[k] | 0; if (i < 0 || i >= N) continue; tileDiamondScreen(i, tmpPt); fillDiamond(g, tmpPt.x, tmpPt.y, w, h, step); } }
-      // connector pass: the gravel tie a footprint placement would lay, in the path drag's own ghost style
-      if (Array.isArray(gs.connectorTiles)) { g.globalAlpha = C.ghostAlpha; g.fillStyle = gs.color || GOLD; for (let k = 0; k < gs.connectorTiles.length; k++) { const i = gs.connectorTiles[k] | 0; if (i < 0 || i >= N) continue; tileDiamondScreen(i, tmpPt); fillDiamond(g, tmpPt.x, tmpPt.y, w, h, step); } }
+      ghostTiles(g, gs.skipTiles, OV_COLORS.bad, C.ghostAlpha * 0.55, w, h);   // L3: the tiles of a drag the tool will skip, in red
+      ghostTiles(g, gs.tiles, gs.color || GOLD, C.ghostAlpha, w, h);
+      ghostTiles(g, gs.connectorTiles, gs.color || GOLD, C.ghostAlpha, w, h);   // connector pass: the gravel tie a footprint placement would lay, in the path drag's own ghost style
       const ring = gs.ringTiles;
       if (ring) {
         const reached = Array.isArray(ring) ? ring : (ring.reached || []), unreached = Array.isArray(ring) ? [] : (ring.unreached || []);
-        g.globalAlpha = 0.25; g.fillStyle = OV_COLORS.bad; for (let k = 0; k < reached.length; k++) { tileDiamondScreen(reached[k] | 0, tmpPt); fillDiamond(g, tmpPt.x, tmpPt.y, w, h, step); }
-        g.globalAlpha = 0.15; g.fillStyle = OV_COLORS.good; for (let k = 0; k < unreached.length; k++) { tileDiamondScreen(unreached[k] | 0, tmpPt); fillDiamond(g, tmpPt.x, tmpPt.y, w, h, step); }
+        ghostTiles(g, reached, OV_COLORS.bad, 0.25, w, h);
+        ghostTiles(g, unreached, OV_COLORS.good, 0.15, w, h);
       }
       if (Number.isFinite(gs.radius) && gs.radius > 0 && Number.isFinite(gs.radiusCenter)) {
         const c = gs.radiusCenter | 0, cx = (c % W), cy = ((c / W) | 0), r = gs.radius | 0;
         const x0 = clamp(cx - r, 0, W - 1), y0 = clamp(cy - r, 0, HGT - 1), x1 = clamp(cx + r, 0, W - 1), y1 = clamp(cy + r, 0, HGT - 1);
         const p0 = M.tileToScreen(x0, y0), p1 = M.tileToScreen(x1, y0), p2 = M.tileToScreen(x1, y1), p3 = M.tileToScreen(x0, y1);
-        g.globalAlpha = 0.8; g.strokeStyle = gs.color || GOLD; g.lineWidth = 1; g.beginPath();
-        g.moveTo(p0.x, p0.y - h / 2); g.lineTo(p1.x + w / 2, p1.y); g.lineTo(p2.x, p2.y + h / 2); g.lineTo(p3.x - w / 2, p3.y); g.closePath(); g.stroke(); drawCalls++;
+        g.strokeStyle = gs.color || GOLD; g.lineJoin = 'round'; g.beginPath();   // H5: a soft wide under-stroke and a round-joined 1.4-px line
+        g.moveTo(p0.x, p0.y - h / 2); g.lineTo(p1.x + w / 2, p1.y); g.lineTo(p2.x, p2.y + h / 2); g.lineTo(p3.x - w / 2, p3.y); g.closePath();
+        g.lineWidth = 4.5; g.globalAlpha = 0.14; g.stroke(); g.lineWidth = 1.4; g.globalAlpha = 0.8; g.stroke(); g.lineJoin = 'miter'; drawCalls += 2;
       }
       if (gs.sprite && gs.sprite.id && Number.isFinite(gs.sprite.tx)) {
         const grow = (BSU.data && BSU.data.catalog) ? BSU.data.catalog[gs.sprite.id] : null;
@@ -2544,11 +2579,15 @@
       const now = nowMs();
       for (let f = flashes.length - 1; f >= 0; f--) if (flashes[f].until <= now) flashes.splice(f, 1);
       g.globalAlpha = 0.5 + 0.3 * Math.sin(frameNo / 6); g.fillStyle = GOLD;
-      for (let f = 0; f < flashes.length; f++) { const tl = flashes[f].tiles; for (let k = 0; k < tl.length; k++) { const i = tl[k] | 0; if (i < 0 || i >= N) continue; tileDiamondScreen(i, tmpPt); fillDiamond(g, tmpPt.x, tmpPt.y, w, h, step); } }
+      for (let f = 0; f < flashes.length; f++) ghostTiles(g, flashes[f].tiles, GOLD, 0.5 + 0.3 * Math.sin(frameNo / 6), w, h);
     }
     // cursor tile pulse
     const hv = M.hoverTile | 0;
-    if (hv >= 0 && hv < N) { tileDiamondScreen(hv, tmpPt); g.globalAlpha = 0.6 + 0.3 * Math.sin(frameNo / 5); g.strokeStyle = GOLD_HI; g.lineWidth = 1; g.beginPath(); diamondPath(g, tmpPt.x, tmpPt.y, w - 2, h - 1); g.stroke(); drawCalls++; }
+    if (hv >= 0 && hv < N) {   // H5: the cursor ring — a faint tint, a soft 4-px halo and a crisp round-joined 1.4-px line, all anti-aliased
+      tileDiamondScreen(hv, tmpPt); const pulse = 0.6 + 0.3 * Math.sin(frameNo / 5);
+      g.beginPath(); diamondPath(g, tmpPt.x, tmpPt.y, w - 2, h - 1); g.fillStyle = GOLD_HI; g.globalAlpha = 0.07 * pulse; g.fill();
+      g.strokeStyle = GOLD_HI; g.lineJoin = 'round'; g.lineWidth = 4; g.globalAlpha = 0.16 * pulse; g.stroke(); g.lineWidth = 1.4; g.globalAlpha = pulse; g.stroke(); g.lineJoin = 'miter'; drawCalls += 3;
+    }
     g.globalAlpha = 1;
   }
   function builtinHud(state) { if (minimapEl && (frameNo % 6) === 0) M.minimap(state); }
@@ -2842,14 +2881,20 @@
   function hdSliceMs() { const sp = S(); return sp && typeof sp.hdCaps === 'function' ? sp.hdCaps().sliceMs : 4; }
   /** passes 2–9 on context g (shared by frame and renderInto) */
   function runWorld(state, g, alpha, dtMs, withRegistered) {
+    let pt = nowMs();   // H5: per-stage cost (an EMA, ms) for perf().passMs: chunks / water / deck / entities and every registered pass up to 9
     try { chunkPass(state, g); } catch (e) { rerr('chunks', e); }
+    pt = passTick('chunks', pt);
     try { waterPass(state, g); } catch (e) { rerr('water', e); }
+    pt = passTick('water', pt);
     try { deckPass(state, g, withRegistered !== false); } catch (e) { rerr('deck', e); }
+    pt = passTick('deck', pt);
     try { entityPass(state, g); } catch (e) { rerr('entities', e); }
+    pt = passTick('entities', pt);
     if (withRegistered === false) return;
     for (let k = 0; k < passes.length; k++) {
       const p = passes[k]; if (p.order > 9) continue;
       try { g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; p.fn(state, g, view, alpha, dtMs); } catch (e) { rerr('pass:' + p.name, e); }
+      pt = passTick(p.name, pt);
     }
     try { g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; } catch (e) { /* stub */ }
   }
@@ -2913,9 +2958,11 @@
     } catch (e) { rerr('clear', e); }
     runWorld(state, g, alphaNow, dtMs, true);
     try { g.restore(); } catch (e) { /* stub */ }
+    let pt2 = nowMs();
     for (let k = 0; k < passes.length; k++) {   // 10: hud-canvas bits
       const p = passes[k]; if (p.order <= 9) continue;
       try { p.fn(state, g, view, alphaNow, dtMs); } catch (e) { rerr('pass:' + p.name, e); }
+      pt2 = passTick(p.name, pt2);
     }
     firstFrame = false;
     if ((frameNo % C.spriteGcEvery) === 0) { try { const sp = S(); if (typeof sp.gc === 'function') sp.gc(frameNo); if (typeof sp.gcSheets === 'function') sp.gcSheets(frameNo); teeSweep(); } catch (e) { rerr('gc', e); } }

@@ -12,7 +12,8 @@
 // Public: BSU.brush.{tone, toneArr, css, mix, sat, ramp, env, posEnv, rng, vnoise, fbm, pnoise, field, poly, bbox, centroid, diamond,
 //   diamondGrown, smoothPath, ellipse, seamWidth, seamStroke, plane, orb, softEllipse, microGrain, macroGrain, sites, edgeFade, stroke,
 //   blade, puddle, strokePath, fillQuadShaded, roofPlane, column, groundTile, waterTile, path, tree, figure, capsule, digits, shadow, light,
-//   glow, decal, cube, begin, selfTest}
+//   glow, decal, cube, begin, blob, drawBlob, blobQ, blobStats, blobClear, blobKinds, selfTest}
+// H5 effects pass: blob / drawBlob are the cached soft sprites (halo, glow, pool, dot, puff, ao, foam, ring, cone, puddle, fog, vignette) every effect pass draws with drawImage.
 // H4 characters pass: capsule (a limb / body / hull lit across its width) and digits (jersey numbers as strokes) are the body kit the
 // character families compose (sprites_entities_hd.js); figure stays the H0 reference composition.
 // H1 terrain + water pass: posEnv / field / sites / macroGrain anchor a CACHED tile sprite to its 8×8-tile block position (period
@@ -549,6 +550,137 @@
   M.begin = function (ctx, w, h, spec) { return SP.beginHD(ctx, w, h, spec); };
 
   // ---------------------------------------------------------------------------
+  // H5 effects pass — the BLOB CACHE (docs/ART_STYLE.md "## Effects (H5)"). Every soft thing an effect pass draws more than once a frame — a
+  // light halo, a lamp pool, a firefly, a firework head, a steam puff, a puddle, a contact-AO ellipse, a fog lump, a mast cone — is baked ONCE
+  // per (kind, colour, radius) at DEVICE pixels and drawn with drawImage: no per-particle gradient at draw time (PLAN_HD_ART §5). The radius
+  // is quantised onto a fine ladder (every integer px to 24, then 5 % steps) so a halo that breathes 2.2 → 2.6 × does not bake 40 canvases; drawBlob draws it at the quantised size (≤ 2.5 % off
+  // the radius asked for) with the centre snapped to a device pixel. A bounded LRU: 640 entries / 20 MB, least-recently-used quarter out first.
+  //   blob(kind, color, rx, ry, o) → {canvas, w, h, rx, ry, key} | null    rx / ry in DEVICE px (CSS px × dpr × zoom)
+  //   kinds: halo (gaussian falloff) · glow (bloom: halo + white-hot core, o.core) · pool (flat centre, ground pool) · dot (firefly / spark head)
+  //          haze (the stadium's glow dome: a pale veil under a warm pool, one blit) · puff (three soft lobes: steam, smoke) · ao (cool contact shadow) · foam (flat streak) · ring (a splash ring) · cone (a soft-edged mast cone, apex up)
+  //          puddle (color = 'day' | 'dusk' | 'night': wet halo, sky body, rim, glint; ry = rx / 2) · fog (color = 'r,g,b', o.seed: 7 lumps)
+  //          vignette (the whole canvas: clear centre, dark edges; draw it stretched over the frame)
+  // ---------------------------------------------------------------------------
+  // The ladder is every integer device px up to 24, then 5 % steps up to 320: a halo is drawn at its QUANTISED size on a device-pixel-snapped centre, so the
+  // blit is a 1:1 pixel copy (software raster: ~7× cheaper than a scaled, sub-pixel bilinear blit) and the size error is ≤ 2.5 %, invisible in a gradient.
+  const BLOB_LADDER = (function () { const L = [2]; for (let r = 3; r <= 24; r++) L.push(r); for (let r = 24; r < 320; r = Math.ceil(r * 1.05)) if (r > L[L.length - 1]) L.push(r); L.push(320); return L; })();
+  function blobQ(r) {
+    const L = BLOB_LADDER; if (!(r > L[0])) return L[0]; if (r >= L[L.length - 1]) return L[L.length - 1];
+    let lo = 0, hi = L.length - 1; while (hi - lo > 1) { const m = (lo + hi) >> 1; if (L[m] <= r) lo = m; else hi = m; }
+    return (r / L[lo] < L[hi] / r) ? L[lo] : L[hi];   // nearest on a log scale
+  }
+  M.blobQ = blobQ;
+  const blobMap = new Map(); let blobBytes = 0, blobUse = 0, blobBakes = 0, blobHits = 0;
+  const BLOB_MAX = 640, BLOB_MAX_BYTES = 20 * 1048576;
+  /** a gaussian-ish falloff as gradient stops: alpha(t) = a · (exp(−k·u²) − exp(−k)) / (1 − exp(−k)), u = max(0, (t − plateau) / (1 − plateau)) */
+  function gaussStops(g, color, a, k, plateau) {
+    const e1 = Math.exp(-k); plateau = plateau || 0;
+    for (let i = 0; i <= 8; i++) { const t = i / 8, u = t <= plateau ? 0 : (t - plateau) / (1 - plateau); g.addColorStop(t, css(color, Math.max(0, a * (Math.exp(-k * u * u) - e1) / (1 - e1)))); }
+  }
+  function radialFill(ctx, cx, cy, rx, ry, stopsFn) {
+    ctx.save(); ctx.translate(cx, cy); ctx.scale(rx, ry); const g = ctx.createRadialGradient(0, 0, 0, 0, 0, 1); stopsFn(g);
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, 0, 1, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+  }
+  const PUD_PAL = { day: ['#1B2230', '#6E93AE', '#DCEBF5'], dusk: ['#161C2A', '#42586F', '#9DB2C6'], night: ['#10141F', '#1E2A3F', '#566B88'] };   // wet halo / sky in the water / glint
+  const BLOB = {
+    halo(ctx, W, H, color, o) { radialFill(ctx, W / 2, H / 2, W / 2, H / 2, (g) => gaussStops(g, color, o.a == null ? 1 : o.a, 4.2, 0)); },
+    glow(ctx, W, H, color, o) {
+      const a = o.a == null ? 1 : o.a, core = o.core == null ? 0.17 : o.core;
+      radialFill(ctx, W / 2, H / 2, W / 2, H / 2, (g) => gaussStops(g, color, a, 4.6, 0));
+      radialFill(ctx, W / 2, H / 2, W / 2 * core * 2.2, H / 2 * core * 2.2, (g) => { g.addColorStop(0, css('#FFFFFF', 0.95 * a)); g.addColorStop(0.35, css(mix(color, '#FFFFFF', 0.6), 0.55 * a)); g.addColorStop(1, css(color, 0)); });
+    },
+    pool(ctx, W, H, color, o) { radialFill(ctx, W / 2, H / 2, W / 2, H / 2, (g) => gaussStops(g, color, o.a == null ? 1 : o.a, 3.6, 0.2)); },
+    ao(ctx, W, H, color, o) { radialFill(ctx, W / 2, H / 2, W / 2, H / 2, (g) => gaussStops(g, color, o.a == null ? 1 : o.a, 3.2, 0.32)); },
+    foam(ctx, W, H, color, o) { radialFill(ctx, W / 2, H / 2, W / 2, H / 2, (g) => gaussStops(g, color, o.a == null ? 1 : o.a, 3.0, 0.4)); },
+    haze(ctx, W, H, color, o) {   // the stadium's glow dome in ONE canvas: a pale veil (rx .77 of the canvas, ry .51 of it, centred a hair above the middle) under a warm ground pool filling it — one blit instead of two
+      const a = o.a == null ? 1 : o.a, hx = W / 2 / 1.3, hy = H / 2 * 0.6 / 0.7;
+      radialFill(ctx, W / 2, H / 2 - hx * 0.1, hx, hy, (g) => gaussStops(g, '#DCE4E8', 0.275 * a, 4.2, 0));
+      radialFill(ctx, W / 2, H / 2, W / 2, H / 2, (g) => gaussStops(g, color, 0.323 * a, 3.6, 0.2));
+    },
+    ring(ctx, W, H, color, o) {   // an expanding splash ring: a soft 2:1 ellipse line (width ≈ 1 px), brightest at its near (lower) rim
+      const a = o.a == null ? 1 : o.a, lw = Math.max(0.9, Math.min(W, H) * 0.12);
+      ctx.lineWidth = lw * 2.4; ctx.strokeStyle = css(color, 0.18 * a); ctx.beginPath(); ctx.ellipse(W / 2, H / 2, W / 2 - lw * 1.4, H / 2 - lw * 1.4, 0, 0, Math.PI * 2); ctx.stroke();
+      ctx.lineWidth = lw; ctx.strokeStyle = css(color, 0.85 * a); ctx.beginPath(); ctx.ellipse(W / 2, H / 2, W / 2 - lw * 1.4, H / 2 - lw * 1.4, 0, 0, Math.PI * 2); ctx.stroke();
+    },
+    dot(ctx, W, H, color, o) {
+      const a = o.a == null ? 1 : o.a;
+      radialFill(ctx, W / 2, H / 2, W / 2, H / 2, (g) => gaussStops(g, color, a * 0.9, 8, 0));
+      radialFill(ctx, W / 2, H / 2, W / 2 * 0.3, H / 2 * 0.3, (g) => { g.addColorStop(0, css('#FFFFFF', a)); g.addColorStop(0.6, css(mix(color, '#FFFFFF', 0.5), 0.7 * a)); g.addColorStop(1, css(color, 0)); });
+    },
+    puff(ctx, W, H, color, o) {
+      const a = o.a == null ? 0.6 : o.a;
+      for (const l of [[0, 0, 0.62, 0.62, 1], [-0.28, 0.12, 0.5, 0.46, 0.8], [0.3, -0.1, 0.46, 0.44, 0.8], [0.04, -0.26, 0.4, 0.36, 0.6]]) {
+        radialFill(ctx, W / 2 + l[0] * W / 2, H / 2 + l[1] * H / 2, W / 2 * l[2], H / 2 * l[3], (g) => { g.addColorStop(0, css(color, a * l[4])); g.addColorStop(0.35, css(color, a * l[4] * 0.62)); g.addColorStop(1, css(color, 0)); });
+      }
+    },
+    cone(ctx, W, H, color, o) {   // apex up, widening to the full width at the bottom; three nested wedges = a soft edge, then a fade along the length
+      const a = o.a == null ? 0.9 : o.a;
+      for (let k = 0; k < 3; k++) {
+        const sp = 1 - k * 0.14, ap = 2 + k * 1.2;
+        ctx.fillStyle = css(color, a * (k === 0 ? 0.3 : 0.4)); ctx.beginPath(); ctx.moveTo(W / 2 - ap, 0); ctx.lineTo(W / 2 + ap, 0); ctx.lineTo(W / 2 + W / 2 * sp, H); ctx.lineTo(W / 2 - W / 2 * sp, H); ctx.closePath(); ctx.fill();
+      }
+      ctx.globalCompositeOperation = 'destination-in'; const m = ctx.createLinearGradient(0, 0, 0, H);
+      m.addColorStop(0, 'rgba(0,0,0,1)'); m.addColorStop(0.4, 'rgba(0,0,0,0.5)'); m.addColorStop(1, 'rgba(0,0,0,0)'); ctx.fillStyle = m; ctx.fillRect(0, 0, W, H); ctx.globalCompositeOperation = 'source-over';
+    },
+    puddle(ctx, W, H, color, o) {   // W × H = 2:1: the wet ground, the sky in the water, a cool rim, a lit sliver on the upper-left
+      const P = PUD_PAL[color] || PUD_PAL.day, cx = W / 2, cy = H / 2, rx = W / 2, ry = H / 2;
+      radialFill(ctx, cx, cy, rx, ry, (g) => gaussStops(g, P[0], 0.3, 3.2, 0.4));
+      radialFill(ctx, cx, cy, rx * 0.74, ry * 0.74, (g) => { g.addColorStop(0, css(P[1], 0.52)); g.addColorStop(0.78, css(P[1], 0.46)); g.addColorStop(1, css(P[1], 0)); });
+      radialFill(ctx, cx - rx * 0.12, cy - ry * 0.14, rx * 0.5, ry * 0.46, (g) => { g.addColorStop(0, css(P[2], 0.26)); g.addColorStop(1, css(P[2], 0)); });
+      ctx.lineWidth = Math.max(0.8, rx * 0.04); ctx.strokeStyle = css(P[0], 0.3); ctx.beginPath(); ctx.ellipse(cx, cy, rx * 0.7, ry * 0.7, 0, Math.PI * 0.05, Math.PI * 0.95); ctx.stroke();
+      radialFill(ctx, cx - rx * 0.36, cy - ry * 0.3, rx * 0.24, Math.max(1, ry * 0.07), (g) => { g.addColorStop(0, css(P[2], 0.75)); g.addColorStop(1, css(P[2], 0)); });
+    },
+    vignette(ctx, W, H, color, o) {   // the night frame: clear in the middle, darkening toward the edges and corners (one stretched canvas replaces 24 stacked edge bands)
+      const a = o.a == null ? 1 : o.a;
+      ctx.save(); ctx.translate(W / 2, H / 2); ctx.scale(W / 2, H / 2); const g = ctx.createRadialGradient(0, 0, 0, 0, 0, 1.45);
+      for (const st of [[0, 0], [0.58, 0], [0.76, 0.07], [0.92, 0.26], [1.04, 0.42], [1.25, 0.56], [1.45, 0.66]]) g.addColorStop(st[0] / 1.45, css(color, st[1] * a));
+      ctx.fillStyle = g; ctx.fillRect(-1.5, -1.5, 3, 3); ctx.restore();
+    },
+    fog(ctx, W, H, color, o) {   // seven overlapping lumps on a 2:1 sheet, then a soft elliptical mask: the B5 wisp, at device resolution
+      const seed = o.seed | 0, c = color.split(',').map(Number);
+      for (let b = 0; b < 7; b++) {
+        const h = hash(seed * 31 + b, 977), cx = (22 + b * 14 + ((h & 15) - 8) * 1.2) / 128 * W, cy = H / 2 + (((h >> 4) & 15) - 8) * 2.2 / 64 * H, r = (22 + ((h >> 8) & 15) * 1.4) / 64 * (W / 2), a = 0.3 + 0.14 * (((h >> 12) & 7) / 7);
+        radialFill(ctx, cx, cy, r, r * 0.5, (g) => { g.addColorStop(0, 'rgba(' + c[0] + ',' + c[1] + ',' + c[2] + ',' + a.toFixed(3) + ')'); g.addColorStop(0.55, 'rgba(' + c[0] + ',' + c[1] + ',' + c[2] + ',' + (a * 0.4).toFixed(3) + ')'); g.addColorStop(1, 'rgba(' + c[0] + ',' + c[1] + ',' + c[2] + ',0)'); });
+      }
+      ctx.globalCompositeOperation = 'destination-in'; ctx.save(); ctx.translate(W / 2, H / 2); ctx.scale(W / 2, H / 2); const mk = ctx.createRadialGradient(0, 0, 0, 0, 0, 1);   // the mask is a RECT fill: destination-in must clear the corners too
+      mk.addColorStop(0, 'rgba(0,0,0,1)'); mk.addColorStop(0.5, 'rgba(0,0,0,0.9)'); mk.addColorStop(1, 'rgba(0,0,0,0)'); ctx.fillStyle = mk; ctx.fillRect(-1, -1, 2, 2); ctx.restore(); ctx.globalCompositeOperation = 'source-over';
+    }
+  };
+  M.blobKinds = Object.keys(BLOB);
+  /** the cached blob for (kind, color, rx, ry) — radii in device px (quantised onto the ladder; ≥ 2, capped at 320) — or null (unknown kind, no canvas) */
+  M.blob = function (kind, color, rx, ry, o) {
+    const fn = BLOB[kind]; if (!fn || !(rx > 0)) return null;
+    if (!(ry > 0)) ry = rx;
+    o = o || {};
+    const qx = blobQ(rx), qy = blobQ(ry), key = kind + '|' + color + '|' + qx + '|' + qy + '|' + (o.a == null ? '' : Math.round(o.a * 100)) + '|' + (o.core == null ? '' : Math.round(o.core * 100)) + '|' + (o.seed | 0);
+    let e = blobMap.get(key);
+    if (e !== undefined) { blobHits++; e.used = ++blobUse; return e; }
+    try {
+      const W = Math.max(2, Math.ceil(qx * 2)), H = Math.max(2, Math.ceil(qy * 2));
+      const c = SP.newCanvas(W, H), g = SP.ctx2d(c);
+      try { c.width = W; c.height = H; g.imageSmoothingEnabled = true; } catch (err) { /* stub */ }
+      fn(g, W, H, color, o);
+      e = { canvas: c, w: W, h: H, rx: qx, ry: qy, key: key, used: ++blobUse, bytes: W * H * 4 };
+    } catch (err) { return null; }
+    blobBakes++; blobBytes += e.bytes; blobMap.set(key, e);
+    if (blobMap.size > BLOB_MAX || blobBytes > BLOB_MAX_BYTES) {   // drop the least recently used quarter (never the entry just baked)
+      const arr = [...blobMap.values()].sort((a1, b1) => a1.used - b1.used); const n = Math.ceil(arr.length / 4);
+      for (let i = 0; i < n; i++) { const v = arr[i]; if (v === e) continue; blobMap.delete(v.key); blobBytes -= v.bytes; try { v.canvas.width = 1; v.canvas.height = 1; } catch (err) { /* stub */ } }
+    }
+    return e;
+  };
+  /** draw a blob centred at (cx, cy) with radii (rx, ry) in the context's own units (CSS px under a dpr transform; `scale` = device px per unit). The blob is drawn at
+   *  its baked (quantised) device size on a device-pixel-snapped centre — a 1:1 copy; false when none could be had */
+  M.drawBlob = function (g, kind, color, cx, cy, rx, ry, alpha, scale, o) {
+    const sc = scale || 1, b = M.blob(kind, color, rx * sc, ry * sc, o); if (!b) return false;
+    g.globalAlpha = alpha;
+    if (rx * sc > b.rx * 1.08 || ry * sc > b.ry * 1.08) { g.drawImage(b.canvas, cx - rx, cy - ry, rx * 2, ry * 2); return true; }   // past the ladder's 320-px cap: stretch the biggest blob (a smooth gradient scales cleanly)
+    g.drawImage(b.canvas, Math.round(cx * sc - b.w / 2) / sc, Math.round(cy * sc - b.h / 2) / sc, b.w / sc, b.h / sc); return true;
+  };
+  M.blobStats = function () { return { n: blobMap.size, mb: Math.round(blobBytes / 10485.76) / 100, bakes: blobBakes, hits: blobHits, max: BLOB_MAX }; };
+  M.blobClear = function () { for (const v of blobMap.values()) { try { v.canvas.width = 1; v.canvas.height = 1; } catch (err) { /* stub */ } } blobMap.clear(); blobBytes = 0; blobBakes = 0; blobHits = 0; };
+
+  // ---------------------------------------------------------------------------
   // selfTest: ramp knots equal the 5-tone ramps, luminance monotone in t, seam width per master, every primitive draws
   // ---------------------------------------------------------------------------
   M.selfTest = function () {
@@ -578,6 +710,12 @@
       }
     } catch (e) { A(false, 'primitive threw: ' + (e && e.message)); }
     A(drew === 2, 'every primitive drew at master 1 and 2');
+    try {   // H5: the blob cache is keyed by (kind, colour, quantised radius) and every kind bakes
+      M.blobClear(); const b1 = M.blob('halo', '#FFD27A', 20, 20), b2 = M.blob('halo', '#FFD27A', 20.3, 19.6), b3 = M.blob('halo', '#9FD2FF', 20, 20), b4 = M.blob('halo', '#FFD27A', 40, 40);
+      A(b1 && b1 === b2 && b3 !== b1 && b4 !== b1 && b1.rx === 20 && M.blobStats().n === 3, 'blob cache: one entry per (kind, colour, quantised radius)');
+      for (const k of M.blobKinds) A(M.blob(k, k === 'puddle' ? 'day' : k === 'fog' ? '196,208,220' : '#FFE0A0', 12, 6, { seed: 1 }), 'blob kind ' + k + ' bakes');
+      M.blobClear();
+    } catch (e) { A(false, 'blob threw: ' + (e && e.message)); }
     notes.push('ramps continuous, ' + drew + ' masters, ' + (Date.now() - t0) + ' ms');
     return { ok: ok, notes: notes.join('; ') };
   };

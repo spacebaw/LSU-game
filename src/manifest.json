@@ -18,6 +18,7 @@
     "sprites_vegetation_hd.js",
     "sprites_buildings.js",
     "sprites_buildings_hd.js",
+    "sprites_icons_hd.js",
     "sprites_entities.js",
     "sprites_entities_hd.js",
     "render.js",

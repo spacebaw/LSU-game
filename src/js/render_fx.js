@@ -9,6 +9,10 @@
 // §6.2 (surge front look), §6.4 (haze), §6.7 (fireflies); ARCHITECTURE §6.3 passes 5–8, §6.4, §6.5.
 // render's built-in 'overlays' (9) and 'hud' (10) are kept (they already implement F/W/K/P/C/E, ghost,
 // flashes, hover pulse and the minimap); this file adds passes around them instead of replacing them.
+// H5 effects pass: every effect draws CACHED soft sprites (BSU.brush.blob / drawBlob: halos, pools, puffs, puddles, rings, fog sheets, the vignette, a baked AO strip) or one
+// anti-aliased path per batch — never a gradient per light / particle / frame (docs/ART_STYLE.md "## Effects (H5)"): the lights pass blits blobs straight onto the frame under
+// `lighter` (no full-frame composite), rain is three depth layers, splashes are rings, puddles / steam / fog / fireflies / fireworks are blobs, and the ghost / network / charter /
+// beacon strokes are rounded and anti-aliased. Triggers, pools and caps are the B5 ones.
 (function () {
   const BSU = window.BSU;
   if (!BSU || !BSU.render) return;
@@ -125,7 +129,7 @@
     emit: function (type, wx, wy, n, opts) { try { emit(type, wx, wy, n === undefined ? 1 : n, opts); } catch (e) { ferr('emit', e); } },
     count: function () { return alive; },
     clear: function () { alive = 0; },
-    forEachWorld: function (fn) { if (typeof fn !== 'function') return; for (let i = 0; i < alive; i++) if (!pscreen[i]) fn(px[i], py[i], pz[i], psize[i], pcol[i], TYPES[ptype[i]]); }
+    forEachWorld: function (fn) { if (typeof fn !== 'function') return; for (let i = 0; i < alive; i++) if (!pscreen[i]) fn(px[i], py[i], pz[i], psize[i], pcol[i], TYPES[ptype[i]], plife[i] / pmax[i]); }   // H5: the 7th argument is the life left (1 → 0), for the soft fades of render's drawParticle
   };
 
   // ---------------------------------------------------------------------------
@@ -135,7 +139,7 @@
   const rainPos = new Float32Array(RAIN_N * 2); let rainSeeded = false, rainRamp = 0;
   const bolt = new Float32Array(24); let boltN = 0, flashUntil = 0, boltUntil = 0, boltTipX = 0, boltTipY = 0;
   const fogBlobs = []; for (let k = 0; k < 8; k++) fogBlobs.push({ x: 0, y: 0, r: 1, vx: 0, ph: 0 });
-  let fogSprite = null, fogSpriteTried = false, lightsCtx = null, lightsCanvasRef = null;
+  
   let stormPhase = -1, godRayUntil = -1, goldFlash = 0, burstsPending = 0, burstTimer = 0, burstGap = 22, mtVolley = null, perfChipUntil = 0, subscribed = false, inited = false;
   let frameNo = 0, lastFrameNo = -1;
   const overtop = new Map();   // tile → frames left of trickle
@@ -223,43 +227,49 @@
     } catch (e) { s = null; }
     a[k] = s; return s;
   }
-  /** a soft dark band hugging the wall base on the two visible faces: two nested strips (≈ 3.5 and 7 px at 1×) whose alphas stack toward the wall.
-   *  On the SE face the cast shadow already darkens the ground in daylight, so it gets only the narrow strip then (no double-darkening). */
+  /** H5: a soft dark band hugging the wall base on the two visible faces: three nested round-capped strokes (≈ 10, 6.5 and 3.4 px at 1×) laid along the
+   *  SW → front → SE base line and pushed down by half their width, so the darkness falls off in steps too fine to see and the band ends in a soft round tip
+   *  at each corner (B5 filled two hard-edged trapezoids). On the SE face the cast shadow already darkens the ground in daylight, so only the narrow stroke
+   *  reaches it then (no double-darkening): the two wide strokes stop at the front corner. */
+  const AO_W = [10, 6.5, 3.4];
+  let aoTexZ = 0; const aoTexList = [];   // the baked strips of the current zoom × dpr (cleared when it changes)
+  /** the strip for one building geometry at zoom × dpr: the three strokes drawn ONCE at unit alpha on a canvas (device px), drawn per building as one 1:1 blit with the
+   *  night / sun amount as its globalAlpha (the three levels keep the B5 ratio .13 : .13 : .23 whatever the hour, so one bake serves every sky) */
+  function aoStrip(s, z, dpr, wide) {
+    const zk = z * dpr; if (aoTexZ !== zk) { for (const q of aoTexList) { try { q.c.width = 1; q.c.height = 1; } catch (e) { /* stub */ } q.o.tex = null; } aoTexList.length = 0; aoTexZ = zk; }
+    const k = wide ? 1 : 0; if (s.tex && s.tex[k] !== undefined) return s.tex[k];
+    if (!s.tex) s.tex = [undefined, undefined];
+    let e = null;
+    try {
+      const sp = mod('sprites'), bl = s.bl * z, br = s.br * z, pad = Math.ceil(5.5 * z), x0 = -bl - pad, y0 = -Math.max(bl, br) / 2 - pad, w = bl + br + 2 * pad, h = Math.max(bl, br) / 2 + 10 * z + 2 * pad;
+      const c = sp.newCanvas(Math.max(1, Math.ceil(w * dpr)), Math.max(1, Math.ceil(h * dpr))), cg = sp.ctx2d(c); c.width = Math.max(1, Math.ceil(w * dpr)); c.height = Math.max(1, Math.ceil(h * dpr));
+      cg.setTransform(dpr, 0, 0, dpr, -x0 * dpr, -y0 * dpr); cg.strokeStyle = AO_COL; cg.lineJoin = 'round'; cg.lineCap = 'round';
+      for (let lv = 0; lv < 3; lv++) {
+        const lw = AO_W[lv] * z, hh = lw / 2; cg.globalAlpha = lv === 0 ? 0.0975 : lv === 1 ? 0.104 : 0.1955; cg.lineWidth = lw;
+        cg.beginPath(); cg.moveTo(-bl, -bl / 2 + hh); cg.lineTo(0, hh); if (lv === 2 || wide) cg.lineTo(br, -br / 2 + hh); cg.stroke();
+      }
+      e = { c: c, x: x0, y: y0, w: c.width / dpr, h: c.height / dpr }; aoTexList.push({ c: c, o: s });
+    } catch (err) { e = null; }
+    s.tex[k] = e; return e;
+  }
+  /** H5: a soft dark band hugging the wall base on the two visible faces: three nested round-capped strokes (≈ 10, 6.5 and 3.4 px at 1×) laid along the
+   *  SW → front → SE base line and pushed down by half their width, so the darkness falls off in steps too fine to see and the band ends in a soft round tip
+   *  at each corner (B5 filled two hard-edged trapezoids). On the SE face the cast shadow already darkens the ground in daylight, so only the narrow stroke
+   *  reaches it then (no double-darkening): the two wide strokes stop at the front corner. Baked once per geometry / zoom (aoStrip), blitted per building. */
   function drawAO(e, b, v, g) {
     const s = aoBox(b, v); if (!s) return;
-    const z = fxZoom, Sx = e.sx + s.dx * z, Sy = e.sy + s.dy * z, bl = s.bl * z, br = s.br * z, k = (v & SPR.SCAFFOLD) ? 0.6 : 1;
-    g.fillStyle = AO_COL;
-    for (let lv = 0; lv < 2; lv++) {
-      const w = (lv === 0 ? 9 : 4) * z;
-      g.globalAlpha = (lv === 0 ? aoA1 : aoA0) * k; g.beginPath();
-      g.moveTo(Sx - bl, Sy - bl / 2); g.lineTo(Sx, Sy); g.lineTo(Sx, Sy + w); g.lineTo(Sx - bl - w, Sy - bl / 2 + w / 2); g.closePath();
-      if (lv === 1 || aoSEWide) { g.moveTo(Sx, Sy); g.lineTo(Sx + br, Sy - br / 2); g.lineTo(Sx + br + w, Sy - br / 2 + w / 2); g.lineTo(Sx, Sy + w); g.closePath(); }
-      g.fill();
-    }
+    const z = fxZoom, dpr = (fxViewRef && fxViewRef.dpr) || 1, k = ((v & SPR.SCAFFOLD) ? 0.6 : 1) * (aoA0 / 0.23), q = aoStrip(s, z, dpr, aoSEWide);
+    if (!q) return;
+    g.globalAlpha = k; g.drawImage(q.c, Math.round((e.sx + s.dx * z + q.x) * dpr) / dpr, Math.round((e.sy + s.dy * z + q.y) * dpr) / dpr, q.w, q.h);
   }
-  const EB_Y = [-0.72, -0.36, 0, 0.36, 0.72], EB_W = [0.62, 0.9, 1, 0.9, 0.62];
-  /** a pixel-art ellipse of five stacked rects added to the current path (much cheaper than an anti-aliased ellipse, and it matches the sprites' hard edges) */
-  function ellRects(g, cx, cy, rx, ry) {
-    const h = Math.max(1, Math.round(ry * 0.42));
-    for (let k = 0; k < 5; k++) { const w = rx * EB_W[k]; g.rect(Math.round(cx - w), Math.round(cy + ry * EB_Y[k] - h / 2), Math.max(1, Math.round(w * 2)), h); }
-  }
-  /** the 3-band version for the many small shapes (tree AO) */
-  function ellRects3(g, cx, cy, rx, ry) {
-    const h = Math.max(1, Math.round(ry * 0.7));
-    for (let k = 0; k < 3; k++) { const w = rx * (k === 1 ? 1 : 0.78); g.rect(Math.round(cx - w), Math.round(cy + (k - 1) * ry * 0.62 - h / 2), Math.max(1, Math.round(w * 2)), h); }
-  }
-  /** a tight dark ellipse (two nested) at every trunk base, under the sprites */
-  function treeAO(g, pool, n, z) {
-    g.fillStyle = AO_COL;
-    for (let lv = 0; lv < 2; lv++) {
-      let any = false; g.beginPath();
-      for (let k = 0; k < n; k++) {
-        const e = pool[k]; if (e.kind !== 'tree' || !e.ref || (e.variant & 64)) continue;
-        const sw = e.ref.sw * z / (e.ref.zoom || 1); if (sw < 8) continue;
-        const rx = Math.max(3 * z, sw * 0.075) * (lv === 0 ? 1.8 : 1), cy = e.sy + 0.5 * z;
-        ellRects3(g, e.sx, cy, rx, rx * 0.42); any = true;
-      }
-      if (any) { g.globalAlpha = lv === 0 ? aoA1 : aoA0; g.fill(); }
+  /** H5: one cached soft ellipse at every trunk base, under the sprites (brush 'ao' blob: dense centre, gaussian rim) */
+  function treeAO(g, pool, n, z, sc) {
+    const BR = BSU.brush; if (!BR || typeof BR.drawBlob !== 'function') return;
+    for (let k = 0; k < n; k++) {
+      const e = pool[k]; if (e.kind !== 'tree' || !e.ref || (e.variant & 64)) continue;
+      const sw = e.ref.sw * z / (e.ref.zoom || 1); if (sw < 8) continue;
+      const rx = Math.max(3 * z, sw * 0.075) * 1.9;
+      BR.drawBlob(g, 'ao', AO_COL, e.sx, e.sy + 0.5 * z, rx, rx * 0.42, Math.min(0.5, (aoA0 + aoA1 * 0.8) * 1.15), sc);
     }
   }
   // --- rain splashes (two frames: the crown, then the ring with two flying drops) --------
@@ -278,21 +288,29 @@
       if (spOwn[i] >= 0) spApron++;
     }
   }
-  /** own < 0: every splash that is not on an apron (drawn under the entities); own ≥ 0: that building's apron (drawn right after its sprite) */
-  function drawSplashes(g, cam, vw, vh, own) {
-    const z = cam.zoom || 1, ps = Math.max(1, Math.round(z));
-    for (let fr = 0; fr < 2; fr++) {
-      let any = false; g.beginPath();
-      for (let i = 0; i < spN; i++) {
-        if ((spAge[i] >= SPL_F0) !== (fr === 1) || (own < 0 ? spOwn[i] >= 0 : spOwn[i] !== own)) continue;
-        const sx = Math.round((spX[i] - cam.x) * z + vw / 2), sy = Math.round((spY[i] - cam.y) * z + vh / 2);
-        if (sx < -8 || sx > vw + 8 || sy < -8 || sy > vh + 8) continue;
-        if (fr === 0) { g.rect(sx - ps, sy, 3 * ps, ps); g.rect(sx, sy - ps, ps, ps); }
-        else { g.rect(sx - 3 * ps, sy, 2 * ps, ps); g.rect(sx + ps, sy, 2 * ps, ps); g.rect(sx - 3 * ps, sy - ps, ps, ps); g.rect(sx + 2 * ps, sy - ps, ps, ps); }
-        any = true;
-      }
-      if (any) { g.fillStyle = '#E2EEF8'; g.globalAlpha = fr === 0 ? 0.8 : 0.5; g.fill(); }
+  /** H5: own < 0: every splash that is not on an apron (drawn under the entities); own ≥ 0: that building's apron (drawn right after its sprite).
+   *  A splash is an expanding 2:1 ring (a cached brush 'ring' blob per radius, faded with age) plus three crown drops that fly out and fall back in the first half
+   *  of its life — anti-aliased, no pixel crown / ring frames, no path per ring. */
+  function drawSplashes(g, cam, vw, vh, own, sc) {
+    const z = cam.zoom || 1, BR = BSU.brush; sc = sc || 1;
+    for (let i = 0; i < spN; i++) {   // the ring: a cached 'ring' blob (an anti-aliased 2:1 ellipse line) at the radius the splash has grown to, faded with age
+      if (own < 0 ? spOwn[i] >= 0 : spOwn[i] !== own) continue;
+      const u = spAge[i] / SPL_LIFE, sx = (spX[i] - cam.x) * z + vw / 2, sy = (spY[i] - cam.y) * z + vh / 2;
+      if (sx < -12 || sx > vw + 12 || sy < -12 || sy > vh + 12) continue;
+      const rx = (1.2 + 6.5 * Math.sqrt(u)) * z; BR.drawBlob(g, 'ring', '#E2EEF8', sx, sy, rx, rx * 0.5, 0.8 * (1 - u * 0.85), sc);
     }
+    g.fillStyle = '#E2EEF8';
+    let any = false; g.beginPath();   // the crown drops: three tiny dots fanned above the ring that rise and fall (never symmetric, so the splash does not read as a face)
+    for (let i = 0; i < spN; i++) {
+      const u = spAge[i] / SPL_LIFE; if (u > 0.5 || (own < 0 ? spOwn[i] >= 0 : spOwn[i] !== own)) continue;
+      const sx = (spX[i] - cam.x) * z + vw / 2, sy = (spY[i] - cam.y) * z + vh / 2;
+      if (sx < -12 || sx > vw + 12 || sy < -12 || sy > vh + 12) continue;
+      const rise = Math.sin(u * 2 * Math.PI) * z, h1 = (i & 3) * 0.25, r = Math.max(0.55, 0.75 * z);
+      g.moveTo(sx - (1.2 + 2.5 * u) * z + r, sy - rise * (4.5 + h1 * 2)); g.arc(sx - (1.2 + 2.5 * u) * z, sy - rise * (4.5 + h1 * 2), r, 0, TAU);
+      g.moveTo(sx + (0.3 + 0.8 * u) * z + r * 0.8, sy - rise * (6.5 - h1 * 2)); g.arc(sx + (0.3 + 0.8 * u) * z, sy - rise * (6.5 - h1 * 2), r * 0.8, 0, TAU);
+      g.moveTo(sx + (2.4 + 3 * u) * z + r * 0.6, sy - rise * (3 + h1)); g.arc(sx + (2.4 + 3 * u) * z, sy - rise * (3 + h1), r * 0.6, 0, TAU); any = true;
+    }
+    if (any) { g.globalAlpha = 0.8; g.fill(); }
   }
   /** rain-rate driven: paved ground (path / road / boardwalk / bridge), building aprons and water; ripples on the puddles */
   function spawnSplashes(state, view, cam, rr) {
@@ -344,9 +362,9 @@
     }
     pdDirty = false;
   }
-  const PUD_COL = [['#1B2230', '#161C2A', '#10141F'], ['#6E93AE', '#42586F', '#1E2A3F'], ['#DCEBF5', '#9DB2C6', '#566B88']];   // halo / water / glint × day, dusk, night
+  const PUD_NAMES = ['day', 'dusk', 'night'];   // the water mirrors the sky: bright by day, dim at dusk, near black at night (brush.blob 'puddle' palettes)
   function drawPuddles(state, g, cam, view) {
-    const vw = view.vw, vh = view.vh, z = cam.zoom || 1, t = state.tiles;
+    const vw = view.vw, vh = view.vh, z = cam.zoom || 1, t = state.tiles, sc = view.dpr || 1, BR = BSU.brush;
     const wetE = wet * 0.56;
     for (let k = 0; k < pdN && pvN < PUD_VIS; k++) {
       const a = clamp((wetE - pdTh[k]) / 0.16, 0, 1); if (a <= 0) continue;
@@ -356,18 +374,9 @@
       const rw = pdR[k] * (0.4 + 0.6 * a);
       pvSX[pvN] = sx; pvSY[pvN] = sy; pvWX[pvN] = wx; pvWY[pvN] = wy; pvWR[pvN] = rw; pvA[pvN] = a; pvN++;
     }
-    if (pvN === 0) return;
-    const night = nightAmount(state), pb = night > 0.6 ? 2 : (night > 0.15 ? 1 : 0);   // the water mirrors the sky: bright by day, dim at dusk, near black at night
-    // layer 1: the wet halo (darker ground), layer 2: the sky in the water, layer 3: a glint on the upper-left rim
-    for (let ly = 0; ly < 3; ly++) {
-      g.beginPath();
-      for (let k = 0; k < pvN; k++) {
-        const rx = pvWR[k] * 2 * z * (ly === 0 ? 0.66 : ly === 1 ? 0.5 : 0.2), ry = rx * (ly === 2 ? 0.34 : 0.5);
-        if (ly === 2) g.rect(Math.round(pvSX[k] - rx * 2.2), Math.round(pvSY[k] - ry * 2.3), Math.max(2, Math.round(rx * 1.6)), Math.max(1, Math.round(z)));   // the glint: one light dash on the upper-left rim
-        else ellRects(g, pvSX[k], pvSY[k], rx, ry);
-      }
-      g.fillStyle = PUD_COL[ly][pb]; g.globalAlpha = ly === 0 ? 0.2 : ly === 1 ? 0.44 : 0.5; g.fill();
-    }
+    if (pvN === 0 || !BR || typeof BR.drawBlob !== 'function') return;
+    const night = nightAmount(state), pb = PUD_NAMES[night > 0.6 ? 2 : (night > 0.15 ? 1 : 0)];
+    for (let k = 0; k < pvN; k++) { const rx = pvWR[k] * 1.32 * z; BR.drawBlob(g, 'puddle', pb, pvSX[k], pvSY[k], rx, rx * 0.5, Math.min(1, 0.5 + pvA[k]), sc); }   // one cached sprite per puddle: wet halo, sky body, rim, glint
     // night: each puddle mirrors the nearest lamp / window / pot / fire above it (last frame's light list). Drawn here, under the entities,
     // so a tree in front hides it; additive and boosted ×2 because the tint pass multiplies the frame afterwards.
     if (FXO.reflect && night > 0.1 && lightsN > 0) {
@@ -382,10 +391,8 @@
         }
         if (best < 0) continue;
         const S = lightsList[best], fall = 1 - Math.sqrt(bd) / (200 * z); if (fall <= 0.05) continue;
-        const rx = pvWR[p] * z * 1.1 * (0.5 + 0.5 * pvA[p]), a = Math.min(1, 0.95 * S.a * pvA[p] * fall * night);
-        g.fillStyle = (S.kind === 'window' || S.kind === 'bld') ? '#FFC56A' : '#FFD98A';
-        g.globalAlpha = a * 0.7; g.beginPath(); ellRects(g, qx + (S.x - qx) * 0.12, qy, rx, rx * 0.5); g.fill();
-        g.globalAlpha = a; g.beginPath(); ellRects(g, qx + (S.x - qx) * 0.12, qy, rx * 0.42, rx * 0.21); g.fill(); shown++;
+        const rx = pvWR[p] * z * 1.1 * (0.5 + 0.5 * pvA[p]), a = Math.min(1, 0.95 * S.a * pvA[p] * fall * night), col = (S.kind === 'window' || S.kind === 'bld') ? '#FFC56A' : '#FFD98A', cx = qx + (S.x - qx) * 0.12;
+        BR.drawBlob(g, 'halo', col, cx, qy, rx, rx * 0.5, a * 0.7, sc); BR.drawBlob(g, 'glow', col, cx, qy, rx * 0.5, rx * 0.25, a, sc, { core: 0.3 }); shown++;   // H5: a soft smear and a bright core
       }
       g.globalCompositeOperation = 'source-over';
     }
@@ -401,8 +408,8 @@
     const k = (0.6 + 0.4 * sun) * (1 - 0.35 * stormDarkness(state)); aoA0 = 0.23 * k; aoA1 = 0.13 * k;
     if ((FXO.puddles || FXO.shimmer) && !fxPerf && state.tiles && state.tiles.type && (pdDirty || (view.x0 | 0) < pdX0 || (view.y0 | 0) < pdY0 || (view.x1 | 0) > pdX1 || (view.y1 | 0) > pdY1)) rebuildPuddles(state, view);
     if (FXO.puddles && !fxPerf && wet > 0.02 && state.tiles && state.tiles.type) drawPuddles(state, g, cam, view);
-    if (spN > spApron && FXO.splashes) drawSplashes(g, cam, view.vw, view.vh, -1);
-    if (aoOn) treeAO(g, pool, n, z);
+    if (spN > spApron && FXO.splashes) drawSplashes(g, cam, view.vw, view.vh, -1, view.dpr || 1);
+    if (aoOn) treeAO(g, pool, n, z, view.dpr || 1);
     g.globalAlpha = 1;
   };
   /** called right after each building entity is drawn: contact AO on the apron, then that building's apron splashes */
@@ -411,7 +418,7 @@
       if (fxZoom < 1) return;
       const b = e.b; if (!b) return; const v = e.variant | 0;
       if (aoOn && !(v & SPR.RUIN)) drawAO(e, b, v, g);
-      if (spApron > 0 && FXO.splashes) drawSplashes(g, fxCamRef, fxViewRef.vw, fxViewRef.vh, b.id | 0);
+      if (spApron > 0 && FXO.splashes) drawSplashes(g, fxCamRef, fxViewRef.vw, fxViewRef.vh, b.id | 0, fxViewRef.dpr || 1);
       g.globalAlpha = 1;
     } catch (err) { ferr('entityFx', err); }
   };
@@ -434,25 +441,15 @@
       plY[i] -= (plK[i] ? 9 : 20) * dt / 1000; plX[i] += (wvx + Math.sin(plPh[i] + plA[i] * 0.003) * 5) * dt / 1000;
     }
   }
-  let steamTex = null, steamTried = false;
-  function ensureSteamTex() {
-    if (steamTex || steamTried) return steamTex; steamTried = true;
-    try {
-      const c = document.createElement('canvas'); c.width = 32; c.height = 32; const g = c.getContext('2d'); if (!g) return null;
-      const gr = g.createRadialGradient(16, 16, 0, 16, 16, 16);
-      gr.addColorStop(0, 'rgba(255,255,255,0.95)'); gr.addColorStop(0.45, 'rgba(240,246,252,0.62)'); gr.addColorStop(1, 'rgba(225,232,242,0)');
-      g.fillStyle = gr; g.fillRect(0, 0, 32, 32); steamTex = c;
-    } catch (e) { steamTex = null; }
-    return steamTex;
-  }
-  function drawPlumes(g, cam, vw, vh) {
+  /** H5: a puff is the cached 'puff' blob (three soft lobes, brush.blob) drawn at its current size — no gradient per puff, no 32-px upscale */
+  function drawPlumes(g, cam, view) {
     if (plN === 0) return;
-    const spr = ensureSteamTex(); if (!spr) return; const z = cam.zoom || 1;
+    const BR = BSU.brush; if (!BR || typeof BR.drawBlob !== 'function') return;
+    const z = cam.zoom || 1, vw = view.vw, vh = view.vh, sc = view.dpr || 1;
     for (let i = 0; i < plN; i++) {
       const u = plA[i] / plL[i], w = plS[i] * (0.5 + 1 * u) * z, h = w * 0.85;
       const sx = (plX[i] - cam.x) * z + vw / 2, sy = (plY[i] - cam.y) * z + vh / 2; if (sx < -w || sx > vw + w || sy < -h || sy > vh + h) continue;
-      g.globalAlpha = (plK[i] ? 0.42 : 0.8) * (1 - u) * (u < 0.15 ? u / 0.15 : 1);
-      g.drawImage(spr, sx - w / 2, sy - h / 2, w, h);
+      BR.drawBlob(g, 'puff', '#F0F5FA', sx, sy, w / 2, h / 2, (plK[i] ? 0.42 : 0.8) * (1 - u) * (u < 0.15 ? u / 0.15 : 1), sc);
     }
     g.globalAlpha = 1;
   }
@@ -518,7 +515,7 @@
       for (let k = 0; k < n; k++) {
         const ns = shRS[k], sh = shRH[k] / ns;
         for (let s = 0; s < ns; s++) {
-          const dy = shRY[k] + s * sh, off = Math.round(Math.sin(frameNo * 0.11 + s * 1.3 + k * 2.1) * amp * (0.4 + 0.6 * (1 - s / ns)));
+          const dy = shRY[k] + s * sh, off = Math.sin(frameNo * 0.11 + s * 1.3 + k * 2.1) * amp * (0.4 + 0.6 * (1 - s / ns));   // H5: a fractional offset (the drawImage resamples it: a smooth wobble, no whole-pixel steps)
           g.drawImage(shimCv, (shRX[k] - x0) * dpr, (dy - y0) * dpr, shRW[k] * dpr, sh * dpr, shRX[k] + off, dy, shRW[k], sh);
         }
       }
@@ -561,35 +558,31 @@
       s--;
     }
   }
-  const bloomTex = [null, null, null]; let bloomTried = false;
-  function ensureBloom() {
-    if (bloomTried) return bloomTex[0]; bloomTried = true;
-    try {
-      for (let p = 0; p < 3; p++) {
-        const c = document.createElement('canvas'); c.width = 64; c.height = 64; const g = c.getContext('2d'); if (!g) return null;
-        const col = FW_PAL[p][1], gr = g.createRadialGradient(32, 32, 0, 32, 32, 32);
-        gr.addColorStop(0, 'rgba(255,255,255,0.95)'); gr.addColorStop(0.18, col); gr.addColorStop(0.5, col + '55'); gr.addColorStop(1, col + '00');
-        g.fillStyle = gr; g.fillRect(0, 0, 64, 64); bloomTex[p] = c;
-      }
-    } catch (e) { bloomTex[0] = bloomTex[1] = bloomTex[2] = null; }
-    return bloomTex[0];
-  }
   const fwE = new Float32Array(4), fwD = new Float32Array(4);
+  /** H5: a rocket climbs on a three-layer round-capped tail with a hot cached head; a burst is velocity-aligned trails (faint 150-ms ribbon, bright last
+   *  50 ms, both round-capped) under additive light, every spark head a cached 'dot' blob, and the flash a cached 'glow' / 'halo' pair per palette. Nothing
+   *  here builds a gradient at draw time (the blob cache bakes them once per colour and radius). */
   function passFireworks(state, g, view) {
     if (fwN === 0 || !FXO.fireworks) return;
-    const cam = camOf(state), z = cam.zoom || 1, vw = view.vw, vh = view.vh, ps = Math.max(1, Math.round(z)), bloom = ensureBloom();
+    const cam = camOf(state), z = cam.zoom || 1, vw = view.vw, vh = view.vh, sc = view.dpr || 1, BR = BSU.brush, ok = !!(BR && typeof BR.drawBlob === 'function');
+    g.lineCap = 'round'; g.lineJoin = 'round';
     for (let s = 0; s < fwN; s++) {
-      const t = fwT[s], sx0 = (fwX[s] - cam.x) * z + vw / 2, gy = fwY[s] - fwZ0[s], pal = FW_PAL[fwCol[s]], sc = fwSc[s];
-      if (t < FW_RISE) {   // the rocket: eased climb with a six-point tail
-        g.beginPath(); let hx = 0, hy = 0;
-        for (let j = 5; j >= 0; j--) { const u = clamp((t - j * 32) / FW_RISE, 0, 1), hgt = fwZ1[s] * (1 - (1 - u) * (1 - u)), px_ = sx0 + Math.sin(u * 9 + s) * 1.2 * z, py_ = (gy - hgt - cam.y) * z + vh / 2; if (j === 5) g.moveTo(px_, py_); else g.lineTo(px_, py_); hx = px_; hy = py_; }
-        g.strokeStyle = '#FFE9A0'; g.lineWidth = Math.max(1, z); g.globalAlpha = 0.55; g.stroke();
-        g.fillStyle = '#FFFFFF'; g.globalAlpha = 1; g.fillRect(Math.round(hx - ps / 2), Math.round(hy - ps / 2), ps * 2, ps * 2);
+      const t = fwT[s], sx0 = (fwX[s] - cam.x) * z + vw / 2, gy = fwY[s] - fwZ0[s], pal = FW_PAL[fwCol[s]], sc0 = fwSc[s];
+      if (t < FW_RISE) {   // the rocket: eased climb, a three-layer tail, a hot head
+        let hx = 0, hy = 0;
+        for (let ly = 0; ly < 3; ly++) {
+          g.beginPath();
+          for (let j = 5; j >= 0; j--) { const u = clamp((t - j * 32) / FW_RISE, 0, 1), hgt = fwZ1[s] * (1 - (1 - u) * (1 - u)), px_ = sx0 + Math.sin(u * 9 + s) * 1.2 * z, py_ = (gy - hgt - cam.y) * z + vh / 2; if (j === 5) g.moveTo(px_, py_); else g.lineTo(px_, py_); hx = px_; hy = py_; }
+          g.strokeStyle = '#FFE9A0'; g.lineWidth = Math.max(1, z) * (ly === 0 ? 3.4 : ly === 1 ? 1.9 : 1); g.globalAlpha = ly === 0 ? 0.12 : ly === 1 ? 0.3 : 0.7; g.stroke();
+        }
+        g.globalCompositeOperation = 'lighter'; if (ok) BR.drawBlob(g, 'dot', '#FFF1C0', hx, hy, 5 * z, 5 * z, 1, sc); else { g.fillStyle = '#FFFFFF'; g.globalAlpha = 1; g.beginPath(); g.arc(hx, hy, 1.6 * z, 0, TAU); g.fill(); }
+        g.globalCompositeOperation = 'source-over';
         continue;
       }
       const tau = (t - FW_RISE) / 1000, cxs = sx0, cys = (gy - fwZ1[s] - cam.y) * z + vh / 2, G = fwKind[s] === 1 ? 60 : 24, fade = Math.pow(clamp(1 - tau / (FW_LIFE / 1000), 0, 1), 0.85);
       for (let j = 0; j < 4; j++) { const tj = Math.max(0, tau - j * 0.05); fwE[j] = (1 - Math.exp(-3.2 * tj)) / 3.2; fwD[j] = 0.5 * G * tj * tj; }
       const base = s * FW_SP;
+      g.globalCompositeOperation = 'lighter';
       for (let grp = 0; grp < 2; grp++) {
         for (let pass = 0; pass < 2; pass++) {   // pass 0: the faint 150-ms trail, pass 1: the bright last 50 ms
           g.beginPath();
@@ -599,21 +592,19 @@
             if (pass === 0) { g.moveTo(cxs + c * sp * fwE[3], cys + fwD[3] * z - sn * sp * fwE[3]); g.lineTo(cxs + c * sp * fwE[2], cys + fwD[2] * z - sn * sp * fwE[2]); g.lineTo(x1_, y1_); g.lineTo(x0_, y0_); }
             else { g.moveTo(x1_, y1_); g.lineTo(x0_, y0_); }
           }
-          g.strokeStyle = pal[grp]; g.lineWidth = Math.max(1, z * (pass === 0 ? 1.4 : 2.2)); g.globalAlpha = (pass === 0 ? 0.5 : 1) * fade; g.stroke();
+          g.strokeStyle = pal[grp]; g.lineWidth = Math.max(1, z * (pass === 0 ? 1.5 : 2.4)); g.globalAlpha = (pass === 0 ? 0.42 : 0.95) * fade; g.stroke();
         }
-        g.beginPath();
-        for (let k = grp; k < FW_SP; k += 2) { const c = fwCos[base + k], sn = fwSin[base + k], sp = fwSpd[base + k] * z; g.rect(Math.round(cxs + c * sp * fwE[0] - ps * 1.5), Math.round(cys + fwD[0] * z - sn * sp * fwE[0] - ps * 1.5), ps * 3, ps * 3); }
-        g.fillStyle = grp === 0 ? '#FFFFFF' : pal[1]; g.globalAlpha = fade; g.fill();
+        if (ok) for (let k = grp; k < FW_SP; k += 2) { const c = fwCos[base + k], sn = fwSin[base + k], sp = fwSpd[base + k] * z; BR.drawBlob(g, 'dot', grp === 0 ? '#FFFFFF' : pal[1], cxs + c * sp * fwE[0], cys + fwD[0] * z - sn * sp * fwE[0], 3.4 * z, 3.4 * z, fade, sc); }
+        else { g.beginPath(); for (let k = grp; k < FW_SP; k += 2) { const c = fwCos[base + k], sn = fwSin[base + k], sp = fwSpd[base + k] * z; g.rect(cxs + c * sp * fwE[0] - 1.5 * z, cys + fwD[0] * z - sn * sp * fwE[0] - 1.5 * z, 3 * z, 3 * z); } g.fillStyle = grp === 0 ? '#FFFFFF' : pal[1]; g.globalAlpha = fade; g.fill(); }
       }
-      if (bloom) {
-        g.globalCompositeOperation = 'lighter';
-        const fl = Math.exp(-tau * 2.4), bs = (150 + 220 * Math.min(1, tau / 0.25)) * z * sc, b2 = 320 * z * sc;
-        g.globalAlpha = 0.9 * fl; g.drawImage(bloomTex[fwCol[s]], cxs - bs / 2, cys - bs / 2, bs, bs);
-        g.globalAlpha = 0.26 * fade; g.drawImage(bloomTex[fwCol[s]], cxs - b2 / 2, cys - b2 / 2, b2, b2);
-        g.globalCompositeOperation = 'source-over';
+      if (ok) {
+        const fl = Math.exp(-tau * 2.4), bs = (150 + 220 * Math.min(1, tau / 0.25)) * z * sc0, b2 = 320 * z * sc0;
+        BR.drawBlob(g, 'glow', pal[1], cxs, cys, bs / 2, bs / 2, 0.8 * fl, sc, { core: 0.12 });
+        BR.drawBlob(g, 'halo', pal[1], cxs, cys, b2 / 2, b2 / 2, 0.26 * fade, sc);
       }
+      g.globalCompositeOperation = 'source-over';
     }
-    g.globalAlpha = 1;
+    g.lineCap = 'butt'; g.globalAlpha = 1;
   }
 
   // ---------------------------------------------------------------------------
@@ -646,8 +637,7 @@
     const ev = wx.event;
     if (ev && ev.kind === 'cell' && ev.radius > 0) {
       const p = R.tileToScreen(ev.cx | 0, ev.cy | 0), ccx = p.x, ccy = p.y, crx = Math.max(1, ev.radius * 32 * z), cry = Math.max(1, ev.radius * 16 * z);
-      g.fillStyle = 'rgb(60,70,90)';
-      for (let b = 0; b < 12; b++) { const yy = -1 + (b + 0.5) / 6, hw = crx * Math.sqrt(Math.max(0, 1 - yy * yy)); g.globalAlpha = 0.25 * (1 - Math.abs(yy)) * 0.6; g.fillRect(ccx - hw, ccy + yy * cry - cry / 12, hw * 2, cry / 6 + 1); }
+      if (!BSU.brush.drawBlob(g, 'halo', '#3C465A', ccx, ccy, crx, cry, 0.17, view.dpr || 1)) { g.fillStyle = 'rgb(60,70,90)'; g.globalAlpha = 0.1; g.beginPath(); g.ellipse(ccx, ccy, crx, cry, 0, 0, TAU); g.fill(); }   // H5: one cached soft disc (was 12 stacked bands)
     }
     // wind leaves at the windward edge
     if (wind >= 0.3 && (frameNo & 1) === 0 && !BSU.headlessMode) {
@@ -655,11 +645,15 @@
       for (let k = 0; k < cnt; k++) { const sy = rng().float() * vh, sx = fromLeft ? -10 : vw + 10; const wpx = (sx - vw / 2) / z + cam.x, wpy = (sy - vh / 2) / z + cam.y; emit(storm > 0 ? 'debris' : 'leaf', wpx, wpy, 1, { vx: Math.cos(windAngle) * (120 + 200 * wind), vy: Math.sin(windAngle) * 40, vz: 30, z: 10 + rng().float() * 40, life: 2500, size: storm > 0 ? 3 : 1 }); }
     }
     // boil-pot / vent steam puffs, then the heat shimmer over the vents and (advisory days) paved ground — both read the frame so far (before the tint)
-    try { drawPlumes(g, cam, vw, vh); shimmerPass(state, g, view, cam); } catch (e) { ferr('shimmer', e); }
+    try { drawPlumes(g, cam, view); shimmerPass(state, g, view, cam); } catch (e) { ferr('shimmer', e); }
     // screen-space particles
     const cols = R.particleColors || [GOLD];
     g.globalAlpha = 1;
-    for (let i = 0; i < alive; i++) if (pscreen[i]) { g.fillStyle = cols[pcol[i] & 15] || GOLD; g.globalAlpha = clamp(plife[i] / 300, 0, 1); g.fillRect(Math.round(px[i]), Math.round(py[i] - pz[i]), psize[i], psize[i]); }
+    for (let i = 0; i < alive; i++) if (pscreen[i]) {   // H5: sub-pixel placement (anti-aliased edges); confetti flips as it falls, the round kinds are discs
+      g.fillStyle = cols[pcol[i] & 15] || GOLD; g.globalAlpha = clamp(plife[i] / 300, 0, 1); const sz = psize[i], x = px[i], y = py[i] - pz[i];
+      if (ptype[i] === TID.confetti) { const w = sz * (0.35 + 1.15 * Math.abs(Math.sin(plife[i] * 0.011 + i * 1.7))); g.fillRect(x - w / 2, y - sz * 0.55, w, sz * 1.1); }
+      else { g.beginPath(); g.arc(x + sz / 2, y + sz / 2, sz * 0.62, 0, TAU); g.fill(); }
+    }
     g.globalAlpha = 1;
   }
   let curRainRate = 0, curStorm = 0, curWind = 0, curWindAngle = 0;
@@ -678,17 +672,24 @@
       const ev = wx.event, cell = ev && ev.kind === 'cell' && ev.radius > 0;
       let ccx = 0, ccy = 0, crx = 1, cry = 1;
       if (cell) { const p = R.tileToScreen(ev.cx | 0, ev.cy | 0); ccx = p.x; ccy = p.y; crx = Math.max(1, ev.radius * 32 * z); cry = Math.max(1, ev.radius * 16 * z); }
-      g.globalAlpha = 1; g.strokeStyle = storm > 0 ? 'rgba(215,228,255,0.72)' : 'rgba(200,220,255,0.5)'; g.lineWidth = storm > 0.5 ? 1.5 : 1;
-      g.beginPath();
-      for (let k = 0; k < n; k++) {
-        let x = rainPos[2 * k] + vxs * (0.85 + 0.3 * (k & 3) / 3), y = rainPos[2 * k + 1] + vy * (0.8 + 0.4 * (k & 3) / 3);
-        if (y > vh + 20) { y -= vh + 40; x = rng().float() * (vw + 80) - 40; }
-        if (x < -40) x += vw + 80; else if (x > vw + 40) x -= vw + 80;
-        rainPos[2 * k] = x; rainPos[2 * k + 1] = y;
-        if (cell && (k & 3) === 0) { const ex = (x - ccx) / crx, ey = (y - ccy) / cry; if (ex * ex + ey * ey > 1) { k += 3; continue; } }
-        g.moveTo(x, y); g.lineTo(x + dx, y + dy);
+      // H5: three depth layers (far: short, dim, slow, hair-thin / mid / near: long, bright, fast, wider with round caps), one stroke each; the pool, the wrap and the
+      // cell cull are unchanged (every drop is visited once per frame)
+      const LY_LEN = [0.62, 1, 1.45], LY_VY = [0.82, 1, 1.22], LY_A = [0.36, 0.5, 0.7], LY_W = [0.85, 1.05, 1.5];
+      g.lineJoin = 'round'; g.strokeStyle = storm > 0 ? 'rgb(215,228,255)' : 'rgb(200,220,255)';
+      for (let ly = 0; ly < 3; ly++) {
+        const fl = LY_LEN[ly], fy = vy * LY_VY[ly], fx = vxs * LY_VY[ly];
+        g.beginPath();
+        for (let k = ly; k < n; k += 3) {
+          let x = rainPos[2 * k] + fx * (0.85 + 0.3 * (k & 3) / 3), y = rainPos[2 * k + 1] + fy * (0.8 + 0.4 * (k & 3) / 3);
+          if (y > vh + 20) { y -= vh + 40; x = rng().float() * (vw + 80) - 40; }
+          if (x < -40) x += vw + 80; else if (x > vw + 40) x -= vw + 80;
+          rainPos[2 * k] = x; rainPos[2 * k + 1] = y;
+          if (cell) { const ex = (x - ccx) / crx, ey = (y - ccy) / cry; if (ex * ex + ey * ey > 1) continue; }
+          g.moveTo(x, y); g.lineTo(x + dx * fl, y + dy * fl);
+        }
+        g.lineCap = ly === 2 ? 'round' : 'butt'; g.lineWidth = LY_W[ly] * (storm > 0.5 ? 1.25 : 1); g.globalAlpha = Math.min(1, LY_A[ly] * (storm > 0 ? 1.1 : 1)); g.stroke();
       }
-      g.stroke();
+      g.lineCap = 'butt'; g.globalAlpha = 1;
       // wind-blown sheets during landfall: 3 translucent diagonal bands sweeping across
       if (storm > 0.2 && stormPhase !== SPH.EYE) {
         g.save(); g.transform(1, 0, -dx / len * 0.9, 1, 0, 0);   // skewed to the rain angle
@@ -702,7 +703,9 @@
     if (now < flashUntil) {
       const k = (flashUntil - now) / (PR.lightningMs || 250);
       g.globalAlpha = (PR.lightningFlashAlpha || 0.7) * k * k; g.fillStyle = '#FFFFFF'; g.fillRect(0, 0, vw, vh);
-      if (boltN > 1 && now < boltUntil) { g.globalAlpha = clamp((boltUntil - now) / 60, 0, 1); g.strokeStyle = '#FFFFFF'; g.lineWidth = 2; g.beginPath(); g.moveTo(bolt[0], bolt[1]); for (let i = 1; i < boltN; i++) g.lineTo(bolt[2 * i], bolt[2 * i + 1]); g.stroke(); g.globalAlpha = 0.35; g.lineWidth = 6; g.strokeStyle = '#CFE4FF'; g.stroke(); }
+      if (boltN > 1 && now < boltUntil) {   // H5: round joins / caps and three layers (a wide halo, the blue glow, the white core) so the bolt has a soft edge
+        const ba = clamp((boltUntil - now) / 60, 0, 1); g.lineJoin = 'round'; g.lineCap = 'round'; g.beginPath(); g.moveTo(bolt[0], bolt[1]); for (let i = 1; i < boltN; i++) g.lineTo(bolt[2 * i], bolt[2 * i + 1]);
+        g.strokeStyle = '#CFE4FF'; g.lineWidth = 14; g.globalAlpha = 0.12 * ba; g.stroke(); g.lineWidth = 6; g.globalAlpha = 0.35 * ba; g.stroke(); g.strokeStyle = '#FFFFFF'; g.lineWidth = 2; g.globalAlpha = ba; g.stroke(); g.lineCap = 'butt'; }
     }
   }
   /** per-frame emitters for visible sources (GDD §12.7) */
@@ -898,11 +901,6 @@
   // art pass B1: a lamp beside water (its S or E neighbour is wet) mirrors as a stretched, fainter pool on the water
   function wetBelow(state, i) { const tx = (i % W), ty = ((i / W) | 0); return (ty < HGT - 1 && isWaterTile(state, i + W)) || (tx < W - 1 && isWaterTile(state, i + 1)); }
   function pushReflection(x, y, z, a) { const L = pushLight('lamp', x, y + 14 * z, 0.9, a, 0); if (L) L.refl = 1; return L; }
-  function lightsCtxFor(view) {
-    const c = R.composites && R.composites.lights; if (!c || typeof c.getContext !== 'function') return null;
-    if (c !== lightsCanvasRef) { lightsCanvasRef = c; try { lightsCtx = c.getContext('2d'); } catch (e) { lightsCtx = null; } }
-    return lightsCtx;
-  }
   // art pass B5: stadium haze entries (drawn after the lights), window reflections on water near lit buildings, puddle reflections
   const hazeX = new Float32Array(2), hazeY = new Float32Array(2), hazeR = new Float32Array(2), hazeA = new Float32Array(2); let hazeN = 0;
   let tsx = 0, tsy = 0;
@@ -1004,42 +1002,65 @@
     for (let k = 0; k < lightsN; k++) lightsList[k] = part[k];
     return lightsN;
   }
+  // H5 effects pass: every halo is a CACHED blob (brush.blob: baked once per kind / colour / quantised device radius, drawn with drawImage — never a
+  // gradient at draw time) drawn straight onto the frame with `lighter` and the night amount folded into its alpha, so the pass is the sum of the
+  // lights' own footprints (the old full-frame composite — clear + a full-screen additive blit — is gone; the `lights` composite is kept at 1 px).
+  // Sizes follow the pen-era sprites (diameter = sprite size × L.r × zoom) so every light's reach is unchanged; the falloff is a bloom.
+  const LIGHT_SZ = { lamp: 24, window: 8, beacon: 32, blink: 8, arc: 12, glow: 16, pot: 12, fire: 24, firefly: 4, eye: 3, mast: 48, canal: 32 };
+  let lightCols = null, lightPeak = null;
+  function lightCol(kind) {
+    if (lightCols === null) { lightCols = {}; lightPeak = {}; const LG = (mod('sprites') && mod('sprites').LIGHTS) || {}; for (const k of LIGHT_KINDS) { lightCols[k] = (LG[k] && LG[k].color) || '#FFE0A0'; lightPeak[k] = (LG[k] && LG[k].a) || 1; } }
+    return lightCols[kind] || '#FFE0A0';
+  }
+  const bb = (g, kind, col, x, y, rx, ry, a, sc, o) => BSU.brush.drawBlob(g, kind, col, x, y, rx, ry, a, sc, o);
+  const GLOW_O = { core: 0.11 };
+  function drawLight(g, L, z, sc, perf) {
+    const k = L.kind, col = lightCol(k), a = L.a * (lightPeak[k] || 1), r = L.r, D = (LIGHT_SZ[k] || 16) * r * z / 2;   // D = the pen sprite's radius; the pen sprites peaked at .8 – 1 (LIGHTS[k].a): the blobs keep that peak
+    switch (k) {
+      case 'lamp':
+        if (L.refl) { bb(g, 'halo', col, L.x, L.y, D * 0.9, D * 2.8, a * 0.6, sc); return; }   // a mirrored streak on water
+        if (!perf) bb(g, 'pool', col, L.x, L.y + 10 * z, D * 3.2, D * 1.6, a * 0.55, sc);       // the pool on the ground
+        bb(g, 'glow', col, L.x, L.y, D, D, a, sc, GLOW_O); return;
+      case 'window':
+        if (L.refl) { bb(g, 'halo', col, L.x, L.y, D * 1.1, D * 2.6, a * 0.55, sc); return; }
+        if (!perf) bb(g, 'pool', col, L.x, L.y + 16 * z, D * 2.2, D * 1.2, a * 0.35, sc);
+        bb(g, 'glow', col, L.x, L.y, D, D, a, sc, GLOW_O); return;
+      case 'canal': bb(g, 'pool', col, L.x, L.y, D * 2.3, D * 1.15, a, sc); return;
+      case 'eye': bb(g, 'dot', col, L.x, L.y, D * 2.2, D * 2.2, a, sc); return;
+      case 'mast': { const w = LIGHT_SZ.mast * r * z, h = 96 * r * z; g.save(); g.translate(L.x, L.y); g.rotate(L.rot); bb(g, 'cone', col, 0, h / 2, w / 2, h / 2, a, sc, { a: 0.9 }); g.restore(); return; }
+      default: bb(g, 'glow', col, L.x, L.y, D, D, a, sc, GLOW_O);
+    }
+  }
   function passLights(state, g, view) {
     const nightA = nightAmount(state);
     if (nightA <= 0.01) { lightsN = 0; return; }
-    const cam = camOf(state), z = cam.zoom || 1, vw = view.vw, vh = view.vh;
+    const cam = camOf(state), z = cam.zoom || 1, vw = view.vw, vh = view.vh, sc = view.dpr || 1, perf = !!(state.ui && state.ui.perfMode);
     for (const k of LIGHT_KINDS) lightRefs[k] = undefined;   // refresh refs each frame (the atlas may re-bake)
-    const lg = lightsCtxFor(view), lc = lightsCanvasRef;
-    if (!lg || !lc) return;
-    const sc = lc.width / Math.max(1, vw);
+    const BR = BSU.brush; if (!BR || typeof BR.drawBlob !== 'function') return;
+    lightCol('lamp');   // (fills the colour / peak tables on the first night frame)
     gatherLights(state, view, cam, nightA);
     try {
-      lg.setTransform(1, 0, 0, 1, 0, 0); lg.globalCompositeOperation = 'source-over'; lg.globalAlpha = 1; lg.clearRect(0, 0, lc.width, lc.height);
-      lg.setTransform(sc, 0, 0, sc, 0, 0); lg.imageSmoothingEnabled = true; lg.globalCompositeOperation = 'lighter';
+      g.globalCompositeOperation = 'lighter'; g.imageSmoothingEnabled = true;
       for (let k = 0; k < lightsN; k++) {
         const L = lightsList[k];
-        if (L.kind === 'bld') { const r = L.ref; if (!r || !r.canvas) continue; const zs = z / (r.zoom || 1); lg.globalAlpha = L.a; lg.drawImage(r.canvas, r.sx, r.sy, r.sw, r.sh, Math.round(L.x + r.ox * zs), Math.round(L.y + r.oy * zs), r.sw * zs, r.sh * zs); continue; }   // H2b: the companion, aligned to the day sprite (render.blit's rounding)
-        const ref = lightRef(L.kind); if (!ref) continue;
-        const w = ref.sw * L.r * z, h = ref.sh * L.r * z;
-        if (L.kind === 'mast') { lg.save(); lg.translate(L.x, L.y); lg.rotate(L.rot); lg.globalAlpha = L.a; lg.drawImage(ref.canvas, ref.sx, ref.sy, ref.sw, ref.sh, -w / 2, 0, w, h); lg.restore(); continue; }
-        if (L.kind === 'lamp') { if (L.refl) { drawRef(lg, ref, L.x, L.y, w * 0.9, h * 2.8, L.a * 0.6); continue; } drawRef(lg, ref, L.x, L.y + 10 * z, w * 3.2, h * 1.6, L.a * 0.55); drawRef(lg, ref, L.x, L.y, w, h, L.a); continue; }   // pool on the ground + the core; refl = a mirrored smear on water
-        if (L.kind === 'window') { if (L.refl) { drawRef(lg, ref, L.x, L.y, w * 1.1, h * 2.6, L.a * 0.55); continue; } drawRef(lg, ref, L.x, L.y + 16 * z, w * 2.2, h * 1.2, L.a * 0.35); drawRef(lg, ref, L.x, L.y, w, h, L.a); continue; }
-        if (L.kind === 'canal') { drawRef(lg, ref, L.x, L.y, w * 2.3, h * 1.15, L.a); continue; }   // stretched 2:1 over the tile diamond
-        drawRef(lg, ref, L.x, L.y, w, h, L.a);
+        if (L.kind === 'bld') { const r = L.ref; if (!r || !r.canvas) continue; const zs = z / (r.zoom || 1); g.globalAlpha = L.a * nightA; g.drawImage(r.canvas, r.sx, r.sy, r.sw, r.sh, Math.round(L.x + r.ox * zs), Math.round(L.y + r.oy * zs), r.sw * zs, r.sh * zs); continue; }   // H2b: the companion, aligned to the day sprite (render.blit's rounding)
+        const sv = L.a; L.a = sv * nightA; drawLight(g, L, z, sc, perf); L.a = sv;
       }
       // stadium glow haze on game nights: a warm dome and a pale veil over the lit bowl
-      if (hazeN > 0) { const hs = ensureFogSprite(), hw = lightRef('lamp'); for (let k = 0; k < hazeN; k++) { const hr = hazeR[k]; if (hs) { lg.globalAlpha = 0.55 * hazeA[k]; lg.drawImage(hs, hazeX[k] - hr, hazeY[k] - hr * 0.6, hr * 2, hr * 1.2); } if (hw) drawRef(lg, hw, hazeX[k], hazeY[k] + hr * 0.1, hr * 2.6, hr * 1.4, 0.34 * hazeA[k]); } }
-      // fireflies: blink via sin on life; drawn from the pool (they are also 1-px world particles)
-      const ff = lightRef('firefly');
-      if (ff) { let cnt = 0; const capF = (z < 1 ? (PR.fireflyHalfCap || 300) : 2000); for (let i = 0; i < alive && cnt < capF; i++) { if (ptype[i] !== TID.firefly || pscreen[i]) continue; const a = 0.5 + 0.5 * Math.sin(plife[i] * 0.005 + i); if (a < 0.15) continue; const sx = (px[i] - cam.x) * z + vw / 2, sy = (py[i] - pz[i] - cam.y) * z + vh / 2; if (sx < -8 || sx > vw + 8 || sy < -8 || sy > vh + 8) continue; drawRef(lg, ff, sx, sy, ff.sw * 2.5 * z, ff.sh * 2.5 * z, a); if (z >= 2 && cnt < 160) drawRef(lg, ff, sx, sy, ff.sw * 7 * z, ff.sh * 7 * z, a * 0.2); cnt++; } }   // B5: a soft bloom round each firefly at 2×
-      // lightning bloom
+      for (let k = 0; k < hazeN; k++) { const hr = hazeR[k], ha = hazeA[k] * nightA; bb(g, 'haze', lightCol('lamp'), hazeX[k], hazeY[k] + hr * 0.1, hr * 1.3, hr * 0.7, ha, sc); }   // one cached 'haze' blob: a pale veil under a warm pool (the two blits of the first H5 draft cost a full-screen scaled blend each)
+      // fireflies: a soft dot that blinks (sin on life); drawn from the pool (a firefly is also a 1-px world particle by day)
+      let cnt = 0; const capF = (z < 1 ? (PR.fireflyHalfCap || 300) : 2000), fcol = lightCol('firefly');
+      for (let i = 0; i < alive && cnt < capF; i++) {
+        if (ptype[i] !== TID.firefly || pscreen[i]) continue; const a = 0.5 + 0.5 * Math.sin(plife[i] * 0.005 + i); if (a < 0.15) continue;
+        const sx = (px[i] - cam.x) * z + vw / 2, sy = (py[i] - pz[i] - cam.y) * z + vh / 2; if (sx < -8 || sx > vw + 8 || sy < -8 || sy > vh + 8) continue;
+        bb(g, 'dot', fcol, sx, sy, 5 * z, 5 * z, a * nightA, sc);
+        if (z >= 2 && cnt < 160) bb(g, 'halo', fcol, sx, sy, 14 * z, 14 * z, a * 0.2 * nightA, sc);   // B5: a soft bloom round each firefly at 2×
+        cnt++;
+      }
+      // lightning bloom (not scaled by the night: the sky itself flashes)
       const now = nowMs();
-      if (now < flashUntil) { const fs = ensureFogSprite(); const k = (flashUntil - now) / (PR.lightningMs || 250); if (fs) { lg.globalAlpha = k; lg.drawImage(fs, boltTipX - 160, boltTipY - 80, 320, 160); lg.globalAlpha = k * 0.8; lg.drawImage(fs, boltTipX - 70, boltTipY - 35, 140, 70); } }
-      lg.setTransform(1, 0, 0, 1, 0, 0); lg.globalCompositeOperation = 'source-over'; lg.globalAlpha = 1;
-      // composite onto the world
-      g.globalCompositeOperation = 'lighter'; g.globalAlpha = nightA; g.imageSmoothingEnabled = true;
-      g.drawImage(lc, 0, 0, lc.width, lc.height, 0, 0, vw, vh);
-      g.imageSmoothingEnabled = false; g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1;
+      if (now < flashUntil) { const k = (flashUntil - now) / (PR.lightningMs || 250); bb(g, 'halo', '#DCE4E8', boltTipX, boltTipY, 160, 80, k * nightA, sc); bb(g, 'halo', '#DCE4E8', boltTipX, boltTipY, 70, 35, k * 0.8 * nightA, sc); }
+      g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1; g.imageSmoothingEnabled = false;
     } catch (e) { try { g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1; } catch (e2) { /* stub */ } ferr('lights', e); }
   }
 
@@ -1053,22 +1074,9 @@
   const fogTex = [[null, null, null], [null, null, null], [null, null, null], [null, null, null]]; let fogTexTried = false;
   function ensureFogTex() {
     if (fogTexTried) return fogTex[0][0]; fogTexTried = true;
-    try {
-      for (let p = 0; p < 4; p++) for (let v = 0; v < 3; v++) {
-        const c = document.createElement('canvas'); c.width = 128; c.height = 64; const g = c.getContext('2d'); if (!g) return null;
-        const col = FOG_PAL[p];
-        g.save(); g.scale(1, 0.5);
-        for (let b = 0; b < 7; b++) {
-          const h = hash(v * 31 + b, 977 + p * 7), cx = 22 + b * 14 + ((h & 15) - 8) * 1.2, cy = 64 + (((h >> 4) & 15) - 8) * 2.2, r = 22 + ((h >> 8) & 15) * 1.4, a = 0.3 + 0.14 * (((h >> 12) & 7) / 7);
-          const gr = g.createRadialGradient(cx, cy, 0, cx, cy, r);
-          gr.addColorStop(0, 'rgba(' + col[0] + ',' + col[1] + ',' + col[2] + ',' + a.toFixed(3) + ')'); gr.addColorStop(0.55, 'rgba(' + col[0] + ',' + col[1] + ',' + col[2] + ',' + (a * 0.4).toFixed(3) + ')'); gr.addColorStop(1, 'rgba(' + col[0] + ',' + col[1] + ',' + col[2] + ',0)');
-          g.fillStyle = gr; g.fillRect(0, 0, 128, 128);
-        }
-        g.globalCompositeOperation = 'destination-in';
-        const mk = g.createRadialGradient(64, 64, 0, 64, 64, 64); mk.addColorStop(0, 'rgba(0,0,0,1)'); mk.addColorStop(0.5, 'rgba(0,0,0,0.9)'); mk.addColorStop(1, 'rgba(0,0,0,0)');
-        g.fillStyle = mk; g.fillRect(0, 0, 128, 128); g.restore();
-        fogTex[p][v] = c;
-      }
+    try {   // H5: the 12 wisp sheets are brush 'fog' blobs (seven soft lumps under an elliptical mask) baked once at 272 × 136 — twice the B5 resolution
+      const BR = BSU.brush; if (!BR || typeof BR.blob !== 'function') return null;
+      for (let p = 0; p < 4; p++) for (let v = 0; v < 3; v++) { const b = BR.blob('fog', FOG_PAL[p].join(','), 136, 68, { seed: v + 1 }); fogTex[p][v] = b ? b.canvas : null; }
     } catch (e) { for (let p = 0; p < 4; p++) for (let v = 0; v < 3; v++) fogTex[p][v] = null; }
     return fogTex[0][0];
   }
@@ -1083,18 +1091,6 @@
   }
   const FOG_N = 32;
   const wisps = []; for (let k = 0; k < FOG_N; k++) wisps.push({ tx: -1, ty: -1, ox: 0, oy: 0, s: 1, ph: 0, ttl: 0, age: 0, layer: 0, v: 0 });
-  function ensureFogSprite() {
-    if (fogSprite || fogSpriteTried) return fogSprite; fogSpriteTried = true;
-    try {
-      const c = document.createElement('canvas'); c.width = 128; c.height = 64; const g = c.getContext('2d'); if (!g) return null;
-      g.save(); g.scale(1, 0.5);
-      const grad = g.createRadialGradient(64, 64, 0, 64, 64, 64);
-      grad.addColorStop(0, 'rgba(220,228,232,0.5)'); grad.addColorStop(0.4, 'rgba(210,220,226,0.24)'); grad.addColorStop(0.75, 'rgba(205,215,224,0.07)'); grad.addColorStop(1, 'rgba(200,210,220,0)');
-      g.fillStyle = grad; g.fillRect(0, 0, 128, 128); g.restore();
-      fogSprite = c;
-    } catch (e) { fogSprite = null; }
-    return fogSprite;
-  }
   function respawnWisp(wp, state, view) {
     const r = rng(), x0 = view.x0 | 0, y0 = view.y0 | 0, spanX = Math.max(1, (view.x1 | 0) - x0 + 1), spanY = Math.max(1, (view.y1 | 0) - y0 + 1);
     for (let k = 0; k < 14; k++) {
@@ -1106,11 +1102,26 @@
     }
     wp.ttl = 400;   // nothing wet in view: retry soon
   }
+  // H5: the night vignette is ONE smooth canvas (brush.blob 'vignette': clear in the middle, dark toward the edges and corners) stretched ONCE to the frame's device
+  // size and blitted 1:1 in four slabs around its transparent centre (a scaled bilinear blit of the same image costs ~7× more in software raster). B5's 24 stacked
+  // bands stepped visibly; this does not.
+  let vigC = null, vigW = 0, vigH = 0;
+  function drawVignette(g, vw, vh, dpr, a) {
+    const BR = BSU.brush, w = Math.max(1, Math.round(vw * dpr)), h = Math.max(1, Math.round(vh * dpr));
+    if (!vigC || vigW !== w || vigH !== h) {
+      const vb = BR && typeof BR.blob === 'function' ? BR.blob('vignette', '#05061A', 160, 100) : null; if (!vb) return;
+      try { const SP = mod('sprites'); if (vigC) { vigC.width = 1; vigC.height = 1; } vigC = SP.newCanvas(w, h); vigC.width = w; vigC.height = h; const vg = SP.ctx2d(vigC); vg.imageSmoothingEnabled = true; vg.drawImage(vb.canvas, 0, 0, w, h); vigW = w; vigH = h; } catch (e) { vigC = null; return; }
+    }
+    const tw = Math.round(h * 0.15) * 2, lw = Math.round(w * 0.15) * 2;   // the inscribed centre (≈ 16 % of the frame) is fully clear: skip it (even device px, so every slab lands on whole CSS px at dpr 2)
+    g.globalAlpha = a;
+    g.drawImage(vigC, 0, 0, w, tw, 0, 0, vw, tw / dpr); g.drawImage(vigC, 0, h - tw, w, tw, 0, vh - tw / dpr, vw, tw / dpr);
+    g.drawImage(vigC, 0, tw, lw, h - 2 * tw, 0, tw / dpr, lw / dpr, vh - 2 * tw / dpr); g.drawImage(vigC, w - lw, tw, lw, h - 2 * tw, vw - lw / dpr, tw / dpr, lw / dpr, vh - 2 * tw / dpr);
+    g.globalAlpha = 1;
+  }
   function passFog(state, g, view, alpha, dtMs) {
     const vw = view.vw, vh = view.vh, cam = camOf(state), z = cam.zoom || 1, wx = state.weather || {};
     const fog = clamp(fin(wx.fog, 0), 0, 1), s = readSky(state), nightA = nightAmount(state), storm = stormDarkness(state);
     const dt = clamp(fin(dtMs, 16.67), 0, 100), wind = clamp(fin(wx.wind, 0), 0, 1.5), windAngle = fin(wx.windAngle, 0);
-    const spr = ensureFogSprite();
     // mist over water and marsh (B5: two layers of soft volumes): strongest at dawn, burned off through the morning, back at dusk, steady at night, never in rain
     let mistA = FXO.fog ? mistFor(s.phase, s.t) : 0;
     mistA *= 1 - clamp(fin(wx.rainRate, 0), 0, 1); mistA *= 1 - storm;
@@ -1146,21 +1157,17 @@
     // weather fog: the flat layer (Tier 1) + 8 drifting blobs (Tier 2)
     if (fog > 0.01) {
       g.globalCompositeOperation = 'source-over'; g.globalAlpha = FOG_TINT.alpha * fog; g.fillStyle = FOG_TINT.color; g.fillRect(0, 0, vw, vh);
-      if (spr) {
-        for (let k = 0; k < fogBlobs.length; k++) {
-          const b = fogBlobs[k];
-          if (b.r <= 1) { const r = rng(); b.x = r.float() * vw; b.y = r.float() * vh; b.r = 180 + r.float() * 260; b.vx = 6 + r.float() * 10; b.ph = r.float() * 6.28; }
-          b.x += (b.vx + 40 * wind * Math.cos(windAngle)) * dt / 1000; b.ph += dt * 0.0004;
-          if (b.x - b.r > vw) b.x = -b.r; else if (b.x + b.r < 0) b.x = vw + b.r;
-          g.globalAlpha = 0.22 * fog * (0.75 + 0.25 * Math.sin(b.ph));
-          g.drawImage(spr, b.x - b.r, b.y - b.r / 2, b.r * 2, b.r);
-        }
+      for (let k = 0; k < fogBlobs.length; k++) {   // H5: eight drifting soft discs, the cached 'halo' blob (no gradient per frame)
+        const b = fogBlobs[k];
+        if (b.r <= 1) { const r = rng(); b.x = r.float() * vw; b.y = r.float() * vh; b.r = 180 + r.float() * 260; b.vx = 6 + r.float() * 10; b.ph = r.float() * 6.28; }
+        b.x += (b.vx + 40 * wind * Math.cos(windAngle)) * dt / 1000; b.ph += dt * 0.0004;
+        if (b.x - b.r > vw) b.x = -b.r; else if (b.x + b.r < 0) b.x = vw + b.r;
+        BSU.brush.drawBlob(g, 'halo', '#DCE4E8', b.x, b.y, b.r, b.r / 2, Math.min(1, 0.22 * fog * (0.75 + 0.25 * Math.sin(b.ph))), view.dpr || 1, { a: 0.5 });
       }
     }
     // night vignette: 4 edges × 6 stacked bands, up to .35 at Night
     if (nightA > 0.02) {
-      const steps = 6, depth = Math.round(Math.min(vw, vh) * 0.22); g.fillStyle = '#05061A';
-      for (let b = 0; b < steps; b++) { const a = 0.35 * nightA * ((b + 1) / steps) * ((b + 1) / steps) / 2.2, d = Math.round(depth * (1 - b / steps)); g.globalAlpha = a; g.fillRect(0, 0, vw, d); g.fillRect(0, vh - d, vw, d); g.fillRect(0, 0, d, vh); g.fillRect(vw - d, 0, d, vh); }
+      drawVignette(g, vw, vh, view.dpr || 1, nightA);
     }
     g.globalAlpha = 1; g.globalCompositeOperation = 'source-over';
   }
@@ -1191,12 +1198,12 @@
     if (cone && cone.points.length >= 4) {
       g.globalAlpha = 0.22 + 0.05 * Math.sin(frameNo * 0.08); g.fillStyle = '#8E2A5E'; g.beginPath();
       for (let k = 0; k < cone.points.length; k++) { const p = worldToScreenPx(cone.points[k].x, cone.points[k].y, cam, view); if (k === 0) g.moveTo(p.x, p.y); else g.lineTo(p.x, p.y); }
-      g.closePath(); g.fill(); g.globalAlpha = 0.5; g.strokeStyle = '#C94A8A'; g.lineWidth = 1; g.stroke();
+      g.closePath(); g.fill(); g.lineJoin = 'round'; g.strokeStyle = '#C94A8A'; g.lineWidth = 5; g.globalAlpha = 0.1; g.stroke(); g.lineWidth = 1; g.globalAlpha = 0.5; g.stroke(); g.lineJoin = 'miter';   // H5: a soft glow under the crisp rim
     }
     // the surge front: foam crest on the advancing edge (never a `front` array; D47)
     const hy = mod('hydro'), surge = state.hydro && state.hydro.surge;
     if (surge && hy && typeof hy.surgeReached === 'function' && typeof hy.surgeFrontDistance === 'function' && state.tiles) {
-      const reached = fin(surge.reached, 0); let drawn = 0; const t = state.tiles, r = rng();
+      const reached = fin(surge.reached, 0); let drawn = 0; const t = state.tiles, r = rng(), BR = BSU.brush, sc = view.dpr || 1;
       g.fillStyle = '#E8F2F8';
       for (let ty = view.y0 | 0; ty <= (view.y1 | 0) && drawn < 160; ty++) for (let tx = view.x0 | 0; tx <= (view.x1 | 0) && drawn < 160; tx++) {
         if (tx < 0 || ty < 0 || tx >= W || ty >= HGT) continue;
@@ -1206,8 +1213,9 @@
         const sx = (tileWorldX(tx, ty) - cam.x) * z + vw / 2, sy = (tileWorldY(tx, ty) - surf * PXFT - cam.y) * z + vh / 2;
         if (sx < -40 || sx > vw + 40 || sy < -20 || sy > vh + 20) continue;
         drawn++;
-        g.globalAlpha = 0.5 + 0.3 * Math.sin(frameNo * 0.2 + tx * 1.7 + ty);
-        g.fillRect(Math.round(sx - 22 * z), Math.round(sy - 3 * z), 44 * z, 2 * z); g.fillRect(Math.round(sx - 12 * z), Math.round(sy + 2 * z), 24 * z, z);
+        const fa = 0.5 + 0.3 * Math.sin(frameNo * 0.2 + tx * 1.7 + ty);   // H5: two cached soft foam streaks per crest tile (were two hard bars)
+        const fh = (tx * 7 + ty * 13) & 3, fl = (14 + fh * 3) * z;   // the streak length varies by tile
+        if (!(BR.drawBlob(g, 'foam', '#E8F2F8', sx + (fh - 1.5) * 2 * z, sy - 2 * z, fl, 1.7 * z, fa * 0.7, sc) && BR.drawBlob(g, 'foam', '#E8F2F8', sx + (1.5 - fh) * 3 * z, sy + 2.5 * z, fl * 0.55, 1.2 * z, fa * 0.55, sc))) { g.globalAlpha = fa; g.fillRect(sx - 22 * z, sy - 3 * z, 44 * z, 2 * z); }
         if (r.float() < 0.05) emit('foam', tileWorldX(tx, ty), tileWorldY(tx, ty), 2, { spread: 20, z: surf * PXFT + 2, vz: 25, life: 500 });
       }
     }
@@ -1234,7 +1242,7 @@
     const now = nowMs();
     if (now < perfChipUntil) {
       const a = clamp((perfChipUntil - now) / 800, 0, 1), x = view.vw - 176, y = 52;
-      g.globalAlpha = 0.85 * a; g.fillStyle = PAL.panel || '#1A1230'; g.fillRect(x, y, 164, 26); g.fillStyle = GOLD; g.fillRect(x, y, 3, 26);
+      g.globalAlpha = 0.85 * a; g.fillStyle = PAL.panel || '#1A1230'; rrect(g, x, y, 164, 26, 7); g.fill(); g.save(); rrect(g, x, y, 164, 26, 7); g.clip(); g.fillStyle = GOLD; g.fillRect(x, y, 3, 26); g.restore();
       g.globalAlpha = a; g.fillStyle = PAL.text || '#F4EEE2'; g.font = '12px system-ui, sans-serif'; g.textBaseline = 'middle'; g.fillText('Performance mode', x + 12, y + 13);
       g.globalAlpha = 1;
     }
@@ -1423,6 +1431,8 @@
   }
   function issInFrame(x, y, f) { return x >= f.L && x <= f.R && y >= f.T && y <= f.B && !(x > f.rightCol && y < f.rightColH) && !(x < f.leftCol && y < f.leftColH); }
   const issGroups = {};
+  /** H5: a rounded-rectangle path (arcTo, so it works everywhere ctx.roundRect does not) */
+  function rrect(g, x, y, w, h, r) { r = Math.min(r, w / 2, h / 2); g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); }
   /** simple glyphs, r = half size in px: bolt, drop, wave, crack, gator (eye), link, mosquito, sandbag, crowd */
   function drawIssueGlyph(g, kind, cx, cy, r, color) {
     g.save(); g.translate(cx, cy); g.scale(r, r); g.lineCap = 'round'; g.lineJoin = 'round'; g.fillStyle = color; g.strokeStyle = color; g.lineWidth = 0.22;
@@ -1464,8 +1474,8 @@
       const isSel = sel && sel.id === it.id, br = pulsing ? brP : brA, single = !it.rect && it.tiles && it.tiles.length <= 1;
       const col = it.color || '#FDD023', pad = (2 + 3 * br) * z + (pulsing ? 6 + 4 * br : 0) + (isSel ? 2 : 0) + (single ? 3 * z : 0) + gi * 3.5 * Math.max(0.75, z);
       // ring: a soft outer glow (skipped in perf mode) and the crisp outline; a faint wash inside the first ring of a footprint
-      g.beginPath(); issOutlinePath(g, it, z, pad);
-      if (!perf && (gi === 0 || isSel)) { g.globalAlpha = (pulsing ? 0.5 : 0.22) + 0.25 * br; g.strokeStyle = col; g.lineWidth = (pulsing ? 12 : 9) * Math.max(0.75, z); g.stroke(); }
+      g.beginPath(); issOutlinePath(g, it, z, pad); g.lineJoin = 'round'; g.lineCap = 'round';   // H5: round joins / caps, an extra soft halo under the glow
+      if (!perf && (gi === 0 || isSel)) { g.globalAlpha = (pulsing ? 0.5 : 0.22) + 0.25 * br; g.strokeStyle = col; g.lineWidth = (pulsing ? 12 : 9) * Math.max(0.75, z); g.stroke(); g.globalAlpha = 0.1 + 0.08 * br; g.lineWidth = (pulsing ? 22 : 17) * Math.max(0.75, z); g.stroke(); }
       g.globalAlpha = 0.75 + 0.25 * br; g.strokeStyle = col; g.lineWidth = isSel || pulsing ? 3 : 2; g.stroke();
       if (gi === 0 || pulsing) { g.globalAlpha = (isSel || pulsing ? 0.14 : 0.07) + 0.08 * br; g.fillStyle = col; g.fill(); }
       // light column from the anchor up to the glyph disc (stacked issues fan out left / right)
@@ -1502,10 +1512,10 @@
     g.font = '12px system-ui, -apple-system, "Segoe UI", sans-serif'; for (const l of fix) bw = Math.max(bw, g.measureText(l).width); g.font = '11px system-ui, -apple-system, "Segoe UI", sans-serif'; bw = Math.max(bw, g.measureText(hint).width);
     bw = Math.min(260, bw + 26); const bh = 10 + title.length * 17 + fix.length * 15 + 16;
     let bx = ax + 24, by = iy - bh / 2; if (bx + bw > f.rightCol - 8 && iy < f.rightColH) bx = ax - 24 - bw; else if (bx + bw > view.vw - 8) bx = ax - 24 - bw; by = clamp(by, f.T, Math.max(f.T, f.B - bh));
-    g.globalAlpha = 0.96; g.fillStyle = 'rgba(26,18,48,.95)'; g.fillRect(bx, by, bw, bh); g.strokeStyle = issRgba(col, 0.9); g.lineWidth = 1; g.strokeRect(bx + 0.5, by + 0.5, bw - 1, bh - 1);
-    g.fillStyle = col; g.fillRect(bx, by, 4, bh);
+    g.globalAlpha = 0.96; g.fillStyle = 'rgba(26,18,48,.95)'; rrect(g, bx, by, bw, bh, 6); g.fill(); g.strokeStyle = issRgba(col, 0.9); g.lineWidth = 1; g.lineJoin = 'round'; rrect(g, bx + 0.5, by + 0.5, bw - 1, bh - 1, 5.5); g.stroke();   // H5: rounded corners, anti-aliased
+    g.save(); rrect(g, bx, by, bw, bh, 6); g.clip(); g.fillStyle = col; g.fillRect(bx, by, 4, bh); g.restore();
     // a connector from the box to the icon
-    g.strokeStyle = issRgba(col, 0.7); g.lineWidth = 1.5; g.beginPath(); g.moveTo(bx > ax ? bx : bx + bw, by + Math.min(bh - 6, 18)); g.lineTo(ax + (bx > ax ? 14 : -14), iy); g.stroke();
+    g.strokeStyle = issRgba(col, 0.7); g.lineWidth = 1.5; g.lineCap = 'round'; g.beginPath(); g.moveTo(bx > ax ? bx : bx + bw, by + Math.min(bh - 6, 18)); g.lineTo(ax + (bx > ax ? 14 : -14), iy); g.stroke(); g.lineCap = 'butt';
     g.textBaseline = 'top'; g.textAlign = 'left'; let ty = by + 8; const tx = bx + 14;
     g.fillStyle = '#F4EEE2'; g.font = 'bold 13px system-ui, -apple-system, "Segoe UI", sans-serif'; for (const l of title) { g.fillText(l, tx, ty); ty += 17; }
     g.fillStyle = col; g.font = '12px system-ui, -apple-system, "Segoe UI", sans-serif'; for (const l of fix) { g.fillText(l, tx, ty); ty += 15; }
@@ -1537,14 +1547,14 @@
       const dist = Math.round(BSU.chebyshev(fin(a.tx, 32), fin(a.ty, 32), camT, camU));
       // triangle pointing outward
       g.globalAlpha = 0.75 + 0.25 * br; g.fillStyle = col; g.beginPath(); g.moveTo(ex + dx * 10, ey + dy * 10); g.lineTo(ex - dy * 7, ey + dx * 7); g.lineTo(ex + dy * 7, ey - dx * 7); g.closePath(); g.fill();
-      g.strokeStyle = 'rgba(12,8,28,.9)'; g.lineWidth = 1; g.stroke();
+      g.strokeStyle = 'rgba(12,8,28,.9)'; g.lineWidth = 1; g.lineJoin = 'round'; g.stroke();
       issIconDisc(g, it.glyph || 'link', col, ex - dx * 16, ey - dy * 16, isSel ? 12 : 10, 0.95);
-      if (dist > 0 && !isSel) { g.globalAlpha = 0.95; g.font = 'bold 10px system-ui, -apple-system, "Segoe UI", sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; const lx = ex - dx * 36, ly = ey - dy * 36; const tw = g.measureText(dist + 't').width + 8; g.fillStyle = 'rgba(12,8,28,.85)'; g.fillRect(lx - tw / 2, ly - 7, tw, 14); g.fillStyle = col; g.fillText(dist + 't', lx, ly); g.textAlign = 'left'; g.textBaseline = 'alphabetic'; }
+      if (dist > 0 && !isSel) { g.globalAlpha = 0.95; g.font = 'bold 10px system-ui, -apple-system, "Segoe UI", sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; const lx = ex - dx * 36, ly = ey - dy * 36; const tw = g.measureText(dist + 't').width + 8; g.fillStyle = 'rgba(12,8,28,.85)'; rrect(g, lx - tw / 2, ly - 7, tw, 14, 5); g.fill(); g.fillStyle = col; g.fillText(dist + 't', lx, ly); g.textAlign = 'left'; g.textBaseline = 'alphabetic'; }
       if (isSel) {   // the selected issue is off-screen: its title rides with the arrow
         g.font = 'bold 12px system-ui, -apple-system, "Segoe UI", sans-serif'; const tt = String(it.title) + (dist > 0 ? ' · ' + dist + ' tiles' : ''), tw = g.measureText(tt).width + 14;
         let lx = ex - dx * 34 - tw / 2, ly = ey - dy * 34 - 9; if (Math.abs(dy) < 0.7) { lx = dx > 0 ? ex - 48 - tw : ex + 48; }   // side arrows: the box sits beside the disc; top / bottom arrows: inward of it
         lx = clamp(lx, f.L, view.vw - tw - 8); ly = clamp(ly, f.T, f.B - 18);
-        g.globalAlpha = 0.95; g.fillStyle = 'rgba(26,18,48,.95)'; g.fillRect(lx, ly, tw, 18); g.strokeStyle = issRgba(col, 0.9); g.lineWidth = 1; g.strokeRect(lx + 0.5, ly + 0.5, tw - 1, 17); g.fillStyle = '#F4EEE2'; g.textBaseline = 'middle'; g.fillText(tt, lx + 7, ly + 9); g.textBaseline = 'alphabetic';
+        g.globalAlpha = 0.95; g.fillStyle = 'rgba(26,18,48,.95)'; rrect(g, lx, ly, tw, 18, 6); g.fill(); g.strokeStyle = issRgba(col, 0.9); g.lineWidth = 1; g.lineJoin = 'round'; rrect(g, lx + 0.5, ly + 0.5, tw - 1, 17, 5.5); g.stroke(); g.fillStyle = '#F4EEE2'; g.textBaseline = 'middle'; g.fillText(tt, lx + 7, ly + 9); g.textBaseline = 'alphabetic';
       }
     }
     g.globalAlpha = 1;
@@ -1610,12 +1620,12 @@
         // 1. the sheen: one fill over every connected surface in view
         g.beginPath(); let n = 0;
         for (let ty = y0; ty <= y1; ty++) for (let tx = x0; tx <= x1; tx++) { const i = ty * W + tx; if (!netAccess(surf[i]) || !conn[i]) continue; netDiamond(g, i, z, 0); n++; }
-        if (n) { g.globalAlpha = 1; g.fillStyle = NET_GREEN + '0.34)'; g.fill(); g.strokeStyle = 'rgba(150,255,190,0.6)'; g.lineWidth = Math.max(1, 0.9 * z); g.stroke(); }
+        if (n) { g.globalAlpha = 1; g.fillStyle = NET_GREEN + '0.34)'; g.fill(); g.lineJoin = 'round'; g.strokeStyle = 'rgba(150,255,190,0.16)'; g.lineWidth = Math.max(3, 3.4 * z); g.stroke(); g.strokeStyle = 'rgba(150,255,190,0.6)'; g.lineWidth = Math.max(1, 0.9 * z); g.stroke(); }   // H5: a soft halo under the rim, round joins
         netStats.sheen = n;
         // 2. the amber dash on runs that do not reach the hall
         g.beginPath(); let m = 0;
         for (let ty = y0; ty <= y1; ty++) for (let tx = x0; tx <= x1; tx++) { const i = ty * W + tx; if (!netAccess(surf[i]) || conn[i]) continue; netDiamond(g, i, z, 1.5 * z); m++; }
-        if (m) { g.fillStyle = NET_AMBER + '0.14)'; g.fill(); g.setLineDash([4 * z, 3 * z]); g.lineDashOffset = -((nowMs() / 60) % 7) * z; g.strokeStyle = NET_AMBER + '0.95)'; g.lineWidth = Math.max(1, 1.2 * z); g.stroke(); g.setLineDash([]); g.lineDashOffset = 0; }
+        if (m) { g.fillStyle = NET_AMBER + '0.14)'; g.fill(); g.lineJoin = 'round'; g.lineCap = 'round'; g.setLineDash([3.4 * z, 3.6 * z]); g.lineDashOffset = -((nowMs() / 60) % 7) * z; g.strokeStyle = NET_AMBER + '0.95)'; g.lineWidth = Math.max(1.1, 1.3 * z); g.stroke(); g.setLineDash([]); g.lineDashOffset = 0; g.lineCap = 'butt'; }   // H5: round-capped dashes
         netStats.dashed = m;
         // 3. the Campus hub badge over Founders' Hall
         const hall = (typeof B.list === 'function' ? (B.list(state, 'founders_hall') || []) : [])[0];
@@ -1633,7 +1643,8 @@
     const label = 'Campus hub', tw = fin(g.measureText(label).width, 60), w = tw + 16, h = fs + 10, x = px - w / 2, y = py - h;
     if (x > view.vw + 20 || x + w < -20 || y > view.vh + 20 || y + h < -40) { g.textAlign = 'left'; g.textBaseline = 'alphabetic'; return false; }
     g.globalAlpha = 0.96; g.fillStyle = NET_GOLD + '1)'; g.strokeStyle = 'rgba(70,29,124,0.9)'; g.lineWidth = 1;
-    g.beginPath(); g.moveTo(x + 4, y); g.lineTo(x + w - 4, y); g.lineTo(x + w, y + 4); g.lineTo(x + w, y + h - 4); g.lineTo(x + w - 4, y + h); g.lineTo(px + 5, y + h); g.lineTo(px, y + h + 6); g.lineTo(px - 5, y + h); g.lineTo(x + 4, y + h); g.lineTo(x, y + h - 4); g.lineTo(x, y + 4); g.closePath(); g.fill(); g.stroke();
+    const rb = Math.min(6, h / 2), tx0 = clamp(px - 5, x + rb, x + w - rb - 10);   // H5: rounded corners (arcTo), the tail points down at px
+    g.lineJoin = 'round'; g.beginPath(); g.moveTo(x + rb, y); g.arcTo(x + w, y, x + w, y + h, rb); g.arcTo(x + w, y + h, x, y + h, rb); g.lineTo(tx0 + 10, y + h); g.lineTo(px, y + h + 6); g.lineTo(tx0, y + h); g.arcTo(x, y + h, x, y, rb); g.arcTo(x, y, x + w, y, rb); g.closePath(); g.fill(); g.stroke();
     g.fillStyle = '#461D7C'; g.fillText(label, px, y + h / 2 + 0.5);
     g.globalAlpha = 1; g.textAlign = 'left'; g.textBaseline = 'alphabetic';
     return true;
@@ -1645,11 +1656,11 @@
     for (let k = 0; k < tiles.length; k++) { const i = tiles[k] | 0; if (i < 0 || i >= N) continue; netDiamond(g, i, z, 2 * z); n++; }
     if (!n) return 0;
     g.globalAlpha = 1; g.fillStyle = NET_GOLD + '0.16)'; g.fill();
-    g.setLineDash([5 * z, 4 * z]); g.lineDashOffset = -((nowMs() / 50) % 9) * z; g.strokeStyle = spec.snap ? 'rgba(140,235,170,0.95)' : NET_GOLD + '0.95)'; g.lineWidth = Math.max(1, 1.5 * z); g.stroke();
+    g.lineJoin = 'round'; g.lineCap = 'round'; g.setLineDash([4 * z, 4.5 * z]); g.lineDashOffset = -((nowMs() / 50) % 9) * z; g.strokeStyle = spec.snap ? 'rgba(140,235,170,0.95)' : NET_GOLD + '0.95)'; g.lineWidth = Math.max(1.1, 1.6 * z); g.stroke();   // H5: round-capped dashes, round joins
     if (sf) {
       g.beginPath(); let w = 0;
       for (let k = 0; k < tiles.length; k++) { if (sf[k] !== 'boardwalk') continue; const i = tiles[k] | 0; if (i < 0 || i >= N) continue; netDiamond(g, i, z, 6 * z); w++; }
-      if (w) { g.setLineDash([3 * z, 3 * z]); g.strokeStyle = 'rgba(201,160,99,0.95)'; g.lineWidth = Math.max(1, 1.2 * z); g.stroke(); }
+      if (w) { g.setLineDash([2.4 * z, 3.6 * z]); g.strokeStyle = 'rgba(201,160,99,0.95)'; g.lineWidth = Math.max(1, 1.3 * z); g.stroke(); }
     }
     g.beginPath();
     for (let k = 0; k < tiles.length; k++) { const i = tiles[k] | 0; if (i < 0 || i >= N) continue; const p = R.tilePx(i); if (k === 0) g.moveTo(p.x, p.y); else g.lineTo(p.x, p.y); }
@@ -1705,7 +1716,8 @@
     chStats.sections = n;
     if (n) {
       g.globalAlpha = 1; g.fillStyle = CH_FILL; g.fill();
-      g.setLineDash([6 * z, 4 * z]); g.lineDashOffset = 0; g.strokeStyle = CH_LINE; g.lineWidth = Math.max(1, 1.2 * z); g.lineJoin = 'round'; g.stroke(); g.setLineDash([]);
+      g.lineJoin = 'round'; g.lineCap = 'round'; g.strokeStyle = CH_LINE; g.globalAlpha = 0.13; g.lineWidth = Math.max(3, 3.6 * z); g.stroke(); g.globalAlpha = 1;   // H5: a soft halo, then round-capped dashes
+      g.setLineDash([5 * z, 5 * z]); g.lineDashOffset = 0; g.lineWidth = Math.max(1, 1.3 * z); g.stroke(); g.setLineDash([]); g.lineCap = 'butt';
       if (z >= 1) {
         const fs = Math.round(11 * clamp(z, 1, 1.6)); g.font = '700 ' + fs + 'px system-ui, -apple-system, Segoe UI, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
         for (let k = 0; k < polys.length; k++) {
@@ -1717,7 +1729,7 @@
           const x = px - w / 2, y = py - h / 2;
           if (x > view.vw + 20 || x + w < -20 || y > view.vh + 20 || y + h < -20) continue;
           g.fillStyle = CH_PILL; g.strokeStyle = CH_LINE; g.lineWidth = 1;
-          g.beginPath(); g.moveTo(x + 4, y); g.lineTo(x + w - 4, y); g.lineTo(x + w, y + 4); g.lineTo(x + w, y + h - 4); g.lineTo(x + w - 4, y + h); g.lineTo(x + 4, y + h); g.lineTo(x, y + h - 4); g.lineTo(x, y + 4); g.closePath(); g.fill(); g.stroke();
+          rrect(g, x, y, w, h, 6); g.fill(); g.lineJoin = 'round'; g.stroke();   // H5: a rounded pill
           g.fillStyle = CH_TEXT; g.fillText('State land', px, line2 ? y + 6 + fs / 2 : py + 0.5);
           if (line2) { g.fillStyle = sec.locked ? '#F2C97D' : '#9FE8B6'; g.fillText(line2, px, y + 6 + fs + fs / 2 + 1); }
           chStats.labels++;
@@ -1732,16 +1744,16 @@
   R._network = { pass: passNetwork, tie: drawTiePreview, badge: drawHubBadge };
 
   // Passes (same-name registrations replace render's fallbacks for 'tint'; overlays/hud stay render's)
-  R.registerPass('weather', function (s, g, v, a, dt) { try { passWeather(s, g, v, a, dt); } finally { g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; } }, 5);
+  R.registerPass('weather', function (s, g, v, a, dt) { try { passWeather(s, g, v, a, dt); } finally { g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; g.lineCap = 'butt'; g.lineJoin = 'miter'; } }, 5);
   R.registerPass('tint', function (s, g, v) { try { passTint(s, g, v); } finally { g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; } }, 6);
   R.registerPass('lights', function (s, g, v) { try { passLights(s, g, v); } finally { g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; } }, 7);
-  R.registerPass('beacons', function (s, g, v) { try { passBeacons(s, g, v); } finally { g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; g.lineWidth = 1; } }, 7.5);   // issue spotlight pass
-  R.registerPass('spotlight', function (s, g, v) { try { passSpotlight(s, g, v); } finally { g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; g.lineWidth = 1; } }, 9.5);
-  R.registerPass('charter', function (s, g, v) { try { passCharter(s, g, v); } catch (e) { ferr('charter', e); } finally { g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; g.lineWidth = 1; g.lineJoin = 'miter'; try { g.setLineDash([]); g.lineDashOffset = 0; } catch (e2) { /* stub */ } } }, 6.5);   // L2: the state-land tint / dashed section boundary / label
-  R.registerPass('network', function (s, g, v) { try { passNetwork(s, g, v); } catch (e) { ferr('network', e); } finally { g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; g.lineWidth = 1; try { g.setLineDash([]); g.lineDashOffset = 0; } catch (e2) { /* stub */ } } }, 9.2);   // paths pass: sheen / amber dash / Campus hub badge / the dashed tie
+  R.registerPass('beacons', function (s, g, v) { try { passBeacons(s, g, v); } finally { g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; g.lineWidth = 1; g.lineCap = 'butt'; g.lineJoin = 'miter'; } }, 7.5);   // issue spotlight pass
+  R.registerPass('spotlight', function (s, g, v) { try { passSpotlight(s, g, v); } finally { g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; g.lineWidth = 1; g.lineCap = 'butt'; g.lineJoin = 'miter'; } }, 9.5);
+  R.registerPass('charter', function (s, g, v) { try { passCharter(s, g, v); } catch (e) { ferr('charter', e); } finally { g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; g.lineWidth = 1; g.lineCap = 'butt'; g.lineJoin = 'miter'; try { g.setLineDash([]); g.lineDashOffset = 0; } catch (e2) { /* stub */ } } }, 6.5);   // L2: the state-land tint / dashed section boundary / label
+  R.registerPass('network', function (s, g, v) { try { passNetwork(s, g, v); } catch (e) { ferr('network', e); } finally { g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; g.lineWidth = 1; g.lineCap = 'butt'; g.lineJoin = 'miter'; try { g.setLineDash([]); g.lineDashOffset = 0; } catch (e2) { /* stub */ } } }, 9.2);   // paths pass: sheen / amber dash / Campus hub badge / the dashed tie
   R.registerPass('fog', function (s, g, v, a, dt) { try { passFog(s, g, v, a, dt); } finally { g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; } }, 8);
   R.registerPass('fireworks', function (s, g, v) { try { passFireworks(s, g, v); } finally { g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; } }, 8.2);
-  R.registerPass('storm', function (s, g, v, a, dt) { try { passStorm(s, g, v, a, dt); } finally { g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; } }, 8.5);
+  R.registerPass('storm', function (s, g, v, a, dt) { try { passStorm(s, g, v, a, dt); } finally { g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; g.lineCap = 'butt'; g.lineJoin = 'miter'; } }, 8.5);
   R.registerPass('fxhud', function (s, g, v) { try { passFxHud(s, g, v); } finally { g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; } }, 10.5);
   if (inited === false && R.ctx) { try { R._fxInit(); } catch (e) { ferr('lateInit', e); } }   // render.init already ran (manifest order safety)
 

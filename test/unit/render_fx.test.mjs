@@ -156,17 +156,16 @@ ok(!threw && BSU.errors.size === errs0, 'frames through a Cat 3 landfall and aft
   ok(R.fxStats().splashes >= 0 && R.fxStats().splashes <= 160, `splash pool within its cap (${R.fxStats().splashes} ≤ 160)`);
   s.weather.rainRate = 0; s.weather.event = null; for (let k = 0; k < 120; k++) H.render();
   ok(R.fxStats().wet < wetRain, 'puddles shrink after the rain stops');
-  // contact AO: a recording context sees two nested strips per building, the SE face only in the narrow strip while the cast shadow covers it
-  const rec = { n: {}, fills: [] }; const g = new Proxy({}, { get: (t, k) => (k in t ? t[k] : (...a) => { rec.n[k] = (rec.n[k] || 0) + 1; if (k === 'fill') rec.fills.push(t.globalAlpha); }), set: (t, k, v) => { t[k] = v; return true; } });
+  // contact AO (H5): the three round-capped strokes are baked once per geometry / zoom into a strip and blitted 1:1 per building (alpha = the sun / night amount); perf mode draws none
+  const rec = { n: {}, blits: [] }; const g = new Proxy({}, { get: (t, k) => (k in t ? t[k] : (...a) => { rec.n[k] = (rec.n[k] || 0) + 1; if (k === 'drawImage') rec.blits.push({ a: t.globalAlpha, w: a[3], h: a[4] }); }), set: (t, k, v) => { t[k] = v; return true; } });
   const lib = s.buildings.find((b) => b && b.type === 'founders_hall'); ok(!!lib, "the Founders' Hall exists"); lib.built = 1;
   const ent = { kind: 'building', b: lib, variant: 0, sx: 400, sy: 300 };
   R._fxPuddleWet(0); H.render();
-  const run = (sha, perf) => { rec.n = {}; rec.fills = []; R.groundFx(s, g, [], 0, { shAlpha: sha, perfMode: perf }); const f0 = rec.fills.length; rec.n = {}; R.entityFx(ent, g); return { fills: rec.fills.length - f0, moves: rec.n.moveTo || 0, a: rec.fills.slice(f0) }; };
-  const day = run(0.22, false), night = run(0.07, false), perf = run(0.22, true);
-  ok(day.fills === 2 && day.moves === 3, `AO by day: 2 fills, 3 polygons (wide SW + narrow SW/SE) — got ${day.fills}/${day.moves}`);
-  ok(night.fills === 2 && night.moves === 4, `AO at night: 2 fills, 4 polygons (both faces in both strips) — got ${night.fills}/${night.moves}`);
-  ok(perf.fills === 0, 'perf mode draws no AO');
-  ok(day.a.every((a) => a > 0 && a < 0.4) && day.a[0] < day.a[1], `AO alphas are soft and the narrow strip is the darker (${day.a.map((a) => a.toFixed(2))})`);
+  const run = (sha, perf) => { rec.n = {}; rec.blits = []; R.groundFx(s, g, [], 0, { shAlpha: sha, perfMode: perf }); const f0 = rec.blits.length; rec.n = {}; R.entityFx(ent, g); return { blits: rec.blits.length - f0, st: rec.blits.slice(f0), fills: rec.n.fill || 0, strokes: rec.n.stroke || 0 }; };
+  const day = run(0.22, false), night = run(0.07, false), perf = run(0.22, true), day2 = run(0.22, false);
+  ok(day.blits === 1 && night.blits === 1 && day.fills === 0 && day.strokes === 0, `AO: one baked-strip blit per building, no fill / stroke at draw time (${day.blits} / ${night.blits} blits, ${day.strokes} strokes)`);
+  ok(perf.blits === 0, 'perf mode draws no AO');
+  ok(day.st[0].a > 0 && day.st[0].a <= 1 && night.st[0].a > 0 && night.st[0].a < day.st[0].a + 1e-9 && day.st[0].w > 20 && day.st[0].h > 8 && day2.st[0].w === day.st[0].w, `AO strip is a soft, fixed-size sprite scaled in alpha only (day ${day.st[0].a.toFixed(2)}, night ${night.st[0].a.toFixed(2)}, ${day.st[0].w.toFixed(0)} × ${day.st[0].h.toFixed(0)} px)`);
   const before = BSU.errors.size; R.entityFx({ kind: 'building', b: null, variant: 0, sx: 0, sy: 0 }, g); R.entityFx({ kind: 'building', b: lib, variant: BSU.SPR.RUIN, sx: 0, sy: 0 }, g);
   ok(BSU.errors.size === before, 'entityFx tolerates a missing building and ruins');
   // perf mode: no puddles, no AO, splash cap halves
