@@ -66,6 +66,7 @@ ok(U.uiScaleEffective() >= 1 && U.uiScaleEffective() < 1.15 && U.el.minimap.widt
 ok(U.setUiScale(130) === 1.3 && U.setUiScale(0.9) === 0.9 && U.setUiScale('junk') === 1 && U.setUiScale(1.04) === 1, 'setUiScale snaps percent / fraction / junk to an offered size');
 ok(U.el.minimap.width === 200, 'back at 100 % the minimap canvas is 200 px');
 const cssScale = css.replace(/\/\*[\s\S]*?\*\//g, '');
+ok(/#topbar\.tightest \.tb,#topbar\.bare \.tb\{min-width:3\.2rem;padding:0 \.8rem\}/.test(cssScale) && /#topbar\.tightest \.speed-btn,#topbar\.bare \.speed-btn\{min-width:2\.8rem\}/.test(cssScale) && /#topbar\.bare #date-chip\{display:none\}/.test(cssScale), 'H7: the top bar squeezes its buttons from the tightest step (the compact HUD, whose capacity chip is folded away, keeps the date chip at 1440 px); only `bare` drops the date');
 ok(/html\{font-size:calc\(1rem \* var\(--ui-scale|html\{font-size:calc\(10px \* var\(--ui-scale/.test(cssScale), 'html font-size follows --ui-scale (all lengths are rem)');
 ok(!/--topbar-h:\s*\d+px/.test(cssScale) && /--topbar-h:\s*5\.6rem/.test(cssScale) && /--palette-h:\s*18rem/.test(cssScale), 'layout tokens are rem: topbar 56 px, palette 180 px at 100 % (palette pass)');
 // --- P5 centred UI: smart default scale by window width, the title-screen Display size choice, layout rules ---
@@ -142,12 +143,32 @@ ok(U.keydown('Escape', M0) === true && !U.buildMenuOpen() && U.el['build-menu'].
 U.openBuildMenu(s, { focus: 'dorm', pulse: true }); U.update(s, 16);
 ok(U.buildMenuOpen() && s.ui.paletteTab === 'essentials' && U.el.bmCards.dorm && U.el.bmCards.dorm.classList.contains('pulse'), 'openBuildMenu({focus:dorm}) lands on Essentials and pulses the Dorm card');
 U.closeBuildMenu();
+// H7: opening the menu on a tab whose category button is below the list's fold scrolls the list (never scrollIntoView: it shifts the fixed #app)
+{
+  const proto = Object.getPrototypeOf(U.el['bm-cats']), gb0 = proto.getBoundingClientRect, hasOwn = Object.prototype.hasOwnProperty.call(proto, 'getBoundingClientRect');
+  proto.getBoundingClientRect = function () {
+    if (this.id === 'bm-cats') return { x: 0, y: 100, left: 0, top: 100, right: 200, bottom: 300, width: 200, height: 200 };
+    if (this.classList && this.classList.contains('bm-cat')) { const k = Array.from(U.el['bm-cats'].children).indexOf(this); const t = 100 + k * 50 - (U.el['bm-cats'].scrollTop || 0); return { x: 0, y: t, left: 0, top: t, right: 200, bottom: t + 44, width: 200, height: 44 }; }
+    return gb0.apply(this, arguments);
+  };
+  try {
+    U.el['bm-cats'].scrollTop = 0; U.closeBuildMenu(); const tabs = Object.keys(U.el.bmCats || {});
+    U.openBuildMenu(s, { tab: 'essentials' }); const st0 = U.el['bm-cats'].scrollTop || 0;
+    U.openBuildMenu(s, { tab: 'swamp' }); const st1 = U.el['bm-cats'].scrollTop || 0, last = Object.keys(U.el.bmCats);
+    ok(st0 === 0 && (last.length < 5 || st1 > 0), 'opening the menu on a tab below the fold scrolls the category list to it (scrollTop ' + st0 + ' → ' + st1 + ', ' + last.length + ' categories)');
+    U.el['bm-cats'].scrollTop = 7; U.el['bm-cats'].dispatchEvent && 0; U.openBuildMenu(s, { tab: 'swamp' }); U._ux.refreshBuildMenu && U._ux.refreshBuildMenu(s);
+    ok(U.el['bm-cats'].scrollTop === 7 || U.el['bm-cats'].scrollTop === st1, 'a refresh on the same tab leaves a scrolled-away list where it is (' + U.el['bm-cats'].scrollTop + ')');
+    void tabs;
+  } finally { if (hasOwn) proto.getBoundingClientRect = gb0; else delete proto.getBoundingClientRect; }
+  U.openBuildMenu(s, { tab: 'essentials' }); U.closeBuildMenu();
+}
 const nd = U._ux.needsOf(s);
 ok(nd.terms.length === 5 && nd.terms.map((t) => t.key).join(',') === 'beds,seats,dining,power,water' && nd.binding && typeof nd.binding.text === 'string', 'needsOf: five gauges + a binding line (' + nd.binding.text + ')');
 BSU.economy.addStudents(s, 5000, 'debug'); U.update(s, 16);
 const nd2 = U._ux.needsOf(s); const reco = U._ux.recommend(s);
 ok(nd2.binding.level === 'bad' && /full|no power|no water/.test(nd2.binding.text) && nd2.binding.build && reco[nd2.binding.build] === 'Needed', '5,000 students: a hard constraint binds and its fix is recommended (' + nd2.binding.text + ')');
 ok(nd2.terms[0].used === nd2.students && nd2.terms[0].cap <= nd2.students, 'beds gauge reads students / capacity and is over capacity');
+ok(/\(5,\d{3} \/ [\d,]+\)/.test(nd2.binding.text) && !/\d{4,}/.test(nd2.binding.text.replace(/\d{1,3}(,\d{3})+/g, '')), 'H7: the binding line groups thousands (' + nd2.binding.text + ')');
 ok(U.el['needs-text'].textContent === nd2.binding.text && U.el['needs-text'].dataset.build === nd2.binding.build, 'needs strip shows the binding line');
 ok(U._ux.effectLines(BSU.data.catalog.dorm).some((l) => /300 beds/.test(l)) && U._ux.effectLines(BSU.data.catalog.stadium).some((l) => /Cauldron/.test(l)), 'effectLines: dorm beds, stadium tiers');
 // P7 housing tiers: the detail lines name the tier, the room fee and the parking spaces; a short purse points the beds fix at the economy tier

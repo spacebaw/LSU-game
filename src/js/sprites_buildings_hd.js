@@ -966,7 +966,7 @@
   // (sprites.HABITAT: the pool, the den, the glass and the plaza where Roux's route and the lights pass expect them).
   // ---------------------------------------------------------------------------
   const OWN_GROUND = { quad: 1, parking: 1, pond: 1, rookery: 1, batpole: 1, field: 1, stadium: 1, habitat: 1 };
-  const OWN_STATES = { habitat: 1 };   // dresses DAMAGED / BOARDED / FLOODED itself (the pen's OWN_STATES)
+  const OWN_STATES = { habitat: 1, stadium: 1 };   // dresses DAMAGED / BOARDED / FLOODED itself (the pen's OWN_STATES); H7: the stadium has its own too
   const RX = 45.25, RY = 22.63;        // the screen half-axes of a 1-tile ground circle
   /** footprint TILE coordinates (the pen's fpPt): (X, Y) tiles, `up` px — the stadium / field / habitat language */
   function fT(g, X, Y, up) { return fp(g, X * 32, Y * 32, up || 0); }
@@ -1024,11 +1024,26 @@
         if (j === steps - 1) { const e = alongX ? [fT(g, r.x0, c, l), fT(g, r.x1, c, l)] : [fT(g, c, r.y0, l), fT(g, c, r.y1, l)]; line(ctx, e[0], e[1], 1.2, C.gold, 0.2, 0.95); }
       }
       const e = alongX ? [fT(g, r.x0, innerC, hIn), fT(g, r.x1, innerC, hIn)] : [fT(g, innerC, r.y0, hIn), fT(g, innerC, r.y1, hIn)]; line(ctx, e[0], e[1], 1, C.gold, -0.5, 0.9);
+      if (g.floodLap) {   // H7 (FLOODED): the water laps the first tread and the foot of the first riser: a wet band with a pale edge
+        const lq = quad(innerC, innerC + dir * d, hIn, hIn); flat(ctx, lq, '#3E7C86', 0.05, 0.6); line(ctx, lq[0], lq[1], 0.8, C.white, 0.2, 0.55);
+        const wq2 = alongX ? quadT(g, [[r.x0, innerC, 0], [r.x1, innerC, 0], [r.x1, innerC, hIn], [r.x0, innerC, hIn]]) : quadT(g, [[innerC, r.y0, 0], [innerC, r.y1, 0], [innerC, r.y1, hIn], [innerC, r.y0, hIn]]);
+        B.edgeFade(ctx, wq2, wq2[0], wq2[1], Math.max(2, hIn), C.stain, -0.3, 0.6);
+      }
     }
   }
   /** a light mast: a braced steel pole `h` px tall from footprint (X, Y) lifted `base`, a bank of lamps on top (white-hot with a halo at night) */
-  function mast(ctx, g, X, Y, base, h, night, big, env) {
+  function mast(ctx, g, X, Y, base, h, night, big, env, bent) {
     const p = fT(g, X, Y, base), x = p[0], top = p[1] - h, lod0 = env.lod === 0;
+    if (bent) {   // H7 (DAMAGED): the pole leans and the lamp bank hangs dark from a cable at its tip
+      const lx = x + 5, ly = top + 7, bw = big ? 12 : 8, bh = big ? 5 : 4;
+      B.stroke(ctx, [[x, p[1]], [lx, ly]], big ? 2.6 : 2.2, C.steel, -0.1, 1, { cap: 'round' }); B.stroke(ctx, [[x - 0.4, p[1]], [lx - 0.4, ly]], 0.8, C.steel, 0.45, 0.8, { cap: 'round' });
+      B.orb(ctx, x, p[1], 2.6, 1.2, C.steel, -0.3, { noRim: true });
+      line(ctx, [lx, ly], [lx + 2, ly + 5], 0.7, C.iron, 0, 0.95);
+      const bank = [[lx + 2 - bw / 2 + 1, ly + 5 + bh + 2], [lx + 2 + bw / 2 + 1, ly + 5 + bh - 1], [lx + 2 + bw / 2 + 1, ly + 5 - 1], [lx + 2 - bw / 2 + 1, ly + 5 + 2]];
+      B.fillQuadShaded(ctx, bank, C.steel, { face: 'sw', material: 'metal', t: -0.3, noAO: true }, env);
+      for (let k = 1; k < bw - 1; k += 2) B.orb(ctx, lx + 2 - bw / 2 + 1 + k + 0.5, ly + 5 + 2.4 - k * 0.25, 0.6, 0.6, C.windowDark, 0, { noRim: true });
+      return;
+    }
     B.column(ctx, x, p[1], h - 3, big ? 1.6 : 1.3, C.steel, env);
     if (lod0) for (let y = top + 8; y < p[1] - 6; y += 8) { line(ctx, [x - 2, y + 2], [x + 2, y - 2], 0.5, C.steel, -0.3, 0.8); line(ctx, [x - 2, y - 2], [x + 2, y + 2], 0.5, C.steel, -0.3, 0.8); }
     B.orb(ctx, x, p[1], 2.6, 1.2, C.steel, -0.3, { noRim: true });
@@ -1062,7 +1077,8 @@
       for (let k = 0; k < n; k++) {
         const t0 = (k + 0.12) / n, t1 = (k + 0.88) / n;
         const pane = quadT(g, ax ? [[bd.r.x0 + len * t0, cm, zm - 4], [bd.r.x0 + len * t1, cm, zm - 4], [bd.r.x0 + len * t1, cm, zm + 3], [bd.r.x0 + len * t0, cm, zm + 3]] : [[cm, bd.r.y0 + len * t0, zm - 4], [cm, bd.r.y0 + len * t1, zm - 4], [cm, bd.r.y0 + len * t1, zm + 3], [cm, bd.r.y0 + len * t0, zm + 3]]);
-        if (night && (hash(g.seed | 0, 200 + k) % 5) !== 0) B.glow(ctx, pane, GLOWS[k % 4], env); else B.fillQuadShaded(ctx, pane, C.glass, { face: ax ? 'sw' : 'se', material: 'glass', noAO: true }, env);
+        if (g.boarded) B.fillQuadShaded(ctx, pane, C.plywood, { face: ax ? 'sw' : 'se', material: 'wood', noAO: true }, env);
+        else if (night && (hash(g.seed | 0, 200 + k) % 5) !== 0) B.glow(ctx, pane, GLOWS[k % 4], env); else B.fillQuadShaded(ctx, pane, C.glass, { face: ax ? 'sw' : 'se', material: 'glass', noAO: true }, env);
       }
       line(ctx, edge[0], edge[1], 1, C.concrete, 0.5, 0.9);
       return;
@@ -1126,9 +1142,20 @@
   function stadiumBody(ctx, g, frame, env) {
     const b = flatBody(g), fw = g.fw, fh = g.fh, night = g.night, tier = g.tier | 0;
     if (tier <= 0) return stadiumSite(ctx, g, 2, env);
+    const sv = g.variant | 0, dmg = !!(sv & SPR.DAMAGED), flood = !!(sv & FLOODED_BIT), board = !!(sv & SPR.BOARDED), seed = g.seed | 0;
+    g.floodLap = flood; g.boarded = board;   // read by stand() / stadiumBand()
     drawApron(ctx, g, APRON.lawnPlain, env, { lifted: g.lift > 0 });
     const G = M.stadiumGeom(tier, fw, fh);
     stadiumField(ctx, g, G.field, false, env);
+    if (flood) {   // H7: the bowl is a pond — the turf and its lines read through a teal film, a pale sheen and a few slow rings
+      const f = G.field, wq = quadT(g, [[f.x0 - 0.05, f.y0 - 0.05, 0.4], [f.x1 + 0.05, f.y0 - 0.05, 0.4], [f.x1 + 0.05, f.y1 + 0.05, 0.4], [f.x0 - 0.05, f.y1 + 0.05, 0.4]]);
+      flat(ctx, wq, '#3E7C86', 0.05, 0.74);
+      ctx.save(); B.poly(ctx, wq); ctx.clip();
+      for (let k = 0; k < 5; k++) { const a = fT(g, f.x0 + (f.x1 - f.x0) * (0.1 + 0.18 * k), f.y0 + (f.y1 - f.y0) * 0.12, 0.5), c = fT(g, f.x0 + (f.x1 - f.x0) * (0.2 + 0.18 * k), f.y0 + (f.y1 - f.y0) * 0.88, 0.5); line(ctx, a, c, 1.1, C.white, 0.3, 0.22); }
+      if (env.lod === 0) for (let k = 0; k < 7; k++) { const c = fT(g, f.x0 + (f.x1 - f.x0) * ((hash(seed, 300 + k) % 90) / 100 + 0.05), f.y0 + (f.y1 - f.y0) * ((hash(seed, 320 + k) % 80) / 100 + 0.1), 0.5); B.puddle(ctx, c[0], c[1], 7, 3, env, { t: -0.1, spec: 0.25, rim: 0.2 }); }
+      ctx.restore();
+      B.edgeFade(ctx, wq, wq[0], wq[1], 4, C.cool, -0.3, 0.4); B.edgeFade(ctx, wq, wq[0], wq[3], 4, C.cool, -0.3, 0.4);
+    }
     const farBands = G.bands.filter((d) => d.along === 'x'), endBands = G.bands.filter((d) => d.along === 'y');
     const decks = (inner, bands) => { const ds = G.stands.filter((s) => s.inner === inner).sort((p, q) => p.deck - q.deck); for (let k = 0; k < ds.length; k++) { if (k > 0 && bands[k - 1]) stadiumBand(ctx, g, bands[k - 1], night, env); const s = ds[k]; stand(ctx, g, s.r, s.inner, s.hIn, s.hOut, s.steps, night, env); } };
     decks('y1', farBands);
@@ -1138,11 +1165,11 @@
       B.fillQuadShaded(ctx, quadT(g, [[pb.x1, pb.y0, z0], [pb.x1, pb.y1, z0], [pb.x1, pb.y1, z1], [pb.x1, pb.y0, z1]]), C.concrete, { face: 'se', material: 'stone', noAO: true }, env);
       B.fillQuadShaded(ctx, quadT(g, [[pb.x0, pb.y0, z1], [pb.x1, pb.y0, z1], [pb.x1, pb.y1, z1], [pb.x0, pb.y1, z1]]), C.concrete, { face: 'top', material: 'stone', noAO: true }, env);
       const n = Math.max(2, Math.round((pb.x1 - pb.x0) * 3));
-      for (let k = 0; k < n; k++) { const a = pb.x0 + (pb.x1 - pb.x0) * (k + 0.15) / n, c = pb.x0 + (pb.x1 - pb.x0) * (k + 0.85) / n, pane = quadT(g, [[a, pb.y1, pb.z + 3], [c, pb.y1, pb.z + 3], [c, pb.y1, pb.z + 9], [a, pb.y1, pb.z + 9]]); if (night) B.glow(ctx, pane, GLOWS[k % 4], env); else B.fillQuadShaded(ctx, pane, C.glass, { face: 'sw', material: 'glass', noAO: true }, env); }
+      for (let k = 0; k < n; k++) { const a = pb.x0 + (pb.x1 - pb.x0) * (k + 0.15) / n, c = pb.x0 + (pb.x1 - pb.x0) * (k + 0.85) / n, pane = quadT(g, [[a, pb.y1, pb.z + 3], [c, pb.y1, pb.z + 3], [c, pb.y1, pb.z + 9], [a, pb.y1, pb.z + 9]]); if (board) B.fillQuadShaded(ctx, pane, C.plywood, { face: 'sw', material: 'wood', noAO: true }, env); else if (night) B.glow(ctx, pane, GLOWS[k % 4], env); else B.fillQuadShaded(ctx, pane, C.glass, { face: 'sw', material: 'glass', noAO: true }, env); }
       line(ctx, fT(g, pb.x0, pb.y1, z1), fT(g, pb.x1, pb.y1, z1), 1, C.gold, 0.2, 0.95);
       const lp = fT(g, (pb.x0 + pb.x1) / 2, pb.y1, pb.z + 1); for (let i = 0; i < 3; i++) line(ctx, [lp[0] - 4 + i * 4, lp[1] - 7], [lp[0] - 4 + i * 4, lp[1] - 3.5], 1.4, C.gold, 0.2, 0.95);
     }
-    for (const m of G.masts) if (m[1] < 1) mast(ctx, g, m[0], m[1], m[2], m[3], night, tier === 3, env);   // the far masts stand behind the left end's decks
+    for (const m of G.masts) if (m[1] < 1) mast(ctx, g, m[0], m[1], m[2], m[3], night, tier === 3, env, dmg && m === G.masts[0]);   // the far masts stand behind the left end's decks (H7: the first one is bent when DAMAGED)
     decks('x1', endBands);
     if (G.board) {   // over the far (−X) end on two steel legs from the end stand's rim
       const bd = G.board, sb = fT(g, bd.X, bd.Y, bd.z), legH = bd.kind === 'jumbo' ? 16 : 12;
@@ -1155,7 +1182,7 @@
       for (const side of [0, 1]) { const xa = side ? fw - 0.2 : 0.2, xb = side ? fw - 1.3 : 1.3; B.plane(ctx, quadT(g, [[xa, fh - 0.05, 0], [xb, fh - 0.05, 0], [xb, fh - 0.05, hr]]), C.concrete, -0.05, { vert: true, amp: 0.12, rim: 0.15 }); line(ctx, fT(g, xa, fh - 0.05, 0), fT(g, xb, fh - 0.05, hr), 0.8, C.concrete, -0.5, 0.8); B.fillQuadShaded(ctx, quadT(g, [[xb, fh - 0.05, 0], [xb, fh - 0.35, 0], [xb, fh - 0.35, hr], [xb, fh - 0.05, hr]]), C.concrete, { face: 'se', material: 'stone', noAO: true }, env); }
     } else {   // tier I ticket booth at the near-left corner
       const tb = miniBox(ctx, g, 0.5 * 32, (fh - 0.5) * 32, 4, 3, 7, C.purple, 'paint', env, 0); const tq = topQuad(tb, 7); line(ctx, tq[3], tq[2], 1, C.gold, 0.3, 0.95); line(ctx, tq[2], tq[1], 1, C.gold, 0, 0.95);
-      const wq = faceQuad(tb, 1, 0.3, 0.7, 2.5, 5.5); if (night) B.glow(ctx, wq, GLOWS[0], env); else B.fillQuadShaded(ctx, wq, C.glass, { face: 'se', material: 'glass', noAO: true }, env);
+      const wq = faceQuad(tb, 1, 0.3, 0.7, 2.5, 5.5); if (board) B.fillQuadShaded(ctx, wq, C.plywood, { face: 'se', material: 'wood', noAO: true }, env); else if (night) B.glow(ctx, wq, GLOWS[0], env); else B.fillQuadShaded(ctx, wq, C.glass, { face: 'se', material: 'glass', noAO: true }, env);
     }
     if (G.crown) {   // the gold crown: lamps along every rim at its own height, chasing with the frame at night
       const rims = [[[0.1, 0.1], [fw - 0.1, 0.1], G.farRim], [[0.1, 0.1], [0.1, fh - 0.1], G.endRim], [[fw - 0.1, 1.0], [fw - 0.1, fh - 0.1], G.nearRim], [[1.0, fh - 0.1], [fw - 1.0, fh - 0.1], G.nearRim]];
@@ -1169,6 +1196,26 @@
       const z = G.nearRim / 2, pq = quadT(g, [[fw / 2 - 0.55, fh - 0.1, z - 4], [fw / 2 + 0.55, fh - 0.1, z - 4], [fw / 2 + 0.55, fh - 0.1, z + 4], [fw / 2 - 0.55, fh - 0.1, z + 4]]);
       B.fillQuadShaded(ctx, pq, C.purple, { face: 'sw', material: 'paint', noAO: true }, env);
       for (let i = 0; i < 8; i++) { const X = fw / 2 - 0.55 + 1.1 * (i + 0.5) / 8; line(ctx, fT(g, X, fh - 0.1, z - 2.4), fT(g, X, fh - 0.1, z + 2.4), 1.4, C.gold, night ? 0.6 : 0.2, 0.95); }
+    }
+    if (flood) {   // H7: a waterline stain up the foot of both near walls, sandbags along the entrance side, the wet apron edges
+      for (const wq of [quadT(g, [[0, fh, 0], [fw, fh, 0], [fw, fh, 6], [0, fh, 6]]), quadT(g, [[fw, 0, 0], [fw, fh, 0], [fw, fh, 6], [fw, 0, 6]])]) { B.edgeFade(ctx, wq, wq[0], wq[1], 6, C.stain, -0.3, 0.75); line(ctx, wq[3], wq[2], 0.8, C.sandbag, 0.5, 0.6); }
+      for (let k = 0; k < 7; k++) { const p = fT(g, 0.6 + k * 0.62, fh + 0.02, 0); B.orb(ctx, p[0], p[1] - 0.8, 2.3, 1.2, C.sandbag, (k & 1) ? 0.05 : -0.2, { noRim: true }); }
+      const gq = groundQuad(g); B.edgeFade(ctx, gq, gq[3], gq[2], 12, C.water, -0.2, 0.4); B.edgeFade(ctx, gq, gq[2], gq[1], 12, C.water, -0.2, 0.4);
+    }
+    if (dmg) {   // H7: a blue tarp over a torn section of the far stand, the gap beside it, seat bits and a fallen bench on the turf, a crack up the near wall (the first mast is bent above)
+      const fs = G.stands.filter((q) => q.inner === 'y1').sort((p, q) => p.deck - q.deck)[0];
+      if (fs) {
+        const r = fs.r, span = r.y1 - r.y0, lift = (y) => fs.hIn + (fs.hOut - fs.hIn) * Math.abs(y - r.y1) / span, xa = r.x0 + (r.x1 - r.x0) * 0.5, xb = xa + (r.x1 - r.x0) * 0.24, ya = r.y0 + span * 0.1, yb = r.y0 + span * 0.62;
+        const gap = quadT(g, [[xa - (r.x1 - r.x0) * 0.2, yb, lift(yb)], [xa - (r.x1 - r.x0) * 0.03, yb, lift(yb)], [xa - (r.x1 - r.x0) * 0.03, ya + span * 0.2, lift(ya + span * 0.2)], [xa - (r.x1 - r.x0) * 0.2, ya + span * 0.2, lift(ya + span * 0.2)]]);
+        flat(ctx, gap, '#1D1630', 0, 0.92); line(ctx, gap[3], gap[2], 0.8, C.concrete, -0.3, 0.7);
+        const tq = quadT(g, [[xa, yb, lift(yb)], [xb, yb, lift(yb)], [xb, ya, lift(ya)], [xa, ya, lift(ya)]]);
+        B.fillQuadShaded(ctx, tq, C.tarp, { face: 'top', material: 'cloth', noAO: true }, env); line(ctx, lerp(tq[0], tq[1], 0.3), lerp(tq[3], tq[2], 0.55), 0.8, C.tarpCrease, 0, 0.9); line(ctx, lerp(tq[0], tq[3], 0.5), lerp(tq[1], tq[2], 0.5), 0.7, C.tarpCrease, 0, 0.7);
+        for (const p of tq) B.orb(ctx, p[0], p[1], 1.6, 1, C.sandbag, 0, { noRim: true });
+      }
+      const f = G.field;
+      for (let k = 0; k < 9; k++) { const p = fT(g, f.x0 + (f.x1 - f.x0) * ((hash(seed, 400 + k) % 88) / 100 + 0.06), f.y0 + (f.y1 - f.y0) * ((hash(seed, 420 + k) % 78) / 100 + 0.1), 0.3); B.orb(ctx, p[0], p[1], 1.5 + (k & 1), 0.8, (k % 3) ? C.purple : C.concrete, 0.1, { noRim: true }); }
+      { const p = fT(g, f.x0 + (f.x1 - f.x0) * 0.62, f.y0 + (f.y1 - f.y0) * 0.55, 0.3); line(ctx, [p[0] - 5, p[1] - 1], [p[0] + 4, p[1] + 1.4], 2, C.purple, -0.1, 0.95); line(ctx, [p[0] - 5, p[1] - 1], [p[0] - 6, p[1] + 2], 0.8, C.iron, 0, 0.9); }
+      B.stroke(ctx, [fT(g, fw * 0.28, fh - 0.1, G.nearRim * 0.7), fT(g, fw * 0.31, fh - 0.1, G.nearRim * 0.5), fT(g, fw * 0.29, fh - 0.1, G.nearRim * 0.32), fT(g, fw * 0.33, fh - 0.1, G.nearRim * 0.1)], 0.8, '#2A2630', -0.9, 0.9, {});
     }
     return b;
   }
@@ -1285,6 +1332,7 @@
     const rectZ = (x0, y0, x1, y1, z) => Q([[x0, y0, z], [x1, y0, z], [x1, y1, z], [x0, y1, z]]);
     const seg = (a, c, w, color, t, al) => line(ctx, pt(a[0], a[1], a[2] || 0), pt(c[0], c[1], c[2] || 0), w, color, t, al);
     const ell = (lx, ly, z, rx, ry, color, t, al) => { const p = pt(lx, ly, z); ctx.fillStyle = tone(color, t, al == null ? 1 : al); ctx.beginPath(); ctx.ellipse(p[0], p[1], rx, ry, 0, 0, Math.PI * 2); ctx.fill(); };
+    const poolBlob = (k, bridge) => { const out = []; for (let i = 0; i < H.POOL.length; i++) { const c = H.POOL[i], n = H.POOL[i + 1]; out.push([c[0], c[1], c[2] * k]); if (n) for (let q = 1; q < 4; q++) { const u = q / 4; out.push([c[0] + (n[0] - c[0]) * u, c[1] + (n[1] - c[1]) * u, (c[2] + (n[2] - c[2]) * u) * k * bridge]); } } return out; };   // H7: the three metaballs + the discs between them: one pool (the inner deep layer used to leave a gap between its three discs)
     const arch = (lx, y0, y1, z, ry, color, t) => { const e0 = pt(lx, y0, z), e1 = pt(lx, y1, z); ctx.fillStyle = tone(color, t); ctx.beginPath(); ctx.ellipse((e0[0] + e1[0]) / 2, (e0[1] + e1[1]) / 2, Math.hypot(e1[0] - e0[0], e1[1] - e0[1]) / 2, ry, Math.atan2(e1[1] - e0[1], e1[0] - e0[0]), Math.PI, 0); ctx.fill(); };
     const lbox = (x0, y0, x1, y1, z0, z1, color, mat) => { B.fillQuadShaded(ctx, faceX(x1, y0, y1, z0, z1), color, { face: fx, material: mat || 'stone', noAO: true }, env); B.fillQuadShaded(ctx, faceY(y1, x0, x1, z0, z1), color, { face: fy, material: mat || 'stone', noAO: true }, env); B.fillQuadShaded(ctx, rectZ(x0, y0, x1, y1, z1), color, { face: 'top', material: mat || 'stone', t: 0.1, noAO: true }, env); };
     const b = flatBody(g);
@@ -1302,7 +1350,7 @@
       const fl = rectZ(RX0, H.FY0, H.FX1 + 0.16, H.FY1 + 0.14, FZ);
       if (site >= 1) {
         B.fillQuadShaded(ctx, fl, C.siteDirt, { face: 'top', material: 'stone', t: -0.1, noAO: true }, env); B.macroGrain(ctx, fl, 0.4, env);
-        for (const c of H.POOL) ell(c[0], c[1], FZ, c[2] * RX, c[2] * RY, site === 1 ? '#2E4C66' : C.water, site === 1 ? 0 : 0.15, 1);
+        for (const c of poolBlob(1, 0.9)) ell(c[0], c[1], FZ, c[2] * RX, c[2] * RY, site === 1 ? '#2E4C66' : C.water, site === 1 ? 0 : 0.15, 1);
       } else {
         B.fillQuadShaded(ctx, fl, '#6E8F3C', { face: 'top', material: 'wood', t: 0, noAO: true }, env); B.macroGrain(ctx, fl, 0.45, env);
         ctx.save(); B.poly(ctx, fl); ctx.clip();
@@ -1311,9 +1359,9 @@
         B.fillQuadShaded(ctx, rectZ(RX0, 2.0, 0.6, 2.78, FZ), C.siteDirt, { face: 'top', material: 'stone', t: 0.05, noAO: true }, env);
         { const p = pt(H.NAP[0], H.NAP[1], FZ); B.softEllipse(ctx, p[0], p[1], 10, 5, '#7FA347', 0.6, 0.3); }
         B.edgeFade(ctx, fl, fl[0], fl[3], 10, C.cool, -0.2, 0.45); B.edgeFade(ctx, fl, fl[0], fl[1], 5, C.cool, -0.2, 0.35);
-        for (const c of H.POOL) ell(c[0], c[1], FZ, c[2] * RX * 1.16, c[2] * RY * 1.16, C.sandYard, 0.15);
-        for (const c of H.POOL) ell(c[0], c[1], FZ, c[2] * RX, c[2] * RY, C.shallows, 0.1);
-        for (const c of H.POOL) ell(c[0], c[1], FZ, c[2] * RX * 0.68, c[2] * RY * 0.68, C.water, 0.3);
+        for (const c of poolBlob(1.16, 0.9)) ell(c[0], c[1], FZ, c[2] * RX, c[2] * RY, C.sandYard, 0.15);
+        for (const c of poolBlob(1, 0.9)) ell(c[0], c[1], FZ, c[2] * RX, c[2] * RY, C.shallows, 0.1);
+        for (const c of poolBlob(0.68, 0.95)) ell(c[0], c[1], FZ, c[2] * RX, c[2] * RY, C.water, 0.3);
         ell(0.6, 1.1, FZ, 9, 4, '#2E5A2A', -0.2, 0.35);
         for (let i = 0; i < (lod0 ? 9 : 4); i++) { const c = H.POOL[i % 3], a = (hash(seed + frame, 40 + i) % 100) / 100 * Math.PI * 2, d = (hash(seed, 60 + i) % 70) / 100, p = pt(c[0] + Math.cos(a) * c[2] * d, c[1] + Math.sin(a) * c[2] * d, FZ); line(ctx, [p[0] - 1.6, p[1]], [p[0] + 1.6, p[1]], 0.6, night ? '#C9D8FF' : C.spec, 0, 0.55); }
         ctx.restore();
@@ -1364,7 +1412,7 @@
     if (flood && !front && built) {
       const fq = rectZ(RX0, H.FY0, H.FX1, H.FY1, FZ + 5); flat(ctx, fq, C.flood, 0, 0.82); B.macroGrain(ctx, fq, 0.35, env);
       ctx.save(); B.poly(ctx, fq); ctx.clip();
-      for (const c of H.POOL) ell(c[0], c[1], FZ + 5, c[2] * RX * 0.8, c[2] * RY * 0.8, C.water, 0.1, 0.5);
+      for (const c of poolBlob(0.8, 0.95)) ell(c[0], c[1], FZ + 5, c[2] * RX, c[2] * RY, C.water, 0.1, 0.5);
       for (let i = 0; i < 10; i++) { const p = pt(0.3 + (hash(seed + 66, i) % 150) / 100, 0.3 + (hash(seed + 67, i) % 250) / 100, FZ + 5); line(ctx, [p[0] - 2, p[1]], [p[0] + 2, p[1]], 0.6, C.flood, 0.5, 0.6); }
       for (let i = 0; i < 8; i++) { const p = pt(0.5 + (hash(seed + 68, i) % 120) / 100, 0.5 + (hash(seed + 69, i) % 220) / 100, FZ + 5); B.orb(ctx, p[0], p[1], 1.2, 0.6, (i & 1) ? '#3F5E3A' : C.bark, 0.2, { noRim: true }); }
       ctx.restore();

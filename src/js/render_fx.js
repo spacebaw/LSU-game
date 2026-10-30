@@ -140,7 +140,7 @@
   const bolt = new Float32Array(24); let boltN = 0, flashUntil = 0, boltUntil = 0, boltTipX = 0, boltTipY = 0;
   const fogBlobs = []; for (let k = 0; k < 8; k++) fogBlobs.push({ x: 0, y: 0, r: 1, vx: 0, ph: 0 });
   
-  let stormPhase = -1, godRayUntil = -1, goldFlash = 0, burstsPending = 0, burstTimer = 0, burstGap = 22, mtVolley = null, perfChipUntil = 0, subscribed = false, inited = false;
+  let stormPhase = -1, godRayUntil = -1, goldFlash = 0, burstsPending = 0, burstTimer = 0, burstGap = 22, mtVolley = null, subscribed = false, inited = false;
   let frameNo = 0, lastFrameNo = -1;
   const overtop = new Map();   // tile → frames left of trickle
   const lightRefs = {};        // kind → SpriteRef (refreshed per frame)
@@ -1106,6 +1106,7 @@
   // size and blitted 1:1 in four slabs around its transparent centre (a scaled bilinear blit of the same image costs ~7× more in software raster). B5's 24 stacked
   // bands stepped visibly; this does not.
   let vigC = null, vigW = 0, vigH = 0;
+  R.vignetteMB = function () { return vigC ? (vigW * vigH * 4) / 1048576 : 0; };   // H7: counted in render.perf().memMB
   function drawVignette(g, vw, vh, dpr, a) {
     const BR = BSU.brush, w = Math.max(1, Math.round(vw * dpr)), h = Math.max(1, Math.round(vh * dpr));
     if (!vigC || vigW !== w || vigH !== h) {
@@ -1238,15 +1239,7 @@
   // ---------------------------------------------------------------------------
   // Pass 10.5: HUD-canvas bits — the performance chip
   // ---------------------------------------------------------------------------
-  function passFxHud(state, g, view) {
-    const now = nowMs();
-    if (now < perfChipUntil) {
-      const a = clamp((perfChipUntil - now) / 800, 0, 1), x = view.vw - 176, y = 52;
-      g.globalAlpha = 0.85 * a; g.fillStyle = PAL.panel || '#1A1230'; rrect(g, x, y, 164, 26, 7); g.fill(); g.save(); rrect(g, x, y, 164, 26, 7); g.clip(); g.fillStyle = GOLD; g.fillRect(x, y, 3, 26); g.restore();
-      g.globalAlpha = a; g.fillStyle = PAL.text || '#F4EEE2'; g.font = '12px system-ui, sans-serif'; g.textBaseline = 'middle'; g.fillText('Performance mode', x + 12, y + 13);
-      g.globalAlpha = 1;
-    }
-  }
+  function passFxHud() { /* H7: the 'Performance mode' chip is the DOM #perfmode-chip plus the one-time hint; this canvas copy was a third one, half under the top bar at 115 % */ }
 
   // ---------------------------------------------------------------------------
   // Event-driven FX (owner 'renderfx'; flags + particles only, never sim state)
@@ -1357,7 +1350,7 @@
   // Perf guardrail reaction, init / reset
   // ---------------------------------------------------------------------------
   /** the guardrail tripped (render measured 60 frames > 25 ms): fewer particles, fireflies ÷ 2, rain ÷ 2, chip */
-  R.onPerfMode = function () { lowMode = true; cap = LOWP; if (alive > cap) alive = cap; perfChipUntil = nowMs() + 6000; };
+  R.onPerfMode = function () { lowMode = true; cap = LOWP; if (alive > cap) alive = cap; };
   /** once per page load, from render.init */
   R._fxInit = function () { inited = true; subscribe(); R._fxReset(stateLive()); };
   /** on newGame / load: drop every transient effect */
@@ -1423,10 +1416,15 @@
   function issCamTile(state, out) { const cam = camOf(state); out.tx = (cam.x / 32 + cam.y / 16) / 2; out.ty = (cam.y / 16 - cam.x / 32) / 2; return out; }
   const issCam = { tx: 32, ty: 32 };
   function issBeaconList(state, I, all) { try { issCamTile(state, issCam); const l = I.beacons(state, issCam.tx, issCam.ty, all ? { all: true } : undefined); return Array.isArray(l) ? l : []; } catch (e) { return []; } }
+  /** H7: the frame follows the HUD mode: a part drawn as its pill (compact, or folded) takes a pill's room, hidden leaves the whole viewport; heights are y from the top (each sum starts with the 70-px top bar) */
   function issFrame(view) {
-    let ui = 1; try { const U = mod('ui'); if (U && typeof U.uiScaleEffective === 'function') ui = fin(U.uiScaleEffective(), 1) || 1; } catch (e) { ui = 1; }
-    issFrameO.ui = ui; issFrameO.L = 26; issFrameO.R = view.vw - 26; issFrameO.T = 70 * ui; issFrameO.B = view.vh - 236 * ui;
-    issFrameO.rightCol = view.vw - 250 * ui; issFrameO.rightColH = 600 * ui; issFrameO.leftCol = 390 * ui; issFrameO.leftColH = 520 * ui;
+    let ui = 1, hs = null; try { const U = mod('ui'); if (U && typeof U.uiScaleEffective === 'function') ui = fin(U.uiScaleEffective(), 1) || 1; if (U && typeof U.hudState === 'function') hs = U.hudState(); } catch (e) { ui = 1; hs = null; }
+    const eff = hs && hs.effective ? hs.effective : 'full', pill = (k) => !!(hs && hs.pill && hs.pill[k]);
+    issFrameO.ui = ui; issFrameO.L = 26; issFrameO.R = view.vw - 26;
+    if (eff === 'hidden') { issFrameO.T = 12 * ui; issFrameO.B = view.vh - 50 * ui; issFrameO.rightCol = view.vw + 1; issFrameO.rightColH = 0; issFrameO.leftCol = 0; issFrameO.leftColH = 0; return issFrameO; }
+    issFrameO.T = 70 * ui; issFrameO.B = view.vh - (pill('palette') ? 90 : 236) * ui;
+    issFrameO.rightCol = view.vw - 250 * ui; issFrameO.rightColH = (70 + (pill('minimap') ? 40 : 250) + 45 + (pill('issues') ? 50 : 235)) * ui;
+    issFrameO.leftCol = (pill('goals') ? 190 : 390) * ui; issFrameO.leftColH = (70 + (pill('goals') ? 45 : 330) + (pill('needs') ? 45 : 120)) * ui;
     return issFrameO;
   }
   function issInFrame(x, y, f) { return x >= f.L && x <= f.R && y >= f.T && y <= f.B && !(x > f.rightCol && y < f.rightColH) && !(x < f.leftCol && y < f.leftColH); }
@@ -1507,7 +1505,7 @@
     const ax = issPt.x + (gi - (gn - 1) / 2) * 24 * Math.max(0.75, z), iy = issPt.y - hc - 16;
     g.font = 'bold 13px system-ui, -apple-system, "Segoe UI", sans-serif';
     const title = issWrap(g, sel.title, 230); g.font = '12px system-ui, -apple-system, "Segoe UI", sans-serif'; const fix = issWrap(g, sel.progress && sel.progress.text ? 'In progress: ' + sel.progress.text : (sel.fix || ''), 230);   // calm alerts pass: an in-progress row says so, not its fix
-    const hint = 'Fix / Locate in the Issues tray · I next · Esc';
+    const hint = sel.progress && sel.progress.text ? 'Locate in the Issues tray · I next · Esc' : 'Fix / Locate in the Issues tray · I next · Esc';   // H7: an in-progress row has no Fix button in the tray, so its label neither shows the fix text nor offers Fix
     let bw = 0; g.font = 'bold 13px system-ui, -apple-system, "Segoe UI", sans-serif'; for (const l of title) bw = Math.max(bw, g.measureText(l).width);
     g.font = '12px system-ui, -apple-system, "Segoe UI", sans-serif'; for (const l of fix) bw = Math.max(bw, g.measureText(l).width); g.font = '11px system-ui, -apple-system, "Segoe UI", sans-serif'; bw = Math.max(bw, g.measureText(hint).width);
     bw = Math.min(260, bw + 26); const bh = 10 + title.length * 17 + fix.length * 15 + 16;

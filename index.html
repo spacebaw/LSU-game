@@ -654,7 +654,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
 .bm-card,.fb-staff-card,.fb-budget,.fb-next,.sp-all,.insp-menu,#alm-achievements .bud-col{box-shadow:var(--hi)}
 .bm-card{padding:1.2rem 1.6rem}
 /* the last shed step (date chip gone) squeezes the buttons too, so even the compact HUD at 1280 x 800 / 115 % keeps every button on screen */
-#topbar.bare{gap:.6rem} #topbar.bare .tb{min-width:3.2rem;padding:0 .8rem} #topbar.bare .speed-btn{min-width:2.8rem}
+#topbar.tightest .tb,#topbar.bare .tb{min-width:3.2rem;padding:0 .8rem} #topbar.tightest .speed-btn,#topbar.bare .speed-btn{min-width:2.8rem} #topbar.bare{gap:.6rem}   /* H7: the button squeeze starts at `tightest`, so the compact HUD (whose capacity chip is already folded away) keeps the date chip at 1440 */
 
 </style>
 </head>
@@ -1585,6 +1585,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     'decision:open', 'decision:closed',
     'agent:flee', 'agent:desireLine', 'agent:arrive',
     'ui:notify', 'ui:ticker', 'ui:panel', 'ui:overlay', 'ui:tool', 'ui:buildMenu',
+    'ui:coach',   // H7: the first-run tour's step / finish {step, completed?} (ui.js emitted it unregistered: a console warning on every first run)
     'camera:moved',
     'save:written', 'save:loaded',
     'error'
@@ -1757,6 +1758,9 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     }
     return (neg ? '−' : '') + '$' + s;
   };
+  /** H7: the shared count format (ui.fmt, the issues text): thousands grouped, a true minus, ≤ 1 decimal; formatInt rounds first ('1,433') */
+  BSU.formatNum = function (n) { n = (typeof n === 'number' && isFinite(n)) ? n : 0; return (n < 0 ? '\u2212' : '') + Math.abs(n).toLocaleString('en-US', { maximumFractionDigits: 1 }); };
+  BSU.formatInt = function (n) { return BSU.formatNum(Math.round((typeof n === 'number' && isFinite(n)) ? n : 0)); };
   /** 'Jan'…'Dec' for m = 1–12 */
   BSU.monthName = function (m) { return BSU.MONTHS[((m - 1) % 12 + 12) % 12]; };
   /** absolute day → {day, year (1-based), month (1–12), dom (1–10), season, semester, date: 'Sep 3'} (ARCHITECTURE §2.4 rules) */
@@ -14001,6 +14005,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
   function nameOf(id) { const r = rowOf(id); return r ? r.name : id; }
   function PI() { return (BSU.params && BSU.params.issues) || {}; }
   function money(v) { return BSU.formatMoney ? BSU.formatMoney(v) : '$' + v; }
+  function num(v) { return BSU.formatInt ? BSU.formatInt(v) : String(Math.round(v)); }   // H7: thousands separators (1,433 / 1,500), the shared count format
 
   // ---------------------------------------------------------------------------
   // Kinds: colour (unique per family, used nowhere else in the game), glyph, default severity
@@ -14242,9 +14247,9 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
           const base = best ? { tiles: footprintOf(best), rect: { tx: best.tx | 0, ty: best.ty | 0, w: best.w | 0, h: best.h | 0 }, anchor: anchorOf(best), buildingId: best.id } : founderBase(state);
           const adds = fin(((rowOf(t.build) || {}).effects || {})[t.effect], 0);
           let uc = null; for (const b of list) { const r = b && rowOf(b.type); if (b && !b.ruin && fin(b.built, 0) < 1 && r && r.effects && fin(r.effects[t.effect], 0) > 0) { uc = b; break; } }
-          const pr = uc ? progressOf(uc, '(+' + fin(((rowOf(uc.type) || {}).effects || {})[t.effect], 0) + ' ' + t.unit + ')') : null;
-          mk(out, 'overCapacity', 'overCapacity:' + t.key, Object.assign({ severity: 2, title: t.label + ' full (' + students + ' / ' + t.cap + ')', fix: 'Out of ' + t.label.toLowerCase() + ': Fix arms a ' + nameOf(t.build) + ' (+' + adds + ' ' + t.unit + '); students leave when it stays full',
-            persist: students + ' students, ' + t.cap + ' ' + t.unit + ': a ' + nameOf(t.build) + ' adds ' + adds, action: { openMenuCard: t.build, arm: t.build, near: best ? best.id : null, reach: 12 }, progress: pr, stage: t.key }, base));
+          const pr = uc ? progressOf(uc, '(+' + num(fin(((rowOf(uc.type) || {}).effects || {})[t.effect], 0)) + ' ' + t.unit + ')') : null;
+          mk(out, 'overCapacity', 'overCapacity:' + t.key, Object.assign({ severity: 2, title: t.label + ' full (' + num(students) + ' / ' + num(t.cap) + ')', fix: 'Out of ' + t.label.toLowerCase() + ': Fix arms a ' + nameOf(t.build) + ' (+' + num(adds) + ' ' + t.unit + '); students leave when it stays full',
+            persist: num(students) + ' students, ' + num(t.cap) + ' ' + t.unit + ': a ' + nameOf(t.build) + ' adds ' + num(adds), action: { openMenuCard: t.build, arm: t.build, near: best ? best.id : null, reach: 12 }, progress: pr, stage: t.key }, base));
         }
       }
     } catch (e) { ierr('capacity', e); }
@@ -24198,7 +24203,8 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
 // Public: BSU.brush.{tone, toneArr, css, mix, sat, ramp, env, posEnv, rng, vnoise, fbm, pnoise, field, poly, bbox, centroid, diamond,
 //   diamondGrown, smoothPath, ellipse, seamWidth, seamStroke, plane, orb, softEllipse, microGrain, macroGrain, sites, edgeFade, stroke,
 //   blade, puddle, strokePath, fillQuadShaded, roofPlane, column, groundTile, waterTile, path, tree, figure, capsule, digits, shadow, light,
-//   glow, decal, cube, begin, blob, drawBlob, blobQ, blobStats, blobClear, blobKinds, selfTest}
+//   glow, decal, cube, begin, blob, drawBlob, bars, blobQ, blobStats, blobClear, blobKinds, selfTest}
+// H7: bars is the batched device-pixel fill of the water pass's horizontal wave / glint / foam / chop bars (one path per layer, not one fillRect each).
 // H5 effects pass: blob / drawBlob are the cached soft sprites (halo, glow, pool, dot, puff, ao, foam, ring, cone, puddle, fog, vignette) every effect pass draws with drawImage.
 // H4 characters pass: capsule (a limb / body / hull lit across its width) and digits (jersey numbers as strokes) are the body kit the
 // character families compose (sprites_entities_hd.js); figure stays the H0 reference composition.
@@ -24862,6 +24868,16 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     g.globalAlpha = alpha;
     if (rx * sc > b.rx * 1.08 || ry * sc > b.ry * 1.08) { g.drawImage(b.canvas, cx - rx, cy - ry, rx * 2, ry * 2); return true; }   // past the ladder's 320-px cap: stretch the biggest blob (a smooth gradient scales cleanly)
     g.drawImage(b.canvas, Math.round(cx * sc - b.w / 2) / sc, Math.round(cy * sc - b.h / 2) / sc, b.w / sc, b.h / sc); return true;
+  };
+  /** H7: ONE batched fill of horizontal bars: `arr` = flat [x, y, len, …] (n bars, CSS px; y = top edge), `w` the thickness, `scale` the device px per CSS px. Every bar is snapped to the
+   *  DEVICE pixel grid (crisp at dpr 2), at least one device px each way, all in one path with ONE fill (a round-capped stroke of the same bars cost 3× the raster at dpr 2). Returns n */
+  M.bars = function (g, arr, n, w, color, alpha, scale) {
+    n = n | 0; if (!(n > 0) || !arr || !(w > 0)) return 0;
+    const sc = scale > 0 ? scale : 1, inv = 1 / sc, th = Math.max(inv, Math.round(w * sc) * inv);
+    g.globalAlpha = alpha; g.fillStyle = color; g.beginPath();
+    for (let k = 0; k < n; k++) { const o = k * 3, x0 = Math.round(arr[o] * sc) * inv, x1 = Math.round((arr[o] + arr[o + 2]) * sc) * inv; g.rect(x0, Math.round(arr[o + 1] * sc) * inv, x1 > x0 ? x1 - x0 : inv, th); }
+    g.fill(); g.globalAlpha = 1;
+    return n;
   };
   M.blobStats = function () { return { n: blobMap.size, mb: Math.round(blobBytes / 10485.76) / 100, bakes: blobBakes, hits: blobHits, max: BLOB_MAX }; };
   M.blobClear = function () { for (const v of blobMap.values()) { try { v.canvas.width = 1; v.canvas.height = 1; } catch (err) { /* stub */ } } blobMap.clear(); blobBytes = 0; blobBakes = 0; blobHits = 0; };
@@ -29547,7 +29563,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
   // (sprites.HABITAT: the pool, the den, the glass and the plaza where Roux's route and the lights pass expect them).
   // ---------------------------------------------------------------------------
   const OWN_GROUND = { quad: 1, parking: 1, pond: 1, rookery: 1, batpole: 1, field: 1, stadium: 1, habitat: 1 };
-  const OWN_STATES = { habitat: 1 };   // dresses DAMAGED / BOARDED / FLOODED itself (the pen's OWN_STATES)
+  const OWN_STATES = { habitat: 1, stadium: 1 };   // dresses DAMAGED / BOARDED / FLOODED itself (the pen's OWN_STATES); H7: the stadium has its own too
   const RX = 45.25, RY = 22.63;        // the screen half-axes of a 1-tile ground circle
   /** footprint TILE coordinates (the pen's fpPt): (X, Y) tiles, `up` px — the stadium / field / habitat language */
   function fT(g, X, Y, up) { return fp(g, X * 32, Y * 32, up || 0); }
@@ -29605,11 +29621,26 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
         if (j === steps - 1) { const e = alongX ? [fT(g, r.x0, c, l), fT(g, r.x1, c, l)] : [fT(g, c, r.y0, l), fT(g, c, r.y1, l)]; line(ctx, e[0], e[1], 1.2, C.gold, 0.2, 0.95); }
       }
       const e = alongX ? [fT(g, r.x0, innerC, hIn), fT(g, r.x1, innerC, hIn)] : [fT(g, innerC, r.y0, hIn), fT(g, innerC, r.y1, hIn)]; line(ctx, e[0], e[1], 1, C.gold, -0.5, 0.9);
+      if (g.floodLap) {   // H7 (FLOODED): the water laps the first tread and the foot of the first riser: a wet band with a pale edge
+        const lq = quad(innerC, innerC + dir * d, hIn, hIn); flat(ctx, lq, '#3E7C86', 0.05, 0.6); line(ctx, lq[0], lq[1], 0.8, C.white, 0.2, 0.55);
+        const wq2 = alongX ? quadT(g, [[r.x0, innerC, 0], [r.x1, innerC, 0], [r.x1, innerC, hIn], [r.x0, innerC, hIn]]) : quadT(g, [[innerC, r.y0, 0], [innerC, r.y1, 0], [innerC, r.y1, hIn], [innerC, r.y0, hIn]]);
+        B.edgeFade(ctx, wq2, wq2[0], wq2[1], Math.max(2, hIn), C.stain, -0.3, 0.6);
+      }
     }
   }
   /** a light mast: a braced steel pole `h` px tall from footprint (X, Y) lifted `base`, a bank of lamps on top (white-hot with a halo at night) */
-  function mast(ctx, g, X, Y, base, h, night, big, env) {
+  function mast(ctx, g, X, Y, base, h, night, big, env, bent) {
     const p = fT(g, X, Y, base), x = p[0], top = p[1] - h, lod0 = env.lod === 0;
+    if (bent) {   // H7 (DAMAGED): the pole leans and the lamp bank hangs dark from a cable at its tip
+      const lx = x + 5, ly = top + 7, bw = big ? 12 : 8, bh = big ? 5 : 4;
+      B.stroke(ctx, [[x, p[1]], [lx, ly]], big ? 2.6 : 2.2, C.steel, -0.1, 1, { cap: 'round' }); B.stroke(ctx, [[x - 0.4, p[1]], [lx - 0.4, ly]], 0.8, C.steel, 0.45, 0.8, { cap: 'round' });
+      B.orb(ctx, x, p[1], 2.6, 1.2, C.steel, -0.3, { noRim: true });
+      line(ctx, [lx, ly], [lx + 2, ly + 5], 0.7, C.iron, 0, 0.95);
+      const bank = [[lx + 2 - bw / 2 + 1, ly + 5 + bh + 2], [lx + 2 + bw / 2 + 1, ly + 5 + bh - 1], [lx + 2 + bw / 2 + 1, ly + 5 - 1], [lx + 2 - bw / 2 + 1, ly + 5 + 2]];
+      B.fillQuadShaded(ctx, bank, C.steel, { face: 'sw', material: 'metal', t: -0.3, noAO: true }, env);
+      for (let k = 1; k < bw - 1; k += 2) B.orb(ctx, lx + 2 - bw / 2 + 1 + k + 0.5, ly + 5 + 2.4 - k * 0.25, 0.6, 0.6, C.windowDark, 0, { noRim: true });
+      return;
+    }
     B.column(ctx, x, p[1], h - 3, big ? 1.6 : 1.3, C.steel, env);
     if (lod0) for (let y = top + 8; y < p[1] - 6; y += 8) { line(ctx, [x - 2, y + 2], [x + 2, y - 2], 0.5, C.steel, -0.3, 0.8); line(ctx, [x - 2, y - 2], [x + 2, y + 2], 0.5, C.steel, -0.3, 0.8); }
     B.orb(ctx, x, p[1], 2.6, 1.2, C.steel, -0.3, { noRim: true });
@@ -29643,7 +29674,8 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
       for (let k = 0; k < n; k++) {
         const t0 = (k + 0.12) / n, t1 = (k + 0.88) / n;
         const pane = quadT(g, ax ? [[bd.r.x0 + len * t0, cm, zm - 4], [bd.r.x0 + len * t1, cm, zm - 4], [bd.r.x0 + len * t1, cm, zm + 3], [bd.r.x0 + len * t0, cm, zm + 3]] : [[cm, bd.r.y0 + len * t0, zm - 4], [cm, bd.r.y0 + len * t1, zm - 4], [cm, bd.r.y0 + len * t1, zm + 3], [cm, bd.r.y0 + len * t0, zm + 3]]);
-        if (night && (hash(g.seed | 0, 200 + k) % 5) !== 0) B.glow(ctx, pane, GLOWS[k % 4], env); else B.fillQuadShaded(ctx, pane, C.glass, { face: ax ? 'sw' : 'se', material: 'glass', noAO: true }, env);
+        if (g.boarded) B.fillQuadShaded(ctx, pane, C.plywood, { face: ax ? 'sw' : 'se', material: 'wood', noAO: true }, env);
+        else if (night && (hash(g.seed | 0, 200 + k) % 5) !== 0) B.glow(ctx, pane, GLOWS[k % 4], env); else B.fillQuadShaded(ctx, pane, C.glass, { face: ax ? 'sw' : 'se', material: 'glass', noAO: true }, env);
       }
       line(ctx, edge[0], edge[1], 1, C.concrete, 0.5, 0.9);
       return;
@@ -29707,9 +29739,20 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
   function stadiumBody(ctx, g, frame, env) {
     const b = flatBody(g), fw = g.fw, fh = g.fh, night = g.night, tier = g.tier | 0;
     if (tier <= 0) return stadiumSite(ctx, g, 2, env);
+    const sv = g.variant | 0, dmg = !!(sv & SPR.DAMAGED), flood = !!(sv & FLOODED_BIT), board = !!(sv & SPR.BOARDED), seed = g.seed | 0;
+    g.floodLap = flood; g.boarded = board;   // read by stand() / stadiumBand()
     drawApron(ctx, g, APRON.lawnPlain, env, { lifted: g.lift > 0 });
     const G = M.stadiumGeom(tier, fw, fh);
     stadiumField(ctx, g, G.field, false, env);
+    if (flood) {   // H7: the bowl is a pond — the turf and its lines read through a teal film, a pale sheen and a few slow rings
+      const f = G.field, wq = quadT(g, [[f.x0 - 0.05, f.y0 - 0.05, 0.4], [f.x1 + 0.05, f.y0 - 0.05, 0.4], [f.x1 + 0.05, f.y1 + 0.05, 0.4], [f.x0 - 0.05, f.y1 + 0.05, 0.4]]);
+      flat(ctx, wq, '#3E7C86', 0.05, 0.74);
+      ctx.save(); B.poly(ctx, wq); ctx.clip();
+      for (let k = 0; k < 5; k++) { const a = fT(g, f.x0 + (f.x1 - f.x0) * (0.1 + 0.18 * k), f.y0 + (f.y1 - f.y0) * 0.12, 0.5), c = fT(g, f.x0 + (f.x1 - f.x0) * (0.2 + 0.18 * k), f.y0 + (f.y1 - f.y0) * 0.88, 0.5); line(ctx, a, c, 1.1, C.white, 0.3, 0.22); }
+      if (env.lod === 0) for (let k = 0; k < 7; k++) { const c = fT(g, f.x0 + (f.x1 - f.x0) * ((hash(seed, 300 + k) % 90) / 100 + 0.05), f.y0 + (f.y1 - f.y0) * ((hash(seed, 320 + k) % 80) / 100 + 0.1), 0.5); B.puddle(ctx, c[0], c[1], 7, 3, env, { t: -0.1, spec: 0.25, rim: 0.2 }); }
+      ctx.restore();
+      B.edgeFade(ctx, wq, wq[0], wq[1], 4, C.cool, -0.3, 0.4); B.edgeFade(ctx, wq, wq[0], wq[3], 4, C.cool, -0.3, 0.4);
+    }
     const farBands = G.bands.filter((d) => d.along === 'x'), endBands = G.bands.filter((d) => d.along === 'y');
     const decks = (inner, bands) => { const ds = G.stands.filter((s) => s.inner === inner).sort((p, q) => p.deck - q.deck); for (let k = 0; k < ds.length; k++) { if (k > 0 && bands[k - 1]) stadiumBand(ctx, g, bands[k - 1], night, env); const s = ds[k]; stand(ctx, g, s.r, s.inner, s.hIn, s.hOut, s.steps, night, env); } };
     decks('y1', farBands);
@@ -29719,11 +29762,11 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
       B.fillQuadShaded(ctx, quadT(g, [[pb.x1, pb.y0, z0], [pb.x1, pb.y1, z0], [pb.x1, pb.y1, z1], [pb.x1, pb.y0, z1]]), C.concrete, { face: 'se', material: 'stone', noAO: true }, env);
       B.fillQuadShaded(ctx, quadT(g, [[pb.x0, pb.y0, z1], [pb.x1, pb.y0, z1], [pb.x1, pb.y1, z1], [pb.x0, pb.y1, z1]]), C.concrete, { face: 'top', material: 'stone', noAO: true }, env);
       const n = Math.max(2, Math.round((pb.x1 - pb.x0) * 3));
-      for (let k = 0; k < n; k++) { const a = pb.x0 + (pb.x1 - pb.x0) * (k + 0.15) / n, c = pb.x0 + (pb.x1 - pb.x0) * (k + 0.85) / n, pane = quadT(g, [[a, pb.y1, pb.z + 3], [c, pb.y1, pb.z + 3], [c, pb.y1, pb.z + 9], [a, pb.y1, pb.z + 9]]); if (night) B.glow(ctx, pane, GLOWS[k % 4], env); else B.fillQuadShaded(ctx, pane, C.glass, { face: 'sw', material: 'glass', noAO: true }, env); }
+      for (let k = 0; k < n; k++) { const a = pb.x0 + (pb.x1 - pb.x0) * (k + 0.15) / n, c = pb.x0 + (pb.x1 - pb.x0) * (k + 0.85) / n, pane = quadT(g, [[a, pb.y1, pb.z + 3], [c, pb.y1, pb.z + 3], [c, pb.y1, pb.z + 9], [a, pb.y1, pb.z + 9]]); if (board) B.fillQuadShaded(ctx, pane, C.plywood, { face: 'sw', material: 'wood', noAO: true }, env); else if (night) B.glow(ctx, pane, GLOWS[k % 4], env); else B.fillQuadShaded(ctx, pane, C.glass, { face: 'sw', material: 'glass', noAO: true }, env); }
       line(ctx, fT(g, pb.x0, pb.y1, z1), fT(g, pb.x1, pb.y1, z1), 1, C.gold, 0.2, 0.95);
       const lp = fT(g, (pb.x0 + pb.x1) / 2, pb.y1, pb.z + 1); for (let i = 0; i < 3; i++) line(ctx, [lp[0] - 4 + i * 4, lp[1] - 7], [lp[0] - 4 + i * 4, lp[1] - 3.5], 1.4, C.gold, 0.2, 0.95);
     }
-    for (const m of G.masts) if (m[1] < 1) mast(ctx, g, m[0], m[1], m[2], m[3], night, tier === 3, env);   // the far masts stand behind the left end's decks
+    for (const m of G.masts) if (m[1] < 1) mast(ctx, g, m[0], m[1], m[2], m[3], night, tier === 3, env, dmg && m === G.masts[0]);   // the far masts stand behind the left end's decks (H7: the first one is bent when DAMAGED)
     decks('x1', endBands);
     if (G.board) {   // over the far (−X) end on two steel legs from the end stand's rim
       const bd = G.board, sb = fT(g, bd.X, bd.Y, bd.z), legH = bd.kind === 'jumbo' ? 16 : 12;
@@ -29736,7 +29779,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
       for (const side of [0, 1]) { const xa = side ? fw - 0.2 : 0.2, xb = side ? fw - 1.3 : 1.3; B.plane(ctx, quadT(g, [[xa, fh - 0.05, 0], [xb, fh - 0.05, 0], [xb, fh - 0.05, hr]]), C.concrete, -0.05, { vert: true, amp: 0.12, rim: 0.15 }); line(ctx, fT(g, xa, fh - 0.05, 0), fT(g, xb, fh - 0.05, hr), 0.8, C.concrete, -0.5, 0.8); B.fillQuadShaded(ctx, quadT(g, [[xb, fh - 0.05, 0], [xb, fh - 0.35, 0], [xb, fh - 0.35, hr], [xb, fh - 0.05, hr]]), C.concrete, { face: 'se', material: 'stone', noAO: true }, env); }
     } else {   // tier I ticket booth at the near-left corner
       const tb = miniBox(ctx, g, 0.5 * 32, (fh - 0.5) * 32, 4, 3, 7, C.purple, 'paint', env, 0); const tq = topQuad(tb, 7); line(ctx, tq[3], tq[2], 1, C.gold, 0.3, 0.95); line(ctx, tq[2], tq[1], 1, C.gold, 0, 0.95);
-      const wq = faceQuad(tb, 1, 0.3, 0.7, 2.5, 5.5); if (night) B.glow(ctx, wq, GLOWS[0], env); else B.fillQuadShaded(ctx, wq, C.glass, { face: 'se', material: 'glass', noAO: true }, env);
+      const wq = faceQuad(tb, 1, 0.3, 0.7, 2.5, 5.5); if (board) B.fillQuadShaded(ctx, wq, C.plywood, { face: 'se', material: 'wood', noAO: true }, env); else if (night) B.glow(ctx, wq, GLOWS[0], env); else B.fillQuadShaded(ctx, wq, C.glass, { face: 'se', material: 'glass', noAO: true }, env);
     }
     if (G.crown) {   // the gold crown: lamps along every rim at its own height, chasing with the frame at night
       const rims = [[[0.1, 0.1], [fw - 0.1, 0.1], G.farRim], [[0.1, 0.1], [0.1, fh - 0.1], G.endRim], [[fw - 0.1, 1.0], [fw - 0.1, fh - 0.1], G.nearRim], [[1.0, fh - 0.1], [fw - 1.0, fh - 0.1], G.nearRim]];
@@ -29750,6 +29793,26 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
       const z = G.nearRim / 2, pq = quadT(g, [[fw / 2 - 0.55, fh - 0.1, z - 4], [fw / 2 + 0.55, fh - 0.1, z - 4], [fw / 2 + 0.55, fh - 0.1, z + 4], [fw / 2 - 0.55, fh - 0.1, z + 4]]);
       B.fillQuadShaded(ctx, pq, C.purple, { face: 'sw', material: 'paint', noAO: true }, env);
       for (let i = 0; i < 8; i++) { const X = fw / 2 - 0.55 + 1.1 * (i + 0.5) / 8; line(ctx, fT(g, X, fh - 0.1, z - 2.4), fT(g, X, fh - 0.1, z + 2.4), 1.4, C.gold, night ? 0.6 : 0.2, 0.95); }
+    }
+    if (flood) {   // H7: a waterline stain up the foot of both near walls, sandbags along the entrance side, the wet apron edges
+      for (const wq of [quadT(g, [[0, fh, 0], [fw, fh, 0], [fw, fh, 6], [0, fh, 6]]), quadT(g, [[fw, 0, 0], [fw, fh, 0], [fw, fh, 6], [fw, 0, 6]])]) { B.edgeFade(ctx, wq, wq[0], wq[1], 6, C.stain, -0.3, 0.75); line(ctx, wq[3], wq[2], 0.8, C.sandbag, 0.5, 0.6); }
+      for (let k = 0; k < 7; k++) { const p = fT(g, 0.6 + k * 0.62, fh + 0.02, 0); B.orb(ctx, p[0], p[1] - 0.8, 2.3, 1.2, C.sandbag, (k & 1) ? 0.05 : -0.2, { noRim: true }); }
+      const gq = groundQuad(g); B.edgeFade(ctx, gq, gq[3], gq[2], 12, C.water, -0.2, 0.4); B.edgeFade(ctx, gq, gq[2], gq[1], 12, C.water, -0.2, 0.4);
+    }
+    if (dmg) {   // H7: a blue tarp over a torn section of the far stand, the gap beside it, seat bits and a fallen bench on the turf, a crack up the near wall (the first mast is bent above)
+      const fs = G.stands.filter((q) => q.inner === 'y1').sort((p, q) => p.deck - q.deck)[0];
+      if (fs) {
+        const r = fs.r, span = r.y1 - r.y0, lift = (y) => fs.hIn + (fs.hOut - fs.hIn) * Math.abs(y - r.y1) / span, xa = r.x0 + (r.x1 - r.x0) * 0.5, xb = xa + (r.x1 - r.x0) * 0.24, ya = r.y0 + span * 0.1, yb = r.y0 + span * 0.62;
+        const gap = quadT(g, [[xa - (r.x1 - r.x0) * 0.2, yb, lift(yb)], [xa - (r.x1 - r.x0) * 0.03, yb, lift(yb)], [xa - (r.x1 - r.x0) * 0.03, ya + span * 0.2, lift(ya + span * 0.2)], [xa - (r.x1 - r.x0) * 0.2, ya + span * 0.2, lift(ya + span * 0.2)]]);
+        flat(ctx, gap, '#1D1630', 0, 0.92); line(ctx, gap[3], gap[2], 0.8, C.concrete, -0.3, 0.7);
+        const tq = quadT(g, [[xa, yb, lift(yb)], [xb, yb, lift(yb)], [xb, ya, lift(ya)], [xa, ya, lift(ya)]]);
+        B.fillQuadShaded(ctx, tq, C.tarp, { face: 'top', material: 'cloth', noAO: true }, env); line(ctx, lerp(tq[0], tq[1], 0.3), lerp(tq[3], tq[2], 0.55), 0.8, C.tarpCrease, 0, 0.9); line(ctx, lerp(tq[0], tq[3], 0.5), lerp(tq[1], tq[2], 0.5), 0.7, C.tarpCrease, 0, 0.7);
+        for (const p of tq) B.orb(ctx, p[0], p[1], 1.6, 1, C.sandbag, 0, { noRim: true });
+      }
+      const f = G.field;
+      for (let k = 0; k < 9; k++) { const p = fT(g, f.x0 + (f.x1 - f.x0) * ((hash(seed, 400 + k) % 88) / 100 + 0.06), f.y0 + (f.y1 - f.y0) * ((hash(seed, 420 + k) % 78) / 100 + 0.1), 0.3); B.orb(ctx, p[0], p[1], 1.5 + (k & 1), 0.8, (k % 3) ? C.purple : C.concrete, 0.1, { noRim: true }); }
+      { const p = fT(g, f.x0 + (f.x1 - f.x0) * 0.62, f.y0 + (f.y1 - f.y0) * 0.55, 0.3); line(ctx, [p[0] - 5, p[1] - 1], [p[0] + 4, p[1] + 1.4], 2, C.purple, -0.1, 0.95); line(ctx, [p[0] - 5, p[1] - 1], [p[0] - 6, p[1] + 2], 0.8, C.iron, 0, 0.9); }
+      B.stroke(ctx, [fT(g, fw * 0.28, fh - 0.1, G.nearRim * 0.7), fT(g, fw * 0.31, fh - 0.1, G.nearRim * 0.5), fT(g, fw * 0.29, fh - 0.1, G.nearRim * 0.32), fT(g, fw * 0.33, fh - 0.1, G.nearRim * 0.1)], 0.8, '#2A2630', -0.9, 0.9, {});
     }
     return b;
   }
@@ -29866,6 +29929,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     const rectZ = (x0, y0, x1, y1, z) => Q([[x0, y0, z], [x1, y0, z], [x1, y1, z], [x0, y1, z]]);
     const seg = (a, c, w, color, t, al) => line(ctx, pt(a[0], a[1], a[2] || 0), pt(c[0], c[1], c[2] || 0), w, color, t, al);
     const ell = (lx, ly, z, rx, ry, color, t, al) => { const p = pt(lx, ly, z); ctx.fillStyle = tone(color, t, al == null ? 1 : al); ctx.beginPath(); ctx.ellipse(p[0], p[1], rx, ry, 0, 0, Math.PI * 2); ctx.fill(); };
+    const poolBlob = (k, bridge) => { const out = []; for (let i = 0; i < H.POOL.length; i++) { const c = H.POOL[i], n = H.POOL[i + 1]; out.push([c[0], c[1], c[2] * k]); if (n) for (let q = 1; q < 4; q++) { const u = q / 4; out.push([c[0] + (n[0] - c[0]) * u, c[1] + (n[1] - c[1]) * u, (c[2] + (n[2] - c[2]) * u) * k * bridge]); } } return out; };   // H7: the three metaballs + the discs between them: one pool (the inner deep layer used to leave a gap between its three discs)
     const arch = (lx, y0, y1, z, ry, color, t) => { const e0 = pt(lx, y0, z), e1 = pt(lx, y1, z); ctx.fillStyle = tone(color, t); ctx.beginPath(); ctx.ellipse((e0[0] + e1[0]) / 2, (e0[1] + e1[1]) / 2, Math.hypot(e1[0] - e0[0], e1[1] - e0[1]) / 2, ry, Math.atan2(e1[1] - e0[1], e1[0] - e0[0]), Math.PI, 0); ctx.fill(); };
     const lbox = (x0, y0, x1, y1, z0, z1, color, mat) => { B.fillQuadShaded(ctx, faceX(x1, y0, y1, z0, z1), color, { face: fx, material: mat || 'stone', noAO: true }, env); B.fillQuadShaded(ctx, faceY(y1, x0, x1, z0, z1), color, { face: fy, material: mat || 'stone', noAO: true }, env); B.fillQuadShaded(ctx, rectZ(x0, y0, x1, y1, z1), color, { face: 'top', material: mat || 'stone', t: 0.1, noAO: true }, env); };
     const b = flatBody(g);
@@ -29883,7 +29947,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
       const fl = rectZ(RX0, H.FY0, H.FX1 + 0.16, H.FY1 + 0.14, FZ);
       if (site >= 1) {
         B.fillQuadShaded(ctx, fl, C.siteDirt, { face: 'top', material: 'stone', t: -0.1, noAO: true }, env); B.macroGrain(ctx, fl, 0.4, env);
-        for (const c of H.POOL) ell(c[0], c[1], FZ, c[2] * RX, c[2] * RY, site === 1 ? '#2E4C66' : C.water, site === 1 ? 0 : 0.15, 1);
+        for (const c of poolBlob(1, 0.9)) ell(c[0], c[1], FZ, c[2] * RX, c[2] * RY, site === 1 ? '#2E4C66' : C.water, site === 1 ? 0 : 0.15, 1);
       } else {
         B.fillQuadShaded(ctx, fl, '#6E8F3C', { face: 'top', material: 'wood', t: 0, noAO: true }, env); B.macroGrain(ctx, fl, 0.45, env);
         ctx.save(); B.poly(ctx, fl); ctx.clip();
@@ -29892,9 +29956,9 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
         B.fillQuadShaded(ctx, rectZ(RX0, 2.0, 0.6, 2.78, FZ), C.siteDirt, { face: 'top', material: 'stone', t: 0.05, noAO: true }, env);
         { const p = pt(H.NAP[0], H.NAP[1], FZ); B.softEllipse(ctx, p[0], p[1], 10, 5, '#7FA347', 0.6, 0.3); }
         B.edgeFade(ctx, fl, fl[0], fl[3], 10, C.cool, -0.2, 0.45); B.edgeFade(ctx, fl, fl[0], fl[1], 5, C.cool, -0.2, 0.35);
-        for (const c of H.POOL) ell(c[0], c[1], FZ, c[2] * RX * 1.16, c[2] * RY * 1.16, C.sandYard, 0.15);
-        for (const c of H.POOL) ell(c[0], c[1], FZ, c[2] * RX, c[2] * RY, C.shallows, 0.1);
-        for (const c of H.POOL) ell(c[0], c[1], FZ, c[2] * RX * 0.68, c[2] * RY * 0.68, C.water, 0.3);
+        for (const c of poolBlob(1.16, 0.9)) ell(c[0], c[1], FZ, c[2] * RX, c[2] * RY, C.sandYard, 0.15);
+        for (const c of poolBlob(1, 0.9)) ell(c[0], c[1], FZ, c[2] * RX, c[2] * RY, C.shallows, 0.1);
+        for (const c of poolBlob(0.68, 0.95)) ell(c[0], c[1], FZ, c[2] * RX, c[2] * RY, C.water, 0.3);
         ell(0.6, 1.1, FZ, 9, 4, '#2E5A2A', -0.2, 0.35);
         for (let i = 0; i < (lod0 ? 9 : 4); i++) { const c = H.POOL[i % 3], a = (hash(seed + frame, 40 + i) % 100) / 100 * Math.PI * 2, d = (hash(seed, 60 + i) % 70) / 100, p = pt(c[0] + Math.cos(a) * c[2] * d, c[1] + Math.sin(a) * c[2] * d, FZ); line(ctx, [p[0] - 1.6, p[1]], [p[0] + 1.6, p[1]], 0.6, night ? '#C9D8FF' : C.spec, 0, 0.55); }
         ctx.restore();
@@ -29945,7 +30009,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     if (flood && !front && built) {
       const fq = rectZ(RX0, H.FY0, H.FX1, H.FY1, FZ + 5); flat(ctx, fq, C.flood, 0, 0.82); B.macroGrain(ctx, fq, 0.35, env);
       ctx.save(); B.poly(ctx, fq); ctx.clip();
-      for (const c of H.POOL) ell(c[0], c[1], FZ + 5, c[2] * RX * 0.8, c[2] * RY * 0.8, C.water, 0.1, 0.5);
+      for (const c of poolBlob(0.8, 0.95)) ell(c[0], c[1], FZ + 5, c[2] * RX, c[2] * RY, C.water, 0.1, 0.5);
       for (let i = 0; i < 10; i++) { const p = pt(0.3 + (hash(seed + 66, i) % 150) / 100, 0.3 + (hash(seed + 67, i) % 250) / 100, FZ + 5); line(ctx, [p[0] - 2, p[1]], [p[0] + 2, p[1]], 0.6, C.flood, 0.5, 0.6); }
       for (let i = 0; i < 8; i++) { const p = pt(0.5 + (hash(seed + 68, i) % 120) / 100, 0.5 + (hash(seed + 69, i) % 220) / 100, FZ + 5); B.orb(ctx, p[0], p[1], 1.2, 0.6, (i & 1) ? '#3F5E3A' : C.bark, 0.2, { noRim: true }); }
       ctx.restore();
@@ -30289,8 +30353,8 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
 // What stands on the pad comes from the HD masters, never from the pen: footprint rows bake their HD building ONCE for this icon with the entrance on the lit
 // face (sprites.bakeWith at master 2: a scratch canvas freed right after the blit, so the atlas never holds an extra FRONT_L variant), plants are the HD oak /
 // cypress / azalea cells, levee / floodwall / canal runs are the HD terrain families, reeds / mounds the HD marsh pieces; paths, roads, the boardwalk, the Pedestrian
-// Bridge and the gator fence are drawn by the brush's own path / deck / column primitives (the same strokePath the map's paths use). Only the surge barrier gate
-// (no HD family yet) is its pen sprite, smoothed into the frame.
+// Bridge, the gator fence and the surge barrier's gate (H7) are drawn by the brush's own path / deck / column / lit-quad primitives (the same strokePath the map's paths use);
+// no icon carries a pen sprite any more.
 // Conventions: brush calls only (no hand-written gradient, no fillText, no Math.random, no rng.fx); every jitter from BSU.rng.hash; deterministic in (id, variant,
 // master). Public (BSU.sprites): hdIconFamilies(), ICON_FRAME (frozen), iconBakeStats().
 // ============================================================================
@@ -30416,6 +30480,29 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
   }
 
   // ---------------------------------------------------------------------------
+  // The surge barrier's gate (H7): two concrete piers with lamp caps, a steel gate with gold bars between them (frame 0 = shut) and a head beam, on a concrete sill —
+  // built from the brush's lit quads like the floodwall stamps beside it (the run's long axis is +u; the lit face is the one toward +v), so the icon has no pen sprite left
+  // ---------------------------------------------------------------------------
+  function drawBarrierGate(ctx, env, it, s, ox, oy) {
+    const bx = it.ax * s + ox, by = it.ay * s + oy;
+    const pt = (u, v, h) => { const w = uv(u, v); return [w[0] * s + bx, w[1] * s + by - (h || 0)]; };
+    const box = (u0, u1, v0, v1, z0, z1, color, mat) => {
+      B.fillQuadShaded(ctx, [pt(u0, v1, z0), pt(u1, v1, z0), pt(u1, v1, z1), pt(u0, v1, z1)], color, { face: 'sw', material: mat || 'stone', noAO: true }, env);
+      B.fillQuadShaded(ctx, [pt(u1, v0, z0), pt(u1, v1, z0), pt(u1, v1, z1), pt(u1, v0, z1)], color, { face: 'se', material: mat || 'stone', noAO: true }, env);
+      B.fillQuadShaded(ctx, [pt(u0, v0, z1), pt(u1, v0, z1), pt(u1, v1, z1), pt(u0, v1, z1)], color, { face: 'top', material: mat || 'stone', t: 0.1, noAO: true }, env);
+    };
+    const CONC = '#B4B2AC', STEEL = '#7C8696', GOLD = '#E3B93A';
+    B.shadow(ctx, { x: bx + 3, y: by + 2.2, rx: 15, ry: 4.6, a: 0.32 }, env);
+    box(-0.5, 0.5, -0.3, 0.3, 0, 2.2, CONC);                                           // the sill
+    box(-0.46, -0.28, -0.26, 0.26, 2.2, 19, CONC); box(0.28, 0.46, -0.26, 0.26, 2.2, 19, CONC);   // the piers
+    B.fillQuadShaded(ctx, [pt(-0.28, 0.1, 3), pt(0.28, 0.1, 3), pt(0.28, 0.1, 16.4), pt(-0.28, 0.1, 16.4)], STEEL, { face: 'sw', material: 'metal', noAO: true }, env);   // the gate leaf, shut
+    for (let u = -0.22; u <= 0.23; u += 0.11) B.stroke(ctx, [pt(u, 0.1, 3.4), pt(u, 0.1, 16)], 0.8, GOLD, 0.15, 0.95, { cap: 'butt' });
+    B.stroke(ctx, [pt(-0.28, 0.1, 9.6), pt(0.28, 0.1, 9.6)], 0.7, STEEL, -0.5, 0.9);
+    box(-0.46, 0.46, -0.24, 0.24, 16.4, 19.6, CONC);                                    // the head beam
+    for (const u of [-0.37, 0.37]) { const p = pt(u, 0, 19); B.orb(ctx, p[0], p[1] - 0.9, 1.5, 1.2, GOLD, 0.3, { spec: 0.4, noRim: true }); }
+  }
+
+  // ---------------------------------------------------------------------------
   // Sources: the HD masters the icon stands on its pad
   // ---------------------------------------------------------------------------
   /** the entry an item stands for at the icon's master: an HD atlas cell, or (footprint rows) the HD building baked ONCE for this icon (entrance on the lit face) */
@@ -30468,7 +30555,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
         const sh = (k) => pts.map((p) => [cx(pts) + (p[0] - cx(pts)) * k + 2.4, cy(pts) + (p[1] - cy(pts)) * k + 1.4]);
         if (pl.items.some((it) => it.bld)) B.shadow(ctx, { poly: sh(0.78), soft: 3, a: 0.42 }, env);
         else if (pl.items.length) B.shadow(ctx, { x: cx(pts) + 3, y: cy(pts) + 1.5, rx: (c.R[0] - c.L[0]) * 0.28, ry: (c.Bt[1] - c.T[1]) * 0.26, a: 0.3 }, env);
-        for (const it of pl.items) { if (it.id === 'preservePost') continue; drawItem(ctx, it, s, ox, oy, z); }
+        for (const it of pl.items) { if (it.id === 'preservePost') continue; if (it.id === 'surge_barrier') drawBarrierGate(ctx, env, it, s, ox, oy); else drawItem(ctx, it, s, ox, oy, z); }
         if (id === 'preserve') drawPreserve(ctx, env, c, true);
       }
       if (f.badge && pl.foot) drawBadge(ctx, env, pl.foot, 4, 5);
@@ -35243,7 +35330,13 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
       if (!victim) break;
       b -= victim.bytes | 0; dropChunk(victim);
     }
-    if (b > cap && !hdFallbackChunks) { hdFallbackChunks = true; for (let k = 0; k < NCH; k++) { const ch = chunks[k]; if (ch.canvas && ch.master === 2) ch.dirty = 1; } hdRefresh(); }
+    if (b > cap && !hdFallbackChunks) {
+      // H7: only a working set the bake TARGETS at master 2 latches the fallback. A zoom-out step already targets master 1 (dpr 2 on a 96 map: ~110 visible chunks), so the stale
+      // master-2 canvases are re-baked at master 1 in place and nothing latches: the next zoom-in is HD at once (the latch held master 1 for ~10 s until idle eviction)
+      if (hdChunkWant === 2) hdFallbackChunks = true;
+      for (let k = 0; k < NCH; k++) { const ch = chunks[k]; if (ch.canvas && ch.master === 2) ch.dirty = 1; }
+      if (hdFallbackChunks) hdRefresh();
+    }
     else if (hdFallbackChunks && b < cap * 0.6) { hdFallbackChunks = false; hdRefresh(); }
   }
 
@@ -35328,9 +35421,13 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     try { const h = mod('hydro'); if (h && typeof h.activeCount === 'function') hydroActive = fin(h.activeCount(), 0); } catch (e) { hydroActive = 0; }
     try { const sp = S(); mem = typeof sp.totalMemoryMB === 'function' ? sp.totalMemoryMB() : sp.memoryMB(); } catch (e) { mem = 0; }
     mem += liveChunks() * C.chunkMB + (canvas ? (canvas.width * canvas.height * 12) / 1048576 : 0) + teeBytes / 1048576;
+    let blobMB = 0, vignetteMB = 0;   // H7: the effect passes' caches count too — the brush blob cache (≤ 20 MB) and the night vignette canvas (one frame-sized canvas: 5 MB at 1440 × 900, 20 MB at dpr 2)
+    try { const bs = BSU.brush && typeof BSU.brush.blobStats === 'function' ? BSU.brush.blobStats() : null; blobMB = bs ? fin(bs.mb, 0) : 0; } catch (e) { blobMB = 0; }
+    try { vignetteMB = typeof M.vignetteMB === 'function' ? fin(M.vignetteMB(), 0) : 0; } catch (e) { vignetteMB = 0; }
+    mem += blobMB + vignetteMB;
     let parts = 0; try { parts = M.particles && typeof M.particles.count === 'function' ? fin(M.particles.count(), 0) : 0; } catch (e) { parts = 0; }
     let atlasMB = 0, hdAtlasMB = 0; try { const sp = S(); atlasMB = fin(sp.memoryMB(), 0); hdAtlasMB = typeof sp.hdMemoryMB === 'function' ? fin(sp.hdMemoryMB(), 0) : 0; } catch (e) { atlasMB = 0; }
-    return { frameMs: fin(frameMs, 0), drawCalls: drawCalls | 0, particles: parts, agentsDrawn: agentsDrawn | 0, hydroActive: hydroActive, chunks: liveChunks(), memMB: Math.round(mem * 100) / 100, tees: teeCache.size, water: waterDrawn | 0, frameNo: frameNo, zoom: zoomNow, atlasZoom: atlasZoom, smooth: frameSmooth, perfMode: !!(root && root.ui && root.ui.perfMode),
+    return { frameMs: fin(frameMs, 0), drawCalls: drawCalls | 0, particles: parts, agentsDrawn: agentsDrawn | 0, hydroActive: hydroActive, chunks: liveChunks(), memMB: Math.round(mem * 100) / 100, blobMB: Math.round(blobMB * 100) / 100, vignetteMB: Math.round(vignetteMB * 100) / 100, tees: teeCache.size, water: waterDrawn | 0, frameNo: frameNo, zoom: zoomNow, atlasZoom: atlasZoom, smooth: frameSmooth, perfMode: !!(root && root.ui && root.ui.perfMode),
       // H0 pipeline pass: HD state and real byte counts (chunkMB = every live chunk canvas at its own master; the legacy memMB keeps its 0.85 MB-per-chunk estimate)
       hd: hdOn, hdMaster: hdMaster, chunkMaster: hdChunkWant, hdChunks: hdChunkCount(), chunkMB: Math.round(chunkBytes() / 10485.76) / 100, atlasMB: Math.round(atlasMB * 100) / 100, hdAtlasMB: Math.round(hdAtlasMB * 100) / 100, hdFallback: hdFallbackChunks || !!(S() && S().hdFallback), hdBakes: hdBakesThisFrame, dpr: dpr,
       passMs: Object.assign({}, passMs) };   // H5: smoothed ms per stage / pass (chunks, water, deck, entities, weather, tint, lights, fog, …)
@@ -35406,6 +35503,19 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     WC = { surge: sh(deep, 0.72), chopD: sh(deep, 0.45), chopL: mx(deep, '#B8C4BC', 0.4), current: sh(day, 1.25), band1: WATER_SHALLOW, band2: mx(WATER_SHALLOW, '#FFFFFF', 0.35), foam: '#E6F3EC', debris: '#5A4A3A' };
     return WC;
   }
+  // H7: the water pass's bars (wave bands, glints, foam, flecks, streaks, the surge's debris + chop) were ~6,000 pen-era fillRects a frame; each layer is now one flat (x, y, len)
+  // list filled ONCE through BSU.brush.bars (device-pixel-snapped rects in one path): about a dozen fills a frame
+  const WLAY = ['bandA', 'bandB', 'glint', 'foam0', 'foam1', 'foam2', 'fleck', 'bayou', 'river', 'debris', 'chopL', 'chopD'];
+  const WLAY_PER = { bandA: 8, bandB: 6, glint: 1, foam0: 16, foam1: 16, foam2: 16, fleck: 3, bayou: 1, river: 1, debris: 2, chopL: 2, chopD: 1 };
+  const WL = {}; let wlCap = 0;
+  function waterLayers(cap) {
+    if (cap <= wlCap && WL.bandA) return;
+    wlCap = Math.max(cap, wlCap);
+    for (let k = 0; k < WLAY.length; k++) { const n = WLAY[k]; WL[n] = { a: new Float32Array(wlCap * WLAY_PER[n] * 3), n: 0 }; }
+  }
+  const WFOAM_A = [0.05, 0.16, 0.28];
+  function waterBars(g, L, w, color, alpha) { if (L.n > 0) { const BR = BSU.brush; if (BR && typeof BR.bars === 'function') { BR.bars(g, L.a, L.n, w, color, alpha, dpr); drawCalls++; } L.n = 0; } }
+  const waterGates = [];
   function waterPass(state, g) {
     const t = state.tiles, elev = t.elev, depth = t.depth, type = t.type, fl = t.flags;
     const z = zoomNow, w = TW * z, h = TH * z;
@@ -35421,7 +35531,10 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     const phA = frameNo * 0.11, phB = frameNo * 0.07, fr3 = frameNo >> 3;
     const hasBank = te && typeof te.bank === 'function';
     let bankRow = -1, bankX = 99;
-    waterDrawn = 0;
+    waterDrawn = 0; waterGates.length = 0;
+    waterLayers(C.waterCapSurge); for (let k = 0; k < WLAY.length; k++) WL[WLAY[k]].n = 0;
+    const Wa = WL.bandA, Wb = WL.bandB, Wg = WL.glint, Wf0 = WL.foam0, Wf1 = WL.foam1, Wf2 = WL.foam2, Wfl = WL.fleck, Wby = WL.bayou, Wr = WL.river, Wd = WL.debris, Wcl = WL.chopL, Wcd = WL.chopD;
+    const bar = (L, x, y, len) => { const o = L.n * 3; L.a[o] = x; L.a[o + 1] = y; L.a[o + 2] = len; L.n++; };
     g.globalCompositeOperation = 'source-over';
     for (let ty = view.y0; ty <= view.y1 && waterDrawn < cap; ty++) {
       for (let tx = view.x0; tx <= view.x1; tx++) {
@@ -35444,68 +35557,67 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
         g.globalAlpha = a; g.fillStyle = col;
         fillDiamond(g, sx, sy, w, h, a > 0.5 ? 0.3 : 0);
         const hv = hash(tx, ty);
-        if (reached) {   // surge: debris flecks and short chop strokes that jitter every 4 frames (H5: sub-pixel placed — anti-aliased ends, no whole-pixel stepping)
+        if (reached) {   // surge: debris flecks and short chop strokes that jitter every 4 frames (collected into the debris / chop layers, stroked once each)
           const j = (frameNo >> 2) + tx;
-          g.globalAlpha = 0.8; g.fillStyle = wc.debris; g.fillRect((sx - 10 * z + (hv % 16) * z), (sy - 3 * z + (hash(ty, tx) % 6) * z), 3 * z, z); g.fillRect((sx + (hash(tx + 1, ty) % 12) * z), (sy + (hash(ty, tx + 1) % 5) * z), 2 * z, z);
-          g.globalAlpha = 0.55; g.fillStyle = wc.chopL; g.fillRect((sx - 18 * z + ((hv >> 3) % 24) * z), (sy - 6 * z + ((j * 5 + hv) % 12) * z), 5 * z, z); g.fillRect((sx - 4 * z + ((hv >> 7) % 20) * z), (sy - 2 * z + ((j * 3 + (hv >> 5)) % 9) * z), 4 * z, z);
-          g.globalAlpha = 0.6; g.fillStyle = wc.chopD; g.fillRect((sx - 14 * z + ((hv >> 9) % 28) * z), (sy - 5 * z + 1 * z + ((j * 7 + (hv >> 2)) % 10) * z), 6 * z, z);
-          drawCalls += 5;
+          bar(Wd, sx - 10 * z + (hv % 16) * z, sy - 3 * z + (hash(ty, tx) % 6) * z, 3 * z); bar(Wd, sx + (hash(tx + 1, ty) % 12) * z, sy + (hash(ty, tx + 1) % 5) * z, 2 * z);
+          bar(Wcl, sx - 18 * z + ((hv >> 3) % 24) * z, sy - 6 * z + ((j * 5 + hv) % 12) * z, 5 * z); bar(Wcl, sx - 4 * z + ((hv >> 7) % 20) * z, sy - 2 * z + ((j * 3 + (hv >> 5)) % 9) * z, 4 * z);
+          bar(Wcd, sx - 14 * z + ((hv >> 9) % 28) * z, sy - 5 * z + 1 * z + ((j * 7 + (hv >> 2)) % 10) * z, 6 * z);
         }
         if (lines && !reached) {
           // band A: long swells drifting right; band B: shorter ripples drifting left, lower, fainter
-          g.globalAlpha = 0.42; g.fillStyle = wc.band1;
           const oA = (hv & 7) * 3, oB = ((hv >> 3) & 7) * 2;
           for (let k = 0; k < 8; k++) {
             const lx = -28 + k * 8, ly = -6 + 2.4 * Math.sin((lx + phA * 4 + oA) * 0.349);
-            if (Math.abs(lx) / 32 + Math.abs(ly) / 16 <= 0.9) { g.fillRect(Math.round(sx + (lx - 3) * z), Math.round(sy + ly * z), 6 * z, z); drawCalls++; }
+            if (Math.abs(lx) / 32 + Math.abs(ly) / 16 <= 0.9) bar(Wa, sx + (lx - 3) * z, sy + ly * z, 6 * z);
           }
-          g.globalAlpha = 0.3; g.fillStyle = wc.band2;
           for (let k = 0; k < 6; k++) {
             const lx = -20 + k * 8, ly = 5 + 1.6 * Math.sin((lx - phB * 4 + oB) * 0.523);
-            if (Math.abs(lx) / 32 + Math.abs(ly) / 16 <= 0.9) { g.fillRect(Math.round(sx + (lx - 2) * z), Math.round(sy + ly * z), 4 * z, z); drawCalls++; }
+            if (Math.abs(lx) / 32 + Math.abs(ly) / 16 <= 0.9) bar(Wb, sx + (lx - 2) * z, sy + ly * z, 4 * z);
           }
           // sun / moon glints: colour and rate follow the sky clock
-          if (((tx * 7 + ty * 13) & (C.sparkleEvery - 1)) === 0 && ((fr3 + tx + ty) % glintEvery) === 0) { g.globalAlpha = glintA; g.fillStyle = glintCol; g.fillRect(Math.round(sx - 14 * z + (hv % 28) * z), Math.round(sy - 5 * z + ((hv >> 5) % 10) * z), glintW * z, z); drawCalls++; }
-          // foam dashes along the edges that meet land (marsh counts as land), blinking so they drift
+          if (((tx * 7 + ty * 13) & (C.sparkleEvery - 1)) === 0 && ((fr3 + tx + ty) % glintEvery) === 0) bar(Wg, sx - 14 * z + (hv % 28) * z, sy - 5 * z + ((hv >> 5) % 10) * z, glintW * z);
+          // foam dashes along the edges that meet land (marsh counts as land), blinking so they drift (three alpha steps: the dash's own breathing)
           let em = 0;
           if (ty > 0 && !wetOf(t, i - W)) em |= 1;
           if (tx < W - 1 && !wetOf(t, i + 1)) em |= 2;
           if (ty < HGT - 1 && !wetOf(t, i + W)) em |= 4;
           if (tx > 0 && !wetOf(t, i - 1)) em |= 8;
           if (em) {
-            g.fillStyle = wc.foam;
             for (let e = 0; e < 4; e++) {
               if (!(em & (1 << e))) continue;
               for (let k = 0; k < 4; k++) {
                 if (((fr3 + k + e + (hv >> 2)) % 3) === 0) continue;
-                const o = (e * 4 + k) * 2;
-                g.globalAlpha = 0.16 + 0.16 * Math.sin(frameNo * 0.09 + k * 1.7 + e + (hv & 15));
-                g.fillRect(Math.round(sx + (FOAM[o] - 1) * z), Math.round(sy + FOAM[o + 1] * z), 3 * z, z); drawCalls++;
+                const o = (e * 4 + k) * 2, st = 0.5 + 0.5 * Math.sin(frameNo * 0.09 + k * 1.7 + e + (hv & 15));
+                bar(st < 0.34 ? Wf0 : (st < 0.67 ? Wf1 : Wf2), sx + (FOAM[o] - 1) * z, sy + FOAM[o + 1] * z, 3 * z);
               }
             }
           }
           if (deckArr && deckArr[i] === deckArr[i]) {   // flecks around the stilts of a deck over this tile
-            g.fillStyle = wc.foam;
-            for (let k = 0; k < 3; k++) { if (((fr3 + k + (hv >> 4)) & 3) === 0) continue; g.globalAlpha = 0.35; g.fillRect(Math.round(sx - 12 * z + ((hv >> (k * 3)) % 24) * z), Math.round(sy + 2 * z + ((hv >> (k * 2 + 1)) % 7) * z), 3 * z, z); drawCalls++; }
+            for (let k = 0; k < 3; k++) { if (((fr3 + k + (hv >> 4)) & 3) === 0) continue; bar(Wfl, sx - 12 * z + ((hv >> (k * 3)) % 24) * z, sy + 2 * z + ((hv >> (k * 2 + 1)) % 7) * z, 3 * z); }
           }
           if (f & FLAG.BAYOU) {   // the bayou current line along the direction of the next bayou tile
             const dirE = (tx < W - 1 && (fl[i + 1] & FLAG.BAYOU)) ? 1 : 0, dirS = (ty < HGT - 1 && (fl[i + W] & FLAG.BAYOU)) ? 1 : 0;
             const off = ((frameNo >> 1) + tx * 3) % 24 - 12;
-            g.globalAlpha = 0.35; g.fillStyle = wc.current;
             const cxp = sx + (dirE - dirS) * off * z * 1.0, cyp = sy + (dirE + dirS) * off * z * 0.5;
-            g.fillRect(Math.round(cxp - 6 * z), Math.round(cyp), 12 * z, z); drawCalls++;
+            bar(Wby, cxp - 6 * z, cyp, 12 * z);
           } else if (ty8 === T.OPEN_WATER && hasBank) {   // the river (east of the bank) runs south: a slower streak down-left
             if (bankRow !== ty) { bankRow = ty; try { bankX = fin(te.bank(ty), 99); } catch (e) { bankX = 99; } }
-            if (tx > bankX) { const off = ((frameNo >> 2) + ty * 5 + (hv & 3)) % 24 - 12; g.globalAlpha = 0.28; g.fillStyle = wc.current; g.fillRect(Math.round(sx - off * z - 5 * z), Math.round(sy + off * z * 0.5), 10 * z, z); drawCalls++; }
+            if (tx > bankX) { const off = ((frameNo >> 2) + ty * 5 + (hv & 3)) % 24 - 12; bar(Wr, sx - off * z - 5 * z, sy + off * z * 0.5, 10 * z); }
           }
         }
-        if (f & FLAG.FLOODGATE) {   // live floodgate frame (0 open → 3 closed; animated over 20 ticks from the gate:* event)
-          const gs = gates.get(i); let fr = 0;
-          if (gs) { const prog = clamp((frameNo - gs.t0) / 12, 0, 1); fr = gs.closed ? Math.round(prog * 3) : Math.round((1 - prog) * 3); }
-          const ref = getRef('gate', 0, fr);
-          if (ref) { g.globalAlpha = 1; blit(g, ref, sx, sy, zsOf(ref)); }
-        }
+        if (f & FLAG.FLOODGATE) waterGates.push(i, sx, sy);   // drawn after the bars (they used to be drawn per tile, right after that tile's own bars)
       }
+    }
+    // the bars, one fill per layer (bottom to top: swells, ripples, glints, foam, flecks, streaks, then the surge's debris and chop)
+    waterBars(g, Wa, z, wc.band1, 0.42); waterBars(g, Wb, z, wc.band2, 0.3); waterBars(g, Wg, z, glintCol, glintA);
+    waterBars(g, Wf0, z, wc.foam, WFOAM_A[0]); waterBars(g, Wf1, z, wc.foam, WFOAM_A[1]); waterBars(g, Wf2, z, wc.foam, WFOAM_A[2]);
+    waterBars(g, Wfl, z, wc.foam, 0.35); waterBars(g, Wby, z, wc.current, 0.35); waterBars(g, Wr, z, wc.current, 0.28);
+    waterBars(g, Wd, z, wc.debris, 0.8); waterBars(g, Wcl, z, wc.chopL, 0.55); waterBars(g, Wcd, z, wc.chopD, 0.6);
+    for (let k = 0; k < waterGates.length; k += 3) {   // live floodgate frames (0 open → 3 closed; animated over 12 frames from the gate:* event)
+      const gs = gates.get(waterGates[k]); let fr = 0;
+      if (gs) { const prog = clamp((frameNo - gs.t0) / 12, 0, 1); fr = gs.closed ? Math.round(prog * 3) : Math.round((1 - prog) * 3); }
+      const ref = getRef('gate', 0, fr);
+      if (ref) { g.globalAlpha = 1; blit(g, ref, waterGates[k + 1], waterGates[k + 2], zsOf(ref)); }
     }
     g.globalAlpha = 1;
   }
@@ -36032,7 +36144,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     bpx: 50, bpy: 0, bcx: 50, bcy: 0, crewU: 50, gainU: 60, refU: 50, refV: 18,
     warm: 0, warmZoom: 0, crowdUp: 0, waveAt: -1e9, scoreAt: -1e9, keyAt: -1e9, hitAt: -1e9, sigAt: -1e9, bellsAt: -1e9,
     cam: { active: false, zoomBefore: 1, touched: false, cutN: -1, wide: false, montage: null },
-    drawn: 0, players: 0, fans: 0, minX: 0, maxX: 0, minY: 0, maxY: 0, crowdFrame: -1,
+    drawn: 0, players: 0, fans: 0, minX: 0, maxX: 0, minY: 0, maxY: 0, crowdFrame: -1, glintA: 0,
     mtN: -1, mtHit: -1, lb: false, cut: false, camU: NaN, camV: NaN, hudTop: 56, hudBot: 28, hudAt: -1e9   // montage pass: the reel's crowd cues, the letterbox, the camera target of the last frame (tests)
   };
   /** the painted field's footprint rect {x0, y0, x1, y1, fw, fh} (tiles; X along +tx, Y along +ty) exactly as the stadium / practice-field painters draw it */
@@ -36151,6 +36263,17 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     return fbScr;
   }
   function drawFbSprite(e, g) { if (!e.ref) return; blit(g, e.ref, e.sx, e.sy, zoomNow * FB_SCALE / (e.ref.zoom || 1)); }
+  /** H7: a player plus, in a night game, the helmet glint under the mast lights: one cached additive 'dot' blob, twinkling per player (FB.glintA = the night amount, 0 by day / in perf mode) */
+  function drawFbPlayer(e, g) {
+    if (!e.ref) return;
+    const zs = zoomNow * FB_SCALE / (e.ref.zoom || 1); blit(g, e.ref, e.sx, e.sy, zs);
+    if (!(FB.glintA > 0.04)) return;
+    const BR = BSU.brush; if (!BR || typeof BR.drawBlob !== 'function') return;
+    const i = e.a | 0, tw = 0.5 + 0.5 * Math.sin(frameNo * 0.13 + i * 1.9), hx = e.sx + (e.ref.ox + e.ref.sw * 0.42) * zs, hy = e.sy + (e.ref.oy + e.ref.sh * 0.2) * zs, r = Math.max(1.4, 1.5 * zoomNow);
+    g.globalCompositeOperation = 'lighter';
+    BR.drawBlob(g, 'dot', '#FFF3C4', hx, hy, r, r, FB.glintA * (0.35 + 0.5 * tw), dpr);
+    g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1;
+  }
   function fbPush(G, kind, id, variant, frame, u, v, up, draw) {   // field yards → one sorted entry at the venue anchor (1x atlas, half the zoom)
     const X = G.q.x0 + (u + 10) * G.kx, Y = G.q.y0 + v * G.ky;
     const e = push(kind, G.ax, G.ay, G.el, 1 + clamp((X + Y) / (G.q.fw + G.q.fh), 0, 1) * 58, draw || drawFbSprite);
@@ -36336,7 +36459,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
       const look = (p.team | 0) === 0 ? homeLook : awayLook;
       const variant = sp.fbVariant(look, p.pos, 0, carry ? 1 : 0);
       const id = 'fbplayer:' + pose;
-      const e = fbPush(G, 'fbplayer', id, variant, sp.fbFrame(id, face, f), x, FB_YD_V / 2 + y, 0, drawFbSprite);
+      const e = fbPush(G, 'fbplayer', id, variant, sp.fbFrame(id, face, f), x, FB_YD_V / 2 + y, 0, drawFbPlayer);
       e.a = i; FB.players++;
       const X = G.q.x0 + (x + 10) * G.kx, Y = G.q.y0 + (FB_YD_V / 2 + y) * G.ky;
       if (X < minX) minX = X; if (X > maxX) maxX = X; if (Y < minY) minY = Y; if (Y > maxY) maxY = Y;
@@ -36408,6 +36531,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
   }
   function footballPass(state) {
     FB.drawn = 0; FB.players = 0; FB.fans = 0;
+    FB.glintA = 0; try { const gm = state.sports && state.sports.game; if (gm && gm.night && !(state.ui && state.ui.perfMode) && typeof M.nightAmount === 'function') FB.glintA = M.nightAmount(state); } catch (e) { FB.glintA = 0; }   // H7: the helmet glint
     if (FB.crowdUp > 0) FB.crowdUp--;
     const lv = FB.live, dr = FB.drill, b = FB.venue;
     if ((!lv && !dr) || !b) return;
@@ -37420,7 +37544,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
   const bolt = new Float32Array(24); let boltN = 0, flashUntil = 0, boltUntil = 0, boltTipX = 0, boltTipY = 0;
   const fogBlobs = []; for (let k = 0; k < 8; k++) fogBlobs.push({ x: 0, y: 0, r: 1, vx: 0, ph: 0 });
   
-  let stormPhase = -1, godRayUntil = -1, goldFlash = 0, burstsPending = 0, burstTimer = 0, burstGap = 22, mtVolley = null, perfChipUntil = 0, subscribed = false, inited = false;
+  let stormPhase = -1, godRayUntil = -1, goldFlash = 0, burstsPending = 0, burstTimer = 0, burstGap = 22, mtVolley = null, subscribed = false, inited = false;
   let frameNo = 0, lastFrameNo = -1;
   const overtop = new Map();   // tile → frames left of trickle
   const lightRefs = {};        // kind → SpriteRef (refreshed per frame)
@@ -38386,6 +38510,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
   // size and blitted 1:1 in four slabs around its transparent centre (a scaled bilinear blit of the same image costs ~7× more in software raster). B5's 24 stacked
   // bands stepped visibly; this does not.
   let vigC = null, vigW = 0, vigH = 0;
+  R.vignetteMB = function () { return vigC ? (vigW * vigH * 4) / 1048576 : 0; };   // H7: counted in render.perf().memMB
   function drawVignette(g, vw, vh, dpr, a) {
     const BR = BSU.brush, w = Math.max(1, Math.round(vw * dpr)), h = Math.max(1, Math.round(vh * dpr));
     if (!vigC || vigW !== w || vigH !== h) {
@@ -38518,15 +38643,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
   // ---------------------------------------------------------------------------
   // Pass 10.5: HUD-canvas bits — the performance chip
   // ---------------------------------------------------------------------------
-  function passFxHud(state, g, view) {
-    const now = nowMs();
-    if (now < perfChipUntil) {
-      const a = clamp((perfChipUntil - now) / 800, 0, 1), x = view.vw - 176, y = 52;
-      g.globalAlpha = 0.85 * a; g.fillStyle = PAL.panel || '#1A1230'; rrect(g, x, y, 164, 26, 7); g.fill(); g.save(); rrect(g, x, y, 164, 26, 7); g.clip(); g.fillStyle = GOLD; g.fillRect(x, y, 3, 26); g.restore();
-      g.globalAlpha = a; g.fillStyle = PAL.text || '#F4EEE2'; g.font = '12px system-ui, sans-serif'; g.textBaseline = 'middle'; g.fillText('Performance mode', x + 12, y + 13);
-      g.globalAlpha = 1;
-    }
-  }
+  function passFxHud() { /* H7: the 'Performance mode' chip is the DOM #perfmode-chip plus the one-time hint; this canvas copy was a third one, half under the top bar at 115 % */ }
 
   // ---------------------------------------------------------------------------
   // Event-driven FX (owner 'renderfx'; flags + particles only, never sim state)
@@ -38637,7 +38754,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
   // Perf guardrail reaction, init / reset
   // ---------------------------------------------------------------------------
   /** the guardrail tripped (render measured 60 frames > 25 ms): fewer particles, fireflies ÷ 2, rain ÷ 2, chip */
-  R.onPerfMode = function () { lowMode = true; cap = LOWP; if (alive > cap) alive = cap; perfChipUntil = nowMs() + 6000; };
+  R.onPerfMode = function () { lowMode = true; cap = LOWP; if (alive > cap) alive = cap; };
   /** once per page load, from render.init */
   R._fxInit = function () { inited = true; subscribe(); R._fxReset(stateLive()); };
   /** on newGame / load: drop every transient effect */
@@ -38703,10 +38820,15 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
   function issCamTile(state, out) { const cam = camOf(state); out.tx = (cam.x / 32 + cam.y / 16) / 2; out.ty = (cam.y / 16 - cam.x / 32) / 2; return out; }
   const issCam = { tx: 32, ty: 32 };
   function issBeaconList(state, I, all) { try { issCamTile(state, issCam); const l = I.beacons(state, issCam.tx, issCam.ty, all ? { all: true } : undefined); return Array.isArray(l) ? l : []; } catch (e) { return []; } }
+  /** H7: the frame follows the HUD mode: a part drawn as its pill (compact, or folded) takes a pill's room, hidden leaves the whole viewport; heights are y from the top (each sum starts with the 70-px top bar) */
   function issFrame(view) {
-    let ui = 1; try { const U = mod('ui'); if (U && typeof U.uiScaleEffective === 'function') ui = fin(U.uiScaleEffective(), 1) || 1; } catch (e) { ui = 1; }
-    issFrameO.ui = ui; issFrameO.L = 26; issFrameO.R = view.vw - 26; issFrameO.T = 70 * ui; issFrameO.B = view.vh - 236 * ui;
-    issFrameO.rightCol = view.vw - 250 * ui; issFrameO.rightColH = 600 * ui; issFrameO.leftCol = 390 * ui; issFrameO.leftColH = 520 * ui;
+    let ui = 1, hs = null; try { const U = mod('ui'); if (U && typeof U.uiScaleEffective === 'function') ui = fin(U.uiScaleEffective(), 1) || 1; if (U && typeof U.hudState === 'function') hs = U.hudState(); } catch (e) { ui = 1; hs = null; }
+    const eff = hs && hs.effective ? hs.effective : 'full', pill = (k) => !!(hs && hs.pill && hs.pill[k]);
+    issFrameO.ui = ui; issFrameO.L = 26; issFrameO.R = view.vw - 26;
+    if (eff === 'hidden') { issFrameO.T = 12 * ui; issFrameO.B = view.vh - 50 * ui; issFrameO.rightCol = view.vw + 1; issFrameO.rightColH = 0; issFrameO.leftCol = 0; issFrameO.leftColH = 0; return issFrameO; }
+    issFrameO.T = 70 * ui; issFrameO.B = view.vh - (pill('palette') ? 90 : 236) * ui;
+    issFrameO.rightCol = view.vw - 250 * ui; issFrameO.rightColH = (70 + (pill('minimap') ? 40 : 250) + 45 + (pill('issues') ? 50 : 235)) * ui;
+    issFrameO.leftCol = (pill('goals') ? 190 : 390) * ui; issFrameO.leftColH = (70 + (pill('goals') ? 45 : 330) + (pill('needs') ? 45 : 120)) * ui;
     return issFrameO;
   }
   function issInFrame(x, y, f) { return x >= f.L && x <= f.R && y >= f.T && y <= f.B && !(x > f.rightCol && y < f.rightColH) && !(x < f.leftCol && y < f.leftColH); }
@@ -38787,7 +38909,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     const ax = issPt.x + (gi - (gn - 1) / 2) * 24 * Math.max(0.75, z), iy = issPt.y - hc - 16;
     g.font = 'bold 13px system-ui, -apple-system, "Segoe UI", sans-serif';
     const title = issWrap(g, sel.title, 230); g.font = '12px system-ui, -apple-system, "Segoe UI", sans-serif'; const fix = issWrap(g, sel.progress && sel.progress.text ? 'In progress: ' + sel.progress.text : (sel.fix || ''), 230);   // calm alerts pass: an in-progress row says so, not its fix
-    const hint = 'Fix / Locate in the Issues tray · I next · Esc';
+    const hint = sel.progress && sel.progress.text ? 'Locate in the Issues tray · I next · Esc' : 'Fix / Locate in the Issues tray · I next · Esc';   // H7: an in-progress row has no Fix button in the tray, so its label neither shows the fix text nor offers Fix
     let bw = 0; g.font = 'bold 13px system-ui, -apple-system, "Segoe UI", sans-serif'; for (const l of title) bw = Math.max(bw, g.measureText(l).width);
     g.font = '12px system-ui, -apple-system, "Segoe UI", sans-serif'; for (const l of fix) bw = Math.max(bw, g.measureText(l).width); g.font = '11px system-ui, -apple-system, "Segoe UI", sans-serif'; bw = Math.max(bw, g.measureText(hint).width);
     bw = Math.min(260, bw + 26); const bh = 10 + title.length * 17 + fix.length * 15 + 16;
@@ -39183,8 +39305,8 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
   function money(n) { return BSU.formatMoney(fin(n, 0)); }
   /** H6 number rules: the sign is part of the number (a true minus U+2212, never a hyphen: formatMoney already does it for cash), thousands are grouped, and every
    *  element that shows one is nowrap + tabular in CSS, so "−$1.69M" can never break after its sign. `numStr` keeps one decimal; `int` rounds; `compact` is the gauge form (1.5k / 12k) */
-  function numStr(n) { n = fin(n, 0); return (n < 0 ? '\u2212' : '') + Math.abs(n).toLocaleString('en-US', { maximumFractionDigits: 1 }); }
-  function fmtInt(n) { return numStr(Math.round(fin(n, 0))); }
+  function numStr(n) { return BSU.formatNum(fin(n, 0)); }   // H7: the format lives in contract.js (issues.js uses it too)
+  function fmtInt(n) { return BSU.formatInt(fin(n, 0)); }
   function tileOf(i) { return { tx: i % W, ty: (i / W) | 0 }; }
   function catalog() { return (BSU.data && BSU.data.catalog) || {}; }
   function rowOf(id) { return id ? catalog()[id] || null : null; }
@@ -40772,12 +40894,12 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     let m = terms[0]; for (const t of [terms[1], terms[2], ww]) if (t.cap - t.used < m.cap - m.used) m = t;
     const need = fin(call('economy', 'lotsNeeded', s), Math.ceil(students / 600));   // P7: Magnolia Suites' parking spaces count toward the requirement
     let binding = null;
-    if (m.cap <= m.used) binding = mk(m.key, labelOf(m.key) + ' full (' + m.used + ' / ' + m.cap + ') → build a ' + nameOf(m.key), 'bad');
+    if (m.cap <= m.used) binding = mk(m.key, labelOf(m.key) + ' full (' + fmtInt(m.used) + ' / ' + fmtInt(m.cap) + ') → build a ' + nameOf(m.key), 'bad');
     else if (terms[3].short > 0) binding = mk('power', terms[3].short + (terms[3].short === 1 ? ' building has' : ' buildings have') + ' no power → build a ' + nameOf('power'), 'bad');
     else if (terms[4].short > 0) binding = mk('water', terms[4].short + (terms[4].short === 1 ? ' building has' : ' buildings have') + ' no water → build a ' + nameOf('water'), 'bad');
-    else if (m.used >= 0.85 * m.cap) binding = mk(m.key, labelOf(m.key) + ' nearly full (' + m.used + ' / ' + m.cap + ') → build a ' + nameOf(m.key), 'warn');
-    else if (students > 600 && lots < need) binding = mk('parking', 'Students want parking (' + lots + ' / ' + need + ' lots) → build a ' + nameOf('parking'), 'warn');
-    else binding = mk(m.key, 'Room for ' + (m.cap - m.used) + ' more students; ' + labelOf(m.key).toLowerCase() + ' fill first → next: ' + nameOf(m.key), 'ok');
+    else if (m.used >= 0.85 * m.cap) binding = mk(m.key, labelOf(m.key) + ' nearly full (' + fmtInt(m.used) + ' / ' + fmtInt(m.cap) + ') → build a ' + nameOf(m.key), 'warn');
+    else if (students > 600 && lots < need) binding = mk('parking', 'Students want parking (' + fmtInt(lots) + ' / ' + fmtInt(need) + ' lots) → build a ' + nameOf('parking'), 'warn');
+    else binding = mk(m.key, 'Room for ' + fmtInt(m.cap - m.used) + ' more students; ' + labelOf(m.key).toLowerCase() + ' fill first → next: ' + nameOf(m.key), 'ok');
     return { students: students, terms: terms, binding: binding, suppressed: suppressed };
   }
   let needsState = null;
@@ -40928,7 +41050,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
   };
   /** scroll the card grid (never the page: scrollIntoView would shift the fixed #app) */
   function scrollCardIntoView(id) { const c = id && E.bmCards[id], grid = E['bm-cards']; if (!c || !grid) return; try { const top = fin(c.offsetTop, 0) - fin(grid.offsetTop, 0); if (Number.isFinite(top) && (top < fin(grid.scrollTop, 0) || top + fin(c.offsetHeight, 0) > fin(grid.scrollTop, 0) + fin(grid.clientHeight, 0))) grid.scrollTop = Math.max(0, top - 10); } catch (e) { /* stub */ } }
-  M.closeBuildMenu = function () { try { if (!bm.open) return; bm.open = false; bm.hover = null; bm.pulseId = null; if (dom()) { show(E['build-menu'], false); cls(E.hud, 'bm-open', false); } emit('ui:buildMenu', { open: false }); } catch (e) { uerr('closeBuildMenu', e); } };
+  M.closeBuildMenu = function () { try { if (!bm.open) return; bm.open = false; bm.hover = null; bm.pulseId = null; bm.scrollTab = ''; if (dom()) { show(E['build-menu'], false); cls(E.hud, 'bm-open', false); } emit('ui:buildMenu', { open: false }); } catch (e) { uerr('closeBuildMenu', e); } };
   M.buildMenuOpen = function () { return bm.open; };
   function badgeText(kind) { return kind === 'Goal' ? '★ Goal' : kind === 'Needed' ? '★ Needed now' : '★ Recommended'; }
   function refreshBuildMenu(s) {
@@ -40949,6 +41071,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
         b.addEventListener('click', function () { const st = stateOf(); setTab(st, t.id); bm.hover = null; bm.dirty = true; });
         cats.appendChild(b); E.bmCats[t.id] = b;
       }
+      if (cur && bm.scrollTab !== cur.id) { bm.scrollTab = cur.id; const act = E.bmCats[cur.id]; try { if (act) { const cr = cats.getBoundingClientRect(), ar = act.getBoundingClientRect(); if (ar.bottom > cr.bottom) cats.scrollTop += ar.bottom - cr.bottom + 4; else if (ar.top < cr.top) cats.scrollTop -= cr.top - ar.top + 4; } } catch (e) { /* stub */ } }   // H7: bring the active category into view when the tab changes / the menu opens (not on a refresh; never scrollIntoView: it shifts #app)
       const cards = E['bm-cards']; clear(cards); E.bmCards = {};
       if (cur) for (const id of cur.rows) {
         if (id === 'founders_hall') continue; const r = rowOf(id); if (!r) continue; const u = unlockOf(s, id);

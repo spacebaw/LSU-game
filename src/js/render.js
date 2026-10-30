@@ -1138,7 +1138,13 @@
       if (!victim) break;
       b -= victim.bytes | 0; dropChunk(victim);
     }
-    if (b > cap && !hdFallbackChunks) { hdFallbackChunks = true; for (let k = 0; k < NCH; k++) { const ch = chunks[k]; if (ch.canvas && ch.master === 2) ch.dirty = 1; } hdRefresh(); }
+    if (b > cap && !hdFallbackChunks) {
+      // H7: only a working set the bake TARGETS at master 2 latches the fallback. A zoom-out step already targets master 1 (dpr 2 on a 96 map: ~110 visible chunks), so the stale
+      // master-2 canvases are re-baked at master 1 in place and nothing latches: the next zoom-in is HD at once (the latch held master 1 for ~10 s until idle eviction)
+      if (hdChunkWant === 2) hdFallbackChunks = true;
+      for (let k = 0; k < NCH; k++) { const ch = chunks[k]; if (ch.canvas && ch.master === 2) ch.dirty = 1; }
+      if (hdFallbackChunks) hdRefresh();
+    }
     else if (hdFallbackChunks && b < cap * 0.6) { hdFallbackChunks = false; hdRefresh(); }
   }
 
@@ -1223,9 +1229,13 @@
     try { const h = mod('hydro'); if (h && typeof h.activeCount === 'function') hydroActive = fin(h.activeCount(), 0); } catch (e) { hydroActive = 0; }
     try { const sp = S(); mem = typeof sp.totalMemoryMB === 'function' ? sp.totalMemoryMB() : sp.memoryMB(); } catch (e) { mem = 0; }
     mem += liveChunks() * C.chunkMB + (canvas ? (canvas.width * canvas.height * 12) / 1048576 : 0) + teeBytes / 1048576;
+    let blobMB = 0, vignetteMB = 0;   // H7: the effect passes' caches count too — the brush blob cache (≤ 20 MB) and the night vignette canvas (one frame-sized canvas: 5 MB at 1440 × 900, 20 MB at dpr 2)
+    try { const bs = BSU.brush && typeof BSU.brush.blobStats === 'function' ? BSU.brush.blobStats() : null; blobMB = bs ? fin(bs.mb, 0) : 0; } catch (e) { blobMB = 0; }
+    try { vignetteMB = typeof M.vignetteMB === 'function' ? fin(M.vignetteMB(), 0) : 0; } catch (e) { vignetteMB = 0; }
+    mem += blobMB + vignetteMB;
     let parts = 0; try { parts = M.particles && typeof M.particles.count === 'function' ? fin(M.particles.count(), 0) : 0; } catch (e) { parts = 0; }
     let atlasMB = 0, hdAtlasMB = 0; try { const sp = S(); atlasMB = fin(sp.memoryMB(), 0); hdAtlasMB = typeof sp.hdMemoryMB === 'function' ? fin(sp.hdMemoryMB(), 0) : 0; } catch (e) { atlasMB = 0; }
-    return { frameMs: fin(frameMs, 0), drawCalls: drawCalls | 0, particles: parts, agentsDrawn: agentsDrawn | 0, hydroActive: hydroActive, chunks: liveChunks(), memMB: Math.round(mem * 100) / 100, tees: teeCache.size, water: waterDrawn | 0, frameNo: frameNo, zoom: zoomNow, atlasZoom: atlasZoom, smooth: frameSmooth, perfMode: !!(root && root.ui && root.ui.perfMode),
+    return { frameMs: fin(frameMs, 0), drawCalls: drawCalls | 0, particles: parts, agentsDrawn: agentsDrawn | 0, hydroActive: hydroActive, chunks: liveChunks(), memMB: Math.round(mem * 100) / 100, blobMB: Math.round(blobMB * 100) / 100, vignetteMB: Math.round(vignetteMB * 100) / 100, tees: teeCache.size, water: waterDrawn | 0, frameNo: frameNo, zoom: zoomNow, atlasZoom: atlasZoom, smooth: frameSmooth, perfMode: !!(root && root.ui && root.ui.perfMode),
       // H0 pipeline pass: HD state and real byte counts (chunkMB = every live chunk canvas at its own master; the legacy memMB keeps its 0.85 MB-per-chunk estimate)
       hd: hdOn, hdMaster: hdMaster, chunkMaster: hdChunkWant, hdChunks: hdChunkCount(), chunkMB: Math.round(chunkBytes() / 10485.76) / 100, atlasMB: Math.round(atlasMB * 100) / 100, hdAtlasMB: Math.round(hdAtlasMB * 100) / 100, hdFallback: hdFallbackChunks || !!(S() && S().hdFallback), hdBakes: hdBakesThisFrame, dpr: dpr,
       passMs: Object.assign({}, passMs) };   // H5: smoothed ms per stage / pass (chunks, water, deck, entities, weather, tint, lights, fog, …)
@@ -1301,6 +1311,19 @@
     WC = { surge: sh(deep, 0.72), chopD: sh(deep, 0.45), chopL: mx(deep, '#B8C4BC', 0.4), current: sh(day, 1.25), band1: WATER_SHALLOW, band2: mx(WATER_SHALLOW, '#FFFFFF', 0.35), foam: '#E6F3EC', debris: '#5A4A3A' };
     return WC;
   }
+  // H7: the water pass's bars (wave bands, glints, foam, flecks, streaks, the surge's debris + chop) were ~6,000 pen-era fillRects a frame; each layer is now one flat (x, y, len)
+  // list filled ONCE through BSU.brush.bars (device-pixel-snapped rects in one path): about a dozen fills a frame
+  const WLAY = ['bandA', 'bandB', 'glint', 'foam0', 'foam1', 'foam2', 'fleck', 'bayou', 'river', 'debris', 'chopL', 'chopD'];
+  const WLAY_PER = { bandA: 8, bandB: 6, glint: 1, foam0: 16, foam1: 16, foam2: 16, fleck: 3, bayou: 1, river: 1, debris: 2, chopL: 2, chopD: 1 };
+  const WL = {}; let wlCap = 0;
+  function waterLayers(cap) {
+    if (cap <= wlCap && WL.bandA) return;
+    wlCap = Math.max(cap, wlCap);
+    for (let k = 0; k < WLAY.length; k++) { const n = WLAY[k]; WL[n] = { a: new Float32Array(wlCap * WLAY_PER[n] * 3), n: 0 }; }
+  }
+  const WFOAM_A = [0.05, 0.16, 0.28];
+  function waterBars(g, L, w, color, alpha) { if (L.n > 0) { const BR = BSU.brush; if (BR && typeof BR.bars === 'function') { BR.bars(g, L.a, L.n, w, color, alpha, dpr); drawCalls++; } L.n = 0; } }
+  const waterGates = [];
   function waterPass(state, g) {
     const t = state.tiles, elev = t.elev, depth = t.depth, type = t.type, fl = t.flags;
     const z = zoomNow, w = TW * z, h = TH * z;
@@ -1316,7 +1339,10 @@
     const phA = frameNo * 0.11, phB = frameNo * 0.07, fr3 = frameNo >> 3;
     const hasBank = te && typeof te.bank === 'function';
     let bankRow = -1, bankX = 99;
-    waterDrawn = 0;
+    waterDrawn = 0; waterGates.length = 0;
+    waterLayers(C.waterCapSurge); for (let k = 0; k < WLAY.length; k++) WL[WLAY[k]].n = 0;
+    const Wa = WL.bandA, Wb = WL.bandB, Wg = WL.glint, Wf0 = WL.foam0, Wf1 = WL.foam1, Wf2 = WL.foam2, Wfl = WL.fleck, Wby = WL.bayou, Wr = WL.river, Wd = WL.debris, Wcl = WL.chopL, Wcd = WL.chopD;
+    const bar = (L, x, y, len) => { const o = L.n * 3; L.a[o] = x; L.a[o + 1] = y; L.a[o + 2] = len; L.n++; };
     g.globalCompositeOperation = 'source-over';
     for (let ty = view.y0; ty <= view.y1 && waterDrawn < cap; ty++) {
       for (let tx = view.x0; tx <= view.x1; tx++) {
@@ -1339,68 +1365,67 @@
         g.globalAlpha = a; g.fillStyle = col;
         fillDiamond(g, sx, sy, w, h, a > 0.5 ? 0.3 : 0);
         const hv = hash(tx, ty);
-        if (reached) {   // surge: debris flecks and short chop strokes that jitter every 4 frames (H5: sub-pixel placed — anti-aliased ends, no whole-pixel stepping)
+        if (reached) {   // surge: debris flecks and short chop strokes that jitter every 4 frames (collected into the debris / chop layers, stroked once each)
           const j = (frameNo >> 2) + tx;
-          g.globalAlpha = 0.8; g.fillStyle = wc.debris; g.fillRect((sx - 10 * z + (hv % 16) * z), (sy - 3 * z + (hash(ty, tx) % 6) * z), 3 * z, z); g.fillRect((sx + (hash(tx + 1, ty) % 12) * z), (sy + (hash(ty, tx + 1) % 5) * z), 2 * z, z);
-          g.globalAlpha = 0.55; g.fillStyle = wc.chopL; g.fillRect((sx - 18 * z + ((hv >> 3) % 24) * z), (sy - 6 * z + ((j * 5 + hv) % 12) * z), 5 * z, z); g.fillRect((sx - 4 * z + ((hv >> 7) % 20) * z), (sy - 2 * z + ((j * 3 + (hv >> 5)) % 9) * z), 4 * z, z);
-          g.globalAlpha = 0.6; g.fillStyle = wc.chopD; g.fillRect((sx - 14 * z + ((hv >> 9) % 28) * z), (sy - 5 * z + 1 * z + ((j * 7 + (hv >> 2)) % 10) * z), 6 * z, z);
-          drawCalls += 5;
+          bar(Wd, sx - 10 * z + (hv % 16) * z, sy - 3 * z + (hash(ty, tx) % 6) * z, 3 * z); bar(Wd, sx + (hash(tx + 1, ty) % 12) * z, sy + (hash(ty, tx + 1) % 5) * z, 2 * z);
+          bar(Wcl, sx - 18 * z + ((hv >> 3) % 24) * z, sy - 6 * z + ((j * 5 + hv) % 12) * z, 5 * z); bar(Wcl, sx - 4 * z + ((hv >> 7) % 20) * z, sy - 2 * z + ((j * 3 + (hv >> 5)) % 9) * z, 4 * z);
+          bar(Wcd, sx - 14 * z + ((hv >> 9) % 28) * z, sy - 5 * z + 1 * z + ((j * 7 + (hv >> 2)) % 10) * z, 6 * z);
         }
         if (lines && !reached) {
           // band A: long swells drifting right; band B: shorter ripples drifting left, lower, fainter
-          g.globalAlpha = 0.42; g.fillStyle = wc.band1;
           const oA = (hv & 7) * 3, oB = ((hv >> 3) & 7) * 2;
           for (let k = 0; k < 8; k++) {
             const lx = -28 + k * 8, ly = -6 + 2.4 * Math.sin((lx + phA * 4 + oA) * 0.349);
-            if (Math.abs(lx) / 32 + Math.abs(ly) / 16 <= 0.9) { g.fillRect(Math.round(sx + (lx - 3) * z), Math.round(sy + ly * z), 6 * z, z); drawCalls++; }
+            if (Math.abs(lx) / 32 + Math.abs(ly) / 16 <= 0.9) bar(Wa, sx + (lx - 3) * z, sy + ly * z, 6 * z);
           }
-          g.globalAlpha = 0.3; g.fillStyle = wc.band2;
           for (let k = 0; k < 6; k++) {
             const lx = -20 + k * 8, ly = 5 + 1.6 * Math.sin((lx - phB * 4 + oB) * 0.523);
-            if (Math.abs(lx) / 32 + Math.abs(ly) / 16 <= 0.9) { g.fillRect(Math.round(sx + (lx - 2) * z), Math.round(sy + ly * z), 4 * z, z); drawCalls++; }
+            if (Math.abs(lx) / 32 + Math.abs(ly) / 16 <= 0.9) bar(Wb, sx + (lx - 2) * z, sy + ly * z, 4 * z);
           }
           // sun / moon glints: colour and rate follow the sky clock
-          if (((tx * 7 + ty * 13) & (C.sparkleEvery - 1)) === 0 && ((fr3 + tx + ty) % glintEvery) === 0) { g.globalAlpha = glintA; g.fillStyle = glintCol; g.fillRect(Math.round(sx - 14 * z + (hv % 28) * z), Math.round(sy - 5 * z + ((hv >> 5) % 10) * z), glintW * z, z); drawCalls++; }
-          // foam dashes along the edges that meet land (marsh counts as land), blinking so they drift
+          if (((tx * 7 + ty * 13) & (C.sparkleEvery - 1)) === 0 && ((fr3 + tx + ty) % glintEvery) === 0) bar(Wg, sx - 14 * z + (hv % 28) * z, sy - 5 * z + ((hv >> 5) % 10) * z, glintW * z);
+          // foam dashes along the edges that meet land (marsh counts as land), blinking so they drift (three alpha steps: the dash's own breathing)
           let em = 0;
           if (ty > 0 && !wetOf(t, i - W)) em |= 1;
           if (tx < W - 1 && !wetOf(t, i + 1)) em |= 2;
           if (ty < HGT - 1 && !wetOf(t, i + W)) em |= 4;
           if (tx > 0 && !wetOf(t, i - 1)) em |= 8;
           if (em) {
-            g.fillStyle = wc.foam;
             for (let e = 0; e < 4; e++) {
               if (!(em & (1 << e))) continue;
               for (let k = 0; k < 4; k++) {
                 if (((fr3 + k + e + (hv >> 2)) % 3) === 0) continue;
-                const o = (e * 4 + k) * 2;
-                g.globalAlpha = 0.16 + 0.16 * Math.sin(frameNo * 0.09 + k * 1.7 + e + (hv & 15));
-                g.fillRect(Math.round(sx + (FOAM[o] - 1) * z), Math.round(sy + FOAM[o + 1] * z), 3 * z, z); drawCalls++;
+                const o = (e * 4 + k) * 2, st = 0.5 + 0.5 * Math.sin(frameNo * 0.09 + k * 1.7 + e + (hv & 15));
+                bar(st < 0.34 ? Wf0 : (st < 0.67 ? Wf1 : Wf2), sx + (FOAM[o] - 1) * z, sy + FOAM[o + 1] * z, 3 * z);
               }
             }
           }
           if (deckArr && deckArr[i] === deckArr[i]) {   // flecks around the stilts of a deck over this tile
-            g.fillStyle = wc.foam;
-            for (let k = 0; k < 3; k++) { if (((fr3 + k + (hv >> 4)) & 3) === 0) continue; g.globalAlpha = 0.35; g.fillRect(Math.round(sx - 12 * z + ((hv >> (k * 3)) % 24) * z), Math.round(sy + 2 * z + ((hv >> (k * 2 + 1)) % 7) * z), 3 * z, z); drawCalls++; }
+            for (let k = 0; k < 3; k++) { if (((fr3 + k + (hv >> 4)) & 3) === 0) continue; bar(Wfl, sx - 12 * z + ((hv >> (k * 3)) % 24) * z, sy + 2 * z + ((hv >> (k * 2 + 1)) % 7) * z, 3 * z); }
           }
           if (f & FLAG.BAYOU) {   // the bayou current line along the direction of the next bayou tile
             const dirE = (tx < W - 1 && (fl[i + 1] & FLAG.BAYOU)) ? 1 : 0, dirS = (ty < HGT - 1 && (fl[i + W] & FLAG.BAYOU)) ? 1 : 0;
             const off = ((frameNo >> 1) + tx * 3) % 24 - 12;
-            g.globalAlpha = 0.35; g.fillStyle = wc.current;
             const cxp = sx + (dirE - dirS) * off * z * 1.0, cyp = sy + (dirE + dirS) * off * z * 0.5;
-            g.fillRect(Math.round(cxp - 6 * z), Math.round(cyp), 12 * z, z); drawCalls++;
+            bar(Wby, cxp - 6 * z, cyp, 12 * z);
           } else if (ty8 === T.OPEN_WATER && hasBank) {   // the river (east of the bank) runs south: a slower streak down-left
             if (bankRow !== ty) { bankRow = ty; try { bankX = fin(te.bank(ty), 99); } catch (e) { bankX = 99; } }
-            if (tx > bankX) { const off = ((frameNo >> 2) + ty * 5 + (hv & 3)) % 24 - 12; g.globalAlpha = 0.28; g.fillStyle = wc.current; g.fillRect(Math.round(sx - off * z - 5 * z), Math.round(sy + off * z * 0.5), 10 * z, z); drawCalls++; }
+            if (tx > bankX) { const off = ((frameNo >> 2) + ty * 5 + (hv & 3)) % 24 - 12; bar(Wr, sx - off * z - 5 * z, sy + off * z * 0.5, 10 * z); }
           }
         }
-        if (f & FLAG.FLOODGATE) {   // live floodgate frame (0 open → 3 closed; animated over 20 ticks from the gate:* event)
-          const gs = gates.get(i); let fr = 0;
-          if (gs) { const prog = clamp((frameNo - gs.t0) / 12, 0, 1); fr = gs.closed ? Math.round(prog * 3) : Math.round((1 - prog) * 3); }
-          const ref = getRef('gate', 0, fr);
-          if (ref) { g.globalAlpha = 1; blit(g, ref, sx, sy, zsOf(ref)); }
-        }
+        if (f & FLAG.FLOODGATE) waterGates.push(i, sx, sy);   // drawn after the bars (they used to be drawn per tile, right after that tile's own bars)
       }
+    }
+    // the bars, one fill per layer (bottom to top: swells, ripples, glints, foam, flecks, streaks, then the surge's debris and chop)
+    waterBars(g, Wa, z, wc.band1, 0.42); waterBars(g, Wb, z, wc.band2, 0.3); waterBars(g, Wg, z, glintCol, glintA);
+    waterBars(g, Wf0, z, wc.foam, WFOAM_A[0]); waterBars(g, Wf1, z, wc.foam, WFOAM_A[1]); waterBars(g, Wf2, z, wc.foam, WFOAM_A[2]);
+    waterBars(g, Wfl, z, wc.foam, 0.35); waterBars(g, Wby, z, wc.current, 0.35); waterBars(g, Wr, z, wc.current, 0.28);
+    waterBars(g, Wd, z, wc.debris, 0.8); waterBars(g, Wcl, z, wc.chopL, 0.55); waterBars(g, Wcd, z, wc.chopD, 0.6);
+    for (let k = 0; k < waterGates.length; k += 3) {   // live floodgate frames (0 open → 3 closed; animated over 12 frames from the gate:* event)
+      const gs = gates.get(waterGates[k]); let fr = 0;
+      if (gs) { const prog = clamp((frameNo - gs.t0) / 12, 0, 1); fr = gs.closed ? Math.round(prog * 3) : Math.round((1 - prog) * 3); }
+      const ref = getRef('gate', 0, fr);
+      if (ref) { g.globalAlpha = 1; blit(g, ref, waterGates[k + 1], waterGates[k + 2], zsOf(ref)); }
     }
     g.globalAlpha = 1;
   }
@@ -1927,7 +1952,7 @@
     bpx: 50, bpy: 0, bcx: 50, bcy: 0, crewU: 50, gainU: 60, refU: 50, refV: 18,
     warm: 0, warmZoom: 0, crowdUp: 0, waveAt: -1e9, scoreAt: -1e9, keyAt: -1e9, hitAt: -1e9, sigAt: -1e9, bellsAt: -1e9,
     cam: { active: false, zoomBefore: 1, touched: false, cutN: -1, wide: false, montage: null },
-    drawn: 0, players: 0, fans: 0, minX: 0, maxX: 0, minY: 0, maxY: 0, crowdFrame: -1,
+    drawn: 0, players: 0, fans: 0, minX: 0, maxX: 0, minY: 0, maxY: 0, crowdFrame: -1, glintA: 0,
     mtN: -1, mtHit: -1, lb: false, cut: false, camU: NaN, camV: NaN, hudTop: 56, hudBot: 28, hudAt: -1e9   // montage pass: the reel's crowd cues, the letterbox, the camera target of the last frame (tests)
   };
   /** the painted field's footprint rect {x0, y0, x1, y1, fw, fh} (tiles; X along +tx, Y along +ty) exactly as the stadium / practice-field painters draw it */
@@ -2046,6 +2071,17 @@
     return fbScr;
   }
   function drawFbSprite(e, g) { if (!e.ref) return; blit(g, e.ref, e.sx, e.sy, zoomNow * FB_SCALE / (e.ref.zoom || 1)); }
+  /** H7: a player plus, in a night game, the helmet glint under the mast lights: one cached additive 'dot' blob, twinkling per player (FB.glintA = the night amount, 0 by day / in perf mode) */
+  function drawFbPlayer(e, g) {
+    if (!e.ref) return;
+    const zs = zoomNow * FB_SCALE / (e.ref.zoom || 1); blit(g, e.ref, e.sx, e.sy, zs);
+    if (!(FB.glintA > 0.04)) return;
+    const BR = BSU.brush; if (!BR || typeof BR.drawBlob !== 'function') return;
+    const i = e.a | 0, tw = 0.5 + 0.5 * Math.sin(frameNo * 0.13 + i * 1.9), hx = e.sx + (e.ref.ox + e.ref.sw * 0.42) * zs, hy = e.sy + (e.ref.oy + e.ref.sh * 0.2) * zs, r = Math.max(1.4, 1.5 * zoomNow);
+    g.globalCompositeOperation = 'lighter';
+    BR.drawBlob(g, 'dot', '#FFF3C4', hx, hy, r, r, FB.glintA * (0.35 + 0.5 * tw), dpr);
+    g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1;
+  }
   function fbPush(G, kind, id, variant, frame, u, v, up, draw) {   // field yards → one sorted entry at the venue anchor (1x atlas, half the zoom)
     const X = G.q.x0 + (u + 10) * G.kx, Y = G.q.y0 + v * G.ky;
     const e = push(kind, G.ax, G.ay, G.el, 1 + clamp((X + Y) / (G.q.fw + G.q.fh), 0, 1) * 58, draw || drawFbSprite);
@@ -2231,7 +2267,7 @@
       const look = (p.team | 0) === 0 ? homeLook : awayLook;
       const variant = sp.fbVariant(look, p.pos, 0, carry ? 1 : 0);
       const id = 'fbplayer:' + pose;
-      const e = fbPush(G, 'fbplayer', id, variant, sp.fbFrame(id, face, f), x, FB_YD_V / 2 + y, 0, drawFbSprite);
+      const e = fbPush(G, 'fbplayer', id, variant, sp.fbFrame(id, face, f), x, FB_YD_V / 2 + y, 0, drawFbPlayer);
       e.a = i; FB.players++;
       const X = G.q.x0 + (x + 10) * G.kx, Y = G.q.y0 + (FB_YD_V / 2 + y) * G.ky;
       if (X < minX) minX = X; if (X > maxX) maxX = X; if (Y < minY) minY = Y; if (Y > maxY) maxY = Y;
@@ -2303,6 +2339,7 @@
   }
   function footballPass(state) {
     FB.drawn = 0; FB.players = 0; FB.fans = 0;
+    FB.glintA = 0; try { const gm = state.sports && state.sports.game; if (gm && gm.night && !(state.ui && state.ui.perfMode) && typeof M.nightAmount === 'function') FB.glintA = M.nightAmount(state); } catch (e) { FB.glintA = 0; }   // H7: the helmet glint
     if (FB.crowdUp > 0) FB.crowdUp--;
     const lv = FB.live, dr = FB.drill, b = FB.venue;
     if ((!lv && !dr) || !b) return;

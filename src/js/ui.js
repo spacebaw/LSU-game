@@ -113,8 +113,8 @@
   function money(n) { return BSU.formatMoney(fin(n, 0)); }
   /** H6 number rules: the sign is part of the number (a true minus U+2212, never a hyphen: formatMoney already does it for cash), thousands are grouped, and every
    *  element that shows one is nowrap + tabular in CSS, so "−$1.69M" can never break after its sign. `numStr` keeps one decimal; `int` rounds; `compact` is the gauge form (1.5k / 12k) */
-  function numStr(n) { n = fin(n, 0); return (n < 0 ? '\u2212' : '') + Math.abs(n).toLocaleString('en-US', { maximumFractionDigits: 1 }); }
-  function fmtInt(n) { return numStr(Math.round(fin(n, 0))); }
+  function numStr(n) { return BSU.formatNum(fin(n, 0)); }   // H7: the format lives in contract.js (issues.js uses it too)
+  function fmtInt(n) { return BSU.formatInt(fin(n, 0)); }
   function tileOf(i) { return { tx: i % W, ty: (i / W) | 0 }; }
   function catalog() { return (BSU.data && BSU.data.catalog) || {}; }
   function rowOf(id) { return id ? catalog()[id] || null : null; }
@@ -1702,12 +1702,12 @@
     let m = terms[0]; for (const t of [terms[1], terms[2], ww]) if (t.cap - t.used < m.cap - m.used) m = t;
     const need = fin(call('economy', 'lotsNeeded', s), Math.ceil(students / 600));   // P7: Magnolia Suites' parking spaces count toward the requirement
     let binding = null;
-    if (m.cap <= m.used) binding = mk(m.key, labelOf(m.key) + ' full (' + m.used + ' / ' + m.cap + ') → build a ' + nameOf(m.key), 'bad');
+    if (m.cap <= m.used) binding = mk(m.key, labelOf(m.key) + ' full (' + fmtInt(m.used) + ' / ' + fmtInt(m.cap) + ') → build a ' + nameOf(m.key), 'bad');
     else if (terms[3].short > 0) binding = mk('power', terms[3].short + (terms[3].short === 1 ? ' building has' : ' buildings have') + ' no power → build a ' + nameOf('power'), 'bad');
     else if (terms[4].short > 0) binding = mk('water', terms[4].short + (terms[4].short === 1 ? ' building has' : ' buildings have') + ' no water → build a ' + nameOf('water'), 'bad');
-    else if (m.used >= 0.85 * m.cap) binding = mk(m.key, labelOf(m.key) + ' nearly full (' + m.used + ' / ' + m.cap + ') → build a ' + nameOf(m.key), 'warn');
-    else if (students > 600 && lots < need) binding = mk('parking', 'Students want parking (' + lots + ' / ' + need + ' lots) → build a ' + nameOf('parking'), 'warn');
-    else binding = mk(m.key, 'Room for ' + (m.cap - m.used) + ' more students; ' + labelOf(m.key).toLowerCase() + ' fill first → next: ' + nameOf(m.key), 'ok');
+    else if (m.used >= 0.85 * m.cap) binding = mk(m.key, labelOf(m.key) + ' nearly full (' + fmtInt(m.used) + ' / ' + fmtInt(m.cap) + ') → build a ' + nameOf(m.key), 'warn');
+    else if (students > 600 && lots < need) binding = mk('parking', 'Students want parking (' + fmtInt(lots) + ' / ' + fmtInt(need) + ' lots) → build a ' + nameOf('parking'), 'warn');
+    else binding = mk(m.key, 'Room for ' + fmtInt(m.cap - m.used) + ' more students; ' + labelOf(m.key).toLowerCase() + ' fill first → next: ' + nameOf(m.key), 'ok');
     return { students: students, terms: terms, binding: binding, suppressed: suppressed };
   }
   let needsState = null;
@@ -1858,7 +1858,7 @@
   };
   /** scroll the card grid (never the page: scrollIntoView would shift the fixed #app) */
   function scrollCardIntoView(id) { const c = id && E.bmCards[id], grid = E['bm-cards']; if (!c || !grid) return; try { const top = fin(c.offsetTop, 0) - fin(grid.offsetTop, 0); if (Number.isFinite(top) && (top < fin(grid.scrollTop, 0) || top + fin(c.offsetHeight, 0) > fin(grid.scrollTop, 0) + fin(grid.clientHeight, 0))) grid.scrollTop = Math.max(0, top - 10); } catch (e) { /* stub */ } }
-  M.closeBuildMenu = function () { try { if (!bm.open) return; bm.open = false; bm.hover = null; bm.pulseId = null; if (dom()) { show(E['build-menu'], false); cls(E.hud, 'bm-open', false); } emit('ui:buildMenu', { open: false }); } catch (e) { uerr('closeBuildMenu', e); } };
+  M.closeBuildMenu = function () { try { if (!bm.open) return; bm.open = false; bm.hover = null; bm.pulseId = null; bm.scrollTab = ''; if (dom()) { show(E['build-menu'], false); cls(E.hud, 'bm-open', false); } emit('ui:buildMenu', { open: false }); } catch (e) { uerr('closeBuildMenu', e); } };
   M.buildMenuOpen = function () { return bm.open; };
   function badgeText(kind) { return kind === 'Goal' ? '★ Goal' : kind === 'Needed' ? '★ Needed now' : '★ Recommended'; }
   function refreshBuildMenu(s) {
@@ -1879,6 +1879,7 @@
         b.addEventListener('click', function () { const st = stateOf(); setTab(st, t.id); bm.hover = null; bm.dirty = true; });
         cats.appendChild(b); E.bmCats[t.id] = b;
       }
+      if (cur && bm.scrollTab !== cur.id) { bm.scrollTab = cur.id; const act = E.bmCats[cur.id]; try { if (act) { const cr = cats.getBoundingClientRect(), ar = act.getBoundingClientRect(); if (ar.bottom > cr.bottom) cats.scrollTop += ar.bottom - cr.bottom + 4; else if (ar.top < cr.top) cats.scrollTop -= cr.top - ar.top + 4; } } catch (e) { /* stub */ } }   // H7: bring the active category into view when the tab changes / the menu opens (not on a refresh; never scrollIntoView: it shifts #app)
       const cards = E['bm-cards']; clear(cards); E.bmCards = {};
       if (cur) for (const id of cur.rows) {
         if (id === 'founders_hall') continue; const r = rowOf(id); if (!r) continue; const u = unlockOf(s, id);

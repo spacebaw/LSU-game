@@ -204,6 +204,24 @@ ok(/const z = \(hdOn && S\(\)\.isHD\(id\)\) \? hdMaster : \(atlasZoom >= 2 \? 2 
     ok(kinds('dining_hall').includes('boilpot') && kinds('dining_hall').includes('dumpster') && kinds('union').includes('fountain') && kinds('rec_center').includes('pool') && kinds('abatement').includes('truck') && kinds('wildlife_post').includes('airboat') && kinds('marsh_restoration').includes('lookout'), 'boilpot, dumpster, fountain, pool, truck, airboat and lookout are placed as props'); }
 }
 
+// --- H7: the stadium's own DAMAGED / FLOODED / BOARDED states, the Tiger Habitat's single pool, the surge barrier icon --------------------------
+try {
+  const TS = SPR.TIER_SHIFT;
+  const cnt = (fn, id, v, z) => { let n = 0; const o = B[fn]; B[fn] = function () { n++; return o.apply(B, arguments); }; S.unregisterPainter('building'); vm.runInContext(src, ctx, { filename: 'sprites_buildings_hd.js' }); S.clear(); S.get(id, v, 0, z || 2); B[fn] = o; return n; };
+  const T2 = (2 << TS) >>> 0, T3 = (3 << TS) >>> 0, T1 = (1 << TS) >>> 0, FLD = SPR.FLOODED || 512;
+  ok(/const OWN_STATES = \{ habitat: 1, stadium: 1 \}/.test(src), 'the stadium dresses its own states (OWN_STATES)');
+  ok(cnt('puddle', 'stadium', T2 | FLD) > cnt('puddle', 'stadium', T2) && cnt('puddle', 'stadium', T2 | FLD, 1) >= 0, 'FLOODED: the bowl gets its own water (rings on the turf), not the generic wet-apron edges (puddle calls ' + cnt('puddle', 'stadium', T2 | FLD) + ' vs ' + cnt('puddle', 'stadium', T2) + ')');
+  ok(cnt('edgeFade', 'stadium', T2 | FLD) > cnt('edgeFade', 'stadium', T2) + 3, 'FLOODED: the waterline stain, the lapped first treads and the wet apron are edge fades');
+  ok(cnt('orb', 'stadium', T2 | SPR.DAMAGED) >= cnt('orb', 'stadium', T2) + 12 && cnt('fillQuadShaded', 'stadium', T2 | SPR.DAMAGED) > cnt('fillQuadShaded', 'stadium', T2), 'DAMAGED: a tarp over a torn stand section with its sandbags, seat bits on the turf, a crack and a bent mast: more orbs and quads than the sound stadium');
+  ok(cnt('glow', 'stadium', (T3 | SPR.NIGHT | SPR.BOARDED) >>> 0) < cnt('glow', 'stadium', (T3 | SPR.NIGHT) >>> 0), 'BOARDED: the luxury boxes are plywood, so they no longer glow at night');
+  ok(cnt('glow', 'stadium', (T1 | SPR.NIGHT | SPR.BOARDED) >>> 0) < cnt('glow', 'stadium', (T1 | SPR.NIGHT) >>> 0), 'BOARDED: the tier I press box and ticket booth windows are boarded too');
+  let bad = [];
+  for (const t of [T1, T2, T3]) for (const v0 of [SPR.DAMAGED, FLD, SPR.BOARDED, SPR.DAMAGED | FLD | SPR.BOARDED, SPR.NIGHT | FLD, SPR.NIGHT | SPR.DAMAGED]) for (const z of [1, 2]) { S.clear(); const e = S.get('stadium', (t | v0 | SPR.FRONT_L) >>> 0, 0, z), g = S.buildingBox(cat.stadium, (t | v0 | SPR.FRONT_L) >>> 0, 1, 0); if (!e || !e.hd || e.sw !== g.w * z || e.sh !== g.h * z) bad.push(t + '/' + v0 + '@' + z); }
+  ok(bad.length === 0, 'every stadium state × tier bakes HD at both masters with the sprite\'s own canvas size' + (bad.length ? ': ' + bad.slice(0, 5).join(', ') : ''));
+  ok(/const poolBlob = \(k, bridge\) =>/.test(src) && /poolBlob\(0\.68, 0\.95\)/.test(src) && !/for \(const c of H\.POOL\) ell\(/.test(src), 'the habitat pool is ONE blob: every layer (sand, shallows, deep, the pit, the flood swirl) walks the metaballs plus the discs between them, so the deep water has no gap');
+  for (const v0 of [0, SPR.NIGHT, SPR.DAMAGED, FLD, SPR.FRONT_L, SPR.SCAFFOLD]) for (const z of [1, 2]) { S.clear(); ok(S.get('tiger_habitat', v0, v0 === SPR.SCAFFOLD ? 1 : 0, z).hd, 'tiger_habitat bakes with the one-blob pool (' + v0 + ' @' + z + ')'); }
+} catch (e) { ok(false, 'H7 buildings_hd: ' + (e.stack || e)); }
+
 // --- selfTest hook -----------------------------------------------------------
 { S.clear(); const r = S.selfTest(); ok(r && r.ok, 'sprites.selfTest (incl. the H2a _tests entry) ok: ' + (r && r.notes ? String(r.notes).slice(0, 160) : '')); }
 

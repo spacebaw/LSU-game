@@ -647,4 +647,4 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
 .bm-card,.fb-staff-card,.fb-budget,.fb-next,.sp-all,.insp-menu,#alm-achievements .bud-col{box-shadow:var(--hi)}
 .bm-card{padding:1.2rem 1.6rem}
 /* the last shed step (date chip gone) squeezes the buttons too, so even the compact HUD at 1280 x 800 / 115 % keeps every button on screen */
-#topbar.bare{gap:.6rem} #topbar.bare .tb{min-width:3.2rem;padding:0 .8rem} #topbar.bare .speed-btn{min-width:2.8rem}
+#topbar.tightest .tb,#topbar.bare .tb{min-width:3.2rem;padding:0 .8rem} #topbar.tightest .speed-btn,#topbar.bare .speed-btn{min-width:2.8rem} #topbar.bare{gap:.6rem}   /* H7: the button squeeze starts at `tightest`, so the compact HUD (whose capacity chip is already folded away) keeps the date chip at 1440 */

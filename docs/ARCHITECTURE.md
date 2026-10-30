@@ -10,7 +10,7 @@ Conventions used below: `T` = the current sim tick index (`state.tick`), "day" =
 
 ## 1. Module list, files and manifest order
 
-The GDD §0.2 module list is kept. Three modules are split into files to stay under ~2,000 lines each. **Every file is one `'use strict'` IIFE** that assigns into `window.BSU.<name>`; a split file *extends* the object its first file created (it must not replace it). `src/manifest.json` lists exactly these files in exactly this order:
+The GDD §0.2 module list is kept (19 modules), grown by split files, the HD art families (H0–H5), the Issues registry and the Land Office: **28 files** in all. **Every file is one `'use strict'` IIFE** that assigns into `window.BSU.<name>`; a split file *extends* the object its first file created (it must not replace it). `src/manifest.json` lists exactly these files in exactly this order:
 
 | # | File | Assigns to | Owns (state branch it is the only writer of) | Depends on (read/call only) |
 |---|---|---|---|---|
@@ -21,21 +21,27 @@ The GDD §0.2 module list is kept. Three modules are split into files to stay un
 | 4 | `weather.js` | `BSU.weather` | `calendar`, `sky`, `weather`, `storms` | data, buildings (Coastal Institute exists?), progress (Célestine hold: Objective 11 offered?) |
 | 5 | `wildlife.js` | `BSU.wildlife` | `gators`, `wildlife` (nutria, officers, ecology, mosquito index, Le Grand, birds/fireflies counts), `tiles.mosq`, `tiles.integrity` (nutria burrows only; hydro also writes integrity on overtop/breach — see §5.4 for the rule), `tiles.flags` bit 8 unused | terrain, hydro, buildings, agents (positions for sampling) |
 | 6 | `buildings.js` | `BSU.buildings` | `buildings[]`, `tiles.owner`, `tiles.crest`, `tiles.integrity` (placement, repair), `tiles.surface` (via terrain API), `runNames`, coverage maps, the protection/gap cache | data, terrain, hydro, economy (charge/refund), weather (date for construction) |
-| 7 | `economy.js` | `BSU.economy` | `economy` (cash, students, prestige, happiness, tuition, sliders, loan, insurance, endowment, pool, statement, breakdowns), `ledger` | buildings, agents (samples), wildlife (ecology, mosquito index), sports (revenue events), progress (timers, read) |
-| 8 | `agents.js` | `BSU.agents` | `agents[]` (not saved), `vehicles[]` (not saved), `tiles.wear` (increment), route cache, sampling accumulators, class-attendance counters | terrain (walk grid), buildings, weather (sky phase), wildlife (gator positions), hydro (depth) |
-| 9 | `sports.js` | `BSU.sports` | `sports` (season, schedule, record, coach, starters, venue, game in progress, toggles) | data, buildings, economy (income), weather (dates, storm), progress (achievements via events) |
-| 10 | `sprites.js` | `BSU.sprites` (atlas core, cache, `get`, `registerPainter`, palette helpers, terrain tile + decal + water painters) | none (atlas is derived, not state) | contract, data |
-| 10b | `brush.js` (H0) | `BSU.brush` (the HD brush: continuous ramp, world-anchored noise / sites / grain, planes, orbs, ground / water tiles, strokePath, trees, figures, lights) | none | sprites (ramps, noise, canvases) |
-| 10c | `sprites_terrain.js` (H1) | extends `BSU.sprites` (the HD painters of tile, cliff, tuft, patch, shore, tone, reeds, knees, worn, mound, levee, floodwall, canal, water, registered through `registerHD` over the pen painters; `hdTerrainFamilies()`) | none | sprites, brush |
-| 11 | `sprites_buildings.js` | extends `BSU.sprites` (`paintBuilding`, roof library, decal library, the 6 building variants, Ms. Thibodeaux portrait) | none | sprites |
-| 12 | `sprites_entities.js` | extends `BSU.sprites` (agents, gators, Roux, officer, vehicles, trees, birds, floats, band, tents, bonfire, ruin, gates, the §12.3 table) | none | sprites |
-| 13 | `render.js` | `BSU.render` (camera, chunk cache, draw list, water pass, frame pipeline, shake, screen↔world) | `ui.camera` (the camera is UI state, saved) | sprites, terrain, hydro, buildings, agents, wildlife, weather |
-| 14 | `render_fx.js` | extends `BSU.render` (`particles`, weather FX, tint/lights/fog passes, overlays, minimap, postcard, perf guardrail) | none | render |
-| 15 | `ui.js` | `BSU.ui` (DOM skeleton, HUD, palette, ghost, inspect, ticker, notifications, decision toasts, cards, title screen, settings, input state machine, keyboard, headless click/key) | `ui` branch except `ui.camera` (overlay, open panel, selected tool, settings mirror) | everything (read); writes only through `buildings.place/remove/…`, `economy.set*`, `weather/sports/progress` action functions |
-| 16 | `ui_panels.js` | extends `BSU.ui` (Budget, Storm, Season, Milestones, Almanac, Founders' Day recap, damage report, debug panel, breakdown popovers) | none | ui |
-| 17 | `audio.js` | `BSU.audio` | none (audio graph; settings mirror in `ui.settings`) | events only |
-| 18 | `progress.js` | `BSU.progress` | `progress` (objectives, queues, milestones, timers, voice cards, tutorial stage, set-pieces-seen, Board/failure cards, recap data), `ticker[]` | everything (it is the only module allowed to *script* other modules through their action functions) |
-| 19 | `session.js` | `BSU.session`, `BSU.state`, `BSU.headless`, `BSU.headlessMode` (finalizes), the main loop | `seed`, `tick`, `playSeconds`, `setPiece`, `saveMeta` | everything |
+| 7 | `issues.js` | `BSU.issues` (the Issues tray's registry: derives the rows — unpowered / no water / flooded / damaged / unlinked / weak levee / full / mosquito — from state, severity and Alerts-mode gating, beacons, snooze / dismiss / mute, one-click fixes) | `ui.issues` (snoozed / dismissed ids, saved; the cache is derived) | data, buildings, economy, hydro, wildlife |
+| 8 | `land.js` (L2) | `BSU.land` (the Land Office: 16 × 16 sections outside the start charter, prices by terrain, prestige gates, `buy`, `refusal`, the charter mask) | `charter` (owned sections, first-card flag, last refusal day) | contract, data, terrain (tile classes), economy (charge), buildings (placement asks it) |
+| 9 | `economy.js` | `BSU.economy` | `economy` (cash, students, prestige, happiness, tuition, sliders, loan, insurance, endowment, pool, statement, breakdowns), `ledger` | buildings, agents (samples), wildlife (ecology, mosquito index), sports (revenue events), progress (timers, read) |
+| 10 | `agents.js` | `BSU.agents` | `agents[]` (not saved), `vehicles[]` (not saved), `tiles.wear` (increment), route cache, sampling accumulators, class-attendance counters | terrain (walk grid), buildings, weather (sky phase), wildlife (gator positions), hydro (depth) |
+| 11 | `sports.js` | `BSU.sports` | `sports` (season, schedule, record, coach, starters, venue, game in progress, toggles) | data, buildings, economy (income), weather (dates, storm), progress (achievements via events) |
+| 12 | `sprites.js` | `BSU.sprites` (atlas core, cache, `get`, `registerPainter`, palette helpers, terrain tile + decal + water painters) | none (atlas is derived, not state) | contract, data |
+| 13 | `brush.js` (H0) | `BSU.brush` (the HD brush: continuous ramp, world-anchored noise / sites / grain, planes, orbs, ground / water tiles, strokePath, trees, figures, lights) | none | sprites (ramps, noise, canvases) |
+| 14 | `sprites_terrain.js` (H1) | extends `BSU.sprites` (the HD painters of tile, cliff, tuft, patch, shore, tone, reeds, knees, worn, mound, levee, floodwall, canal, water, registered through `registerHD` over the pen painters; `hdTerrainFamilies()`) | none | sprites, brush |
+| 15 | `sprites_vegetation_hd.js` (H3) | extends `BSU.sprites` (the HD oak / cypress / azalea / palmetto / moss families, registered through `registerHD`) | none | sprites, brush |
+| 16 | `sprites_buildings.js` | extends `BSU.sprites` (`paintBuilding`, roof library, decal library, the 6 building variants, Ms. Thibodeaux portrait) | none | sprites |
+| 17 | `sprites_buildings_hd.js` (H2a / H2b) | extends `BSU.sprites` (the HD building composer: every B_ORDER building row, the own-ground bodies — quad, parking, pond, rookery, field, stadium, habitat — with their DAMAGED / BOARDED / FLOODED states, the `bldlight:` night companions) | none | sprites, brush, sprites_buildings (geometry) |
+| 18 | `sprites_icons_hd.js` (H5) | extends `BSU.sprites` (`icon:<id>`: the 47 catalog icons re-baked from the HD masters in one frame, pinned) | none | sprites, brush, sprites_buildings_hd |
+| 19 | `sprites_entities.js` | extends `BSU.sprites` (agents, gators, Roux, officer, vehicles, trees, birds, floats, band, tents, bonfire, ruin, gates, the §12.3 table) | none | sprites |
+| 20 | `sprites_entities_hd.js` (H4) | extends `BSU.sprites` (the HD character families: students, staff, gators, Roux, football players / officials / crowd, vehicles, birds) | none | sprites, brush, sprites_entities |
+| 21 | `render.js` | `BSU.render` (camera, chunk cache, draw list, water pass, frame pipeline, shake, screen↔world) | `ui.camera` (the camera is UI state, saved) | sprites, terrain, hydro, buildings, agents, wildlife, weather |
+| 22 | `render_fx.js` | extends `BSU.render` (`particles`, weather FX, tint/lights/fog passes, overlays, minimap, postcard, perf guardrail) | none | render |
+| 23 | `ui.js` | `BSU.ui` (DOM skeleton, HUD, palette, ghost, inspect, ticker, notifications, decision toasts, cards, title screen, settings, input state machine, keyboard, headless click/key) | `ui` branch except `ui.camera` (overlay, open panel, selected tool, settings mirror) | everything (read); writes only through `buildings.place/remove/…`, `economy.set*`, `weather/sports/progress` action functions |
+| 24 | `ui_panels.js` | extends `BSU.ui` (Budget, Storm, Season, Milestones, Almanac, Founders' Day recap, damage report, debug panel, breakdown popovers) | none | ui |
+| 25 | `audio.js` | `BSU.audio` | none (audio graph; settings mirror in `ui.settings`) | events only |
+| 26 | `progress.js` | `BSU.progress` | `progress` (objectives, queues, milestones, timers, voice cards, tutorial stage, set-pieces-seen, Board/failure cards, recap data), `ticker[]` | everything (it is the only module allowed to *script* other modules through their action functions) |
+| 27 | `session.js` | `BSU.session`, `BSU.state`, `BSU.headless`, `BSU.headlessMode` (finalizes), the main loop | `seed`, `tick`, `playSeconds`, `setPiece`, `saveMeta` | everything |
 
 Load order = manifest order = `init` order = `reset` order = tick order (for the sim modules, see §5.1). A file may reference a *later* module only inside functions that run after boot (never at definition time, never inside `init`).
 
@@ -448,7 +454,7 @@ BSU.OBJ  = { INTERRUPT: 0, BACKGROUND: 1 };
 BSU.PLACE = { LAND: 0, PATH: 1, ROAD: 2, BOARDWALK: 3, LEVEE: 4, CANAL: 5, FENCE: 6, PRESERVE: 7, NEAR_WATER: 8, TOUCH_MARSH_BAYOU: 9,
               TOUCH_CANAL_WATER: 10, CYPRESS: 11, MARSH_OR_PRESERVE: 12, BARRIER: 13, RESTORE: 14, UPGRADE: 15 };   // catalog placeRule
 BSU.SPR  = { NIGHT: 1, DAMAGED: 2, PILINGS: 4, SCAFFOLD: 8, RUIN: 16, TIER_SHIFT: 5, TIER_MASK: 3<<5, BOARDED: 128 };  // building sprite variant bits
-BSU.B    = { /* the 43 catalog ids as string constants, id → id: */ path:'path', road:'road', boardwalk:'boardwalk', substation:'substation',
+BSU.B    = { /* the 47 catalog ids as string constants, id → id: */ path:'path', road:'road', boardwalk:'boardwalk', substation:'substation',
              water_tower:'water_tower', generator:'generator', wastewater:'wastewater', founders_hall:'founders_hall', lecture_hall:'lecture_hall',
              library:'library', engineering:'engineering', coastal_institute:'coastal_institute', dorm:'dorm', res_tower:'res_tower',
              greek_house:'greek_house', dining_hall:'dining_hall', poboy:'poboy', practice_field:'practice_field', stadium:'stadium', union:'union',
@@ -456,7 +462,7 @@ BSU.B    = { /* the 43 catalog ids as string constants, id → id: */ path:'path
              canal:'canal', pump:'pump', pond:'pond', pilings:'pilings', gator_fence:'gator_fence', abatement:'abatement', bat_house:'bat_house',
              wildlife_post:'wildlife_post', preserve:'preserve', live_oak:'live_oak', cypress:'cypress', azalea:'azalea', bell_tower:'bell_tower',
              tiger_habitat:'tiger_habitat', surge_barrier:'surge_barrier', marsh_restoration:'marsh_restoration', rookery:'rookery' };
-BSU.B_ORDER = [ /* the 43 ids in §0.3 row order */ ];
+BSU.B_ORDER = [ /* the 47 ids in §0.3 row order (rows 44–47 are `bridge`, `bunkhouse`, `suites`, `dredge_fill`) */ ];
 BSU.SAVE_VERSION = 2;   // L1: v2 docs carry state.world; a v1 doc migrates to a 64 × 64 world at (0, 0)
 // L1 (world size per game): BSU.MAP is a FROZEN PER-GAME spec, replaced by BSU.setMap(spec) — which session.newGame / load call
 // BEFORE BSU.newState allocates — and never captured at module level: modules read BSU.MAP live or subscribe with
@@ -470,7 +476,7 @@ BSU.mapSpec(opts) → spec; BSU.setMap(spec | opts) → BSU.MAP; BSU.onMap(fn) /
 BSU.bankAt(ty)   // the last land column beside the river in WORLD row ty = the legacy formula at (ty − oy), + ox
 BSU.SAVE_SKIP = ['agents', 'vehicles', 'hydro.networks', 'hydro.risk', 'hydro.active', 'wildlife.campusMask', 'ui.tool', 'ui.panel', 'ui.perfMode', 'ui.camera.tx', 'ui.camera.ty'];
 ```
-Building ids are **strings** (the catalog key); `BSU.B` exists so a typo is a `undefined` at the call site instead of a silent string. Milestone ids (strings, `progress.milestones` keys): `chartered, welcome, cajunEngineer, firstBell, wetFeet, highAndDry, stormChaser, eyeOfTheStorm, gatorWrangler, sunbather, skeeterBeater, bayouField, nightFalls, geauxBeatMagnolia, undefeated, bigBoil, throwMeSomethin, greenAndGold, fortressBayou, livingWithWater, lightsAreOn, sinkingFeeling, rebuiltFromTheRoux, flagship, laissez, untouched` (in §10.5 order; `BSU.MILESTONES` is that array).
+Building ids are **strings** (the catalog key); `BSU.B` exists so a typo is a `undefined` at the call site instead of a silent string. Milestone ids (strings, `progress.milestones` keys): `chartered, welcome, cajunEngineer, firstBell, wetFeet, highAndDry, stormChaser, eyeOfTheStorm, gatorWrangler, sunbather, skeeterBeater, bayouField, nightFalls, geauxBeatMagnolia, undefeated, bigBoil, throwMeSomethin, greenAndGold, fortressBayou, livingWithWater, lightsAreOn, sinkingFeeling, rebuiltFromTheRoux, flagship, laissez, untouched, landBaron, reclaimed` (28; in §10.5 order, `landBaron` = L2, `reclaimed` = L3; `BSU.MILESTONES` is that array).
 
 ### 3.2 `BSU.params` (every tuning constant; each carries its GDD section in a comment; the debug panel enumerates the leaves)
 
@@ -588,6 +594,7 @@ Listeners run synchronously inside the emitter's tick, so a listener must never 
 | `ui:notify` | any (via `ui.notify`) | `{text, kind, action?: {label, fn\|event}, showMe?: number \|{tx,ty}, ttl?}` | |
 | `ui:ticker` | any (via `progress.ticker`) | `{text, kind, subject}` | |
 | `ui:panel` / `ui:overlay` / `ui:tool` | ui | `{panel\|overlay\|tool}` | |
+| `ui:coach` | ui | `{step, completed?}` | the first-run tour started / moved to a step / finished (H7: registered; ui emitted it unregistered before) |
 | `camera:moved` | render | `{x, y, zoom, byUser: boolean}` | |
 | `save:written` / `save:loaded` | session | `{slot, bytes} / {slot, version, migrated: boolean}` | |
 | `error` | any (via `BSU.error`) | `{module, where, message, first: boolean}` | see §10.1 |
@@ -626,7 +633,7 @@ BSU.headlessMode: boolean
 
 ### 3.6 `BSU.catalogRowSchema` and `BSU.validateCatalogRow`
 
-A frozen object describing every field of a catalog row (name → type string), used by `data.selfTest` to validate all 43 rows and by the debug panel. The row shape itself is defined in §4.1. Exact shape as written:
+A frozen object describing every field of a catalog row (name → type string), used by `data.selfTest` to validate all 47 rows and by the debug panel. The row shape itself is defined in §4.1. Exact shape as written:
 
 ```js
 BSU.catalogRowSchema = { row: {...}, unlock: {...}, effects: {...}, valueRadius, radiusCapacity, multRadius, multRadiusStacks, research, illness, tier, paint, colsRows }
@@ -663,12 +670,12 @@ Everything below is what `contract.js` actually exports beyond §3.1–§3.6, or
 
 Immutable tables only. `BSU.data` is deep-frozen after definition. No table references `state`.
 
-### 4.1 Catalog row (exactly this shape for all 43 rows; `BSU.data.catalog[id]`, plus `BSU.data.catalogList` in §0.3 order)
+### 4.1 Catalog row (exactly this shape for all 47 rows; `BSU.data.catalog[id]`, plus `BSU.data.catalogList` in §0.3 order)
 
 ```js
 /** @typedef {Object} CatalogRow
  * @property {string}  id            catalog id (BSU.B key), e.g. 'dorm'
- * @property {number}  n             §0.3 row number 1–43
+ * @property {number}  n             §0.3 row number 1–47
  * @property {string}  name          display name
  * @property {string}  tab           'paths'|'utilities'|'academic'|'housing'|'dining'|'sports'|'life'|'swamp'|'grounds'
  * @property {boolean} essentials    also listed in the Essentials tab (path, dorm, dining_hall, lecture_hall, poboy, quad, live_oak)
@@ -724,7 +731,7 @@ Immutable tables only. `BSU.data` is deep-frozen after definition. No table refe
 | `data.calendar` | `{dates: Object<string, string[]>}` — every named date → list of event ids (`'Jan 1': ['newYear','subsidence','foundersDay']`, `'Jan 5': ['semester','tuition1']`, `'Jan 10': ['springLock']`, `'Feb 6': ['mardiGrasStart']`, `'Feb 8': ['parade']`, `'Feb 9': ['firstGator']`, `'Mar 1': ['crawfishStart','azaleas']`, `'Mar 5': ['tuition2']`, `'Mar 25': ['riverTicker']`, `'Apr 1': ['highWaterStart']`, `'Apr 5': ['crawfishBoil','scriptedCell']`, `'May 5': ['graduation','attrition']`, `'May 6': ['summer']`, `'Jun 1': ['hurricaneSeason','obj11']`, `'Jul 1': ['stateFunding']`, `'Jul 2': ['amelie']`, `'Aug 1': ['boudin']`, `'Aug 5': ['fallLock','tuition1','recruit','semester']`, `'Oct 5': ['tuition2']`, `'Oct 7': ['bonfire']`, `'Oct 8': ['homecoming']`, `'Dec 1': ['finals']`, `'Dec 9': ['leveeBonfires']`, `'Dec 10': ['attrition']`, `'Dec 11': ['break']`), plus `festivals: [{id, start: 'Feb 6', end: 'Feb 8', text}]` (§14.3 copy) |
 | `data.ticker` | `string[62]` (§14.4, with `{}` fields); `data.tickerKinds: Object<number, kind>` |
 | `data.objectives` | `Object<string, {kind: BSU.OBJ.*, title, text (≤ 12 words), reward: {grant?: 50000, prestige?: 2}, teaches, showMe: 'plot'\|'cove'\|'landing'\|'crown'\|'ring'\|'target', deadlineText}>` for ids `'1'…'22'` incl. `'11a'`, `'18a'`, `'18b'` |
-| `data.milestones` | `[{id, name, text, reward: {cash?, prestige?, effect?}}]` (26) |
+| `data.milestones` | `[{id, name, text, reward: {cash?, prestige?, effect?}}]` (28) |
 | `data.voiceCards` | `[{id, student, major, text, payoff, prereq: string /*a check id the progress module implements*/}]` (12) |
 | `data.boardCards` | `[{id, name, text, cost, effect: string}]` (8) |
 | `data.failureCards` | `{bankruptcy: {title, options: [{id, text}]}, underwater: {...}, probation: {...}}` |
@@ -734,7 +741,7 @@ Immutable tables only. `BSU.data` is deep-frozen after definition. No table refe
 | `data.keys` | the §7.4 keyboard map as `[{key, action, ctrl?: boolean, shift?: boolean}]` (single source for the settings keybind sheet) |
 | `data.rainKinds` | `{shower: {total: .04, steps: 40}, frontal: {total: .125, steps: 40}, band: {total: .33, steps: 40}, cell: {steps: 60, radius: 14}, hurricane: {inches: [6,8,10,13,16], steps: 360}}` |
 
-`data.selfTest()` validates every catalog row against `BSU.catalogRowSchema`, that all 43 ids are in `BSU.B` and `BSU.B_ORDER`, that every decal named by a row exists in `data.decals`, that `data.ticker.length === 62`, and that every `date` string parses with `BSU.dateToDay`.
+`data.selfTest()` validates every catalog row against `BSU.catalogRowSchema`, that all 47 ids are in `BSU.B` and `BSU.B_ORDER`, that every decal named by a row exists in `data.decals`, that `data.ticker.length === 62`, and that every `date` string parses with `BSU.dateToDay`.
 
 ---
 
@@ -1411,7 +1418,7 @@ Implementers finish **all Tier 1 items of their module before any Tier 2 item**.
 - hydro: the CA with the one head function, rain events (all kinds), canals/culverts/floodgates/pumps/ponds, marsh draining (reversion is Tier 2 #10), surge front and stages, flood thresholds and building flood state, Spring High Water stages, the F/W overlay data, T1–T8.
 - weather: calendar + sky clock, rain scheduler and cells, heat, wind, fog flag, the full storm lifecycle and landfall timeline with all four toasts, the near-miss pass, Célestine hold rule, Years-2+ scheduling, festival dates, `spawnStorm` (debug/headless), Play Through It flag.
 - wildlife: gators (dens, states, A*, attractors, campus mask, incidents, relocation, Le Grand), mosquito field and index, nutria mechanic + burrow decals (sprites Tier 2 #3), ecology score, fireflies count, egret/spoonbill flags (sprites Tier 2 #3).
-- buildings: all 43 rows placeable per rules (Stadium III row exists; its sprite is Tier 2 #2), construction timeline, coverage/blackout/brownout, generator, boil-water trigger inputs, damage/repair/ruin/tarps, pilings + retrofit, regrade, tiers (Bayou Field, Stadium I–II), policies, protection/gaps/ring, sandbags/board-up/evacuate/pre-drain, wind pulses, shelter, auto-names + levee runs, undo, demolish.
+- buildings: all 47 rows placeable per rules (Stadium III row exists; its sprite is Tier 2 #2), construction timeline, coverage/blackout/brownout, generator, boil-water trigger inputs, damage/repair/ruin/tarps, pilings + retrofit, regrade, tiers (Bayou Field, Stadium I–II), policies, protection/gaps/ring, sandbags/board-up/evacuate/pre-drain, wind pulses, shelter, auto-names + levee runs, undo, demolish.
 - economy: every income/cost line, rolling enrollment and locks, prestige target, happiness (abstract + sampled + the timer table), runway, bankruptcy/underwater/probation cards, endowment + second campus (functional; UI minimal), Board card **Insurance** (the others Tier 2 #7), tutorial grants, disaster grant.
 - agents: agents with schedule buckets, A* + route cache, reactions (flee, wade, slap, sit, cheer, caps), sampling, class attendance, desire lines, pirogue/bus arrivals, shelter/evacuation, fogger (as a radius effect; the visible truck Tier 2 #4), Cajun Navy sprites.
 - sports: team, venue rules, schedule, rating (all terms), named coach + stars (hire/fire Tier 2 #6), three starters, win prob, score model, home game set piece with halftime toast, montage/auto-sim, attendance/revenue/tailgate, rivalry, Resilience Bowl, Play Through It, postponement. Sugar Cane Bowl, ticket tiers, recruiting card, Homecoming budget, permits cards: Tier 2 #6.

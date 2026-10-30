@@ -219,6 +219,45 @@ ok(S.ICON_FRAME && S.ICON_FRAME.size === 64 && S.ICON_FRAME.radius === 8 && Obje
   ok(ms < 4000, `all ${ids.length} icons bake in ${ms} ms on the stub (advisory: < 4 s)`);
   const t1 = Date.now(); for (const id of ids) S.get('icon:' + id, 0, 0, 2); ok(Date.now() - t1 < 100, 'the second pass over the icons is a cache lookup (< 100 ms)');
 }
+// --- H7: the water pass's bars through brush.bars, memMB counts the effect caches, the surge barrier icon -------------------------------------------------
+try {
+  const calls = []; const gp = { globalAlpha: 1, fillStyle: '#000' };
+  const gb = new Proxy(gp, { get(t, k) { if (k in t) return t[k]; if (k === 'rect') return (x, y, w, h) => { calls.push(['rect', x, y, w, h]); }; if (k === 'fill') return () => { calls.push(['fill', t.globalAlpha, t.fillStyle]); }; return () => { calls.push([String(k)]); }; }, set(t, k, v) { t[k] = v; return true; } });
+  ok(B.bars(gb, new Float32Array(0), 0, 1, '#fff', 1, 1) === 0 && calls.length === 0, 'brush.bars: no bars, no calls');
+  const arr = new Float32Array([10.3, 20.4, 6, 30, 40, 0.2, 50.5, 60, 1]);
+  const n = B.bars(gb, arr, 3, 1, '#E6F3EC', 0.4, 2);
+  const fl = calls.find((c) => c[0] === 'fill'), rc = calls.filter((c) => c[0] === 'rect');
+  ok(n === 3 && calls.filter((c) => c[0] === 'beginPath').length === 1 && calls.filter((c) => c[0] === 'fill').length === 1 && rc.length === 3, 'brush.bars: ONE path and ONE fill for any number of bars');
+  ok(fl && fl[1] === 0.4 && fl[2] === '#E6F3EC' && gp.globalAlpha === 1, 'brush.bars: the layer\'s alpha and colour, and the context is left at alpha 1');
+  ok(rc.every((c) => Math.abs(c[1] * 2 - Math.round(c[1] * 2)) < 1e-9 && Math.abs(c[2] * 2 - Math.round(c[2] * 2)) < 1e-9 && Math.abs(c[3] * 2 - Math.round(c[3] * 2)) < 1e-9 && Math.abs(c[4] * 2 - Math.round(c[4] * 2)) < 1e-9), 'brush.bars: every bar sits on the device pixel grid (at dpr 2: halves of a CSS px), so it is crisp and never anti-aliased');
+  ok(rc[0][1] === 10.5 && rc[0][2] === 20.5 && rc[0][3] === 6 && rc[0][4] === 1, 'brush.bars: a 6-px bar at x 10.3 snaps to 10.5…16.5, 1 CSS px = 2 device px thick');
+  ok(rc[1][3] === 0.5 && rc[2][3] >= 0.5, 'brush.bars: a bar shorter than a device pixel is one device pixel (a dot, never nothing)');
+  ok(B.bars(gb, arr, 1, 1, '#fff', 1) === 1 && calls.filter((c) => c[0] === 'rect').pop()[3] === 6, 'brush.bars: scale defaults to 1 (CSS px = device px)');
+  const wsrc = rendSrc.slice(rendSrc.indexOf('function waterPass('), rendSrc.indexOf('// Pass 3b'));
+  ok(wsrc.length > 2000 && !/fillRect/.test(wsrc) && /waterBars\(g, Wa/.test(wsrc) && /waterBars\(g, Wcl/.test(wsrc) && /waterBars\(g, Wcd/.test(wsrc) && /waterBars\(g, Wd,/.test(wsrc), 'the live water pass has no fillRect left: swells, ripples, glints, foam, flecks, streaks and the surge debris / chop are layers filled through brush.bars');
+  ok((wsrc.match(/waterBars\(g, /g) || []).length === 12, 'twelve layers, one fill each (about a dozen calls a frame instead of ~6,000 fillRects)');
+  // a frame over water: the bars layers reach the context as strokes of their own alphas
+  BSU.session.newGame({ seed: 42, skipTutorial: true, size: 64 });
+  const sw = BSU.state, tp = sw.tiles; let wi = -1; for (let i = 0; i < tp.type.length; i++) if (tp.type[i] === BSU.T.BAYOU) { wi = i; break; }
+  ok(wi >= 0, 'seed 42 has a bayou tile to look at');
+  if (wi >= 0) {
+    const W = BSU.MAP.W, tx = wi % W, ty = (wi / W) | 0, cam = { x: (tx - ty) * 32, y: (tx + ty) * 16, zoom: 1 };
+    const r = rec(); const lines = [];
+    const o = r.g; const sg = new Proxy(o, { get(t, k) { if (k === 'fill') return () => { lines.push([t.globalAlpha]); }; return t[k]; }, set(t, k, v) { t[k] = v; return true; } });
+    R.renderInto(sg, 900, 600, sw, cam);
+    ok(lines.some((l) => Math.abs(l[0] - 0.42) < 1e-9) && R.perf().water > 0, 'a frame over the bayou fills the swell layer once (alpha .42) — ' + R.perf().water + ' water tiles drawn');
+  }
+  // memMB counts the blob cache and the night vignette canvas
+  { B.blobClear(); const m0 = R.perf(); B.blob('halo', '#FFD27A', 60, 60); B.blob('fog', '196,208,220', 120, 60, { seed: 1 }); const m1 = R.perf(), bs = B.blobStats();
+    ok(m1.blobMB === Math.round(bs.mb * 100) / 100 && m1.blobMB > m0.blobMB && m1.memMB - m0.memMB >= m1.blobMB - m0.blobMB - 0.011 && typeof m1.vignetteMB === 'number', 'perf().memMB counts the brush blob cache (blobMB ' + m1.blobMB + ' MB of ' + bs.n + ' blobs)');
+    ok(typeof R.vignetteMB === 'function' && R.vignetteMB() >= 0 && m1.vignetteMB === Math.round(R.vignetteMB() * 100) / 100, 'perf().memMB counts the night vignette canvas (' + m1.vignetteMB + ' MB until the first night frame)');
+    ok(/R\.vignetteMB = function/.test(fxSrc) && /mem \+= blobMB \+ vignetteMB/.test(rendSrc), 'the vignette canvas and the blob cache are summed into render.perf().memMB'); }
+  // the surge barrier gate is the brush's
+  ok(/function drawBarrierGate\(/.test(icoSrc) && /it\.id === 'surge_barrier'\) drawBarrierGate/.test(icoSrc), 'the surge barrier icon draws its gate with drawBarrierGate (brush quads, a head beam, gold bars)');
+  { let pen = 0; const og = S.get; S.clear(); S.get = function (id) { if (id === 'surge_barrier') pen++; return og.apply(S, arguments); };
+    const e2 = S.get('icon:surge_barrier', 0, 0, 2), e1 = S.get('icon:surge_barrier', 1, 0, 1); S.get = og;
+    ok(e2 && e1 && e2.hd && e1.hd && pen === 0, 'baking the surge barrier icon (both masters, open and locked) never asks for the pen gate sprite (' + pen + ' asks)'); }
+} catch (e) { ok(false, 'H7 effects: ' + (e.stack || e)); }
 ok(BSU.errors.size === errs0, 'no BSU.error through the whole file');
 
 console.log(`\n${passes} passed, ${failures} failed`);

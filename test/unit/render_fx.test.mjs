@@ -210,6 +210,23 @@ try {
   if (ip) { I.select(ip.id); texts = []; sb.ui.camera.x = 0; sb.ui.camera.y = 0; sb.ui.camera.zoom = 1; const sel = I.selected(sb); const camTx = ((sel.anchor.tx | 0)); void camTx;
     R.panToTile ? R.panToTile(sel.anchor.tx, sel.anchor.ty, false) : null; const drew = R._issueDraw.label(sb, gs, view, sel);
     ok(drew === false || (texts.some((t) => /In progress:/.test(t)) && !texts.some((t) => /place a Substation/.test(t))), 'the label says "In progress: …" (' + (drew ? texts.filter((t) => /progress|Substation/.test(t)).join(' | ') : 'off-screen, no label') + ')'); I.select(null); }
+  // H7: the in-progress label offers no Fix (the tray row has none), and issFrame follows the HUD mode (full / compact pills / hidden)
+  if (ip) {
+    I.select(ip.id); const sel = I.selected(sb), put = (x, y) => { for (let k = 0; k < 3; k++) { const p = R.tileToScreen(sel.anchor.tx, sel.anchor.ty); R.camera.x += (p.x - x) / R.camera.zoom; R.camera.y += (p.y - y) / R.camera.zoom; } };   // render's live camera is what tileToScreen reads
+    R.camera.zoom = 1; sb.ui.camera.zoom = 1; const view2 = { vw: 1280, vh: 800 };
+    put(700, 330); texts = []; const drewMid = R._issueDraw.label(sb, gs, view2, sel);
+    ok(drewMid === true && texts.some((t) => /Locate in the Issues tray/.test(t)) && !texts.some((t) => /Fix \/ Locate/.test(t)) && texts.some((t) => /In progress:/.test(t)), 'an in-progress row\'s label says "In progress: …" and "Locate in the Issues tray" (no Fix offered): ' + texts.join(' | '));
+    const U = BSU.ui, hs0 = U.hudState, ui0 = U.uiScaleEffective; U.uiScaleEffective = () => 1;
+    const mode = (eff, pills) => { U.hudState = () => ({ mode: eff, effective: eff, collapsed: {}, pill: pills || {} }); };
+    const label = (x, y) => { put(x, y); texts = []; return R._issueDraw.label(sb, gs, view2, sel); };
+    mode('full'); ok(label(200, 200) === false && label(1200, 300) === false && label(200, 40) === false && label(700, 330) === true, 'full HUD: a point under the goals tracker, the minimap column or the top bar draws no label (the edge arrow carries it)');
+    const all = { goals: true, needs: true, minimap: true, issues: true, palette: true };
+    mode('compact', all); ok(label(200, 200) === true && label(1200, 300) === true && label(200, 40) === false && label(700, 700) === true, 'compact HUD: the goals / minimap / tray are pills, so the label may sit beside where their panels were (the top bar still blocks)');
+    mode('hidden'); ok(label(200, 40) === true && label(1200, 100) === true && label(700, 740) === true, 'hidden HUD: nothing but the corner chip is on screen, so the whole viewport is the frame');
+    mode('full', { palette: true }); ok(label(700, 700) === true, 'a folded palette gives its strip back to the frame in full mode');
+    mode('full'); ok(label(700, 700) === false, 'an open palette keeps its strip (236 px) out of the frame');
+    U.hudState = hs0; U.uiScaleEffective = ui0; I.select(null);
+  }
   I.reset(sb);
 } catch (e) { ok(false, 'calm alerts render_fx: ' + (e.stack || e)); }
 // selfTest hook

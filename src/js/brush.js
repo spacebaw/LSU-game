@@ -12,7 +12,8 @@
 // Public: BSU.brush.{tone, toneArr, css, mix, sat, ramp, env, posEnv, rng, vnoise, fbm, pnoise, field, poly, bbox, centroid, diamond,
 //   diamondGrown, smoothPath, ellipse, seamWidth, seamStroke, plane, orb, softEllipse, microGrain, macroGrain, sites, edgeFade, stroke,
 //   blade, puddle, strokePath, fillQuadShaded, roofPlane, column, groundTile, waterTile, path, tree, figure, capsule, digits, shadow, light,
-//   glow, decal, cube, begin, blob, drawBlob, blobQ, blobStats, blobClear, blobKinds, selfTest}
+//   glow, decal, cube, begin, blob, drawBlob, bars, blobQ, blobStats, blobClear, blobKinds, selfTest}
+// H7: bars is the batched device-pixel fill of the water pass's horizontal wave / glint / foam / chop bars (one path per layer, not one fillRect each).
 // H5 effects pass: blob / drawBlob are the cached soft sprites (halo, glow, pool, dot, puff, ao, foam, ring, cone, puddle, fog, vignette) every effect pass draws with drawImage.
 // H4 characters pass: capsule (a limb / body / hull lit across its width) and digits (jersey numbers as strokes) are the body kit the
 // character families compose (sprites_entities_hd.js); figure stays the H0 reference composition.
@@ -676,6 +677,16 @@
     g.globalAlpha = alpha;
     if (rx * sc > b.rx * 1.08 || ry * sc > b.ry * 1.08) { g.drawImage(b.canvas, cx - rx, cy - ry, rx * 2, ry * 2); return true; }   // past the ladder's 320-px cap: stretch the biggest blob (a smooth gradient scales cleanly)
     g.drawImage(b.canvas, Math.round(cx * sc - b.w / 2) / sc, Math.round(cy * sc - b.h / 2) / sc, b.w / sc, b.h / sc); return true;
+  };
+  /** H7: ONE batched fill of horizontal bars: `arr` = flat [x, y, len, …] (n bars, CSS px; y = top edge), `w` the thickness, `scale` the device px per CSS px. Every bar is snapped to the
+   *  DEVICE pixel grid (crisp at dpr 2), at least one device px each way, all in one path with ONE fill (a round-capped stroke of the same bars cost 3× the raster at dpr 2). Returns n */
+  M.bars = function (g, arr, n, w, color, alpha, scale) {
+    n = n | 0; if (!(n > 0) || !arr || !(w > 0)) return 0;
+    const sc = scale > 0 ? scale : 1, inv = 1 / sc, th = Math.max(inv, Math.round(w * sc) * inv);
+    g.globalAlpha = alpha; g.fillStyle = color; g.beginPath();
+    for (let k = 0; k < n; k++) { const o = k * 3, x0 = Math.round(arr[o] * sc) * inv, x1 = Math.round((arr[o] + arr[o + 2]) * sc) * inv; g.rect(x0, Math.round(arr[o + 1] * sc) * inv, x1 > x0 ? x1 - x0 : inv, th); }
+    g.fill(); g.globalAlpha = 1;
+    return n;
   };
   M.blobStats = function () { return { n: blobMap.size, mb: Math.round(blobBytes / 10485.76) / 100, bakes: blobBakes, hits: blobHits, max: BLOB_MAX }; };
   M.blobClear = function () { for (const v of blobMap.values()) { try { v.canvas.width = 1; v.canvas.height = 1; } catch (err) { /* stub */ } } blobMap.clear(); blobBytes = 0; blobBakes = 0; blobHits = 0; };

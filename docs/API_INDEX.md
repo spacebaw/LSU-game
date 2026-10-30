@@ -11,9 +11,9 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 
 ## BSU.B_ORDER  — enum/table, 47 keys (e.g. 0, 1, 2, 3, 4, 5, 6, 7)
 
-## BSU.EV  — enum/table, 112 keys (e.g. TILE_CHANGED, BUILDING_PLACED, BUILDING_REMOVED, BUILDING_COMPLETE, BUILDING_UPGRADED, BUILDING_FLOODED, BUILDING_DRIED, BUILDING_DAMAGED)
+## BSU.EV  — enum/table, 113 keys (e.g. TILE_CHANGED, BUILDING_PLACED, BUILDING_REMOVED, BUILDING_COMPLETE, BUILDING_UPGRADED, BUILDING_FLOODED, BUILDING_DRIED, BUILDING_DAMAGED)
 
-## BSU.EV_LIST  — enum/table, 112 keys (e.g. 0, 1, 2, 3, 4, 5, 6, 7)
+## BSU.EV_LIST  — enum/table, 113 keys (e.g. 0, 1, 2, 3, 4, 5, 6, 7)
 
 ## BSU.FLAG
 - values: WETLAND_ORIGINAL:number, PRESERVE:number, CANAL:number, DRAINED:number, FLOODGATE:number, POND_SINK:number, BAYOU:number, OPEN_WATER:number, DIRTY_CHUNK:number, DESIRE_WORN:number, DEBRIS:number, MOUND:number, RESTORING:number, JAMMED:number
@@ -220,6 +220,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - brush.blobQ(r)
 - brush.blob(kind, color, rx, ry, o)
 - brush.drawBlob(g, kind, color, cx, cy, rx, ry, alpha, scale, o)
+- brush.bars(g, arr, n, w, color, alpha, scale)
 - brush.blobStats()
 - brush.blobClear()
 - brush.selfTest()
@@ -392,7 +393,11 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 
 - BSU.formatDate(day)
 
+- BSU.formatInt(n)
+
 - BSU.formatMoney(n)
+
+- BSU.formatNum(n)
 
 ## BSU.headless
 - values: autosave:boolean
@@ -671,6 +676,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - render._fxPuddleWet(v)
 - render.fxStats()
 - render.crowd(g, rect, fill, wave, rain)
+- render.vignetteMB()
 - render.cone(state)
 - render.onPerfMode()
 - render._fxInit()
@@ -1478,7 +1484,8 @@ is already scaled to the master (sprites.beginHD / render's HD chunk bake), so a
 Public: BSU.brush.{tone, toneArr, css, mix, sat, ramp, env, posEnv, rng, vnoise, fbm, pnoise, field, poly, bbox, centroid, diamond,
   diamondGrown, smoothPath, ellipse, seamWidth, seamStroke, plane, orb, softEllipse, microGrain, macroGrain, sites, edgeFade, stroke,
   blade, puddle, strokePath, fillQuadShaded, roofPlane, column, groundTile, waterTile, path, tree, figure, capsule, digits, shadow, light,
-  glow, decal, cube, begin, blob, drawBlob, blobQ, blobStats, blobClear, blobKinds, selfTest}
+  glow, decal, cube, begin, blob, drawBlob, bars, blobQ, blobStats, blobClear, blobKinds, selfTest}
+H7: bars is the batched device-pixel fill of the water pass's horizontal wave / glint / foam / chop bars (one path per layer, not one fillRect each).
 H5 effects pass: blob / drawBlob are the cached soft sprites (halo, glow, pool, dot, puff, ao, foam, ring, cone, puddle, fog, vignette) every effect pass draws with drawImage.
 H4 characters pass: capsule (a limb / body / hull lit across its width) and digits (jersey numbers as strokes) are the body kit the
 character families compose (sprites_entities_hd.js); figure stays the H0 reference composition.
@@ -1599,8 +1606,8 @@ master 2 — what render.drawIcon asks for — 64 × 64 at master 1), anchored o
 What stands on the pad comes from the HD masters, never from the pen: footprint rows bake their HD building ONCE for this icon with the entrance on the lit
 face (sprites.bakeWith at master 2: a scratch canvas freed right after the blit, so the atlas never holds an extra FRONT_L variant), plants are the HD oak /
 cypress / azalea cells, levee / floodwall / canal runs are the HD terrain families, reeds / mounds the HD marsh pieces; paths, roads, the boardwalk, the Pedestrian
-Bridge and the gator fence are drawn by the brush's own path / deck / column primitives (the same strokePath the map's paths use). Only the surge barrier gate
-(no HD family yet) is its pen sprite, smoothed into the frame.
+Bridge, the gator fence and the surge barrier's gate (H7) are drawn by the brush's own path / deck / column / lit-quad primitives (the same strokePath the map's paths use);
+no icon carries a pen sprite any more.
 Conventions: brush calls only (no hand-written gradient, no fillText, no Math.random, no rng.fx); every jitter from BSU.rng.hash; deterministic in (id, variant,
 master). Public (BSU.sprites): hdIconFamilies(), ICON_FRAME (frozen), iconBakeStats().
 ============================================================================

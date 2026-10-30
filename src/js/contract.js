@@ -920,6 +920,7 @@
     'decision:open', 'decision:closed',
     'agent:flee', 'agent:desireLine', 'agent:arrive',
     'ui:notify', 'ui:ticker', 'ui:panel', 'ui:overlay', 'ui:tool', 'ui:buildMenu',
+    'ui:coach',   // H7: the first-run tour's step / finish {step, completed?} (ui.js emitted it unregistered: a console warning on every first run)
     'camera:moved',
     'save:written', 'save:loaded',
     'error'
@@ -1092,6 +1093,9 @@
     }
     return (neg ? '−' : '') + '$' + s;
   };
+  /** H7: the shared count format (ui.fmt, the issues text): thousands grouped, a true minus, ≤ 1 decimal; formatInt rounds first ('1,433') */
+  BSU.formatNum = function (n) { n = (typeof n === 'number' && isFinite(n)) ? n : 0; return (n < 0 ? '\u2212' : '') + Math.abs(n).toLocaleString('en-US', { maximumFractionDigits: 1 }); };
+  BSU.formatInt = function (n) { return BSU.formatNum(Math.round((typeof n === 'number' && isFinite(n)) ? n : 0)); };
   /** 'Jan'…'Dec' for m = 1–12 */
   BSU.monthName = function (m) { return BSU.MONTHS[((m - 1) % 12 + 12) % 12]; };
   /** absolute day → {day, year (1-based), month (1–12), dom (1–10), season, semester, date: 'Sep 3'} (ARCHITECTURE §2.4 rules) */

@@ -217,6 +217,10 @@ try {
   s2.ui.tabsIntroduced = intro; s2.progress.tutorialStage = 6; s2.economy.suspendCapPenalties = true; I.invalidate();
   ok(!I.list(s2).some((it) => it.kind === 'overCapacity'), 'cap penalties suspended: no over-capacity rows'); s2.economy.suspendCapPenalties = false; I.invalidate();
   const oc = rowOf(I.list(s2), 'overCapacity'); ok(oc && oc.action.arm === oc.action.openMenuCard && Number.isFinite(oc.action.reach), 'over-capacity Fix arms the right card: ' + (oc && oc.action.arm));
+  // H7: thousands separators in the row text (the shared count format of contract.js)
+  { const st0 = s2.economy.students; s2.economy.students = 1433; I.invalidate(); const big = rowOf(I.list(s2), 'overCapacity');
+    ok(big && /\(1,433 \/ \d/.test(big.title) && /^1,433 students, /.test(big.persist) && !/1433/.test(big.title + big.persist + big.fix), 'over-capacity text groups thousands: ' + (big && big.title + ' | ' + big.persist));
+    s2.economy.students = st0; I.invalidate(); }
   // damaged → Fix repairs it → cleared within one refresh; cash short → reason
   const sp = H.findSpot('dorm'); const pr = H.place('dorm', sp.x, sp.y); const dorm = B.get(s2, pr.id); dorm.built = 1; dorm.hp = 0.5; I.invalidate();
   let it = rowOf(I.list(s2), 'damaged'); ok(it && it.cost > 0 && it.resolvable === true && /Repair/.test(it.persist), 'damaged row: priced, resolvable, tooltip says Repair $N');

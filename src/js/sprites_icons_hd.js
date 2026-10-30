@@ -16,8 +16,8 @@
 // What stands on the pad comes from the HD masters, never from the pen: footprint rows bake their HD building ONCE for this icon with the entrance on the lit
 // face (sprites.bakeWith at master 2: a scratch canvas freed right after the blit, so the atlas never holds an extra FRONT_L variant), plants are the HD oak /
 // cypress / azalea cells, levee / floodwall / canal runs are the HD terrain families, reeds / mounds the HD marsh pieces; paths, roads, the boardwalk, the Pedestrian
-// Bridge and the gator fence are drawn by the brush's own path / deck / column primitives (the same strokePath the map's paths use). Only the surge barrier gate
-// (no HD family yet) is its pen sprite, smoothed into the frame.
+// Bridge, the gator fence and the surge barrier's gate (H7) are drawn by the brush's own path / deck / column / lit-quad primitives (the same strokePath the map's paths use);
+// no icon carries a pen sprite any more.
 // Conventions: brush calls only (no hand-written gradient, no fillText, no Math.random, no rng.fx); every jitter from BSU.rng.hash; deterministic in (id, variant,
 // master). Public (BSU.sprites): hdIconFamilies(), ICON_FRAME (frozen), iconBakeStats().
 // ============================================================================
@@ -143,6 +143,29 @@
   }
 
   // ---------------------------------------------------------------------------
+  // The surge barrier's gate (H7): two concrete piers with lamp caps, a steel gate with gold bars between them (frame 0 = shut) and a head beam, on a concrete sill —
+  // built from the brush's lit quads like the floodwall stamps beside it (the run's long axis is +u; the lit face is the one toward +v), so the icon has no pen sprite left
+  // ---------------------------------------------------------------------------
+  function drawBarrierGate(ctx, env, it, s, ox, oy) {
+    const bx = it.ax * s + ox, by = it.ay * s + oy;
+    const pt = (u, v, h) => { const w = uv(u, v); return [w[0] * s + bx, w[1] * s + by - (h || 0)]; };
+    const box = (u0, u1, v0, v1, z0, z1, color, mat) => {
+      B.fillQuadShaded(ctx, [pt(u0, v1, z0), pt(u1, v1, z0), pt(u1, v1, z1), pt(u0, v1, z1)], color, { face: 'sw', material: mat || 'stone', noAO: true }, env);
+      B.fillQuadShaded(ctx, [pt(u1, v0, z0), pt(u1, v1, z0), pt(u1, v1, z1), pt(u1, v0, z1)], color, { face: 'se', material: mat || 'stone', noAO: true }, env);
+      B.fillQuadShaded(ctx, [pt(u0, v0, z1), pt(u1, v0, z1), pt(u1, v1, z1), pt(u0, v1, z1)], color, { face: 'top', material: mat || 'stone', t: 0.1, noAO: true }, env);
+    };
+    const CONC = '#B4B2AC', STEEL = '#7C8696', GOLD = '#E3B93A';
+    B.shadow(ctx, { x: bx + 3, y: by + 2.2, rx: 15, ry: 4.6, a: 0.32 }, env);
+    box(-0.5, 0.5, -0.3, 0.3, 0, 2.2, CONC);                                           // the sill
+    box(-0.46, -0.28, -0.26, 0.26, 2.2, 19, CONC); box(0.28, 0.46, -0.26, 0.26, 2.2, 19, CONC);   // the piers
+    B.fillQuadShaded(ctx, [pt(-0.28, 0.1, 3), pt(0.28, 0.1, 3), pt(0.28, 0.1, 16.4), pt(-0.28, 0.1, 16.4)], STEEL, { face: 'sw', material: 'metal', noAO: true }, env);   // the gate leaf, shut
+    for (let u = -0.22; u <= 0.23; u += 0.11) B.stroke(ctx, [pt(u, 0.1, 3.4), pt(u, 0.1, 16)], 0.8, GOLD, 0.15, 0.95, { cap: 'butt' });
+    B.stroke(ctx, [pt(-0.28, 0.1, 9.6), pt(0.28, 0.1, 9.6)], 0.7, STEEL, -0.5, 0.9);
+    box(-0.46, 0.46, -0.24, 0.24, 16.4, 19.6, CONC);                                    // the head beam
+    for (const u of [-0.37, 0.37]) { const p = pt(u, 0, 19); B.orb(ctx, p[0], p[1] - 0.9, 1.5, 1.2, GOLD, 0.3, { spec: 0.4, noRim: true }); }
+  }
+
+  // ---------------------------------------------------------------------------
   // Sources: the HD masters the icon stands on its pad
   // ---------------------------------------------------------------------------
   /** the entry an item stands for at the icon's master: an HD atlas cell, or (footprint rows) the HD building baked ONCE for this icon (entrance on the lit face) */
@@ -195,7 +218,7 @@
         const sh = (k) => pts.map((p) => [cx(pts) + (p[0] - cx(pts)) * k + 2.4, cy(pts) + (p[1] - cy(pts)) * k + 1.4]);
         if (pl.items.some((it) => it.bld)) B.shadow(ctx, { poly: sh(0.78), soft: 3, a: 0.42 }, env);
         else if (pl.items.length) B.shadow(ctx, { x: cx(pts) + 3, y: cy(pts) + 1.5, rx: (c.R[0] - c.L[0]) * 0.28, ry: (c.Bt[1] - c.T[1]) * 0.26, a: 0.3 }, env);
-        for (const it of pl.items) { if (it.id === 'preservePost') continue; drawItem(ctx, it, s, ox, oy, z); }
+        for (const it of pl.items) { if (it.id === 'preservePost') continue; if (it.id === 'surge_barrier') drawBarrierGate(ctx, env, it, s, ox, oy); else drawItem(ctx, it, s, ox, oy, z); }
         if (id === 'preserve') drawPreserve(ctx, env, c, true);
       }
       if (f.badge && pl.foot) drawBadge(ctx, env, pl.foot, 4, 5);

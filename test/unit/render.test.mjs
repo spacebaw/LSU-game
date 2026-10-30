@@ -413,6 +413,20 @@ s.setPiece = { kind: 'x', cameraTouched: false }; R.panBy(1, 0, true); ok(s.setP
   ok(!lineE || (Number.isFinite(lineE.a) && lineE.a >= 0 && lineE.a <= 100 && lineE.key < fbEntries[0].key + 1e9 && lineE.key > venueEntry.key), 'the scrimmage line sits on the turf at the engine spot: ' + (lineE && lineE.a));
   const pl0 = R.drawList.filter((e) => e && e.kind === 'fbplayer');
   ok(pl0.every((e) => e.ref && e.ref.zoom === 1 && /^fbplayer:/.test(e.id)), 'players blit from the 1x atlas with a pose id');
+  // H7: the helmet glint under the mast lights — one additive 'dot' blob per player in a NIGHT game, nothing by day
+  {
+    const calls = []; const gr = new Proxy({ globalAlpha: 1, globalCompositeOperation: 'source-over' }, { get(t, k) { if (k in t) return t[k]; return (...a) => { calls.push([String(k), t.globalCompositeOperation, t.globalAlpha]); }; }, set(t, k, v) { t[k] = v; return true; } });
+    const drawAll = () => { calls.length = 0; for (const e of R.drawList) if (e && e.kind === 'fbplayer' && typeof e.draw === 'function') e.draw(e, gr); return calls.filter((c) => c[0] === 'drawImage'); };
+    const day = drawAll();
+    ok(day.length === 22 && day.every((c) => c[1] === 'source-over'), 'by day a player is one blit (22 drawImage, none additive)');
+    const gm = s.sports.game, nightWas = gm.night; gm.night = true; BSU.weather.scriptSky(s, BSU.SKY.NIGHT, 0.5); H.render();
+    const night = drawAll();
+    ok(night.length === 44 && night.filter((c) => c[1] === 'lighter').length === 22 && night.filter((c) => c[1] === 'lighter').every((c) => c[2] > 0 && c[2] < 1), 'in a night game every player gets ONE additive glint blob on his helmet (44 blits = 22 sprites + 22 glints), each its own twinkle alpha');
+    ok(calls.every((c) => c[0] !== 'createRadialGradient' && c[0] !== 'createLinearGradient') && gr.globalCompositeOperation === 'source-over' && gr.globalAlpha === 1, 'the glint is a cached blob (no gradient) and leaves the context at source-over, alpha 1');
+    const pm0 = s.ui.perfMode; s.ui.perfMode = true; H.render(); const perf = drawAll(); s.ui.perfMode = pm0;
+    ok(perf.length === 22, 'the glint is skipped in performance mode');
+    gm.night = nightWas; BSU.weather.releaseSky(s); H.render();
+  }
   R.panBy(40, 0, true); H.render();
   ok(s.setPiece.cameraTouched === true && R.fbInfo().camera === true && !s.ui.camera.hasTarget, 'a user pan sets cameraTouched and the game camera stops following');
   BSU.session.skipSetPiece(s); { let g = 0; while (s.setPiece && g++ < 300) H.tick(10); }   // the watched game's length depends on the rng-driven play count
@@ -554,7 +568,7 @@ try {
   ok(sp.get('debug:hdtest', 0, 0, 2).zoom === 2 && sp.get('debug:hdtest', 0, 0, 2).sw === 128, 'the cube is fetched at master 2 at zoom 2 (128 device px wide)');
   // byte cap: a 1 MB chunk cap evicts off-screen chunks and then latches the fallback (chunk master 1); restoring the cap lifts it
   const hdp = BSU.params.art.hd, saveChunk = hdp.chromeChunkMB; hdp.chromeChunkMB = 1;
-  for (let k = 0; k < 4; k++) BSU.headless.render();
+  for (let k = 0; k < 130 && !R.hdInfo().fallback; k++) BSU.headless.render();   // H7: the cap is checked after a master-2 bake and every 60th frame, so wait for the cadence instead of counting on the frame number
   const i4 = R.hdInfo();
   ok(i4.fallback === true && i4.chunkMaster === 1 && R.perf().hdFallback === true, 'over the HD chunk cap with only visible chunks left: fallback latched, chunk master back to 1');
   for (let k = 0; k < 30; k++) BSU.headless.render();
@@ -602,12 +616,14 @@ try {
   ok(!hadPath || (strokes > 0 && units.has(32) && mats.has('gravel') && lods.has(0)), `the HD chunk bake strokes the paths through brush.strokePath (unit 32, ${strokes} calls, materials ${[...mats].join('/')}, lod ${[...lods].join('/')})`);
   ok(R.hdInfo().hdChunks > 0 && deckM2, 'master-2 chunks: a deck layer baked with them is a master-2 canvas (hdInfo().deckMasters)');
   // the live water pass fills a water tile at the light HD tint (C.hdWaterLiveA) and flood water over land at the full depth tint
-  let aWater = -1, aLand = -1; const g = R.ctx, fr0 = g.fillRect, water0 = t.type.indexOf(BSU.T.OPEN_WATER);
-  R.setZoom(1); R.panToTile(water0 % 64, (water0 / 64) | 0, false); BSU.headless.render();
+  let aWater = -1, aLand = -1; const g = R.ctx, fr0 = g.fill, water0 = t.type.indexOf(BSU.T.OPEN_WATER);   // H7: the tile fill is an AA path (fillDiamond since H5) and the wave bars are strokes, so the hook is on fill()
   const dep = t.depth, land0 = (() => { for (let i = 0; i < t.type.length; i++) if (t.type[i] >= BSU.T.WET && !(t.flags[i] & (BSU.FLAG.OPEN_WATER | BSU.FLAG.BAYOU))) return i; return -1; })();
   const saved = dep[land0]; dep[land0] = 1.2;   // a flooded land tile for one frame
-  g.fillRect = function () { const a = g.globalAlpha; if (a > 0.1 && a < 0.3 && aWater < 0) aWater = a; if (a > 0.5 && a < 0.9 && aLand < 0) aLand = a; return fr0.apply(this, arguments); };
-  try { R.panToTile(land0 % 64, (land0 / 64) | 0, false); BSU.headless.render(); } finally { g.fillRect = fr0; dep[land0] = saved; }
+  const als = []; g.fill = function () { als.push(g.globalAlpha); return fr0.apply(this, arguments); };
+  try {
+    R.setZoom(1); R.panToTile(water0 % 64, (water0 / 64) | 0, false); als.length = 0; BSU.headless.render(); { const f = als.find((a) => a > 0.1 && a < 0.3); aWater = f === undefined ? -1 : f; }
+    R.panToTile(land0 % 64, (land0 / 64) | 0, false); als.length = 0; BSU.headless.render(); { const f = als.find((a) => a > 0.5 && a < 0.9); aLand = f === undefined ? -1 : f; }
+  } finally { g.fill = fr0; dep[land0] = saved; }
   ok(aWater > 0.15 && aWater < 0.25, `a baked water tile gets the light live tint (alpha ${aWater.toFixed(2)})`);
   ok(aLand > 0.5, `flood water over land keeps the depth tint (alpha ${aLand.toFixed(2)})`);
   R.panToTile(sT.plot.founders.tx + 1, sT.plot.founders.ty + 1, false); for (let k = 0; k < 3; k++) BSU.headless.render();

@@ -33,6 +33,7 @@
   function nameOf(id) { const r = rowOf(id); return r ? r.name : id; }
   function PI() { return (BSU.params && BSU.params.issues) || {}; }
   function money(v) { return BSU.formatMoney ? BSU.formatMoney(v) : '$' + v; }
+  function num(v) { return BSU.formatInt ? BSU.formatInt(v) : String(Math.round(v)); }   // H7: thousands separators (1,433 / 1,500), the shared count format
 
   // ---------------------------------------------------------------------------
   // Kinds: colour (unique per family, used nowhere else in the game), glyph, default severity
@@ -274,9 +275,9 @@
           const base = best ? { tiles: footprintOf(best), rect: { tx: best.tx | 0, ty: best.ty | 0, w: best.w | 0, h: best.h | 0 }, anchor: anchorOf(best), buildingId: best.id } : founderBase(state);
           const adds = fin(((rowOf(t.build) || {}).effects || {})[t.effect], 0);
           let uc = null; for (const b of list) { const r = b && rowOf(b.type); if (b && !b.ruin && fin(b.built, 0) < 1 && r && r.effects && fin(r.effects[t.effect], 0) > 0) { uc = b; break; } }
-          const pr = uc ? progressOf(uc, '(+' + fin(((rowOf(uc.type) || {}).effects || {})[t.effect], 0) + ' ' + t.unit + ')') : null;
-          mk(out, 'overCapacity', 'overCapacity:' + t.key, Object.assign({ severity: 2, title: t.label + ' full (' + students + ' / ' + t.cap + ')', fix: 'Out of ' + t.label.toLowerCase() + ': Fix arms a ' + nameOf(t.build) + ' (+' + adds + ' ' + t.unit + '); students leave when it stays full',
-            persist: students + ' students, ' + t.cap + ' ' + t.unit + ': a ' + nameOf(t.build) + ' adds ' + adds, action: { openMenuCard: t.build, arm: t.build, near: best ? best.id : null, reach: 12 }, progress: pr, stage: t.key }, base));
+          const pr = uc ? progressOf(uc, '(+' + num(fin(((rowOf(uc.type) || {}).effects || {})[t.effect], 0)) + ' ' + t.unit + ')') : null;
+          mk(out, 'overCapacity', 'overCapacity:' + t.key, Object.assign({ severity: 2, title: t.label + ' full (' + num(students) + ' / ' + num(t.cap) + ')', fix: 'Out of ' + t.label.toLowerCase() + ': Fix arms a ' + nameOf(t.build) + ' (+' + num(adds) + ' ' + t.unit + '); students leave when it stays full',
+            persist: num(students) + ' students, ' + num(t.cap) + ' ' + t.unit + ': a ' + nameOf(t.build) + ' adds ' + num(adds), action: { openMenuCard: t.build, arm: t.build, near: best ? best.id : null, reach: 12 }, progress: pr, stage: t.key }, base));
         }
       }
     } catch (e) { ierr('capacity', e); }
