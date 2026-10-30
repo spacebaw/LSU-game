@@ -616,6 +616,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - render.variantOf(b, ci)
 - render.frameOf(b, v, ci)
 - render.resize()
+- render.terrainCacheInfo()
 - render.dirtyChunk(i)
 - render.dirtyAll()
 - render.chunkDirty(i)

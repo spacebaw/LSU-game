@@ -193,7 +193,21 @@ const sm = P.showMe(s, 'land1'); ok(sm && Number.isFinite(sm.tx) && Number.isFin
   R.setZoom(1); R.panToTile(34, 50); H.render(); H.render();
   const cs = R.charterStats();
   ok(cs.frames >= 2 && cs.sections >= 1, 'sections drawn over the west boundary at 1×: ' + JSON.stringify(cs));
-  ok(cs.labels >= 1, 'labels at zoom 1');
+  // H7b: a label is kept out of the HUD's rectangles, so look at a section with its centre in the middle of the view
+  { const sec0 = BSU.land.sections(s5).find((q) => q.forSale) || BSU.land.sections(s5)[0]; R.panToTile((sec0.x0 + sec0.x1) >> 1, (sec0.y0 + sec0.y1) >> 1); H.render(); H.render(); }
+  ok(R.charterStats().labels >= 1, 'labels at zoom 1 (a section centred in the view)');
+  // H7b: a pill under the HUD's minimap / tray column is not drawn (the whole viewport is the frame only when the HUD is hidden)
+  {
+    const U = BSU.ui, hs0 = U.hudState, ui0 = U.uiScaleEffective; U.uiScaleEffective = () => 1;
+    const sec0 = BSU.land.sections(s5).find((q) => q.forSale) || BSU.land.sections(s5)[0], tx = (sec0.x0 + sec0.x1) >> 1, ty = (sec0.y0 + sec0.y1) >> 1;
+    const put = (x, y) => { for (let k = 0; k < 3; k++) { const p = R.tileToScreen(tx, ty); R.camera.x += (p.x - x) / R.camera.zoom; R.camera.y += (p.y - y) / R.camera.zoom; } };
+    const count = (mode) => { U.hudState = () => ({ mode: mode, effective: mode, collapsed: {}, pill: {} }); R.setZoom(1); put(1200, 130); H.render(); H.render(); return R.charterStats().labels; };
+    const full = count('full'), hidden = count('hidden');
+    ok(hidden > full, 'a section label under the HUD column is skipped with the full HUD (' + full + ' labels) and drawn with the HUD hidden (' + hidden + ')');
+    const mid = (() => { U.hudState = () => ({ mode: 'full', effective: 'full', collapsed: {}, pill: {} }); put(640, 340); H.render(); H.render(); return R.charterStats().labels; })();
+    ok(mid >= 1, 'a label in the free middle of the view is still drawn with the full HUD (' + mid + ')');
+    U.hudState = hs0; U.uiScaleEffective = ui0;
+  }
   const polys = R._charter.polys(s5, L.sections(s5));
   ok(polys.length === 20 && polys.every((p) => p.pts.length === 4 * 16 * 2 * 2), '20 polygons of 128 points (two vertices per edge tile per side, x / y pairs)');
   R.setZoom(0.5); H.render();

@@ -1515,7 +1515,7 @@ Headless: `BSU.headless.forceHurricane(3)` → `weather.spawnStorm({cat:3, coneN
 - **D16 Undo window.** 5 s wall-clock in the browser, 50 ticks in headless mode; one entry (the last placement or run); refund in full.
 - **D17 Sprite variants** are integer bitmasks (`BSU.SPR`) with the tier in bits 5–6 and `BOARDED` at 128; non-building families define their own integer variant packing (§6.1). Sprite anchors are fixed per family (§6.1).
 - **D18 Depth-sort key** `100·(ax+ay) + 2·(elev+4) + 0.25·rank` with buildings anchored at their south corner tile.
-- **D19 Chunk geometry** 512×416 px at 1× with the origin formula in §6.3; re-bake budget 2 per frame; LRU eviction above 64 MB.
+- **D19 Chunk geometry** 512×416 px at 1× with the origin formula in §6.3; re-bake budget 2 per frame; LRU eviction above 64 MB. H7b: a chunk on the south-east or south-west map edge (`cx` or `cy` = last) is 496 px tall (`chunk.hh`): the sunken edge row and its skirt run to ~470 px and nothing below the chunk covers the overflow; every other chunk is 416.
 - **D20 Save slot naming** `bsu.save.<slot>` with slots `auto.0–2`, `manual.0–2` and free-form strings for tests; `bsu.last` holds the Continue slot; autosave never runs in headless mode unless `BSU.headless.autosave = true`.
 - **D21 `headless.findSpot`** spirals outward from `plot.founders` (Chebyshev rings 0–40) testing `canPlace` with `ignoreCash`, rotation 0 then 1; drag rows/paints test single tiles; `'pilings'` finds a building to retrofit.
 - **D22 `headless.forceHurricane`** = `weather.spawnStorm` with `coneNowTick = T`, `landfallTick = T + 600`, watch at +300, bands at +500; the Year-1 Célestine is marked done so it does not double.

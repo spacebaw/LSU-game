@@ -544,7 +544,10 @@ try {
   R.reset(sH, false); R.bakeStatReset(); R.panToTile(sH.plot.founders.tx + 1, sH.plot.founders.ty + 1, false); R.setZoom(1); for (let k = 0; k < 3; k++) BSU.headless.render();
   const i0 = R.hdInfo(), p0 = R.perf(), TERR = sp.hdTerrainFamilies(), ENT = (sp.hdEntityFamilies ? sp.hdEntityFamilies() : []).concat(sp.hdVegetationFamilies ? sp.hdVegetationFamilies() : []).concat(sp.hdIconFamilies ? sp.hdIconFamilies() : []);   // H5: the catalog icons are an HD family too   // H4: the character families of sprites_entities_hd.js are HD too; H3: so are the vegetation families of sprites_vegetation_hd.js
   ok(i0.on === true && i0.terrain === true && i0.chunkMaster === 1 && i0.hdChunks === 0 && TERR.every((f) => i0.families.includes(f)) && i0.families.every((f) => TERR.includes(f) || f === 'building' || f === 'bldlight' || f === 'habfront' || ENT.includes(f)) && p0.hd === true && p0.chunkMaster === 1 && Number.isFinite(p0.chunkMB) && Number.isFinite(p0.atlasMB) && Number.isFinite(p0.hdAtlasMB) && p0.hdChunks === 0, 'shipped game (H1): the terrain families are the HD families, chunk master 1 at zoom 1 dpr 1, perf() reports hd flags and real chunk / atlas MB');
-  ok(Math.abs(p0.chunkMB - p0.chunks * (512 * 416 * 4) / 1048576) < 0.01 && R.chunkMasters().filter((m) => m === 1).length === p0.chunks && R.chunkMasters().length === 64, 'every live chunk is one 512×416 master-1 canvas (chunkMasters)');
+  const chH = (k) => (k % 8 === 7 || (k >> 3) === 7) ? 416 + 80 : 416;   // H7b: a south-east / south-west edge chunk is 80 px taller (the sunken edge row's skirt used to be cut off in rectangles)
+  ok(Math.abs(p0.chunkMB - R.chunkMasters().reduce((a, m, k) => a + (m ? 512 * chH(k) * 4 : 0), 0) / 1048576) < 0.01 && R.chunkMasters().filter((m) => m === 1).length === p0.chunks && R.chunkMasters().length === 64, 'every live chunk is one 512-wide master-1 canvas, 416 px tall (496 on the south-east / south-west map edge) (chunkMasters)');
+  { const ce = R.chunkCanvas(7, 3), cs = R.chunkCanvas(3, 7), cc = R.chunkCanvas(3, 3), cn = R.chunkCanvas(0, 0);   // H7b: only the chunks with nothing below them are tall
+    ok((!ce || ce.height === 496) && (!cs || cs.height === 496) && (!cc || cc.height === 416) && (!cn || cn.height === 416) && (ce || cs || cc || cn), 'map-edge chunks (east and south rows) are 496 px tall, interior and north / west ones 416'); }
   ok(R.debugHD(true) === true && R.hdInfo().on === true && R.hdInfo().families.includes('debug') && R.hdInfo().families.every((f) => TERR.includes(f) || f === 'debug' || f === 'building' || f === 'bldlight' || f === 'habfront' || ENT.includes(f)) && sp.isHD('debug:hdtest') === true, 'debugHD(true) registers the debug family as HD beside the terrain families');
   for (let k = 0; k < 3; k++) BSU.headless.render();
   const i1 = R.hdInfo();
@@ -563,7 +566,7 @@ try {
   for (let k = 0; k < 64; k++) { const o = R.chunkOrigin(k & 7, k >> 3); const ex = (o.ox + 256 - R.camera.x) * 2, ey = (o.oy + 208 - R.camera.y) * 2; const d = ex * ex + ey * ey; if (d < bestD) { bestD = d; centreChunk = k; } }
   ok(order[0] === centreChunk, `the first upgrade is the chunk nearest the view centre (chunk ${order[0]}, nearest ${centreChunk}: visible ring first)`);
   ok(i3.hdChunks >= 1 && i3.hdChunks <= i3.chunks && R.chunkMasters().every((m) => m === 0 || m === 1 || m === 2) && i3.chunks <= 64, 'chunk masters are 0 / 1 / 2 only: one canvas per chunk, no second table');
-  ok(Math.abs(i3.chunkMB - R.chunkMasters().reduce((a, m) => a + (m ? (m === 2 ? 1024 * 832 * 4 : 512 * 416 * 4) : 0), 0) / 1048576) < 0.01, 'chunkMB counts every canvas at its own master (1024×832 = 3.4 MB at 2)');
+  ok(Math.abs(i3.chunkMB - R.chunkMasters().reduce((a, m, k) => a + (m ? (m === 2 ? 1024 * chH(k) * 2 * 4 : 512 * chH(k) * 4) : 0), 0) / 1048576) < 0.01, 'chunkMB counts every canvas at its own master (1024×832 = 3.4 MB at 2; 4.1 MB on a map-edge chunk)');
   ok(i3.bake.n2 >= i3.hdChunks && i3.bake.n2 > 0 && Number.isFinite(i3.bake.ms2), 'hdInfo().bake counts the master-2 bakes (≥ the live master-2 chunks: a dirtied HD chunk re-bakes at 2)');
   ok(sp.get('debug:hdtest', 0, 0, 2).zoom === 2 && sp.get('debug:hdtest', 0, 0, 2).sw === 128, 'the cube is fetched at master 2 at zoom 2 (128 device px wide)');
   // byte cap: a 1 MB chunk cap evicts off-screen chunks and then latches the fallback (chunk master 1); restoring the cap lifts it
@@ -631,6 +634,52 @@ try {
   ok(tileHD && unp === false && sp.isPinned('tile'), 'pinFamily toggles the gc pin');
   ok(R.hdInfo().terrain === true && BSU.errors.size === errT, 'no BSU.error across the H1 checks');
 } catch (e) { ok(false, 'H1 render: ' + (e.stack || e)); }
+
+// --- H7b: the terrain composite cache (the chunk layer drawn once while nothing moves) -----------------------------------------------------------
+try {
+  const H = BSU.headless, sC = BSU.state, errC = BSU.errors.size, g = R.ctx;
+  R.reset(sC, false); R.setZoom(1); R.panToTile(sC.plot.founders.tx + 1, sC.plot.founders.ty + 1, false);
+  const CWpx = 512, CHpx = 416, calls = { chunk: 0, first: null, other: 0, bg: 0 };
+  const di0 = g.drawImage, fr0 = g.fillRect;
+  const isChunk = (c) => c && ((c.width === CWpx && c.height === CHpx) || (c.width === CWpx * 2 && c.height === CHpx * 2));
+  g.drawImage = function (c) { const k = isChunk(c) ? 'chunk' : (c && c.width === g.canvas.width && c.height === g.canvas.height && c !== g.canvas ? 'frame' : 'other'); if (calls.first === null) calls.first = k; if (k === 'chunk') calls.chunk++; else calls.other++; return di0.apply(this, arguments); };   // the composite is the first blit of a hit frame (the frame-sized vignette slabs come much later)
+  g.fillRect = function (x, y, w, h) { if (x === 0 && y === 0 && w >= 600 && calls.first === null) calls.bg++; return fr0.apply(this, arguments); };   // the frame's own BG fill comes before any blit
+  const reset = () => { calls.chunk = 0; calls.first = null; calls.other = 0; calls.bg = 0; };
+  try {
+    for (let k = 0; k < 8; k++) H.render();   // bake every visible chunk, then rest
+    let ti = R.terrainCacheInfo();
+    ok(ti.ok === true && ti.builds >= 1 && ti.hits >= 1 && ti.still >= 2, 'at rest the terrain composite is built after two still frames and then hit: ' + JSON.stringify(ti));
+    ok(Math.abs(ti.mb - (g.canvas.width * g.canvas.height * 4) / 1048576) < 0.01 && R.perf().tcacheMB === ti.mb, 'the cache is one frame-sized canvas (tcacheMB ' + ti.mb + ' MB)');
+    reset(); H.render();
+    ok(calls.chunk === 0 && calls.first === 'frame', 'a hit frame starts with ONE blit of the frame-sized composite and draws no chunk canvas (chunk ' + calls.chunk + ', first ' + calls.first + ')');
+    // pixel identity of the build is by construction (the same draws into an opaque canvas); the hit path leaves the frame's BG fill to the chunk pass
+    ok(calls.bg === 0, 'a hit frame skips the frame-wide BG fill (the opaque composite covers every pixel): ' + calls.bg + ' fills');
+    // a pan: direct chunk draws again, the cache is never used while the camera moves
+    const b0 = R.terrainCacheInfo().builds, h0 = R.terrainCacheInfo().hits;
+    R.panBy(37, 11, true); reset(); H.render();
+    ok(calls.chunk > 0 && calls.first === 'chunk' && R.terrainCacheInfo().hits === h0 && calls.bg >= 1, 'a moving camera draws the chunks directly (' + calls.chunk + ' chunk blits) after its BG fill');
+    for (let k = 0; k < 6; k++) H.render();
+    ti = R.terrainCacheInfo(); ok(ti.ok && ti.builds === b0 + 1 && ti.hits > h0, 'coming to rest rebuilds it once and hits again');
+    // a visible chunk re-baked (dirty) invalidates it: one more build, the new canvas is what the composite holds
+    const bb = R.terrainCacheInfo().builds; R.dirtyAll(); for (let k = 0; k < 24; k++) H.render();
+    ok(R.terrainCacheInfo().builds > bb && R.terrainCacheInfo().ok && R.terrainCacheInfo().hits > h0, 're-baked visible chunks rebuild the composite (' + (R.terrainCacheInfo().builds - bb) + ' builds while the bakes ran) and it is hit again once they are done');
+    // zoom: a different key
+    const bz = R.terrainCacheInfo().builds; R.setZoom(1.25); for (let k = 0; k < 6; k++) H.render(); R.setZoom(1); for (let k = 0; k < 8; k++) H.render();
+    ok(R.terrainCacheInfo().builds >= bz + 2 && R.terrainCacheInfo().ok, 'a zoom step invalidates it (rebuilt at the new zoom and again when it comes back)');
+    // a shake never uses it (the translate would leave an uncovered edge) and keeps the BG fill
+    R.shake(400, 6); reset(); H.render();
+    ok(calls.first === 'chunk' && calls.bg >= 1, 'a shaking frame draws the chunks directly after a BG fill (no cache blit)');
+    // the minimap / postcard path (renderInto) never reads or writes it
+    const rcap = []; const rg = new Proxy({ globalAlpha: 1, globalCompositeOperation: 'source-over', imageSmoothingEnabled: false }, { get(t, k) { if (k in t) return t[k]; if (k === 'canvas') return { width: 640, height: 400 }; if (k === 'measureText') return (x) => ({ width: String(x).length * 6 }); return (...a) => { if (k === 'drawImage') rcap.push(a[0]); }; }, set(t, k, v) { t[k] = v; return true; } });
+    const hb = R.terrainCacheInfo().hits, bb2 = R.terrainCacheInfo().builds; R.renderInto(rg, 640, 400, sC, { x: R.camera.x, y: R.camera.y, zoom: 1 });
+    ok(rcap.some((c) => isChunk(c)) && R.terrainCacheInfo().hits === hb && R.terrainCacheInfo().builds === bb2, 'renderInto draws the chunks directly onto its own context (' + rcap.filter(isChunk).length + ' chunk blits) and leaves the cache alone');
+    // a resize frees it; a reset frees it
+    for (let k = 0; k < 12; k++) H.render();
+    ok(R.terrainCacheInfo().ok, 'the cache is back after the shake ends');
+    R.reset(sC, false); ok(R.terrainCacheInfo().on === false && R.perf().tcacheMB === 0, 'reset frees the composite canvas');
+  } finally { g.drawImage = di0; g.fillRect = fr0; }
+  ok(BSU.errors.size === errC, 'no BSU.error across the H7b cache checks');
+} catch (e) { ok(false, 'H7b render: ' + (e.stack || e)); }
 
 console.log(`\n${passes} passed, ${failures} failed`);
 process.exit(failures ? 1 : 0);

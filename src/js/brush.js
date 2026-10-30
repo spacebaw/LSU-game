@@ -675,7 +675,12 @@
   M.drawBlob = function (g, kind, color, cx, cy, rx, ry, alpha, scale, o) {
     const sc = scale || 1, b = M.blob(kind, color, rx * sc, ry * sc, o); if (!b) return false;
     g.globalAlpha = alpha;
-    if (rx * sc > b.rx * 1.08 || ry * sc > b.ry * 1.08) { g.drawImage(b.canvas, cx - rx, cy - ry, rx * 2, ry * 2); return true; }   // past the ladder's 320-px cap: stretch the biggest blob (a smooth gradient scales cleanly)
+    if (rx * sc > b.rx * 1.08 || ry * sc > b.ry * 1.08) {   // past the ladder's 320-px cap: stretch the biggest blob (a smooth gradient scales cleanly)
+      if (kind !== 'haze') { g.drawImage(b.canvas, cx - rx, cy - ry, rx * 2, ry * 2); return true; }
+      // H7b: the stadium haze is the one blob that always lands here (a game-night dome spans 2-3 frames at the game camera: ~5 M device px at 1440 x 900 / dpr 2): its alpha moves under half a level per
+      // source px, so a nearest-neighbour stretch is within a level of the bilinear one and costs 2.5x less in software raster (7 ms against 17.5)
+      const sm = g.imageSmoothingEnabled; g.imageSmoothingEnabled = false; g.drawImage(b.canvas, cx - rx, cy - ry, rx * 2, ry * 2); g.imageSmoothingEnabled = sm; return true;
+    }
     g.drawImage(b.canvas, Math.round(cx * sc - b.w / 2) / sc, Math.round(cy * sc - b.h / 2) / sc, b.w / sc, b.h / sc); return true;
   };
   /** H7: ONE batched fill of horizontal bars: `arr` = flat [x, y, len, …] (n bars, CSS px; y = top edge), `w` the thickness, `scale` the device px per CSS px. Every bar is snapped to the

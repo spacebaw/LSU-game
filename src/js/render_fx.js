@@ -485,6 +485,7 @@
     } catch (e) { shimCv = null; shimG = null; return false; }
   }
   const shRX = new Float32Array(32), shRY = new Float32Array(32), shRW = new Float32Array(32), shRH = new Float32Array(32), shRS = new Uint8Array(32);
+  const shSX = new Int32Array(32), shSY = new Int32Array(32), shSW = new Int32Array(32), shSH = new Int32Array(32), shPY = new Int32Array(32);
   /** heat shimmer: displaced slices of the frame above the vents (always) and above paved ground on advisory days (Tier 2, ≤ 10 strips, one small self-copy) */
   function shimmerPass(state, g, view, cam) {
     shimN = 0;
@@ -503,20 +504,24 @@
     }
     shimN = n;
     if (n === 0) return;
-    let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
-    for (let k = 0; k < n; k++) { x0 = Math.min(x0, shRX[k]); y0 = Math.min(y0, shRY[k]); x1 = Math.max(x1, shRX[k] + shRW[k]); y1 = Math.max(y1, shRY[k] + shRH[k]); }
-    x0 = Math.max(0, Math.floor(x0) - 4); y0 = Math.max(0, Math.floor(y0)); x1 = Math.min(vw, Math.ceil(x1) + 4); y1 = Math.min(vh, Math.ceil(y1)); const bw = x1 - x0, bh = y1 - y0; if (bw < 4 || bh < 2) return;
-    if (!ensureShim(Math.ceil(bw * dpr), Math.ceil(bh * dpr))) return;
+    // H7b: one small self-copy per source (device-aligned, a 2-px margin for the bilinear taps) packed into a thin scratch strip instead of one copy of the whole span between
+    // the sources (up to 0.9 Mpx at dpr 2): the slices sample the same pixels at the same fractional offsets, so the result is unchanged
+    const PAD = 2; let sw = 0, sh2 = 0;
+    for (let k = 0; k < n; k++) {
+      const ix0 = Math.floor(shRX[k] * dpr) - PAD, iy0 = Math.floor(shRY[k] * dpr) - PAD, ix1 = Math.ceil((shRX[k] + shRW[k]) * dpr) + PAD, iy1 = Math.ceil((shRY[k] + shRH[k]) * dpr) + PAD;
+      shSX[k] = ix0; shSY[k] = iy0; shSW[k] = ix1 - ix0; shSH[k] = iy1 - iy0; shPY[k] = sh2; sw = Math.max(sw, ix1 - ix0); sh2 += iy1 - iy0;
+    }
+    if (sw < 4 || sh2 < 4 || !ensureShim(sw, sh2)) return;
     const amp = (adv ? 1.2 + 1.2 * clamp((heat - 95) / 10, 0, 1) : 1.1) * z;
     try {
-      shimG.setTransform(1, 0, 0, 1, 0, 0); shimG.globalCompositeOperation = 'copy';
-      shimG.drawImage(R.canvas, x0 * dpr, y0 * dpr, bw * dpr, bh * dpr, 0, 0, bw * dpr, bh * dpr);
+      shimG.setTransform(1, 0, 0, 1, 0, 0); shimG.globalCompositeOperation = 'source-over'; shimG.clearRect(0, 0, sw, sh2);   // the frame is opaque: source-over onto cleared pixels is an exact copy
+      for (let k = 0; k < n; k++) shimG.drawImage(R.canvas, shSX[k], shSY[k], shSW[k], shSH[k], 0, shPY[k], shSW[k], shSH[k]);
       g.globalAlpha = 0.92;
       for (let k = 0; k < n; k++) {
         const ns = shRS[k], sh = shRH[k] / ns;
         for (let s = 0; s < ns; s++) {
           const dy = shRY[k] + s * sh, off = Math.sin(frameNo * 0.11 + s * 1.3 + k * 2.1) * amp * (0.4 + 0.6 * (1 - s / ns));   // H5: a fractional offset (the drawImage resamples it: a smooth wobble, no whole-pixel steps)
-          g.drawImage(shimCv, (shRX[k] - x0) * dpr, (dy - y0) * dpr, shRW[k] * dpr, sh * dpr, shRX[k] + off, dy, shRW[k], sh);
+          g.drawImage(shimCv, shRX[k] * dpr - shSX[k], shPY[k] + dy * dpr - shSY[k], shRW[k] * dpr, sh * dpr, shRX[k] + off, dy, shRW[k], sh);
         }
       }
       g.globalAlpha = 1;
@@ -859,7 +864,16 @@
     const s = readSky(state), vw = view.vw, vh = view.vh;
     const storm = stormDarkness(state);
     g.globalCompositeOperation = 'multiply';
-    const fill = (c, a) => { if (!c || a <= 0.004) return; g.globalAlpha = clamp(a, 0, 1); g.fillStyle = c; g.fillRect(0, 0, vw, vh); };
+    // H7b: the multiply fills commute and compose into ONE multiply (dst × Π(1 − a + a·c)), so they fold into a single full-frame fill — each one costs 5-10 ms of software raster at dpr 2
+    let inMul = true, mr = 1, mg = 1, mb = 1, mAny = false;
+    const fill = (c, a) => {
+      if (!c || a <= 0.004) return; a = clamp(a, 0, 1);
+      if (inMul && typeof c === 'string' && c.length === 7 && c.charCodeAt(0) === 35) {
+        const v = parseInt(c.slice(1), 16); if (v === v) { mr *= 1 - a + a * ((v >> 16) & 255) / 255; mg *= 1 - a + a * ((v >> 8) & 255) / 255; mb *= 1 - a + a * (v & 255) / 255; mAny = true; return; }
+      }
+      g.globalAlpha = a; g.fillStyle = c; g.fillRect(0, 0, vw, vh);
+    };
+    const flushMul = () => { if (!mAny) return; mAny = false; g.globalCompositeOperation = 'multiply'; g.globalAlpha = 1; g.fillStyle = 'rgb(' + Math.round(mr * 255) + ',' + Math.round(mg * 255) + ',' + Math.round(mb * 255) + ')'; g.fillRect(0, 0, vw, vh); };
     tintFor(s.phase, s.t, tintOut);
     const skyScale = 1 - 0.5 * storm;   // the storm swallows most of the sky colour
     fill(tintOut.c1, tintOut.a1 * skyScale); fill(tintOut.c2, tintOut.a2 * skyScale);
@@ -874,6 +888,7 @@
     if (rr > 0.05) fill('#A5B1C4', 0.24 * rr);
     const st = state.storms && state.storms.current;
     if (st && !st.nearMiss && st.phase >= STORM.WATCH && st.phase <= STORM.LANDFALL) fill('#8A8A8A', (PR.stormDesaturate || 0.3) * (st.phase === STORM.WATCH ? 0.5 : 1));
+    flushMul(); inMul = false;
     // colour cast ('overlay' keeps the midtones readable while the multiply sets the mood)
     g.globalCompositeOperation = 'overlay';
     if (storm === 0) {
@@ -1697,6 +1712,8 @@
     chCache = { state: state, key: key, tick: tick, polys: polys };
     return polys;
   }
+  /** true when the box (x, y, w, h) touches anything the HUD occupies in the issFrame sense (outside the HUD-free frame, or inside the right / left columns) */
+  function hudBlocked(f, x, y, w, h) { return x < f.L || x + w > f.R || y < f.T || y + h > f.B || (x + w > f.rightCol && y < f.rightColH) || (x < f.leftCol && y < f.leftColH); }
   function passCharter(state, g, view) {
     chStats.sections = 0; chStats.labels = 0; chStats.frames++;
     const L = mod('land'); if (!state || !state.tiles || !L || typeof L.sections !== 'function' || !view) return;
@@ -1717,19 +1734,29 @@
       g.lineJoin = 'round'; g.lineCap = 'round'; g.strokeStyle = CH_LINE; g.globalAlpha = 0.13; g.lineWidth = Math.max(3, 3.6 * z); g.stroke(); g.globalAlpha = 1;   // H5: a soft halo, then round-capped dashes
       g.setLineDash([5 * z, 5 * z]); g.lineDashOffset = 0; g.lineWidth = Math.max(1, 1.3 * z); g.stroke(); g.setLineDash([]); g.lineCap = 'butt';
       if (z >= 1) {
-        const fs = Math.round(11 * clamp(z, 1, 1.6)); g.font = '700 ' + fs + 'px system-ui, -apple-system, Segoe UI, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+        let hudF = null; const fs = Math.round(11 * clamp(z, 1, 1.6)); g.font = '700 ' + fs + 'px system-ui, -apple-system, Segoe UI, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
         for (let k = 0; k < polys.length; k++) {
           const p = polys[k]; if (p.x1 < vx0 || p.x0 > vx1 || p.y1 < vy0 || p.y0 > vy1) continue;
           const sec = secs.find(function (x) { return x.id === p.id; }); if (!sec) continue;
           const px = p.cwx * z + ox, py = p.cwy * z + oy;
           const line2 = sec.forSale ? (sec.locked ? 'Prestige ' + sec.gate : BSU.formatMoney(sec.price)) : '';
           const w1 = fin(g.measureText('State land').width, 60), w2 = line2 ? fin(g.measureText(line2).width, 40) : 0, w = Math.max(w1, w2) + 14, h = line2 ? fs * 2 + 12 : fs + 10;
-          const x = px - w / 2, y = py - h / 2;
+          let x = px - w / 2, y = py - h / 2;
           if (x > view.vw + 20 || x + w < -20 || y > view.vh + 20 || y + h < -20) continue;
+          // H7b: keep the pill out of the HUD's rectangles (top bar, palette strip, minimap / tray column, goals tracker): slide it clear within ~90 x 70 px of the section's centre, else skip it
+          if (hudF === null) hudF = issFrame(view);
+          if (hudBlocked(hudF, x, y, w, h)) {
+            const cx = clamp(x, hudF.L, Math.max(hudF.L, hudF.R - w)), cy = clamp(y, hudF.T, Math.max(hudF.T, hudF.B - h));
+            const tries = [cx, cy, hudF.rightCol - w - 4, cy, cx, hudF.rightColH + 4, hudF.leftCol + 4, cy, cx, hudF.leftColH + 4];
+            let found = false;
+            for (let q = 0; q < tries.length; q += 2) { const tx = tries[q], ty = tries[q + 1]; if (Math.abs(tx - x) <= 90 && Math.abs(ty - y) <= 70 && !hudBlocked(hudF, tx, ty, w, h)) { x = tx; y = ty; found = true; break; } }
+            if (!found) continue;   // no clear spot near the centre: no label (the dashed boundary still marks the section)
+          }
+          const lx = x + w / 2, ly = y + h / 2;
           g.fillStyle = CH_PILL; g.strokeStyle = CH_LINE; g.lineWidth = 1;
           rrect(g, x, y, w, h, 6); g.fill(); g.lineJoin = 'round'; g.stroke();   // H5: a rounded pill
-          g.fillStyle = CH_TEXT; g.fillText('State land', px, line2 ? y + 6 + fs / 2 : py + 0.5);
-          if (line2) { g.fillStyle = sec.locked ? '#F2C97D' : '#9FE8B6'; g.fillText(line2, px, y + 6 + fs + fs / 2 + 1); }
+          g.fillStyle = CH_TEXT; g.fillText('State land', lx, line2 ? y + 6 + fs / 2 : ly + 0.5);
+          if (line2) { g.fillStyle = sec.locked ? '#F2C97D' : '#9FE8B6'; g.fillText(line2, lx, y + 6 + fs + fs / 2 + 1); }
           chStats.labels++;
         }
         g.textAlign = 'left'; g.textBaseline = 'alphabetic';

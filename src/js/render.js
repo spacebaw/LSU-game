@@ -23,6 +23,7 @@
   const TW = 64, TH = 32, PXFT = 6;
   let W = 64, HGT = 64, N = 4096, CXN = 8, CYN = 8, NCH = 64;   // L1: the live map size and its chunk grid (CXN × CYN chunks of CS tiles); refreshed in the BSU.onMap below
   const CW = PR.chunkW || 512, CHH = PR.chunkH || 416, CS = 8;
+  const CHH_E = CHH + 80;   // H7b: a chunk on the map's south-east / south-west edge (nothing below it to cover the overflow) is 80 px taller: the sunken edge row and its skirt run to ~470 px, and the 416-px canvas cut them off in straight rectangles
   const ZOOMS = [0.5, 1, 2];   // the three MASTER zooms: the atlas bakes sprites at 1× / 2× (0.5× reads the 1× entry) and the chunks are baked once at 1×
   // hud + zoom pass: the player's zoom steps (params.ui.zoomSteps). Nothing is baked per step: a step draws the nearest master ≥ it
   // (2 for 1.25–2.5, 1 for 0.65–1, 0.5 at 0.5) scaled by step/master with image smoothing on whenever that scale is not 1.
@@ -60,6 +61,13 @@
   let app = null, canvas = null, ctx = null, inited = false;
   let vw = 1280, vh = 720, dpr = 1, lastRectW = -1, lastRectH = -1;
   const comp = { tint: null, lights: null, fog: null };
+  // H7b: the terrain composite cache. Drawing the ~35 visible chunk canvases is the biggest raster cost of a frame (each blit reads a 0.85–3.4 MB canvas; ~60 % of it is the
+  // transparent corner of a diamond, so a viewport is covered ~3× over). While the camera, the zoom, the window and every visible chunk canvas stay put, that layer is
+  // identical frame after frame, so it is drawn ONCE into a frame-sized opaque canvas (BG + the chunks, exactly the operations the direct path runs) and each following frame
+  // blits that one canvas 1:1. A moving camera (or a shake) never touches it; the canvas is freed after 4 s of continuous motion.
+  const TC = { c: null, g: null, w: 0, h: 0, ok: false, epoch: -1, x: NaN, y: NaN, z: NaN, vw: 0, vh: 0, dpr: 0, sm: false, still: 0, moving: 0, hits: 0, builds: 0 };
+  let chunkEpoch = 0;   // bumps whenever a VISIBLE chunk canvas is (re)baked or dropped: the cache's content stamp
+  let bgSkipped = false;   // the frame's BG fill was left to the chunk pass (a cache hit covers every pixel)
   let chunks = new Array(NCH);   // one table, NCH = CXN × CYN slots (allocChunks fills it; the BSU.onMap below resizes it per game)
   let dirtyBits = new Uint8Array(NCH);
   let candI = new Int32Array(NCH), candD = new Float64Array(NCH);   // chunkPass candidates
@@ -272,6 +280,7 @@
     const pw = Math.max(1, Math.round(vw * dpr)), ph = Math.max(1, Math.round(vh * dpr));
     if (canvas.width !== pw) canvas.width = pw;
     if (canvas.height !== ph) canvas.height = ph;
+    if (TC.c && (TC.w !== pw || TC.h !== ph)) tcFree();   // H7b: the terrain composite is frame-sized
     try { canvas.style.width = vw + 'px'; canvas.style.height = vh + 'px'; } catch (e) { /* stub */ }
     try { ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.imageSmoothingEnabled = false; } catch (e) { /* stub */ }
     const lightsDiv = 1e9;   // H5: the lights pass draws its cached blobs straight onto the frame; the `lights` composite stays registered at 1 × 1 (was a full-frame canvas, ÷ 2 / ÷ 4 in perf mode)
@@ -298,11 +307,16 @@
   function allocChunks() {
     for (let k = 0; k < NCH; k++) {
       const cx = k % CXN, cy = (k / CXN) | 0, o = chunkOrigin(cx, cy);
-      chunks[k] = { cx: cx, cy: cy, ox: o.ox, oy: o.oy, canvas: null, ctx: null, dirty: 1, lastSeen: -1, vis: 0, master: 0, bytes: 0 };
+      chunks[k] = { cx: cx, cy: cy, ox: o.ox, oy: o.oy, hh: (cx === CXN - 1 || cy === CYN - 1) ? CHH_E : CHH, canvas: null, ctx: null, dirty: 1, lastSeen: -1, vis: 0, master: 0, bytes: 0 };
       dirtyBits[k] = 1;
     }
+    chunkEpoch++; TC.ok = false;
   }
-  function dropChunk(ch) { if (ch.canvas) { try { ch.canvas.width = 1; ch.canvas.height = 1; } catch (e) { /* stub */ } } ch.canvas = null; ch.ctx = null; ch.dirty = 1; ch.master = 0; ch.bytes = 0; dirtyBits[ch.cx + ch.cy * CXN] = 1; dropDeck(ch); }
+  function tcFree() { if (TC.c) { try { TC.c.width = 1; TC.c.height = 1; } catch (e) { /* stub */ } } TC.c = null; TC.g = null; TC.w = 0; TC.h = 0; TC.ok = false; }
+  /** true when the terrain composite will be blitted this frame as it stands (nothing moved, no chunk changed): the frame may skip its BG fill */
+  function tcWillHit(smooth) { return !!(TC.ok && TC.c && TC.epoch === chunkEpoch && TC.x === camera.x && TC.y === camera.y && TC.z === zoomNow && TC.vw === vw && TC.vh === vh && TC.dpr === dpr && TC.sm === smooth && TC.w === canvas.width && TC.h === canvas.height && !(nowMs() < shakeUntil && shakePx > 0)); }
+  M.terrainCacheInfo = function () { return { on: !!TC.c, ok: TC.ok, still: TC.still, hits: TC.hits, builds: TC.builds, mb: TC.c ? Math.round(TC.w * TC.h * 4 / 10485.76) / 100 : 0 }; };
+  function dropChunk(ch) { if (ch.vis) chunkEpoch++; if (ch.canvas) { try { ch.canvas.width = 1; ch.canvas.height = 1; } catch (e) { /* stub */ } } ch.canvas = null; ch.ctx = null; ch.dirty = 1; ch.master = 0; ch.bytes = 0; dirtyBits[ch.cx + ch.cy * CXN] = 1; dropDeck(ch); }
   function liveChunks() { let n = 0; for (let k = 0; k < NCH; k++) if (chunks[k] && chunks[k].canvas) n++; return n; }
   /** mark chunk i (0–63) dirty */
   M.dirtyChunk = function (i) { i = i | 0; if (i >= 0 && i < NCH) { dirtyBits[i] = 1; if (chunks[i]) chunks[i].dirty = 1; } };
@@ -909,13 +923,13 @@
     const wetAt = (x, y) => { const xi = Math.round(x), yi = Math.round(y); return xi >= 0 && yi >= 0 && xi < W && yi < HGT && wetOf(t, yi * W + xi); };
     drawDeckAt(g, ch, cv, i, tx, ty, sf, deckEp, waterEp, bedEp, true, wetAt);
     const m = g._bs || 1;   // H1: the deck layer bakes at the chunk's master (H0 left it at 1×)
-    if (!ch.deck) { ch.deck = makeCanvas(CW * m, CHH * m); ch.deckCtx = ctx2d(ch.deck); }
-    else if (ch.deck.width !== CW * m || ch.deck.height !== CHH * m) { ch.deck.width = CW * m; ch.deck.height = CHH * m; }
+    if (!ch.deck) { ch.deck = makeCanvas(CW * m, ch.hh * m); ch.deckCtx = ctx2d(ch.deck); }
+    else if (ch.deck.width !== CW * m || ch.deck.height !== ch.hh * m) { ch.deck.width = CW * m; ch.deck.height = ch.hh * m; }
     ch.deckMaster = m; ch.deckCtx._bs = m;
     const dg = ch.deckCtx; dg.globalAlpha = 1; dg.globalCompositeOperation = 'source-over'; dg.imageSmoothingEnabled = false;
     drawDeckAt(dg, ch, cv, i, tx, ty, sf, deckEp, waterEp, bedEp, false, wetAt);
     const wx = (tx - ty) * 32 - ch.ox, y0 = (tx + ty) * 16 - deckEp - ch.oy - 16 - DECK_UP, y1 = (tx + ty) * 16 - waterEp - ch.oy + 16 + 4;
-    const x0 = Math.max(0, wx - 34), x1 = Math.min(CW, wx + 34), ya = Math.max(0, y0), yb = Math.min(CHH, y1);
+    const x0 = Math.max(0, wx - 34), x1 = Math.min(CW, wx + 34), ya = Math.max(0, y0), yb = Math.min(ch.hh, y1);
     if (x1 > x0 && yb > ya) ch.deckTiles.push({ i: i, sf: sf, x: x0, y: ya, w: x1 - x0, h: yb - ya });
   }
   function culvertPipes(g, C, wx, wy) {   // (the old bed-level piers / bridgeRails are gone: decks over water are drawDeckAt's)
@@ -1012,7 +1026,7 @@
   /** bake chunk ch at `master` (1 = today's 512×416; 2 = the HD 1024×832 canvas, H0: the same layers through a 2× transform, HD families at master 2) */
   function bakeChunk(ch, state, master) {
     const sp = S();
-    const m = master === 2 ? 2 : 1, pw = CW * m, ph = CHH * m;
+    const m = master === 2 ? 2 : 1, pw = CW * m, ph = ch.hh * m;
     if (!ch.canvas) { ch.canvas = makeCanvas(pw, ph); ch.ctx = ctx2d(ch.canvas); }
     else if (ch.canvas.width !== pw || ch.canvas.height !== ph) { ch.canvas.width = pw; ch.canvas.height = ph; }
     const g = ch.ctx, tb = nowMs();
@@ -1020,7 +1034,7 @@
     hdTerrain = typeof sp.isHD === 'function' && sp.isHD('tile:4') === true;   // H1: re-read per bake (a test may register / unregister the terrain families between frames)
     tfIdent(g);
     g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; g.imageSmoothingEnabled = false;   // pen sprites pixel-double crisply under the 2× transform; brush calls set smoothing themselves
-    g.clearRect(0, 0, CW, CHH);
+    g.clearRect(0, 0, CW, ch.hh);
     const t = state.tiles, elev = t.elev, type = t.type, fl = t.flags, surf = t.surface, crest = t.crest, integ = t.integrity, depth = t.depth;
     markCypress(state);
     const cv = ensureCurves(state), deck = cv ? cv.deck : null;
@@ -1102,7 +1116,7 @@
       }
     }
     if (ch.deck && !ch.deckTiles.length) dropDeck(ch);
-    ch.dirty = 0; dirtyBits[ch.cx + ch.cy * CXN] = 0; ch.lastSeen = frameNo; bakeM = 1;
+    ch.dirty = 0; dirtyBits[ch.cx + ch.cy * CXN] = 0; ch.lastSeen = frameNo; bakeM = 1; if (ch.vis) chunkEpoch++;
     const bs = bakeStat[m]; bs.n++; bs.ms += nowMs() - tb;
     if (m === 2) hdCapCheck();
   }
@@ -1235,7 +1249,7 @@
     mem += blobMB + vignetteMB;
     let parts = 0; try { parts = M.particles && typeof M.particles.count === 'function' ? fin(M.particles.count(), 0) : 0; } catch (e) { parts = 0; }
     let atlasMB = 0, hdAtlasMB = 0; try { const sp = S(); atlasMB = fin(sp.memoryMB(), 0); hdAtlasMB = typeof sp.hdMemoryMB === 'function' ? fin(sp.hdMemoryMB(), 0) : 0; } catch (e) { atlasMB = 0; }
-    return { frameMs: fin(frameMs, 0), drawCalls: drawCalls | 0, particles: parts, agentsDrawn: agentsDrawn | 0, hydroActive: hydroActive, chunks: liveChunks(), memMB: Math.round(mem * 100) / 100, blobMB: Math.round(blobMB * 100) / 100, vignetteMB: Math.round(vignetteMB * 100) / 100, tees: teeCache.size, water: waterDrawn | 0, frameNo: frameNo, zoom: zoomNow, atlasZoom: atlasZoom, smooth: frameSmooth, perfMode: !!(root && root.ui && root.ui.perfMode),
+    return { frameMs: fin(frameMs, 0), drawCalls: drawCalls | 0, particles: parts, agentsDrawn: agentsDrawn | 0, hydroActive: hydroActive, chunks: liveChunks(), memMB: Math.round(mem * 100) / 100, blobMB: Math.round(blobMB * 100) / 100, vignetteMB: Math.round(vignetteMB * 100) / 100, tcacheMB: TC.c ? Math.round(TC.w * TC.h * 4 / 10485.76) / 100 : 0, tees: teeCache.size, water: waterDrawn | 0, frameNo: frameNo, zoom: zoomNow, atlasZoom: atlasZoom, smooth: frameSmooth, perfMode: !!(root && root.ui && root.ui.perfMode),
       // H0 pipeline pass: HD state and real byte counts (chunkMB = every live chunk canvas at its own master; the legacy memMB keeps its 0.85 MB-per-chunk estimate)
       hd: hdOn, hdMaster: hdMaster, chunkMaster: hdChunkWant, hdChunks: hdChunkCount(), chunkMB: Math.round(chunkBytes() / 10485.76) / 100, atlasMB: Math.round(atlasMB * 100) / 100, hdAtlasMB: Math.round(hdAtlasMB * 100) / 100, hdFallback: hdFallbackChunks || !!(S() && S().hdFallback), hdBakes: hdBakesThisFrame, dpr: dpr,
       passMs: Object.assign({}, passMs) };   // H5: smoothed ms per stage / pass (chunks, water, deck, entities, weather, tint, lights, fog, …)
@@ -1444,7 +1458,7 @@
   function deckPass(state, g, track) {
     const over = track ? overtoppedNow : overtoppedScratch; over.clear();
     if (track) { decksDrawn = 0; deckStats.seen = 0; deckStats.culled = 0; deckStats.under = 0; deckStats.calls++; }
-    const z = zoomNow, cw = CW * z, chh = CHH * z, hw = vw / 2, hh = vh / 2, camx = camera.x, camy = camera.y;
+    const z = zoomNow, cw = CW * z, hw = vw / 2, hh = vh / 2, camx = camera.x, camy = camera.y;
     const hy = mod('hydro'), th = (BSU.params.hydro && BSU.params.hydro.thresholds) || {};
     const live = !!(hy && typeof hy.surfaceAt === 'function' && typeof hy.normalStageAt === 'function');
     g.globalAlpha = 1; g.globalCompositeOperation = 'source-over';
@@ -1454,14 +1468,15 @@
         if (!ch || !ch.deck || !ch.deckTiles || !ch.deckTiles.length) continue;
         if (track) deckStats.seen++;
         const dx = (ch.ox - camx) * z + hw, dy = (ch.oy - camy) * z + hh;
+        const chh = ch.hh * z;
         if (dx > vw || dy > vh || dx + cw < 0 || dy + chh < 0) { if (track) deckStats.culled++; continue; }
         let under = 0;
         if (live) for (let q = 0; q < ch.deckTiles.length; q++) if (deckOvertopped(state, hy, th, ch.deckTiles[q])) { under++; over.add(ch.deckTiles[q].i); }
         if (track) { deckStats.under += under; deckStats.live = live; }
         const m = ch.deckMaster === 2 ? 2 : 1;   // H1: the deck layer is at the chunk's master; a master-2 deck follows the chunk pass's draw rule
         if (!under) {
-          if (m === 2) { const exact = Math.abs(z * dpr / 2 - 1) < 1e-6; g.imageSmoothingEnabled = !exact; if (exact) g.drawImage(ch.deck, 0, 0, CW * 2, CHH * 2, Math.round(dx * dpr) / dpr, Math.round(dy * dpr) / dpr, cw, chh); else g.drawImage(ch.deck, 0, 0, CW * 2, CHH * 2, dx, dy, cw, chh); g.imageSmoothingEnabled = frameSmooth; }
-          else if (frameSmooth) g.drawImage(ch.deck, 0, 0, CW, CHH, dx, dy, cw, chh); else g.drawImage(ch.deck, 0, 0, CW, CHH, Math.round(dx), Math.round(dy), Math.round(cw), Math.round(chh));
+          if (m === 2) { const exact = Math.abs(z * dpr / 2 - 1) < 1e-6; g.imageSmoothingEnabled = !exact; if (exact) g.drawImage(ch.deck, 0, 0, CW * 2, ch.hh * 2, Math.round(dx * dpr) / dpr, Math.round(dy * dpr) / dpr, cw, chh); else g.drawImage(ch.deck, 0, 0, CW * 2, ch.hh * 2, dx, dy, cw, chh); g.imageSmoothingEnabled = frameSmooth; }
+          else if (frameSmooth) g.drawImage(ch.deck, 0, 0, CW, ch.hh, dx, dy, cw, chh); else g.drawImage(ch.deck, 0, 0, CW, ch.hh, Math.round(dx), Math.round(dy), Math.round(cw), Math.round(chh));
           drawCalls++; if (track) decksDrawn += ch.deckTiles.length; continue;
         }
         if (m === 2) g.imageSmoothingEnabled = true;
@@ -2845,8 +2860,32 @@
   // ≥ params.art.hd.bakeSliceMs of headroom: a dirty chunk that already had an HD canvas, else the nearest visible master-1 chunk
   // (the upgrade), else a master-1 pre-bake of the ring of chunks just outside the view. Every chunk draws at its own master.
   let hdStarve = 0; const HD_STARVE_EVERY = 30;
+  /** the visible chunks, back to front, each at its own master (the body of chunk-pass step 4; the cache build runs the very same draws on its own canvas) */
+  function drawVisibleChunks(g, z, smooth, camx, camy) {
+    const cw = CW * z, hw = vw / 2, hh = vh / 2;
+    g.imageSmoothingEnabled = smooth; let smoothOn = smooth;
+    for (let s = 0; s <= CXN + CYN - 2; s++) {
+      for (let cx = Math.max(0, s - (CYN - 1)); cx <= Math.min(CXN - 1, s); cx++) {
+        const cy = s - cx, ch = chunks[cx + cy * CXN];
+        if (!ch.vis || !ch.canvas) continue;
+        const dx = (ch.ox - camx) * z + hw, dy = (ch.oy - camy) * z + hh, chh = ch.hh * z;
+        ch.lastSeen = frameNo;
+        const m = ch.master === 2 ? 2 : 1;
+        if (m === 1) {
+          if (smoothOn !== smooth) { g.imageSmoothingEnabled = smooth; smoothOn = smooth; }
+          if (frameSmooth) g.drawImage(ch.canvas, 0, 0, CW, ch.hh, dx, dy, cw, chh); else g.drawImage(ch.canvas, 0, 0, CW, ch.hh, Math.round(dx), Math.round(dy), Math.round(cw), Math.round(chh));   // hud + zoom pass: sub-pixel placement while smoothing (rounding each chunk separately left hairline seams at 0.65 / 1.25)
+        } else {
+          const exact = Math.abs(z * dpr / 2 - 1) < 1e-6;   // the master lands 1 art px = 1 device px (zoom 2 at dpr 1, zoom 1 at dpr 2): snap to device px, no resample
+          const sm = !exact;
+          if (smoothOn !== sm) { g.imageSmoothingEnabled = sm; smoothOn = sm; }
+          if (exact) g.drawImage(ch.canvas, 0, 0, CW * 2, ch.hh * 2, Math.round(dx * dpr) / dpr, Math.round(dy * dpr) / dpr, cw, chh); else g.drawImage(ch.canvas, 0, 0, CW * 2, ch.hh * 2, dx, dy, cw, chh);
+        }
+        drawCalls++;
+      }
+    }
+  }
   function chunkPass(state, g) {
-    const z = zoomNow, cw = CW * z, chh = CHH * z, hw = vw / 2, hh = vh / 2, camx = camera.x, camy = camera.y;
+    const z = zoomNow, cw = CW * z, hw = vw / 2, hh = vh / 2, camx = camera.x, camy = camera.y;
     const t0 = nowMs(); const timeBudget = firstFrame ? C.firstBakeMs : 0;
     const maxBakes = PR.chunkRebakesPerFrame || 2;
     bakesThisFrame = 0; hdBakesThisFrame = 0;
@@ -2854,15 +2893,13 @@
     hdStarve = hd && frameMs > FRAME_MS - hdSliceMs() ? hdStarve + 1 : 0;
     const headroom = hd && (frameMs <= FRAME_MS - hdSliceMs() || (hdStarve % HD_STARVE_EVERY) === HD_STARVE_EVERY - 1);   // H0: a frame with ≥ bakeSliceMs headroom, or (a machine that never has it) one upgrade every HD_STARVE_EVERY frames so HD still arrives
     const smooth = (z < 1 && !info.perfMode) || frameSmooth;   // art pass B1: a filtered 2:1 downsample at 0.5× (nearest sparkled the noisy ground); off in perf mode. hud + zoom pass: on at every non-master step (the 1× chunks scale by a non-integer)
-    let smoothOn = false;
-    if (smooth) { g.imageSmoothingEnabled = true; smoothOn = true; }
     if (curves && !curvesDirty && (frameNo % 30) === 7 && curves.deckCount > 0 && stageRefOf(state) !== curves.stageRef) { curvesDirty = true; M.dirtyAll(); }
     // 1. bakes: collect the visible dirty chunks (diagonal order = today's order), nearest-first only in HD mode
     let nCand = 0;
     for (let s = 0; s <= CXN + CYN - 2; s++) {
       for (let cx = Math.max(0, s - (CYN - 1)); cx <= Math.min(CXN - 1, s); cx++) {
         const cy = s - cx, k = cx + cy * CXN, ch = chunks[k];
-        const dx = (ch.ox - camx) * z + hw, dy = (ch.oy - camy) * z + hh;
+        const dx = (ch.ox - camx) * z + hw, dy = (ch.oy - camy) * z + hh, chh = ch.hh * z;
         if (dx > vw || dy > vh || dx + cw < 0 || dy + chh < 0) { ch.vis = 0; continue; }
         ch.vis = 1;
         if (!ch.canvas || ch.dirty || dirtyBits[k]) { candI[nCand] = k; const ex = dx + cw / 2 - hw, ey = dy + chh / 2 - hh; candD[nCand] = ex * ex + ey * ey; nCand++; }
@@ -2881,37 +2918,38 @@
     // 2. HD upgrade (one per frame with headroom): the visible master-1 chunk nearest the view centre
     if (hd && headroom && hdBakesThisFrame < 1) {
       let best = null, bd = Infinity;
-      for (let k = 0; k < NCH; k++) { const ch = chunks[k]; if (!ch.vis || !ch.canvas || ch.master === 2 || ch.dirty) continue; const ex = (ch.ox - camx) * z + hw + cw / 2 - hw, ey = (ch.oy - camy) * z + hh + chh / 2 - hh; const d = ex * ex + ey * ey; if (d < bd) { bd = d; best = ch; } }
+      for (let k = 0; k < NCH; k++) { const ch = chunks[k]; if (!ch.vis || !ch.canvas || ch.master === 2 || ch.dirty) continue; const ex = (ch.ox - camx) * z + hw + cw / 2 - hw, ey = (ch.oy - camy) * z + hh + ch.hh * z / 2 - hh; const d = ex * ex + ey * ey; if (d < bd) { bd = d; best = ch; } }
       if (best) { try { bakeChunk(best, state, 2); bakesThisFrame++; hdBakesThisFrame++; lastUpgrade = best.cx + best.cy * CXN; } catch (e) { rerr('bake:hd', e); best.dirty = 0; } }
       else if (bakesThisFrame === 0) {   // 3. nothing visible pending: pre-bake (master 1) one chunk of the ring just outside the view, so a pan shows ground at once
         for (let k = 0; k < NCH && bakesThisFrame === 0; k++) {
           const ch = chunks[k]; if (ch.vis || ch.canvas) continue;
-          const dx = (ch.ox - camx) * z + hw, dy = (ch.oy - camy) * z + hh;
+          const dx = (ch.ox - camx) * z + hw, dy = (ch.oy - camy) * z + hh, chh = ch.hh * z;
           if (dx > vw + cw || dy > vh + chh || dx + cw < -cw || dy + chh < -chh) continue;
           try { bakeChunk(ch, state, 1); bakesThisFrame++; } catch (e) { rerr('bake:ring', e); ch.dirty = 0; }
         }
       }
     }
-    // 4. draw every visible chunk at its own master
-    for (let s = 0; s <= CXN + CYN - 2; s++) {
-      for (let cx = Math.max(0, s - (CYN - 1)); cx <= Math.min(CXN - 1, s); cx++) {
-        const cy = s - cx, ch = chunks[cx + cy * CXN];
-        if (!ch.vis || !ch.canvas) continue;
-        const dx = (ch.ox - camx) * z + hw, dy = (ch.oy - camy) * z + hh;
-        ch.lastSeen = frameNo;
-        const m = ch.master === 2 ? 2 : 1;
-        if (m === 1) {
-          if (smoothOn !== smooth) { g.imageSmoothingEnabled = smooth; smoothOn = smooth; }
-          if (frameSmooth) g.drawImage(ch.canvas, 0, 0, CW, CHH, dx, dy, cw, chh); else g.drawImage(ch.canvas, 0, 0, CW, CHH, Math.round(dx), Math.round(dy), Math.round(cw), Math.round(chh));   // hud + zoom pass: sub-pixel placement while smoothing (rounding each chunk separately left hairline seams at 0.65 / 1.25)
-        } else {
-          const exact = Math.abs(z * dpr / 2 - 1) < 1e-6;   // the master lands 1 art px = 1 device px (zoom 2 at dpr 1, zoom 1 at dpr 2): snap to device px, no resample
-          const sm = !exact;
-          if (smoothOn !== sm) { g.imageSmoothingEnabled = sm; smoothOn = sm; }
-          if (exact) g.drawImage(ch.canvas, 0, 0, CW * 2, CHH * 2, Math.round(dx * dpr) / dpr, Math.round(dy * dpr) / dpr, cw, chh); else g.drawImage(ch.canvas, 0, 0, CW * 2, CHH * 2, dx, dy, cw, chh);
-        }
-        drawCalls++;
+    // 4. draw every visible chunk at its own master (H7b: while nothing moves and no chunk changes, one cached composite instead)
+    let hit = false;
+    if (g === ctx && canvas && !(nowMs() < shakeUntil && shakePx > 0)) {
+      const same = TC.x === camx && TC.y === camy && TC.z === z && TC.vw === vw && TC.vh === vh && TC.dpr === dpr && TC.sm === smooth;
+      if (same) { TC.still++; TC.moving = 0; }
+      else { TC.x = camx; TC.y = camy; TC.z = z; TC.vw = vw; TC.vh = vh; TC.dpr = dpr; TC.sm = smooth; TC.still = 0; TC.ok = false; if (++TC.moving > 240 && TC.c) tcFree(); }
+      if (TC.ok && TC.epoch === chunkEpoch && TC.c && TC.w === canvas.width && TC.h === canvas.height) hit = true;
+      else if (TC.still >= 2) {   // two frames at rest: build it (BG + the chunks into an opaque frame-sized canvas), then use it from the next frame on
+        try {
+          if (!TC.c || TC.w !== canvas.width || TC.h !== canvas.height) { tcFree(); TC.c = makeCanvas(canvas.width, canvas.height); TC.g = ctx2d(TC.c, { alpha: false }); TC.w = canvas.width; TC.h = canvas.height; }
+          const cg = TC.g; cg.setTransform(dpr, 0, 0, dpr, 0, 0); cg.globalAlpha = 1; cg.globalCompositeOperation = 'source-over'; cg.fillStyle = BG; cg.fillRect(0, 0, vw, vh);
+          drawVisibleChunks(cg, z, smooth, camx, camy);
+          TC.ok = true; TC.epoch = chunkEpoch; TC.builds++; hit = true;
+        } catch (e) { rerr('chunks:cache', e); tcFree(); hit = false; }
       }
     }
+    if (hit) {
+      g.imageSmoothingEnabled = false; g.drawImage(TC.c, 0, 0, TC.w, TC.h, 0, 0, TC.w / dpr, TC.h / dpr); drawCalls++; TC.hits++;   // source-over: the composite is opaque, so it IS a copy, and 'copy' costs 3-4 ms more in software raster
+      for (let k = 0; k < NCH; k++) { const ch = chunks[k]; if (ch.vis && ch.canvas) ch.lastSeen = frameNo; }
+    } else { if (bgSkipped && g === ctx) { g.fillStyle = BG; g.fillRect(0, 0, vw, vh); } bgSkipped = false; drawVisibleChunks(g, z, smooth, camx, camy); }
+    bgSkipped = false;
     g.imageSmoothingEnabled = frameSmooth;   // the passes after the chunks draw sprites scaled from their master: smooth only at a non-master step
     if ((frameNo % 60) === 0) evictChunks();
   }
@@ -2920,6 +2958,8 @@
   function runWorld(state, g, alpha, dtMs, withRegistered) {
     let pt = nowMs();   // H5: per-stage cost (an EMA, ms) for perf().passMs: chunks / water / deck / entities and every registered pass up to 9
     try { chunkPass(state, g); } catch (e) { rerr('chunks', e); }
+    if (bgSkipped && g === ctx) { g.fillStyle = BG; g.fillRect(0, 0, vw, vh); }
+    bgSkipped = false;
     pt = passTick('chunks', pt);
     try { waterPass(state, g); } catch (e) { rerr('water', e); }
     pt = passTick('water', pt);
@@ -2990,7 +3030,8 @@
       else if (now >= shakeUntil) shakePx = 0;
       g.setTransform(dpr, 0, 0, dpr, 0, 0);
       g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; g.imageSmoothingEnabled = frameSmooth;
-      g.fillStyle = BG; g.fillRect(0, 0, vw, vh);
+      bgSkipped = tcWillHit((zoomNow < 1 && !info.perfMode) || frameSmooth);
+      if (!bgSkipped) { g.fillStyle = BG; g.fillRect(0, 0, vw, vh); }
       g.save(); g.translate(sx, sy);
     } catch (e) { rerr('clear', e); }
     runWorld(state, g, alphaNow, dtMs, true);
@@ -3114,7 +3155,7 @@
   M.reset = function (state, fresh) {
     if (!state) return;
     bind(state);
-    for (let k = 0; k < NCH; k++) if (chunks[k]) dropChunk(chunks[k]); else { const o = chunkOrigin(k % CXN, (k / CXN) | 0); chunks[k] = { cx: k % CXN, cy: (k / CXN) | 0, ox: o.ox, oy: o.oy, canvas: null, ctx: null, dirty: 1, lastSeen: -1, vis: 0, master: 0, bytes: 0 }; }
+    tcFree(); for (let k = 0; k < NCH; k++) if (chunks[k]) dropChunk(chunks[k]); else { const o = chunkOrigin(k % CXN, (k / CXN) | 0); chunks[k] = { cx: k % CXN, cy: (k / CXN) | 0, ox: o.ox, oy: o.oy, canvas: null, ctx: null, dirty: 1, lastSeen: -1, vis: 0, master: 0, bytes: 0 }; }
     dirtyBits.fill(1); curvesDirty = true; curves = null;
     flashes.length = 0; ghostSpec = null; gates.clear(); shakeUntil = 0; shakePx = 0; hitStopUntilMs = 0;
     for (const k in M.squash) delete M.squash[k];
@@ -3176,7 +3217,7 @@
       const corners = [[cx * CS, cy * CS], [cx * CS + 7, cy * CS], [cx * CS, cy * CS + 7], [cx * CS + 7, cy * CS + 7]];
       for (let c = 0; c < 4; c++) for (let e = 0; e < 2; e++) {
         const d = BSU.tileDiamond(corners[c][0], corners[c][1], e ? 14 : -4);
-        if (d.x3 < o.ox || d.x1 > o.ox + CW || d.y0 < o.oy || d.y2 > o.oy + CHH) contained = false;
+        if (d.x3 < o.ox || d.x1 > o.ox + CW || d.y0 < o.oy || d.y2 > o.oy + CHH) contained = false;   // (the 416-px canvas; an edge chunk's extra 80 px is only skirt)
       }
     }
     ok(contained, 'every corner tile of every chunk projects inside its 512×416 canvas at elev −4 and 14');

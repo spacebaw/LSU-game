@@ -49,7 +49,7 @@ function rec() {
       if (k === 'measureText') return (s) => ({ width: String(s).length * 6 });
       if (k === 'getLineDash') return () => [];
       if (typeof k !== 'string') return undefined;
-      return (...a) => { o.n[k] = (o.n[k] || 0) + 1; if (k === 'drawImage' || k === 'stroke' || k === 'fill' || k === 'fillRect' || k === 'ellipse' || k === 'arc') o.log.push({ k: k, a: a, alpha: t.globalAlpha, comp: t.globalCompositeOperation, lw: t.lineWidth, join: t.lineJoin, cap: t.lineCap }); };
+      return (...a) => { o.n[k] = (o.n[k] || 0) + 1; if (k === 'drawImage' || k === 'stroke' || k === 'fill' || k === 'fillRect' || k === 'ellipse' || k === 'arc') o.log.push({ k: k, a: a, alpha: t.globalAlpha, comp: t.globalCompositeOperation, lw: t.lineWidth, join: t.lineJoin, cap: t.lineCap, sm: t.imageSmoothingEnabled }); };
     },
     set(t, k, v) { t[k] = v; return true; }
   });
@@ -73,6 +73,9 @@ B.blobClear();
   ok(ok1 && d && d.a[3] === e.w / 2 && d.a[4] === e.h / 2 && Math.abs(d.a[1] * 2 - Math.round(d.a[1] * 2)) < 1e-9 && Math.abs(d.a[2] * 2 - Math.round(d.a[2] * 2)) < 1e-9 && d.alpha === 0.5, 'drawBlob blits at the baked device size on a device-pixel-snapped centre (a 1:1 copy at dpr 2) with the alpha asked for');
   const big = B.blob('halo', '#fff', 900, 900), r2 = rec(); B.drawBlob(r2.g, 'halo', '#fff', 500, 400, 900, 900, 1, 1);
   const d2 = r2.log.find((c) => c.k === 'drawImage'); ok(big.w === 640 && d2 && d2.a[3] === 1800, 'past the 320-px cap the biggest blob is stretched to the radius asked for');
+  ok(d2.sm === true, 'a stretched halo stays bilinear');
+  const r3 = rec(); B.drawBlob(r3.g, 'haze', '#FFD98A', 500, 400, 1200, 700, 0.5, 2); const d3 = r3.log.find((c) => c.k === 'drawImage');
+  ok(d3 && d3.sm === false && d3.a[3] === 2400 && r3.g.imageSmoothingEnabled === true, 'H7b: the stadium haze, always past the cap at the game camera, is stretched nearest-neighbour (2.5× cheaper in software raster, within a level of the bilinear one) and the context\'s smoothing is put back');
 }
 B.blobClear();
 
@@ -219,6 +222,25 @@ ok(S.ICON_FRAME && S.ICON_FRAME.size === 64 && S.ICON_FRAME.radius === 8 && Obje
   ok(ms < 4000, `all ${ids.length} icons bake in ${ms} ms on the stub (advisory: < 4 s)`);
   const t1 = Date.now(); for (const id of ids) S.get('icon:' + id, 0, 0, 2); ok(Date.now() - t1 < 100, 'the second pass over the icons is a cache lookup (< 100 ms)');
 }
+// --- H7b: the heat shimmer copies one small device-aligned region per source (not the whole span between them) ----------------------------------------
+try {
+  const doc = win.document, ce = doc.createElement; let shimRec = null;
+  doc.createElement = function (tag) { const el = ce.apply(this, arguments); if (tag === 'canvas' && !shimRec) { shimRec = rec(); el.getContext = () => shimRec.g; } return el; };   // the shimmer's scratch canvas gets a recording context
+  const hm0 = BSU.headlessMode, fr0 = R.frameNo, cam0 = { x: R.camera.x, y: R.camera.y, z: R.camera.zoom };
+  try {
+    R.setZoom(1); BSU.headlessMode = false; R.frameNo = 5000;
+    const vv = R.view, ents = [0, 1, 2].map((i) => ({ kind: 'building', b: { type: 'wastewater', built: 1, ruin: false, w: 3, h: 3 }, sx: 200 + i * 330, sy: 250 + (i & 1) * 150, variant: 0 }));
+    R.drawList.length = 0; for (const e of ents) R.drawList.push(e);
+    const r = rec(); pf('weather')(s, r.g, vv, 1, 16);
+    const copies = shimRec ? shimRec.log.filter((c) => c.k === 'drawImage') : [], slices = r.log.filter((c) => c.k === 'drawImage');
+    ok(copies.length === 3 && slices.length === 21, 'three sources: three small self-copies into the scratch strip and 7 slices each (' + copies.length + ' copies, ' + slices.length + ' slices)');
+    ok(copies.every((c) => c.a[0] === R.canvas && c.a[1] === Math.floor(c.a[1]) && c.a[2] === Math.floor(c.a[2]) && c.a[3] === Math.floor(c.a[3]) && c.a[4] === Math.floor(c.a[4]) && c.a[3] <= 60 && c.a[4] <= 70), 'each copy is a device-aligned region of the frame, a source-sized box plus a 2-px margin (' + copies.map((c) => c.a[3] + 'x' + c.a[4]).join(', ') + ')');
+    const area = copies.reduce((q, c) => q + c.a[3] * c.a[4], 0), span = (200 + 2 * 330 + 22) * (400 - 250 + 30);
+    ok(area < span * 0.2, 'the copied area (' + area + ' px) is a fraction of the bounding box of the sources (' + span + ' px) that was copied before');
+    ok(shimRec.n.clearRect === 1 && r.log.every((c) => c.k !== 'drawImage' || c.a[0] !== R.canvas), 'the scratch strip is cleared once; the slices are drawn from it, never from the frame itself');
+  } finally { doc.createElement = ce; BSU.headlessMode = hm0; R.frameNo = fr0; R.panTo(cam0.x, cam0.y, false); }
+} catch (e) { ok(false, 'H7b shimmer: ' + (e.stack || e)); }
+
 // --- H7: the water pass's bars through brush.bars, memMB counts the effect caches, the surge barrier icon -------------------------------------------------
 try {
   const calls = []; const gp = { globalAlpha: 1, fillStyle: '#000' };
