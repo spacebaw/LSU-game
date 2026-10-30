@@ -97,14 +97,24 @@
   }
   function uerr(where, e) { BSU.error('ui', where, e); }
   function emit(name, payload) { const f = M._deps && M._deps.emit; if (typeof f === 'function') return f(name, payload); return BSU.events.emit(name, payload); }
-  function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = String(text); return e; }
-  function setText(e, s) { if (!e) return; s = s == null ? '' : String(s); if (e.textContent !== s) e.textContent = s; }
+  /** H6 number rules. A text that is nothing but a number (sign, $, digits, k / M / %, a clock, "/tile") gets data-nw="1" (CSS: nowrap + tabular figures); a sentence that
+   *  carries a signed amount ("… · −$1.69M") gets a U+2060 word joiner between the minus and the "$" (invisible; both are prefix-numeric, so a line may otherwise break between
+   *  them and strand the minus; a plus sign is left alone). Every DOM text write in this module goes through el() / setText(), so the rule holds everywhere. */
+  const NUMTXT = /^[\u2212+\-]?\$?\d[\d,.:]*\s?[kM%x\u00d7]?(?:\s?\/\s?[A-Za-z]+)?$/;
+  function signJoin(s) { return s.indexOf('$') < 0 ? s : s.replace(/\u2212\$/g, '\u2212\u2060$'); }
+  function tidyText(e, s) { const num = s.length < 24 && NUMTXT.test(s); if (num !== (e.dataset.nw === '1')) { if (num) e.dataset.nw = '1'; else delete e.dataset.nw; } return num ? s : signJoin(s); }
+  function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = tidyText(e, String(text)); return e; }
+  function setText(e, s) { if (!e) return; s = tidyText(e, s == null ? '' : String(s)); if (e.textContent !== s) e.textContent = s; }
   function show(e, on) { if (!e) return; const hid = e.classList.contains('hidden'); if (on && hid) e.classList.remove('hidden'); else if (!on && !hid) e.classList.add('hidden'); }
   function cls(e, c, on) { if (!e) return; const h = e.classList.contains(c); if (on && !h) e.classList.add(c); else if (!on && h) e.classList.remove(c); }
   function clear(e) { if (!e) return; while (e.firstChild) e.removeChild(e.firstChild); }
   function isEl(v) { return !!(v && typeof v === 'object' && typeof v.tagName === 'string'); }
   function btn(id, label, cls_, onClick) { const b = el('button', 'btn' + (cls_ ? ' ' + cls_ : ''), label); if (id) b.id = id; b.type = 'button'; if (onClick) b.addEventListener('click', function (ev) { try { onClick(ev); } catch (e) { uerr('click:' + (id || label), e); } }); return b; }
   function money(n) { return BSU.formatMoney(fin(n, 0)); }
+  /** H6 number rules: the sign is part of the number (a true minus U+2212, never a hyphen: formatMoney already does it for cash), thousands are grouped, and every
+   *  element that shows one is nowrap + tabular in CSS, so "−$1.69M" can never break after its sign. `numStr` keeps one decimal; `int` rounds; `compact` is the gauge form (1.5k / 12k) */
+  function numStr(n) { n = fin(n, 0); return (n < 0 ? '\u2212' : '') + Math.abs(n).toLocaleString('en-US', { maximumFractionDigits: 1 }); }
+  function fmtInt(n) { return numStr(Math.round(fin(n, 0))); }
   function tileOf(i) { return { tx: i % W, ty: (i / W) | 0 }; }
   function catalog() { return (BSU.data && BSU.data.catalog) || {}; }
   function rowOf(id) { return id ? catalog()[id] || null : null; }
@@ -129,7 +139,7 @@
   M.cards = M.cards || {};
   M._tests = M._tests || [];
   M._deps = M._deps || { emit: null };
-  M.fmt = { money: function (n) { return BSU.formatMoney(n); }, date: function (d) { return BSU.formatDate(d); } };
+  M.fmt = { money: function (n) { return BSU.formatMoney(n); }, date: function (d) { return BSU.formatDate(d); }, int: function (n) { return fmtInt(n); }, num: function (n) { return numStr(n); }, compact: function (n) { return compactNum(n); } };
   const panels = {};                       // name → {build, refresh, events, el, built, lastRefresh}
   let root = null, inited = false, dry = false, clock = 0, titleOn = false, focusedInput = null;
   let toolLocked = false, undoAtMs = -1e9, lastRunLen = 0, lastGhost = null, ghostPin = null, lastArm = null, lastRingMs = -1e9, shakeUntil = 0, ghostCache = null;
@@ -179,7 +189,7 @@
   // ---------------------------------------------------------------------------
   function statEl(id, label, key) {
     const s = el('div', 'stat'); s.id = id; s.dataset.stat = key; s.setAttribute('tabindex', '0'); s.setAttribute('role', 'button');
-    const lab = el('span', 'stat-label', label); const val = el('span', 'odometer', '—'); const d = el('span', 'delta', '');
+    const lab = el('span', 'stat-label', label); const val = el('span', 'odometer num', '—'); const d = el('span', 'delta', '');
     s.appendChild(lab); s.appendChild(val); s.appendChild(d);
     s.addEventListener('click', function () { try { M.breakdown(stateOf(), key); } catch (e) { uerr('stat:' + key, e); } });
     E[id] = s; E[id + '-value'] = val; E[id + '-delta'] = d; E[id + '-label'] = lab;
@@ -1716,7 +1726,7 @@
     }
     return out;
   }
-  function compactNum(n) { n = fin(n, 0); return n >= 10000 ? Math.round(n / 1000) + 'k' : n >= 1000 ? (Math.round(n / 100) / 10).toFixed(1).replace(/\.0$/, '') + 'k' : String(n); }
+  function compactNum(n) { n = fin(n, 0); const a = Math.abs(n), sg = n < 0 ? '\u2212' : ''; return sg + (a >= 10000 ? Math.round(a / 1000) + 'k' : a >= 1000 ? (Math.round(a / 100) / 10).toFixed(1).replace(/\.0$/, '') + 'k' : String(a)); }
   function refreshNeeds(s) {
     const n = needsNow(s); if (!n || !E.needEls) return;
     const key = JSON.stringify(n.terms) + '|' + (n.binding ? n.binding.text + n.binding.level : '');
@@ -2190,7 +2200,7 @@
   function trayRowsFit(withWhy) {
     try {
       if (E.hud && E.hud.classList.contains('inspect-open')) return 0;   // qa pass 4: the tray is display:none beside an open inspect panel (style.css); no rows to build
-      const sc = effScale || 1, px = 10 * sc, top = (5.6 + 28.4) * px, bot = (18 + 2.8 + 2 + 1) * px, head = 3.4 * px, row = (withWhy ? 5.4 : 3.9) * px;   // gator pass: a why-line adds a second grid row (measured 53 px at 1×)
+      const sc = effScale || 1, px = 10 * sc, top = (5.6 + 28.4) * px, bot = (18 + 2.8 + 1.6 + 1) * px, head = 3.4 * px, row = (withWhy ? 5.4 : 3.9) * px;   // gator pass: a why-line adds a second grid row (measured 53 px at 1×)
       const h = fin(window.innerHeight, 800) - top - bot - head; return clamp(Math.floor(h / row), 0, 6);
     } catch (e) { return 4; }
   }
@@ -2591,10 +2601,10 @@
       const s = state || stateOf(); if (!s || !dom()) return;
       const r = call('economy', 'breakdown', s, stat) || { value: 0, lines: [], next: '' };
       const label = { cash: 'Cash', students: 'Students', prestige: 'Prestige', happiness: 'Happiness', ecology: 'Ecology' }[stat] || stat;
-      const val = stat === 'cash' ? money(r.value) : (Math.round(fin(r.value, 0) * 10) / 10);
+      const val = stat === 'cash' ? money(r.value) : numStr(Math.round(fin(r.value, 0) * 10) / 10);
       setText(E['pop-title'], label + ' · ' + val);
       const lines = Array.isArray(r.lines) ? r.lines.slice(0, L.popLines) : [];
-      E.popLines.forEach(function (pl, k) { const ln = lines[k]; show(pl.row, !!ln); if (ln) { setText(pl.k, ln.label || ''); const v = fin(ln.value, 0); setText(pl.v, stat === 'cash' || Math.abs(v) >= 10000 ? (v > 0 ? '+' : '') + money(v) : (v > 0 && stat !== 'students' ? '+' : '') + (Math.round(v * 10) / 10)); pl.v.dataset.sign = v < 0 ? 'neg' : v > 0 ? 'pos' : 'zero'; } });
+      E.popLines.forEach(function (pl, k) { const ln = lines[k]; show(pl.row, !!ln); if (ln) { setText(pl.k, ln.label || ''); const v = fin(ln.value, 0); setText(pl.v, stat === 'cash' || Math.abs(v) >= 10000 ? (v > 0 ? '+' : '') + money(v) : (v > 0 && stat !== 'students' ? '+' : '') + numStr(Math.round(v * 10) / 10)); pl.v.dataset.sign = v < 0 ? 'neg' : v > 0 ? 'pos' : 'zero'; } });
       setText(E['pop-next'], r.next || ''); show(E['pop-next'], !!r.next);
       const anchor = E['stat-' + stat]; let left = 200; try { const rc = anchor && anchor.getBoundingClientRect ? anchor.getBoundingClientRect() : null; if (rc) left = fin(rc.left, 200); } catch (e) { left = 200; }
       const pw = fin(E.popover.offsetWidth, 0) || Math.round(340 * effScale); E.popover.style.left = Math.round(clamp(left, 8, fin(window.innerWidth, 1280) - pw - 20)) + 'px';
@@ -2731,14 +2741,14 @@
     odo.lastStudents = students;
     if (odo.holdUntil >= 0 && tickOf(s) >= odo.holdUntil) odo.holdUntil = -1;
     if (odo.holdUntil < 0) { odo.students += (students - odo.students) * k; if (Math.abs(students - odo.students) < 0.5) odo.students = students; }
-    setText(E['stat-students-value'], String(Math.round(odo.students)));
+    setText(E['stat-students-value'], fmtInt(odo.students));
     // capacity chip
     const stage = fin(call('progress', 'tutorialStage', s), 6);
     const capOn = stage >= 5 || !!call('progress', 'offered', s, '4');
     if (capOn !== capacityShown) { capacityShown = capOn; show(E['chip-capacity'], capOn); show(E['stat-students-label'], !capOn); }
-    if (capOn) { setText(E['chip-capacity'], 'Apps ' + fin(e.applicants, 0) + ' / Cap ' + fin(e.capacity, 0)); const ct = e.capacityTerms || {}; let bind = '', bv = Infinity; for (const key in ct) { if (Number.isFinite(ct[key]) && ct[key] < bv) { bv = ct[key]; bind = key; } } E['chip-capacity'].title = bind ? ({ beds: 'beds', seats: 'seats', dining: 'dining', wastewater: 'wastewater' }[bind] || bind) + ' are the bottleneck' : ''; }
+    if (capOn) { setText(E['chip-capacity'], 'Apps ' + fmtInt(e.applicants) + ' / Cap ' + fmtInt(e.capacity)); const ct = e.capacityTerms || {}; let bind = '', bv = Infinity; for (const key in ct) { if (Number.isFinite(ct[key]) && ct[key] < bv) { bv = ct[key]; bind = key; } } E['chip-capacity'].title = bind ? ({ beds: 'beds', seats: 'seats', dining: 'dining', wastewater: 'wastewater' }[bind] || bind) + ' are the bottleneck' : ''; }
     // prestige / happiness / ecology
-    [['prestige', e.prestige], ['happiness', e.happiness], ['ecology', e.ecology]].forEach(function (p) { const v = fin(p[1], 0); setText(E['stat-' + p[0] + '-value'], String(Math.round(v))); E['stat-' + p[0]].title = p[0][0].toUpperCase() + p[0].slice(1) + ' ' + (Math.round(v * 10) / 10); });
+    [['prestige', e.prestige], ['happiness', e.happiness], ['ecology', e.ecology]].forEach(function (p) { const v = fin(p[1], 0); setText(E['stat-' + p[0] + '-value'], fmtInt(v)); E['stat-' + p[0]].title = p[0][0].toUpperCase() + p[0].slice(1) + ' ' + (Math.round(v * 10) / 10); });
     // date + sky glyph
     const d = call('weather', 'date', s) || { str: BSU.formatDate(dayOf(s)), season: s.calendar ? s.calendar.season : '' };
     const season = d.season ? d.season[0].toUpperCase() + d.season.slice(1) : '';

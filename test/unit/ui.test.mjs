@@ -23,7 +23,8 @@ ok(!/innerHTML/.test(src), 'no innerHTML (every node is created and kept in M.el
 ok(!/querySelector|closest\(|matches\(|instanceof\s+(Node|HTMLInputElement|HTMLCanvasElement|Text)/.test(src), 'no querySelector/closest/matches/instanceof Node');
 ok(!/setTimeout|setInterval/.test(src.replace(/\/\/.*$/gm, '')), 'no timers for game logic');
 const css = readFileSync(join(root, 'src', 'style.css'), 'utf8');
-ok(Buffer.byteLength(css) <= 76 * 1024, `style.css ≤ 76 KB (${(Buffer.byteLength(css) / 1024).toFixed(1)} KB)`);   // hud + zoom pass: the hud modes block (70 → 76 KB);   // gator pass: the chip ✕, the relocated strip beside an open inspect, Dismiss all, why-lines (68 → 70 KB);   // P6 dining menus: the inspect Menu section (64 → 68 KB); UX pass: build menu + tracker + coach marks (was 25 KB); football pass D: Season panel, game HUD, summary card (was 40 KB); UI scale pass: every length in rem + scale tokens (was 48 KB)
+ok(Buffer.byteLength(css) <= 96 * 1024, `style.css ≤ 96 KB (${(Buffer.byteLength(css) / 1024).toFixed(1)} KB)`);   // H6: 76 → 96 KB (every font-size is now a var(--fs-*) token, longer than the literal it replaced, plus the H6 block)
+   // hud + zoom pass: the hud modes block (70 → 76 KB);   // gator pass: the chip ✕, the relocated strip beside an open inspect, Dismiss all, why-lines (68 → 70 KB);   // P6 dining menus: the inspect Menu section (64 → 68 KB); UX pass: build menu + tracker + coach marks (was 25 KB); football pass D: Season panel, game HUD, summary card (was 40 KB); UI scale pass: every length in rem + scale tokens (was 48 KB)
 const cssNoComments = css.replace(/\/\*[\s\S]*?\*\//g, '');
 ok(!/@import|url\(/.test(cssNoComments) && /--purple:\s*#461D7C/.test(css) && /--gold:\s*#FDD023/.test(css), 'css tokens present, no @import/url()');
 
@@ -92,7 +93,7 @@ ok(!/--topbar-h:\s*\d+px/.test(cssScale) && /--topbar-h:\s*5\.6rem/.test(cssScal
   ok(/#panels #panel-season\{width:110rem\}/.test(cssP5) && /#panels #panel-storm,#panels #panel-budget\{width:72rem\}/.test(cssP5) && /#panels \.panel\{[^}]*width:72rem/.test(cssP5) && /#build-menu\{[^}]*width:min\(130rem/.test(cssP5), 'panels centre with wider maxima: Season 1100, Storm / Budget 720, default 720, Build menu up to 1300 px');
   ok(/#panels\{[^}]*display:flex[^}]*align-items:center[^}]*justify-content:center/.test(cssP5), 'the panel host centres its panel in the map area');
   ok(/--inspect-w:\s*38rem/.test(cssP5) && /#inspect\{[^}]*right:var\(--side\)/.test(cssP5) && /--side:max\(var\(--gutter\)/.test(cssP5), 'inspect panel 380 px docked right with a gutter; --side centres the docked cards on very wide windows');
-  ok(/\.stat \.odometer\{font:700 2\.2rem/.test(cssP5), 'stat numbers are 22 px at 100 %');
+  ok(/\.stat \.odometer\{font:700 var\(--fs-num\)/.test(cssP5) && /--fs-num:1\.8rem/.test(cssP5), 'stat numbers are the 18-px --fs-num token at 100 % (20.7 px at Comfortable; was 22 / 25)');
   ok(/#hud\.short #objective-card #obj-why/.test(cssP5), 'a short window trims the tracker so it never runs under the ticker');
 }
 ok(U.el['title-name'].textContent === 'BAYOU STATE', '#title-name text');
@@ -731,6 +732,41 @@ try {
   }
   s.ui.tool = null; U.closeInspect(); U.closeCard(); U.dismissNotifs();
 } catch (e) { ok(false, 'paths pass ui: ' + (e.stack || e)); }
+
+// --- H6 type + spacing pass: numbers never wrap; the type scale is five tokens ---------------------------------------------
+try {
+  const minus = '−', h6 = css.slice(css.indexOf('/* H6 type + spacing')), h6c = h6.replace(/\/\*[\s\S]*?\*\//g, '');
+  // the formatter attaches the sign: a true minus (U+2212) glued to the "$" or the digits, never a hyphen on its own line
+  ok(U.fmt.money(-1690000) === minus + '$1.69M' && U.fmt.money(-1690000).charCodeAt(0) === 0x2212 && U.fmt.money(123400000) === '$123.4M' && U.fmt.money(-12300) === minus + '$12k' && U.fmt.money(2000) === '$2,000', 'money: −$1.69M (U+2212), $123.4M, −$12k, $2,000');
+  ok(U.fmt.compact(-12300) === minus + '12k' && U.fmt.compact(-1234) === minus + '1.2k' && U.fmt.compact(1500) === '1.5k' && U.fmt.compact(980) === '980' && U.fmt.compact(20000) === '20k' && U.fmt.compact(-5) === minus + '5', 'compact gauge numbers keep a negative sign attached (−12k, −1.2k, 1.5k, 20k)');
+  ok(U.fmt.int(20000) === '20,000' && U.fmt.int(9999) === '9,999' && U.fmt.int(100) === '100' && U.fmt.int(-4500) === minus + '4,500' && U.fmt.num(-3.46) === minus + '3.5' && U.fmt.int(NaN) === '0', 'int / num group thousands, one decimal, true minus: 20,000 / 9,999 / 100 / −4,500');
+  // the top bar with the stress values: each number is one text run, flagged nowrap
+  s.economy.cash = -1690000; s.economy.students = 20000; s.economy.applicants = 9999; s.economy.capacity = 9999; s.economy.prestige = 100;
+  U.update(s, 600); s.tick += 700; U.update(s, 600);
+  const cashEl = U.el['stat-cash-value'], stuEl = U.el['stat-students-value'], capEl = U.el['chip-capacity'], preEl = U.el['stat-prestige-value'];
+  ok(cashEl.textContent === minus + '$1.69M' && stuEl.textContent === '20,000' && preEl.textContent === '100', 'stress values: cash ' + cashEl.textContent + ', students ' + stuEl.textContent + ', prestige ' + preEl.textContent);
+  ok(/^Apps 9,999 \/ Cap 9,999$/.test(capEl.textContent), 'capacity chip groups thousands: ' + capEl.textContent);
+  ok(cashEl.dataset.nw === '1' && stuEl.dataset.nw === '1' && cashEl.classList.contains('num') && stuEl.classList.contains('num') && U.el['stat-prestige-value'].classList.contains('num') && U.el['stat-ecology-value'].classList.contains('num'), 'every stat number is flagged nowrap (class num + data-nw)');
+  // a sentence with a signed amount gets the invisible word joiner so a line can never strand the minus
+  U.decision(s, { id: 'h6s', text: 'Open the shelter? Dining closed 3 days, ' + minus + '$1.69M.', ticks: 50 });
+  ok(U.el['dt-text'].textContent === 'Open the shelter? Dining closed 3 days, ' + minus + '⁠$1.69M.' && U.el['dt-text'].dataset.nw !== '1', 'sentences keep the minus on its amount (U+2060 between − and $)');
+  U.keydown('n', { ctrl: false, shift: false, meta: false, alt: false });
+  U.decision(s, { id: 'h6c', text: '1:59:59', ticks: 50 });
+  ok(U.el['dt-text'].textContent === '1:59:59' && U.el['dt-text'].dataset.nw === '1', 'a clock (1:59:59) is a number too: nowrap, text untouched');
+  U.keydown('n', { ctrl: false, shift: false, meta: false, alt: false });
+  // CSS: one rule makes every numeric element nowrap + tabular; the tiles and chips carry it themselves too
+  const numRule = h6c.match(/(^|\n)([^{}\n]*\.stat \.odometer[^{}]*)\{white-space:nowrap;font-variant-numeric:tabular-nums\}/);
+  const numSel = numRule ? numRule[2].split(',').map((x) => x.trim()) : [];
+  const want = ['.num', '[data-nw]', '.stat .odometer', '.stat .delta', '#chip-capacity', '#chip-weather', '#stat-date', '.speed-btn', '.need-val', '.item .cost', '.bm-cost', '.bm-upkeep', '.land-price .v', '.fb-bud-row .v', '.mo-count', '.log-day', '.dt-p'];
+  ok(numRule && want.every((x) => numSel.includes(x)), 'H6 nowrap + tabular-nums rule covers tiles, chips, tray, palette / menu / Land Office prices' + (numRule ? '' : ' (rule missing)') + (numSel.length ? ' (missing: ' + want.filter((x) => !numSel.includes(x)).join(' ') + ')' : ''));
+  ok(/\.stat \.odometer\{[^}]*white-space:nowrap[^}]*font-variant-numeric:tabular-nums|\.stat \.odometer\{[^}]*font-variant-numeric:tabular-nums[^}]*white-space:nowrap/.test(css) && /\.stat-label\{[^}]*white-space:nowrap/.test(css) && /#chip-capacity\{[^}]*white-space:nowrap/.test(css) && /\.stat\{[^}]*white-space:nowrap/.test(css), 'the stat tile, its label, its number and the capacity chip are each nowrap');
+  ok(/#stat-cash \.odometer\{min-width:7ch\}/.test(css) && /#stat-students \.odometer\{min-width:5\.5ch\}/.test(css), 'tile numbers have a min-width sized for −$123.4M and 20,000');
+  // the type scale: five tokens + the stat number; the smallest text anywhere is 10.5 px at 100 %
+  ok(/--fs-label:1\.05rem;--fs-small:1\.2rem;--fs-body:1\.3rem;--fs-lead:1\.5rem;--fs-title:1\.7rem;--fs-num:1\.8rem/.test(css), 'type tokens: caption 10.5 / small 12 / body 13 / lead 15 / title 17 / number 18 px at 100 %');
+  const fsLit = (cssNoComments.match(/font-size:\s*\d*\.?\d+rem|font:[^;}]*?\s\d*\.?\d+rem\//g) || []).map((x) => parseFloat(x.match(/(\d*\.?\d+)rem/)[1]));
+  ok(fsLit.length > 0 && fsLit.every((v) => v >= 1.1 || v === 1.05), 'no literal font-size under 1.1 rem is left (they all read a token): ' + fsLit.filter((v) => v < 1.1).join(','));
+  ok(/--gutter:1\.6rem/.test(css) && /--panel-bg:linear-gradient/.test(css) && /--shadow:[^;]*inset 0 1px 0 rgba\(255,255,255,\.09\)/.test(css), 'Style C surfaces: 16-px gutter, panel gradient, one shadow with the 1-px inner highlight');
+} catch (e) { ok(false, 'H6 type + spacing: ' + (e.stack || e)); }
 
 console.log(`\n${passes} passed, ${failures} failed`);
 process.exit(failures ? 1 : 0);

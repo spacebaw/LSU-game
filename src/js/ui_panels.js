@@ -34,8 +34,14 @@
     try { return m[fn].apply(m, Array.prototype.slice.call(arguments, 2)); } catch (e) { BSU.error('ui_panels', name + '.' + fn, e); return undefined; }
   }
   function has(name, fn) { const m = BSU[name]; return !!(m && typeof m[fn] === 'function'); }
-  function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = String(text); return e; }
-  function setText(e, s) { if (!e) return; s = s == null ? '' : String(s); if (e.textContent !== s) e.textContent = s; }
+  /** H6 number rules. A text that is nothing but a number (sign, $, digits, k / M / %, a clock, "/tile") gets data-nw="1" (CSS: nowrap + tabular figures); a sentence that
+   *  carries a signed amount ("… · −$1.69M") gets a U+2060 word joiner between the minus and the "$" (invisible; both are prefix-numeric, so a line may otherwise break between
+   *  them and strand the minus; a plus sign is left alone). Every DOM text write in this module goes through el() / setText(), so the rule holds everywhere. */
+  const NUMTXT = /^[\u2212+\-]?\$?\d[\d,.:]*\s?[kM%x\u00d7]?(?:\s?\/\s?[A-Za-z]+)?$/;
+  function signJoin(s) { return s.indexOf('$') < 0 ? s : s.replace(/\u2212\$/g, '\u2212\u2060$'); }
+  function tidyText(e, s) { const num = s.length < 24 && NUMTXT.test(s); if (num !== (e.dataset.nw === '1')) { if (num) e.dataset.nw = '1'; else delete e.dataset.nw; } return num ? s : signJoin(s); }
+  function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = tidyText(e, String(text)); return e; }
+  function setText(e, s) { if (!e) return; s = tidyText(e, s == null ? '' : String(s)); if (e.textContent !== s) e.textContent = s; }
   function show(e, on) { if (!e) return; const hid = e.classList.contains('hidden'); if (on && hid) e.classList.remove('hidden'); else if (!on && !hid) e.classList.add('hidden'); }
   function cls(e, c, on) { if (!e) return; const h = e.classList.contains(c); if (on && !h) e.classList.add(c); else if (!on && h) e.classList.remove(c); }
   function clear(e) { if (!e) return; while (e.firstChild) e.removeChild(e.firstChild); }
