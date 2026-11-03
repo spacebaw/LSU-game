@@ -656,6 +656,26 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
 /* the last shed step (date chip gone) squeezes the buttons too, so even the compact HUD at 1280 x 800 / 115 % keeps every button on screen */
 #topbar.tightest .tb,#topbar.bare .tb{min-width:3.2rem;padding:0 .8rem} #topbar.tightest .speed-btn,#topbar.bare .speed-btn{min-width:2.8rem} #topbar.bare{gap:.6rem}   /* H7: the button squeeze starts at `tightest`, so the compact HUD (whose capacity chip is already folded away) keeps the date chip at 1440 */
 
+/* framing pass (public site): the first screen explains itself. Subtitle, How to play / About buttons, a quiet small-screen note, and the two panels; same tokens and surfaces as H6 */
+.title-hint{display:none;font:var(--fs-small)/1.3 var(--font-ui);letter-spacing:.02em;color:var(--text-dim)}
+.title-help{margin-top:0;gap:var(--sp-2);flex-wrap:wrap;justify-content:center}
+@media (max-width:899px),(hover:none) and (pointer:coarse){.title-hint{display:block}}
+@media (max-width:899px){#title{overflow:auto}.title-box{min-width:0;margin:auto;padding:var(--sp-6) var(--sp-4) var(--sp-5)}#title-name{font-size:4.4rem;letter-spacing:.04em}.title-row{flex-wrap:wrap;justify-content:center}}
+#app.title-on #panels{z-index:11;padding:2rem}   /* #panels is its own stacking context (z 4), so the panel-level z 11 above never lifted it over #title (z 10): Settings opened behind the title card */
+#panels #panel-howto{width:98rem;padding:1.6rem 2rem} #panels #panel-about{width:54rem}
+.how-goal{margin:0 0 var(--sp-3);max-width:84rem;font-size:var(--fs-body);line-height:1.5}
+.how-groups,.how-keys{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--sp-5)}
+.how-col .card-kicker{margin:0 0 var(--sp-2)}
+.how-col p{margin:0 0 var(--sp-2);font-size:var(--fs-small);line-height:1.45}
+#panels #panel-howto>.card-kicker{margin:var(--sp-2) 0 var(--sp-2);padding-top:var(--sp-3);border-top:1px solid rgba(255,255,255,.08)}
+.how-kcol{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:.4rem var(--sp-2);align-content:start;align-items:baseline;font-size:var(--fs-small);line-height:1.35}
+.how-kcol .key{justify-self:start;padding:1px .6rem;border-radius:.4rem;font-size:var(--fs-label);white-space:nowrap;color:var(--gold-hi);background:rgba(0,0,0,.35);border:1px solid rgba(253,208,35,.4)}
+.how-kcol .t{color:var(--text-dim)}
+.about-row{display:grid;grid-template-columns:8rem minmax(0,1fr);gap:var(--sp-3);padding:var(--sp-2) 0;border-bottom:1px solid rgba(255,255,255,.07);font-size:var(--fs-body);line-height:1.45}
+.about-row .k{color:var(--text-dim)}
+@media (max-width:899px){.how-groups,.how-keys{grid-template-columns:1fr;gap:var(--sp-3)}}
+#app.title-on:has(#panels .panel:not(.hidden)) .title-box{opacity:.3;filter:blur(1.5px)}   /* a panel opened from the title: the card steps back instead of peeking out around it */
+
 </style>
 </head>
 <body>
@@ -39305,7 +39325,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
 //   │  ├─ #cards (modal stack: .card#card-<id> .card-title .card-body .card-actions)
 //   │  └─ #perf-chip.hidden · #perfmode-chip.hidden · #hint.hidden · #btn-skip.hidden
 //   ├─ #panels  (#panel-<name>.panel built through registerPanel; settings + debug built in here)
-//   └─ #title  #title-name #title-tag #btn-charter #btn-continue input#title-seed #btn-title-settings #btn-title-mute
+//   └─ #title  #title-name #title-tag .title-hint #btn-charter #btn-continue #btn-title-howto #btn-title-about input#title-seed #btn-title-settings #btn-title-mute
 //
 // Input state machine (ARCHITECTURE §7.3):
 //   IDLE/INSPECTING + down(left)            → armed (down recorded)
@@ -39349,7 +39369,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
   const SKY_NAME = ['Dawn', 'Day', 'Golden', 'Dusk', 'Night'];
   const MOOD_FACES = ['😞', '🙁', '😐', '🙂', '😄'];
   const HINT_TEXT = { dredgeFill: 'Dredge spoil from the bayou raises marsh to dry land in ten days. Ecology pays for it.', saveUnavailable: 'Saves unavailable in this browser mode', perfMode: 'Performance mode', mute: '🔊 on · M to mute', pauseToPlan: 'Pause to plan', desireLine: 'Students want a path here' };
-  const PANEL_KEYS = { budget: 'Budget', season: 'Season', storm: 'Storm', land: 'Land Office', almanac: 'Almanac', milestones: 'Milestones', settings: 'Settings', debug: 'Debug' };   // L2: land
+  const PANEL_KEYS = { budget: 'Budget', season: 'Season', storm: 'Storm', land: 'Land Office', almanac: 'Almanac', milestones: 'Milestones', settings: 'Settings', howto: 'How to play', about: 'About', debug: 'Debug' };   // L2: land
 
   // ---------------------------------------------------------------------------
   // Small helpers (stub-safe: textContent/classList/style/dataset only)
@@ -39618,11 +39638,16 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
   function buildTitle() {
     const t = el('div', 'hidden'); t.id = 'title';
     const box = el('div', 'title-box');
-    const kicker = el('div', 'title-kicker', 'A SimCity in the swamp');
+    const kicker = el('div', 'title-kicker', 'A campus builder in the swamp');
     const name = el('h1', null, 'BAYOU STATE'); name.id = 'title-name';
-    const tag = el('div', null, '$4,000,000, one ridge, and a swamp. Build a university.'); tag.id = 'title-tag';
+    const tag = el('div', null, 'Build a university in the swamp. Keep it above water.'); tag.id = 'title-tag';   // framing pass: the one-line subtitle for a first-time visitor
+    const hint = el('div', 'title-hint', 'Best on a laptop in Chrome or Safari');   // shown by CSS only under 900 px wide or on a touch-only device; never blocks play
     const charter = btn('btn-charter', 'Click to charter the university.', 'primary big', function () { charterClick(); });
     const cont = btn('btn-continue', 'Continue', 'big', function () { call('audio', 'unlock'); call('session', 'continue_'); }); cont.disabled = true;
+    const help = el('div', 'title-row title-help');
+    const howBtn = btn('btn-title-howto', 'How to play', 'small', function () { M.openPanel('howto'); });
+    const aboutBtn = btn('btn-title-about', 'About this build', 'small', function () { M.openPanel('about'); });
+    help.appendChild(howBtn); help.appendChild(aboutBtn);
     const row = el('div', 'title-row');
     const seedLab = el('label', 'seed-label', 'Seed'); const seed = el('input'); seed.id = 'title-seed'; seed.type = 'text'; seed.placeholder = 'random'; seed.setAttribute('inputmode', 'numeric'); seed.setAttribute('autocomplete', 'off');
     seed.addEventListener('focus', function () { focusedInput = seed; }); seed.addEventListener('blur', function () { if (focusedInput === seed) focusedInput = null; });
@@ -39635,9 +39660,9 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     sz.appendChild(szs); sz.appendChild(szn);
     const campus = el('canvas', 'hidden'); campus.id = 'title-campus'; campus.width = 320; campus.height = 200;
     const foot = el('div', 'title-foot', 'Louisiana. One ridge. Mind the water.');
-    box.appendChild(kicker); box.appendChild(name); box.appendChild(tag); box.appendChild(charter); box.appendChild(cont); box.appendChild(row); box.appendChild(sz); box.appendChild(campus); box.appendChild(foot);
+    box.appendChild(kicker); box.appendChild(name); box.appendChild(tag); box.appendChild(hint); box.appendChild(charter); box.appendChild(cont); box.appendChild(help); box.appendChild(row); box.appendChild(sz); box.appendChild(campus); box.appendChild(foot);
     t.appendChild(box);
-    E.title = t; E['title-name'] = name; E['title-tag'] = tag; E['btn-charter'] = charter; E['btn-continue'] = cont; E['title-seed'] = seed; E['btn-title-settings'] = ts; E['btn-title-mute'] = tm; E['title-campus'] = campus; E['title-size'] = sz; E['title-size-note'] = szn; return t;
+    E.title = t; E['title-name'] = name; E['title-tag'] = tag; E['btn-charter'] = charter; E['btn-continue'] = cont; E['title-seed'] = seed; E['btn-title-settings'] = ts; E['btn-title-mute'] = tm; E['title-hint'] = hint; E['btn-title-howto'] = howBtn; E['btn-title-about'] = aboutBtn; E['title-campus'] = campus; E['title-size'] = sz; E['title-size-note'] = szn; return t;
   }
   function buildPanelsHost() { const p = el('div'); p.id = 'panels'; E.panels = p; p.appendChild(buildMenuOverlay()); return p; }
   /** menu layout pass: the Edit menu overlay (a 64-rem panel centred over the map, the existing panel chrome + close button): title, live summary, presets, "x / cap" count, the inline reason line, the dish grid, the note. Built once; syncMenuOverlay updates it in place */
@@ -40122,7 +40147,7 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
         if (key === 'Enter') { cardPrimary(s); return true; }
         if (key === 'Escape' && !s.ui.tool && !insp && !s.ui.panel) { if (card.spec.modal === true) return true; M.closeCard(); return true; }   // Esc peels one layer: tool → inspect → panel → card
       }
-      if (titleOn) return false;
+      if (titleOn) { if (key === 'Escape' && s.ui.panel) { M.openPanel(null); return true; } return false; }   // framing pass: Esc closes How to play / About / Settings on the title screen
       // (3b) the coach-mark tour owns the keyboard while it is up: Enter/→/Space next, ← back, Esc skips
       if (coach.step >= 0 && !coach.paused) {
         if (key === 'Enter' || key === 'ArrowRight' || key === ' ') { coachNext(s, 1); return true; }
@@ -41782,6 +41807,8 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     });
     reg('versionMismatch', function (s, p) { p = p || {}; return { id: 'versionMismatch', kicker: 'Save', title: 'That save is from another version', body: 'Version ' + fin(p.version, 0) + ' cannot be loaded here. Start fresh with the same seed (' + fin(p.seed, 0) + ')?', actions: [{ label: 'Start fresh, same seed', primary: true, fn: function () { call('audio', 'unlock'); M.showTitle(false); call('session', 'newGame', { seed: fin(p.seed, 0) >>> 0 }); } }, { label: 'Back' }] }; });
     if (!panels.settings) M.registerPanel('settings', { build: buildSettingsPanel, refresh: refreshSettingsPanel, events: ['speed:changed'] });
+    if (!panels.howto) M.registerPanel('howto', { build: buildHowPanel, refresh: null, events: [] });
+    if (!panels.about) M.registerPanel('about', { build: buildAboutPanel, refresh: null, events: [] });
     if (!panels.debug) M.registerPanel('debug', { build: buildDebugPanel, refresh: refreshDebugPanel, events: [] });
     if (!panels.milestones) M.registerPanel('milestones', { build: function (host) { host.appendChild(el('div', 'panel-title', 'Milestones')); const list = el('div', 'ms-list'); host.appendChild(list); host._list = list; }, refresh: function (s, host) { const list = host._list; if (!list) return; clear(list); for (const r of (call('progress', 'nearestMilestones', s, 8) || [])) { const d = el('div', 'ms-row'); d.appendChild(el('span', 'ms-name', r.name)); const b = el('div', 'bar'); const f = el('div', 'fill'); f.style.width = Math.round(clamp(r.goal > 0 ? r.progress / r.goal : 0, 0, 1) * 100) + '%'; b.appendChild(f); d.appendChild(b); d.appendChild(el('span', 'ms-count', r.goal > 1 ? Math.round(r.progress) + ' / ' + r.goal : '')); list.appendChild(d); } }, events: ['milestone:earned'] });
   }
@@ -41882,12 +41909,79 @@ input[type="range"]{width:20rem;accent-color:var(--gold)}
     } catch (e) { uerr('breakdown', e); }
   };
 
+  // ---------------------------------------------------------------------------
+  // How to play + About panels (framing pass): plain DOM, built once on first open; reached from the title screen and from Settings (the ☰ menu)
+  // ---------------------------------------------------------------------------
+  const HOW_GOAL = "Charter a university on the one dry ridge in a Louisiana swamp, and grow it into a flagship with 10,000 students and prestige 60. The swamp pushes back with floods, hurricanes and mosquitoes, so build for the water as much as for the students.";
+  const HOW_GROUPS = [
+    { h: 'Build', p: ['Pick a building (G) and click to place it. Drag to lay paths, roads and canals.', "Everything must link to the Founders' Hall path. Build near a path and the game lays the tie for you."] },
+    { h: 'Survive the swamp', p: ['Rain floods low ground. Dig canals, add pumps, and use Dredge & Fill to raise marsh into dry land.', 'Close a levee ring before a hurricane lands, and keep mosquitoes down with ponds and bat houses.'] },
+    { h: 'Grow', p: ['Beds, seats and dining set how many students can enroll, and tuition pays the bills.', 'Prestige comes from landmarks and winning football seasons. Buy more land at the Land Office (O).'] }
+  ];
+  /** the key table, one entry per column: k = the key chip, t = what it does, b = the data.keys bindings the row documents ([key, ctrl, shift, action]; ui.test checks every one against BSU.data.keys). N, I, Alt and the mouse are handled in keydown / the pointer machine, not data.keys */
+  const HOW_KEYS = [
+    { h: 'Build', rows: [
+      { k: 'G', t: 'Build menu', b: [['g', 0, 0, 'buildMenu']] },
+      { k: 'Tab', t: 'Next build tab (Shift: previous)', b: [['Tab', 0, 0, 'nextTab'], ['Tab', 0, 1, 'prevTab']] },
+      { k: 'Shift+1–9', t: 'Pick item 1 to 9', b: [['1', 0, 1, 'pick1'], ['9', 0, 1, 'pick9']] },
+      { k: 'X', t: 'Bulldoze', b: [['x', 0, 0, 'bulldoze']] },
+      { k: 'R', t: 'Rotate while placing', b: [['r', 0, 0, 'rotate']] },
+      { k: 'Alt', t: 'Hold to skip the auto tie', b: [] },
+      { k: 'Ctrl+Z', t: 'Undo', b: [['z', 1, 0, 'undo']] },
+      { k: 'Esc', t: 'Cancel or close', b: [['Escape', 0, 0, 'escape']] }] },
+    { h: 'Panels', rows: [
+      { k: 'O', t: 'Land Office', b: [['o', 0, 0, 'land']] },
+      { k: 'B', t: 'Budget', b: [['b', 0, 0, 'budget']] },
+      { k: 'T', t: 'Storm', b: [['t', 0, 0, 'storm']] },
+      { k: 'L', t: 'Milestones', b: [['l', 0, 0, 'milestones']] },
+      { k: 'N', t: 'Season (hold: network view)', b: [['n', 0, 0, 'season']] },
+      { k: 'I', t: 'Next issue (hold: spotlight)', b: [] },
+      { k: 'M', t: 'Mute', b: [['m', 0, 0, 'mute']] },
+      { k: 'Ctrl+S', t: 'Save', b: [['s', 1, 0, 'save']] },
+      { k: 'Ctrl+P', t: 'Postcard', b: [['p', 1, 0, 'postcard']] }] },
+    { h: 'Time and view', rows: [
+      { k: 'Space', t: 'Pause', b: [[' ', 0, 0, 'pause']] },
+      { k: '1 2 3 4', t: 'Speed 1× 2× 4× 8×', b: [['1', 0, 0, 'speed1'], ['2', 0, 0, 'speed2'], ['3', 0, 0, 'speed4'], ['4', 0, 0, 'speed8']] },
+      { k: 'F W K', t: 'Flood, water, mosquito maps', b: [['f', 0, 0, 'overlayFlood'], ['w', 0, 0, 'overlayWater'], ['k', 0, 0, 'overlayMosquito']] },
+      { k: 'P C E', t: 'Power, coverage, ecology maps', b: [['p', 0, 0, 'overlayPower'], ['c', 0, 0, 'overlayCoverage'], ['e', 0, 0, 'overlayEcology']] },
+      { k: 'H', t: 'Cycle the HUD (Shift+H: full)', b: [['h', 0, 0, 'hud'], ['h', 0, 1, 'hudFull']] },
+      { k: '− =', t: 'Zoom out, in (or the wheel)', b: [['-', 0, 0, 'zoomOut'], ['=', 0, 0, 'zoomIn']] },
+      { k: 'Arrows', t: 'Pan (or right-drag)', b: [['ArrowUp', 0, 0, 'panUp'], ['ArrowLeft', 0, 0, 'panLeft']] },
+      { k: 'Home', t: "Back to Founders' Hall", b: [['Home', 0, 0, 'home']] },
+      { k: '.', t: 'Follow a student', b: [['.', 0, 0, 'follow']] }] }
+  ];
+  M._ux.howKeys = HOW_KEYS;
+  function buildHowPanel(host) {
+    host.appendChild(el('div', 'panel-title', 'How to play'));
+    host.appendChild(el('p', 'how-goal', HOW_GOAL));
+    const groups = el('div', 'how-groups');
+    for (const g of HOW_GROUPS) { const c = el('div', 'how-col'); c.appendChild(el('div', 'card-kicker', g.h)); for (const t of g.p) c.appendChild(el('p', null, t)); groups.appendChild(c); }
+    host.appendChild(groups);
+    host.appendChild(el('div', 'card-kicker', 'Keys'));
+    const keys = el('div', 'how-keys'); keys.id = 'how-keys';
+    for (const g of HOW_KEYS) { const c = el('div', 'how-kcol'); for (const r of g.rows) { c.appendChild(el('span', 'key', r.k)); c.appendChild(el('span', 't', r.t)); } keys.appendChild(c); }
+    host.appendChild(keys);
+  }
+  function buildAboutPanel(host) {
+    host.appendChild(el('div', 'panel-title', 'About this build'));
+    const rows = [
+      ['Built by', 'Josh Fleig for LSU students, with Claude Code (Anthropic).'],
+      ['Started', 'October 2026, built over sixty-odd commits.'],
+      ['Format', 'One self-contained HTML file. No install, no network.'],
+      ['Code', 'Vanilla JavaScript and Canvas 2D. ' + ABOUT_MODULES + ' source modules joined by a build script.'],
+      ['Art', 'Hand-drawn in code. No image files.'],
+      ['Fiction', 'Bayou State University is made up. No real trademarks.']];
+    for (const r of rows) { const d = el('div', 'about-row'); d.appendChild(el('span', 'k', r[0])); d.appendChild(el('span', 'v', r[1])); host.appendChild(d); }
+  }
+  const ABOUT_MODULES = 28;   // src/manifest.json (ui.test checks it)
+
   // Settings panel (built in; ui_panels may re-register 'settings' with a fuller sheet)
   function buildSettingsPanel(host, s) {
     host.appendChild(el('div', 'panel-title', 'Settings'));
     const set = M.settings();
     const rowEl = function (label, control) { const r = el('div', 'set-row'); r.appendChild(el('span', 'k', label)); r.appendChild(control); host.appendChild(r); return r; };
     const chk = function (id, label, get, put) { const b = btn(id, '', 'toggle', function () { put(!get()); M.saveSettings(); refreshSettingsPanel(stateOf(), host); }); b.setAttribute('aria-pressed', get() ? 'true' : 'false'); setText(b, get() ? 'On' : 'Off'); rowEl(label, b); b._get = get; return b; };
+    { const hb = el('div', 'card-actions'); hb.appendChild(btn('btn-set-howto', 'How to play', 'small', function () { M.openPanel('howto'); })); hb.appendChild(btn('btn-set-about', 'About this build', 'small', function () { M.openPanel('about'); })); rowEl('Help', hb); }   // framing pass: the in-game way back to both panels
     host._audio = chk('chk-audio', 'Sound', function () { return !M.settings().muted; }, function (v) { M.settings().muted = !v; call('audio', 'mute', !v); refreshMuteButtons(); });
     const vol = el('input'); vol.id = 'sl-volume'; vol.type = 'range'; vol.min = '0'; vol.max = '1'; vol.step = '0.05'; vol.value = String(fin(set.volume, 0.5)); vol.addEventListener('input', function () { const v = clamp(parseFloat(vol.value) || 0, 0, 1); M.settings().volume = v; call('audio', 'setVolume', v); M.saveSettings(); }); rowEl('Volume', vol); host._vol = vol;
     host._particles = chk('seg-particles', 'Particles (high)', function () { return M.settings().particles !== 'low'; }, function (v) { M.settings().particles = v ? 'high' : 'low'; });

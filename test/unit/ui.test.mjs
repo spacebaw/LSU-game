@@ -4,6 +4,7 @@
 // the ghost spec from buildings.canPlace, the machine on synthetic pointer events, and selfTest.
 // Usage: node test/unit/ui.test.mjs   (exit 1 on any failure)
 import { readFileSync, existsSync } from 'node:fs';
+import { execSync } from 'node:child_process';
 import vm from 'node:vm';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -108,6 +109,46 @@ U.showTitle(false);
 BSU.headless.tick(20); BSU.headless.render();
 ok(U.el.title.classList.contains('hidden') && !U.el.hud.classList.contains('hidden'), 'showTitle(false) hides the title and shows the HUD');
 ok(U.state === 'IDLE' && s.ui.tool === null, 'reset: IDLE, no tool');
+
+// --- framing pass: the public site's first screen explains itself (subtitle, How to play, About this build) ---
+{
+  const textOf = (n) => (n && (n.children || []).length ? n.children.map(textOf).join(' ') : String((n && n.textContent) || ''));
+  const collect = (n, pred, out = []) => { if (n) { if (pred(n)) out.push(n); (n.children || []).forEach((c) => collect(c, pred, out)); } return out; };
+  const dom = win.document;
+  const bh = U.el['btn-title-howto'], ba = U.el['btn-title-about'];
+  ok(bh && ba && bh.textContent === 'How to play' && ba.textContent === 'About this build' && dom.getElementById('btn-title-howto') === bh && dom.getElementById('btn-title-about') === ba, 'title screen has the How to play and About this build buttons');
+  ok(/Keep it above water/.test(U.el['title-tag'].textContent) && U.el['btn-charter'] && U.el['btn-continue'] && U.el['title-seed'] && U.el['btn-title-settings'], 'the title subtitle is in place and the charter / continue / seed / settings controls are unchanged: ' + U.el['title-tag'].textContent);
+  ok(/Best on a laptop in Chrome or Safari/.test(U.el['title-hint'].textContent) && /\.title-hint\{display:none/.test(css) && /@media \(max-width:899px\),\(hover:none\) and \(pointer:coarse\)\{\.title-hint\{display:block\}/.test(css), 'the small-screen note is hidden by default, shown under 900 px or on a touch-only device (CSS only; nothing blocks play)');
+  U.showTitle(true, {});
+  bh.dispatchEvent({ type: 'click' });
+  const hp = U.el['panel-howto'], ht = textOf(hp);
+  ok(U.panel() === 'howto' && hp && !hp.classList.contains('hidden') && /Founders' Hall/.test(ht) && ['Build', 'Survive the swamp', 'Grow', 'Keys'].every((h) => collect(hp, (n) => String(n.className) === 'card-kicker' && n.textContent === h).length === 1), 'How to play opens from the title: goal, Build / Survive the swamp / Grow, Keys');
+  ok(collect(hp, (n) => String(n.className) === 'key').length >= 24 && /Land Office/.test(ht) && /network view/.test(ht), 'How to play carries the key table');
+  const keys = BSU.data.keys, H = U._ux.howKeys, documented = new Set(), bad = [];
+  const bound = (b) => keys.some((k) => k.key.toLowerCase() === String(b[0]).toLowerCase() && !!k.ctrl === !!b[1] && !!k.shift === !!b[2] && k.action === b[3]);
+  for (const g of H) for (const r of g.rows) for (const b of r.b) { documented.add(b[3]); if (!bound(b)) bad.push(r.k + ' ' + b.join('/')); }
+  ok(bad.length === 0, 'every key in the How to play table is bound to the action it names in data.keys' + (bad.length ? ' (not bound: ' + bad.join(', ') + ')' : ''));
+  const missing = keys.filter((k) => !documented.has(k.action) && !/^(pick[2-8]|toastYes|debug|panRight|panDown)$/.test(k.action)).map((k) => k.action);
+  ok(missing.length === 0, 'no data.keys action is missing from the How to play table' + (missing.length ? ' (missing: ' + missing.join(', ') + ')' : ''));
+  ok(/key === 'n' \|\| key === 'N'/.test(src) && /nHeldLong/.test(src) && /key === 'i' \|\| key === 'I'/.test(src) && /noTie: heldAlt/.test(src), 'the N (tap / hold), I (tap / hold) and Alt (no tie) rows match keydown');
+  ok(U.keydown('Escape', {}) === true && U.panel() === null, 'Esc closes a panel opened from the title screen');
+  ba.dispatchEvent({ type: 'click' });
+  const ap = U.el['panel-about'], at = textOf(ap).replace('✕', '').trim();
+  const nMods = JSON.parse(readFileSync(join(root, 'src', 'manifest.json'), 'utf8')).modules.length;
+  ok(U.panel() === 'about' && ap && !ap.classList.contains('hidden') && /Josh Fleig/.test(at) && /Claude Code \(Anthropic\)/.test(at) && /October 2026/.test(at) && /no network/i.test(at) && /Canvas 2D/.test(at) && /No image files/.test(at) && /No real trademarks/.test(at), 'About this build opens from the title with the plain facts');
+  ok(at.indexOf(nMods + ' source modules') >= 0, 'About says ' + nMods + ' source modules (src/manifest.json)');
+  ok(/sixty-odd commits/.test(at), 'About gives a rough commit count rather than a number that goes stale');
+  const words = at.split(/\s+/).filter(Boolean).length;
+  ok(words < 120, 'About stays under 120 words (' + words + ')');
+  U.openPanel('settings');
+  const sh = dom.getElementById('btn-set-howto'), sa = dom.getElementById('btn-set-about');
+  ok(sh && sa, 'Settings (the in-game menu) has How to play and About buttons');
+  sh.dispatchEvent({ type: 'click' }); ok(U.panel() === 'howto', 'Settings → How to play');
+  U.openPanel('settings'); sa.dispatchEvent({ type: 'click' }); ok(U.panel() === 'about', 'Settings → About');
+  U.openPanel(null); U.showTitle(false);
+  const cssF = css.slice(css.indexOf('/* framing pass'));
+  ok(/#panels #panel-howto\{width:98rem/.test(cssF) && /#panels #panel-about\{width:54rem\}/.test(cssF) && /#app\.title-on #panels\{z-index:11/.test(cssF), 'framing CSS: panel widths and the title-screen stacking fix');
+}
 ok(Object.keys(U.el.tabEls).length >= 2 && Object.keys(U.el.itemEls).length >= 3, `palette built: ${Object.keys(U.el.tabEls).length} tabs, ${Object.keys(U.el.itemEls).length} items`);
 ok(!('founders_hall' in U.el.itemEls), "founders_hall never appears in the palette");
 // palette pass: every tile is a vertical stack (framed icon, name, price), nothing positioned over the art
