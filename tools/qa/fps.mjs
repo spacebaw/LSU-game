@@ -4,7 +4,7 @@
 // perf().passMs table. Headless Chrome is software raster: read deltas (--compare), not absolute numbers.
 //
 //   node tools/qa/fps.mjs [--size 96|64] [--dpr 2] [--zoom 1] [--night] [--index path] [--frames 150] [--runs 1]
-//                         [--width 1440] [--height 900] [--buildings 46]   (46 placements = about 38 buildings + 8 plants) [--shot name] [--out dir]
+//                         [--width 1440] [--height 900] [--buildings 46] [--pan]   (46 placements = about 38 buildings + 8 plants) [--shot name] [--out dir]
 //   node tools/qa/fps.mjs --compare pathA pathB [same flags]     (A/B: runs both, prints the delta per row)
 //
 // A/B against HEAD:  git show HEAD:bayou-state/index.html > /tmp/x.html && node tools/qa/fps.mjs --compare /tmp/x.html index.html
@@ -19,7 +19,7 @@ const args = parseArgs(argv, {
   size: { type: 'num', def: 96 }, dpr: { type: 'num', def: 2 }, zoom: { type: 'num', def: 1 }, night: { type: 'bool', def: false },
   index: { type: 'str', def: '' }, frames: { type: 'num', def: 150 }, runs: { type: 'num', def: 1 },
   width: { type: 'num', def: 1440 }, height: { type: 'num', def: 900 }, buildings: { type: 'num', def: 46 },
-  shot: { type: 'str', def: '' }, out: { type: 'str', def: DEFAULT_OUT },
+  shot: { type: 'str', def: '' }, out: { type: 'str', def: DEFAULT_OUT }, pan: { type: 'bool', def: false },
 });
 if (args.size !== 64 && args.size !== 96) { console.error('--size must be 64 or 96'); process.exit(2); }
 
@@ -36,6 +36,14 @@ async function measure(index) {
     const sky = args.night ? await g.eval(`BSU.weather.sky(BSU.state).phase`) : null;
     const p = await g.sample(args.frames, { settle: 30 });
     if (args.shot) await g.shot(args.shot + (compare ? '-' + (index === compare[0] ? 'A' : 'B') : ''));
+    // --pan: move the camera 20 tiles toward the middle of the map, let it re-bake, sample again: the ring must pre-bake and the view upgrade again (no lock-out at the cap)
+    let pan = null;
+    if (args.pan) {
+      const moved = await g.panTowardCentre(20); await g.settleCamera();
+      const t0 = Date.now(); const pb = await g.waitBake({ timeoutMs: 60000 }); const ps = await g.sample(Math.min(args.frames, 100), { settle: 20 });
+      const hi = await g.eval(`(function () { var i = BSU.render.hdInfo(); return { hd: i.hdChunks, ring: i.ring, settled: i.settled, fallback: i.fallback, mb: i.chunkMB }; })()`);
+      pan = { moved, bakeMs: Date.now() - t0, bake: pb.ok ? (pb.settled ? `settled, ${pb.pending} at master 1` : 'ok') : 'TIMEOUT', hdChunks: hi.hd, ring: hi.ring, settled: hi.settled, fallback: hi.fallback, chunkMB: hi.mb, frameMsMean: ps.frameMsMean, tcacheBuilds: ps.tcBuilds, chunkBakesM1: ps.bakes1, chunkBakesM2: ps.bakes2 };
+    }
     const errors = await g.errorsSince(mark);
     const rows = {
       frameMsMean: p.frameMsMean, frameMsP95: p.frameMsP95, fps: p.fps, drawCalls: p.drawCalls, chunks: p.chunks, agentsDrawn: p.agentsDrawn,
@@ -43,7 +51,7 @@ async function measure(index) {
     };
     const hdOk = await g.eval(`(function () { var i = BSU.render.hdInfo(); return { hd: i.on, master: i.chunkMaster, fallback: i.fallback }; })()`);
     return {
-      rows, passes: p.passMs || {}, errors,
+      rows, passes: p.passMs || {}, errors, pan,
       info: { buildings: campus.count, placements: campus.placements, inView: view.inView, onMap: view.onMap, bake: bake.ok ? `ok ${(bake.ms / 1000).toFixed(1)}s${bake.settled ? `, ${bake.pending} chunk(s) held at master 1 by the HD cap` : ''}` : `TIMEOUT (${bake.pending} pending)`, perfMode: p.perfMode, dpr: p.dpr, zoom: p.zoom, hd: hdOk, nightSky: sky, tcacheMB: p.tcacheMB },
     };
   } finally { await g.close(); }
@@ -54,7 +62,7 @@ function merge(results) {
   const rows = {}, passes = {};
   for (const k of Object.keys(results[0].rows)) rows[k] = mean(results.map((r) => r.rows[k] || 0));
   for (const k of new Set(results.flatMap((r) => Object.keys(r.passes)))) passes[k] = mean(results.map((r) => r.passes[k] || 0));
-  return { rows, passes, info: results[0].info, errors: results.flatMap((r) => r.errors), perRun: results.map((r) => r.rows.frameMsMean) };
+  return { rows, passes, info: results[0].info, errors: results.flatMap((r) => r.errors), perRun: results.map((r) => r.rows.frameMsMean), pan: results[0].pan };
 }
 const f2 = (v) => (Math.abs(v) >= 100 ? v.toFixed(0) : v.toFixed(2));
 const header = (label, r) => `${label}: ${args.size}-map  dpr ${r.info.dpr}  zoom ${r.info.zoom}  ${args.width}x${args.height}  ${args.frames} frames${args.night ? `  NIGHT (sky phase ${r.info.nightSky}${r.info.nightSky === 4 ? ' = night' : ', NOT night'})` : ''}  ${r.info.buildings} buildings + ${r.info.placements - r.info.buildings} plants (${r.info.inView} buildings in view${r.info.onMap ? ', viewport on map' : ', viewport NOT fully on map'})  bake ${r.info.bake}${r.info.perfMode ? '  PERF MODE ON' : ''}${args.runs > 1 ? '  frameMs per run: ' + r.perRun.map(f2).join(' ') : ''}`;
@@ -68,6 +76,7 @@ if (!compare) {
   for (const [k, v] of Object.entries(r.rows)) console.log('  ' + row([k, f2(v)], [14, 10]));
   console.log('  passMs (smoothed CPU ms per pass; it blames the pass that flushes the raster, so read A/B, not absolutes):');
   for (const [k, v] of Object.entries(r.passes).sort((a, b) => b[1] - a[1]).filter(([, v]) => v >= 0.005)) console.log('    ' + row([k, f2(v)], [14, 10]));
+  if (r.pan) console.log(`  after a ${20}-tile pan (camera moved ${r.pan.moved} px): bake ${r.pan.bake} in ${(r.pan.bakeMs / 1000).toFixed(1)}s, ${r.pan.hdChunks} HD chunks, ${r.pan.settled} held at master 1, ring ${r.pan.ring} chunks, ${r.pan.chunkMB} MB, fallback ${r.pan.fallback}; resting sample: frameMsMean ${f2(r.pan.frameMsMean)}, chunk bakes ${r.pan.chunkBakesM1} + ${r.pan.chunkBakesM2}, composite builds ${r.pan.tcacheBuilds}`);
   if (r.errors.length) { console.log('  ERRORS:'); for (const e of r.errors.slice(0, 6)) console.log('    ' + e); exitCode = 1; }
 } else {
   const [ia, ib] = compare.map((p) => resolveIndex(p));

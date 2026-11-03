@@ -681,5 +681,51 @@ try {
   ok(BSU.errors.size === errC, 'no BSU.error across the H7b cache checks');
 } catch (e) { ok(false, 'H7b render: ' + (e.stack || e)); }
 
+// --- H7c chunk cap settle: at the HD byte cap a still camera bakes nothing and rebuilds no composite ------------------
+// (before: at dpr 2 on a 1440 × 900 view the upgrade of one visible chunk evicted another visible one, which was re-baked at master 1 and upgraded in turn: ~1 bake a frame, forever)
+try {
+  const H = BSU.headless, sS = BSU.state, errS = BSU.errors.size, hdp = BSU.params.art.hd, saveCap = hdp.chromeChunkMB;
+  const settle = (frames) => { for (let k = 0; k < frames; k++) H.render(); };
+  const rest = (frames) => { R.bakeStatReset(); const b0 = R.terrainCacheInfo().builds; const ep0 = R.hdInfo().capEpoch; settle(frames); const bk = R.hdInfo().bake; return { n1: bk.n1, n2: bk.n2, builds: R.terrainCacheInfo().builds - b0, epoch: R.hdInfo().capEpoch - ep0 }; };
+  const home = () => { R.reset(sS, false); R.bakeStatReset(); R.panToTile(sS.plot.founders.tx + 1, sS.plot.founders.ty + 1, false); R.setZoom(2); };
+  // the roomy default cap: every visible chunk goes HD, nothing is held back, the ring pre-bakes, then the frame rests
+  home(); settle(260);
+  const full = R.hdInfo();
+  ok(full.chunkMaster === 2 && full.hdChunks >= 4 && full.settled === 0 && full.fallback === false, `a roomy cap: every visible chunk upgrades (${full.hdChunks} HD, ${full.settled} held back)`);
+  ok(full.ring > 0, `the ring just outside the view is pre-baked (${full.ring} chunks)`);
+  const r0 = rest(120);
+  ok(r0.n1 === 0 && r0.n2 === 0 && r0.builds <= 1, `a roomy cap at rest bakes nothing and rebuilds no composite (bakes ${r0.n1} + ${r0.n2}, builds ${r0.builds})`);
+  // a tight cap: only some of the visible chunks can be HD
+  const capMB = Math.max(9, Math.round(full.chunkMB * 0.45));
+  hdp.chromeChunkMB = capMB; home(); settle(300);
+  const tight = R.hdInfo();
+  ok(tight.hdChunks >= 1 && tight.settled >= 1 && tight.fallback === false && tight.chunkMaster === 2, `a tight ${capMB} MB cap: some visible chunks are HD (${tight.hdChunks}), the rest settle at master 1 (${tight.settled}), no latch`);
+  ok(tight.chunkMB <= capMB, `the chunk bytes stay under the cap (${tight.chunkMB} of ${capMB} MB)`);
+  const r1 = rest(150);
+  ok(r1.n1 === 0 && r1.n2 === 0 && r1.builds <= 1 && r1.epoch === 0, `a still camera at the cap bakes nothing: bakes ${r1.n1} + ${r1.n2}, composite builds ${r1.builds}, settle epoch moves ${r1.epoch}`);
+  const rLong = rest(900);   // past the idle-eviction horizon (chunkIdleFrames 600): an evicted ring chunk is not pre-baked again while the view stays put
+  ok(rLong.n1 === 0 && rLong.n2 === 0 && rLong.builds <= 1, `and stays at zero bakes for 900 frames, past the idle eviction of the ring: bakes ${rLong.n1} + ${rLong.n2}, composite builds ${rLong.builds}`);
+  const tcHits0 = R.terrainCacheInfo().hits; settle(10);
+  ok(R.terrainCacheInfo().ok && R.terrainCacheInfo().hits >= tcHits0 + 10, 'every frame at rest blits the cached composite');
+  // a pan of 20 tiles: the visible set changes, the settle marks reset, the new visible chunks upgrade where they fit and the frame comes to rest again
+  const hdBefore = R.hdInfo().hdChunks, up0 = R.hdInfo().lastUpgrade;
+  const cam0 = { x: R.camera.x, y: R.camera.y }; R.panBy(-800, -240, false); R.bakeStatReset(); settle(120);   // 20 tiles toward the middle of the map (the plot sits near the east edge)
+  ok(Math.hypot(R.camera.x - cam0.x, R.camera.y - cam0.y) > 300, `the pan moved the camera ${Math.round(Math.hypot(R.camera.x - cam0.x, R.camera.y - cam0.y))} px`);
+  const afterPan = R.hdInfo();
+  ok(afterPan.bake.n1 > 0 && afterPan.bake.n2 > 0, `after a 20-tile pan the new view bakes (master 1: ${afterPan.bake.n1}, master 2: ${afterPan.bake.n2})`);
+  ok(afterPan.hdChunks >= 1 && afterPan.lastUpgrade !== up0 && afterPan.fallback === false, `and its chunks upgrade to master 2 where they fit: no permanent lock-out (${afterPan.hdChunks} HD, was ${hdBefore})`);
+  ok(afterPan.chunkMB <= capMB, `still under the cap after the pan (${afterPan.chunkMB} of ${capMB} MB)`);
+  const r2 = rest(150);
+  ok(r2.n1 === 0 && r2.n2 === 0 && r2.builds <= 1, `and it settles again: bakes ${r2.n1} + ${r2.n2}, composite builds ${r2.builds}`);
+  // the roomy cap again after the pan: the ring pre-bakes around the new view
+  hdp.chromeChunkMB = saveCap; settle(260); const ringSeries = []; for (let k = 0; k < 6; k++) { ringSeries.push(R.hdInfo().ring + '/' + R.hdInfo().bake.n1); settle(40); }
+  const roomy2 = R.hdInfo();
+  ok(roomy2.ring > 0 && roomy2.settled === 0, `restoring the cap lifts the hold: every visible chunk goes HD and the ring pre-bakes (${roomy2.hdChunks} HD, ring ${roomy2.ring}, held back ${roomy2.settled})`);
+  const r3 = rest(120);
+  ok(r3.n1 === 0 && r3.n2 === 0 && r3.builds <= 1, `and rests: bakes ${r3.n1} + ${r3.n2}, composite builds ${r3.builds} (ring/m1 bakes per 40 frames ${ringSeries.join(' ')})`);
+  hdp.chromeChunkMB = saveCap; R.setZoom(1); settle(6);
+  ok(BSU.errors.size === errS, 'no BSU.error across the cap-settle checks');
+} catch (e) { ok(false, 'H7c cap settle: ' + (e.stack || e)); }
+
 console.log(`\n${passes} passed, ${failures} failed`);
 process.exit(failures ? 1 : 0);

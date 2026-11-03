@@ -67,6 +67,12 @@
   // blits that one canvas 1:1. A moving camera (or a shake) never touches it; the canvas is freed after 4 s of continuous motion.
   const TC = { c: null, g: null, w: 0, h: 0, ok: false, epoch: -1, x: NaN, y: NaN, z: NaN, vw: 0, vh: 0, dpr: 0, sm: false, still: 0, moving: 0, hits: 0, builds: 0 };
   let chunkEpoch = 0;   // bumps whenever a VISIBLE chunk canvas is (re)baked or dropped: the cache's content stamp
+  // chunk cap settle (H7c): a visible chunk whose master-2 upgrade cannot fit under the HD byte cap even after every off-screen chunk is evicted is marked `noFit = capEpoch`
+  // and is not retried until capEpoch moves: it bumps when bytes are freed (a chunk dropped), the visible set changes, the HD target / zoom / dpr changes or the cap changes.
+  // Without it a still camera at the cap upgraded one chunk, evicted another visible one, re-baked that at master 1 and upgraded it again, every frame (every bake bumped chunkEpoch)
+  // visEpoch moves only with the view (visible set, zoom, dpr, HD target, cap): a ring chunk evicted for bytes or idleness (`ringOff = visEpoch`) is not pre-baked again until it does
+  let capEpoch = 0, visEpoch = 0, lastCapB = 0, lastVisSig = 0, hrWant = -1, hrMaster = -1, hrZoom = NaN, hrDpr = NaN;
+  const HD_FILL = 0.95;   // upgrades and the ring pre-bake stop at this share of the cap: the rest stays free for the master-1 bakes of newly visible chunks (no latch from a marginal overflow)
   let bgSkipped = false;   // the frame's BG fill was left to the chunk pass (a cache hit covers every pixel)
   let chunks = new Array(NCH);   // one table, NCH = CXN × CYN slots (allocChunks fills it; the BSU.onMap below resizes it per game)
   let dirtyBits = new Uint8Array(NCH);
@@ -159,6 +165,7 @@
     const at = caps ? caps.masterAt : 1.5;
     hdMaster = !hdOn ? (atlasZoom >= 2 ? 2 : 1) : ((atlasZoom >= 2 || zoomNow * dpr >= at) ? 2 : 1);
     hdChunkWant = (hdOn && hdMaster === 2 && !hdFallbackChunks && !sp.hdFallback) ? 2 : 1;
+    if (hdChunkWant !== hrWant || hdMaster !== hrMaster || zoomNow !== hrZoom || dpr !== hrDpr) { hrWant = hdChunkWant; hrMaster = hdMaster; hrZoom = zoomNow; hrDpr = dpr; capEpoch++; visEpoch++; }   // H7c: the HD target, the zoom or the dpr moved (this runs every frame: only a change counts): a chunk that did not fit may now
     hdMasterHalf = hdOn ? M.hdMasterOf(zoomNow * FB_SCALE, dpr) : 1;   // H4: the football layer draws its sprites at half the zoom (FB_SCALE), so its HD families are fetched at the master that lands 1:1 at THAT scale (zoom 2 / dpr 1 → master 1 crisp; zoom 2 / dpr 2 → master 2)
   }
   M.hdMasterOf = function (z, d) { const az = masterOf(z); return (az >= 2 || fin(z, 1) * fin(d, 1) >= ((S() && S().hdCaps) ? S().hdCaps().masterAt : 1.5)) ? 2 : 1; };
@@ -307,16 +314,16 @@
   function allocChunks() {
     for (let k = 0; k < NCH; k++) {
       const cx = k % CXN, cy = (k / CXN) | 0, o = chunkOrigin(cx, cy);
-      chunks[k] = { cx: cx, cy: cy, ox: o.ox, oy: o.oy, hh: (cx === CXN - 1 || cy === CYN - 1) ? CHH_E : CHH, canvas: null, ctx: null, dirty: 1, lastSeen: -1, vis: 0, master: 0, bytes: 0 };
+      chunks[k] = { cx: cx, cy: cy, ox: o.ox, oy: o.oy, hh: (cx === CXN - 1 || cy === CYN - 1) ? CHH_E : CHH, canvas: null, ctx: null, dirty: 1, lastSeen: -1, vis: 0, master: 0, bytes: 0, noFit: -1, ringOff: -1 };
       dirtyBits[k] = 1;
     }
-    chunkEpoch++; TC.ok = false;
+    chunkEpoch++; TC.ok = false; capEpoch++; visEpoch++;
   }
   function tcFree() { if (TC.c) { try { TC.c.width = 1; TC.c.height = 1; } catch (e) { /* stub */ } } TC.c = null; TC.g = null; TC.w = 0; TC.h = 0; TC.ok = false; }
   /** true when the terrain composite will be blitted this frame as it stands (nothing moved, no chunk changed): the frame may skip its BG fill */
   function tcWillHit(smooth) { return !!(TC.ok && TC.c && TC.epoch === chunkEpoch && TC.x === camera.x && TC.y === camera.y && TC.z === zoomNow && TC.vw === vw && TC.vh === vh && TC.dpr === dpr && TC.sm === smooth && TC.w === canvas.width && TC.h === canvas.height && !(nowMs() < shakeUntil && shakePx > 0)); }
   M.terrainCacheInfo = function () { return { on: !!TC.c, ok: TC.ok, still: TC.still, hits: TC.hits, builds: TC.builds, mb: TC.c ? Math.round(TC.w * TC.h * 4 / 10485.76) / 100 : 0 }; };
-  function dropChunk(ch) { if (ch.vis) chunkEpoch++; if (ch.canvas) { try { ch.canvas.width = 1; ch.canvas.height = 1; } catch (e) { /* stub */ } } ch.canvas = null; ch.ctx = null; ch.dirty = 1; ch.master = 0; ch.bytes = 0; dirtyBits[ch.cx + ch.cy * CXN] = 1; dropDeck(ch); }
+  function dropChunk(ch) { if (ch.vis) chunkEpoch++; capEpoch++; ch.noFit = -1; if (ch.canvas) { try { ch.canvas.width = 1; ch.canvas.height = 1; } catch (e) { /* stub */ } } ch.canvas = null; ch.ctx = null; ch.dirty = 1; ch.master = 0; ch.bytes = 0; dirtyBits[ch.cx + ch.cy * CXN] = 1; dropDeck(ch); }
   function liveChunks() { let n = 0; for (let k = 0; k < NCH; k++) if (chunks[k] && chunks[k].canvas) n++; return n; }
   /** mark chunk i (0–63) dirty */
   M.dirtyChunk = function (i) { i = i | 0; if (i >= 0 && i < NCH) { dirtyBits[i] = 1; if (chunks[i]) chunks[i].dirty = 1; } };
@@ -1132,14 +1139,34 @@
       let victim = null;
       for (let k = 0; k < NCH; k++) { const ch = chunks[k]; if (ch.canvas && frameNo - ch.lastSeen > C.chunkIdleFrames && (!victim || ch.lastSeen < victim.lastSeen)) victim = ch; }
       if (!victim) break;
-      dropChunk(victim); mem -= C.chunkMB;
+      dropChunk(victim); victim.ringOff = visEpoch; mem -= C.chunkMB;
     }
     if (hdChunkCount() > 0 || hdFallbackChunks) hdCapCheck();   // H0: the HD chunk cap (and the fallback latch, which clears once the bytes drop under 60 % of the cap)
   }
   // H0: actual chunk canvas bytes and the master-2 count (perf / hdInfo)
   function chunkBytes() { let b = 0; for (let k = 0; k < NCH; k++) { const ch = chunks[k]; if (ch && ch.canvas) b += ch.bytes | 0; } return b; }
   function hdChunkCount() { let n = 0; for (let k = 0; k < NCH; k++) { const ch = chunks[k]; if (ch && ch.canvas && ch.master === 2) n++; } return n; }
-  /** H0: the HD chunk byte cap (params.art.hd, Safari pair when detected): evict the least-recently-seen chunk NOT drawn this frame
+  /** H7c: visible chunks left at master 1 because their upgrade does not fit under the cap (hdInfo().settled) */
+  function settledCount() { let n = 0; for (let k = 0; k < NCH; k++) { const ch = chunks[k]; if (ch.vis && ch.canvas && ch.master !== 2 && ch.noFit === capEpoch) n++; } return n; }
+  /** H7c: live chunks outside the viewport (the pre-baked ring and whatever a pan left behind) */
+  function ringCount() { let n = 0; for (let k = 0; k < NCH; k++) { const ch = chunks[k]; if (ch.canvas && !ch.vis) n++; } return n; }
+  /** H7c: the HD chunk byte cap in bytes (Chrome / Safari pair via sprites.hdCaps) */
+  function hdCapBytes() { const sp = S(); const caps = typeof sp.hdCaps === 'function' ? sp.hdCaps() : { chunkMB: 120 }; return caps.chunkMB * 1048576; }
+  /** H7c: do `bytesNeeded` more fit under HD_FILL × cap? With evict, off-screen chunks are dropped (LRU) to make room, but only when that is enough: nothing is evicted for an upgrade that still would not fit. */
+  function hdRoomFor(bytesNeeded, capB, evict) {
+    const lim = capB * HD_FILL; let b = 0, free = 0;
+    for (let k = 0; k < NCH; k++) { const ch = chunks[k]; if (ch.canvas) { b += ch.bytes | 0; if (!ch.vis) free += ch.bytes | 0; } }
+    if (b + bytesNeeded <= lim) return true;
+    if (!evict || b - free + bytesNeeded > lim) return false;
+    while (b + bytesNeeded > lim) {
+      let victim = null;
+      for (let k = 0; k < NCH; k++) { const ch = chunks[k]; if (ch.canvas && !ch.vis && (!victim || ch.lastSeen < victim.lastSeen)) victim = ch; }
+      if (!victim) return false;
+      b -= victim.bytes | 0; dropChunk(victim); victim.ringOff = visEpoch;
+    }
+    return true;
+  }
+  /** H0: the HD chunk byte cap (params.art.hd, Safari pair when detected): evict the least-recently-seen OFF-SCREEN chunk
    *  (LRU, no idle wait — a 3.4 MB canvas is worth more than a pan back); if only this frame's chunks remain and the cap is still
    *  exceeded, latch the fallback: the chunk bake targets master 1 and the master-2 canvases are re-baked at 1 as they come up */
   function hdCapCheck() {
@@ -1148,9 +1175,9 @@
     let b = chunkBytes();
     while (b > cap) {
       let victim = null;
-      for (let k = 0; k < NCH; k++) { const ch = chunks[k]; if (ch.canvas && ch.lastSeen < frameNo && (!victim || ch.lastSeen < victim.lastSeen)) victim = ch; }
+      for (let k = 0; k < NCH; k++) { const ch = chunks[k]; if (ch.canvas && !ch.vis && (!victim || ch.lastSeen < victim.lastSeen)) victim = ch; }   // H7c: off-screen chunks only (a visible one not yet drawn this frame used to be a victim: it was re-baked at master 1 and upgraded again, forever)
       if (!victim) break;
-      b -= victim.bytes | 0; dropChunk(victim);
+      b -= victim.bytes | 0; dropChunk(victim); victim.ringOff = visEpoch;
     }
     if (b > cap && !hdFallbackChunks) {
       // H7: only a working set the bake TARGETS at master 2 latches the fallback. A zoom-out step already targets master 1 (dpr 2 on a 96 map: ~110 visible chunks), so the stale
@@ -2895,16 +2922,19 @@
     const smooth = (z < 1 && !info.perfMode) || frameSmooth;   // art pass B1: a filtered 2:1 downsample at 0.5× (nearest sparkled the noisy ground); off in perf mode. hud + zoom pass: on at every non-master step (the 1× chunks scale by a non-integer)
     if (curves && !curvesDirty && (frameNo % 30) === 7 && curves.deckCount > 0 && stageRefOf(state) !== curves.stageRef) { curvesDirty = true; M.dirtyAll(); }
     // 1. bakes: collect the visible dirty chunks (diagonal order = today's order), nearest-first only in HD mode
-    let nCand = 0;
+    let nCand = 0, visSig = 0;
     for (let s = 0; s <= CXN + CYN - 2; s++) {
       for (let cx = Math.max(0, s - (CYN - 1)); cx <= Math.min(CXN - 1, s); cx++) {
         const cy = s - cx, k = cx + cy * CXN, ch = chunks[k];
         const dx = (ch.ox - camx) * z + hw, dy = (ch.oy - camy) * z + hh, chh = ch.hh * z;
         if (dx > vw || dy > vh || dx + cw < 0 || dy + chh < 0) { ch.vis = 0; continue; }
-        ch.vis = 1;
+        ch.vis = 1; visSig = (Math.imul(visSig, 31) + k + 1) | 0;
         if (!ch.canvas || ch.dirty || dirtyBits[k]) { candI[nCand] = k; const ex = dx + cw / 2 - hw, ey = dy + chh / 2 - hh; candD[nCand] = ex * ex + ey * ey; nCand++; }
       }
     }
+    if (visSig !== lastVisSig) { lastVisSig = visSig; capEpoch++; visEpoch++; }   // H7c: a different visible set (a pan across a chunk edge, a zoom, a resize): chunks that did not fit may now, the old ones are evictable
+    const capB = hd ? hdCapBytes() : 0;
+    if (capB !== lastCapB) { lastCapB = capB; capEpoch++; visEpoch++; }
     for (let n = 0; n < nCand; n++) {
       let pick = n;
       if (hd) { for (let q = n + 1; q < nCand; q++) if (candD[q] < candD[pick]) pick = q; if (pick !== n) { const ti = candI[n], td = candD[n]; candI[n] = candI[pick]; candD[n] = candD[pick]; candI[pick] = ti; candD[pick] = td; } }
@@ -2915,16 +2945,24 @@
       if (hd && ch.canvas && ch.master === 2 && headroom && hdBakesThisFrame < 1) m = 2;   // keep an HD chunk HD when the frame can afford it
       try { bakeChunk(ch, state, m); bakesThisFrame++; if (m === 2) hdBakesThisFrame++; } catch (e) { rerr('bake', e); ch.dirty = 0; }
     }
-    // 2. HD upgrade (one per frame with headroom): the visible master-1 chunk nearest the view centre
+    // 2. HD upgrade (one per frame with headroom): the visible master-1 chunk nearest the view centre that FITS under the cap. H7c: one that does not fit even with every
+    //    off-screen chunk evicted is marked noFit and left at master 1 until capEpoch moves; with nothing left to try the camera at rest bakes nothing and rebuilds no composite
     if (hd && headroom && hdBakesThisFrame < 1) {
-      let best = null, bd = Infinity;
-      for (let k = 0; k < NCH; k++) { const ch = chunks[k]; if (!ch.vis || !ch.canvas || ch.master === 2 || ch.dirty) continue; const ex = (ch.ox - camx) * z + hw + cw / 2 - hw, ey = (ch.oy - camy) * z + hh + ch.hh * z / 2 - hh; const d = ex * ex + ey * ey; if (d < bd) { bd = d; best = ch; } }
+      let best = null;
+      for (;;) {
+        let cand = null, bd = Infinity;
+        for (let k = 0; k < NCH; k++) { const ch = chunks[k]; if (!ch.vis || !ch.canvas || ch.master === 2 || ch.dirty || ch.noFit === capEpoch) continue; const ex = (ch.ox - camx) * z + hw + cw / 2 - hw, ey = (ch.oy - camy) * z + hh + ch.hh * z / 2 - hh; const d = ex * ex + ey * ey; if (d < bd) { bd = d; cand = ch; } }
+        if (!cand) break;
+        if (hdRoomFor(CW * 2 * cand.hh * 2 * 4 - (cand.bytes | 0), capB, true)) { best = cand; break; }
+        cand.noFit = capEpoch;
+      }
       if (best) { try { bakeChunk(best, state, 2); bakesThisFrame++; hdBakesThisFrame++; lastUpgrade = best.cx + best.cy * CXN; } catch (e) { rerr('bake:hd', e); best.dirty = 0; } }
-      else if (bakesThisFrame === 0) {   // 3. nothing visible pending: pre-bake (master 1) one chunk of the ring just outside the view, so a pan shows ground at once
+      else if (bakesThisFrame === 0) {   // 3. nothing visible pending: pre-bake (master 1) one chunk of the ring just outside the view, so a pan shows ground at once (only while it fits under the cap)
         for (let k = 0; k < NCH && bakesThisFrame === 0; k++) {
-          const ch = chunks[k]; if (ch.vis || ch.canvas) continue;
+          const ch = chunks[k]; if (ch.vis || ch.canvas || ch.ringOff === visEpoch) continue;
           const dx = (ch.ox - camx) * z + hw, dy = (ch.oy - camy) * z + hh, chh = ch.hh * z;
           if (dx > vw + cw || dy > vh + chh || dx + cw < -cw || dy + chh < -chh) continue;
+          if (!hdRoomFor(CW * ch.hh * 4, capB, false)) break;   // the cap is full of chunks that cannot go: the ring stays as it is (it used to be baked, evicted at the next cap check and baked again)
           try { bakeChunk(ch, state, 1); bakesThisFrame++; } catch (e) { rerr('bake:ring', e); ch.dirty = 0; }
         }
       }
@@ -3094,7 +3132,7 @@
   /** H0 state for tests / the console: masters, chunk counts and bytes, caps, the last upgraded chunk */
   M.hdInfo = function () {
     const sp = S(); const caps = sp && typeof sp.hdCaps === 'function' ? sp.hdCaps() : null;
-    return { on: hdOn, terrain: hdTerrain, debug: debugHDOn, debugTile: debugTile, master: hdMaster, masterHalf: hdMasterHalf, chunkMaster: hdChunkWant, atlasZoom: atlasZoom, zoom: zoomNow, dpr: dpr, chunks: liveChunks(), hdChunks: hdChunkCount(), deckMasters: chunks.filter((c) => c && c.deck).map((c) => c.deckMaster | 0), chunkMB: Math.round(chunkBytes() / 10485.76) / 100, hdAtlasMB: sp && typeof sp.hdMemoryMB === 'function' ? Math.round(sp.hdMemoryMB() * 100) / 100 : 0, fallback: hdFallbackChunks, atlasFallback: !!(sp && sp.hdFallback), caps: caps, lastUpgrade: lastUpgrade, bake: { n1: bakeStat[1].n, ms1: Math.round(bakeStat[1].ms * 100) / 100, n2: bakeStat[2].n, ms2: Math.round(bakeStat[2].ms * 100) / 100 }, families: sp && typeof sp.hdFamilies === 'function' ? sp.hdFamilies() : [] };
+    return { on: hdOn, terrain: hdTerrain, debug: debugHDOn, debugTile: debugTile, master: hdMaster, masterHalf: hdMasterHalf, chunkMaster: hdChunkWant, atlasZoom: atlasZoom, zoom: zoomNow, dpr: dpr, chunks: liveChunks(), hdChunks: hdChunkCount(), deckMasters: chunks.filter((c) => c && c.deck).map((c) => c.deckMaster | 0), chunkMB: Math.round(chunkBytes() / 10485.76) / 100, hdAtlasMB: sp && typeof sp.hdMemoryMB === 'function' ? Math.round(sp.hdMemoryMB() * 100) / 100 : 0, fallback: hdFallbackChunks, atlasFallback: !!(sp && sp.hdFallback), caps: caps, lastUpgrade: lastUpgrade, settled: settledCount(), ring: ringCount(), capEpoch: capEpoch, bake: { n1: bakeStat[1].n, ms1: Math.round(bakeStat[1].ms * 100) / 100, n2: bakeStat[2].n, ms2: Math.round(bakeStat[2].ms * 100) / 100 }, families: sp && typeof sp.hdFamilies === 'function' ? sp.hdFamilies() : [] };
   };
   /** H0: every chunk's master (0 = no canvas) — tests */
   M.chunkMasters = function () { const a = []; for (let k = 0; k < NCH; k++) a.push(chunks[k] && chunks[k].canvas ? (chunks[k].master | 0) : 0); return a; };

@@ -323,6 +323,13 @@ export async function openGame(opts = {}) {
     await ev(`(BSU.render.captureCameraTouch(BSU.state), true)`);
     return night;
   };
+  /** pan the camera `tiles` tiles toward the middle of the map (snap, no easing); returns the camera movement in px */
+  g.panTowardCentre = async (tiles = 20) => ev(`(function () {
+    var R = BSU.render, c0 = { x: BSU.state.ui.camera.x, y: BSU.state.ui.camera.y }, t = R.screenToTile(window.innerWidth / 2, window.innerHeight / 2);
+    var dx = BSU.MAP.W / 2 - t.tx, dy = BSU.MAP.H / 2 - t.ty, n = Math.hypot(dx, dy) || 1;
+    R.panToTile(t.tx + dx / n * ${Number(tiles)}, t.ty + dy / n * ${Number(tiles)}, false);
+    var c1 = BSU.state.ui.camera; return Math.round(Math.hypot(c1.x - c0.x, c1.y - c0.y));
+  })()`);
   /**
    * Frame the campus: zoom, centre on the buildings' centroid, then (keepOnMap) nudge toward the map centre until the whole viewport (corners and edge
    * midpoints) lies on the map; keepOnMap:false keeps the campus dead centre (the screenshot matrix). Returns { onMap, inView, total }: how many buildings are inside the viewport.

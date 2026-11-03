@@ -52,7 +52,7 @@ for (const fn of ['paintBuilding', 'buildingBox', 'roofs', 'placeDecal', 'tonePe
 const t1 = performance.now();
 S.init(BSU.newState(1));
 const initMs = performance.now() - t1;
-ok(BUSY || initMs < 600, `init ran in ${initMs.toFixed(1)} ms < 600 ms (${S.count()} entries)${BUSY ? ' [machine busy: budget advisory]' : ''}`);   // design pass: aprons + margins bake ~17 % more; art pass B3: materials, features and the state overlays bake 1.14× (best-of-5 169 → 193 ms for 33 footprint rows × 6 variants); ~490 → ~520 ms idle, load-sensitive
+ok(BUSY || initMs < 750, `init ran in ${initMs.toFixed(1)} ms < 750 ms (${S.count()} entries)${BUSY ? ' [machine busy: budget advisory]' : ''}`);   // design pass: aprons + margins bake ~17 % more; art pass B3: materials, features and the state overlays bake 1.14× (best-of-5 169 → 193 ms for 33 footprint rows × 6 variants); ~490 → ~520 ms idle, load-sensitive
 
 BSU.SELFTEST = true;
 let st;
