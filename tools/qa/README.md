@@ -1,0 +1,18 @@
+# tools/qa: repeatable QA harness (real Chrome, no dependencies)
+
+Node 24 plus the Chrome harness in `test/browser.mjs`. Every script launches its own headless Chrome, prints a short summary and exits non-zero on a problem. Screenshots and other output go to `tools/qa/out/` (git-ignored).
+
+- `node tools/qa/play.mjs [--size 96|64] [--only a,b] [--out dir] [--shots] [--index path] [--strict] [--list]`: scripted play-through, one summary line per scenario and size (default both sizes). Scenarios: `tutorial`, `network-hold`, `land-office`, `dredge`, `hurricane`, `night-game`, `year-rollover`, `save-load`, `hud-modes`, `zoom-steps`, `build-tabs`, `issues-tray`, `title-panels`. Fails on any console error, uncaught exception, `BSU.error` or failed check (`--strict`: console warnings too). `--shots` saves a PNG per scenario (and at key moments) as `<size>-<scenario>-<label>.png`.
+- `node tools/qa/fps.mjs [--size 96|64] [--dpr 2] [--zoom 1] [--night] [--index path] [--frames 150] [--runs 1] [--width 1440] [--height 900] [--buildings 46] [--shot name]`: frame profiler on a dense campus (about 46 placements, i.e. ~38 buildings and 8 plants, through `BSU.headless`, viewport fully on the map, 150 rAF frames after the HD bake). Prints `frameMsMean`, `fps`, draw calls, chunks, agents, `memMB`, the terrain-cache hit rate and rebuilds (`tcacheHitPct`, `tcacheBuilds`) and the chunk bakes during the sample (`chunkBakesM1`, `chunkBakesM2`: both should be near 0 at rest; when they differ between A and B the frames are not comparable) and the `passMs` table. `--night` runs a lit Stadium II night game instead of a day frame.
+- `node tools/qa/fps.mjs --compare pathA pathB [flags]`: runs both pages (interleaved with `--runs N`) and prints A, B, B - A and the percentage per row.
+- `node tools/qa/shots.mjs [--size 96|64] [--dpr 1] [--only title,day,hud,zoom,night,weather,hurricane] [--out dir] [--index path] [--prefix x-]`: screenshot matrix with stable names: `title howto about`, `day-1280x800 day-1440x900 day-1920x1080`, `hud-full hud-compact hud-hidden`, `zoom-0.5 zoom-2.5`, `night-lights night-game`, `fog rain hurricane`.
+
+`--index path` (play, fps, shots) runs another copy of the game. A/B against HEAD, from this folder: `(cd .. && git show HEAD:bayou-state/index.html) > /tmp/x.html && node tools/qa/fps.mjs --compare /tmp/x.html index.html`. Paths are resolved from the current directory.
+
+Headless Chrome here is software raster (`--disable-gpu`) and `deviceScaleFactor` is fixed at 1; dpr 2 is emulated by redefining `window.devicePixelRatio` and firing a resize. Timings are only meaningful as before / after deltas on the same machine in the same minute: use `--compare` (and `--runs 3` when the delta is small), never compare absolute numbers across machines or against a GPU browser. `passMs` blames the pass that flushes the raster, not the one that costs, so read it as A/B too. Keep other heavy processes off the machine while a run is going: a loaded CPU stalls the game loop and shows up as flaky scenarios.
+
+Kill stray headless Chromes after an aborted run (the scripts do it on a normal exit):
+
+    pkill -f 'user-data-dir=.*bsu-chrome-'
+
+Layout: `lib.mjs` (shared helpers: `openGame`, `g.key`, `g.place`, `g.waitBake`, `g.shot`, `g.sample`, `g.buildCampus`, `g.frameCampus`, ...), `play.mjs`, `fps.mjs`, `shots.mjs`. Set `QA_TRACE=1` to log every page evaluation slower than 2.5 s. Each page evaluation has a 60 s timeout (the stuck page's stack is printed), so a page stuck in a loop fails the check instead of hanging the run.
