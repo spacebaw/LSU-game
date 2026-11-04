@@ -143,7 +143,6 @@
   let stormPhase = -1, godRayUntil = -1, goldFlash = 0, burstsPending = 0, burstTimer = 0, burstGap = 22, mtVolley = null, subscribed = false, inited = false;
   let frameNo = 0, lastFrameNo = -1;
   const overtop = new Map();   // tile → frames left of trickle
-  const lightRefs = {};        // kind → SpriteRef (refreshed per frame)
   const LIGHT_KINDS = ['lamp', 'window', 'mast', 'beacon', 'blink', 'arc', 'glow', 'pot', 'fire', 'firefly', 'eye', 'canal'];
   const LMAX = PR.lightsMax || 250;
   const lightsList = []; for (let k = 0; k < LMAX + 8 + 48; k++) lightsList.push({ kind: 'lamp', x: 0, y: 0, r: 1, a: 1, rot: 0, d: 0, ref: null, refl: 0, cx: 0, cy: 0 });   // H2b: `ref` = a baked `bldlight:` companion for kind 'bld'
@@ -190,13 +189,6 @@
   }
   function isMarshy(state, i) { const t = state.tiles; if (!t || !t.type) return false; const ty8 = t.type[i]; return ty8 === T.MARSH || ty8 === T.WET || isWaterTile(state, i) || ((t.flags ? t.flags[i] : 0) & (FLAG.PRESERVE || 0)) !== 0; }
   function stateLive() { return BSU.state || null; }
-  function lightRef(kind) {
-    let ref = lightRefs[kind];
-    if (ref === undefined || ref === null) { try { const S = mod('sprites'); ref = S && typeof S.get === 'function' ? S.get('light:' + kind, 0, 0, 1) : null; } catch (e) { ref = null; } lightRefs[kind] = ref || null; }
-    return ref;
-  }
-  function drawRef(g, ref, cx, cy, w, h, a) { if (!ref || !ref.canvas) return; g.globalAlpha = a; g.drawImage(ref.canvas, ref.sx, ref.sy, ref.sw, ref.sh, cx - w / 2, cy - h / 2, w, h); }
-
   // ---------------------------------------------------------------------------
   // art pass B5 — effects and atmosphere (docs/ART_STYLE.md §1 and §5; INTEGRATION_NOTES "art pass B5").
   // Contact AO under trees and after each building's sprite (render hooks `groundFx` / `entityFx`), 2-frame rain
@@ -797,28 +789,83 @@
   }
 
   // ---------------------------------------------------------------------------
-  // Crowd shader: per-seat noise field (score bug + the stadium bowl in the world)
+  // Crowd: a soft speckle SHEET baked once per (tier, state, size) and blitted 1:1, plus a drifting glint layer on game nights (docs/INTEGRATION_NOTES "## minimap + crowd pass")
   // ---------------------------------------------------------------------------
-  /** per-seat pixel-noise brightness field; rect {x, y, w, h} in ctx px; fill 0–1; wave advances the sweep */
-  R.crowd = function (g, rect, fill, wave, rain) {
-    if (!g || !rect || !(rect.w > 0 && rect.h > 0)) return;
-    fill = clamp(fin(fill, 0), 0, 1); wave = fin(wave, 0) | 0;
-    const cell = Math.max(2, Math.ceil(Math.sqrt((rect.w * rect.h) / 2000)));
-    const cols = Math.max(1, Math.floor(rect.w / cell)), rows = Math.max(1, Math.floor(rect.h / cell)), seed = wave >> 4;
-    const purple = PAL.purpleHi || '#7F5BC5', gold = GOLD, gray = '#5A6B7A', sweepX = (wave * 2) % (cols + 8);
-    const cx = cols / 2, cy = rows / 2;
-    for (let yy = 0; yy < rows; yy++) {
-      const ny = (yy - cy) / cy;
-      for (let xx = 0; xx < cols; xx++) {
-        const nx = (xx - cx) / cx; if (nx * nx + ny * ny > 1) continue;   // the bowl is an ellipse
-        if ((hash(xx + 1, yy + 1 + seed * 97) % 100) >= fill * 100) continue;
-        g.fillStyle = rain ? gray : (((xx + yy) & 1) ? purple : gold);
-        g.globalAlpha = Math.abs(xx - sweepX) < 3 ? 1 : 0.6;
-        g.fillRect(rect.x + xx * cell, rect.y + yy * cell, cell, cell);
-      }
+  const CR = { m: new Map(), last: new Map(), bytes: 0, bakes: 0, hits: 0, scaled: 0, use: 0, ms: 0 };
+  const CR_MAXPX = 1500000, CR_MAXB = 28 * 1048576, CR_NT = [320, 3600, 5000, 6800], CR_TL = [-0.45, -0.22, 0, 0.22, 0.45];
+  const CR_COL = ['#7F5BC5', '#5E2CA5', '#FDD023', '#F5B700', '#F4EEE2', '#7C8CA0', '#56657B', '#A8B8C8'], CR_DRY = [0, 0, 1, 0, 2, 2, 3, 2, 4, 0, 2, 4], CR_RAIN = [5, 5, 6, 7, 5, 6, 0, 2, 0, 7, 2, 1];
+  function crEvict() {
+    while ((CR.bytes > CR_MAXB || CR.m.size > 24) && CR.m.size > 1) {
+      let ok = null, ov = 1e18; for (const [k, v] of CR.m) if (v.used < ov) { ov = v.used; ok = k; }
+      const v = CR.m.get(ok); CR.m.delete(ok); CR.bytes -= v.bytes; try { v.c.width = 1; v.c.height = 1; } catch (e) { /* stub */ }
     }
-    g.globalAlpha = 1;
+  }
+  /** one w x h sheet; po = {kind: 'base' (the speckle) | 'glint' (a sparkle layer, periodic in x so it can drift), tier, st (1 night, 2 rain), fb (density in eighths), full} */
+  function crBake(po, w, h) {
+    const B = BSU.brush, sp = mod('sprites'); if (!B || !sp) return null;
+    const t0 = nowMs(), glint = po.kind === 'glint', per = glint ? Math.max(16, Math.round(w * 0.5)) : 0, wg = w + per, tier = po.tier;
+    const c = sp.newCanvas(wg, h), g = sp.ctx2d(c); c.width = wg; c.height = h; g.imageSmoothingEnabled = true;
+    const dia = Math.max(3, Math.sqrt((w * h) / CR_NT[tier])), cols = Math.max(2, Math.round(w / dia)), rows = Math.max(2, Math.round(h / dia)), cw = w / cols, ch = h / rows, night = (po.st & 1) !== 0;
+    if (glint) {
+      const pal = ['#FFF4D0', '#FFD76A', '#E8DCFF'], pick = [0, 0, 1, 0, 2, 0, 1], r = Math.max(2, dia * 0.24), n = Math.round((w * h) / (dia * dia) * 0.16);
+      for (let i = 0; i < n; i++) {
+        const hs = hash(i * 7 + 3, tier * 31 + 5), x0 = (hs % 4096) / 4096 * per, y = ((hs >>> 12) % 4096) / 4096 * h, env = 0.5 + 0.5 * Math.sin(x0 / per * 12.566 + 0.7);
+        if (((hs >>> 24) & 255) / 255 > 0.2 + 0.8 * env * env) continue;
+        const rr = r * (0.8 + ((hs >>> 3) & 3) * 0.12), b = B.blob('dot', pal[pick[(hs >>> 6) % 7]], rr, rr); if (!b) continue;
+        for (let x = x0; x < wg + b.w; x += per) { g.globalAlpha = 0.55 + ((hs >>> 9) & 3) * 0.15; g.drawImage(b.canvas, x - b.w / 2, y - b.h / 2); }
+      }
+      g.globalAlpha = 1; CR.ms += nowMs() - t0; return { c: c, w: wg, h: h, bw: w, per: per, bytes: wg * h * 4 };
+    }
+    const cols8 = (po.st & 2) ? CR_RAIN : CR_DRY, uniq = []; for (const k of cols8) if (uniq.indexOf(k) < 0) uniq.push(k);
+    const cs = Math.max(4, Math.ceil(dia * 1.4)), ac = sp.newCanvas(cs * uniq.length * 5, cs), ag = sp.ctx2d(ac); ac.width = cs * uniq.length * 5; ac.height = cs;   // the speck atlas: colours x 5 tones
+    for (let ci = 0; ci < uniq.length; ci++) for (let ti = 0; ti < 5; ti++) {
+      const cx = (ci * 5 + ti) * cs + cs / 2, cy = cs / 2, tt = CR_TL[ti] + (night ? 0.12 : 0), base = B.sat(CR_COL[uniq[ci]], 1.1);
+      B.softEllipse(ag, cx + cs * 0.03, cy + cs * 0.07, cs * 0.44, cs * 0.42, B.toneArr(base, tt - 0.4), 0.7, 0.5); B.softEllipse(ag, cx, cy, cs * 0.4, cs * 0.38, B.toneArr(base, tt), 0.95, 0.62); B.softEllipse(ag, cx - cs * 0.1, cy - cs * 0.12, cs * 0.2, cs * 0.17, B.toneArr(base, tt + 0.5), 0.55, 0.3);
+    }
+    for (let yy = 0; yy < rows; yy++) for (let xx = 0; xx < cols; xx++) {
+      const hs = hash(xx * 7 + 3, yy * 13 + tier * 97 + po.st);
+      if ((hs % 1000) / 1000 >= po.fb / 8) continue;
+      const nx = (xx + 0.5) / cols * 2 - 1, ny = (yy + 0.5) / rows * 2 - 1, r2 = nx * nx + ny * ny; if (!po.full && r2 > 1.08) continue;
+      const t = 0.2 - (yy / rows) * 0.4 - 0.26 * Math.min(r2, 1.2) + (((hs >>> 10) & 15) / 15 - 0.5) * 0.24, ti = t < -0.34 ? 0 : t < -0.11 ? 1 : t < 0.11 ? 2 : t < 0.34 ? 3 : 4, ci = uniq.indexOf(cols8[(hs >>> 14) % 12]);
+      g.globalAlpha = (po.full || r2 < 0.7 ? 1 : Math.max(0, (1.08 - r2) / 0.38)) * 0.9;
+      g.drawImage(ac, (ci * 5 + ti) * cs, 0, cs, cs, (xx + 0.5 + (((hs >>> 4) & 7) / 7 - 0.5) * 0.5) * cw - cs / 2, (yy + 0.5 + (((hs >>> 7) & 7) / 7 - 0.5) * 0.5) * ch - cs / 2, cs, cs);
+    }
+    g.globalAlpha = 1; g.globalCompositeOperation = 'source-atop';   // the light on the crowd
+    B.softEllipse(g, w * 0.5, h * 0.42, w * 0.62, h * 0.55, night ? '#FFE7B0' : (po.st & 2) ? '#B8C8FF' : '#FFFBEA', night ? 0.3 : 0.1, 0.1);
+    g.globalCompositeOperation = 'source-over'; try { ac.width = 1; ac.height = 1; } catch (e) { /* stub */ }
+    CR.ms += nowMs() - t0; return { c: c, w: w, h: h, bytes: w * h * 4 };
+  }
+  function crGet(key, po, qw, qh) {
+    const e = CR.m.get(key); if (e) { e.used = ++CR.use; CR.hits++; return e; }
+    const k = Math.min(1, Math.sqrt(CR_MAXPX / (qw * qh))), s = crBake(po, Math.max(8, Math.round(qw * k)), Math.max(8, Math.round(qh * k))); if (!s) return null;
+    s.used = ++CR.use; s.key = key; CR.m.set(key, s); CR.bytes += s.bytes; CR.bakes++; crEvict(); return s;
+  }
+  /** the stadium crowd: rect {x, y, w, h} in ctx px (a bowl rect, or with o.full the box round the painted stands, which the caller clips); fill 0-1 (crowd / seats); wave = the frame number;
+   *  o = {tier (0 = the practice-field bleachers, 1-3 = the stadium), night (0-1), full}. One 1:1 drawImage of a cached sheet (a second, additive and drifting, on game nights). */
+  R.crowd = function (g, rect, fill, wave, rain, o) {
+    if (!g || !rect || !(rect.w > 0 && rect.h > 0)) return;
+    o = o || {}; wave = fin(wave, 0) | 0;
+    const fb = Math.round(clamp(fin(fill, 0), 0, 1) * 8); if (fb < 1) return;
+    const dpr = (R.view && R.view.dpr) || 1, dw = Math.max(8, Math.round(rect.w * dpr)), dh = Math.max(8, Math.round(rect.h * dpr)), qw = Math.ceil(dw / 8) * 8, qh = Math.ceil(dh / 8) * 8; // sizes snap up to 8 device px
+    const tier = clamp(fin(o.tier, 0) | 0, 0, 3), st = (rain ? 2 : 0) | (fin(o.night, 0) > 0.35 ? 1 : 0), full = o.full ? 1 : 0, tk = tier + '|' + st + '|' + fb + '|' + full, key = tk + '|' + qw + 'x' + qh;
+    let s = CR.m.get(key), stretch = false; const lt = CR.last.get(tk);
+    if (!s) {   // a size no sheet has yet: while it is still moving (a zoom) stretch the last sheet of this kind, bake once it has held for 4 frames (or there is none)
+      if (lt && lt.n < 4 && CR.m.get(lt.s.key) === lt.s) { s = lt.s; stretch = true; CR.scaled++; } else s = crGet(key, { kind: 'base', tier: tier, st: st, fb: fb, full: full }, qw, qh);
+    } else { s.used = ++CR.use; CR.hits++; }
+    if (!s) return;
+    CR.last.set(tk, { s: s, n: lt && lt.w === qw && lt.h === qh ? lt.n + 1 : 0, w: qw, h: qh });
+    const x = Math.round(rect.x * dpr) / dpr, y = Math.round(rect.y * dpr) / dpr, sm = g.imageSmoothingEnabled, bw = (stretch ? dw : qw) / dpr, bh = (stretch ? dh : qh) / dpr;
+    if (stretch || s.w !== qw || s.h !== qh) g.imageSmoothingEnabled = true;
+    g.globalAlpha = 1; g.drawImage(s.c, 0, 0, s.w, s.h, x, y, bw, bh);
+    if ((st & 3) === 1) {   // game night: a slowly drifting sparkle layer, additive
+      const gl = crGet('g|' + tier + '|' + full + '|' + qw + 'x' + qh, { kind: 'glint', tier: tier, st: 1, fb: 8, full: full }, qw, qh);
+      if (gl) { g.globalCompositeOperation = 'lighter'; g.globalAlpha = 0.6 + 0.15 * Math.sin(wave / 38); g.drawImage(gl.c, ((wave * 0.35) | 0) % gl.per, 0, gl.bw, gl.h, x, y, bw, bh); g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1; }
+    }
+    g.imageSmoothingEnabled = sm;
   };
+  /** tests / tools: the crowd sheet cache (sheets held, bakes, 1:1 hits, stretched draws, MB, bake ms) */
+  R.crowdStats = function () { return { sheets: CR.m.size, bakes: CR.bakes, hits: CR.hits, scaled: CR.scaled, mb: Math.round(CR.bytes / 10485.76) / 100, ms: Math.round(CR.ms * 100) / 100 }; };
+  R.crowdClear = function () { for (const v of CR.m.values()) { try { v.c.width = 1; v.c.height = 1; } catch (e) { /* stub */ } } CR.m.clear(); CR.last.clear(); CR.bytes = 0; CR.bakes = 0; CR.hits = 0; CR.scaled = 0; CR.ms = 0; };
   function crowdInWorld(state, g, view, cam, rain) {
     const game = state.sports && state.sports.game; if (!game || !game.home) return;
     if (R.fbCrowdFrame === R.frameNo) return;   // football pass F: the sorted football layer drew the crowd (shader + fans) this frame
@@ -842,7 +889,7 @@
       const rect = br ? { x: e.sx + br.x * bs, y: e.sy + br.y * bs, w: br.w * bs, h: br.h * bs } : { x: e.sx - (b.w + b.h) * 12 * z, y: e.sy - (b.w + b.h) * 14 * z, w: (b.w + b.h) * 24 * z, h: (b.w + b.h) * 10 * z };
       const tiers = row && Array.isArray(row.tiers) ? row.tiers : null;
       const seats = tiers && tiers[clamp((b.tier | 0) - 1, 0, tiers.length - 1)] ? fin(tiers[clamp((b.tier | 0) - 1, 0, tiers.length - 1)].seats, 15000) : 15000;
-      R.crowd(g, rect, fin(game.attendance, 0) / Math.max(1, seats), frameNo, rain);
+      R.crowd(g, rect, fin(game.attendance, 0) / Math.max(1, seats), frameNo, rain, { tier: b.type === 'stadium' ? clamp(b.tier | 0, 1, 3) : 0, night: nightAmount(state) });
       return;
     }
   }
@@ -1050,7 +1097,6 @@
     const nightA = nightAmount(state);
     if (nightA <= 0.01) { lightsN = 0; return; }
     const cam = camOf(state), z = cam.zoom || 1, vw = view.vw, vh = view.vh, sc = view.dpr || 1, perf = !!(state.ui && state.ui.perfMode);
-    for (const k of LIGHT_KINDS) lightRefs[k] = undefined;   // refresh refs each frame (the atlas may re-bake)
     const BR = BSU.brush; if (!BR || typeof BR.drawBlob !== 'function') return;
     lightCol('lamp');   // (fills the colour / peak tables on the first night frame)
     gatherLights(state, view, cam, nightA);

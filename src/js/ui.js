@@ -123,11 +123,6 @@
   function dayOf(s) { return fin(s && s.calendar && s.calendar.day, 0); }
   function dom() { return inited && !dry; }
   function nameOfBuilding(s, id) { const b = call('buildings', 'get', s, id); return b ? (b.name || (rowOf(b.type) || {}).name || b.type) : ''; }
-  function nearestBuildingName(s, tx, ty) {
-    const list = call('buildings', 'list', s) || []; let best = null, bd = 1e9;
-    for (const b of list) { if (!b) continue; const d = Math.max(Math.abs(b.tx + b.w / 2 - tx), Math.abs(b.ty + b.h / 2 - ty)); if (d < bd) { bd = d; best = b; } }
-    return best ? (best.name || (rowOf(best.type) || {}).name || best.type) : 'campus';
-  }
 
   // ---------------------------------------------------------------------------
   // Module-private bookkeeping (ui-private DOM/machine state; never mirrors of state.*)
@@ -239,10 +234,10 @@
   }
   function buildMinimap() {
     const wrap = el('div'); wrap.id = 'minimap-wrap';
-    const c = el('canvas'); c.id = 'minimap'; c.width = Math.round(MM_BASE * effScale); c.height = c.width; const vp = el('div'); vp.id = 'minimap-viewport';
+    const c = el('canvas'); c.id = 'minimap'; c.width = mmPx(effScale); c.height = c.width; const vp = el('div'); vp.id = 'minimap-viewport';
     wrap.appendChild(c); wrap.appendChild(vp);
     let mdown = false;
-    const go = function (ev) { const cw = fin(c.clientWidth, 0) || c.width || MM_BASE, ch = fin(c.clientHeight, 0) || c.height || MM_BASE; const mx = fin(ev.offsetX, cw / 2), my = fin(ev.offsetY, ch / 2); call('render', 'panToTile', clamp(mx / (cw / W), 0, W - 1), clamp(my / (ch / HGT), 0, HGT - 1), false);   // CSS px of the (scaled) element, not canvas px
+    const go = function (ev) { const cw = fin(c.clientWidth, 0) || c.width || MM_BASE, ch = fin(c.clientHeight, 0) || c.height || MM_BASE; const mx = fin(ev.offsetX, cw / 2), my = fin(ev.offsetY, ch / 2); const tt = call('render', 'minimapToTile', mx / cw, my / ch); if (tt) call('render', 'panToTile', tt.tx, tt.ty, false);   // CSS px of the (scaled) element; render inverts its iso layout
       const s = stateOf(); if (s && s.setPiece) call('render', 'captureCameraTouch', s); };
     c.addEventListener('pointerdown', function (ev) { mdown = true; go(ev); if (ev.preventDefault) ev.preventDefault(); });
     c.addEventListener('pointermove', function (ev) { if (mdown) go(ev); });
@@ -459,6 +454,8 @@
   // ---- UI scale (UI scale pass): html{font-size:calc(10px * var(--ui-scale))} and every CSS length is rem, so the layout math and every
   // getBoundingClientRect() (coach spotlights, ghost label, tooltips) stay in real viewport pixels at 90 / 100 / 115 / 130 %
   const UI_SCALES = [0.9, 1, 1.15, 1.3], MM_BASE = 200;
+  /** the minimap canvas's backing size: 200 px × the UI scale × the device pixel ratio (≤ 2, render's cap), so render draws it at device resolution; the CSS box stays 20 rem */
+  function mmPx(eff) { let d = 1; try { d = Math.min(2, Math.max(1, Number(window.devicePixelRatio) || 1)); } catch (e) { d = 1; } return Math.round(MM_BASE * eff * d); }
   /** P5 Display size choices (title screen): the three presets the plan names + Auto (= the viewport default below) */
   const SIZE_CHOICES = [['compact', 'Compact', 1, '100%'], ['comfortable', 'Comfortable', 1.15, '115%'], ['large', 'Large', 1.3, '130%'], ['auto', 'Auto', 'auto', '']];
   let appliedScale = 1, effScale = 1, uiMode = 'auto';   // the chosen factor / what the window can actually hold / 'auto' or the explicit factor
@@ -478,7 +475,7 @@
     const changed = eff !== effScale || sc !== appliedScale || mode !== uiMode; appliedScale = sc; effScale = eff; uiMode = mode;
     if (!dom()) return;
     try { const de = document.documentElement; if (de && de.style && typeof de.style.setProperty === 'function') de.style.setProperty('--ui-scale', String(eff)); } catch (e) { /* stub */ }
-    try { const c = E.minimap; if (c) { const px = Math.round(MM_BASE * eff); if (c.width !== px) { c.width = px; c.height = px; } } } catch (e) { /* stub */ }
+    try { const c = E.minimap; if (c) { const px = mmPx(eff); if (c.width !== px) { c.width = px; c.height = px; } } } catch (e) { /* stub */ }
     try { cls(E.hud, 'short', fin(window.innerHeight, 800) < eff * 760); } catch (e) { /* stub */ }   // P5: the tracker + palette need ~72 rem of height; a shorter window drops the tracker's flavour text and "next up" line so it never runs under the ticker
     if (changed) { fitTopbar(); refreshTitleSize(); try { coach.layoutAt = -1e9; const st = stateOf(); if (st && coach.step >= 0) layoutCoach(st); } catch (e) { /* stub */ } }
   }
@@ -2027,7 +2024,6 @@
   const tray = { key: '', ageAt: -1e9, rows: [], collapsed: false, userCollapsed: false, clearAt: -1e9, hadIssues: false, at: -1e9, lastCount: 0 };
   let heldI = false, spotToggled = false;
   function issuesApi() { const I = BSU.issues; return (I && typeof I.list === 'function') ? I : null; }
-  function issueList(s) { const I = issuesApi(); return I ? I.list(s) : []; }
   function applySpotlight() { const I = issuesApi(); if (I) I.spotlight(spotToggled || heldI); if (E['issues-spot']) cls(E['issues-spot'], 'active', spotToggled); }
   function toggleSpotlight() { spotToggled = !spotToggled; applySpotlight(); tray.key = ''; }
   /** ease the camera to an issue, select it (the floating label) and flash its tiles */

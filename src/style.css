@@ -108,7 +108,7 @@ background:var(--panel-bg);border:1px solid var(--line);color:var(--text);border
 #alert-gator:hover{border-color:var(--gold)}
 #minimap-wrap{position:absolute;right:var(--side);top:calc(var(--topbar-h) + 1.6rem);width:21rem;height:21rem;padding:.4rem;border-radius:var(--radius);background:var(--panel-bg);border:1px solid var(--line);box-shadow:var(--shadow);transition:transform .2s}
 #hud.inspect-open #minimap-wrap,#hud.inspect-open #overlay-buttons,#hud.inspect-open #voice-card{transform:translateX(calc(-1 * var(--inspect-w) - var(--gutter)))}
-#minimap{display:block;width:20rem;height:20rem;border-radius:.8rem;image-rendering:pixelated;cursor:pointer}
+#minimap{display:block;width:20rem;height:20rem;border-radius:.8rem;cursor:pointer}
 #minimap-viewport{position:absolute;pointer-events:none}
 #overlay-buttons{position:absolute;right:var(--side);top:calc(var(--topbar-h) + 23.6rem);width:21rem;display:grid;grid-template-columns:repeat(6,1fr);gap:.4rem;transition:transform .2s}
 .ov-btn{width:100%;min-width:0;height:3.6rem;min-height:3.6rem;padding:0;font-size:var(--fs-body);line-height:3.4rem;text-align:center;border-radius:var(--radius-sm)}

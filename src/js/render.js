@@ -114,8 +114,8 @@
     if (c.kind === 'spoonbill' && typeof sp.birdFrame === 'function') return sp.birdFrame('spoonbill', k, frameNo, d8, true);
     return fin(c.frame, 0) & 1;
   }
-  let minimapEl = null, mmBase = null, mmImg = null;
-  const mmHex = new Map();   // L1 follow-up: colour string → [r, g, b] (the minimap loop walks every tile every 6 frames)
+  let minimapEl = null;
+  const MM = { base: null, tex: null, img: null, lut: null, sig: '', ovKey: '', renders: 0, draws: 0, skips: 0, rgb: null, wat: null, geo: null };   // the minimap's cache
   BSU.onMap(function (m) {   // L1: the live map size; the chunk table, the world clamp extents and every N-sized scratch follow it (inside BSU.setMap, before any allocation)
     W = m.W; HGT = m.H; N = m.N; CXN = m.CX; CYN = m.CY; NCH = m.NCH;
     WORLD_X = [-(W - 1) * 32, (W - 1) * 32]; WORLD_Y = [-84, (W + HGT - 2) * 16 + 24];
@@ -123,7 +123,7 @@
     chunks.length = NCH; dirtyBits = new Uint8Array(NCH); candI = new Int32Array(NCH); candD = new Float64Array(NCH);
     cypStamp = new Uint16Array(N); cypGen = 0;
     view.x0 = 0; view.y0 = 0; view.x1 = W - 1; view.y1 = HGT - 1;
-    mmBase = null; mmImg = null;
+    MM.base = null; MM.tex = null; MM.img = null; MM.rgb = null; MM.wat = null; MM.sig = ''; MM.ovKey = '';
     allocChunks();
   });
   let nanReported = false;
@@ -1273,10 +1273,11 @@
     let blobMB = 0, vignetteMB = 0;   // H7: the effect passes' caches count too — the brush blob cache (≤ 20 MB) and the night vignette canvas (one frame-sized canvas: 5 MB at 1440 × 900, 20 MB at dpr 2)
     try { const bs = BSU.brush && typeof BSU.brush.blobStats === 'function' ? BSU.brush.blobStats() : null; blobMB = bs ? fin(bs.mb, 0) : 0; } catch (e) { blobMB = 0; }
     try { vignetteMB = typeof M.vignetteMB === 'function' ? fin(M.vignetteMB(), 0) : 0; } catch (e) { vignetteMB = 0; }
-    mem += blobMB + vignetteMB;
+    let crowdMB = 0; try { crowdMB = (typeof M.crowdStats === 'function' ? fin(M.crowdStats().mb, 0) : 0) + (MM.base ? MM.base.width * MM.base.height * 4 / 1048576 : 0); } catch (e) { crowdMB = 0; }   // the crowd sheets and the minimap base count too
+    mem += blobMB + vignetteMB + crowdMB;
     let parts = 0; try { parts = M.particles && typeof M.particles.count === 'function' ? fin(M.particles.count(), 0) : 0; } catch (e) { parts = 0; }
     let atlasMB = 0, hdAtlasMB = 0; try { const sp = S(); atlasMB = fin(sp.memoryMB(), 0); hdAtlasMB = typeof sp.hdMemoryMB === 'function' ? fin(sp.hdMemoryMB(), 0) : 0; } catch (e) { atlasMB = 0; }
-    return { frameMs: fin(frameMs, 0), drawCalls: drawCalls | 0, particles: parts, agentsDrawn: agentsDrawn | 0, hydroActive: hydroActive, chunks: liveChunks(), memMB: Math.round(mem * 100) / 100, blobMB: Math.round(blobMB * 100) / 100, vignetteMB: Math.round(vignetteMB * 100) / 100, tcacheMB: TC.c ? Math.round(TC.w * TC.h * 4 / 10485.76) / 100 : 0, tees: teeCache.size, water: waterDrawn | 0, frameNo: frameNo, zoom: zoomNow, atlasZoom: atlasZoom, smooth: frameSmooth, perfMode: !!(root && root.ui && root.ui.perfMode),
+    return { frameMs: fin(frameMs, 0), drawCalls: drawCalls | 0, particles: parts, agentsDrawn: agentsDrawn | 0, hydroActive: hydroActive, chunks: liveChunks(), memMB: Math.round(mem * 100) / 100, blobMB: Math.round(blobMB * 100) / 100, crowdMB: Math.round(crowdMB * 100) / 100, vignetteMB: Math.round(vignetteMB * 100) / 100, tcacheMB: TC.c ? Math.round(TC.w * TC.h * 4 / 10485.76) / 100 : 0, tees: teeCache.size, water: waterDrawn | 0, frameNo: frameNo, zoom: zoomNow, atlasZoom: atlasZoom, smooth: frameSmooth, perfMode: !!(root && root.ui && root.ui.perfMode),
       // H0 pipeline pass: HD state and real byte counts (chunkMB = every live chunk canvas at its own master; the legacy memMB keeps its 0.85 MB-per-chunk estimate)
       hd: hdOn, hdMaster: hdMaster, chunkMaster: hdChunkWant, hdChunks: hdChunkCount(), chunkMB: Math.round(chunkBytes() / 10485.76) / 100, atlasMB: Math.round(atlasMB * 100) / 100, hdAtlasMB: Math.round(hdAtlasMB * 100) / 100, hdFallback: hdFallbackChunks || !!(S() && S().hdFallback), hdBakes: hdBakesThisFrame, dpr: dpr,
       passMs: Object.assign({}, passMs) };   // H5: smoothed ms per stage / pass (chunks, water, deck, entities, weather, tint, lights, fog, …)
@@ -2176,19 +2177,19 @@
         const br = box && box.bowlRect; if (br) { const bs = z / (box.zoom || 1); rect = { x: e.sx + br.x * bs, y: e.sy + br.y * bs, w: br.w * bs, h: br.h * bs }; }
       } else { fbScreen(G, G.q.fw / 2, 0.45, 0); rect = { x: fbScr.x - 24 * z, y: fbScr.y - 10 * z, w: 48 * z, h: 9 * z }; }
       if (rect) {
-        g.save();
+        g.save(); let full = false;
         const SG = b.type === 'stadium' ? fbStadiumGeom(b) : null;
         if (SG && SG.clip && SG.clip.length) {   // stadium scale pass: every tier clips the shader to the painted stands' lifted tread quads (the decks rise far above the old bowl ellipse)   // qa pass 3: tier I is two long stands with open ends — clip the shader to the stands' lifted treads (the bowl ellipse leaked onto the lawn past the stand ends)
-          g.beginPath();
-          for (let s = 0; s < SG.clip.length; s++) { const pts = SG.clip[s]; for (let k = 0; k < 4; k++) { fbScreen(G, pts[k][0], pts[k][1], pts[k][2]); if (k === 0) g.moveTo(fbScr.x, fbScr.y); else g.lineTo(fbScr.x, fbScr.y); } g.closePath(); }
-          g.clip();
+          g.beginPath(); let bx0 = 1e9, by0 = 1e9, bx1 = -1e9, by1 = -1e9;
+          for (let s = 0; s < SG.clip.length; s++) { const pts = SG.clip[s]; for (let k = 0; k < 4; k++) { fbScreen(G, pts[k][0], pts[k][1], pts[k][2]); if (k === 0) g.moveTo(fbScr.x, fbScr.y); else g.lineTo(fbScr.x, fbScr.y); if (fbScr.x < bx0) bx0 = fbScr.x; if (fbScr.x > bx1) bx1 = fbScr.x; if (fbScr.y < by0) by0 = fbScr.y; if (fbScr.y > by1) by1 = fbScr.y; } g.closePath(); }
+          g.clip(); if (bx1 > bx0 && by1 > by0) { rect = { x: bx0, y: by0, w: bx1 - bx0, h: by1 - by0 }; full = true; }   // the sheet covers the box round every painted stand
         } else if (b.type === 'stadium') {   // the bowl ellipse covers the turf: keep the shader off the field quad
           g.beginPath(); g.rect(0, 0, vw, vh);
           const Q = G.q, pts = [[Q.x0, Q.y0], [Q.x1, Q.y0], [Q.x1, Q.y1], [Q.x0, Q.y1]];
           for (let k = 0; k < 4; k++) { fbScreen(G, pts[k][0], pts[k][1], 0); if (k === 0) g.moveTo(fbScr.x, fbScr.y); else g.lineTo(fbScr.x, fbScr.y); }
           g.closePath(); g.clip('evenodd');
         }
-        try { M.crowd(g, rect, fill, frameNo, rain); } catch (err) { rerr('fb:crowd', err); }
+        try { M.crowd(g, rect, fill, frameNo, rain, { tier: b.type === 'stadium' ? clamp(b.tier | 0, 1, 3) : 0, night: typeof M.nightAmount === 'function' ? M.nightAmount(state) : 0, full: full }); } catch (err) { rerr('fb:crowd', err); }
         g.restore(); g.globalAlpha = 1;
       }
     }
@@ -2734,73 +2735,168 @@
   M.registerPass('fbhud', function (s, g) { try { fbMontageHud(s, g); } catch (e) { rerr('fbhud', e); } finally { g.globalAlpha = 1; g.textAlign = 'left'; g.textBaseline = 'alphabetic'; } }, 10.2, true);   // montage pass: the HIGHLIGHTS letterbox (after the hud fallback, before render_fx's fxhud)
 
   // ---------------------------------------------------------------------------
-  // Minimap (fallback; render_fx may replace M.minimap)
+  // Minimap: a base layer drawn through BSU.brush at device resolution, re-rendered only when mmSig changes, blitted 1:1 under a cheap overlay (viewport, pips, storm mark)
   // ---------------------------------------------------------------------------
-  const MM_TYPE = [WATER_DEEP, PAL.waterDay || '#2E6B5E', PAL.reed || '#8A9A4B', PAL.wetGround || '#5A6B3A', PAL.dryGrass || '#6E8F3C', PAL.highGround || '#7FA347', PAL.mud || '#4A3B2A', PAL.waterBlue || '#4FA3D6'];
-  /** draws the attached #minimap canvas: terrain by type/depth, buildings gold, the camera rect */
+  const MM_CAT = { utilities: '#7FB0D9', academic: '#A58BEA', housing: '#E58C6B', dining: '#F2AE45', sports: '#F1D24A', life: '#58C4B0', swamp: '#7EC76B', grounds: '#C7DB72' }, MM_AO = '#0A0718';
+  const MM_T0 = [0, 0.1, 0.18, 0.1, -0.04, 0.08, 0.08, 0.13, 0.16];   // deep, mid, shallow, pond, marsh, wet, dry, high, drained: the HD tile knots
+  function mmLut() {
+    if (MM.lut) return MM.lut;
+    const B = BSU.brush, P = B.P, out = new Uint8ClampedArray(9 * 33 * 3);
+    const bases = [P.waterDeep, B.mix(P.waterDeep, P.waterDay, 0.55), B.mix(P.waterDay, P.shallows, 0.22), B.mix(P.waterDeep, P.reed, 0.12), P.wet, P.wet, P.grass, P.highGrass, B.mix(P.dirt, P.sand, 0.22)];
+    for (let k = 0; k < 9; k++) for (let q = 0; q <= 32; q++) { const c = B.toneArr(B.sat(bases[k], 1.12), clamp(MM_T0[k] + (q - 16) / 32, -1, 1)), o = (k * 33 + q) * 3; out[o] = c[0]; out[o + 1] = c[1]; out[o + 2] = c[2]; }
+    return (MM.lut = out);
+  }
+  function mmSig(state, D, hd) {
+    const t = state.tiles, type = t.type, depth = t.depth, own = t.owner, surf = t.surface, crest = t.crest;
+    let h = 2166136261;
+    for (let i = 0; i < N; i++) {
+      const d = depth[i], dc = waterTypeAt(t, i) ? (d < 1.5 ? 0 : d >= 3 ? 2 : 1) : (d < 0.3 ? 0 : d < 1 ? 1 : d < 2 ? 2 : 3);
+      h = Math.imul(h ^ (type[i] | (dc << 3) | ((surf[i] & 7) << 5) | (crest[i] > 0 ? 256 : 0) | ((own[i] + 1) << 9)), 16777619);
+    }
+    const bs = state.buildings;
+    if (bs) for (let k = 0; k < bs.length; k++) { const b = bs[k]; if (b) h = Math.imul(h ^ (b.id * 31 + b.tx * 7 + b.ty * 13 + b.w * 3 + b.h + (b.built >= 1 ? 5 : 0) + (b.ruin ? 11 : 0)), 16777619); }
+    const LD = mod('land'), ow = LD && typeof LD.owned === 'function' ? LD.owned(state) : null;
+    if (ow) for (let k = 0; k < ow.length; k++) h = Math.imul(h ^ (ow[k] + 1), 16777619);
+    return D + '|' + W + 'x' + HGT + '|' + (hd ? 1 : 0) + '|' + (h >>> 0);
+  }
+  function mmRR(g, x, y, w, h, r) { r = Math.min(r, w / 2, h / 2); g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); }
+  function mmBase(state, D, hd) {
+    const B = BSU.brush, P = B.P, sp = S(), t = state.tiles, type = t.type, depth = t.depth, elev = t.elev, crest = t.crest;
+    const u = D / 200, pad = 5 * u, s = (D - 2 * pad) / (W + HGT), cx0 = pad + HGT * s, oy = D / 2 - (W + HGT) * s / 4, X = (a, b) => cx0 + (a - b) * s, Y = (a, b) => oy + (a + b) * s / 2;
+    if (!MM.base || MM.base.width !== D) MM.base = makeCanvas(D, D);
+    const g = ctx2d(MM.base); g.setTransform(1, 0, 0, 1, 0, 0); g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; g.clearRect(0, 0, D, D);
+    const gr = g.createLinearGradient(0, 0, 0, D); gr.addColorStop(0, B.css('#1F1640', 1)); gr.addColorStop(1, B.css('#110B26', 1));
+    g.fillStyle = gr; mmRR(g, 0, 0, D, D, 8 * u); g.fill(); B.softEllipse(g, D / 2, D / 2, D * 0.48, D * 0.3, '#4B3A8C', 0.3, 0.15);
+    g.lineWidth = u; g.strokeStyle = 'rgba(255,255,255,.08)'; mmRR(g, 0.5 * u, 0.5 * u, D - u, D - u, 7.5 * u); g.stroke();
+    const lut = mmLut(), rgb = MM.rgb && MM.rgb.length === N * 3 ? MM.rgb : (MM.rgb = new Uint8ClampedArray(N * 3)), wat = MM.wat && MM.wat.length === N ? MM.wat : (MM.wat = new Uint8Array(N)), lime = sp.hex(P.limestone), shal = lut.subarray(246, 249);
+    for (let ty = 0; ty < HGT; ty++) for (let tx = 0; tx < W; tx++) {
+      const i = ty * W + tx, ty8 = type[i], d = fin(depth[i], 0), wt = waterTypeAt(t, i); let k, sh = 0;
+      wat[i] = wt ? 1 : 0;
+      if (wt) k = ty8 === T.POND ? 3 : d < 1.5 ? 2 : (d >= 3 && ty8 !== T.BAYOU) ? 0 : 1;
+      else { k = ty8 === T.MARSH ? 4 : ty8 === T.WET ? 5 : ty8 === T.HIGH ? 7 : ty8 === T.DRAINED ? 8 : 6; if (hd) sh = clamp((fin(elev[tx < W - 1 ? i + 1 : i], 0) - fin(elev[tx > 0 ? i - 1 : i], 0)) * 0.1 + (fin(elev[ty < HGT - 1 ? i + W : i], 0) - fin(elev[ty > 0 ? i - W : i], 0)) * 0.05, -0.2, 0.2); }
+      const q = hd ? clamp(16 + Math.round(32 * ((sp.vnoise(11, tx, ty, 6) - 0.5) * 0.22 + (sp.vnoise(23, tx, ty, 2.4) - 0.5) * 0.08 + sh)), 0, 32) : 16, o = (k * 33 + q) * 3;
+      let r = lut[o], gg = lut[o + 1], b = lut[o + 2];
+      if (!wt && d >= 0.3) { const f = clamp(d / 2, 0, 1); r += (shal[0] - r) * f; gg += (shal[1] - gg) * f; b += (shal[2] - b) * f; }
+      if (!wt && crest[i] > 0) { r += (lime[0] - r) * 0.55; gg += (lime[1] - gg) * 0.55; b += (lime[2] - b) * 0.55; }
+      rgb[i * 3] = r; rgb[i * 3 + 1] = gg; rgb[i * 3 + 2] = b;
+    }
+    const TW2 = W + 2, TH2 = HGT + 2;
+    if (!MM.tex || MM.tex.width !== TW2 || MM.tex.height !== TH2) { MM.tex = makeCanvas(TW2, TH2); MM.img = null; }
+    const tg = ctx2d(MM.tex);
+    if (!MM.img) { try { MM.img = tg.createImageData(TW2, TH2); } catch (e) { MM.img = null; } }
+    if (MM.img && MM.img.data) { // an edge apron keeps the smoothed rim solid
+      const px = MM.img.data;
+      for (let yy = 0; yy < TH2; yy++) for (let xx = 0; xx < TW2; xx++) { const i = clamp(yy - 1, 0, HGT - 1) * W + clamp(xx - 1, 0, W - 1), o = (yy * TW2 + xx) * 4; px[o] = rgb[i * 3]; px[o + 1] = rgb[i * 3 + 1]; px[o + 2] = rgb[i * 3 + 2]; px[o + 3] = 255; }
+      tg.putImageData(MM.img, 0, 0);
+    }
+    const dia = [[X(0, 0), Y(0, 0)], [X(W, 0), Y(W, 0)], [X(W, HGT), Y(W, HGT)], [X(0, HGT), Y(0, HGT)]];
+    g.save(); g.translate(0, u); g.lineJoin = 'round'; for (let k = 0; k < 3; k++) { g.lineWidth = (6 - k * 2) * u; g.strokeStyle = B.css(MM_AO, 0.07 + 0.07 * k); B.poly(g, dia); g.stroke(); } g.restore();
+    g.save(); B.poly(g, dia); g.clip(); g.setTransform(s, s / 2, -s, s / 2, cx0, oy); g.imageSmoothingEnabled = true; try { g.imageSmoothingQuality = 'high'; } catch (e) { /* stub */ }
+    g.drawImage(MM.tex, -1, -1, TW2, TH2); g.restore(); g.setTransform(1, 0, 0, 1, 0, 0);
+    g.lineWidth = 0.9 * u; g.strokeStyle = B.css('#B8C8FF', 0.28); B.poly(g, dia); g.stroke();
+    g.beginPath();   // the shoreline: marching squares over the tile centres
+    const seg = (a, b, c, d2) => { g.moveTo(X(a, b), Y(a, b)); g.lineTo(X(c, d2), Y(c, d2)); }, MP = { T: [1, 0.5], R: [1.5, 1], B: [1, 1.5], L: [0.5, 1] }, MS = ['', 'LT', 'TR', 'LR', 'RB', 'LT RB', 'TB', 'BL', 'BL', 'TB', 'TR BL', 'RB', 'LR', 'TR', 'LT', ''];
+    for (let cy = 0; cy < HGT - 1; cy++) for (let cx = 0; cx < W - 1; cx++) {
+      const i = cy * W + cx, m = wat[i] | (wat[i + 1] << 1) | (wat[i + W + 1] << 2) | (wat[i + W] << 3);   // TL, TR, BR, BL (1 = water)
+      if (m && m < 15) for (const p of MS[m].split(' ')) seg(cx + MP[p[0]][0], cy + MP[p[0]][1], cx + MP[p[1]][0], cy + MP[p[1]][1]);
+    }
+    g.lineCap = 'round'; g.lineWidth = 2.6 * u; g.strokeStyle = B.css(P.shallows, 0.2); g.stroke(); g.lineWidth = 0.9 * u; g.strokeStyle = B.tone(P.shallows, 0.55, 0.62); g.stroke();
+    try {   // the charter: State land shaded navy (L2), a gold line at its edge
+      const LD = mod('land'), secs = LD && typeof LD.sections === 'function' ? LD.sections(state) : null;
+      if (secs && secs.length) {
+        g.beginPath();
+        for (let k = 0; k < secs.length; k++) { const sc = secs[k]; if (sc.owned) continue; const x0 = sc.x0, y0 = sc.y0, x1 = sc.x1 + 1, y1 = sc.y1 + 1; g.moveTo(X(x0, y0), Y(x0, y0)); g.lineTo(X(x1, y0), Y(x1, y0)); g.lineTo(X(x1, y1), Y(x1, y1)); g.lineTo(X(x0, y1), Y(x0, y1)); g.closePath(); }
+        g.fillStyle = 'rgba(20,16,58,0.5)'; g.fill();
+        const mk = typeof LD.mask === 'function' ? LD.mask(state) : null;
+        if (mk) {
+          g.beginPath();
+          for (let ty = 0; ty < HGT; ty++) for (let tx = 0; tx < W; tx++) {
+            const i = ty * W + tx; if (!mk[i]) continue;
+            if (ty > 0 && !mk[i - W]) seg(tx, ty, tx + 1, ty);
+            if (tx < W - 1 && !mk[i + 1]) seg(tx + 1, ty, tx + 1, ty + 1);
+            if (ty < HGT - 1 && !mk[i + W]) seg(tx, ty + 1, tx + 1, ty + 1);
+            if (tx > 0 && !mk[i - 1]) seg(tx, ty, tx, ty + 1);
+          }
+          g.lineWidth = 0.9 * u; g.strokeStyle = B.css(P.gold || GOLD, 0.5); g.stroke();
+        }
+      }
+    } catch (e) { rerr('minimap:land', e); }
+    try {   // the world's smoothed path centrelines
+      const cv = ensureCurves(state), X2 = sp.extra || {}, KC = [null, P.gravel, PAL.asphalt || '#3A3A40', X2.deckWood || '#9B6A48', null, X2.concrete || '#B8B8BC'], KW = [0, 0.85, 1.3, 1, 0, 1.1];
+      if (cv) for (let p = 0; p < cv.polys.length; p++) {
+        const Pl = cv.polys[p], kc = KC[Pl.kind]; if (!kc || Pl.stub || !Pl.pts) continue;
+        const pts = []; for (let k = 0; k + 1 < Pl.pts.length; k += 2) pts.push([X(Pl.pts[k] + 0.5, Pl.pts[k + 1] + 0.5), Y(Pl.pts[k] + 0.5, Pl.pts[k + 1] + 0.5)]);
+        const w = KW[Pl.kind] * u, o = { close: !!Pl.closed };
+        B.stroke(g, pts, w + 1.5 * u, MM_AO, 0, 0.3, o); B.stroke(g, pts, w, kc, Pl.kind === 2 ? 0.1 : 0.15, 1, o);
+      }
+    } catch (e) { rerr('minimap:paths', e); }
+    const bs = state.buildings, cat = (BSU.data && BSU.data.catalog) || {};   // buildings: rounded marks in their category colour
+    if (bs) {
+      const order = []; for (let k = 0; k < bs.length; k++) if (bs[k]) order.push(bs[k]); order.sort((a, b) => (a.tx + a.ty) - (b.tx + b.ty));
+      for (let k = 0; k < order.length; k++) {
+        const b = order[k], row = cat[b.type]; if (!row || !(b.w > 0 && b.h > 0)) continue;
+        const x0 = b.tx, y0 = b.ty, x1 = b.tx + b.w, y1 = b.ty + b.h, cx = X((x0 + x1) / 2, (y0 + y1) / 2), cy = Y((x0 + x1) / 2, (y0 + y1) / 2);
+        const f = Math.max(0.86, (1.7 * u) / Math.max(0.01, (b.w + b.h) * s / 2)), q = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]].map((c) => [cx + (X(c[0], c[1]) - cx) * f, cy + (Y(c[0], c[1]) - cy) * f]);
+        const done = fin(b.built, 1) >= 1, col = b.ruin ? '#8A5A5A' : (MM_CAT[row.tab] || '#D9C9A1');
+        g.globalAlpha = done ? 1 : 0.55; g.lineWidth = 1.1 * u; g.lineCap = g.lineJoin = 'round'; // the round-joined stroke rounds the corners
+        g.save(); g.translate(0.5 * u, 0.9 * u); B.poly(g, q); g.fillStyle = g.strokeStyle = B.css(MM_AO, 0.5); g.fill(); g.stroke(); g.restore();
+        B.poly(g, q); g.fillStyle = g.strokeStyle = B.tone(col, 0.08); g.fill(); g.stroke();
+        if (done) { g.lineWidth = 0.8 * u; g.strokeStyle = B.tone(col, 0.65, 0.85); g.beginPath(); g.moveTo(q[3][0], q[3][1]); g.lineTo(q[0][0], q[0][1]); g.lineTo(q[1][0], q[1][1]); g.stroke(); }
+        g.globalAlpha = 1;
+      }
+    }
+    MM.geo = { u: u, s: s, cx0: cx0, oy: oy };
+  }
+  /** the attached #minimap canvas: the cached base blitted 1:1 + the viewport, the issue pips and the storm mark; nothing at all while the overlay is unchanged */
   M.minimap = function (state) {
     const el = minimapEl; if (!el || !state || !state.tiles) return;
     try {
-      const g = ctx2d(el); const mw = el.width || 160, mh = el.height || 160;
-      if (!mmBase || mmBase.width !== W || mmBase.height !== HGT) { mmBase = makeCanvas(W, HGT); mmImg = null; }
-      const bg = ctx2d(mmBase);
-      if (!mmImg) { try { mmImg = bg.createImageData(W, HGT); } catch (e) { mmImg = null; } }
-      const sp = S(), t = state.tiles;
-      if (mmImg && mmImg.data) {
-        const px = mmImg.data;
-        for (let i = 0; i < N; i++) {
-          let col = MM_TYPE[t.type[i]] || MM_TYPE[0];
-          const d = fin(t.depth[i], 0);
-          if (t.type[i] > T.BAYOU && d >= 0.3) col = sp.mix(col, WATER_SHALLOW, clamp(d / 2, 0, 1));
-          if (t.owner[i] >= 0) col = GOLD;
-          else if (t.surface[i] > 0) col = PAL.gravel || '#C9B47C';
-          else if (t.crest[i] > 0) col = PAL.creamStone || '#F5ECD7';
-          let c = mmHex.get(col); if (!c) { c = sp.hex(col); if (mmHex.size > 512) mmHex.clear(); mmHex.set(col, c); }
-          px[i * 4] = c[0]; px[i * 4 + 1] = c[1]; px[i * 4 + 2] = c[2]; px[i * 4 + 3] = 255;
-        }
-        bg.putImageData(mmImg, 0, 0);
-      }
-      const s = mw / (W * 2);                                         // 64 tiles → the diamond width
-      tfIdent(g); g.globalAlpha = 1; g.fillStyle = BG; g.fillRect(0, 0, mw, mh);
-      g.imageSmoothingEnabled = false;
-      g.setTransform(s, s / 2, -s, s / 2, mw / 2, mh / 2 - (HGT * s) / 2);
-      g.drawImage(mmBase, 0, 0);
-      try {   // L2: unchartered sections shaded navy (the transform is in tile units; ≤ 20 rects)
-        const LD = mod('land'); const secs = LD && typeof LD.sections === 'function' ? LD.sections(state) : null;
-        if (secs && secs.length) { g.fillStyle = 'rgba(14,18,52,0.5)'; for (let k = 0; k < secs.length; k++) { const sc = secs[k]; if (sc.owned) continue; g.fillRect(sc.x0, sc.y0, sc.x1 - sc.x0 + 1, sc.y1 - sc.y0 + 1); } }
-      } catch (e) { rerr('minimap:land', e); }
-      tfIdent(g);
-      if (camera) {                                                     // camera rect: the 4 screen corners → tile coords → minimap px
-        g.strokeStyle = GOLD_HI; g.lineWidth = 1; g.beginPath();
+      if (el.offsetParent === null && !(el.clientWidth > 0)) { MM.skips++; return; } // collapsed to its pill
+      const D = Math.max(8, el.width | 0 || 160), hd = hdTerrain && !!BSU.brush, sig = mmSig(state, D, hd);
+      let fresh = false;
+      if (sig !== MM.sig || !MM.base || MM.base.width !== D) { mmBase(state, D, hd); MM.sig = sig; MM.renders++; fresh = true; }
+      const IS = mod('issues'); let li = null, selId = null;
+      try { li = IS && typeof IS.list === 'function' ? IS.list(state) : null; selId = IS && typeof IS.selectedId === 'function' ? IS.selectedId() : null; } catch (e) { rerr('minimap:issues', e); }
+      const sc = state.storms && state.storms.current, storm = !!(sc && sc.phase >= 1 && sc.phase < 4), np = li ? Math.min(li.length, 40) : 0;
+      let ik = 0; for (let k = 0; k < np; k++) { const a = li[k].anchor || {}; ik = (ik * 31 + (li[k].id | 0) * 7 + fin(a.tx, 32) * 3 + fin(a.ty, 32)) | 0; }
+      const ovKey = [camera ? (camera.x / 4) | 0 : 0, camera ? (camera.y / 4) | 0 : 0, Math.round(zoomNow * 1000), vw, vh, np, ik, selId, np ? (frameNo / 12 | 0) & 1 : 0, storm ? (frameNo / 4) | 0 : -1].join(',');
+      if (!fresh && ovKey === MM.ovKey) { MM.skips++; return; }
+      MM.ovKey = ovKey; MM.draws++;
+      const g = ctx2d(el), gm = MM.geo, u = gm.u, s = gm.s, B = BSU.brush, mX = (tx, ty) => gm.cx0 + (tx - ty) * s, mY = (tx, ty) => gm.oy + (tx + ty + 1) * s / 2;
+      const dot = (x, y, r, c, a) => { g.globalAlpha = a; g.fillStyle = c; g.beginPath(); g.arc(x, y, r * u, 0, 6.2832); g.fill(); g.globalAlpha = 1; };
+      g.setTransform(1, 0, 0, 1, 0, 0); g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; g.drawImage(MM.base, 0, 0);
+      if (camera) {   // the viewport
+        let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
         for (let c = 0; c < 4; c++) {
-          const pxs = (c === 1 || c === 2) ? vw : 0, pys = c >= 2 ? vh : 0;
-          const wx = (pxs - vw / 2) / zoomNow + camera.x, wy = (pys - vh / 2) / zoomNow + camera.y;
-          const tx = (wx / 32 + wy / 16) / 2, ty = (wy / 16 - wx / 32) / 2;
-          const mx = mw / 2 + (tx - ty) * s, my = mh / 2 - (HGT * s) / 2 + (tx + ty) * s / 2;
-          if (c === 0) g.moveTo(mx, my); else g.lineTo(mx, my);
+          const wx = ((c === 1 || c === 2 ? vw : 0) - vw / 2) / zoomNow + camera.x, wy = ((c >= 2 ? vh : 0) - vh / 2) / zoomNow + camera.y;
+          const tx = (wx / 32 + wy / 16) / 2, ty = (wy / 16 - wx / 32) / 2, mx = mX(tx, ty), my = mY(tx, ty);
+          if (mx < x0) x0 = mx; if (mx > x1) x1 = mx; if (my < y0) y0 = my; if (my > y1) y1 = my;
         }
-        g.closePath(); g.stroke();
+        x0 = clamp(x0, 1.5 * u, D - 4 * u); y0 = clamp(y0, 1.5 * u, D - 4 * u); x1 = clamp(x1, x0 + 3 * u, D - 1.5 * u); y1 = clamp(y1, y0 + 3 * u, D - 1.5 * u);
+        g.lineJoin = 'round'; mmRR(g, x0, y0, x1 - x0, y1 - y0, clamp(Math.min(x1 - x0, y1 - y0) * 0.14, 1.5 * u, 5 * u));
+        g.fillStyle = B.css(GOLD_HI, 0.07); g.fill(); g.lineWidth = 3.6 * u; g.strokeStyle = B.css(GOLD_HI, 0.16); g.stroke(); g.lineWidth = 1.25 * u; g.strokeStyle = B.css(GOLD_HI, 0.95); g.stroke();
       }
-      // issue spotlight pass: a blinking pip per issue in its kind colour (selected: a white ring), ≤ 40
-      try {
-        const IS = mod('issues'); const li = IS && typeof IS.list === 'function' ? IS.list(state) : null;
-        if (li && li.length) {
-          const sel = typeof IS.selectedId === 'function' ? IS.selectedId() : null, blink = ((frameNo / 12) | 0) & 1;
-          for (let k = 0; k < li.length && k < 40; k++) {
-            const it = li[k], a = it.anchor || { tx: 32, ty: 32 };
-            const mx = mw / 2 + (fin(a.tx, 32) - fin(a.ty, 32)) * s, my = mh / 2 - (HGT * s) / 2 + (fin(a.tx, 32) + fin(a.ty, 32)) * s / 2;
-            g.globalAlpha = 0.9; g.fillStyle = 'rgba(12,8,28,.9)'; g.fillRect(mx - 3, my - 3, 6, 6);
-            g.globalAlpha = blink ? 1 : 0.45; g.fillStyle = it.color || GOLD; g.fillRect(mx - 2, my - 2, 4, 4);
-            if (sel !== null && it.id === sel) { g.globalAlpha = 1; g.strokeStyle = '#FFFFFF'; g.lineWidth = 1; g.strokeRect(mx - 4.5, my - 4.5, 9, 9); }
-          }
-          g.globalAlpha = 1;
+      if (np) {   // issue pips (<= 40; selected: a ring)
+        const blink = (frameNo / 12 | 0) & 1;
+        for (let k = 0; k < np; k++) {
+          const it = li[k], a = it.anchor || { tx: 32, ty: 32 }, mx = mX(fin(a.tx, 32), fin(a.ty, 32)), my = mY(fin(a.tx, 32), fin(a.ty, 32));
+          dot(mx, my, 3.2, '#0C081C', 0.9); dot(mx, my, 2.1, it.color || GOLD, blink ? 1 : 0.45);
+          if (selId !== null && it.id === selId) { g.globalAlpha = 1; g.strokeStyle = '#FFFFFF'; g.lineWidth = 0.9 * u; g.beginPath(); g.arc(mx, my, 4.5 * u, 0, 6.2832); g.stroke(); }
         }
-      } catch (e) { rerr('minimap:issues', e); }
-      if (state.storms && state.storms.current && state.storms.current.phase >= 1 && state.storms.current.phase < 4) {   // the cone, roughly: a gold mark at the forecast landfall side
-        g.fillStyle = PAL.danger || '#E0443E'; g.globalAlpha = 0.6 + 0.3 * Math.sin(frameNo / 8); g.fillRect(mw / 2 - 2, mh - 6, 4, 4); g.globalAlpha = 1;
+      }
+      if (storm) {   // storm mark
+        const pu = 0.6 + 0.3 * Math.sin(frameNo / 8), dg = PAL.danger || '#E0443E'; dot(D / 2, D - 5 * u, 4.4, dg, pu * 0.35); dot(D / 2, D - 5 * u, 2.2, dg, pu);
       }
     } catch (e) { rerr('minimap', e); }
   };
+  /** tests / tools: the minimap cache (base renders, overlay draws, skipped calls, the last base render's ms) and a way to force the next base render */
+  M.minimapInfo = function () { return { renders: MM.renders, draws: MM.draws, skips: MM.skips, size: MM.base ? MM.base.width : 0, sig: MM.sig, geo: MM.geo }; };
+  /** the tile under a point of the drawn minimap (fx, fy = the point as a share of the canvas): the inverse of mmBase's iso layout, clamped to the map */
+  M.minimapToTile = function (fx, fy) {
+    const s = 0.95 / (W + HGT), d = (fx - 0.025 - HGT * s) / s, e = 2 * (fy - 0.5 + (W + HGT) * s / 4) / s;
+    return { tx: clamp((d + e) / 2 - 0.5, 0, W - 1), ty: clamp((e - d) / 2 - 0.5, 0, HGT - 1) };
+  };
+  M.minimapInvalidate = function () { MM.sig = ''; MM.ovKey = ''; };
 
   // ---------------------------------------------------------------------------
   // Postcard (fallback; render_fx may replace) and renderInto

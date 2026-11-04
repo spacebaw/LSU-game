@@ -475,3 +475,20 @@ Left pixel on purpose: the stadium crowd shader (`render.crowd`, per-seat cells 
 | **what stands on it** | footprint rows: their HD building baked once with the entrance on the lit face (`sprites.bakeWith` at master 2: a scratch canvas freed right after the blit — the atlas never holds an extra variant); plants: the HD oak / cypress / azalea cells; levee / floodwall / canal: the HD terrain families; marsh pieces: HD reeds / mound; path / road: `brush.path` (`gravel` / `asphalt`, the map's own `strokePath`); boardwalk / Pedestrian Bridge: brush decks (`fillQuadShaded` wood / stone, plank courses, stilts / piers `column`s, rails with gold caps on the bridge); gator fence: `column` posts + steel rails + mesh; preserve: gold posts and rails behind and in front of the reeds. Only the surge barrier's gate is its pen sprite (no HD family yet) |
 | **locked** | the pen's look: `saturation` blend to grey + 12 % dark inside the frame, a grey rim, a padlock (gold body, silver shackle) top right |
 | **cache** | pinned: baked once per session (gc never drops an icon), a cell is 64 KB at master 2 (≈ 3 MB for the 47 rows); the first open of a build-menu tab bakes its icons (≈ 20 ms), every later open is a lookup (≈ 1 ms) |
+
+## Minimap + crowd
+
+*Written in the minimap + crowd pass (`src/js/render.js` minimap block, `src/js/render_fx.js` crowd sheets). Both take their colours from the style C knots above; neither hand-picks a hex outside the tables here.*
+
+| surface | now |
+|---|---|
+| minimap terrain | the HD tile knots per kind (deep `waterDeep` / mid mix(`waterDeep`, `waterDay`, .55) / shallow mix(`waterDay`, `shallows`, .22) / pond mix(`waterDeep`, `reed`, .12) / marsh `wet` / wet `wet` / dry `grass` / high `highGrass` / drained mix(`dirt`, `sand`, .22)) at the tile bake's t plus .05 to .08 for legibility (deep 0, mid .1, shallow .18, pond .1, marsh -.04, wet .08, dry .08, high .13, drained .16), a macro drift of +-.11 and a hill-shade of +-.2 from the upper-left key light; flooded land mixes to the shallow tint by depth / 2; levees mix to `limestone` .55 |
+| minimap shoreline | marching-squares contour of the water mask: halo `shallows` @ .2 (2.6 u), thread `shallows` +.55 @ .62 (.9 u) |
+| minimap charter | unowned sections `rgba(20,16,58,.5)`; a gold hairline @ .5 along the charter mask's edge |
+| minimap paths | the world's smoothed centrelines: gravel `gravel` +.15, road `asphalt` +.1 (1.3 u), boardwalk `deckWood` +.15, bridge `concrete` +.15; AO `#0A0718` @ .3 (w + 1.5 u) |
+| minimap buildings | tab colours: utilities `#7FB0D9`, academic `#A58BEA`, housing `#E58C6B`, dining `#F2AE45`, sports `#F1D24A`, life `#58C4B0`, swamp `#7EC76B`, grounds `#C7DB72` (+.08, a lit rim +.65 @ .85, contact shadow `#0A0718` @ .5); a ruin `#8A5A5A`; under construction @ .55 |
+| minimap plate / frame | `#1F1640` to `#110B26`, a `#4B3A8C` stage light (.3), a hairline rim `rgba(255,255,255,.08)`, the diamond's rim `#B8C8FF` @ .28; the wrapper is the HUD panel (`--panel-bg`, `--line`, `--shadow`) |
+| minimap viewport | rounded rect, `goldHi` line 1.25 u @ .95 over a 3.6 u halo @ .16 and a 7 % fill; pips: dark disc 3.2 u, kind colour 2.1 u, selected ring 4.5 u white |
+| crowd specks | pillows (body t, a lobe t +.5 at the upper left, a rim t -.4 below): dry purple `#7F5BC5` x4 / deep `#5E2CA5` / gold `#FDD023` x4 / deep gold `#F5B700` / cream `#F4EEE2` x2; rain ponchos `#7C8CA0` / `#56657B` / `#A8B8C8` with umbrellas `#7F5BC5`, `#FDD023`, `#5E2CA5`; tones -.45 ... +.45 by depth (top lighter, rim and bottom darker) |
+| crowd light | day: a `#FFFBEA` key bloom @ .1; game night: tones +.12 and a `#FFE7B0` pool @ .3 under the masts (`source-atop`, so only the crowd takes it) plus a drifting `lighter` glint layer (`#FFF4D0` / `#FFD76A` / `#E8DCFF` `dot` blobs, alpha .45 to .75); rain: a `#B8C8FF` sheen @ .1 |
+
