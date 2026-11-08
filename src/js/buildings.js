@@ -596,6 +596,32 @@
     try { const row = rowOf(rowId); if (!state || !state.tiles || !row) return null; return runTieInner(state, row, tiles); }
     catch (e) { if (BSU.SELFTEST) throw e; BSU.error('buildings', 'runTie', e); return null; }
   };
+  /** roads pass: what placeRun would do with a drag run, without placing — the same per-tile checks (canPlace with the run as context, a road's
+   *  water + marsh-bank spans validated whole): {n, skipped: [{i, reason}] (refused tiles, in run order), refused (their count), same: [i…] (tiles
+   *  already carrying this surface: passed over silently, not refused), placed (tiles that would be laid), cost (their price, bridges at bridge
+   *  price), wet (water + marsh tiles in the run), bridge (deck tiles), tie (runTie's quote for an access row unless opts.tie === false), touches
+   *  (the run reaches the network by itself)}. opts.rot is passed through. */
+  M.runQuote = function (state, id, tiles, opts) {
+    const out = { n: 0, skipped: [], refused: 0, same: [], placed: 0, cost: 0, wet: 0, bridge: 0, tie: null, touches: false };
+    try {
+      const row = rowOf(id); if (!row || !state || !state.tiles || !Array.isArray(tiles)) return out;
+      opts = opts || {};
+      const run = []; for (const i of tiles) if (Number.isInteger(i) && i >= 0 && i < N && run.indexOf(i) < 0) run.push(i);
+      out.n = run.length; if (!run.length) return out;
+      const o = { rot: opts.rot, tiles: run, ignoreCash: true, noTie: true }, spanRow = row.placeRule === PLACE.ROAD, access = row.placeRule === PLACE.PATH || spanRow || row.placeRule === PLACE.BOARDWALK;
+      for (const i of run) {
+        if (!isLand(state, i) || isMarsh(state, i)) out.wet++;
+        if (row.placeRule === PLACE.BRIDGE && isLand(state, i)) continue;   // a landing: nothing placed there
+        let reason = '';
+        if (spanRow && spanTile(state, i)) { const chk = bridgeSpanOk(state, i, run); if (!chk.ok) reason = chk.reason; }
+        if (!reason) { const r = M.canPlace(state, id, (i % W), ((i / W) | 0), o); if (!r.ok) reason = r.reason || 'Cannot place here'; else { out.placed++; out.cost += fin(r.cost, 0); if (r.bridge) out.bridge++; } }
+        if (!reason) continue;
+        if (reason.indexOf('Already ') === 0) out.same.push(i); else { out.skipped.push({ i: i, reason: reason }); out.refused++; }
+      }
+      if (access && opts.tie !== false) { out.tie = runTieInner(state, row, run); out.touches = !out.tie && M.runTouches(state, run); }
+      return out;
+    } catch (e) { if (BSU.SELFTEST) throw e; BSU.error('buildings', 'runQuote', e); return out; }
+  };
   /** the tie a footprint placement at (tx, ty) would lay to reach the access network: {tiles, surfaces, cost, water} or null (already touching, or none within params.build.autoTieMax) */
   M.connectorFor = function (state, rowId, tx, ty, rot) {
     try {
@@ -604,40 +630,48 @@
     } catch (e) { if (BSU.SELFTEST) throw e; BSU.error('buildings', 'connectorFor', e); return null; }
   };
   function fail(r, reason) { r.ok = false; r.color = 'red'; r.reason = reason; return r; }
-  /** true when the run (opts.tiles) contains a legal ≤3-tile water span through tile i (road bridges) */
+  // roads pass: a road run's bridge span is its water tiles PLUS the marsh tiles contiguous with them along the run (the deck carries over the
+  // bank), capped at bridgeMaxSpan all told and priced as bridge; the span must land on dry ground (land that is not marsh) at both ends. A marsh
+  // band with no water in it is still "Use a Boardwalk or a bridge". The whole span is refused with one reason, never a lone bridge between banks.
+  const SPAN_LONG = 'Bridges span ' + PB.bridgeMaxSpan + ' tiles at most', SPAN_LONG_MARSH = SPAN_LONG + ' (marsh banks count)', SPAN_DRY = 'Bridges start from dry ground';
+  function spanTile(state, i) { return hasWaterFlag(state, i) || isMarsh(state, i); }
+  function dryLand(state, i) { return isLand(state, i) && !isMarsh(state, i); }
+  /** true when the run (opts.tiles) contains a legal ≤3-tile water (+ marsh bank) span through tile i (road bridges) */
   function bridgeSpanOk(state, i, run) {
     const surf = state.tiles.surface;
     if (Array.isArray(run) && run.length) {
       const k = run.indexOf(i);
-      if (k < 0) return { ok: false, reason: 'Bridges start from land' };
+      if (k < 0) return { ok: false, reason: SPAN_DRY };
       let a = k, b = k;
-      while (a - 1 >= 0 && hasWaterFlag(state, run[a - 1])) a--;
-      while (b + 1 < run.length && hasWaterFlag(state, run[b + 1])) b++;
-      if (b - a + 1 > PB.bridgeMaxSpan) return { ok: false, reason: 'Bridges span 3 tiles at most' };
+      while (a - 1 >= 0 && spanTile(state, run[a - 1])) a--;
+      while (b + 1 < run.length && spanTile(state, run[b + 1])) b++;
+      let water = 0; for (let q = a; q <= b; q++) if (hasWaterFlag(state, run[q])) water++;
+      if (!water) return { ok: false, reason: 'Use a Boardwalk or a bridge' };
+      if (b - a + 1 > PB.bridgeMaxSpan) return { ok: false, reason: water < b - a + 1 ? SPAN_LONG_MARSH : SPAN_LONG };
       const before = a - 1 >= 0 ? run[a - 1] : -1, after = b + 1 < run.length ? run[b + 1] : -1;
-      const landBefore = before >= 0 && isLand(state, before), landAfter = after >= 0 && isLand(state, after);
+      const landBefore = before >= 0 && dryLand(state, before), landAfter = after >= 0 && dryLand(state, after);
       // an end may also be an existing bridge tile continuing off the run, or an existing road on land
-      if (!landBefore && !landAfter) return { ok: false, reason: 'Bridges start from land' };
+      if (!landBefore && !landAfter) return { ok: false, reason: SPAN_DRY };
       if (!(landBefore && landAfter)) {
-        // one end open: allowed only if the open end touches land or an existing road tile
+        // one end open: allowed only if the open end touches dry ground or an existing road tile
         const openEnd = landBefore ? run[b] : run[a];
         let touches = false;
-        for (const n of BSU.nbr4(openEnd)) if (run.indexOf(n) < 0 && (isLand(state, n) || surf[n] === SURF.ROAD)) touches = true;
-        if (!touches) return { ok: false, reason: 'Bridges start from land' };
+        for (const n of BSU.nbr4(openEnd)) if (run.indexOf(n) < 0 && (dryLand(state, n) || surf[n] === SURF.ROAD)) touches = true;
+        if (!touches) return { ok: false, reason: SPAN_DRY };
       }
       return { ok: true };
     }
     // single-tile place: extend an existing bridge or start from land, span ≤ 3 along either axis
     let touches = false;
     for (const n of BSU.nbr4(i)) if (isLand(state, n) || (hasWaterFlag(state, n) && surf[n] === SURF.ROAD)) touches = true;
-    if (!touches) return { ok: false, reason: 'Bridges start from land' };
+    if (!touches) return { ok: false, reason: SPAN_DRY };
     const tx = (i % W), ty = ((i / W) | 0);
     let spanX = 1, spanY = 1;
     for (let x = tx - 1; x >= 0 && hasWaterFlag(state, BSU.idx(x, ty)) && surf[BSU.idx(x, ty)] === SURF.ROAD; x--) spanX++;
     for (let x = tx + 1; x < W && hasWaterFlag(state, BSU.idx(x, ty)) && surf[BSU.idx(x, ty)] === SURF.ROAD; x++) spanX++;
     for (let y = ty - 1; y >= 0 && hasWaterFlag(state, BSU.idx(tx, y)) && surf[BSU.idx(tx, y)] === SURF.ROAD; y--) spanY++;
     for (let y = ty + 1; y < H && hasWaterFlag(state, BSU.idx(tx, y)) && surf[BSU.idx(tx, y)] === SURF.ROAD; y++) spanY++;
-    if (Math.max(spanX, spanY) > PB.bridgeMaxSpan) return { ok: false, reason: 'Bridges span 3 tiles at most' };
+    if (Math.max(spanX, spanY) > PB.bridgeMaxSpan) return { ok: false, reason: SPAN_LONG };
     return { ok: true };
   }
   /** bridge pass — the Pedestrian Bridge: every water segment of the run must reach land at both ends (a land tile in the run,
@@ -685,7 +719,10 @@
         if (surf === SURF.FENCE) return 'Fence in the way';
         if (surf === SURF.BOARDWALK || surf === SURF.BRIDGE) return 'Occupied';
         if (water) { const b = bridgeSpanOk(state, i, opts.tiles); if (!b.ok) return b.reason; r.bridge = true; return ''; }
-        if (isMarsh(state, i)) return 'Use a Boardwalk or a bridge';
+        if (isMarsh(state, i)) {   // roads pass: a marsh bank inside a run's bridge span is deck (bridge price); any other marsh is refused as before
+          if (Array.isArray(opts.tiles) && opts.tiles.length > 1) { const b = bridgeSpanOk(state, i, opts.tiles); if (b.ok) { r.bridge = true; return ''; } return b.reason; }
+          return 'Use a Boardwalk or a bridge';
+        }
         return '';
       case PLACE.BOARDWALK:
         if (owner >= 0) return 'Occupied';
@@ -1320,11 +1357,11 @@
         if (r.ok) { out.ok = true; out.placed = 1; out.cost = r.cost; } else out.skipped.push({ i: run[0], reason: r.reason });
         return out;
       }
-      // bridges: validate every water segment of a road run as a whole before placing any tile of it
+      // bridges: validate every water (+ marsh bank) segment of a road run as a whole before placing any tile of it
       const bad = new Map();
       if (row.placeRule === PLACE.ROAD) {
         for (let k = 0; k < run.length; k++) {
-          if (!hasWaterFlag(state, run[k])) continue;
+          if (!spanTile(state, run[k])) continue;
           const chk = bridgeSpanOk(state, run[k], run);
           if (!chk.ok) bad.set(run[k], chk.reason);
         }
@@ -1369,7 +1406,7 @@
     if (isCanal(state, i) && cat.canal) v += cat.canal.cost;
     const s = tl.surface[i];
     if (s === SURF.PATH && cat.path) v += cat.path.cost;
-    if (s === SURF.ROAD && cat.road) v += cat.road.cost * (hasWaterFlag(state, i) ? PB.bridgeCostMult : 1);
+    if (s === SURF.ROAD && cat.road) v += cat.road.cost * (spanTile(state, i) ? PB.bridgeCostMult : 1);   // roads pass: a deck over the marsh bank was bridge-priced too
     if (s === SURF.BOARDWALK && cat.boardwalk) v += cat.boardwalk.cost;
     if (s === SURF.BRIDGE && cat.bridge) v += cat.bridge.cost;
     if (s === SURF.FENCE && cat.gator_fence) v += cat.gator_fence.cost;
@@ -1959,7 +1996,7 @@
     s.parkingLots = s.lots;
     for (const m of ((state.plot && state.plot.mounds) || [])) { let reached = false; for (const n of BSU.nbr4(m)) if (isAccessSurface(tl.surface[n])) reached = true; if (reached) { s.landmarks += PE.landmarks.mounds; break; } }
     if (state.economy && state.economy.westCampus) s.landmarks += PE.landmarks.west;
-    for (let i = 0; i < N; i++) if ((tl.surface[i] === SURF.ROAD && (tl.flags[i] & (FLAG.BAYOU | FLAG.OPEN_WATER))) || tl.surface[i] === SURF.BRIDGE) s.bridges++;
+    for (let i = 0; i < N; i++) if ((tl.surface[i] === SURF.ROAD && spanTile(state, i)) || tl.surface[i] === SURF.BRIDGE) s.bridges++;   // roads pass: a deck over the marsh bank counts
     s.beds = Math.round(s.beds); s.seats = Math.round(s.seats); s.feeds = Math.round(s.feeds);
     s.bedsEconomy = Math.round(s.bedsEconomy); s.bedsStandard = Math.round(s.bedsStandard); s.bedsPremium = Math.round(s.bedsPremium); s.parkingSpaces = Math.round(s.parkingSpaces);
     s.shelter = M.shelter(state);

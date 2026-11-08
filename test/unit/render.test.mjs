@@ -278,7 +278,9 @@ s.setPiece = { kind: 'x', cameraTouched: false }; R.panBy(1, 0, true); ok(s.setP
   ok(Math.abs(cv.deck[col(20, 12)] - 1.5) < 1e-6 && Number.isNaN(cv.deck[col(20, 10)]) && Math.abs(cv.water[col(20, 12)]) < 1e-6, 'boardwalk deck = max(bed −2, stage 0) + 1.5 ft over water; the marsh tile is no deck');
   ok(Math.abs(cv.deck[col(24, 12)] - 4) < 1e-6, 'a road over water is a deck 4 ft up');
   ok(cv.deck[col(22, 12)] > 6 && cv.deck[col(22, 12)] < 7.01 && cv.deck[col(22, 11)] < cv.deck[col(22, 12)] && Math.abs(cv.deck[col(22, 11)] - cv.deck[col(22, 13)]) < 1e-6, 'bridge deck 6 ft + a gentle symmetric arch, highest mid-span');
-  ok(cv.deckCount === 9 && CV.clearance[BSU.SURF.BRIDGE] === 6 && CV.clearance[BSU.SURF.BOARDWALK] === 1.5, 'nine deck tiles; clearances 6 / 1.5 ft');
+  // roads pass: the road's marsh banks (24,10) and (24,14) carry the deck on (buildings lets a road span include the bank), so eleven deck tiles
+  ok(cv.deckCount === 11 && CV.clearance[BSU.SURF.BRIDGE] === 6 && CV.clearance[BSU.SURF.BOARDWALK] === 1.5, 'eleven deck tiles (the road\'s marsh banks included); clearances 6 / 1.5 ft');
+  ok(Math.abs(cv.deck[col(24, 10)] - 4) < 1e-6 && Math.abs(cv.deck[col(24, 14)] - 4) < 1e-6 && Math.abs(cv.water[col(24, 10)] - 0.5) < 1e-6 && Number.isNaN(cv.deck[col(20, 10)]), 'a road over the marsh bank is a deck at the water deck\'s height standing in the marsh (water = its ground); a boardwalk on marsh is not');
   const stepN = cv.steps.get(col(20, 10)), stepS = cv.steps.get(col(20, 14));
   ok(stepN && stepN.length === 1 && stepN[0].hi === col(20, 11) && stepN[0].lo === col(20, 10) && stepN[0].kind === BSU.SURF.BOARDWALK && stepN[0].deck === true && stepN[0].hiEp === 9 && stepN[0].loEp === 3, 'north shoreline: the run splits there — a step from the deck (9 px) down to the marsh (3 px): ' + JSON.stringify(stepN && stepN[0]));
   ok(stepS && stepS.length === 1 && stepS[0].hi === col(20, 13) && stepS[0].lo === col(20, 14), 'south shoreline step too');
@@ -288,7 +290,7 @@ s.setPiece = { kind: 'x', cameraTouched: false }; R.panBy(1, 0, true); ok(s.setP
   const rampN = cv.steps.get(col(22, 10)), rampS = cv.steps.get(col(22, 14));
   ok(rampN && rampN.length === 1 && rampN[0].kind === BSU.SURF.BRIDGE && rampN[0].hi === col(22, 11) && rampN[0].sign === -1 && rampN[0].t === 0 && rampN[0].hiEp === Math.round(cv.deck[col(22, 11)] * 6), 'a ramp record on the north path tile, walking back past the bridge start');
   ok(rampS && rampS.length === 1 && rampS[0].sign === 1 && rampS[0].t === 1, 'and one on the south path tile, walking on past its end');
-  ok(cv.lamps.length === 3 && cv.lampAt.has(col(20, 12)) && cv.lampAt.has(col(22, 12)) && cv.lampAt.has(col(24, 12)) && cv.lamps.every((L) => L.ft > 3), 'one lamp per 3-tile deck run on its second deck tile, at deck height');
+  ok(cv.lamps.length === 3 && cv.lampAt.has(col(20, 12)) && cv.lampAt.has(col(22, 12)) && cv.lampAt.has(col(24, 11)) && cv.lamps.every((L) => L.ft > 3), 'one lamp per deck run on its second deck tile, at deck height (the road\'s run now starts on the bank)');
   ok(Number.isNaN(CV.deckOf(-1)) && typeof CV.decksDrawn() === 'number' && CV.overtopped(0) === false, 'deckOf / decksDrawn / overtopped are exposed');
 }
 

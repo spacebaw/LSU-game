@@ -217,6 +217,24 @@ export async function openGame(opts = {}) {
     await sleep(80);
   };
   g.clickTile = async (tx, ty, o2 = {}) => { const p = await g.tilePx(tx, ty); await g.click(p.x, p.y, o2); return p; };
+  /**
+   * drag a 4-connected tile route [[tx, ty], …] with the armed drag tool the way a player draws a winding path since the roads pass: one real
+   * mouse drag per straight leg, released at every turn (a drag is planned as ONE L from the press tile to the cursor, so a glide along a
+   * winding route would lay the L, not the route; each leg starts on the previous leg's end tile, which the run passes over silently).
+   * Returns the number of drags.
+   */
+  g.dragLegs = async (route, steps = 3) => {
+    const axis = (a, b) => (a[0] === b[0] ? 'y' : 'x');
+    let k = 0, n = 0;
+    while (k < route.length - 1) {
+      let e = k + 1; const ax = axis(route[k], route[e]);
+      while (e + 1 < route.length && axis(route[e], route[e + 1]) === ax) e++;
+      const a = await g.tilePx(route[k][0], route[k][1]), b2 = await g.tilePx(route[e][0], route[e][1]);
+      await b.drag(a.x, a.y, b2.x, b2.y, Math.max(steps, e - k)); await sleep(80); n++;
+      k = e;
+    }
+    return n;
+  };
   /** click a DOM element by CSS selector (its centre); false when missing or hidden */
   g.clickEl = async (sel) => {
     const r = await ev(`(function () { var e = document.querySelector(${JSON.stringify(sel)}); if (!e) return null; var q = e.getBoundingClientRect(); if (!q.width || !q.height || e.offsetParent === null && getComputedStyle(e).position !== 'fixed') return null; return { x: q.left + q.width / 2, y: q.top + q.height / 2 }; })()`);

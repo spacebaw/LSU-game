@@ -250,6 +250,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - buildings.connectedMask(state)
 - buildings.runTouches(state, tiles)
 - buildings.runTie(state, rowId, tiles)
+- buildings.runQuote(state, id, tiles, opts)
 - buildings.connectorFor(state, rowId, tx, ty, rot)
 - buildings.canPlace(state, id, tx, ty, opts)
 - buildings.fillMask(state)

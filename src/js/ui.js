@@ -52,8 +52,11 @@
 //   PLACING + move                          → buildings.canPlace → render.ghost + #ghost-label
 //   PLACING(footprint) + up ≤ 4 px          → buildings.place (ok → IDLE unless Shift; !ok → invalid + shake)
 //   PLACING(drag row) + down(left)          → DRAGGING (run starts; Shift = straight line)
-//   DRAGGING + move                         → the run is an ORDERED trail: it grows 4-connected (x then y staircase); moving back
-//                                             onto a tile already in the trail truncates it to that tile (the start tile too)
+//   DRAGGING + move                         → the run is RE-PLANNED from the anchor (the down tile) to the cursor as ONE elbow (roads pass):
+//                                             x-first or y-first by fewest refused tiles, then the shorter tie, then fewer wet tiles; a tie
+//                                             keeps the previous elbow (no flip-flop along a diagonal); a Z when neither L is legal but a Z
+//                                             is; Shift = the axis-locked straight line. Backing toward the anchor shortens the run.
+//                                             Refused tiles are red in the ghost with the first reason in the label, before release.
 //   DRAGGING + up                           → buildings.placeRun → PLACING (tool kept)
 //   DRAGGING + Esc/right-click              → the whole pending run is dropped (nothing placed) → PLACING, tool kept
 //   PLACING + Esc/right-click               → IDLE;  R → rotate in place
@@ -640,7 +643,7 @@
   // ---------------------------------------------------------------------------
   // The input state machine — a pure step over a context with injected callbacks (testable without the DOM)
   // ---------------------------------------------------------------------------
-  function makeMachine(cb) { return { state: 'IDLE', prev: 'IDLE', down: null, run: [], runStart: -1, runTile: -1, cb: cb }; }
+  function makeMachine(cb) { return { state: 'IDLE', prev: 'IDLE', down: null, run: [], runStart: -1, runTile: -1, elbow: 0, plan: null, cb: cb }; }
   function mcSet(mc, s) { mc.state = s; if (mc === live) M.state = s; }
   function lineRun(a, b) {
     const ax = a % W, ay = (a / W) | 0, bx = b % W, by = (b / W) | 0, out = [];
@@ -648,31 +651,66 @@
     else { const st = by >= ay ? 1 : -1; for (let y = ay; ; y += st) { out.push(y * W + ax); if (y === by) break; } }
     return out;
   }
-  function stairRun(a, b) {
-    let ax = a % W, ay = (a / W) | 0; const bx = b % W, by = (b / W) | 0, out = [];
-    while (ax !== bx) { ax += bx > ax ? 1 : -1; out.push(ay * W + ax); }
-    while (ay !== by) { ay += by > ay ? 1 : -1; out.push(ay * W + ax); }
+  // roads pass — anchor → cursor planning. The pending run is re-planned on every move from the anchor (the down tile) to the cursor:
+  // elbowRun = one elbow (x-first: along the anchor's row to the cursor's column, then down it; y-first: the other way; a shared row or
+  // column gives the same straight run either way), zRun = two elbows with the cross leg on column / row c.
+  function elbowRun(a, b, yFirst) {
+    const ax = a % W, ay = (a / W) | 0, bx = b % W, by = (b / W) | 0, out = [a];
+    let x = ax, y = ay;
+    const goX = function () { while (x !== bx) { x += bx > x ? 1 : -1; out.push(y * W + x); } };
+    const goY = function () { while (y !== by) { y += by > y ? 1 : -1; out.push(y * W + x); } };
+    if (yFirst) { goY(); goX(); } else { goX(); goY(); }
     return out;
   }
-  /** the pending run is an ordered trail of 4-connected tiles; trail[last] === mc.runTile is where the cursor is.
-   *  A tile already in the trail is a BACKTRACK: the trail is cut back to it (everything laid after it disappears).
-   *  Anything else extends by the x-then-y staircase from the last tile (a jump of the cursor is filled in). Shift = straight line. */
-  function extendRun(mc, ev) {
-    const j = mc.cb.tileAt(ev.px, ev.py); if (j < 0 || j === mc.runTile) return false;
-    if (ev.mods && ev.mods.shift) mc.run = lineRun(mc.runStart, j);
-    else {
-      const at = mc.run.indexOf(j);
-      if (at >= 0) mc.run.length = at + 1;   // backtrack straight to the tile under the cursor
-      else {
-        const path = stairRun(mc.run.length ? mc.run[mc.run.length - 1] : mc.runStart, j);
-        for (const i of path) { const k = mc.run.indexOf(i); if (k >= 0) mc.run.length = k + 1; else mc.run.push(i); }
+  function zRun(a, b, yFirst, c) {
+    const ax = a % W, ay = (a / W) | 0, bx = b % W, by = (b / W) | 0, out = [a];
+    let x = ax, y = ay;
+    const goX = function (to) { while (x !== to) { x += to > x ? 1 : -1; out.push(y * W + x); } };
+    const goY = function (to) { while (y !== to) { y += to > y ? 1 : -1; out.push(y * W + x); } };
+    if (yFirst) { goY(c); goX(bx); goY(by); } else { goX(c); goY(by); goX(bx); }
+    return out;
+  }
+  const Z_TRIES = 12;   // cross-leg positions tried per family (nearest the middle first) before the better L is kept with its red tiles
+  function quoteOf(mc, run) { const q = mc.cb.quote; return typeof q === 'function' ? (q(run) || null) : null; }
+  /** which of two quotes wins: < 0 → x; fewest refused tiles, then the run that touches the network / needs the shorter tie (tieRank), then fewer wet tiles */
+  function quoteCmp(x, y) {
+    if (!x || !y) return 0;
+    if (x.refused !== y.refused) return x.refused - y.refused;
+    const tx = fin(x.tieRank, 0), ty = fin(y.tieRank, 0); if (tx !== ty) return tx - ty;
+    return fin(x.wet, 0) - fin(y.wet, 0);
+  }
+  /** plan mc.run from the anchor to tile j as ONE elbow (the L); mc.elbow (0 x-first, 1 y-first) is kept while the candidates tie, so the preview
+   *  never flip-flops as the cursor slides along a diagonal. Neither L fully legal but a Z (two elbows) is → the Z (elbow kept). Without a quote
+   *  callback (tests, non-drag rows) the previous elbow decides. */
+  function planRun(mc, j) {
+    const a = mc.runStart, ax = a % W, ay = (a / W) | 0, bx = j % W, by = (j / W) | 0;
+    if (ax === bx || ay === by || typeof mc.cb.quote !== 'function') { mc.run = elbowRun(a, j, mc.elbow === 1); mc.plan = quoteOf(mc, mc.run); return; }
+    const cand = [elbowRun(a, j, false), elbowRun(a, j, true)], sc = [quoteOf(mc, cand[0]), quoteOf(mc, cand[1])];
+    const c = quoteCmp(sc[0], sc[1]), pick = c < 0 ? 0 : c > 0 ? 1 : mc.elbow;
+    if (sc[0] && sc[1] && sc[0].refused > 0 && sc[1].refused > 0) {
+      const fam = [mc.elbow === 1, mc.elbow !== 1];   // the previous orientation's family first
+      for (let f = 0; f < 2; f++) {
+        const yFirst = fam[f], lo = yFirst ? Math.min(ay, by) : Math.min(ax, bx), hi = yFirst ? Math.max(ay, by) : Math.max(ax, bx);
+        if (hi - lo < 2) continue;
+        const mid = (lo + hi) / 2, cs = []; for (let k = lo + 1; k < hi; k++) cs.push(k);
+        cs.sort(function (p, q) { return Math.abs(p - mid) - Math.abs(q - mid); });
+        for (let k = 0; k < cs.length && k < Z_TRIES; k++) { const run = zRun(a, j, yFirst, cs[k]), q = quoteOf(mc, run); if (q && q.refused === 0) { mc.run = run; mc.plan = q; return; } }
       }
     }
-    mc.runTile = mc.run.length ? mc.run[mc.run.length - 1] : j;
+    mc.elbow = pick; mc.run = cand[pick]; mc.plan = sc[pick];
+  }
+  /** the pending run follows the cursor: re-planned from the anchor on every move onto a new tile (force: the same tile, after Shift changes);
+   *  mc.runTile is the cursor's tile, mc.plan the quote of the run shown ({skipped, refused, same, tie, touches, …} from buildings.runQuote or null).
+   *  Shift = the axis-locked straight line from the anchor; backing toward the anchor shortens the run; the anchor alone is a 1-tile run. */
+  function extendRun(mc, ev, force) {
+    const j = mc.cb.tileAt(ev.px, ev.py); if (j < 0 || (j === mc.runTile && !force)) return false;
+    if (ev.mods && ev.mods.shift) { mc.run = lineRun(mc.runStart, j); mc.plan = quoteOf(mc, mc.run); }
+    else planRun(mc, j);
+    mc.runTile = j;
     return true;
   }
   /** drop the pending run: nothing was placed while dragging, so everything that already exists stays; the tool stays selected */
-  function cancelRun(mc, px, py) { mc.run = []; mc.runTile = -1; mc.runStart = -1; mc.down = null; mcSet(mc, 'PLACING'); if (px == null) mc.cb.ghost(null); else mc.cb.ghost(px, py); }
+  function cancelRun(mc, px, py) { mc.run = []; mc.runTile = -1; mc.runStart = -1; mc.plan = null; mc.down = null; mcSet(mc, 'PLACING'); if (px == null) mc.cb.ghost(null); else mc.cb.ghost(px, py); }
   function mcRightClick(mc) { const cb = mc.cb; if (cb.getTool() && !cb.locked()) { mcStep(mc, { type: 'tool', id: null }); return; } if (cb.inspecting()) { cb.closeInspect(); mcSet(mc, 'IDLE'); } }
   /** one transition; ev = {type:'down'|'move'|'up'|'cancel'|'tool'|'key', px, py, button, mods, id, key} */
   function mcStep(mc, ev) {
@@ -680,14 +718,14 @@
     const isDrag = !!(tool && cb.isDrag(tool.id));
     switch (ev.type) {
       case 'tool': {
-        if (ev.id == null) { if (cb.locked()) return false; cb.setTool(null); mc.run = []; mc.down = null; if (mc.state === 'PLACING' || mc.state === 'DRAGGING') mcSet(mc, cb.inspecting() ? 'INSPECTING' : 'IDLE'); cb.ghost(null); return true; }
-        cb.setTool({ id: ev.id, rot: 0, shift: false }); mc.run = []; mc.down = null; mcSet(mc, 'PLACING'); cb.ghost(ev.px, ev.py); return true;
+        if (ev.id == null) { if (cb.locked()) return false; cb.setTool(null); mc.run = []; mc.plan = null; mc.down = null; if (mc.state === 'PLACING' || mc.state === 'DRAGGING') mcSet(mc, cb.inspecting() ? 'INSPECTING' : 'IDLE'); cb.ghost(null); return true; }
+        cb.setTool({ id: ev.id, rot: 0, shift: false }); mc.run = []; mc.plan = null; mc.down = null; mcSet(mc, 'PLACING'); cb.ghost(ev.px, ev.py); return true;
       }
       case 'down': {
         if (mc.state === 'DRAGGING' && ev.button !== 0) { if (ev.button === 2) cancelRun(mc, ev.px, ev.py); return true; }   // right-click mid-drag = cancel the whole run (kept tool); the stray release does nothing
         if (ev.button === 1 || ev.button === 2) { mc.down = { px: ev.px, py: ev.py, lx: ev.px, ly: ev.py, button: ev.button, moved: false, pan: true, prev: mc.state }; return true; }
         if (ev.button !== 0) return false;
-        if (mc.state === 'PLACING' && isDrag) { const i = cb.tileAt(ev.px, ev.py); if (i < 0) return false; mc.run = [i]; mc.runStart = i; mc.runTile = i; mcSet(mc, 'DRAGGING'); cb.ghost(ev.px, ev.py); return true; }
+        if (mc.state === 'PLACING' && isDrag) { const i = cb.tileAt(ev.px, ev.py); if (i < 0) return false; mc.run = [i]; mc.runStart = i; mc.runTile = i; mc.elbow = 0; mc.plan = quoteOf(mc, mc.run); mcSet(mc, 'DRAGGING'); cb.ghost(ev.px, ev.py); return true; }
         mc.down = { px: ev.px, py: ev.py, lx: ev.px, ly: ev.py, button: 0, moved: false, pan: false, prev: mc.state }; return true;
       }
       case 'move': {
@@ -702,7 +740,7 @@
         cb.hover(ev.px, ev.py); return true;
       }
       case 'up': {
-        if (mc.state === 'DRAGGING') { if (ev.button != null && ev.button !== 0) return true; const r = mc.run; mc.run = []; mc.runTile = -1; mcSet(mc, 'PLACING'); cb.placeRun(r); cb.ghost(ev.px, ev.py); return true; }
+        if (mc.state === 'DRAGGING') { if (ev.button != null && ev.button !== 0) return true; const r = mc.run; mc.run = []; mc.runTile = -1; mc.plan = null; mcSet(mc, 'PLACING'); cb.placeRun(r); cb.ghost(ev.px, ev.py); return true; }
         const d = mc.down; if (!d) return false; mc.down = null;
         if (mc.state === 'PANNING') mcSet(mc, d.prev === 'PANNING' ? 'IDLE' : d.prev);
         if (d.pan) { if (d.button === 2 && !d.moved) mcRightClick(mc); return true; }
@@ -738,12 +776,27 @@
       rotatable: function (id) { const r = rowOf(id); return !!(r && r.rotatable); }, locked: function () { return false; }, inspecting: function () { return defaults.insp; },
       tileAt: function (px, py) { const tx = Math.floor(px / 20), ty = Math.floor(py / 11); return BSU.inBounds(tx, ty) ? ty * W + tx : -1; },
       pan: function () {}, hover: function () {}, ghost: function () {}, place: function () { return true; }, placeRun: function () {},
-      inspectAt: function () { defaults.insp = true; return true; }, closeInspect: function () { defaults.insp = false; }
+      inspectAt: function () { defaults.insp = true; return true; }, closeInspect: function () { defaults.insp = false; },
+      quote: null   // roads pass: (run) → {refused, tieRank, wet, …} scores the L candidates; null = the previous elbow (x-first at first) decides
     };
     if (cb) for (const k in cb) c[k] = cb[k];
     const mc = makeMachine(c);
-    return { mc: mc, step: function (ev) { return mcStep(mc, ev); }, get state() { return mc.state; }, get run() { return mc.run; }, get tool() { return c.getTool(); } };
+    return { mc: mc, step: function (ev) { return mcStep(mc, ev); }, get state() { return mc.state; }, get run() { return mc.run; }, get tool() { return c.getTool(); }, get plan() { return mc.plan; }, get elbow() { return mc.elbow; } };
   };
+  /** roads pass: the live machine's quote of a candidate run — buildings.runQuote plus tieRank (0 touching the network, else the tie's length, 99 none within reach) */
+  function quoteRun(s, run) {
+    if (!s || !s.ui || !s.ui.tool) return null;
+    const tool = s.ui.tool, row = rowOf(tool.id); if (!row || row.kind !== 'drag') return null;
+    const q = call('buildings', 'runQuote', s, tool.id, run, { rot: tool.rot }); if (!q) return null;
+    const access = [PLACE.PATH, PLACE.ROAD, PLACE.BOARDWALK].indexOf(row.placeRule) >= 0;
+    q.tieRank = q.touches ? 0 : (q.tie ? q.tie.tiles.length : (access ? 99 : 0));
+    return q;
+  }
+  /** roads pass: re-plan the live drag at the last pointer position (Shift pressed / released mid-drag) */
+  function replanLive() {
+    try { const s = stateOf(); if (!s || live.state !== 'DRAGGING') return; extendRun(live, { px: lastPx, py: lastPy, mods: { ctrl: false, shift: heldShift, meta: false, alt: heldAlt } }, true); updateGhost(s, lastPx, lastPy); }
+    catch (e) { uerr('replan', e); }
+  }
 
   // the live machine: callbacks bound to render/buildings/inspect
   const live = makeMachine({
@@ -760,7 +813,8 @@
     place: function (px, py, mods) { return clickPlace(stateOf(), px, py, mods); },
     placeRun: function (run) { finishRun(stateOf(), run); },
     inspectAt: function (px, py) { return clickInspect(stateOf(), px, py); },
-    closeInspect: function () { closeInspectDom(); }
+    closeInspect: function () { closeInspectDom(); },
+    quote: function (run) { return quoteRun(stateOf(), run); }
   });
 
   function tileIndexAt(px, py) { const t = call('render', 'screenToTile', px, py); if (!t) return -1; const tx = Math.floor(fin(t.tx, -1)), ty = Math.floor(fin(t.ty, -1)); return BSU.inBounds(tx, ty) ? ty * W + tx : -1; }
@@ -823,7 +877,7 @@
   }
   function keyup(key) {
     const d = panDirOf(key); if (d) held[d] = false;
-    if (key === 'Shift') { heldShift = false; if (live.state === 'PLACING') updateGhostQuiet(); }
+    if (key === 'Shift') { heldShift = false; if (live.state === 'PLACING') updateGhostQuiet(); else if (live.state === 'DRAGGING') replanLive(); }   // roads pass: the line becomes the L again at once
     if (key === 'Alt') { heldAlt = false; if (live.state === 'PLACING' || live.state === 'DRAGGING') updateGhostQuiet(); }   // paths pass: the tie comes back
     if (key === 'i' || key === 'I') { if (heldI) { heldI = false; applySpotlight(); } }   // issue spotlight pass: releasing I restores the map
     if ((key === 'n' || key === 'N') && heldN) {   // paths pass: a TAP opens the Season panel on release; a hold was the network view
@@ -839,7 +893,7 @@
   M.keydown = function (key, mods) {
     try {
       mods = mods || M0; const s = stateOf(); if (!s || !s.ui) return false;
-      if (key === 'Shift') { if (!heldShift) { heldShift = true; if (live.state === 'PLACING') updateGhostQuiet(); } return false; }   // design pass: flush placement while held
+      if (key === 'Shift') { if (!heldShift) { heldShift = true; if (live.state === 'PLACING') updateGhostQuiet(); else if (live.state === 'DRAGGING') replanLive(); } return false; }   // design pass: flush placement while held; roads pass: a straight line at once mid-drag
       if (key === 'Alt') { if (!heldAlt) { heldAlt = true; if (live.state === 'PLACING' || live.state === 'DRAGGING') updateGhostQuiet(); } return false; }   // paths pass: "no tie" while held
       const isBackquote = mods.code === 'Backquote' || key === '`';
       // (1) decision toast
@@ -1040,7 +1094,11 @@
     if (dragging && isRing && !shrank && clock - lastRingMs < L.ringThrottleMs && lastGhost) { drawGhost(s, tool, row, lastGhost.r, g, px, py, dragging); return; }
     const opts = { rot: tool.rot, noTie: heldAlt }; if (dragging) opts.tiles = live.run;
     const r = call('buildings', 'canPlace', s, tool.id, g.tx, g.ty, opts); if (!r) return;
-    if (dragging) { r.tie = heldAlt ? null : (call('buildings', 'runTie', s, tool.id, live.run) || null); r.tieTouching = !r.tie && !heldAlt && runTouches(s, live.run); }   // paths pass: the drag end's tie / snap preview
+    if (dragging) {   // paths pass: the drag end's tie / snap preview; roads pass: from the machine's plan (one quote per move) when it has one
+      const pl = live.plan && live.plan.n === live.run.length ? live.plan : null; r.plan = pl;
+      r.tie = heldAlt ? null : (pl ? (pl.tie || null) : (call('buildings', 'runTie', s, tool.id, live.run) || null));
+      r.tieTouching = !r.tie && !heldAlt && (pl ? pl.touches : runTouches(s, live.run));
+    }
     if (dragging && isRing) lastRingMs = clock;
     lastGhost = { r: r, tx: g.tx, ty: g.ty };
     drawGhost(s, tool, row, r, g, px, py, dragging);
@@ -1057,9 +1115,13 @@
     const fq = (dragging && row.placeRule === PLACE.FILL && live.run.length) ? call('buildings', 'fillQuote', s, live.run) : null;
     if (fq) { color = (fq.n === 0 || !fq.affordable) ? 'red' : (fq.skipped.length ? 'yellow' : 'green'); if (fq.n) tiles = fq.tiles; }
     if (g.cove && s.plot && s.plot.cove) tiles = s.plot.cove;
+    // roads pass: every drag tool previews the tiles placeRun will skip (red, the first reason in the label); nothing is placed differently
+    const pl = (dragging && !fq && r.plan) ? r.plan : null;
+    if (pl && pl.skipped.length) { color = pl.placed === 0 ? 'red' : 'yellow'; const sk = new Set(pl.skipped.map(function (x) { return x.i; })); tiles = live.run.filter(function (i) { return !sk.has(i); }); }   // the skipped tiles are red only, never under the run's own fill
     const conn = (!dragging && !g.cove && r.connector && Array.isArray(r.connector.tiles) && r.connector.tiles.length) ? r.connector : (dragging && r.tie && r.tie.tiles.length ? r.tie : null);   // paths pass: the tie this placement (or this drag's end) would lay
-    const spec = { tiles: tiles, skipTiles: fq ? fq.skipped.map(function (x) { return x.i; }) : null, color: color, connectorTiles: null, ringTiles: r.ring && Array.isArray(r.ring.tiles) ? r.ring.tiles : null, label: '', radius: fin(r.radius, 0), radiusCenter: { tx: g.tx, ty: g.ty } };
+    const spec = { tiles: tiles, skipTiles: fq ? fq.skipped.map(function (x) { return x.i; }) : (pl && pl.skipped.length ? pl.skipped.map(function (x) { return x.i; }) : null), color: color, connectorTiles: null, ringTiles: r.ring && Array.isArray(r.ring.tiles) ? r.ring.tiles : null, label: '', radius: fin(r.radius, 0), radiusCenter: { tx: g.tx, ty: g.ty } };
     if (row.kind === 'footprint' || row.kind === 'upgrade') spec.sprite = { id: tool.id, variant: r.needsPilings ? SPR.PILINGS : 0, tx: g.tx, ty: g.ty, rot: tool.rot };
+    if (dragging && live.run.length > 1 && row.kind === 'drag' && [PLACE.PATH, PLACE.ROAD, PLACE.BOARDWALK, PLACE.BRIDGE].indexOf(row.placeRule) >= 0) { spec.line = live.run; spec.lineKind = fin(row.effects && row.effects.surfaceId, 0); }   // roads pass: the run as a stroked centreline (its L and elbow)
     call('render', 'ghost', spec);
     call('render', 'tiePreview', conn ? { tiles: conn.tiles, surfaces: conn.surfaces || null, snap: !!conn.snap, water: fin(conn.water, 0) } : null);   // render_fx draws it as a dashed gold path (planks over water)
     if (!dom()) return;
@@ -1067,11 +1129,12 @@
     const netRow = !!(row.kind === 'footprint' && row.pathAdjacency && row.id !== 'founders_hall');
     if (fq) { const t2 = fillLines(s, fq, r); l1 = t2[0]; l2 = t2[1]; }
     else if (dragging) {
-      const n = live.run.length; const per = fin(r.cost, row.cost) || row.cost; l1 = n + (n === 1 ? ' tile' : ' tiles') + ' · ' + money(per * n);
+      const n = pl ? pl.placed : live.run.length; const per = fin(r.cost, row.cost) || row.cost; l1 = n + (n === 1 ? ' tile' : ' tiles') + ' · ' + money(pl ? pl.cost : per * n);   // the tiles that will be laid, at their own prices (bridge tiles ×4)
       if (conn) l1 += ' + ' + money(conn.cost) + (conn.snap ? ' snap' : ' tie');   // "12 tiles · $24k + $8k tie"
       if (r.ring && r.ring.text) l2 = r.ring.text; else if (r.ring && typeof r.ring.closed === 'boolean') l2 = r.ring.closed ? 'closes the ring' : (r.ring.shortText || ('still ' + fin(r.ring.short, 0) + ' tiles short'));
       const st = dragStatus(s, row, r, conn); if (st) l2 = st + (l2 ? ' · ' + l2 : '');
-      if (!l2 && n > 1) l2 = 'Drag back to shorten · Esc cancels'; else if (st && n > 1) l2 += ' · Drag back to shorten';
+      const sk = skipText(pl); if (sk) l2 = sk + (l2 ? ' · ' + l2 : '');   // roads pass: "3 marsh tiles skipped: use a Boardwalk or a bridge" first
+      if (!l2 && live.run.length > 1) l2 = 'Drag back to shorten · Esc cancels'; else if (st && !sk && live.run.length > 1) l2 += ' · Drag back to shorten';
     }
     else if (g.cove) { l1 = 'Not here'; l2 = 'The cove floods every rain. Build on the ridge.'; }
     else if (!r.ok) { l1 = r.reason || 'Cannot build here'; l2 = r.charter ? 'State land · click to open the Land Office (O)' : (r.reason === tieReason() ? 'Hold N to see the campus network' : (ridgeText(r.ridgeFull) || sinkText(r.sink) || '')); }   // L2: the charter line
@@ -1109,6 +1172,14 @@
     return 'Connected';
   }
   function runTouches(s, run) { return call('buildings', 'runTouches', s, run) === true; }
+  /** roads pass: the first refusal of a drag plan with its count — "3 marsh tiles skipped: use a Boardwalk or a bridge"; '' when nothing is skipped */
+  function skipText(pl) {
+    if (!pl || !pl.skipped || !pl.skipped.length) return '';
+    const first = String(pl.skipped[0].reason || 'cannot build here'); let n = 0;
+    for (let k = 0; k < pl.skipped.length; k++) if (pl.skipped[k].reason === first) n++;
+    const noun = first === 'Use a Boardwalk or a bridge' ? 'marsh ' : first === 'Not on water' ? 'water ' : '';
+    return n + ' ' + noun + (n === 1 ? 'tile' : 'tiles') + ' skipped: ' + first.charAt(0).toLowerCase() + first.slice(1);
+  }
   function dragStatus(s, row, r, conn) {
     if (!row || row.kind !== 'drag' || [PLACE.PATH, PLACE.ROAD, PLACE.BOARDWALK].indexOf(row.placeRule) < 0) return '';
     if (conn) return (conn.snap ? 'Snaps onto the network (' : 'Ties in (') + tieWords(conn) + ')';

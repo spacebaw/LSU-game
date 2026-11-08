@@ -1389,7 +1389,7 @@
     place: {}
   };
   requirements.place[PLACE.PATH] = { glyph: '↔', text: 'Drag a run across land' };
-  requirements.place[PLACE.ROAD] = { glyph: '↔', text: 'Drag a run; bridges up to 3 water tiles; not on marsh' };
+  requirements.place[PLACE.ROAD] = { glyph: '↔', text: 'Drag a run; bridges up to 3 tiles of water (marsh banks count); not on open marsh' };
   requirements.place[PLACE.BOARDWALK] = { glyph: '↔', text: 'Drag a run over marsh, preserve or water' };
   requirements.place[PLACE.BRIDGE] = { glyph: '↔', text: 'Drag a run across water from land to land' };
   requirements.place[PLACE.LEVEE] = { glyph: '↔', text: 'Drag a run along the ground; close the ring' };

@@ -41,10 +41,9 @@ scenario('tutorial', 'tutorial to the first five buildings: auto-tie, Alt opts o
   const route = await g.eval(`(function () { var s = BSU.state, f = s.plot.founders, W = BSU.MAP.W; return BSU.terrain.landRoute(s, BSU.idx(f.tx + 1, f.ty + 3), s.plot.landingShoulder).map(function (i) { return [i % W, (i / W) | 0]; }); })()`);
   c.need(route && route.length > 3, 'a land route exists from the front door to the landing (' + (route && route.length) + ' tiles)');
   const mid = route[route.length >> 1]; await g.panToTile(mid[0], mid[1]); await sleep(100); await g.settleCamera();   // centre the route so no part of the drag crosses a HUD card
-  const pts = []; for (const [x, y] of route) { const p = await g.tilePx(x, y); pts.push([p.x, p.y]); }
-  await g.b.dragPath(pts, 3); await sleep(500);
+  const drags = await g.dragLegs(route, 3); await sleep(500);   // roads pass: one drag per straight leg, released at every turn (a drag lays one L from the press tile to the cursor)
   const laid = await g.eval(`${JSON.stringify(route)}.filter(function (t) { return BSU.state.tiles.surface[BSU.idx(t[0], t[1])] === BSU.SURF.PATH; }).length`);
-  c.ok(laid === route.length, `the dragged path covers the route (${laid}/${route.length} tiles)`);
+  c.ok(laid === route.length, `the dragged path covers the route (${laid}/${route.length} tiles in ${drags} leg drags)`);
   c.ok(await g.until(`BSU.state.progress.tutorialStage >= 4`, 4000), 'the path to the landing advances the tutorial (stage 4)');
   await g.clearUi();
   await g.days(12);   // Founders' Hall and the path finish

@@ -536,14 +536,64 @@
       const v = surf[i]; if (!isCurveKind(v)) continue;
       const m = deg[i], c = bitCount4(m);
       if (c === 2) continue;
-      if (c === 0) { out.push({ kind: v, tiles: [i], closed: false }); continue; }
-      for (let d = 0; d < 4; d++) if ((m & (1 << d)) && !(used[i] & (1 << d))) { const r = walk(i, d); out.push({ kind: v, tiles: r.tiles, closed: false }); }
+      if (c === 0) { out.push({ kind: v, tiles: [i], closed: false, deg: [0, 0] }); continue; }
+      for (let d = 0; d < 4; d++) if ((m & (1 << d)) && !(used[i] & (1 << d))) { const r = walk(i, d); out.push({ kind: v, tiles: r.tiles, closed: false, deg: [c, bitCount4(deg[r.tiles[r.tiles.length - 1]])] }); }   // roads pass: deg = the same-kind degree at each end (≥ 3 = a junction node)
     }
     for (let i = 0; i < n; i++) {   // what is left are pure loops (every tile degree 2)
       const v = surf[i]; if (!isCurveKind(v)) continue;
       const m = deg[i]; if (bitCount4(m) !== 2) continue;
-      for (let d = 0; d < 4; d++) if ((m & (1 << d)) && !(used[i] & (1 << d))) { const r = walk(i, d); out.push({ kind: v, tiles: r.tiles, closed: r.closed }); break; }
+      for (let d = 0; d < 4; d++) if ((m & (1 << d)) && !(used[i] & (1 << d))) { const r = walk(i, d); out.push({ kind: v, tiles: r.tiles, closed: r.closed, deg: r.closed ? null : [2, 2] }); break; }
     }
+    return out;
+  }
+  // roads pass — a 1-step staircase (x, y, x, y… unit moves with constant signs, ≥ STAIR_MIN moves: old saves, free-form runs) reads as a wobble
+  // after Chaikin (a wave of ±0.18 about the diagonal). straightenStairs replaces its interior centres by the MOVE MIDPOINTS, which all lie on
+  // the staircase's midline (the 45° line), so the smoothed curve is a straight diagonal with a half-tile lead-in along each end's axis. Every
+  // skipped centre sits 0.354 tile off that line (and, measured, off the smoothed curve), so it is only done for a surface whose half width
+  // covers that (road 0.36): a path's 0.21 cannot, and its wave (which passes 0.18 from every centre) stays. One point more per staircase: the
+  // returned array replaces `raw` (the same array back when nothing changed) and carries `.rawMap` (raw point → new index), which keeps the
+  // tile → curve index windows of the step / lamp records right. `free` = [start, end]: a polyline end that is a plain dead end (no junction,
+  // no other kind beyond it) may move too, so the whole run is one straight diagonal with round ends instead of a half-tile hook at each end
+  // (the end centre stays 0.354 off the line, under the road).
+  const STAIR_DEV = Math.SQRT1_2 * 0.5, STAIR_MIN = 3;
+  function straightenStairs(raw, maxDev, free) {
+    const n = raw.length >> 1; if (n < STAIR_MIN + 1) return raw;
+    const axisOf = (m) => { const dx = raw[2 * m + 2] - raw[2 * m], dy = raw[2 * m + 3] - raw[2 * m + 1]; if (Math.abs(dy) < 1e-9 && Math.abs(Math.abs(dx) - 1) < 1e-9) return dx > 0 ? 1 : 2; if (Math.abs(dx) < 1e-9 && Math.abs(Math.abs(dy) - 1) < 1e-9) return dy > 0 ? 3 : 4; return 0; };
+    const runs = []; let k = 0;
+    while (k < n - 1) {
+      const a0 = axisOf(k); if (!a0) { k++; continue; }
+      let m = k + 1, sx = a0 <= 2 ? a0 : 0, sy = a0 >= 3 ? a0 : 0, prev = a0;
+      for (; m < n - 1; m++) {   // extend while the axis alternates and each axis keeps its sign
+        const a = axisOf(m); if (!a || (a <= 2) === (prev <= 2)) break;
+        if (a <= 2) { if (sx && a !== sx) break; sx = a; } else { if (sy && a !== sy) break; sy = a; }
+        prev = a;
+      }
+      if (m - k >= STAIR_MIN) {   // moves k … m-1 are the staircase; points k … m; the midline runs through the first and last move midpoints
+        const x0 = (raw[2 * k] + raw[2 * k + 2]) * 0.5, y0 = (raw[2 * k + 1] + raw[2 * k + 3]) * 0.5, x1 = (raw[2 * m - 2] + raw[2 * m]) * 0.5, y1 = (raw[2 * m - 1] + raw[2 * m + 1]) * 0.5;
+        let ux = x1 - x0, uy = y1 - y0; const L = Math.hypot(ux, uy) || 1; ux /= L; uy /= L;
+        let fits = true;
+        for (let q = k + 1; q < m && fits; q++) { const dx = raw[2 * q] - x0, dy = raw[2 * q + 1] - y0; if (Math.abs(dx * uy - dy * ux) > maxDev + 1e-6) fits = false; }
+        if (fits) runs.push({ a: k, b: m, x0: x0, y0: y0, ux: ux, uy: uy });
+      }
+      k = Math.max(k + 1, m);
+    }
+    if (!runs.length) return raw;
+    const out = [], map = new Int32Array(n); let q = 0;
+    const foot = (R, p) => { const t = (raw[2 * p] - R.x0) * R.ux + (raw[2 * p + 1] - R.y0) * R.uy; out.push(R.x0 + R.ux * t, R.y0 + R.uy * t); };
+    for (let r = 0; r < runs.length; r++) {
+      const R = runs[r], a = R.a, b = R.b;
+      for (; q < a; q++) { map[q] = out.length >> 1; out.push(raw[2 * q], raw[2 * q + 1]); }
+      map[a] = out.length >> 1;
+      if (a === 0 && free && free[0]) foot(R, 0); else out.push(raw[2 * a], raw[2 * a + 1]);
+      q = a + 1;
+      const base = out.length >> 1;
+      for (let mv = a; mv < b; mv++) out.push((raw[2 * mv] + raw[2 * mv + 2]) * 0.5, (raw[2 * mv + 1] + raw[2 * mv + 3]) * 0.5);
+      for (let p = a + 1; p < b; p++) map[p] = base + (p - a);   // a skipped centre → the midpoint just past it
+      if (b === n - 1 && free && free[1]) { map[b] = out.length >> 1; foot(R, b); q = n; }
+      else q = b;   // the run's last point is copied by the next loop
+    }
+    for (; q < n; q++) { map[q] = out.length >> 1; out.push(raw[2 * q], raw[2 * q + 1]); }
+    out.rawMap = map;
     return out;
   }
   /** Chaikin corner cutting on a flat [x0,y0,x1,y1,…] polyline; open polylines keep both endpoints, closed ones wrap */
@@ -647,6 +697,17 @@
       if (!(fl[i] & WATER_FLAGS)) stage = Math.max(stage, bed + fin(dep[i], 0));   // a pond: its own level
       water[i] = Math.max(bed, stage); deck[i] = water[i] + cl; count++;
     }
+    // roads pass: a road's bridge span may run over the marsh bank (buildings.bridgeSpanOk); along each road polyline a marsh tile contiguous
+    // with a deck tile carries the deck on at that elevation, standing in the marsh (water[] = its ground), so the ramp lands on the dry ground beyond
+    for (let p = 0; p < polys.length; p++) {
+      const P = polys[p]; if (P.stub || P.kind !== SURF.ROAD || P.tiles.length < 2) continue;
+      const m = P.tiles.length, bank = (i) => t.type[i] === T.MARSH && !(fl[i] & FLAG.DRAINED) && !wetOf(t, i);
+      for (let pass = 0; pass < 2; pass++) for (let q = 1; q < m; q++) {
+        const k = pass ? m - 1 - q : q, j = P.tiles[pass ? k + 1 : k - 1], i = P.tiles[k];
+        if (deck[i] === deck[i] || deck[j] !== deck[j] || !bank(i)) continue;
+        water[i] = fin(elev[i], 0); deck[i] = deck[j]; count++;
+      }
+    }
     const archFt = fin(PR.deckArchFt, 1), archMax = fin(PR.deckArchMaxSpan, 6) | 0;
     for (let p = 0; p < polys.length; p++) {
       const P = polys[p]; if (P.stub || P.closed || P.kind !== SURF.BRIDGE || P.tiles.length < 2 || P.tiles.length > archMax) continue;
@@ -692,22 +753,27 @@
     for (let p = 0; p < polys.length; p++) {
       const P = polys[p], w = P.w = P.stub ? STUB_W : CURVE_W[P.kind];
       if (!P.pts) {
-        const raw = []; for (let k = 0; k < P.tiles.length; k++) raw.push((P.tiles[k] % W), ((P.tiles[k] / W) | 0));
+        let raw = []; for (let k = 0; k < P.tiles.length; k++) raw.push((P.tiles[k] % W), ((P.tiles[k] / W) | 0));
         if (!P.closed) extendEnds(P, raw, surf);
+        if (!P.closed && w * 0.5 >= STAIR_DEV) {   // roads pass: a surviving 1-step staircase reads as a straight diagonal (roads); a plain dead end moves onto it
+          const r2 = straightenStairs(raw, w * 0.5, [!!P.deg && P.deg[0] <= 1 && !(P.ext && P.ext[0]), !!P.deg && P.deg[1] <= 1 && !(P.ext && P.ext[1])]);
+          if (r2 !== raw) { raw = r2; P.rawOf = r2.rawMap; }
+        }
         P.pts = raw.length === 2 ? [raw[0] - 0.12, raw[1], raw[0] + 0.12, raw[1]] : smoothPoly(raw, P.closed, CHAIKIN_ITERS);
+        if (P.kind === SURF.ROAD && !P.closed && P.deg) dashTrim(P);   // roads pass: no centre dash into a junction node
       }
       const pts = P.pts, n = pts.length >> 1, segs = P.closed ? n : n - 1, pad = w * 0.5 + SEG_PAD;
+      const off0 = P.ext && P.ext[0] ? 1 : 0, rawIdx = (k) => (P.rawOf ? P.rawOf[k + off0] : k + off0);   // tile k → its raw point index (the ext point, straightened staircases)
       if (P.ext) for (let e = 0; e < 2; e++) {   // the step where this run meets another kind: drawn by the higher side, on the lower tile
         const ex = P.ext[e]; if (!ex) continue;
         const ea = epOf(ex.i), eb = epOf(ex.j); if (ea <= eb) continue;
         addStep(ex.j, { p: p, j: e === 0 ? 0 : Math.max(0, n - 2), t: e === 0 ? 0 : 1, sign: e === 0 ? -1 : 1, d: ea - eb, hiEp: ea, loEp: eb, lo: ex.j, hi: ex.i, kind: P.kind, w: w, ux: ((ex.j % W)) - ((ex.i % W)), uy: (((ex.j / W) | 0)) - (((ex.i / W) | 0)), deck: deck[ex.i] === deck[ex.i] });
       }
       if (!P.stub && DECK_KIND_FT[P.kind]) {   // lamps: every lampEvery-th deck tile along the run, on the viewer-side edge
-        const off0 = P.ext && P.ext[0] ? 1 : 0;
         for (let k = 0, q = 0; k < P.tiles.length; k++) {
           const i = P.tiles[k]; if (deck[i] !== deck[i]) { q = 0; continue; }
           if ((q++ % lampEvery) !== 1 || lampAt.has(i)) continue;
-          const kk = k + off0, at = nearestOnCurve(pts, P.closed, (i % W), ((i / W) | 0), kk * lampSpan - lampSpan, kk * lampSpan + 2 * lampSpan);
+          const kk = rawIdx(k), at = nearestOnCurve(pts, P.closed, (i % W), ((i / W) | 0), kk * lampSpan - lampSpan, kk * lampSpan + 2 * lampSpan);
           const j = at.j, j1 = P.closed ? (j + 1) % n : Math.min(n - 1, j + 1), x = pts[2 * j] + (pts[2 * j1] - pts[2 * j]) * at.t, y = pts[2 * j + 1] + (pts[2 * j1 + 1] - pts[2 * j + 1]) * at.t;
           const nrm = normalAt(pts, n, P.closed, j); let nx = nrm[0], ny = nrm[1]; if (nx + ny < 0) { nx = -nx; ny = -ny; }
           const L = { i: i, x: x + nx * (w * 0.5 + 0.1), y: y + ny * (w * 0.5 + 0.1), ft: deck[i] + 2 };
@@ -731,8 +797,8 @@
         const r2 = (r + 1) % nr; if (runs[r].ep === runs[r2].ep) continue;
         const ka = runs[r].b, kb = runs[r2].a, a = P.tiles[ka], b = P.tiles[kb], ea = runs[r].ep, eb = runs[r2].ep;
         const hi = ea > eb ? a : b, lo = ea > eb ? b : a;
-        const xm = (((a % W)) + ((b % W))) * 0.5, ym = ((((a / W) | 0)) + (((b / W) | 0))) * 0.5;
-        const at = nearestOnCurve(pts, P.closed, xm, ym, ka * span - span, ka * span + 2 * span);
+        const xm = (((a % W)) + ((b % W))) * 0.5, ym = ((((a / W) | 0)) + (((b / W) | 0))) * 0.5, ra = rawIdx(ka);
+        const at = nearestOnCurve(pts, P.closed, xm, ym, ra * span - span, ra * span + 2 * span);
         const st = { p: p, j: at.j, t: at.t, sign: hi === a ? 1 : -1, d: Math.abs(ea - eb), hiEp: Math.max(ea, eb), loEp: Math.min(ea, eb), lo: lo, hi: hi, kind: P.kind, w: w, ux: ((lo % W)) - ((hi % W)), uy: (((lo / W) | 0)) - (((hi / W) | 0)), deck: deck[hi] === deck[hi] };
         addStep(lo, st);
       }
@@ -761,21 +827,55 @@
   }
   /** ground units → chunk px at elevation ep (the brief's affine: round joins and caps squash with the iso view) */
   function groundTransform(g, ch, ep) { tfIso(g, -ch.ox, -ep - ch.oy); }
-  /** build one path from the tile's ranges that match (stub?, kind); returns the number of subpaths */
-  function buildPath(g, cv, list, stub, kind, offset) {
+  // roads pass: a road's centre dash stops DASH_TRIM tile short of a junction node (same-kind degree ≥ 3) at either end, so three or four
+  // arms never pile their dashes on the node centre; a dead end keeps its dash to the end. P.trimA / P.trimB = {k, x, y}: the first / last
+  // full curve point the dash keeps and the exact cut point before / after it; a run with less than DASH_MIN tile left carries no dash (P.noDash).
+  const DASH_TRIM = 0.45, DASH_MIN = 0.2;
+  function dashTrim(P) {
+    const pts = P.pts, n = pts.length >> 1; if (n < 2 || !P.deg) return;
+    const jA = P.deg[0] >= 3, jB = P.deg[1] >= 3; if (!jA && !jB) return;
+    const cum = new Float64Array(n); for (let k = 1; k < n; k++) cum[k] = cum[k - 1] + Math.hypot(pts[2 * k] - pts[2 * k - 2], pts[2 * k + 1] - pts[2 * k - 1]);
+    const total = cum[n - 1];
+    if (total - DASH_TRIM * ((jA ? 1 : 0) + (jB ? 1 : 0)) < DASH_MIN) { P.noDash = true; return; }
+    const cut = (d) => { let k = 1; while (k < n - 1 && cum[k] < d) k++; const L = cum[k] - cum[k - 1] || 1, t = clamp((d - cum[k - 1]) / L, 0, 1); return { k: k, x: pts[2 * k - 2] + (pts[2 * k] - pts[2 * k - 2]) * t, y: pts[2 * k - 1] + (pts[2 * k + 1] - pts[2 * k - 1]) * t }; };
+    if (jA) P.trimA = cut(DASH_TRIM);
+    if (jB) { const c = cut(total - DASH_TRIM); P.trimB = { k: c.k - 1, x: c.x, y: c.y }; }
+  }
+  /** build one path from the tile's ranges that match (stub?, kind); returns the number of subpaths. `dash` builds the road's dash path instead:
+   *  the same ranges cut back to the polyline's trim points (dashTrim), nothing for a noDash run */
+  function buildPath(g, cv, list, stub, kind, offset, dash) {
     let n = 0;
     for (let r = 0; r < list.length; r++) {
       const rg = list[r], P = cv.polys[rg.p]; if (!!P.stub !== stub || P.kind !== kind) continue;
+      if (dash && P.noDash) continue;
       const pts = P.pts, np = pts.length >> 1;
+      let lo = rg.a, hi = rg.b + 1, pre = null, post = null;
+      if (dash && !P.closed) {
+        const A = P.trimA, B = P.trimB;
+        if (A) { if (hi < A.k) continue; if (lo < A.k) { lo = A.k; pre = A; } }
+        if (B) { if (lo > B.k) continue; if (hi > B.k) { hi = B.k; post = B; } }
+        if (lo > hi) continue;
+      }
       if (n === 0) g.beginPath();
-      for (let k = rg.a; k <= rg.b + 1; k++) {
+      if (pre) g.moveTo(pre.x, pre.y);
+      for (let k = lo; k <= hi; k++) {
         const j = P.closed ? k % np : k; let x = pts[2 * j], y = pts[2 * j + 1];
         if (offset) { const nrm = normalAt(pts, np, P.closed, j); x += nrm[0] * offset; y += nrm[1] * offset; }
-        if (k === rg.a) g.moveTo(x, y); else g.lineTo(x, y);
+        if (k === lo && !pre) g.moveTo(x, y); else g.lineTo(x, y);
       }
+      if (post) g.lineTo(post.x, post.y);
       n++;
     }
     return n;
+  }
+  /** one surface kind of a tile: the body layers on the full path, then (roads) the dash layer on the trimmed dash path */
+  function strokeKind(g, C, cv, list, kind, stub, seed) {
+    if (!stub && kind === SURF.ROAD) {
+      if (buildPath(g, cv, list, false, kind, 0, false)) strokeLayers(g, C, kind, false, seed, 'base');
+      if (buildPath(g, cv, list, false, kind, 0, true)) strokeLayers(g, C, kind, false, seed, 'marks');
+      return;
+    }
+    if (buildPath(g, cv, list, stub, kind, 0, false)) strokeLayers(g, C, kind, stub, seed, 'all');
   }
   const NRM = [0, 0];
   function normalAt(pts, np, closed, j) {
@@ -784,10 +884,11 @@
     NRM[0] = -dy / L; NRM[1] = dx / L; return NRM;
   }
   const HD_MATERIAL = [null, 'gravel', 'asphalt', 'boardwalk', null, 'concrete'];   // by surface kind (PATH, ROAD, BOARDWALK, —, BRIDGE)
-  function strokeLayers(g, C, kind, stub, seed) {
-    const w = stub ? STUB_W : CURVE_W[kind];
+  /** stroke the CURRENT path as surface `kind`; layers (roads pass) = 'all' | 'base' (curb + body, no marks) | 'marks' (the centre dash only) */
+  function strokeLayers(g, C, kind, stub, seed, layers) {
+    const w = stub ? STUB_W : CURVE_W[kind], base = layers !== 'marks', marks = layers !== 'base';
     if (hdTerrain && BSU.brush) {   // H1: the brush's layered stroke (edge AO, body, lit crown, highlight thread, material marks) in ground units under the iso transform
-      BSU.brush.strokePath(g, w, hdEnvOf(g), { material: HD_MATERIAL[kind] || 'gravel', stub: stub, seed: seed, unit: 32 }); drawCalls += stub ? 2 : 6; return;
+      BSU.brush.strokePath(g, w, hdEnvOf(g), { material: HD_MATERIAL[kind] || 'gravel', stub: stub, seed: seed, unit: 32, layers: layers || 'all' }); drawCalls += stub ? 2 : (base && marks ? 6 : base ? 5 : 1); return;
     }
     g.lineJoin = 'round'; g.lineCap = 'round'; g.setLineDash(EMPTY_DASH); g.lineDashOffset = 0;
     if (kind === SURF.PATH) {
@@ -799,9 +900,8 @@
         g.lineDashOffset = (seed % 5) * 0.031 + 0.07; g.strokeStyle = C.pathEdge; g.stroke(); drawCalls += 3;
       }
     } else if (kind === SURF.ROAD) {
-      g.lineWidth = w + 0.1; g.strokeStyle = C.curb; g.stroke();
-      g.lineWidth = w; g.strokeStyle = C.road; g.stroke(); drawCalls += 2;
-      if (!stub) { g.lineCap = 'butt'; g.lineWidth = 0.045; g.setLineDash(DASH_ROAD); g.strokeStyle = C.dash; g.stroke(); drawCalls++; }
+      if (base) { g.lineWidth = w + 0.1; g.strokeStyle = C.curb; g.stroke(); g.lineWidth = w; g.strokeStyle = C.road; g.stroke(); drawCalls += 2; }
+      if (!stub && marks) { g.lineCap = 'butt'; g.lineWidth = 0.045; g.setLineDash(DASH_ROAD); g.strokeStyle = C.dash; g.stroke(); drawCalls++; }
     } else if (kind === SURF.BRIDGE) {   // bridge pass: a pale concrete deck with a dark kerb, expansion joints and a centre line
       g.lineWidth = w + 0.1; g.strokeStyle = C.kerb; g.stroke();
       g.lineWidth = w; g.strokeStyle = C.bridgeDeck; g.stroke(); drawCalls += 2;
@@ -915,7 +1015,7 @@
       g.save(); clipHex(g, ch, tx, ty, deckEp, full ? bedEp : waterEp, DECK_UP, 2);
       deckStilts(g, C, ch, cv, list, sf, deckEp, waterEp, full ? Math.min(bedEp, waterEp) : waterEp, wetAt);
       groundTransform(g, ch, deckEp);
-      for (let pass = 0; pass < 2; pass++) if (buildPath(g, cv, list, pass === 0, sf, 0)) strokeLayers(g, C, sf, pass === 0, hash(tx, ty));
+      for (let pass = 0; pass < 2; pass++) strokeKind(g, C, cv, list, sf, pass === 0, hash(tx, ty));
       deckRails(g, C, ch, cv, list, sf, deckEp);
       const L = cv.lampAt.get(i); if (L) deckLamp(g, C, ch, L, sf, deckEp);
       g.restore();
@@ -927,7 +1027,7 @@
   /** bake one deck tile into the ground canvas (full stilts) and the chunk's deck layer; records the tile's window for deckPass */
   function bakeDeckTile(ch, g, cv, i, tx, ty, sf, bedEp, state) {
     const deckEp = Math.round(cv.deck[i] * PXFT), waterEp = Math.round(fin(cv.water[i], cv.deck[i]) * PXFT), t = state.tiles;
-    const wetAt = (x, y) => { const xi = Math.round(x), yi = Math.round(y); return xi >= 0 && yi >= 0 && xi < W && yi < HGT && wetOf(t, yi * W + xi); };
+    const wetAt = (x, y) => { const xi = Math.round(x), yi = Math.round(y); if (xi < 0 || yi < 0 || xi >= W || yi >= HGT) return false; const j = yi * W + xi; return wetOf(t, j) || cv.deck[j] === cv.deck[j]; };   // roads pass: piers stand in the marsh under a bank deck too
     drawDeckAt(g, ch, cv, i, tx, ty, sf, deckEp, waterEp, bedEp, true, wetAt);
     const m = g._bs || 1;   // H1: the deck layer bakes at the chunk's master (H0 left it at 1×)
     if (!ch.deck) { ch.deck = makeCanvas(CW * m, ch.hh * m); ch.deckCtx = ctx2d(ch.deck); }
@@ -955,7 +1055,7 @@
       clipTile(g, ch, tx, ty, ep, 0, down);
       if (sf === SURF.BOARDWALK && !wet) boardwalkPosts(g, C, ch, cv, list, ep);
       groundTransform(g, ch, ep);
-      for (let pass = 0; pass < 2; pass++) for (let q = 0; q < CURVE_KINDS.length; q++) { const kind = CURVE_KINDS[q]; if (kind === skipKind) continue; if (buildPath(g, cv, list, pass === 0, kind, 0)) strokeLayers(g, C, kind, pass === 0, hash(tx, ty)); }
+      for (let pass = 0; pass < 2; pass++) for (let q = 0; q < CURVE_KINDS.length; q++) { const kind = CURVE_KINDS[q]; if (kind === skipKind) continue; strokeKind(g, C, cv, list, kind, pass === 0, hash(tx, ty)); }
       if (canal) culvertPipes(g, C, wx, wy);
       g.restore();
     }
@@ -1027,6 +1127,7 @@
     }
   }
   M.curves = { trace: traceNets, smooth: smoothPoly, runs: elevRuns, build: buildCurves, current: () => curves, invalidate: () => { curvesDirty = true; },
+    straighten: straightenStairs, trim: dashTrim, path: buildPath, widths: CURVE_W, stairDev: STAIR_DEV, dashTrim: DASH_TRIM,   // roads pass (tests)
     deckOf: (i) => (curves && curves.deck && i >= 0 && i < N) ? curves.deck[i] : NaN, decksDrawn: () => decksDrawn, deckChunks: deckChunks, clearance: DECK_KIND_FT, overtopped: (i) => overtoppedNow.has(i),
     deckStats: () => Object.assign({ chunks: chunks.filter((c) => c && c.deck).map((c) => [c.cx, c.cy, c.deckTiles ? c.deckTiles.length : -1, c.dirty]) }, deckStats) };
   /** bake chunk (cx, cy) at 1× into its canvas (ARCHITECTURE §6.3 step 2) */
@@ -1321,6 +1422,20 @@
     return n;
   }
   const gdX = new Float32Array(4096), gdY = new Float32Array(4096);
+  /** roads pass: a drag run's tiles as the smoothed centreline the surface will get (tile centres on screen, Chaikin ×3 as the bake does — an affine
+   *  map, so smoothing in screen space is the same curve): a soft wide under-stroke about the surface's width and a crisp line over the diamonds */
+  const glBuf = [];
+  function ghostLine(g, tiles, kind, color, z) {
+    const raw = glBuf; raw.length = 0;
+    for (let k = 0; k < tiles.length; k++) { const i = tiles[k] | 0; if (i < 0 || i >= N) continue; tileDiamondScreen(i, tmpPt); raw.push(tmpPt.x, tmpPt.y); }
+    if (raw.length < 4) return;
+    const pts = smoothPoly(raw, false, CHAIKIN_ITERS), wpx = (CURVE_W[kind] || CURVE_W[SURF.PATH]) * 30 * z;
+    g.beginPath(); g.moveTo(pts[0], pts[1]); for (let k = 2; k < pts.length; k += 2) g.lineTo(pts[k], pts[k + 1]);
+    g.lineJoin = 'round'; g.lineCap = 'round'; g.setLineDash(EMPTY_DASH); g.strokeStyle = color;
+    g.globalAlpha = 0.2; g.lineWidth = Math.max(3, wpx); g.stroke();
+    g.globalAlpha = 0.9; g.lineWidth = Math.max(1, 1.4 * Math.min(2, z)); g.stroke(); drawCalls += 2;
+    g.lineJoin = 'miter'; g.lineCap = 'butt'; g.globalAlpha = 1;
+  }
   function diamondPath(g, cx, cy, w, h) { g.moveTo(cx, cy - h / 2); g.lineTo(cx + w / 2, cy); g.lineTo(cx, cy + h / 2); g.lineTo(cx - w / 2, cy); g.closePath(); }
   /** drawImage a SpriteRef at anchor (sx, sy) in CSS px, scaled from the ref's zoom to the live zoom */
   function blit(g, ref, sx, sy, zs) {
@@ -2629,6 +2744,7 @@
       ghostTiles(g, gs.skipTiles, OV_COLORS.bad, C.ghostAlpha * 0.55, w, h);   // L3: the tiles of a drag the tool will skip, in red
       ghostTiles(g, gs.tiles, gs.color || GOLD, C.ghostAlpha, w, h);
       ghostTiles(g, gs.connectorTiles, gs.color || GOLD, C.ghostAlpha, w, h);   // connector pass: the gravel tie a footprint placement would lay, in the path drag's own ghost style
+      if (Array.isArray(gs.line) && gs.line.length > 1) ghostLine(g, gs.line, gs.lineKind | 0, gs.color || GOLD, z);   // roads pass: the run as the centreline it will get
       const ring = gs.ringTiles;
       if (ring) {
         const reached = Array.isArray(ring) ? ring : (ring.reached || []), unreached = Array.isArray(ring) ? [] : (ring.unreached || []);

@@ -276,17 +276,21 @@
    *  the material's marks (gravel specks, gold centre dashes, plank gaps, expansion joints); lod 1 skips the marks */
   M.strokePath = function (ctx, w, env, o) {
     o = o || {}; env = envOf(env); const u = o.unit > 0 ? o.unit : 1, px = 1 / u, m = o.material || 'gravel', seed = (o.seed | 0) >>> 0;
-    const X = SP.extra || {};
+    const X = SP.extra || {}, base = o.layers !== 'marks', marks = o.layers !== 'base';   // roads pass: o.layers 'base' = everything but the marks, 'marks' = the marks alone (a road's dash on its own, trimmed path)
     const c = m === 'asphalt' ? (PAL.asphalt || '#3A3A40') : m === 'boardwalk' ? (X.deckWood || PAL.boardwalk || '#8B7355') : m === 'concrete' ? (X.concrete || '#B8B8BC') : P.gravel;
     ctx.save(); ctx.lineJoin = 'round'; ctx.lineCap = 'round'; ctx.setLineDash(NODASH); ctx.lineDashOffset = 0;
-    ctx.lineWidth = w + 2.4 * px; ctx.strokeStyle = col(c, -0.6, 0.5); ctx.stroke();
-    if (m === 'asphalt' || m === 'concrete') { ctx.lineWidth = w + 1.2 * px; ctx.strokeStyle = col(c, m === 'asphalt' ? 0.6 : -0.35); ctx.stroke(); }   // curb / kerb
-    if (m === 'boardwalk') { ctx.lineWidth = w + 1.2 * px; ctx.strokeStyle = col(c, -0.75); ctx.stroke(); }   // the dark cypress edge
-    ctx.lineWidth = w; ctx.strokeStyle = col(c, m === 'concrete' ? 0.1 : 0); ctx.stroke();
+    if (base) {
+      ctx.lineWidth = w + 2.4 * px; ctx.strokeStyle = col(c, -0.6, 0.5); ctx.stroke();
+      if (m === 'asphalt' || m === 'concrete') { ctx.lineWidth = w + 1.2 * px; ctx.strokeStyle = col(c, m === 'asphalt' ? 0.6 : -0.35); ctx.stroke(); }   // curb / kerb
+      if (m === 'boardwalk') { ctx.lineWidth = w + 1.2 * px; ctx.strokeStyle = col(c, -0.75); ctx.stroke(); }   // the dark cypress edge
+      ctx.lineWidth = w; ctx.strokeStyle = col(c, m === 'concrete' ? 0.1 : 0); ctx.stroke();
+    }
     if (!o.stub) {
-      ctx.lineWidth = w * 0.55; ctx.strokeStyle = col(c, 0.3, m === 'asphalt' ? 0.3 : 0.5); ctx.stroke();
-      ctx.save(); if (u > 1) ctx.translate(-px, 0); else ctx.translate(-1.1, -0.55); ctx.lineWidth = 1.2 * px; ctx.strokeStyle = col(c, 0.85, 0.5); ctx.stroke(); ctx.restore();
-      if (env.lod === 0 || m !== 'gravel') {
+      if (base) {
+        ctx.lineWidth = w * 0.55; ctx.strokeStyle = col(c, 0.3, m === 'asphalt' ? 0.3 : 0.5); ctx.stroke();
+        ctx.save(); if (u > 1) ctx.translate(-px, 0); else ctx.translate(-1.1, -0.55); ctx.lineWidth = 1.2 * px; ctx.strokeStyle = col(c, 0.85, 0.5); ctx.stroke(); ctx.restore();
+      }
+      if (marks && (env.lod === 0 || m !== 'gravel')) {
         ctx.lineCap = 'butt';
         if (m === 'gravel') {
           ctx.lineWidth = 1.5 * px; ctx.setLineDash([1 * px, 4.2 * px]); ctx.lineDashOffset = (seed % 7) * 0.7 * px; ctx.strokeStyle = col(c, -0.45, 0.5); ctx.stroke();

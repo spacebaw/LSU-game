@@ -1219,7 +1219,7 @@ States: `IDLE`, `PANNING`, `PLACING` (a footprint/paint/upgrade tool on the curs
 | PLACING (footprint) | pointerup ≤ 4 px | canPlace.ok | `buildings.place` → squash/plunk; keep tool if Shift held, else → IDLE; `undo` window opens (5 s) |
 | PLACING (footprint) | pointerup ≤ 4 px | !ok | `audio.play('invalid')`, label shakes; stay |
 | PLACING (drag row) | pointerdown left | — | start run at tile → **DRAGGING**; Shift = straight line (axis chosen by the larger delta) |
-| DRAGGING | pointermove | — | extend run (4-connected staircase, or straight with Shift); per-tile `canPlace` for color; running length/total in the label; levee/floodwall: ring preview via `canPlace(..., {tiles: run})` |
+| DRAGGING | pointermove | — | re-plan the run from the anchor to the cursor as one elbow (roads pass: fewest refused tiles, then the shorter tie, then fewer wet tiles; a tie keeps the previous elbow; a Z when no L is legal; straight with Shift); `buildings.runQuote` for the red skip tiles and the label's first reason; running length / total in the label; levee/floodwall: ring preview via `canPlace(..., {tiles: run})` |
 | DRAGGING | pointerup | — | `buildings.placeRun(id, run)`; tick sound per tile (60 ms stagger); → PLACING (tool kept) |
 | PLACING (bulldoze) | pointerup on a building/drag tile | — | `buildings.remove` (confirm card for landmarks: refused) |
 | PLACING/DRAGGING | `Esc` / right-click / `R` (rotate) / palette click | — | cancel → IDLE (or rotate in place) |
