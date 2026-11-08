@@ -370,8 +370,8 @@
       }
     },
     subsidence: {                            // GDD §6.5 (ft/yr)
-      drainedBuilt: 0.35, drainedBare: 0.25, wetBuilt: 0.12, wetBare: 0.05, dry: 0.02, high: 0,
-      pumpAdd: 0.06, pumpRadius: 8, cypressMult: 0.5, cypressRadius: 1, levee: 0.06,
+      drainedBuilt: 0.20, drainedBare: 0.15, wetBuilt: 0.08, wetBare: 0.05, dry: 0.02, high: 0,   // balance pass: was 0.35 / 0.25 / 0.12 — a hall on drained marsh beside a pump reached −2 ft by Year 10 and never dried (docs/BALANCE_NOTES.md)
+      pumpAdd: 0.04, pumpRadius: 8, cypressMult: 0.5, cypressRadius: 1, levee: 0.06,   // balance pass: pumpAdd 0.06 → 0.04 (the Issues tray answers every flooded hall with a pump)
       sinkingIcon: 1.0, tiltAt: 1.5, tiltDeg: 2,
       regradeCost: 15000, regradeDays: 3, regradeFt: 1
     },
@@ -430,7 +430,7 @@
       utilities: { perBuilding: 300, perStudent: 8, summerMult: 1.5, summerMonths: [6, 9] },   // §5.3
       terrainCost: { wet: 0.2, high: -0.1, pilings: 0.4, grading: 15000, bridge: 4, summer: -0.15, engineering: -0.15 },   // §5.3
       repairMult: 0.6, blightPerDamaged: 3, demolishRefund: 0.4, upkeepPilings: 0.05,   // §5.3, §4.11
-      applicants: { base: 60, prestige: 28, happiness: 6, tuitionA: 1.65, tuitionDiv: 10000, tuitionMin: 0.3, tuitionMax: 1.5, buzzPerWin: 0.03, bowlBuzz: 0.10 },   // §5.4
+      applicants: { base: 60, prestige: 31, happiness: 6, tuitionA: 1.65, tuitionDiv: 10000, tuitionMin: 0.3, tuitionMax: 1.5, buzzPerWin: 0.03, bowlBuzz: 0.10 },   // §5.4; balance pass: prestige 28 → 31 — at prestige 70 the pool (≈3,100) only just covered the 30 %/yr churn of 10,000 students, so goals campaigns stalled at 9,000–9,500; 34 made them win in Year 7 (docs/BALANCE_NOTES.md)
       capacity: { beds: 1.15, seats: 1.4, dining: 1.6, wastewaterBase: 1500, wastewaterPer: 6000, halfRate: 0.5 },   // §5.4
       selectivity: { open: 1, selective: 0.6, elite: 0.35 },   // §5.4
       gapShare: { rolling: 0.2, spring: 0.25, fall: 1 },   // §5.4
@@ -442,7 +442,7 @@
         weights: { academic: 0.22, faculty: 0.14, happiness: 0.16, football: 0.16, landmarks: 0.12, ecology: 0.10, selectivity: 0.10 },
         lerp: 0.06, seatsPerStudent: 1.2, academicSeats: 40, academicPer: 20, attendanceBase: 0.9, attendanceK: 0.2,
         facultyBase: 70, footballWin: 40, footballTier: 20, ecologyNoInstitute: 0.4,
-        blight: { damaged: 3, flooded: 8, floodedDays: 3, mosquito: 5, mosqIndex: 0.6 },
+        blight: { damaged: 3, flooded: 8, floodedDays: 3, mosquito: 5, mosqIndex: 0.6, cap: 30 },   // balance pass: cap — 13 unrepaired halls took the target to 0 and applicants with it (docs/BALANCE_NOTES.md)
         landmarkMult: 2, selectivityScore: { open: 0, selective: 40, elite: 100 }
       },
       landmarks: { mounds: 1, west: 10 },    // landmark points not carried by a catalog row (§5.5)
@@ -450,7 +450,7 @@
         base: 50, housingPerQuality: 4, housingCap: 12, bedsShort: 10, dining: 8, noDining: 10,
         spiritWin: 2, rivalry: 6, rivalryDays: 7, festival: 5, festivalNoBonfire: 2, bonfirePer10: 2, bonfireCap: 10,
         floodPer: 4, floodCap: 20, dormFlooded: 10, tuitionBase: 7000, tuitionDiv: 400, crowd: 10,
-        noiseRoad: 1, noisePump: 2, noisePumpRadius: 4, noiseBarrier: 2, noiseBarrierRadius: 4, floodwallRadius: 3, floodwallCap: 5,
+        noiseRoad: 1, noisePump: 2, noisePumpRadius: 4, noiseBarrier: 2, noiseBarrierRadius: 4, noiseCap: 10, floodwallRadius: 3, floodwallCap: 5,   // balance pass: noiseCap — 21 pumps beside dorms read −30 (docs/BALANCE_NOTES.md)
         lifeCap: 12, greenCap: 10, emaDays: 1, seed: 60
       },
       timers: {                              // §5.6 table: value (happiness), days (-1 = while the source exists)
@@ -808,7 +808,7 @@
         oaks6: 5, roadTiles7: 10, students8: 500, deadline8: 'Aug 5', deadline8b: 'Jan 10', beds8: 435, seats8: 358,
         mosq10: 0.3, ringH11: 5, leveeTiles11: [8, 16], obj11Date: 'Jun 1', students15: 200, preserve16: 20, ecology16: 75,
         students17: 1000, target17: 1500, wins18a: 4, wins18b: 5, students19: 2000, prestige19: 30, students20: 1500,
-        students21: 5000, students22: 10000, prestige22: 60, coneDays12: 6
+        students21: 3000, students22: 10000, prestige22: 60, coneDays12: 6   // balance pass: students21 5000 → 3000 so the card is never silent between 2,000 and the flagship goal (docs/BALANCE_NOTES.md)
       },
       milestoneGoals: {                      // §10.5 conditions
         firstBell: 600, highAndDryH: 8, stormChaser: 0.2, eyeOfTheStormCat: 4, gatorWrangler: 10, skeeterBeater: 0.1, skeeterMonth: 8,

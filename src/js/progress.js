@@ -476,8 +476,15 @@
     p1: { kind: OBJ.BACKGROUND, title: 'Accreditation Task Force: a Library', text: 'Build a Library.', showMe: 'target' },
     p2: { kind: OBJ.BACKGROUND, title: 'Accreditation Task Force: seats', text: 'Lecture seats for 5 of every 6 students.', showMe: 'target' },
     p3: { kind: OBJ.BACKGROUND, title: 'Accreditation Task Force: dry feet', text: 'No flooded buildings for 30 days.', showMe: 'ring' },
-    land1: { kind: OBJ.BACKGROUND, title: 'Charter your first section', text: 'The charter is filling up. Buy a section of state land at the Land Office (O).', showMe: 'land' }   // L2
+    land1: { kind: OBJ.BACKGROUND, title: 'Charter your first section', text: 'The charter is filling up. Buy a section of state land at the Land Office (O).', showMe: 'land' },   // L2
+    sink1: { kind: OBJ.BACKGROUND, title: 'Halls are sinking', text: 'A hall has dropped a foot and will flood for good. Put Pilings under every sunk hall (inspect it), or re-grade it a foot.', showMe: 'sunk' }   // balance pass
   };
+  /** balance pass: complete halls without pilings that have sunk past the Sinking Feeling line (worst first) */
+  function sunkHalls(state) {
+    const lim = fin(MG.sinkingFeeling, 1);
+    return blist(state).filter(function (b) { return complete(b) && !b.pilings && fin(b.sunk, 0) >= lim; }).sort(function (a, b) { return fin(b.sunk, 0) - fin(a.sunk, 0); });
+  }
+  const SINK_REARM_DAYS = 120;
   function objDef(id) {
     if (EXTRA_OBJ[id]) return EXTRA_OBJ[id];
     if (id.indexOf('v:') === 0) { const vc = (data().voiceCards || []).find(function (v) { return 'v:' + v.id === id; }); return vc ? { kind: OBJ.BACKGROUND, title: vc.student.split(' ')[0] + ' asks', text: vc.text, showMe: 'target', payoff: vc.payoff } : null; }
@@ -599,7 +606,8 @@
     '22': function (s) { return done(s, '21'); },
     land1: function (s) { const L = call('land', 'stats', s); if (!L || !L.sections) return false; if (fin(s.charter && s.charter.refusedDay, NONE) >= 0) return true; const fs = call('land', 'freeShare', s); return !!fs && fs.total > 0 && fs.share < fin(PL.firstGoalFreeShare, 0.15); },   // L2: the first charter refusal, or the charter's buildable land nearly spent
     p2: function (s) { return done(s, 'p1'); },
-    p3: function (s) { return done(s, 'p2'); }
+    p3: function (s) { return done(s, 'p2'); },
+    sink1: function (s) { return sunkHalls(s).length > 0; }   // balance pass: re-armed by the daily step 120 days after it was last done
   };
   // Goals: id → (state, c) → {progress, goal, text?}
   const GOALS = {
@@ -631,7 +639,8 @@
     land1: function (s) { return { progress: fin(call('land', 'count', s), 0) >= 1 ? 1 : 0, goal: 1 }; },   // L2
     p1: function (s) { return { progress: bhas(s, 'library') ? 1 : 0, goal: 1 }; },
     p2: function (s) { const st = call('buildings', 'stats', s) || {}; return { progress: fin(st.seats, 0) >= students(s) / 1.2 ? 1 : 0, goal: 1 }; },
-    p3: function (s) { const o = ost(s, 'p3'); return { progress: Math.min(fin(o.progress, 0), 30), goal: 30, daily: true }; }
+    p3: function (s) { const o = ost(s, 'p3'); return { progress: Math.min(fin(o.progress, 0), 30), goal: 30, daily: true }; },
+    sink1: function (s) { return { progress: sunkHalls(s).length === 0 ? 1 : 0, goal: 1 }; }   // balance pass
   };
   // Voice-card goals (background objectives 'v:<id>')
   function unionTiles(s) { return blist(s, 'union').filter(complete); }
@@ -703,10 +712,20 @@
       if (q.indexOf(id) < 0) q.unshift(id);
       const p = pr(state);
       if (interruptActive(state)) { const cur = p.card; ost(state, cur).state = 'queued'; if (q.indexOf(cur) < 0) q.splice(1, 0, cur); p.card = p.background; }
+    } else if (bgPriority(id) > 0) {
+      // balance pass: the growth goals (wastewater at 1,500, prestige 30, the Cauldron, the bayou choice, the flagship) jump the single
+      // background slot instead of waiting behind the football chain (15 → 18a → 18b → 18 can hold it for seasons while the 1,500
+      // sewage cap stalls enrollment), and the sinking goal jumps everything (the flagship goal is open for years); the goal they
+      // displace goes back to the front of the queue and is re-offered after
+      if (q.indexOf(id) < 0) q.unshift(id);
+      const p = pr(state), cur = p.background;
+      if (cur && bgPriority(cur) < bgPriority(id) && ost(state, cur).state === 'active') { ost(state, cur).state = 'queued'; if (q.indexOf(cur) < 0) q.splice(1, 0, cur); if (p.card === cur) p.card = null; p.background = null; }
     } else if (q.indexOf(id) < 0) q.push(id);
     ctx(state).dirty = true;
   }
   const PREEMPT = new Set(['12', '13', '14']);
+  const GROWTH = new Set(['17', '19', '20', '21', '22']);
+  function bgPriority(id) { return id === 'sink1' ? 2 : (GROWTH.has(id) ? 1 : 0); }
   function deadlineFor(state, id) {
     const day = today(state);
     if (id === '8') return nextDate(G.deadline8 || 'Aug 5', day);
@@ -906,6 +925,7 @@
       if (key === 'crown') { const r = call('terrain', 'reachableHigh5', state); const t = Array.isArray(r) ? tilesOf(r).filter(function (i) { return state.tiles.owner[i] < 0; }) : []; const cc = center(t, fb); return { tx: cc.tx, ty: cc.ty, tiles: t }; }
       if (key === 'land') { const sec = (call('land', 'sections', state) || []).find(function (x) { return x.forSale; }); ui(state, 'openLandOffice', sec ? sec.id : undefined); if (sec) return { tx: (sec.x0 + sec.x1) >> 1, ty: (sec.y0 + sec.y1) >> 1 }; return { tx: fb.tx, ty: fb.ty }; }   // L2: the goal's Show me opens the Land Office on the first section for sale
       if (key === 'ring') { const g = call('buildings', 'gaps', state, fin(G.ringH11, 5)); let t = []; if (g && g.gaps) for (const gap of g.gaps) t = t.concat(gap.tiles || []); if (!t.length) t = tilesOf((state.plot && state.plot.mouth) || []); const cc = center(t, coveCenter(state)); return { tx: cc.tx, ty: cc.ty, tiles: t }; }
+      if (key === 'sunk') { const b = sunkHalls(state)[0]; if (b) return { tx: b.tx, ty: b.ty, tiles: footTiles(b) }; return { tx: fb.tx, ty: fb.ty }; }   // balance pass
       // target: per objective
       const c = ctx(state);
       if (id === '9') { const g = (call('wildlife', 'onCampus', state) || [])[0]; const i = g ? BSU.idx(g.tx | 0, g.ty | 0) : (c.firstGatorTile >= 0 ? c.firstGatorTile : NONE); if (i >= 0) return { tx: i % W, ty: (i / W) | 0, tiles: [i] }; const d = blist(state, 'dining_hall')[0]; if (d) { const dt = fin(call('buildings', 'dumpsterTile', state, d.id), NONE); if (dt >= 0) return { tx: dt % W, ty: (dt / W) | 0, tiles: [dt] }; return { tx: d.tx, ty: d.ty }; } }
@@ -1705,6 +1725,7 @@
       if (pt.month === fin(MG.skeeterMonth, 8)) { const idx = fin(call('wildlife', 'mosqIndex', state), fin(state.wildlife && state.wildlife.mosqIndex, 0)); if (idx < fin(MG.skeeterBeater, 0.1)) p.skeeterStreak = fin(p.skeeterStreak, 0) + 1; else p.skeeterStreak = -100; if (pt.dom === 10 && p.skeeterStreak >= 10) M.achieve(state, 'skeeterBeater'); }
       if (pt.dom === fin(PP.voiceCardDom, 3) && done(state, PP.voiceAfterObjective || '7')) { const o7 = ost(state, PP.voiceAfterObjective || '7'); if (o7.since < 0 || parts(o7.since).month !== pt.month || parts(o7.since).year !== pt.year) M.offerVoice(state); }
       amelieDaily(state);
+      { const o = p.objectives.sink1; if (o && o.state === 'done' && day - fin(o.since, 0) >= SINK_REARM_DAYS && sunkHalls(state).length) o.state = 'locked'; }   // balance pass: the sinking goal comes back when another hall drops a foot
       pollMilestones(state);
       checkDeadlines(state, c);
       failureDaily(state, c);

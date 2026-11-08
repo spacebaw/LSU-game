@@ -108,7 +108,8 @@ recordAll([BSU.EV.ECON_STAT, BSU.EV.ECON_INCOME, BSU.EV.ECON_EXPENSE, BSU.EV.ECO
   const s = BSU.newState(3);
   s.economy.suspendCapPenalties = false; s.economy.suppressCoverage = false;
   E.init(s); E.reset(s, true);
-  eq(s.economy.applicants, 700, 'reset(fresh) computes applicants 700');
+  const A0 = BSU.params.econ.applicants, a0 = Math.round(A0.base + A0.prestige * BSU.params.econ.startPrestige + A0.happiness * BSU.params.econ.startHappiness);   // 700 at the §5.4 weights; balance pass: prestige 28 → 31 (730)
+  eq(s.economy.applicants, a0, 'reset(fresh) computes applicants ' + a0);
   eq(s.economy.capacity, 345, 'reset(fresh) computes capacity 345');
   E.addStudents(s, 120, 'founding');
   const studentsByDay = {};

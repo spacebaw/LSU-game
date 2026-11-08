@@ -1322,7 +1322,8 @@
     '21': { why: 'Fortress or living with water: pick the future of the bayou.', build: ['surge_barrier', 'marsh_restoration'] },
     '22': { why: 'The flagship: 10,000 students and prestige 60.', build: ['res_tower', 'library'] },
     'p1': { why: 'Accreditation wants a Library.', build: ['library'] },
-    'p2': { why: 'Accreditation wants lecture seats for 5 of every 6 students.', build: ['lecture_hall'] }
+    'p2': { why: 'Accreditation wants lecture seats for 5 of every 6 students.', build: ['lecture_hall'] },
+    'sink1': { why: 'Drained marsh sinks; a sunk hall floods for good. Pilings stop it, a re-grade lifts it a foot.', build: ['pilings'] }
   };
   /** the needs strip (GDD §5.4 capacity terms + utilities + parking): label, the fix, how the gauge reads */
   const needs = {

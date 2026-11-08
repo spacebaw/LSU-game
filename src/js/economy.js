@@ -644,10 +644,10 @@
     const eco = ecologyNow(state);
     const ecologyBonus = eco * (flags.coastal ? 1 : PP.ecologyNoInstitute);
     const selectivity = num(PP.selectivityScore[e.selectivity], 0);
-    const blight = PP.blight.damaged * Math.max(0, num(st.unrepaired))
+    const blight = Math.min(num(PP.blight.cap, 1e9), PP.blight.damaged * Math.max(0, num(st.unrepaired))   // balance pass: capped — 13 unrepaired halls took the target to 0 and the applicants with it
       + (st.floodedCore ? PP.blight.flooded : 0)
       + (mosqIndexNow(state) > P.wildlife.mosq.biblical ? P.wildlife.mosq.biblicalBlight : 0)   // one mosquito term (brief decision)
-      + (int(e.blackoutDays, 0) > P.storm.blackoutBlightDays ? P.storm.blackoutBlight : 0);
+      + (int(e.blackoutDays, 0) > P.storm.blackoutBlightDays ? P.storm.blackoutBlight : 0));
     const rookery = hasComplete(state, 'rookery') ? 1 : 0;
     const terms = {
       academic: W.academic * aq, faculty: W.faculty * faculty, happiness: W.happiness * clamp100(e.happiness), football: W.football * football,
@@ -699,7 +699,7 @@
     const heat = clamp(sample.heat, 0, P.heat.penaltyCap);
     const tuition = Math.max(0, (num(e.tuition, PE.tuition.default) - H.tuitionBase) / H.tuitionDiv);
     const crowd = H.crowd * Math.max(0, students / Math.max(1, num(st.seats)) - 1);
-    const noise = H.noiseRoad * num(st.roadAdjacentDorms) + H.noisePump * num(st.pumpsNearDorms) + H.noiseBarrier * num(st.barriersNearDorms);
+    const noise = Math.min(num(H.noiseCap, 1e9), H.noiseRoad * num(st.roadAdjacentDorms) + H.noisePump * num(st.pumpsNearDorms) + H.noiseBarrier * num(st.barriersNearDorms));   // balance pass: capped like flood (21 pumps beside dorms read −30)
     const terms = {
       housing: housing, dining: dining, life: life, green: green, spirit: spirit,
       mosquito: -mosquito, flood: -flood, gator: -gator, heat: -heat, tuition: -tuition, crowd: -crowd, noise: -noise
@@ -1424,7 +1424,8 @@
       s.economy.suppressCoverage = false;
       M.reset(s, true);
       // 1. §5.4 worked numbers
-      assert(M.applicants(s) === 700, 'applicants 700 (got ' + M.applicants(s) + ')');
+      const a0 = Math.round(PE.applicants.base + PE.applicants.prestige * PE.startPrestige + PE.applicants.happiness * PE.startHappiness);   // 700 at the §5.4 weights; the balance pass moved prestige 28 → 31 (730)
+      assert(M.applicants(s) === a0, 'applicants ' + a0 + ' (got ' + M.applicants(s) + ')');
       assert(M.capacity(s).capacity === 345, 'capacity 345 (got ' + M.capacity(s).capacity + ')');
       // P7 housing tiers: the applicant mix term, room fees and the parking credit, on stubbed tier stats
       {
@@ -1432,7 +1433,7 @@
         s.economy.students = 1500; stubStats.bedsEconomy = 0; stubStats.bedsStandard = 0; stubStats.bedsPremium = 0; stubStats.parkingSpaces = 0; s.tick++;
         assert(M.housingMix(s) === 0 && M.roomFees(s).total === 0, 'no tier stats: no mix term, no room fees');
         stubStats.bedsEconomy = 360; s.tick++;
-        assert(M.housingMix(s) === PE.housing.mix.allEconomy && M.applicants(s) === Math.round(700 * (1 + PE.housing.mix.allEconomy)) && M.roomFees(s).total === 0, 'all-economy beds: −3% applicants, economy beds pay no fee');
+        assert(M.housingMix(s) === PE.housing.mix.allEconomy && M.applicants(s) === Math.round(a0 * (1 + PE.housing.mix.allEconomy)) && M.roomFees(s).total === 0, 'all-economy beds: −3% applicants, economy beds pay no fee');
         stubStats.bedsStandard = 300; s.tick++;
         assert(M.housingMix(s) === 0 && M.roomFees(s).total === 300 * PE.housing.roomFee[2], 'economy + standard: no term, 300 beds × $150');
         stubStats.bedsPremium = 240; stubStats.parkingSpaces = 60; s.tick++;
