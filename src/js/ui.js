@@ -15,31 +15,34 @@
 // Zero DOM access at definition time (registerPanel/registerCard are plain map
 // writes). Loads and no-ops in Node through test/domstub.mjs.
 //
-// DOM skeleton (ARCHITECTURE §7.1; every node is kept in BSU.ui.el, never re-queried):
+// DOM skeleton (ARCHITECTURE §7.1; every node is kept in BSU.ui.el, never re-queried). UI refresh U2: the at-rest screen is the
+// app bar, the goal pill, the Build FAB and the snackbar lane; everything else nests in a popover (one open at a time) or a panel.
 //   #app
 //   ├─ canvas#world.world                        (render.js; pointer/wheel/key target)
 //   ├─ #hud (pointer-events:none; interactive children auto)
-//   │  ├─ #topbar  #brand · .stat#stat-cash(.odometer .delta) · #stat-students(#chip-capacity) ·
-//   │  │   #stat-prestige · #stat-happiness · #stat-ecology · #stat-date(#sky-glyph) · #chip-weather ·
-//   │  │   #speed(.speed-btn[data-speed]) · #btn-budget #btn-season #btn-storm(.dot) #btn-almanac #btn-menu #btn-mute · #chip-endowed
+//   │  ├─ #topbar (the app bar)  #brand · .stats(.stat#stat-cash(svg.ic .dot .txt(.line(.odometer) .stat-label) .delta) · #stat-students(.line(.odometer #chip-capacity.cap)) ·
+//   │  │   #stat-prestige · #stat-happiness · #stat-ecology) · #date-chip(#sky-glyph #stat-date(.date-text) #chip-weather) · #speed(.speed-btn[data-speed]) ·
+//   │  │   .actions(#btn-alerts(#alerts-badge) · #ov-lit (the lit overlay chip) · #btn-layers · #btn-map · #btn-menu · #btn-mute · #chip-endowed)
 //   │  ├─ #alert-strip.hidden  #alert-icon #alert-text #alert-action #alert-gator
-//   │  ├─ #minimap-wrap  canvas#minimap(200×200 × UI scale) #minimap-viewport
-//   │  ├─ #overlay-buttons  .ov-btn[data-ov=1..6] · #legend.chip
-//   │  ├─ #objective-card (the GOALS TRACKER, top-left)  canvas#obj-portrait #obj-kicker #obj-title #obj-text #obj-why #obj-progress(.fill) #obj-count
-//   │  │     #btn-obj-build #btn-showme #btn-obj-dismiss #obj-next #obj-background #needs-strip(.need×5 #needs-text) #speech-bubble
+//   │  ├─ #goal-pill (at rest: ring + #gp-kicker #gp-title #gp-count) ↔ #objective-card (the goal card: canvas#obj-portrait #obj-kicker #obj-title #obj-text #obj-why
+//   │  │     #btn-goal-collapse #btn-obj-dismiss #obj-progress(.fill) #obj-count #btn-obj-build #btn-showme #obj-next #obj-background #speech-bubble)
 //   │  ├─ #voice-card.hidden  #voice-text #voice-payoff #btn-voice-accept #btn-voice-decline
 //   │  ├─ #milestones-card.hidden  .ms-row×3
-//   │  ├─ #notifications  .notif[data-kind]
-//   │  ├─ #decision-toast.hidden  #dt-text #dt-countdown.bar #btn-dt-yes #btn-dt-no
+//   │  ├─ popovers (.popover, anchored under their chip / icon; ui.openPopover / closePopover):
+//   │  │   #pop-needs(#needs-strip(.need×6 #needs-text #needs-locate) #needs-apps) · #pop-budget(#mb-income #mb-expense #mb-net #mb-runway #btn-mb-open) ·
+//   │  │   #pop-alerts(#issues-head(#issues-count #issues-sub) #issues-tray(#issues-list #issues-progress #issues-more #issues-suggest #issues-hidden) #issues-spot #issues-clear) ·
+//   │  │   #pop-layers(#overlay-buttons(.ov-btn[data-ov=1..6]) #legend) · #pop-map(#btn-map-pin #minimap-wrap(canvas#minimap #minimap-viewport)) ·
+//   │  │   #pop-menu(#btn-budget #btn-season #btn-storm(.dot) #btn-land #btn-almanac #btn-milestones #btn-log #btn-settings #btn-howto #btn-about)   (U3: the side sheet)
+//   │  ├─ #snack-lane  #notif-dismiss · #notifications(.snackbar.notif[data-kind]) · #decision-toast.snackbar.decision(#dt-text #dt-options #btn-dt-no #btn-dt-yes #dt-foot #dt-countdown(.fill))
 //   │  ├─ #inspect.panel.side.hidden  #insp-title #insp-sub #btn-insp-close canvas#insp-sprite #insp-body #insp-actions  (a kitchen's #insp-menu = summary + #btn-edit-menu)
-//   │  ├─ #ghost-label.hidden · #tooltip.hidden · #popover.hidden(#pop-title .pop-line×7 #pop-next)
-//   │  ├─ #ticker  #ticker-track · #btn-ticker-log · #ticker-log.hidden
-//   │  ├─ #palette  #btn-build-menu · #palette-tabs(.tab[data-tab] .pip) · #palette-items(.item[data-id]) · #btn-bulldoze · #btn-palette-info
-//   │  ├─ #build-menu.hidden  #bm-cats(.bm-cat[data-tab]) · #bm-cards(.bm-card[data-id] .bm-badge .bm-reqs .bm-lock) · #bm-detail · #bm-foot   (UX pass; key G)
+//   │  ├─ #ghost-label.hidden · #tooltip.hidden · #popover.hidden(#pop-title .pop-line×7 #pop-next)   (the stat breakdown: Prestige / Happiness / Ecology)
+//   │  ├─ #palette.hidden (the interim Build sheet; G / the FAB toggle it)  #btn-build-menu · #palette-tabs(.tab[data-tab] .pip) · #palette-items(.item[data-id]) · #btn-bulldoze · #btn-palette-info · #btn-palette-close
+//   │  ├─ #fab-build (the gold Build FAB, bottom-right)
+//   │  ├─ #build-menu.hidden  #bm-cats(.bm-cat[data-tab]) · #bm-cards(.bm-card[data-id] .bm-badge .bm-reqs .bm-lock) · #bm-detail · #bm-foot   (UX pass; key Shift+G)
 //   │  ├─ #coach.hidden  .coach-pane×4 · .coach-ring · .coach-box(#coach-step #coach-title #coach-text #btn-coach-back #btn-coach-skip #btn-coach-next)
 //   │  ├─ #cards (modal stack: .card#card-<id> .card-title .card-body .card-actions)
-//   │  └─ #perf-chip.hidden · #perfmode-chip.hidden · #hint.hidden · #btn-skip.hidden
-//   ├─ #panels  (#panel-<name>.panel built through registerPanel; settings + debug built in here)
+//   │  └─ #perf-chip.hidden · #perfmode-chip.hidden · #hint.hidden · #btn-skip.hidden · #undo-chip · #hud-chip
+//   ├─ #panels  (#panel-<name>.panel built through registerPanel; settings + howto + about + log + debug + milestones built in here)
 //   └─ #title  #title-name #title-tag .title-hint #btn-charter #btn-continue #btn-title-howto #btn-title-about input#title-seed #btn-title-settings #btn-title-mute
 //
 // Input state machine (ARCHITECTURE §7.3):
@@ -74,8 +77,8 @@
   const clamp = function (v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; };
   // numbers the brief states but params does not carry (or carries under render)
   const L = {
-    dragThreshold: fin(PR.dragThreshold, 4), tooltipMs: fin(PR.tooltipMs, 300), tickerPxPerSec: fin(PR.tickerPxPerSec, 60),
-    notifMs: fin(PR.notifMs, 12000), notifMax: fin(PR.notifMax, 3), notifTicks: 120, bubbleIdleMs: fin(PR.bubbleIdleMs, 8000),
+    dragThreshold: fin(PR.dragThreshold, 4), tooltipMs: fin(PR.tooltipMs, 300),
+    notifMs: fin(PR.snackMs, 6000), notifMax: fin(PR.snackMax, 2), notifQueueMax: 6, notifTicks: 120, bubbleIdleMs: fin(PR.bubbleIdleMs, 8000),   // U2: snackbars (6 s, two visible, the rest queue)
     bubbleMs: fin(PR.bubbleMs, 6000), hintMs: 6000, hintTicks: 60, nTapMs: 350, panPx: fin(PR.panPxPerFrame, 12), refreshMs: fin(PU.panelRefreshMs, 500),
     deltaMs: 600, odoMs: 150, holdTicks: 600, logMax: fin(PU.tickerMax, 30), popLines: 7, minimapPx: fin(PR.minimapPx, 160),
     compactWidth: fin(PU.compactWidth, 1180), hudStaggerMs: fin(PT.hudStaggerMs, 100), ringThrottleMs: 50, skipAfterTick: fin(PT.skipAfterTick, 150),
@@ -87,7 +90,27 @@
   const SKY_NAME = ['Dawn', 'Day', 'Golden', 'Dusk', 'Night'];
   const MOOD_FACES = ['😞', '🙁', '😐', '🙂', '😄'];
   const HINT_TEXT = { dredgeFill: 'Dredge spoil from the bayou raises marsh to dry land in ten days. Ecology pays for it.', saveUnavailable: 'Saves unavailable in this browser mode', perfMode: 'Performance mode', mute: '🔊 on · M to mute', pauseToPlan: 'Pause to plan', desireLine: 'Students want a path here' };
-  const PANEL_KEYS = { budget: 'Budget', season: 'Season', storm: 'Storm', land: 'Land Office', almanac: 'Almanac', milestones: 'Milestones', settings: 'Settings', howto: 'How to play', about: 'About', debug: 'Debug' };   // L2: land
+  const PANEL_KEYS = { budget: 'Budget', season: 'Season', storm: 'Storm', land: 'Land Office', almanac: 'Almanac', milestones: 'Milestones', log: 'Log', settings: 'Settings', howto: 'How to play', about: 'About', debug: 'Debug' };   // L2: land; U2: log
+  // UI refresh U2: the inline SVG icons of docs/UI_STYLE.md §6 (24 px, stroke 2, round; U5 registers the same paths for the rest of the chrome)
+  const SVG_NS = 'http://www.w3.org/2000/svg';
+  const ICONS = {
+    notifications: ['M6 16v-5a6 6 0 0 1 12 0v5l1.5 2h-15z', 'M10 21h4'], layers: ['M12 3 3 8l9 5 9-5-9-5z', 'M3 12l9 5 9-5', 'M3 16l9 5 9-5'], map: ['M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z', 'M9 4v14', 'M15 6v14'],
+    menu: ['M4 7h16', 'M4 12h16', 'M4 17h16'], close: ['M6 6l12 12', 'M18 6 6 18'], expand_less: ['M6 15l6-6 6 6'], expand_more: ['M6 9l6 6 6-6'], chevron_right: ['M9 6l6 6-6 6'],
+    construction: ['M4 20l7-7', 'M9 11l5-5 4 4-5 5z', 'M15 5l2-2 4 4-2 2'], pause: ['M8 5v14', 'M16 5v14'], push_pin: ['M12 17v5', 'M8 3h8l-1 6 3 3v2H6v-2l3-3z'],
+    info: ['M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z', 'M12 11v5', 'M12 8h.01'], warning: ['M12 3 2 21h20z', 'M12 10v5', 'M12 18h.01'], check: ['M5 12l4 4L19 7'],
+    star: ['M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z'],
+    paid: ['M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z', 'M12 6.5v11', 'M14.8 9.3c-.4-1-1.5-1.6-2.8-1.6-1.6 0-2.8.8-2.8 2 0 2.7 5.6 1.3 5.6 4.1 0 1.3-1.3 2-2.8 2-1.4 0-2.5-.7-2.9-1.7'],
+    group: ['M9 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6z', 'M3 20a6 6 0 0 1 12 0', 'M16 5.5a3 3 0 0 1 0 5.5', 'M21 20a6 6 0 0 0-4.5-5.8'],
+    mood: ['M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z', 'M8.5 14.5a4.5 4.5 0 0 0 7 0', 'M9 10h.01', 'M15 10h.01'], eco: ['M5 19c0-8 5-13 14-13 0 9-5 13-11 13', 'M5 19l7-7'],
+    volume_up: ['M4 10v4h4l5 4V6L8 10z', 'M16 9a4 4 0 0 1 0 6', 'M18.5 6.5a7.5 7.5 0 0 1 0 11'], volume_off: ['M4 10v4h4l5 4V6L8 10z', 'M16 9l5 6', 'M21 9l-5 6']
+  };
+  const ICON_FILLED = { star: true };
+  /** the legend swatches of the Layers popover (the overlays themselves are canvas colours in render.js; these echo its OV_COLORS at the legend's four steps) */
+  const OV_LEGEND = {
+    F: ['rgba(224,68,62,.2)', 'rgba(224,68,62,.35)', 'rgba(224,68,62,.5)', 'rgba(224,68,62,.7)'], W: ['rgba(79,163,214,.2)', 'rgba(79,163,214,.35)', 'rgba(79,163,214,.5)', 'rgba(79,163,214,.7)'],
+    K: ['rgba(155,212,74,.2)', 'rgba(155,212,74,.35)', 'rgba(155,212,74,.5)', 'rgba(155,212,74,.7)'], P: ['rgba(63,191,127,.5)', 'rgba(224,68,62,.5)', 'rgba(224,68,62,.3)', 'rgba(42,40,48,.6)'],
+    C: ['rgba(245,183,0,.55)', 'rgba(245,183,0,.35)', 'rgba(245,183,0,.2)', 'rgba(202,196,208,.5)'], E: ['rgba(127,163,71,.35)', 'rgba(127,163,71,.15)', 'rgba(63,191,127,.4)', 'rgba(181,83,60,.5)']
+  };
 
   // ---------------------------------------------------------------------------
   // Small helpers (stub-safe: textContent/classList/style/dataset only)
@@ -113,6 +136,16 @@
   function clear(e) { if (!e) return; while (e.firstChild) e.removeChild(e.firstChild); }
   function isEl(v) { return !!(v && typeof v === 'object' && typeof v.tagName === 'string'); }
   function btn(id, label, cls_, onClick) { const b = el('button', 'btn' + (cls_ ? ' ' + cls_ : ''), label); if (id) b.id = id; b.type = 'button'; if (onClick) b.addEventListener('click', function (ev) { try { onClick(ev); } catch (e) { uerr('click:' + (id || label), e); } }); return b; }
+  /** a plain button (no .btn styling: the goal pill, the FAB) */
+  function plainBtn(id, cls_, onClick) { const b = el('button', cls_); if (id) b.id = id; b.type = 'button'; if (onClick) b.addEventListener('click', function (ev) { try { onClick(ev); } catch (e) { uerr('click:' + id, e); } }); return b; }
+  /** U2: an inline SVG icon (svg.ic) from the ICONS table; `cls_` adds classes (e.g. 'sm', 'hidden') through classList so show() / cls() work on it in both the DOM and the stub */
+  function icon(name, cls_) {
+    const s = document.createElementNS(SVG_NS, 'svg'); s.setAttribute('class', 'ic'); s.setAttribute('viewBox', '0 0 24 24'); s.setAttribute('aria-hidden', 'true'); s.dataset.icon = name;
+    if (cls_) for (const c of String(cls_).split(' ')) if (c) s.classList.add(c);
+    for (const d of (ICONS[name] || [])) { const p = document.createElementNS(SVG_NS, 'path'); p.setAttribute('d', d); if (ICON_FILLED[name]) { p.setAttribute('fill', 'currentColor'); p.setAttribute('stroke', 'none'); } s.appendChild(p); }
+    return s;
+  }
+  function iconBtn(id, name, title, onClick) { const b = btn(id, null, 'icon', onClick); b.title = title || ''; b.appendChild(icon(name)); if (id) E[id] = b; return b; }
   function money(n) { return BSU.formatMoney(fin(n, 0)); }
   /** H6 number rules: the sign is part of the number (a true minus U+2212, never a hyphen: formatMoney already does it for cash), thousands are grouped, and every
    *  element that shows one is nowrap + tabular in CSS, so "−$1.69M" can never break after its sign. `numStr` keeps one decimal; `int` rounds; `compact` is the gauge form (1.5k / 12k) */
@@ -150,7 +183,12 @@
   let card = null; const cardQueue = [];
   let insp = null, inspAt = -1e9, inspDirty = false, renaming = null;
   let menuEdit = null, menuReason = { text: '', until: 0 }, menuSig = '';   // menu layout pass: the Edit menu overlay ({id} while open, never saved), its inline refusal line, the dish-grid signature (cells are rebuilt only when the set changes)
-  let tk = { x: 0, line: null, seen: 0, w: 0, lastLen: 0, logOpen: false };
+  let tk = { seen: 0, lastLen: -1 };       // U2: the news lines of state.ticker already shown as snackbars (the Log panel lists them all)
+  const snackQueue = [];                   // U2: notifications / news waiting for one of the two snackbar slots ({spec, kind, …} like `notifs`)
+  const goal = { open: false, until: 0, hover: false, id: '' };   // U2: the goal pill ↔ goal card (open = the card; until = the clock the card folds at)
+  M._goalCollapseMs = 10000;               // the card folds this long after it opened (hover restarts it; tests shorten it)
+  const pops = { open: null };             // U2: the one transient popover (needs | budget | alerts | layers | map | menu | breakdown) or null
+  const pal = { open: false };             // U2: the Build sheet (today's palette) shown by the FAB / G
   const odo = { cash: NaN, students: NaN, shownStudents: NaN, holdUntil: -1, lastStudents: NaN, deltaUntil: 0 };
   const held = { up: false, down: false, left: false, right: false };
   let hint = null;                         // {until, untilTick}
@@ -163,11 +201,11 @@
   // UX pass: build menu, needs strip cache, coach-mark tour
   const bm = { open: false, hover: null, selected: null, pulseId: null, pulseUntil: 0, focusUntil: 0, keepOpen: false, key: '', detailKey: '', dirty: true };
   let needsCache = null, needsAt = -1e9, needsKey = '';
-  const coach = { step: -1, armedAt: 0, paused: false, overlayBefore: 0, layoutAt: -1e9, expanded: [] };   // hud + zoom pass: `expanded` = the HUD parts un-pilled for the current step
-  // hud + zoom pass: HUD modes (full / compact / hidden; H cycles, Shift+H → full) and the per-element pills of full mode
-  const HUD_MODES = (BSU.params.ui && Array.isArray(BSU.params.ui.hudModes) && BSU.params.ui.hudModes.length === 3) ? BSU.params.ui.hudModes.slice() : ['full', 'compact', 'hidden'];
-  const HUD_PARTS = { goals: 'objective-card', needs: 'needs-strip', minimap: 'minimap-wrap', issues: 'issues-tray', palette: 'palette' };
-  const hudSt = { eff: '', chipOn: null, pillAt: -1e9, wheelAcc: 0, wheelAt: -1e9, wheelStepAt: -1e9 };
+  const coach = { step: -1, armedAt: 0, paused: false, overlayBefore: 0, layoutAt: -1e9 };
+  // U2: the HUD has one at-rest state; H hides everything (screenshots), Shift+H / H restores. Not a setting: the old settings.hudMode is read once on load (migrateSettings)
+  const HUD_MODES = (BSU.params.ui && Array.isArray(BSU.params.ui.hudModes) && BSU.params.ui.hudModes.length >= 2) ? BSU.params.ui.hudModes.slice() : ['full', 'hidden'];
+  let hudModeNow = 'full', migratedFor = null;
+  const hudSt = { eff: '', chipOn: null, wheelAcc: 0, wheelAt: -1e9, wheelStepAt: -1e9 };
 
   // ---------------------------------------------------------------------------
   // Panel / card registries (plain map writes; ui_panels registers at definition time)
@@ -185,45 +223,91 @@
   // ---------------------------------------------------------------------------
   // DOM build (init)
   // ---------------------------------------------------------------------------
-  function statEl(id, label, key) {
-    const s = el('div', 'stat'); s.id = id; s.dataset.stat = key; s.setAttribute('tabindex', '0'); s.setAttribute('role', 'button');
-    const lab = el('span', 'stat-label', label); const val = el('span', 'odometer num', '—'); const d = el('span', 'delta', '');
-    s.appendChild(lab); s.appendChild(val); s.appendChild(d);
-    s.addEventListener('click', function () { try { M.breakdown(stateOf(), key); } catch (e) { uerr('stat:' + key, e); } });
-    E[id] = s; E[id + '-value'] = val; E[id + '-delta'] = d; E[id + '-label'] = lab;
+  /** U2 stat chip: icon · value (+ the Students "cap N" suffix) over an uppercase label; a badge dot at the icon; click opens its popover (Cash: mini budget, Students: needs) or the breakdown */
+  function statEl(id, label, key, iconName, onClick) {
+    const s = btn(id, null, 'stat sl', function () { if (onClick) onClick(); else M.breakdown(stateOf(), key); }); s.dataset.stat = key; s.title = label;
+    s.appendChild(icon(iconName)); const dot = el('span', 'dot hidden'); s.appendChild(dot);
+    const txt = el('span', 'txt'); const line = el('span', 'line'); const val = el('span', 'odometer num', '—'); line.appendChild(val); txt.appendChild(line); const lab = el('span', 'stat-label', label); txt.appendChild(lab); s.appendChild(txt);
+    const d = el('span', 'delta', ''); s.appendChild(d);
+    E[id] = s; E[id + '-value'] = val; E[id + '-delta'] = d; E[id + '-label'] = lab; E[id + '-dot'] = dot; E[id + '-line'] = line;
     return s;
   }
-  function topbarButton(id, glyph, label, title, onClick) {
-    const b = btn(id, null, 'tb', onClick); b.title = title; if (!label) b.classList.add('glyph-only');
-    const g = el('span', 'glyph', glyph), l = el('span', 'label', label); b.appendChild(g); b.appendChild(l); E[id] = b; E[id + '-glyph'] = g; return b;
+  /** U2 Menu list item (the interim Menu popover; U3's side sheet keeps these ids): label, a small second line, the hotkey cap */
+  function menuItem(id, label, sub, key, onClick) {
+    const b = btn(id, null, 'list-item', function () { closePopover(); onClick(); }); const t = el('span', 't', label); if (sub) t.appendChild(el('small', null, sub)); b.appendChild(t); if (key) b.appendChild(el('span', 'hk', key)); b.title = label + (key ? ' (' + key + ')' : ''); E[id] = b; return b;
   }
   function buildTopbar() {
     const tb = el('div'); tb.id = 'topbar'; E.topbar = tb;
     const brand = el('div', null, ''); brand.id = 'brand'; brand.appendChild(el('span', 'brand-mark', '▣')); brand.appendChild(el('span', 'brand-name', 'BAYOU STATE')); E.brand = brand; tb.appendChild(brand);
     const stats = el('div', 'stats'); E.stats = stats; tb.appendChild(stats);
-    stats.appendChild(statEl('stat-cash', 'Cash', 'cash'));
-    const st = statEl('stat-students', 'Students', 'students'); const cap = el('span', 'chip hidden', ''); cap.id = 'chip-capacity'; E['chip-capacity'] = cap; st.appendChild(cap); stats.appendChild(st);
-    stats.appendChild(statEl('stat-prestige', 'Prestige', 'prestige'));
-    stats.appendChild(statEl('stat-happiness', 'Happiness', 'happiness'));
-    stats.appendChild(statEl('stat-ecology', 'Ecology', 'ecology'));
-    const date = el('div'); date.id = 'stat-date'; const dateText = el('span', 'date-text', ''); const glyph = el('span', null, '☀'); glyph.id = 'sky-glyph'; date.appendChild(dateText); date.appendChild(glyph); E['stat-date'] = date; E['stat-date-text'] = dateText; E['sky-glyph'] = glyph;
-    const wx = el('div', 'chip', ''); wx.id = 'chip-weather'; E['chip-weather'] = wx;
-    const dc = el('div'); dc.id = 'date-chip'; dc.appendChild(date); dc.appendChild(wx); E['date-chip'] = dc; tb.appendChild(dc);   // UI scale pass: date over weather, one roomy two-line chip
-    const sp = el('div'); sp.id = 'speed'; E.speed = sp; E.speedBtns = {};
-    [[0, '⏸', 'Pause (Space)'], [1, '1×', 'Normal speed (1)'], [2, '2×', 'Double speed (2)'], [4, '4×', 'Fast (3)'], [8, '8×', 'Fastest (4)']].forEach(function (d) {
-      const b = btn(null, d[1], 'speed-btn', function () { M.setSpeed(stateOf(), d[0]); }); b.dataset.speed = String(d[0]); b.title = d[2]; b.setAttribute('aria-pressed', 'false'); sp.appendChild(b); E.speedBtns[d[0]] = b;
+    stats.appendChild(statEl('stat-cash', 'Cash', 'cash', 'paid', function () { togglePopover('budget'); }));
+    const st = statEl('stat-students', 'Students', 'students', 'group', function () { togglePopover('needs'); }); const cap = el('span', 'cap hidden', ''); cap.id = 'chip-capacity'; E['chip-capacity'] = cap; E['stat-students-line'].appendChild(cap); stats.appendChild(st);
+    stats.appendChild(statEl('stat-prestige', 'Prestige', 'prestige', 'star'));
+    stats.appendChild(statEl('stat-happiness', 'Happiness', 'happiness', 'mood'));
+    stats.appendChild(statEl('stat-ecology', 'Ecology', 'ecology', 'eco'));
+    tb.appendChild(el('div', 'grow'));
+    // the date-and-weather chip: sky glyph · date (title size) over the weather line (label size); click = the Almanac
+    const dc = plainBtn('date-chip', 'sl', function () { M.openPanel('almanac'); }); dc.title = 'Almanac';
+    const glyph = el('span', null, '☀'); glyph.id = 'sky-glyph'; dc.appendChild(glyph);
+    const dtx = el('span', 'txt'); const date = el('span'); date.id = 'stat-date'; const dateText = el('span', 'date-text', ''); date.appendChild(dateText); dtx.appendChild(date);
+    const wx = el('span', 'lbl', ''); wx.id = 'chip-weather'; dtx.appendChild(wx); dc.appendChild(dtx);
+    E['stat-date'] = date; E['stat-date-text'] = dateText; E['sky-glyph'] = glyph; E['chip-weather'] = wx; E['date-chip'] = dc; tb.appendChild(dc);
+    const sp = el('div'); sp.id = 'speed'; sp.setAttribute('role', 'group'); E.speed = sp; E.speedBtns = {};
+    [[0, '', 'Pause (Space)'], [1, '1×', 'Normal speed (1)'], [2, '2×', 'Double speed (2)'], [4, '4×', 'Fast (3)'], [8, '8×', 'Fastest (4)']].forEach(function (d) {
+      const b = btn(null, d[1] || null, 'speed-btn', function () { M.setSpeed(stateOf(), d[0]); }); if (!d[1]) b.appendChild(icon('pause')); b.dataset.speed = String(d[0]); b.title = d[2]; b.setAttribute('aria-pressed', 'false'); sp.appendChild(b); E.speedBtns[d[0]] = b;
     });
     tb.appendChild(sp);
-    const pb = el('div', 'panel-btns'); E.panelBtns = pb; tb.appendChild(pb);
-    pb.appendChild(topbarButton('btn-budget', '◆', 'Budget', 'Budget (B)', function () { M.openPanel('budget'); }));
-    pb.appendChild(topbarButton('btn-season', '🏈', 'Season', 'Season (N)', function () { M.openPanel('season'); }));
-    const storm = topbarButton('btn-storm', '🌀', 'Storm', 'Storm (T)', function () { M.openPanel('storm'); }); const dot = el('span', 'dot'); storm.appendChild(dot); E['btn-storm-dot'] = dot; storm.disabled = true; pb.appendChild(storm);
-    pb.appendChild(topbarButton('btn-land', '📜', 'Land', 'Land Office (O)', function () { M.openPanel('land'); }));   // L2: the Land Office (a deed)
-    pb.appendChild(topbarButton('btn-almanac', '📖', 'Almanac', 'Almanac', function () { M.openPanel('almanac'); }));
-    pb.appendChild(topbarButton('btn-menu', '☰', '', 'Settings', function () { M.openPanel('settings'); }));
-    pb.appendChild(topbarButton('btn-mute', '🔊', '', 'Mute (M)', function () { toggleMute(); }));
-    const endowed = el('span', 'chip gold hidden', 'Endowed'); endowed.id = 'chip-endowed'; E['chip-endowed'] = endowed; tb.appendChild(endowed);
+    tb.appendChild(el('div', 'grow'));
+    // the right cluster: Alerts (badge) · the lit overlay chip · Layers · Map · Menu · mute · Endowed
+    const acts = el('div', 'actions'); E.actions = acts; tb.appendChild(acts);
+    const alerts = iconBtn('btn-alerts', 'notifications', 'Alerts (I cycles the issues)', function () { togglePopover('alerts'); }); const badge = el('span', 'badge hidden', ''); badge.id = 'alerts-badge'; alerts.appendChild(badge); E['alerts-badge'] = badge; acts.appendChild(alerts);
+    const lit = btn('ov-lit', '', 'lit-chip hidden', function () { togglePopover('layers'); }); E['ov-lit'] = lit; acts.appendChild(lit);
+    acts.appendChild(iconBtn('btn-layers', 'layers', 'Layers (F W K P C E)', function () { togglePopover('layers'); }));
+    acts.appendChild(iconBtn('btn-map', 'map', 'Map', function () { togglePopover('map'); }));
+    acts.appendChild(iconBtn('btn-menu', 'menu', 'Menu', function () { togglePopover('menu'); }));
+    const mute = btn('btn-mute', null, 'icon', function () { toggleMute(); }); mute.title = 'Mute (M)'; const mOn = icon('volume_up'), mOff = icon('volume_off', 'hidden'); mute.appendChild(mOn); mute.appendChild(mOff); E['btn-mute'] = mute; E['btn-mute-on'] = mOn; E['btn-mute-off'] = mOff; acts.appendChild(mute);
+    const endowed = el('span', 'chip gold hidden', 'Endowed'); endowed.id = 'chip-endowed'; E['chip-endowed'] = endowed; acts.appendChild(endowed);
     return tb;
+  }
+  /** U2 popover shell: section.popover#pop-<name> with a head (title [+ sub] · extra · close) and a body; the caller fills the body and appends a foot */
+  function popShell(name, title, extraCls) {
+    const p = el('section', 'popover surface-float hidden' + (extraCls ? ' ' + extraCls : '')); p.id = 'pop-' + name;
+    const head = el('div', 'head'); const tcol = el('div', 'tcol'); const t = el('div', 'title', title); tcol.appendChild(t); head.appendChild(tcol);
+    const x = btn('btn-pop-' + name + '-close', null, 'icon', function () { closePopover(); }); x.title = 'Close (Esc)'; x.appendChild(icon('close')); head.appendChild(x);
+    const body = el('div', 'body'); p.appendChild(head); p.appendChild(body);
+    E['pop-' + name] = p; E['pop-' + name + '-title'] = t;
+    return { el: p, head: head, tcol: tcol, title: t, close: x, body: body };
+  }
+  /** U2: every popover (needs, mini budget, Alerts, Layers, Map, Menu); one is open at a time (openPopover); the Map / Layers ones can be pinned through settings */
+  function buildPopovers() {
+    const out = [];
+    const nd = popShell('needs', 'What the campus needs', 'needs'); nd.body.appendChild(buildNeedsStrip()); const ne = el('div', 'muted hidden', 'Nothing to report yet: the first buildings set what the campus needs.'); ne.id = 'needs-empty'; nd.body.appendChild(ne); E['needs-empty'] = ne; out.push(nd.el);
+    const mb = popShell('budget', 'Last month', 'budget'); const rows = el('div', 'rows'); mb.body.appendChild(rows);
+    const mkRow = function (id, label, cls_) { const r = el('div', 'row' + (cls_ ? ' ' + cls_ : '')); r.appendChild(el('span', 'k', label)); const v = el('span', 'v', ''); v.id = id; r.appendChild(v); rows.appendChild(r); E[id] = v; return r; };
+    mkRow('mb-income', 'Income'); mkRow('mb-expense', 'Expenses'); mkRow('mb-net', 'Net', 'total'); mkRow('mb-runway', 'Runway');
+    const mf = el('div', 'foot'); const ob = btn('btn-mb-open', 'Open Budget', '', function () { closePopover(); M.openPanel('budget'); }); ob.appendChild(el('span', 'key', 'B')); mf.appendChild(ob); mb.el.appendChild(mf); E['btn-mb-open'] = ob; out.push(mb.el);
+    const al = popShell('alerts', 'Alerts', 'alerts'); al.head.id = 'issues-head'; E['issues-head'] = al.head; al.title.id = 'issues-count'; E['issues-count'] = al.title; const sub = el('div', 'sub', ''); sub.id = 'issues-sub'; al.tcol.appendChild(sub); E['issues-sub'] = sub;
+    al.body.appendChild(buildIssuesTray());
+    const af = el('div', 'foot'); const spot = btn('issues-spot', 'Spotlight', '', function () { toggleSpotlight(); }); spot.title = 'Dim the map except the issues (Shift+I; hold I)';
+    const clr = btn('issues-clear', 'Clear all', 'primary hidden', function () { const s = stateOf(); if (s) clearAllResolvable(s, false); }); clr.title = 'Run every one-click fix: repairs within cash, gravel ties, free officer wrangles (a confirm line shows the total)';
+    af.appendChild(spot); af.appendChild(clr); al.el.appendChild(af); E['issues-spot'] = spot; E['issues-clear'] = clr; out.push(al.el);
+    const ly = popShell('layers', 'Layers', 'layers'); const ov = buildOverlays(); ly.body.appendChild(ov[0]); ly.body.appendChild(ov[1]); out.push(ly.el);
+    const mp = popShell('map', 'Map', 'map'); const pin = btn('btn-map-pin', null, 'icon', function () { M.pinMinimap(); }); pin.appendChild(icon('push_pin')); pin.title = 'Keep the minimap open (remembered)'; mp.head.insertBefore(pin, mp.close); E['btn-map-pin'] = pin;
+    mp.body.appendChild(buildMinimap()); const mft = el('div', 'foot muted', 'Click to pan · the pin keeps it open'); mft.id = 'map-foot'; mp.el.appendChild(mft); out.push(mp.el);
+    const mn = popShell('menu', 'Menu', 'menu'); const list = el('div', 'menu-list'); mn.body.appendChild(list);
+    list.appendChild(menuItem('btn-budget', 'Budget', 'Income, expenses, tuition and faculty', 'B', function () { M.openPanel('budget'); }));
+    list.appendChild(menuItem('btn-season', 'Season', 'Schedule, roster, the coach', 'N', function () { M.openPanel('season'); }));
+    const storm = menuItem('btn-storm', 'Storm', 'Board up, sandbags, pumps, shelters', 'T', function () { M.openPanel('storm'); }); const dot = el('span', 'dot'); storm.appendChild(dot); E['btn-storm-dot'] = dot; list.appendChild(storm);
+    list.appendChild(menuItem('btn-land', 'Land Office', 'Buy the next section of state land', 'O', function () { M.openPanel('land'); }));   // L2: the Land Office (a deed)
+    list.appendChild(menuItem('btn-almanac', 'Almanac', 'The year so far, by month', '', function () { M.openPanel('almanac'); }));
+    list.appendChild(menuItem('btn-milestones', 'Milestones', 'Every goal, done and to come', 'L', function () { M.openPanel('milestones'); }));
+    list.appendChild(menuItem('btn-log', 'Log', 'The last 30 news lines', '', function () { M.openPanel('log'); }));
+    list.appendChild(el('div', 'divider'));
+    list.appendChild(menuItem('btn-settings', 'Settings', '', '', function () { M.openPanel('settings'); }));
+    list.appendChild(menuItem('btn-howto', 'How to play', '', '', function () { M.openPanel('howto'); }));
+    list.appendChild(menuItem('btn-about', 'About this build', '', '', function () { M.openPanel('about'); }));
+    out.push(mn.el);
+    return out;
   }
   function buildAlert() {
     const a = el('div', 'hidden'); a.id = 'alert-strip';
@@ -231,7 +315,7 @@
     const act = btn('alert-action', '', 'small', function () { const s = stateOf(); const sp = currentAlert; if (sp && sp.action && typeof sp.action.fn === 'function') sp.action.fn(s); });
     const g = el('span', 'chip gator hidden', ''); g.id = 'alert-gator'; g.addEventListener('click', function () { const sp = currentAlert; if (sp && sp.gator && Number.isFinite(sp.gator.i)) { const t = tileOf(sp.gator.i); call('render', 'panToTile', t.tx, t.ty); } });
     const x = btn('alert-close', '✕', 'icon', function () { closeAlert(); });   // every chip can be closed (the #alert-gator chip is Le Grand's, the lake legend: ambient)
-    x.title = 'Dismiss (the ticker keeps the log)';
+    x.title = 'Dismiss (the Log keeps every line)';
     a.appendChild(ic); a.appendChild(tx); a.appendChild(act); a.appendChild(g); a.appendChild(x);
     E['alert-strip'] = a; E['alert-icon'] = ic; E['alert-text'] = tx; E['alert-action'] = act; E['alert-gator'] = g; E['alert-close'] = x; return a;
   }
@@ -245,52 +329,76 @@
     c.addEventListener('pointerdown', function (ev) { mdown = true; go(ev); if (ev.preventDefault) ev.preventDefault(); });
     c.addEventListener('pointermove', function (ev) { if (mdown) go(ev); });
     c.addEventListener('pointerup', function () { mdown = false; }); c.addEventListener('pointerleave', function () { mdown = false; });
-    wrap.appendChild(hudChevron('minimap')); wrap.appendChild(hudPillEl('minimap', '🗺', 'Map')); hudHover('minimap', wrap);   // hud + zoom pass
     E['minimap-wrap'] = wrap; E.minimap = c; E['minimap-viewport'] = vp; return wrap;
   }
+  /** U2: the six overlays as filter chips (key cap + name) and the legend of the active one (swatches + the four labels + a note); both live in the Layers popover */
   function buildOverlays() {
     const wrap = el('div'); wrap.id = 'overlay-buttons'; E['overlay-buttons'] = wrap; E.ovBtns = {};
     const list = (BSU.data && BSU.data.overlays) || [];
-    for (const o of list) { const b = btn(null, o.key, 'ov-btn', function () { const s = stateOf(); M.setOverlay(s, s && s.ui.overlay === o.ov ? OV.NONE : o.ov); }); b.dataset.ov = String(o.ov); b.title = o.name + ' (' + o.key + ')'; wrap.appendChild(b); E.ovBtns[o.ov] = b; }
-    const legend = el('div', 'chip hidden', ''); legend.id = 'legend'; E.legend = legend; wrap.appendChild(legend);
-    return wrap;
+    for (const o of list) { const b = btn(null, null, 'ov-btn', function () { const s = stateOf(); M.setOverlay(s, s && s.ui.overlay === o.ov ? OV.NONE : o.ov); }); b.dataset.ov = String(o.ov); b.title = o.name + ' (' + o.key + ')'; b.setAttribute('aria-pressed', 'false'); b.appendChild(el('span', 'key', o.key)); b.appendChild(el('span', 'ov-name', o.name)); wrap.appendChild(b); E.ovBtns[o.ov] = b; }
+    const legend = el('div', 'hidden', ''); legend.id = 'legend'; E.legend = legend;
+    return [wrap, legend];
+  }
+  let legendKey = '';
+  /** fill #legend for overlay `o` (null = none): four swatch + label pairs and the note; keyed so it is rebuilt only when the overlay changes */
+  function refreshLegend(o) {
+    const key = o ? String(o.ov) : ''; if (key === legendKey) return; legendKey = key;
+    const lg = E.legend; clear(lg); show(lg, !!o); if (!o) return;
+    const cols = OV_LEGEND[o.key] || [];
+    o.legend.forEach(function (label, k) { const sw = el('span', 'sw'); const i = el('i'); i.style.background = cols[k] || 'transparent'; sw.appendChild(i); sw.appendChild(el('span', null, label)); lg.appendChild(sw); });
+    lg.appendChild(el('span', 'note', o.name + ' · ' + o.key + ' again turns it off · Settings can keep this popover open'));
+  }
+  /** U2: the needs strip (six gauges as rows, the binding line, Locate, the applicants line) now lives in the Students chip's popover; the ids are the UX pass's */
+  function buildNeedsStrip() {
+    const strip = el('div', 'hidden'); strip.id = 'needs-strip'; E.needEls = {};
+    const gauges = el('div', 'needs-gauges');
+    for (const k of ['beds', 'seats', 'dining', 'power', 'water', 'wastewater']) {
+      const g = el('div', 'need sl'); g.dataset.key = k; const lab = el('div', 'need-label', (BSU.data && BSU.data.needs && BSU.data.needs[k] ? BSU.data.needs[k].label : k)); const bar = el('div', 'bar'); const f = el('div', 'fill'); bar.appendChild(f); const val = el('div', 'need-val', '—');
+      g.appendChild(lab); g.appendChild(bar); g.appendChild(val); gauges.appendChild(g); E.needEls[k] = { el: g, fill: f, val: val };
+      g.addEventListener('click', function () { const s = stateOf(); const b = (BSU.data.needs[k] || {}).build; if (s && b) { closePopover(); M.openBuildMenu(s, { focus: b, pulse: true }); } });
+      if (k === 'power' || k === 'water') { g.addEventListener('mouseenter', function () { const I = issuesApi(); if (I) I.pulse(k); }); g.addEventListener('mouseleave', function () { const I = issuesApi(); if (I) I.pulse(null); }); }   // issue spotlight pass: hovering the gauge pulses every unpowered / unwatered beacon
+    }
+    const ntext = el('button', 'needs-text'); ntext.id = 'needs-text'; ntext.type = 'button'; ntext.addEventListener('click', function () { const s = stateOf(); const b = ntext.dataset.build; if (s && b) { closePopover(); M.openBuildMenu(s, { focus: b, pulse: true }); } });
+    const nloc = btn('needs-locate', 'Locate', 'small hidden', function () { const s = stateOf(); const fam = nloc.dataset.family; if (!s || !fam) return; const it = issueFirstOf(s, (issuesApi() && issuesApi().families()[fam]) || []); if (it) locateIssue(s, it); }); nloc.title = 'Ease the camera to the first building with this problem';
+    const nrow = el('div', 'needs-row'); nrow.appendChild(ntext); nrow.appendChild(nloc);
+    const apps = el('div', 'needs-apps', ''); apps.id = 'needs-apps';
+    strip.appendChild(gauges); strip.appendChild(nrow); strip.appendChild(apps); E['needs-locate'] = nloc; E['needs-strip'] = strip; E['needs-text'] = ntext; E['needs-apps'] = apps;
+    return strip;
+  }
+  /** U2: the goal pill (at rest): a 24 px progress ring · "GOAL n" · the title · "2 / 5" · expand_more; click opens the goal card */
+  function buildGoalPill() {
+    const p = plainBtn('goal-pill', 'goal-pill surface-float sl hidden', function () { goalOpen(false); }); p.title = 'Your current goal (click for the card)';
+    const ring = document.createElementNS(SVG_NS, 'svg'); ring.setAttribute('class', 'ring'); ring.setAttribute('viewBox', '0 0 24 24'); ring.setAttribute('aria-hidden', 'true');
+    const tr = document.createElementNS(SVG_NS, 'circle'); tr.setAttribute('class', 'track'); tr.setAttribute('cx', '12'); tr.setAttribute('cy', '12'); tr.setAttribute('r', '9');
+    const fl = document.createElementNS(SVG_NS, 'circle'); fl.setAttribute('class', 'fill'); fl.setAttribute('cx', '12'); fl.setAttribute('cy', '12'); fl.setAttribute('r', '9'); fl.setAttribute('stroke-dasharray', '56.5'); fl.setAttribute('stroke-dashoffset', '56.5');
+    ring.appendChild(tr); ring.appendChild(fl); p.appendChild(ring);
+    const k = el('span', 'kicker', 'Goal'); k.id = 'gp-kicker'; const t = el('span', 'ttl', ''); t.id = 'gp-title'; const n = el('span', 'count', ''); n.id = 'gp-count';
+    p.appendChild(k); p.appendChild(t); p.appendChild(n); p.appendChild(icon('expand_more'));
+    E['goal-pill'] = p; E['gp-kicker'] = k; E['gp-title'] = t; E['gp-count'] = n; E['gp-ring'] = fl; return p;
   }
   function buildObjective() {
-    // the GOALS TRACKER (UX pass): top-left under the topbar; the old ids are kept so progress/tests keep working
-    const c = el('div', 'hidden'); c.id = 'objective-card';
+    // the goal card (U2; the UX pass's GOALS TRACKER ids are kept so progress / tests keep working): top-left under the bar, opened from the pill or by a goal change
+    const c = el('div', 'goal-card hidden'); c.id = 'objective-card';
     const head = el('div', 'obj-head'); const portrait = el('canvas'); portrait.id = 'obj-portrait'; portrait.width = 64; portrait.height = 64;
     const col = el('div', 'obj-col'); const kick = el('div', 'obj-kicker', 'Goal'); kick.id = 'obj-kicker'; const title = el('div', null, ''); title.id = 'obj-title'; const text = el('div', null, ''); text.id = 'obj-text'; const why = el('div', 'hidden', ''); why.id = 'obj-why';
     col.appendChild(kick); col.appendChild(title); col.appendChild(text); col.appendChild(why);
     const openMs = function () { const s = stateOf(); if (!s || coach.step >= 0) return; M.openPanel(s.ui.panel === 'milestones' ? null : 'milestones'); };
     col.addEventListener('click', openMs); col.title = 'All milestones'; portrait.addEventListener('click', openMs);
-    const dis = btn('btn-obj-dismiss', '✕', 'icon', function () { const s = stateOf(); const o = s ? call('progress', 'objective', s) : null; if (o) call('progress', 'dismiss', s, o.id); }); dis.title = 'Dismiss this goal';
-    head.appendChild(portrait); head.appendChild(col); head.appendChild(dis); head.appendChild(hudChevron('goals'));
+    const fold = btn('btn-goal-collapse', null, 'icon', function () { goalCollapse(); }); fold.title = 'Fold to the pill'; fold.appendChild(icon('expand_less'));
+    const dis = btn('btn-obj-dismiss', null, 'icon', function () { const s = stateOf(); const o = s ? call('progress', 'objective', s) : null; if (o) call('progress', 'dismiss', s, o.id); }); dis.title = 'Dismiss this goal'; dis.appendChild(icon('close'));
+    head.appendChild(portrait); head.appendChild(col); head.appendChild(fold); head.appendChild(dis);
     const progRow = el('div', 'obj-prog-row'); const prog = el('div', 'bar'); prog.id = 'obj-progress'; const fill = el('div', 'fill'); prog.appendChild(fill); const count = el('span', null, ''); count.id = 'obj-count'; progRow.appendChild(prog); progRow.appendChild(count);
     const acts = el('div', 'obj-actions');
-    const build = btn('btn-obj-build', 'Build it', 'primary small', function () { objBuildIt(); }); build.title = 'Select the right tool and open the build menu on it';
-    const showme = btn('btn-showme', 'Show me', 'small', function () { objShowMe(); });
-    const post = btn('btn-postcard-obj', 'Postcard', 'small hidden', function () { postcard(stateOf()); });
+    const build = btn('btn-obj-build', 'Build it', 'gold', function () { objBuildIt(); }); build.title = 'Select the right tool and open the build menu on it';
+    const showme = btn('btn-showme', 'Show me', '', function () { objShowMe(); });
+    const post = btn('btn-postcard-obj', 'Postcard', 'hidden', function () { postcard(stateOf()); });
     acts.appendChild(build); acts.appendChild(showme); acts.appendChild(post);
     const next = el('div', 'obj-next hidden', ''); next.id = 'obj-next';
     const bg = el('div', 'row hidden', ''); bg.id = 'obj-background'; const bub = el('div', 'hidden', ''); bub.id = 'speech-bubble';
-    // needs strip: five gauges + the binding line
-    const strip = el('div', 'hidden'); strip.id = 'needs-strip'; E.needEls = {};
-    const gauges = el('div', 'needs-gauges');
-    for (const k of ['beds', 'seats', 'dining', 'power', 'water']) {
-      const g = el('div', 'need'); g.dataset.key = k; const lab = el('div', 'need-label', (BSU.data && BSU.data.needs && BSU.data.needs[k] ? BSU.data.needs[k].label : k)); const bar = el('div', 'bar'); const f = el('div', 'fill'); bar.appendChild(f); const val = el('div', 'need-val', '—');
-      g.appendChild(lab); g.appendChild(bar); g.appendChild(val); gauges.appendChild(g); E.needEls[k] = { el: g, fill: f, val: val };
-      g.addEventListener('click', function () { const s = stateOf(); const b = (BSU.data.needs[k] || {}).build; if (s && b) M.openBuildMenu(s, { focus: b, pulse: true }); });
-      if (k === 'power' || k === 'water') { g.addEventListener('mouseenter', function () { const I = issuesApi(); if (I) I.pulse(k); }); g.addEventListener('mouseleave', function () { const I = issuesApi(); if (I) I.pulse(null); }); }   // issue spotlight pass: hovering the gauge pulses every unpowered / unwatered beacon
-    }
-    const ntext = el('button', 'needs-text'); ntext.id = 'needs-text'; ntext.type = 'button'; ntext.addEventListener('click', function () { const s = stateOf(); const b = ntext.dataset.build; if (s && b) { M.openBuildMenu(s, { focus: b, pulse: true }); } });
-    const nloc = btn('needs-locate', 'Locate', 'small hidden', function () { const s = stateOf(); const fam = nloc.dataset.family; if (!s || !fam) return; const it = issueFirstOf(s, (issuesApi() && issuesApi().families()[fam]) || []); if (it) locateIssue(s, it); }); nloc.title = 'Ease the camera to the first building with this problem';
-    const nrow = el('div', 'needs-row'); nrow.appendChild(ntext); nrow.appendChild(nloc);
-    strip.appendChild(gauges); strip.appendChild(nrow); E['needs-locate'] = nloc;
-    nrow.appendChild(hudChevron('needs')); strip.appendChild(hudPillEl('needs', '⚖', 'Needs')); hudHover('needs', strip);   // hud + zoom pass: the chevron rides the binding line (inside the strip, so the pill rule hides it with the rest)
-    c.appendChild(bub); c.appendChild(head); c.appendChild(progRow); c.appendChild(acts); c.appendChild(next); c.appendChild(bg); c.appendChild(strip);
-    c.appendChild(hudPillEl('goals', '🎯', 'Goal')); hudHover('goals', c);
+    c.addEventListener('mouseenter', function () { goal.hover = true; }); c.addEventListener('mouseleave', function () { goal.hover = false; goal.until = clock + M._goalCollapseMs; });   // hover holds the card; leaving restarts its 10 s
+    c.appendChild(bub); c.appendChild(head); c.appendChild(progRow); c.appendChild(acts); c.appendChild(next); c.appendChild(bg);
     E['objective-card'] = c; E['obj-portrait'] = portrait; E['obj-kicker'] = kick; E['obj-title'] = title; E['obj-text'] = text; E['obj-why'] = why; E['obj-progress'] = prog; E['obj-prog-row'] = progRow; E['obj-fill'] = fill; E['obj-count'] = count; E['obj-actions'] = acts;
-    E['btn-obj-build'] = build; E['btn-showme'] = showme; E['btn-postcard-obj'] = post; E['btn-obj-dismiss'] = dis; E['obj-next'] = next; E['obj-background'] = bg; E['speech-bubble'] = bub; E['needs-strip'] = strip; E['needs-text'] = ntext;
+    E['btn-obj-build'] = build; E['btn-showme'] = showme; E['btn-postcard-obj'] = post; E['btn-obj-dismiss'] = dis; E['btn-goal-collapse'] = fold; E['obj-next'] = next; E['obj-background'] = bg; E['speech-bubble'] = bub;
     const v = el('div', 'hidden'); v.id = 'voice-card'; const vh = el('div', 'card-kicker', 'Student voice'); const vs = el('div', 'voice-student', ''); const vt = el('div', null, ''); vt.id = 'voice-text'; const vp = el('div', null, ''); vp.id = 'voice-payoff';
     const va = el('div', 'card-actions'); const acc = btn('btn-voice-accept', 'Accept', 'primary small', function () { answerVoice(true); }); const dec = btn('btn-voice-decline', 'Decline', 'small', function () { answerVoice(false); }); va.appendChild(acc); va.appendChild(dec);
     v.appendChild(vh); v.appendChild(vs); v.appendChild(vt); v.appendChild(vp); v.appendChild(va);
@@ -300,14 +408,15 @@
     E['milestones-card'] = ms;
     return [c, v, ms];
   }
+  /** U2: the decision toast is a snackbar in the lane: bold lead · No (text) · Yes (tonal) · the countdown as a 3 px primary line along the bottom edge */
   function buildToast() {
-    const t = el('div', 'hidden'); t.id = 'decision-toast';
-    const tx = el('div', null, ''); tx.id = 'dt-text'; const bar = el('div', 'bar'); bar.id = 'dt-countdown'; const fill = el('div', 'fill'); bar.appendChild(fill);
+    const t = el('div', 'snackbar decision hidden'); t.id = 'decision-toast';
+    const tx = el('div', 'notif-text', ''); tx.id = 'dt-text'; const bar = el('div', 'countdown'); bar.id = 'dt-countdown'; const fill = el('div', 'fill'); bar.appendChild(fill);
     const opts = el('div', 'hidden'); opts.id = 'dt-options';   // football pass D: one button per engine option (label, win probability, delta); the yes/no row hides while it shows
-    const acts = el('div', 'card-actions'); const y = btn('btn-dt-yes', 'Yes', 'primary', function () { if (toast) answerToast(toast.id, 'yes'); }); const n = btn('btn-dt-no', 'No', '', function () { if (toast) answerToast(toast.id, 'no'); });
-    const ky = el('span', 'key', 'Y'), kn = el('span', 'key', 'N'); y.appendChild(ky); n.appendChild(kn); acts.appendChild(y); acts.appendChild(n);
+    const acts = el('div', 'acts'); const n = btn('btn-dt-no', 'No', 'text', function () { if (toast) answerToast(toast.id, 'no'); }); const y = btn('btn-dt-yes', 'Yes', '', function () { if (toast) answerToast(toast.id, 'yes'); });
+    const ky = el('span', 'key', 'Y'), kn = el('span', 'key', 'N'); y.appendChild(ky); n.appendChild(kn); acts.appendChild(n); acts.appendChild(y);
     const foot = el('div', 'hidden'); foot.id = 'dt-foot';
-    t.appendChild(tx); t.appendChild(opts); t.appendChild(bar); t.appendChild(acts); t.appendChild(foot);
+    t.appendChild(tx); t.appendChild(opts); t.appendChild(acts); t.appendChild(foot); t.appendChild(bar);
     E['decision-toast'] = t; E['dt-text'] = tx; E['dt-options'] = opts; E['dt-foot'] = foot; E['dt-countdown'] = bar; E['dt-fill'] = fill; E['btn-dt-yes'] = y; E['btn-dt-no'] = n; E['dt-actions'] = acts; return t;
   }
   function buildInspect() {
@@ -323,30 +432,29 @@
   function buildPopover() {
     const p = el('div', 'hidden'); p.id = 'popover'; const t = el('div', null, ''); t.id = 'pop-title'; p.appendChild(t); E.popLines = [];
     for (let k = 0; k < L.popLines; k++) { const l = el('div', 'pop-line'); const a = el('span', 'k', ''), b = el('span', 'v', ''); l.appendChild(a); l.appendChild(b); p.appendChild(l); E.popLines.push({ row: l, k: a, v: b }); }
-    const n = el('div', null, ''); n.id = 'pop-next'; p.appendChild(n); const x = btn('btn-pop-close', '✕', 'icon', function () { show(E.popover, false); }); p.appendChild(x);
+    const n = el('div', null, ''); n.id = 'pop-next'; p.appendChild(n); const x = btn('btn-pop-close', null, 'icon', function () { closePopover(); }); x.title = 'Close (Esc)'; x.appendChild(icon('close')); p.appendChild(x);
     E.popover = p; E['pop-title'] = t; E['pop-next'] = n; return p;
   }
-  function buildTicker() {
-    const t = el('div'); t.id = 'ticker'; const track = el('div', null, ''); track.id = 'ticker-track';
-    track.addEventListener('click', function () { if (tk.line && Number.isFinite(tk.line.subject) && tk.line.subject >= 0) { const p = tileOf(tk.line.subject); call('render', 'panToTile', p.tx, p.ty); } });
-    const log = btn('btn-ticker-log', '≡', 'icon', function () { tk.logOpen = !tk.logOpen; show(E['ticker-log'], tk.logOpen); if (tk.logOpen) rebuildLog(stateOf()); });
-    const lg = el('div', 'panel hidden'); lg.id = 'ticker-log';
-    t.appendChild(track); t.appendChild(log); t.appendChild(lg);
-    E.ticker = t; E['ticker-track'] = track; E['btn-ticker-log'] = log; E['ticker-log'] = lg; return t;
-  }
+  /** U2: the palette is the interim Build sheet (hidden at rest; the FAB / G toggle it, Esc or its ✕ closes it; U4 rebuilds it) */
   function buildPalette() {
-    const p = el('div'); p.id = 'palette'; const tabs = el('div'); tabs.id = 'palette-tabs'; const items = el('div'); items.id = 'palette-items';
+    const p = el('div', 'hidden'); p.id = 'palette'; const tabs = el('div'); tabs.id = 'palette-tabs'; const items = el('div'); items.id = 'palette-items';
     const side = el('div', 'palette-side');
     const bull = btn('btn-bulldoze', '🔨', '', function () { const s = stateOf(); const t = s && s.ui.tool; M.selectTool(s, t && t.id === 'bulldoze' ? null : 'bulldoze'); }); bull.title = 'Bulldoze (X)';
     const info = btn('btn-palette-info', '⋯', '', function () { cls(E.palette, 'compact', !E.palette.classList.contains('compact')); paletteFade(); }); info.title = 'Compact palette';
     // palette pass: the quick-bar scrolls sideways (no scrollbar; a mouse wheel scrolls it, the edges fade while there is more to see)
     try { items.addEventListener('scroll', function () { paletteFade(); }); items.addEventListener('wheel', function (ev) { if (items.scrollWidth <= items.clientWidth + 1 || Math.abs(fin(ev.deltaX, 0)) >= Math.abs(fin(ev.deltaY, 0))) return; items.scrollLeft += ev.deltaY; ev.preventDefault(); }, { passive: false }); } catch (e) { /* stub */ }
     side.appendChild(bull); side.appendChild(info);
-    const bmBtn = btn('btn-build-menu', '', 'primary', function () { const s = stateOf(); if (!s) return; if (bm.open) M.closeBuildMenu(); else M.openBuildMenu(s, {}); }); bmBtn.title = 'Build menu (G)';
-    bmBtn.appendChild(el('span', 'glyph', '🏗')); bmBtn.appendChild(el('span', 'label', 'Build')); bmBtn.appendChild(el('span', 'key', 'G'));
-    p.appendChild(bmBtn); p.appendChild(tabs); p.appendChild(items); p.appendChild(side);
-    p.appendChild(hudChevron('palette')); p.appendChild(hudPillEl('palette', '🏗', 'Build · G')); hudHover('palette', p);   // hud + zoom pass: the quick-bar folds to a pill (G still opens the build menu); the chevron sits in the strip's top-right corner
-    E.palette = p; E['palette-tabs'] = tabs; E['palette-items'] = items; E['btn-bulldoze'] = bull; E['btn-palette-info'] = info; E['btn-build-menu'] = bmBtn; E.tabEls = {}; E.itemEls = {}; return p;
+    const bmBtn = btn('btn-build-menu', '', 'primary', function () { const s = stateOf(); if (!s) return; if (bm.open) M.closeBuildMenu(); else M.openBuildMenu(s, {}); }); bmBtn.title = 'The full build menu (Shift+G)';
+    bmBtn.appendChild(el('span', 'glyph', '🏗')); bmBtn.appendChild(el('span', 'label', 'All buildings')); bmBtn.appendChild(el('span', 'key', '⇧G'));
+    const close = btn('btn-palette-close', null, 'icon', function () { M.openPalette(false); }); close.title = 'Close the Build sheet (Esc)'; close.appendChild(icon('close'));
+    p.appendChild(bmBtn); p.appendChild(tabs); p.appendChild(items); p.appendChild(side); p.appendChild(close);
+    E.palette = p; E['palette-tabs'] = tabs; E['palette-items'] = items; E['btn-bulldoze'] = bull; E['btn-palette-info'] = info; E['btn-build-menu'] = bmBtn; E['btn-palette-close'] = close; E.tabEls = {}; E.itemEls = {}; return p;
+  }
+  /** U2: the gold Build FAB (bottom-right): construction icon · "Build" · key cap G; toggles the Build sheet; hidden while the sheet, a panel, a card or the build menu is open */
+  function buildFab() {
+    const f = plainBtn('fab-build', 'fab sl hidden', function () { M.togglePalette(); }); f.title = 'Build (G)';
+    f.appendChild(icon('construction')); f.appendChild(el('span', 'label', 'Build')); f.appendChild(el('span', 'key', 'G'));
+    E['fab-build'] = f; return f;
   }
   function buildTitle() {
     const t = el('div', 'hidden'); t.id = 'title';
@@ -401,7 +509,7 @@
     const uc = btn('undo-chip', '', 'hidden', function () { doUndo(stateOf()); }); const ucMain = el('span', 'uc-main', ''); const ucBar = el('span', 'uc-bar'); const ucFill = el('span', 'uc-fill'); ucBar.appendChild(ucFill);
     uc.appendChild(el('span', 'uc-glyph', '↶')); uc.appendChild(ucMain); uc.appendChild(el('span', 'key', 'Ctrl+Z')); uc.appendChild(ucBar);
     E['undo-chip'] = uc; E['undo-main'] = ucMain; E['undo-fill'] = ucFill;
-    const hc = btn('hud-chip', 'HUD hidden · H', 'chip hidden', function () { M.setHudMode('full'); }); hc.title = 'Show the HUD again (H cycles full → compact → hidden; Shift+H restores)'; E['hud-chip'] = hc;   // hud + zoom pass
+    const hc = btn('hud-chip', 'HUD hidden · H', 'chip hidden', function () { M.setHudMode('full'); }); hc.title = 'Show the HUD again (H or Shift+H)'; E['hud-chip'] = hc;   // hud + zoom pass / U2: H hides, Shift+H or H restores
     E['perf-chip'] = perf; E['perfmode-chip'] = pm; E.hint = h; E['hint-text'] = ht; E['btn-hint-action'] = ha; E['btn-skip'] = skip; return [perf, pm, h, skip, uc, hc];
   }
   function buildCards() { const c = el('div', 'hidden'); c.id = 'cards'; E.cards = c; return c; }
@@ -422,15 +530,20 @@
     if (!world) { world = el('canvas', 'world'); world.id = 'world'; world.setAttribute('tabindex', '0'); app.appendChild(world); }
     E.world = world;
     const hud = el('div'); hud.id = 'hud'; E.hud = hud;
-    hud.appendChild(buildTopbar()); hud.appendChild(buildAlert()); hud.appendChild(buildMinimap()); hud.appendChild(buildOverlays()); hud.appendChild(buildIssuesTray());
+    hud.appendChild(buildTopbar()); hud.appendChild(buildAlert()); hud.appendChild(buildGoalPill());
     buildObjective().forEach(function (x) { hud.appendChild(x); });
-    const notes = el('div'); notes.id = 'notifications'; E.notifications = notes; hud.appendChild(notes);
-    const nd = btn('notif-dismiss', 'Dismiss all (Esc)', 'small hidden', function () { M.dismissNotifs(); }); nd.title = 'Clear every notification; the ticker keeps the log'; hud.appendChild(nd); E['notif-dismiss'] = nd;   // gator pass: a hud child above the stack (#notifications clips its overflow and is cleared on reset)
-    hud.appendChild(buildToast()); hud.appendChild(buildInspect());
+    buildPopovers().forEach(function (x) { hud.appendChild(x); });
+    // U2: the snackbar lane (bottom centre): the Dismiss-all button, the news / notification stack (at most two), the decision snackbar
+    const lane = el('div'); lane.id = 'snack-lane'; E['snack-lane'] = lane;
+    const nd = btn('notif-dismiss', 'Dismiss all (Esc)', 'small hidden', function () { M.dismissNotifs(); }); nd.title = 'Clear every notification and queued news line (the Log keeps them)'; lane.appendChild(nd); E['notif-dismiss'] = nd;
+    const notes = el('div'); notes.id = 'notifications'; E.notifications = notes; lane.appendChild(notes);
+    lane.appendChild(buildToast()); hud.appendChild(lane);
+    hud.appendChild(buildInspect());
     buildLabels().forEach(function (x) { hud.appendChild(x); });
-    hud.appendChild(buildPopover()); hud.appendChild(buildTicker()); hud.appendChild(buildPalette()); hud.appendChild(buildBuildMenu()); hud.appendChild(buildCards());
+    hud.appendChild(buildPopover()); hud.appendChild(buildPalette()); hud.appendChild(buildFab()); hud.appendChild(buildBuildMenu()); hud.appendChild(buildCards());
     buildChips().forEach(function (x) { hud.appendChild(x); });
     hud.appendChild(buildCoach());
+    hud.addEventListener('pointerdown', function (ev) { try { hudPointerDown(ev); } catch (e) { uerr('hud:down', e); } }, true);   // U2: a press anywhere outside the open popover / goal card closes it
     app.appendChild(hud); app.appendChild(buildPanelsHost()); app.appendChild(buildTitle());
     try { call('render', 'attachMinimap', E.minimap); } catch (e) { uerr('init:minimap', e); }
     attachInput(world);
@@ -440,18 +553,17 @@
     try { const raw = window.localStorage.getItem('bsu.settings'); const o = raw ? JSON.parse(raw) : null; applyScale(o && o.uiScale != null ? o.uiScale : 'auto'); } catch (e) { try { applyScale('auto'); } catch (e2) { /* stub */ } }   // the title screen is scaled too; nothing stored (first run) = the smart default for this window
     fitTopbar();
   };
-  /** the topbar must never push its buttons off-screen. UI scale pass: it now sheds content in six steps, re-measured from scratch on
-   *  every resize / scale change (so there is no flapping and no hysteresis to get stuck): 1 `tight` collapses the brand to its mark,
-   *  2 `cap` stacks each panel button's caption under its icon, 3 `compact` keeps the icons only (tooltips carry the names), 4 `tighter`
-   *  hides the weather chip and trims the stat tiles, 5 `tightest` hides the capacity chip, 6 `bare` hides the date chip.
+  /** the app bar must never push its right cluster off-screen. U2: the CSS container query hides the stat labels, the cap suffix and the weather
+   *  line under 118 rem of bar width; this is the JS backstop for the rest, re-measured from scratch on every resize / scale change:
+   *  1 `tight` collapses the brand to its mark, 2 `bare` hides the labels and the weather line even where the container query did not fire.
    *  A once-a-second check only ever escalates (cash growing a digit) */
   let fitLevel = 0, fitAt = 0;
   function fitTopbar() {
     try {
       const tb = E.topbar; if (!tb || typeof tb.scrollWidth !== 'number' || typeof tb.clientWidth !== 'number' || !tb.clientWidth) return;
-      const set = function (n) { cls(tb, 'tight', n >= 1); cls(tb, 'cap', n === 2); cls(tb, 'compact', n >= 3); cls(tb, 'tighter', n >= 4); cls(tb, 'tightest', n >= 5); cls(tb, 'bare', n >= 6); fitLevel = n; };
+      const set = function (n) { cls(tb, 'tight', n >= 1); cls(tb, 'bare', n >= 2); fitLevel = n; };
       set(0); let n = 0;
-      while (n < 6 && tb.scrollWidth > tb.clientWidth + 1) set(++n);
+      while (n < 2 && tb.scrollWidth > tb.clientWidth + 1) set(++n);
     } catch (e) { /* stub */ }
   }
   // ---- UI scale (UI scale pass): html{font-size:calc(10px * var(--ui-scale))} and every CSS length is rem, so the layout math and every
@@ -479,7 +591,7 @@
     if (!dom()) return;
     try { const de = document.documentElement; if (de && de.style && typeof de.style.setProperty === 'function') de.style.setProperty('--ui-scale', String(eff)); } catch (e) { /* stub */ }
     try { const c = E.minimap; if (c) { const px = mmPx(eff); if (c.width !== px) { c.width = px; c.height = px; } } } catch (e) { /* stub */ }
-    try { cls(E.hud, 'short', fin(window.innerHeight, 800) < eff * 760); } catch (e) { /* stub */ }   // P5: the tracker + palette need ~72 rem of height; a shorter window drops the tracker's flavour text and "next up" line so it never runs under the ticker
+    try { cls(E.hud, 'short', fin(window.innerHeight, 800) < eff * 760); } catch (e) { /* stub */ }   // P5: a short window drops the goal card's flavour text and "next up" line so the card never runs down into the lane
     if (changed) { fitTopbar(); refreshTitleSize(); try { coach.layoutAt = -1e9; const st = stateOf(); if (st && coach.step >= 0) layoutCoach(st); } catch (e) { /* stub */ } }
   }
   /** title screen "Display size" row: the active button follows the stored mode, the note says what Auto picked / what the window limited */
@@ -501,57 +613,120 @@
   /** Settings → UI size: remember it (state.ui.settings + localStorage) and apply it now */
   M.setUiScale = function (v) { try { const sc = isAuto(v) ? 'auto' : scaleOf(v); M.settings().uiScale = sc; M.saveSettings(); applyScale(sc); return appliedScale; } catch (e) { uerr('setUiScale', e); return appliedScale; } };
 
-  // ---- HUD modes (hud + zoom pass) -----------------------------------------------------------------------------------------
-  // settings.hudMode: 'full' (every panel) | 'compact' (every part is a pill that opens on hover / click) | 'hidden' (the decision layer + a chip).
-  // settings.hudCollapsed[part]: in full mode that one part stays a pill (its ▾ chevron). Both persist like the display size.
-  // #hud[data-hud=mode] + .pill / .peek classes on the five parts drive the CSS (`/* hud modes */` block); nothing else moves.
-  function hudModeOf() { const m = M.settings().hudMode; return HUD_MODES.indexOf(m) >= 0 ? m : 'full'; }
-  function hudCollapsedOf() { const set = M.settings(); if (!set.hudCollapsed || typeof set.hudCollapsed !== 'object') set.hudCollapsed = {}; return set.hudCollapsed; }
+  // ---- HUD visibility (U2; the hud + zoom pass's modes folded) -----------------------------------------------------------------
+  // One at-rest state. H hides everything but the decision snackbar, cards, chips and the coach (screenshots); Shift+H or H restores.
+  // Not a setting any more: migrateSettings reads the old settings.hudMode once ('hidden' → hidden, anything else → nothing) and drops
+  // it with hudCollapsed; #hud[data-hud=full|hidden] drives the CSS.
+  function hudModeOf() { return hudModeNow; }
   /** the mode the HUD is drawn in right now: the coach-mark tour always runs in full (its spotlights point at HUD elements) */
   function hudEffective() { return coach.step >= 0 ? 'full' : hudModeOf(); }
   M.hudMode = function () { return hudModeOf(); };
   M.hudModes = function () { return HUD_MODES.slice(); };
-  M.setHudMode = function (mode) { try { if (HUD_MODES.indexOf(mode) < 0) return hudModeOf(); const set = M.settings(); if (set.hudMode !== mode) { set.hudMode = mode; M.saveSettings(); } const s = stateOf(); if (s && dom()) updateHud(s); return mode; } catch (e) { uerr('setHudMode', e); return hudModeOf(); } };
-  /** H: full → compact → hidden → full (dir −1 walks back) */
-  M.cycleHud = function (dir) { const k = HUD_MODES.indexOf(hudModeOf()); const n = HUD_MODES[(k + (dir < 0 ? HUD_MODES.length - 1 : 1)) % HUD_MODES.length]; M.setHudMode(n); const s = stateOf(); if (s && dom() && !BSU.headlessMode) hudHint(s, n === 'compact' ? 'HUD: compact · H again hides it · Shift+H restores' : n === 'hidden' ? 'HUD hidden · H or Shift+H brings it back' : ''); return n; };
+  M.setHudMode = function (mode) { try { if (HUD_MODES.indexOf(mode) < 0) return hudModeOf(); hudModeNow = mode; const s = stateOf(); if (s && dom()) updateHud(s); return mode; } catch (e) { uerr('setHudMode', e); return hudModeOf(); } };
+  /** H: full ↔ hidden (`dir` is kept for the API; a two-state cycle reads the same either way) */
+  M.cycleHud = function (dir) { void dir; const n = hudModeNow === 'hidden' ? 'full' : 'hidden'; M.setHudMode(n); const s = stateOf(); if (s && dom() && !BSU.headlessMode) hudHint(s, n === 'hidden' ? 'HUD hidden · H or Shift+H brings it back' : ''); return n; };
   /** a short, replaceable hint for the mode just chosen (M.hint is once-per-save; this one must follow every press) */
   function hudHint(s, t) { if (!t) { if (hint && hint.hud) hideHint(); return; } hint = { until: clock + 3500, untilTick: tickOf(s) + L.hintTicks, action: null, text: t, hud: true }; setText(E['hint-text'], t); show(E['btn-hint-action'], false); show(E.hint, true); }
-  M.hudCollapsed = function (key) { return !!hudCollapsedOf()[key]; };
-  /** collapse (on) / expand (off) one part in full mode; no `on` = toggle. Remembered in settings. */
-  M.hudCollapse = function (key, on) { try { if (!HUD_PARTS[key]) return false; const col = hudCollapsedOf(); const v = on === undefined ? !col[key] : !!on; if (col[key] !== v) { col[key] = v; M.saveSettings(); } const e = E[HUD_PARTS[key]]; if (e) cls(e, 'peek', false); if (key === 'issues') tray.key = ''; const s = stateOf(); if (s && dom()) updateHud(s); return v; } catch (e) { uerr('hudCollapse', e); return false; } };
-  /** true while that part is drawn as its pill (compact mode, or collapsed in full mode, and not peeked open) */
-  M.hudPill = function (key) { const e = E[HUD_PARTS[key]]; return !!(e && e.classList.contains('pill') && !e.classList.contains('peek')); };
-  M.hudState = function () { const o = { mode: hudModeOf(), effective: hudEffective(), collapsed: {}, pill: {} }; const col = hudCollapsedOf(); for (const k in HUD_PARTS) { o.collapsed[k] = !!col[k]; o.pill[k] = M.hudPill(k); } return o; };
-  /** a pill opened by hover / click (`peek`); closes when the pointer leaves the part */
-  function hudPeek(key, on) { const e = E[HUD_PARTS[key]]; if (!e) return; if (on && !e.classList.contains('pill')) return; if (e.classList.contains('peek') === !!on) return; cls(e, 'peek', !!on); if (key === 'issues') tray.key = ''; if (key === 'palette') cls(E.hud, 'pal-pill', M.hudPill('palette')); }
-  M.hudPeek = hudPeek;
-  /** the collapse chevron of one part (full mode: fold to the pill; compact: close a peek) */
-  function hudChevron(key) { const b = btn('hud-chev-' + key, '▾', 'icon hud-chev', function (ev) { if (ev && ev.stopPropagation) ev.stopPropagation(); if (hudEffective() === 'compact') hudPeek(key, false); else M.hudCollapse(key); }); b.title = 'Fold this panel to a pill (H folds the whole HUD)'; E['hud-chev-' + key] = b; return b; }
-  /** the pill a part folds to: icon + one short reading; click or hover opens it */
-  function hudPillEl(key, glyph, label) { const p = el('div', 'hud-pill'); p.id = 'hud-pill-' + key; p.appendChild(el('span', 'pg', glyph)); const t = el('span', 'pt', label); p.appendChild(t); p.appendChild(el('span', 'pc', '▸')); p.title = 'Open'; p.addEventListener('click', function (ev) { if (ev && ev.stopPropagation) ev.stopPropagation(); if (hudEffective() === 'compact') hudPeek(key, true); else M.hudCollapse(key, false); }); E['hud-pill-' + key] = p; E['hud-pill-' + key + '-text'] = t; return p; }
-  function hudHover(key, e) { e.addEventListener('mouseenter', function () { if (e.classList.contains('pill')) hudPeek(key, true); }); e.addEventListener('mouseleave', function () { hudPeek(key, false); }); }
-  /** per frame: the mode on #hud, each part's pill class, the chip, and (every 250 ms) the pill readings */
+  /** what render_fx's label placement reads: the mode, plus which parts are drawn small or not at all right now (a "pill" in the H7 sense: the goal pill, a closed Map / Alerts popover, the closed Build sheet) */
+  M.hudState = function () { return { mode: hudModeOf(), effective: hudEffective(), collapsed: {}, pill: { goals: !goal.open, needs: true, minimap: !popVisible('map'), issues: !popVisible('alerts'), palette: !pal.open } }; };
+  /** U2 settings migration, once per settings object (boot, newGame, load): the old hudMode ('hidden' → the HUD starts hidden, else nothing) and hudCollapsed keys leave; keepMinimap / keepOverlays default off */
+  function migrateSettings() {
+    const set = M.settings(); let changed = false;
+    if ('hudMode' in set) { if (set.hudMode === 'hidden') hudModeNow = 'hidden'; delete set.hudMode; changed = true; }
+    if ('hudCollapsed' in set) { delete set.hudCollapsed; changed = true; }
+    if (typeof set.keepMinimap !== 'boolean') { set.keepMinimap = false; changed = true; }
+    if (typeof set.keepOverlays !== 'boolean') { set.keepOverlays = false; changed = true; }
+    if (changed) M.saveSettings();
+  }
+  /** per frame: the mode on #hud and the "HUD hidden" chip */
   function updateHud(s) {
     if (!dom() || !E.hud) return;
+    if (s && s.ui && s.ui.settings !== migratedFor) { migratedFor = s.ui.settings; try { migrateSettings(); } catch (e) { uerr('migrateSettings', e); } }
     const eff = hudEffective();
-    if (E.hud.dataset.hud !== eff) { E.hud.dataset.hud = eff; hudSt.eff = eff; fitTopbar(); coach.layoutAt = -1e9; tray.key = ''; for (const k in HUD_PARTS) cls(E[HUD_PARTS[k]], 'peek', false); if (eff === 'hidden') { hideTooltip(); show(E['ghost-label'], false); } }
-    const col = hudCollapsedOf();
-    for (const k in HUD_PARTS) {
-      const e = E[HUD_PARTS[k]]; if (!e) continue;
-      const want = eff === 'compact' || (eff === 'full' && !!col[k] && coach.expanded.indexOf(k) < 0) || (k === 'issues' && alertModeOf() === 'off' && coach.step < 0);   // calm alerts pass: Alerts Off folds the tray to its count pill
-      if (e.classList.contains('pill') !== want) { cls(e, 'pill', want); if (k === 'issues') tray.key = ''; }
-      if (!want && e.classList.contains('peek')) cls(e, 'peek', false);
-    }
-    cls(E.hud, 'pal-pill', M.hudPill('palette'));
+    if (E.hud.dataset.hud !== eff) { E.hud.dataset.hud = eff; hudSt.eff = eff; fitTopbar(); coach.layoutAt = -1e9; if (eff === 'hidden') { hideTooltip(); show(E['ghost-label'], false); } }
     const chip = eff === 'hidden' && !titleOn; if (chip !== hudSt.chipOn) { hudSt.chipOn = chip; show(E['hud-chip'], chip); }
-    if (clock - hudSt.pillAt < 250) return; hudSt.pillAt = clock;
-    try {
-      const o = call('progress', 'objective', s); const cnt = E['obj-count'] ? E['obj-count'].textContent : '';
-      setText(E['hud-pill-goals-text'], o ? 'Goal' + (cnt ? ' · ' + cnt : '') : 'Goals');
-      let tight = 0; for (const k in E.needEls) { const lv = E.needEls[k].el.dataset.level; if (lv === 'warn' || lv === 'bad') tight++; }
-      setText(E['hud-pill-needs-text'], tight ? 'Needs · ' + tight + ' tight' : 'Needs · OK');
-    } catch (e) { /* stub */ }
   }
+
+  // ---- popovers (U2) ---------------------------------------------------------------------------------------------------------------
+  // One transient popover at a time, anchored 8 px under its chip / icon: needs (Students chip), budget (Cash chip), alerts, layers, map,
+  // menu (the icons) and breakdown (today's #popover for Prestige / Happiness / Ecology). Esc, an outside press or the same control closes
+  // it; the control shows `selected` while it is open. The Map and Layers popovers can be pinned (settings.keepMinimap / keepOverlays):
+  // a pinned one stays through Esc / outside presses and while another popover is open; its icon unpins it.
+  const POP_ANCHOR = { needs: 'stat-students', budget: 'stat-cash', alerts: 'btn-alerts', layers: 'btn-layers', map: 'btn-map', menu: 'btn-menu', breakdown: null };
+  function popEl(name) { return name === 'breakdown' ? E.popover : E['pop-' + name]; }
+  function popPinned(name) { const set = M.settings(); return (name === 'map' && !!set.keepMinimap) || (name === 'layers' && !!set.keepOverlays); }
+  function popVisible(name) { return pops.open === name || popPinned(name); }
+  /** icon popovers right-align to their icon (clamped to the gutter); the stat-chip popovers sit on the left gutter (CSS); a pinned Layers stacks under a visible Map */
+  function placePopover(name) {
+    const p = popEl(name); if (!p || !p.style) return;
+    if (name === 'needs' || name === 'budget' || name === 'breakdown') return;
+    let right = 16; try { const a = E[POP_ANCHOR[name]]; const r = a && typeof a.getBoundingClientRect === 'function' ? a.getBoundingClientRect() : null; if (r && r.width > 0) right = Math.max(16, Math.round(fin(window.innerWidth, 1280) - r.right)); } catch (e) { right = 16; }
+    p.style.right = right + 'px'; p.style.top = '';
+    if (name === 'layers' && popVisible('map')) { try { const m = popEl('map').getBoundingClientRect(); if (m && m.height > 0) p.style.top = Math.round(m.bottom + 8) + 'px'; } catch (e) { /* stub */ } }
+  }
+  /** show / hide every popover from pops.open + the pins; the anchors' `selected` state follows */
+  function syncPopovers() {
+    if (!dom()) return;
+    for (const name in POP_ANCHOR) {
+      const p = popEl(name); if (!p) continue;
+      const on = popVisible(name) && !titleOn;
+      if (on !== !p.classList.contains('hidden')) { show(p, on); if (on) placePopover(name); }
+      const a = POP_ANCHOR[name] ? E[POP_ANCHOR[name]] : null; if (a) cls(a, 'selected', on);
+    }
+    if (popVisible('layers') && popVisible('map')) placePopover('layers');
+    cls(E['btn-map-pin'], 'selected', !!M.settings().keepMinimap);
+  }
+  function openPopover(name) {
+    if (!popEl(name) || titleOn) return false;
+    pops.open = name;
+    if (dom()) { syncPopovers(); placePopover(name); hideTooltip(); }
+    return true;
+  }
+  /** close the transient popover: true when one was open (a pinned Map / Layers stays and counts as nothing open) */
+  function closePopover() {
+    if (!pops.open) return false;
+    const was = pops.open; pops.open = null;
+    if (dom()) syncPopovers();
+    return !popPinned(was);
+  }
+  /** the chip / icon click: a visible popover closes (a pinned one unpins first), a closed one opens (closing the previous) */
+  function togglePopover(name) {
+    if (popVisible(name)) { if (popPinned(name)) setKeep(name, false); if (pops.open === name) pops.open = null; if (dom()) syncPopovers(); return false; }
+    return openPopover(name);
+  }
+  function setKeep(name, on) { const set = M.settings(); const key = name === 'map' ? 'keepMinimap' : 'keepOverlays'; if (!!set[key] !== !!on) { set[key] = !!on; M.saveSettings(); } }
+  /** a press anywhere on the HUD outside the open popover (and its anchor) closes it; outside the open goal card folds it to the pill */
+  function hudPointerDown(ev) {
+    const t = ev && ev.target; if (!t) return;
+    const inside = function (e) { return !!(e && typeof e.contains === 'function' && e.contains(t)); };
+    if (pops.open && !popPinned(pops.open)) { const p = popEl(pops.open), a = POP_ANCHOR[pops.open] ? E[POP_ANCHOR[pops.open]] : null; if (!inside(p) && !inside(a) && !(pops.open === 'layers' && inside(E['ov-lit']))) closePopover(); }
+    if (goal.open && coach.step < 0 && !inside(E['objective-card']) && !inside(E['goal-pill'])) goalCollapse();
+  }
+  M.openPopover = function (name) { return openPopover(name); };
+  M.closePopover = function () { return closePopover(); };
+  M.togglePopover = function (name) { return togglePopover(name); };
+  /** the open transient popover's name, or null */
+  M.popover = function () { return pops.open; };
+  /** true while that popover is on screen (open, or pinned through settings) */
+  M.popoverVisible = function (name) { return popVisible(name); };
+  /** pin the Map popover open (settings.keepMinimap); no argument toggles; returns the new value */
+  M.pinMinimap = function (on) { try { const set = M.settings(); const v = on === undefined ? !set.keepMinimap : !!on; setKeep('map', v); if (dom()) syncPopovers(); return v; } catch (e) { uerr('pinMinimap', e); return false; } };
+  /** keep the Layers popover open (settings.keepOverlays); no argument toggles */
+  M.keepOverlays = function (on) { try { const set = M.settings(); const v = on === undefined ? !set.keepOverlays : !!on; setKeep('layers', v); if (dom()) syncPopovers(); return v; } catch (e) { uerr('keepOverlays', e); return false; } };
+
+  // ---- the goal pill ↔ goal card (U2) ---------------------------------------------------------------------------------------------
+  /** open the card (from the pill, a goal change or the coach); the 10 s fold timer restarts on every open and on every hover leave */
+  function goalOpen(auto) { void auto; if (!goal.open) { goal.open = true; goal.hover = false; } goal.until = clock + M._goalCollapseMs; if (dom()) { show(E['objective-card'], objKey !== ''); show(E['goal-pill'], false); } }
+  function goalCollapse() { if (!goal.open) return; goal.open = false; if (dom()) { show(E['objective-card'], false); show(E['goal-pill'], objKey !== '' && !setPieceOn()); show(E['speech-bubble'], false); } }
+  function setPieceOn() { const s = stateOf(); return !!(s && s.setPiece); }
+  /** goalOpen(false) folds the card to the pill; anything else opens it; returns the card state */
+  M.goalOpen = function (on) { if (on === false) goalCollapse(); else goalOpen(false); return goal.open; };
+  M.goalExpanded = function () { return goal.open; };
+
+  // ---- the Build sheet (U2: today's palette shown by the FAB / G; U4 rebuilds it) -----------------------------------------------------
+  M.openPalette = function (on) { try { const v = on === undefined ? !pal.open : !!on; if (v === pal.open) return pal.open; pal.open = v; paletteHidden = null; const s = stateOf(); if (s && dom()) updateSetPiece(s); if (!v) hideTooltip(); return pal.open; } catch (e) { uerr('openPalette', e); return pal.open; } };
+  M.togglePalette = function () { return M.openPalette(); };
+  M.paletteOpen = function () { return pal.open; };
 
   // ---------------------------------------------------------------------------
   // DOM listeners → the machine (pointer / wheel / keys / gestures)
@@ -583,7 +758,7 @@
         window.addEventListener('keyup', function (e) { try { keyup(e.key); } catch (err) { uerr('keyup', err); } });
         window.addEventListener('blur', function () { try { for (const k in held) held[k] = false; heldAlt = false; heldN = false; if (live.down || live.state === 'DRAGGING') M.pointer('cancel', lastPx, lastPy, 0, M0); } catch (err) { uerr('blur', err); } });
         window.addEventListener('pointerup', function (e) { try { if (live.down && e.target !== world) M.pointer('up', lastPx, lastPy, fin(e.button, 0), modsOf(e)); } catch (err) { uerr('pointerup:window', err); } });
-        window.addEventListener('resize', function () { try { const w = fin(window.innerWidth, 1280); cls(E.palette, 'compact', w < L.compactWidth); } catch (err) { /* stub */ } try { applyScale(uiMode); } catch (err) { /* stub */ } fitTopbar(); paletteFade(); });
+        window.addEventListener('resize', function () { try { const w = fin(window.innerWidth, 1280); cls(E.palette, 'compact', w < L.compactWidth); } catch (err) { /* stub */ } try { applyScale(uiMode); } catch (err) { /* stub */ } fitTopbar(); paletteFade(); try { for (const name in POP_ANCHOR) if (popVisible(name)) placePopover(name); } catch (err) { /* stub */ } });
       }
     } catch (e) { /* stub window */ }
   }
@@ -620,7 +795,7 @@
     on('building:menu', function () { needsAt = -1e9; inspAt = -1e9; });   // P6: a new card moves the Dining gauge and the inspect Menu section at once
     on('coverage:changed', function () { needsAt = -1e9; });
     on('building:removed', function () { if (insp && insp.kind === 'building') { const s = stateOf(); if (s && !call('buildings', 'get', s, insp.id)) M.closeInspect(); } });
-    on('ui:ticker', function () { tk.lastLen = -1; if (tk.logOpen) rebuildLog(stateOf()); });
+    on('ui:ticker', function () { tk.lastLen = -1; const s = stateOf(); if (s && s.ui && s.ui.panel === 'log' && dom()) refreshPanel(s, 'log'); });   // U2: the Log panel re-reads at once; the news snackbar follows in update
     on('save:written', function (p) { const s = stateOf(); if (s && p && p.slot && String(p.slot).indexOf('auto') !== 0 && String(p.slot)[0] !== '_') M.notify(s, { kind: 'info', text: 'Saved', ttl: 3000 }); });
     on('save:loaded', function () { if (titleOn) M.showTitle(false); });
     on('speed:changed', function () { speedKey = ''; });
@@ -828,7 +1003,7 @@
       heldShift = !!mods.shift; heldAlt = !!mods.alt;
       if (titleOn) return;
       if (type === 'down' && s.ui.panel && !s.ui.tool && !bm.open) { M.openPanel(null); return; }   // a map click dismisses an open panel
-      if (type === 'down') { if (call('progress', 'tutorialStage', s) === 1) { call('progress', 'skipSwoop', s); return; } if (s.setPiece) call('render', 'captureCameraTouch', s); show(E.popover, false); if (bm.open) M.closeBuildMenu(); }   // a press on the map while the menu is up (Build it keeps it open) is the player's answer: close it and place   // the swoop-skipping click must not also open the tile inspector behind the charter card
+      if (type === 'down') { if (call('progress', 'tutorialStage', s) === 1) { call('progress', 'skipSwoop', s); return; } if (s.setPiece) call('render', 'captureCameraTouch', s); closePopover(); if (goal.open && coach.step < 0) goalCollapse(); if (bm.open) M.closeBuildMenu(); }   // U2: a map press is an outside click for the popover and the goal card; a press while the menu is up (Build it keeps it open) is the player's answer: close it and place   // the swoop-skipping click must not also open the tile inspector behind the charter card
       if (type === 'move' || type === 'down') { const i = tileIndexAt(px, py); M.hoverTile = i; if (BSU.render) BSU.render.hoverTile = i; }
       mcStep(live, { type: type, px: px, py: py, button: fin(button, 0) | 0, mods: mods });
     } catch (e) { uerr('pointer:' + type, e); }
@@ -924,14 +1099,16 @@
       // (4) the map
       if (isBackquote) { toggleDebug(s); return true; }
       if (key === 'Escape') {
+        if (closePopover()) return true;   // U2: the open popover goes first
         if (menuEdit) { M.closeMenuEditor(); return true; }   // menu layout pass: Esc closes the Edit menu overlay before anything else
         if (bm.open) { M.closeBuildMenu(); return true; }
         if (mcStep(live, { type: 'key', key: 'Escape', px: lastPx, py: lastPy })) return true;
-        if (!E.popover.classList.contains('hidden')) { show(E.popover, false); return true; }
+        if (pal.open) { M.openPalette(false); return true; }   // U2: the Build sheet, once the tool is down
         if (s.ui.panel) { M.openPanel(null); return true; }
         if (card) { M.closeCard(); return true; }
         if (spotToggled || (issuesApi() && issuesApi().selectedId() !== null)) { clearIssueUi(); return true; }   // issue spotlight pass: Esc #5 clears the issue selection / spotlight
-        if (notifs.length) { M.dismissNotifs(); return true; }   // gator pass: Esc #6 clears the notification stack
+        if (notifs.length || snackQueue.length) { M.dismissNotifs(); return true; }   // gator pass: Esc #6 clears the notification stack
+        if (goal.open && coach.step < 0) { goalCollapse(); return true; }   // U2: Esc #7 folds the goal card to its pill
         return false;
       }
       // issue spotlight pass: I is handled here (not in data.keys, data.js is not edited in this pass): tap = next issue, hold = spotlight, Shift+I = toggle spotlight
@@ -974,12 +1151,13 @@
       }
       case 'zoomOut': call('render', 'zoomStep', -1, null); return true;
       case 'zoomIn': call('render', 'zoomStep', 1, null); return true;
-      case 'hud': M.cycleHud(1); return true;   // hud + zoom pass: H
+      case 'hud': M.cycleHud(1); return true;   // hud + zoom pass / U2: H hides the HUD, H again restores
       case 'hudFull': M.setHudMode('full'); return true;   // Shift+H
       case 'nextTab': cycleTab(s, 1); return true;
       case 'prevTab': cycleTab(s, -1); return true;
       case 'bulldoze': { const t = s.ui.tool; if (toolLocked) return true; M.selectTool(s, t && t.id === 'bulldoze' ? null : 'bulldoze'); return true; }
-      case 'buildMenu': { if (bm.open) M.closeBuildMenu(); else M.openBuildMenu(s, {}); return true; }
+      case 'palette': { if (titleOn || s.setPiece) return true; if (bm.open) M.closeBuildMenu(); M.togglePalette(); return true; }   // U2: G toggles the Build sheet (same as the FAB)
+      case 'buildMenu': { if (bm.open) M.closeBuildMenu(); else M.openBuildMenu(s, {}); return true; }   // Shift+G: the full menu
       case 'rotate': return mcStep(live, { type: 'key', key: 'r', px: lastPx, py: lastPy }) || true;
       case 'home': { const f = s.plot && s.plot.founders; if (f) call('render', 'panToTile', f.tx + 1, f.ty + 1); return true; }
       case 'follow': { const cam = s.ui.camera; if (cam && cam.follow >= 0) { call('render', 'follow', -1); } else { const a = call('agents', 'follow', s); if (a && Number.isFinite(a.id)) call('render', 'follow', a.id); } return true; }
@@ -1003,7 +1181,7 @@
     if (dx || dy) { const s = stateOf(); const z = s && s.ui.camera ? fin(s.ui.camera.zoom, 1) : 1; call('render', 'panBy', dx / z, dy / z, true); }
   }
   function toggleMute() { const s = stateOf(); if (!s) return; const set = M.settings(); const on = !set.muted; set.muted = on; call('audio', 'mute', on); M.saveSettings(); refreshMuteButtons(); }
-  function refreshMuteButtons() { const set = M.settings(); const g = set && set.muted ? '🔇' : '🔊'; if (E['btn-mute-glyph']) setText(E['btn-mute-glyph'], g); if (E['btn-title-mute']) setText(E['btn-title-mute'], g); }
+  function refreshMuteButtons() { const set = M.settings(); const m = !!(set && set.muted); show(E['btn-mute-on'], !m); show(E['btn-mute-off'], m); if (E['btn-mute']) E['btn-mute'].title = m ? 'Unmute (M)' : 'Mute (M)'; if (E['btn-title-mute']) setText(E['btn-title-mute'], m ? '🔇' : '🔊'); }
   function toggleDebug(s) { const open = !M.debug.open; M.debug.open = open; if (dom()) M.openPanel(open ? 'debug' : (s.ui.panel === 'debug' ? null : s.ui.panel)); call('progress', 'debugOpen', s, open); }
   function postcard(s) {
     const r = call('render', 'postcard', s, undefined); let url = typeof r === 'string' ? r : (r && typeof r.toDataURL === 'function' ? r.toDataURL('image/png') : '');
@@ -1781,7 +1959,7 @@
     else if (m.used >= 0.85 * m.cap) binding = mk(m.key, labelOf(m.key) + ' nearly full (' + fmtInt(m.used) + ' / ' + fmtInt(m.cap) + ') → build a ' + nameOf(m.key), 'warn');
     else if (students > 600 && lots < need) binding = mk('parking', 'Students want parking (' + fmtInt(lots) + ' / ' + fmtInt(need) + ' lots) → build a ' + nameOf('parking'), 'warn');
     else binding = mk(m.key, 'Room for ' + fmtInt(m.cap - m.used) + ' more students; ' + labelOf(m.key).toLowerCase() + ' fill first → next: ' + nameOf(m.key), 'ok');
-    return { students: students, terms: terms, binding: binding, suppressed: suppressed };
+    return { students: students, terms: terms, binding: binding, suppressed: suppressed, sewage: ww };   // U2: the Sewage gauge (wastewater) is the sixth row of the needs popover
   }
   let needsState = null;
   function needsNow(s) { if (!needsCache || needsState !== s || clock - needsAt >= L.refreshMs) { needsAt = clock; needsState = s; needsCache = needsOf(s); } return needsCache; }
@@ -1802,9 +1980,9 @@
   function compactNum(n) { n = fin(n, 0); const a = Math.abs(n), sg = n < 0 ? '\u2212' : ''; return sg + (a >= 10000 ? Math.round(a / 1000) + 'k' : a >= 1000 ? (Math.round(a / 100) / 10).toFixed(1).replace(/\.0$/, '') + 'k' : String(a)); }
   function refreshNeeds(s) {
     const n = needsNow(s); if (!n || !E.needEls) return;
-    const key = JSON.stringify(n.terms) + '|' + (n.binding ? n.binding.text + n.binding.level : '');
+    const key = JSON.stringify(n.terms) + '|' + (n.sewage ? n.sewage.used + '/' + n.sewage.cap : '') + '|' + (n.binding ? n.binding.text + n.binding.level : '');
     if (key === needsKey) return; needsKey = key;
-    for (const t of n.terms) {
+    for (const t of (n.sewage ? n.terms.concat([n.sewage]) : n.terms)) {
       const g = E.needEls[t.key]; if (!g) continue;
       const ratio = t.cap > 0 ? t.used / t.cap : (t.used > 0 ? 1 : 0);
       const w = Math.round(clamp(ratio, 0, 1) * 100) + '%'; if (g.fill.style.width !== w) g.fill.style.width = w;
@@ -1925,7 +2103,7 @@
       if (opts.focus && rowOf(opts.focus)) { const t = tabFor(s, opts.focus); if (t) setTab(s, t); bm.selected = opts.focus; bm.pulseId = opts.pulse ? opts.focus : null; bm.pulseUntil = clock + 2600; bm.focusUntil = clock + 2600; }
       else if (opts.tab) setTab(s, opts.tab);
       bm.hover = null; bm.dirty = true;
-      if (dom()) { show(E['build-menu'], true); cls(E.hud, 'bm-open', true); show(E.popover, false); hideTooltip(); refreshBuildMenu(s); scrollCardIntoView(opts.focus); }
+      if (dom()) { show(E['build-menu'], true); cls(E.hud, 'bm-open', true); closePopover(); hideTooltip(); refreshBuildMenu(s); scrollCardIntoView(opts.focus); }
       emit('ui:buildMenu', { open: true, tab: s.ui.paletteTab, focus: opts.focus || null });
     } catch (e) { uerr('openBuildMenu', e); }
   };
@@ -2045,15 +2223,18 @@
     if (st.id === 'swamp') M.setOverlay(s, OV.FLOOD); else if (fin(s.ui.overlay, 0) === OV.FLOOD && coach.overlayBefore !== OV.FLOOD) M.setOverlay(s, coach.overlayBefore);
     setText(E['coach-step'], 'Quick tour · ' + (coach.step + 1) + ' of ' + steps.length); setText(E['coach-title'], st.title); setText(E['coach-text'], st.text);
     setText(E['btn-coach-next'], coach.step === steps.length - 1 ? 'Geaux build ▸' : 'Next ▸'); show(E['btn-coach-back'], coach.step > 0);
-    coach.expanded = st.target === 'needs-strip' ? ['goals', 'needs'] : st.target === 'objective-card' ? ['goals'] : st.target === 'build-menu' ? ['palette'] : [];   // hud + zoom pass: a step that points at a collapsed element opens it for the step (the tour itself always runs in the full HUD)
+    // U2: a step that points inside a popover or the goal card opens that surface for the step (the tour itself always runs in the full HUD)
+    if (st.target === 'needs-strip') openPopover('needs'); else if (st.target === 'overlay-buttons') openPopover('layers'); else closePopover();
+    if (st.target === 'objective-card') goalOpen(true); else if (goal.open) goalCollapse();
     updateHud(s);
     coach.layoutAt = -1e9; layoutCoach(s);
   }
   function coachNext(s, dir) { if (coach.step < 0) return; const n = coachSteps().length; const k = coach.step + dir; if (k >= n) { coachFinish(s, true); return; } coach.step = clamp(k, 0, n - 1); applyCoachStep(s); emit('ui:coach', { step: coach.step }); }
   function coachFinish(s, completed) {
-    coach.step = -1; coach.paused = false; coach.expanded = []; show(E.coach, false); show(E['coach-ring'], false);
+    coach.step = -1; coach.paused = false; show(E.coach, false); show(E['coach-ring'], false);
     M.settings().coachSeen = true; M.saveSettings();
-    if (s && dom()) updateHud(s);   // hud + zoom pass: the player's mode and pills come back
+    closePopover(); if (goal.open) goal.until = clock + M._goalCollapseMs;   // U2: the popovers the steps opened close; the goal card folds on its own timer
+    if (s && dom()) updateHud(s);   // hud + zoom pass: the player's mode comes back
     if (s && fin(s.ui.overlay, 0) === OV.FLOOD && coach.overlayBefore !== OV.FLOOD) M.setOverlay(s, coach.overlayBefore);
     // hand-off: land in the build menu on the goal's card (the existing objective chain takes it from here)
     if (s && !s.setPiece) { const o = call('progress', 'objective', s); const t = o ? objTarget(s, o) : null; M.openBuildMenu(s, t ? { focus: t, pulse: true } : { tab: 'essentials' }); }
@@ -2092,7 +2273,7 @@
   // ---------------------------------------------------------------------------
   // Issue spotlight pass: the Issues tray (docked under the minimap / overlay keys), Fix / Locate, keys
   // ---------------------------------------------------------------------------
-  const tray = { key: '', ageAt: -1e9, rows: [], collapsed: false, userCollapsed: false, clearAt: -1e9, hadIssues: false, at: -1e9, lastCount: 0 };
+  const tray = { key: '', ageAt: -1e9, rows: [], clearAt: -1e9, hadIssues: false, at: -1e9 };   // U2: the fold / pill fields are gone with the tray's collapse
   let heldI = false, spotToggled = false;
   function issuesApi() { const I = BSU.issues; return (I && typeof I.list === 'function') ? I : null; }
   function applySpotlight() { const I = issuesApi(); if (I) I.spotlight(spotToggled || heldI); if (E['issues-spot']) cls(E['issues-spot'], 'active', spotToggled); }
@@ -2144,6 +2325,7 @@
     const a = it.action; let r = { ok: true };
     locateIssue(s, it);
     if (!a) return r;
+    if (a.arm || a.tool || a.openMenuCard) closePopover();   // U2: a Fix that arms a tool (or opens the menu) hands the map back: the Alerts popover would cover the pinned ghost
     if (it.progress && !Number.isFinite(a.repair) && !Number.isFinite(a.repairLevee) && !a.link) { M.notify(s, { kind: 'info', text: 'Already in progress: ' + it.progress.text, ttl: 3500 }); I.invalidate(); tray.key = ''; return { ok: true, pending: true }; }
     if (a.arm) { r = armTool(s, it, a) || r; }
     else if (a.openMenuCard) { M.openBuildMenu(s, { focus: a.openMenuCard, pulse: true }); }
@@ -2211,7 +2393,7 @@
   };
   function closeAlert() { alertClosedKey = alertKey; alertAt = -1e9; alertKey = ''; show(E['alert-strip'], false); }
   M.closeAlert = function () { closeAlert(); };
-  M.dismissNotifs = function () { for (let k = notifs.length - 1; k >= 0; k--) closeNotif(notifs[k], 'dismissed'); };
+  M.dismissNotifs = function () { for (let k = snackQueue.length - 1; k >= 0; k--) closeNotif(snackQueue[k], 'dismissed'); for (let k = notifs.length - 1; k >= 0; k--) closeNotif(notifs[k], 'dismissed'); if (dom()) show(E['notif-dismiss'], false); };
   /** which issue kinds a notification / needs line is about (used to add a 'Locate' button) */
   function locateKindsOf(spec) {
     if (!spec || spec.milestone) return null;   // milestone notes never carry a Locate
@@ -2221,16 +2403,9 @@
     if (/blackout|brownout|no power|unpowered/i.test(t)) return F.power; if (/boil|no water/i.test(t)) return F.water; if (/damage|ruin/i.test(t)) return F.damage;
     return null;
   }
+  /** U2: the Issues tray is the list inside the Alerts popover (its head, Spotlight and Clear N are built with the popover in buildPopovers); the ids are the issue spotlight pass's */
   function buildIssuesTray() {
     const wrap = el('div', 'hidden'); wrap.id = 'issues-tray';
-    const head = el('div'); head.id = 'issues-head';
-    const n = el('span', 'n', ''); n.id = 'issues-count'; const sub = el('span', 'sub', ''); sub.id = 'issues-sub';
-    const clr = btn('issues-clear', 'Clear all', 'small hidden', function () { const s = stateOf(); if (s) clearAllResolvable(s, false); }); clr.title = 'Run every one-click fix: repairs within cash, gravel ties, free officer wrangles (a confirm line shows the total)';
-    const spot = btn('issues-spot', 'Spotlight', 'small', function () { toggleSpotlight(); }); spot.title = 'Dim the map except the issues (Shift+I; hold I)';
-    const car = btn('issues-toggle', '▾', 'icon small', function () { if (hudEffective() === 'compact') hudPeek('issues', false); else M.hudCollapse('issues'); }); car.title = 'Collapse / expand (remembered)';   // hud + zoom pass: the caret is the tray's collapse chevron
-    head.appendChild(n); head.appendChild(sub); head.appendChild(clr); head.appendChild(spot); head.appendChild(car);
-    head.addEventListener('click', function (ev) { if (ev && ev.target && (ev.target === spot || ev.target === car || ev.target === clr)) return; if (M.hudPill('issues')) { if (hudEffective() === 'compact') hudPeek('issues', true); else M.hudCollapse('issues', false); } else { const s = stateOf(); if (s) cycleIssue(s, 1); } });
-    hudHover('issues', wrap);   // hud + zoom pass: hovering the pill peeks the rows
     const list = el('div'); list.id = 'issues-list';
     const prog = el('div', 'hidden'); prog.id = 'issues-progress'; prog.appendChild(el('div', 'ph', 'In progress')); const plist = el('div'); plist.id = 'issues-progress-list'; prog.appendChild(plist);
     const more = el('div', 'hidden', ''); more.id = 'issues-more';
@@ -2239,8 +2414,8 @@
     const sg = el('div', 'hidden'); sg.id = 'issues-suggest';
     const sh = btn('issues-suggest-head', 'Suggestions', 'small', function () { tray.suggestOpen = !tray.suggestOpen; tray.key = ''; }); sh.title = 'Low-priority rows (unlinked paths, mosquito hotspots) and muted kinds: never a beacon, never a toast · click to list them';
     const sl = el('div'); sl.id = 'issues-suggest-list'; sg.appendChild(sh); sg.appendChild(sl);
-    wrap.appendChild(head); wrap.appendChild(list); wrap.appendChild(prog); wrap.appendChild(more); wrap.appendChild(sg); wrap.appendChild(hid);
-    E['issues-tray'] = wrap; E['issues-head'] = head; E['issues-count'] = n; E['issues-sub'] = sub; E['issues-clear'] = clr; E['issues-spot'] = spot; E['issues-toggle'] = car; E['issues-list'] = list; E['issues-progress'] = prog; E['issues-progress-list'] = plist; E['issues-more'] = more; E['issues-hidden'] = hid;
+    wrap.appendChild(list); wrap.appendChild(prog); wrap.appendChild(more); wrap.appendChild(sg); wrap.appendChild(hid);
+    E['issues-tray'] = wrap; E['issues-list'] = list; E['issues-progress'] = prog; E['issues-progress-list'] = plist; E['issues-more'] = more; E['issues-hidden'] = hid;
     E['issues-suggest'] = sg; E['issues-suggest-head'] = sh; E['issues-suggest-list'] = sl;
     return wrap;
   }
@@ -2268,14 +2443,9 @@
     row.addEventListener('click', function (ev) { if (ev && ev.target && ev.target !== row && ev.target !== col && ev.target !== ic && ev.target !== age && ev.target !== why) return; const st = stateOf(); if (st) locateIssue(st, issuesApi().byId(st, it.id) || it); });
     return { el: row, age: age, id: it.id };
   }
-  /** rows that fit between the overlay keys and the palette; < 2 → chip only ("space is tight") */
-  function trayRowsFit(withWhy) {
-    try {
-      if (E.hud && E.hud.classList.contains('inspect-open')) return 0;   // qa pass 4: the tray is display:none beside an open inspect panel (style.css); no rows to build
-      const sc = effScale || 1, px = 10 * sc, top = (5.6 + 28.4) * px, bot = (18 + 2.8 + 1.6 + 1) * px, head = 3.4 * px, row = (withWhy ? 5.4 : 3.9) * px;   // gator pass: a why-line adds a second grid row (measured 53 px at 1×)
-      const h = fin(window.innerHeight, 800) - top - bot - head; return clamp(Math.floor(h / row), 0, 6);
-    } catch (e) { return 4; }
-  }
+  /** U2: the Alerts popover lists up to six lead rows (the list scrolls inside the popover; "+N more · I cycles" says the rest) */
+  const TRAY_MAX = 6;
+  function trayRowsFit(withWhy) { void withWhy; return TRAY_MAX; }
   function hiddenLine(hidden) {
     const e = E['issues-hidden']; if (!e) return;
     if (!hidden.length) { show(e, false); return; }
@@ -2283,20 +2453,28 @@
     const parts = []; if (sn) parts.push(sn + ' snoozed'); if (dm) parts.push(dm + ' dismissed');
     setText(e, parts.join(' · ') + ' · show'); show(e, true);
   }
+  /** U2: the Alerts badge on its icon: the open count in error, a success dot when all clear; the rows below are built whether or not the popover is open (cheap: keyed) */
+  function refreshAlertsBadge(main, prog) {
+    const b = E['alerts-badge']; if (!b) return;
+    const n = main.length; const k = n + '|' + (prog.length ? 'p' : '');
+    if (b.dataset.k === k) return; b.dataset.k = k;
+    setText(b, n ? String(n) : ''); cls(b, 'dot', !n); show(b, true);
+    E['btn-alerts'].title = n ? 'Alerts: ' + n + (n === 1 ? ' issue' : ' issues') + ' (I cycles)' : (prog.length ? 'Alerts: no open issues, ' + prog.length + ' in progress' : 'Alerts: all clear');
+  }
   function updateIssues(s) {
     if (!dom() || !E['issues-tray']) return;
     const I = issuesApi(); if (!I) return;
     if (clock - tray.at < 250) return; tray.at = clock;
-    if (titleOn || coach.step >= 0) { show(E['issues-tray'], false); tray.key = ''; return; }
+    if (titleOn) { show(E['issues-tray'], false); tray.key = ''; return; }
     const list = I.list(s), main = I.main(s), sugg = I.suggestions(s), prog = I.inProgress(s), hidden = I.hiddenList(s), sel = I.selectedId();
+    refreshAlertsBadge(main, prog);
     const fit = trayRowsFit(main.some(function (it) { return !!it.why; }));
-    const collapsed = fit < 2 || M.hudPill('issues');   // hud + zoom pass: collapsed = the tray's pill (compact mode, the caret in full mode, or Alerts: Off) unless hovered open
     if (list.length === 0) {
       if (tray.hadIssues) { tray.hadIssues = false; tray.clearAt = clock; }
       const showClear = clock - tray.clearAt < 3000 || hidden.length > 0;
-      show(E['issues-tray'], showClear); if (!showClear) { tray.key = ''; return; }
+      show(E['issues-tray'], showClear);
       const k = 'clear|' + hidden.length;
-      if (tray.key !== k) { tray.key = k; setText(E['issues-count'], 'All clear ✓'); setText(E['issues-sub'], ''); cls(E['issues-head'], 'clear', true); cls(E['issues-tray'], 'collapsed', true); clear(E['issues-list']); clear(E['issues-progress-list']); show(E['issues-progress'], false); clear(E['issues-suggest-list']); show(E['issues-suggest'], false); tray.rows = []; show(E['issues-more'], false); show(E['issues-clear'], false); hiddenLine(hidden); }
+      if (tray.key !== k) { tray.key = k; setText(E['issues-count'], 'All clear ✓'); setText(E['issues-sub'], sugg.length ? sugg.length + (sugg.length === 1 ? ' suggestion' : ' suggestions') : 'Nothing needs you right now'); cls(E['issues-head'], 'clear', true); clear(E['issues-list']); clear(E['issues-progress-list']); show(E['issues-progress'], false); clear(E['issues-suggest-list']); show(E['issues-suggest'], false); tray.rows = []; show(E['issues-more'], false); show(E['issues-clear'], false); hiddenLine(hidden); }
       return;
     }
     tray.hadIssues = true; show(E['issues-tray'], true);
@@ -2305,25 +2483,25 @@
     const plan = []; for (const g of groups) { const open = !!tray.open[g.kind]; plan.push({ it: g.rows[0], lead: true, count: g.rows.length, expanded: open, muted: g.muted }); if (open) for (let k = 1; k < g.rows.length; k++) plan.push({ it: g.rows[k], sub: true }); }
     const splan = []; for (const g of sgroups) { const open = !!tray.sopen[g.kind]; splan.push({ it: g.rows[0], lead: true, count: g.rows.length, expanded: open, muted: g.muted, suggest: true }); if (open) for (let k = 1; k < g.rows.length; k++) splan.push({ it: g.rows[k], sub: true, suggest: true }); }
     const progFit = prog.length ? Math.max(1, Math.min(prog.length, Math.floor(fit / 3))) : 0;
-    const shown = collapsed ? 0 : Math.min(Math.max(0, fit - progFit), plan.length), pShown = collapsed ? 0 : progFit;
-    const sShown = (collapsed || !tray.suggestOpen) ? 0 : Math.min(splan.length, Math.max(1, fit - shown - pShown));
+    const shown = Math.min(Math.max(0, fit - progFit), plan.length), pShown = progFit;
+    const sShown = !tray.suggestOpen ? 0 : Math.min(splan.length, Math.max(1, fit - shown - pShown));
     const key = [main.length, sugg.length, prog.length, hidden.length, shown, pShown, sShown, tray.suggestOpen ? 'S' : '', sel || '', res.rows.length, res.total, plan.slice(0, shown).map(function (p) { return p.it.id + p.it.title + p.it.severity + (p.count || 0) + (p.expanded ? 'o' : '') + (p.muted ? 'm' : ''); }).join(';'), prog.slice(0, pShown).map(function (it) { return it.id + it.progress.text; }).join(';'), splan.slice(0, sShown).map(function (p) { return p.it.id + p.it.title + (p.count || 0) + (p.expanded ? 'o' : '') + (p.muted ? 'm' : ''); }).join(';')].join('|');
     if (key !== tray.key) {
       tray.key = key; tray.ageAt = clock;
       const none = main.length === 0;
-      setText(E['issues-count'], none ? (prog.length ? 'No open issues' : 'All clear ✓') : main.length + (main.length === 1 ? ' issue' : ' issues'));
-      const w3 = main.filter(function (it) { return it.severity >= 3; }).length; const subs = []; if (w3) subs.push(w3 + ' urgent'); if (prog.length) subs.push(prog.length + ' in progress'); if (none && sugg.length) subs.push(sugg.length + (sugg.length === 1 ? ' suggestion' : ' suggestions')); if (!subs.length && collapsed) subs.push('click to cycle');
+      setText(E['issues-count'], none ? (prog.length ? 'No open issues' : 'All clear ✓') : 'Alerts · ' + main.length + (main.length === 1 ? ' issue' : ' issues'));
+      const w3 = main.filter(function (it) { return it.severity >= 3; }).length; const subs = []; if (w3) subs.push(w3 + ' urgent'); if (prog.length) subs.push(prog.length + ' in progress'); if (none && sugg.length) subs.push(sugg.length + (sugg.length === 1 ? ' suggestion' : ' suggestions')); if (!subs.length) subs.push('I cycles the issues');
       setText(E['issues-sub'], subs.join(' · '));
-      show(E['issues-clear'], res.rows.length > 0 && !collapsed); setText(E['issues-clear'], 'Clear ' + res.rows.length);
+      show(E['issues-clear'], res.rows.length > 0); setText(E['issues-clear'], 'Clear ' + res.rows.length + (res.total > 0 ? ' · ' + money(res.total) : ''));
       E['issues-clear'].title = res.rows.length + ' one-click fix' + (res.rows.length === 1 ? '' : 'es') + ' (repairs within cash, gravel ties; suggestions and muted kinds are never counted): ' + (res.total > 0 ? money(res.total) + ' total, confirm first' : 'free');
-      cls(E['issues-head'], 'clear', none); cls(E['issues-tray'], 'collapsed', collapsed); setText(E['issues-toggle'], collapsed ? '▸' : '▾');
+      cls(E['issues-head'], 'clear', none);
       clear(E['issues-list']); tray.rows = [];
       for (let k = 0; k < shown; k++) { const p = plan[k]; const r = issueRow(s, p.it, p.it.id === sel, p); E['issues-list'].appendChild(r.el); tray.rows.push(r); }
       clear(E['issues-progress-list']); for (let k = 0; k < pShown; k++) { const r = issueRow(s, prog[k], prog[k].id === sel, { progress: true }); E['issues-progress-list'].appendChild(r.el); tray.rows.push(r); }
       show(E['issues-progress'], pShown > 0);
-      const rest = (plan.length - shown) + (prog.length - pShown); setText(E['issues-more'], rest > 0 ? '+' + rest + ' more · I cycles through all' : ''); show(E['issues-more'], rest > 0 && !collapsed);
+      const rest = (plan.length - shown) + (prog.length - pShown); setText(E['issues-more'], rest > 0 ? '+' + rest + ' more · I cycles through all' : ''); show(E['issues-more'], rest > 0);
       // the Suggestions group: a one-line header (count, caret), the rows only while unfolded
-      clear(E['issues-suggest-list']); show(E['issues-suggest'], sugg.length > 0 && !collapsed);
+      clear(E['issues-suggest-list']); show(E['issues-suggest'], sugg.length > 0);
       if (sugg.length) { setText(E['issues-suggest-head'], (tray.suggestOpen ? '▾ ' : '▸ ') + 'Suggestions · ' + sugg.length + (sShown < splan.length && tray.suggestOpen ? ' (' + sShown + ' shown)' : '')); cls(E['issues-suggest'], 'open', tray.suggestOpen && sShown > 0); for (let k = 0; k < sShown; k++) { const p = splan[k]; const r = issueRow(s, p.it, p.it.id === sel, p); r.el.classList.add('suggest'); E['issues-suggest-list'].appendChild(r.el); tray.rows.push(r); } }
       hiddenLine(hidden);
     } else if (clock - tray.ageAt >= 1000) {
@@ -2367,7 +2545,7 @@
     if (tx < 0) return;
     call('render', 'panToTile', tx, ty); if (tiles && tiles.length) call('render', 'flashTiles', tiles, fin(P.progress && P.progress.showMeFlashMs, 1200));
   }
-  /** notify(state, {text, kind, action?, showMe?, ttl?, onClose?, stamp?}) — max 3, newest at the bottom; onClose exactly once */
+  /** notify(state, {text, kind, action?, showMe?, ttl?, onClose?, stamp?}) — U2: a snackbar in the bottom-centre lane; two show at a time (newest at the bottom), the rest queue in order; onClose exactly once */
   M.notify = function (state, spec) {
     try {
       const s = state || stateOf(); if (!spec || !spec.text) return;
@@ -2381,33 +2559,53 @@
         const lk0 = locateKindsOf(spec);
         if (lk0 && lk0.length && !issuesApi().toastGate(s, typeof spec.locate === 'string' ? spec.locate : lk0)) { if (onClose) { try { onClose('gated'); } catch (e) { uerr('notif:gated', e); } } return; }
       }
-      const n = { spec: spec, kind: kind, el: null, born: clock, bornTick: tickOf(s), ttl: fin(spec.ttl, L.notifMs), closed: false, onClose: onClose };
-      if (dom()) {
-        const d = el('div', 'notif' + (spec.stamp === 'paw' || spec.milestone ? ' paw' : '')); d.dataset.kind = kind;
-        d.appendChild(el('span', 'notif-text', spec.text));
-        if (spec.why) d.appendChild(el('span', 'notif-why', spec.why));   // gator pass: the one-line "why it matters"
-        if (act) { const b = btn(null, act.label || 'Do it', 'notif-action small', function () { try { act.fn(stateOf()); } catch (e) { uerr('notif:action', e); } closeNotif(n, 'action'); }); d.appendChild(b); }
-        if (spec.showMe != null) { const b = btn(null, 'Show me', 'notif-action small', function () { showMe(stateOf(), spec.showMe); }); d.appendChild(b); }
-        const lk = locateKindsOf(spec); if (lk && lk.length && issuesApi() && issuesApi().ofKinds(s, lk).length) { const b = btn(null, 'Locate', 'notif-action small locate', function () { const st = stateOf(); const it = issueFirstOf(st, lk); if (it) locateIssue(st, it); else M.notify(st, { kind: 'info', text: 'Already resolved', ttl: 2500 }); closeNotif(n, 'action'); }); d.appendChild(b); }   // issue spotlight pass
-        const x = btn(null, '✕', 'notif-close icon', function () { closeNotif(n, 'close'); }); d.appendChild(x);
-        E.notifications.appendChild(d); n.el = d;
-      }
-      notifs.push(n);
-      while (notifs.length > L.notifMax) closeNotif(notifs[0], 'replaced');
+      pushSnack(s, { spec: spec, kind: kind, el: null, born: clock, bornTick: tickOf(s), ttl: fin(spec.ttl, L.notifMs), closed: false, onClose: onClose, act: act, news: false, subject: -1 });
       const payload = { text: spec.text, kind: kind }; if (act) payload.action = { label: act.label }; if (spec.showMe != null) payload.showMe = spec.showMe; if (spec.ttl != null) payload.ttl = spec.ttl;
       emit('ui:notify', payload);
     } catch (e) { uerr('notify', e); }
   };
+  /** the snackbar's DOM (built when it takes a slot, not when it is queued): message · why · action · Show me · Locate · Log (news) · ✕, all direct children (tests read them) */
+  function snackEl(n) {
+    const spec = n.spec; const d = el('div', 'snackbar notif' + (spec.stamp === 'paw' || spec.milestone ? ' paw' : '') + (n.news ? ' news' : '')); d.dataset.kind = n.kind;
+    const msg = el('span', 'notif-text', spec.text); d.appendChild(msg);
+    if (n.news && n.subject >= 0) { msg.classList.add('link'); msg.title = 'Pan there'; msg.addEventListener('click', function () { const p = tileOf(n.subject); call('render', 'panToTile', p.tx, p.ty); }); }
+    if (spec.why) d.appendChild(el('span', 'notif-why', spec.why));   // gator pass: the one-line "why it matters"
+    if (n.act) { const b = btn(null, n.act.label || 'Do it', 'notif-action small', function () { try { n.act.fn(stateOf()); } catch (e) { uerr('notif:action', e); } closeNotif(n, 'action'); }); d.appendChild(b); }
+    if (spec.showMe != null) { const b = btn(null, 'Show me', 'notif-action small', function () { showMe(stateOf(), spec.showMe); }); d.appendChild(b); }
+    const lk = n.news ? null : locateKindsOf(spec); const s = stateOf();
+    if (lk && lk.length && issuesApi() && s && issuesApi().ofKinds(s, lk).length) { const b = btn(null, 'Locate', 'notif-action small locate', function () { const st = stateOf(); const it = issueFirstOf(st, lk); if (it) locateIssue(st, it); else M.notify(st, { kind: 'info', text: 'Already resolved', ttl: 2500 }); closeNotif(n, 'action'); }); d.appendChild(b); }   // issue spotlight pass
+    if (n.news) { const b = btn(null, 'Log', 'notif-action small', function () { M.openPanel('log'); }); b.title = 'Every news line (the Log)'; d.appendChild(b); }
+    const x = btn(null, null, 'notif-close icon', function () { closeNotif(n, 'close'); }); x.title = 'Dismiss'; x.appendChild(icon('close')); d.appendChild(x);
+    return d;
+  }
+  /** a snack takes one of the two slots at once; when both are taken a news line waits in order (the queue holds six; older waiting lines are dropped with
+   *  onClose('replaced')), while a notification never waits (it answers a click or an event): the oldest visible news line, else the oldest notification, makes room */
+  function pushSnack(s, n) {
+    if (notifs.length < L.notifMax) { openSnack(s, n); return; }
+    if (n.news) { snackQueue.push(n); while (snackQueue.length > L.notifQueueMax) closeNotif(snackQueue[0], 'replaced'); return; }
+    let victim = null; for (const v of notifs) if (v.news) { victim = v; break; }
+    closeNotif(victim || notifs[0], 'replaced'); openSnack(s, n);
+  }
+  function openSnack(s, n) { n.born = clock; n.bornTick = tickOf(s); if (dom()) { n.el = snackEl(n); E.notifications.appendChild(n.el); } notifs.push(n); }
   function closeNotif(n, why) {
     if (!n || n.closed) return; n.closed = true;
-    const k = notifs.indexOf(n); if (k >= 0) notifs.splice(k, 1);
+    let k = notifs.indexOf(n); if (k >= 0) notifs.splice(k, 1); else { k = snackQueue.indexOf(n); if (k >= 0) snackQueue.splice(k, 1); }
     if (n.el && n.el.parentNode) n.el.parentNode.removeChild(n.el);
     if (n.onClose) { try { n.onClose(why); } catch (e) { uerr('notif:onClose', e); } }
   }
   function updateNotifs(s) {
     for (let k = notifs.length - 1; k >= 0; k--) { const n = notifs[k]; if (clock - n.born > n.ttl || (BSU.headlessMode && tickOf(s) - n.bornTick > L.notifTicks)) closeNotif(n, 'ttl'); }
-    if (E['notif-dismiss']) show(E['notif-dismiss'], notifs.length >= 3);   // gator pass: 'Dismiss all' once three are stacked (Esc does the same)
+    while (notifs.length < L.notifMax && snackQueue.length) openSnack(s, snackQueue.shift());
+    if (E['notif-dismiss']) show(E['notif-dismiss'], notifs.length + snackQueue.length >= 3);   // gator pass: 'Dismiss all' once three are stacked / waiting (Esc does the same)
   }
+  /** U2: a new line of state.ticker (progress / sports / land post them) becomes a news snackbar: 6 s, a Log button, a click pans to its subject */
+  function updateNews(s) {
+    const lines = s.ticker || [];
+    if (tk.lastLen !== lines.length) { tk.lastLen = lines.length; if (tk.seen > lines.length) tk.seen = Math.max(0, lines.length - 1); if (lines.length - tk.seen > 3) tk.seen = lines.length - 3; }
+    while (tk.seen < lines.length) { const l = lines[tk.seen++]; if (!l || !l.text) continue; pushSnack(s, { spec: { text: l.text }, kind: l.kind || 'info', el: null, born: clock, bornTick: tickOf(s), ttl: L.notifMs, closed: false, onClose: null, act: null, news: true, subject: Number.isFinite(l.subject) ? l.subject : -1 }); }
+  }
+  /** tests: the visible snackbars and the queue ({visible: [{text, kind, news}], queued: [...]}) */
+  M._snacks = function () { const one = function (n) { return { text: n.spec.text, kind: n.kind, news: !!n.news }; }; return { visible: notifs.map(one), queued: snackQueue.map(one) }; };
   /** one-time hint (state.progress.hints[id] via progress.markHint); text may be omitted for known ids */
   M.hint = function (state, id, text, opts) {
     try {
@@ -2446,7 +2644,7 @@
     if (dom()) {
       setText(E['dt-text'], toast.text); setText(E['btn-dt-yes'], spec.yes || 'Yes'); E['btn-dt-yes'].appendChild(el('span', 'key', 'Y')); setText(E['btn-dt-no'], spec.no || 'No'); E['btn-dt-no'].appendChild(el('span', 'key', 'N')); E['dt-fill'].style.width = '100%';
       renderToastOptions();
-      show(E.popover, false); show(E['decision-toast'], true);
+      show(E['decision-toast'], true);
     }
     emit('decision:open', { id: toast.id });
   }
@@ -2591,6 +2789,7 @@
     if (!panels.howto) M.registerPanel('howto', { build: buildHowPanel, refresh: null, events: [] });
     if (!panels.about) M.registerPanel('about', { build: buildAboutPanel, refresh: null, events: [] });
     if (!panels.debug) M.registerPanel('debug', { build: buildDebugPanel, refresh: refreshDebugPanel, events: [] });
+    if (!panels.log) M.registerPanel('log', { build: function (host) { host.appendChild(el('div', 'panel-title', 'Log')); host.appendChild(el('div', 'panel-status', 'The last ' + L.logMax + ' news lines · click one to pan there')); const list = el('div', 'log-list'); list.id = 'log-list'; host.appendChild(list); host._list = list; E['log-list'] = list; }, refresh: function (s, host) { rebuildLog(s, host._list); }, events: ['ui:ticker'] });   // U2: the ticker's history
     if (!panels.milestones) M.registerPanel('milestones', { build: function (host) { host.appendChild(el('div', 'panel-title', 'Milestones')); const list = el('div', 'ms-list'); host.appendChild(list); host._list = list; }, refresh: function (s, host) { const list = host._list; if (!list) return; clear(list); for (const r of (call('progress', 'nearestMilestones', s, 8) || [])) { const d = el('div', 'ms-row'); d.appendChild(el('span', 'ms-name', r.name)); const b = el('div', 'bar'); const f = el('div', 'fill'); f.style.width = Math.round(clamp(r.goal > 0 ? r.progress / r.goal : 0, 0, 1) * 100) + '%'; b.appendChild(f); d.appendChild(b); d.appendChild(el('span', 'ms-count', r.goal > 1 ? Math.round(r.progress) + ' / ' + r.goal : '')); list.appendChild(d); } }, events: ['milestone:earned'] });
   }
 
@@ -2613,7 +2812,7 @@
       const p = panels[name]; if (!p) { s.ui.panel = null; M.notify(s, { kind: 'info', text: (PANEL_KEYS[name] || name) + ' panel is not available yet', ttl: 3000 }); return; }
       s.ui.panel = name;
       if (dom()) {
-        show(E.popover, false); hideTooltip();
+        closePopover(); hideTooltip();
         const host = panelHost(name);
         if (host) { if (!p.built) { p.built = true; try { if (typeof p.build === 'function') p.build(host, s); } catch (e) { uerr('panel:build:' + name, e); } } show(host, true); refreshPanel(s, name); }
         if (E.hud) E.hud.dataset.panel = name;
@@ -2625,7 +2824,7 @@
   M.panel = function () { const s = stateOf(); return s && s.ui ? s.ui.panel : null; };
   function refreshPanel(s, name) { const p = panels[name]; if (!p || !p.el) return; p.lastRefresh = clock; try { if (typeof p.refresh === 'function') p.refresh(s, p.el); } catch (e) { uerr('panel:refresh:' + name, e); } }
   /** UI scale pass: a panel wide enough to reach the docked cards (goals tracker, minimap, overlay keys, notifications, voice card) fades just the ones it overlaps, so no half-hidden text peeks out around it */
-  const FADE_IDS = ['objective-card', 'minimap-wrap', 'overlay-buttons', 'notifications', 'voice-card', 'alert-strip', 'issues-tray', 'undo-chip', 'inspect'];   // 'inspect' fades only under the Edit menu overlay (menu layout pass)   // qa pass 4: the tray sat crisp beside an open panel
+  const FADE_IDS = ['objective-card', 'goal-pill', 'snack-lane', 'voice-card', 'alert-strip', 'undo-chip', 'inspect', 'fab-build'];   // 'inspect' fades only under the Edit menu overlay (menu layout pass); U2: the popovers close when a panel opens
   let fadeAt = -1e9;
   function syncPanelFade(s) {
     if (!dom() || clock - fadeAt < 250) return; fadeAt = clock;
@@ -2666,7 +2865,7 @@
     call('session', 'newGame', seed === undefined ? {} : { seed: seed });
     void s;
   }
-  M.settings = function () { const s = stateOf(); if (s && s.ui && s.ui.settings) return s.ui.settings; return { volume: 0.5, muted: false, particles: 'high', shake: true, colorblind: false, autoSimHint: false, hudMode: 'full', hudCollapsed: {}, alerts: 'normal', mutedIssues: {}, tieCardSeen: false }; };
+  M.settings = function () { const s = stateOf(); if (s && s.ui && s.ui.settings) return s.ui.settings; return { volume: 0.5, muted: false, particles: 'high', shake: true, colorblind: false, autoSimHint: false, keepMinimap: false, keepOverlays: false, alerts: 'normal', mutedIssues: {}, tieCardSeen: false }; };
   /** mirror state.ui.settings to localStorage['bsu.settings'] (a failure → one 'saveUnavailable' hint) */
   M.saveSettings = function () { try { window.localStorage.setItem('bsu.settings', JSON.stringify(M.settings())); } catch (e) { const s = stateOf(); if (s) M.hint(s, 'saveUnavailable'); } };
   /** stat popover from economy.breakdown */
@@ -2682,13 +2881,19 @@
       setText(E['pop-next'], r.next || ''); show(E['pop-next'], !!r.next);
       const anchor = E['stat-' + stat]; let left = 200; try { const rc = anchor && anchor.getBoundingClientRect ? anchor.getBoundingClientRect() : null; if (rc) left = fin(rc.left, 200); } catch (e) { left = 200; }
       const pw = fin(E.popover.offsetWidth, 0) || Math.round(340 * effScale); E.popover.style.left = Math.round(clamp(left, 8, fin(window.innerWidth, 1280) - pw - 20)) + 'px';
-      // never cover an open decision toast (its buttons must stay clickable): drop below it
-      let top = ''; try { const dt = E['decision-toast']; if (dt && !dt.classList.contains('hidden') && dt.getBoundingClientRect) { const rc = dt.getBoundingClientRect(); if (rc.height > 0) top = Math.round(rc.bottom + 6) + 'px'; } } catch (e) { top = ''; }
-      if (!top) { try { const oc = E['objective-card']; if (oc && !oc.classList.contains('hidden') && oc.getBoundingClientRect) { const rc = oc.getBoundingClientRect(); const pl = parseFloat(E.popover.style.left) || 0; if (rc.height > 0 && pl < rc.right + 8 && pl + pw > rc.left) top = Math.round(rc.bottom + 6) + 'px'; } } catch (e) { top = ''; } }   // the goals tracker sits top-left: drop below it
-      E.popover.style.top = top;
-      show(E.popover, true);
+      openPopover('breakdown');   // U2: one popover at a time (the decision toast is in the bottom lane now, nothing to dodge)
     } catch (e) { uerr('breakdown', e); }
   };
+  /** U2: the Cash chip's mini budget: last month's income / expenses / net from economy.statement, the runway line (red when the next payday is not covered) */
+  let mbAt = -1e9;
+  function refreshMiniBudget(s) {
+    if (!dom() || clock - mbAt < L.refreshMs) return; mbAt = clock;
+    const stm = call('economy', 'statement', s) || { income: {}, expense: {} }; let inc = 0, exp = 0;
+    for (const k in (stm.income || {})) inc += fin(stm.income[k], 0); for (const k in (stm.expense || {})) exp += fin(stm.expense[k], 0);
+    const net = inc - exp; const rw = call('economy', 'runway', s) || { months: 0, nextPayDay: -1, red: false };
+    setText(E['mb-income'], money(inc)); setText(E['mb-expense'], money(exp)); setText(E['mb-net'], (net >= 0 ? '+' : '') + money(net)); cls(E['mb-net'], 'good', net >= 0); cls(E['mb-net'], 'bad', net < 0);
+    setText(E['mb-runway'], rw.nextPayDay >= 0 ? fmtInt(rw.months) + (rw.months === 1 ? ' month' : ' months') + ' · ' + BSU.formatDate(rw.nextPayDay) + ' payday' : fmtInt(rw.months) + ' months'); cls(E['mb-runway'], 'bad', !!rw.red);
+  }
 
   // ---------------------------------------------------------------------------
   // How to play + About panels (framing pass): plain DOM, built once on first open; reached from the title screen and from Settings (the ☰ menu)
@@ -2702,7 +2907,7 @@
   /** the key table, one entry per column: k = the key chip, t = what it does, b = the data.keys bindings the row documents ([key, ctrl, shift, action]; ui.test checks every one against BSU.data.keys). N, I, Alt and the mouse are handled in keydown / the pointer machine, not data.keys */
   const HOW_KEYS = [
     { h: 'Build', rows: [
-      { k: 'G', t: 'Build menu', b: [['g', 0, 0, 'buildMenu']] },
+      { k: 'G', t: 'Build sheet (Shift: the full menu)', b: [['g', 0, 0, 'palette'], ['g', 0, 1, 'buildMenu']] },
       { k: 'Tab', t: 'Next build tab (Shift: previous)', b: [['Tab', 0, 0, 'nextTab'], ['Tab', 0, 1, 'prevTab']] },
       { k: 'Shift+1–9', t: 'Pick item 1 to 9', b: [['1', 0, 1, 'pick1'], ['9', 0, 1, 'pick9']] },
       { k: 'X', t: 'Bulldoze', b: [['x', 0, 0, 'bulldoze']] },
@@ -2725,7 +2930,7 @@
       { k: '1 2 3 4', t: 'Speed 1× 2× 4× 8×', b: [['1', 0, 0, 'speed1'], ['2', 0, 0, 'speed2'], ['3', 0, 0, 'speed4'], ['4', 0, 0, 'speed8']] },
       { k: 'F W K', t: 'Flood, water, mosquito maps', b: [['f', 0, 0, 'overlayFlood'], ['w', 0, 0, 'overlayWater'], ['k', 0, 0, 'overlayMosquito']] },
       { k: 'P C E', t: 'Power, coverage, ecology maps', b: [['p', 0, 0, 'overlayPower'], ['c', 0, 0, 'overlayCoverage'], ['e', 0, 0, 'overlayEcology']] },
-      { k: 'H', t: 'Cycle the HUD (Shift+H: full)', b: [['h', 0, 0, 'hud'], ['h', 0, 1, 'hudFull']] },
+      { k: 'H', t: 'Hide the HUD (Shift+H: show)', b: [['h', 0, 0, 'hud'], ['h', 0, 1, 'hudFull']] },
       { k: '− =', t: 'Zoom out, in (or the wheel)', b: [['-', 0, 0, 'zoomOut'], ['=', 0, 0, 'zoomIn']] },
       { k: 'Arrows', t: 'Pan (or right-drag)', b: [['ArrowUp', 0, 0, 'panUp'], ['ArrowLeft', 0, 0, 'panLeft']] },
       { k: 'Home', t: "Back to Founders' Hall", b: [['Home', 0, 0, 'home']] },
@@ -2772,8 +2977,9 @@
     const us = el('div', 'seg'); host._uiScale = us; UI_SCALES.forEach(function (v) { const b = btn('btn-uiscale-' + Math.round(v * 100), Math.round(v * 100) + '%', 'seg-btn', function () { M.setUiScale(v); refreshSettingsPanel(stateOf(), host); }); b.dataset.scale = String(v); b.title = 'Interface size ' + Math.round(v * 100) + '%'; us.appendChild(b); });
     { const ab = btn('btn-uiscale-auto', 'Auto', 'seg-btn', function () { M.setUiScale('auto'); refreshSettingsPanel(stateOf(), host); }); ab.dataset.scale = 'auto'; ab.title = 'Pick the interface size from this window'; us.appendChild(ab); }   // P5
     const uw = el('div', 'seg-wrap'); const un = el('div', 'seg-note hidden', ''); host._uiNote = un; uw.appendChild(us); uw.appendChild(un); rowEl('UI size', uw);   // UI scale pass (C7)
-    const hs = el('div', 'seg'); host._hud = hs; [['full', 'Full'], ['compact', 'Compact'], ['hidden', 'Hidden']].forEach(function (d) { const b = btn('btn-hud-' + d[0], d[1], 'seg-btn', function () { M.setHudMode(d[0]); refreshSettingsPanel(stateOf(), host); }); b.dataset.hud = d[0]; b.title = d[0] === 'full' ? 'Every panel' : d[0] === 'compact' ? 'Each panel folds to a pill that opens on hover or click' : 'Only the decision toasts and a small chip'; hs.appendChild(b); });
-    const hw = el('div', 'seg-wrap'); hw.appendChild(hs); hw.appendChild(el('div', 'seg-note', 'H cycles Full → Compact → Hidden · Shift+H restores · the ▾ on a panel folds just that one')); rowEl('HUD', hw);   // hud + zoom pass
+    host._keepMap = chk('chk-keep-minimap', 'Keep the minimap open', function () { return !!M.settings().keepMinimap; }, function (v) { M.settings().keepMinimap = v; syncPopovers(); });   // U2: the Map popover stays pinned
+    host._keepOv = chk('chk-keep-overlays', 'Keep overlays visible', function () { return !!M.settings().keepOverlays; }, function (v) { M.settings().keepOverlays = v; syncPopovers(); });   // U2: the Layers popover stays open
+    rowEl('HUD', el('div', 'seg-note', 'H hides every panel for a clean view of the campus · Shift+H (or H again) brings it back'));
     // calm alerts pass: Alerts Normal / Quiet / Off
     const as = el('div', 'seg'); host._alerts = as; [['normal', 'Normal', 'Map beacons from severity 2 (at most 6), issue toasts once per kind per week'], ['quiet', 'Quiet', 'Beacons only for severity 3; no toasts except decisions'], ['off', 'Off', 'The Issues tray folds to its count; no beacons, no toasts']].forEach(function (d) { const b = btn('btn-alerts-' + d[0], d[1], 'seg-btn', function () { M.setAlertMode(d[0]); refreshSettingsPanel(stateOf(), host); }); b.dataset.alerts = d[0]; b.title = d[2]; as.appendChild(b); });
     const aw = el('div', 'seg-wrap'); aw.appendChild(as); aw.appendChild(el('div', 'seg-note', 'Low-priority rows (unlinked paths, mosquito hotspots) and muted kinds sit under Suggestions in the tray · the 🔔 on a tray row mutes that kind · hold I or toggle Spotlight to light every issue')); rowEl('Alerts', aw);
@@ -2789,12 +2995,11 @@
   }
   function refreshSettingsPanel(s, host) {
     if (!host) return;
-    [host._audio, host._particles, host._shake, host._cb].forEach(function (b) { if (!b || !b._get) return; const on = !!b._get(); setText(b, on ? 'On' : 'Off'); b.setAttribute('aria-pressed', on ? 'true' : 'false'); });
+    [host._audio, host._particles, host._shake, host._cb, host._keepMap, host._keepOv].forEach(function (b) { if (!b || !b._get) return; const on = !!b._get(); setText(b, on ? 'On' : 'Off'); b.setAttribute('aria-pressed', on ? 'true' : 'false'); });
     if (host._alerts) for (const b of host._alerts.children) cls(b, 'active', b.dataset.alerts === alertModeOf());   // calm alerts pass
     if (host._speed) for (const b of host._speed.children) cls(b, 'active', String(fin(s.ui.speed, 1)) === b.dataset.speed);
     if (host._vol) host._vol.value = String(fin(M.settings().volume, 0.5));
     if (host._uiScale) for (const b of host._uiScale.children) { const d = b.dataset.scale; cls(b, 'active', d === 'auto' ? uiMode === 'auto' : uiMode !== 'auto' && Number(d) === appliedScale); }
-    if (host._hud) for (const b of host._hud.children) cls(b, 'active', b.dataset.hud === hudModeOf());
     if (host._uiNote) { const lim = effScale < appliedScale - 0.005; const txt = uiMode === 'auto' ? 'Auto picks ' + Math.round(effScale * 100) + '% for this window.' : lim ? 'Limited to ' + Math.round(effScale * 100) + '% by this window size.' : ''; show(host._uiNote, !!txt); if (txt) setText(host._uiNote, txt); }
   }
   // Debug panel (built in; hidden; Backquote). ui_panels may re-register 'debug' with the full params tree.
@@ -2883,11 +3088,13 @@
     if (odo.holdUntil >= 0 && tickOf(s) >= odo.holdUntil) odo.holdUntil = -1;
     if (odo.holdUntil < 0) { odo.students += (students - odo.students) * k; if (Math.abs(students - odo.students) < 0.5) odo.students = students; }
     setText(E['stat-students-value'], fmtInt(odo.students));
-    // capacity chip
+    // the "cap N" suffix on the Students chip (the applicants line is in the needs popover); the badge dots: Students when a need binds, Cash when the runway is red
     const stage = fin(call('progress', 'tutorialStage', s), 6);
     const capOn = stage >= 5 || !!call('progress', 'offered', s, '4');
-    if (capOn !== capacityShown) { capacityShown = capOn; show(E['chip-capacity'], capOn); show(E['stat-students-label'], !capOn); }
-    if (capOn) { setText(E['chip-capacity'], 'Apps ' + fmtInt(e.applicants) + ' / Cap ' + fmtInt(e.capacity)); const ct = e.capacityTerms || {}; let bind = '', bv = Infinity; for (const key in ct) { if (Number.isFinite(ct[key]) && ct[key] < bv) { bv = ct[key]; bind = key; } } E['chip-capacity'].title = bind ? ({ beds: 'beds', seats: 'seats', dining: 'dining', wastewater: 'wastewater' }[bind] || bind) + ' are the bottleneck' : ''; }
+    if (capOn !== capacityShown) { capacityShown = capOn; show(E['chip-capacity'], capOn); }
+    if (capOn) { setText(E['chip-capacity'], 'cap ' + fmtInt(e.capacity)); const ct = e.capacityTerms || {}; let bind = '', bv = Infinity; for (const key in ct) { if (Number.isFinite(ct[key]) && ct[key] < bv) { bv = ct[key]; bind = key; } } const tt = 'Students · click for what the campus needs' + (bind ? ' (' + ({ beds: 'beds', seats: 'seats', dining: 'dining', wastewater: 'sewage' }[bind] || bind) + ' are the bottleneck)' : ''); if (E['stat-students'].title !== tt) E['stat-students'].title = tt; setText(E['needs-apps'], 'Applicants ' + fmtInt(e.applicants) + ' · capacity ' + fmtInt(e.capacity)); }
+    const nb = capOn && stage >= 4 ? needsNow(s) : null; show(E['stat-students-dot'], !!(nb && nb.binding && nb.binding.level !== 'ok'));
+    const rw = e.runway; show(E['stat-cash-dot'], cash < 0 || !!(rw && rw.red));
     // prestige / happiness / ecology
     [['prestige', e.prestige], ['happiness', e.happiness], ['ecology', e.ecology]].forEach(function (p) { const v = fin(p[1], 0); setText(E['stat-' + p[0] + '-value'], fmtInt(v)); E['stat-' + p[0]].title = p[0][0].toUpperCase() + p[0].slice(1) + ' ' + (Math.round(v * 10) / 10); });
     // date + sky glyph
@@ -2907,9 +3114,9 @@
     // speed buttons
     const sp = fin(s.ui.speed, 1); const sk = sp + '|' + (s.setPiece ? 'sp' : '');
     if (sk !== speedKey) { speedKey = sk; for (const v in E.speedBtns) { const b = E.speedBtns[v]; const on = Number(v) === sp; b.setAttribute('aria-pressed', on ? 'true' : 'false'); cls(b, 'active', on); b.disabled = !!s.setPiece; } }
-    // storm button
+    // the Storm item's live dot (the Menu list; the panel offers precautions with no storm, so it is never disabled)
     const st = call('weather', 'storm', s); const stormOn = !!(st && !st.nearMiss && st.phase >= STORM.NAMED && st.phase <= STORM.LANDFALL);
-    cls(E['btn-storm'], 'live', stormOn); E['btn-storm'].disabled = !stormOn;
+    cls(E['btn-storm'], 'live', stormOn);
     // mute glyph
     refreshMuteButtons();
     // HUD stat fade-in (tutorial)
@@ -2938,21 +3145,27 @@
     const def = ((BSU.data && BSU.data.milestones) || []).find(function (x) { return x.id === m.id; }) || {};
     return { id: 'ms:' + m.id, kind: 'milestone', kicker: 'Next milestone', title: m.name || '', text: def.text || '', why: def.reward ? '' : '', progress: fin(m.progress, 0), goal: fin(m.goal, 0), deadline: -1, target: null, next: ms[1] ? 'Then: ' + ms[1].name : '', showme: false, dismiss: false, postcard: false, capped: false };
   }
+  const GOAL_TOTAL = (function () { try { return Object.keys((BSU.data && BSU.data.objectives) || {}).filter(function (k) { return /^\d+$/.test(k); }).length; } catch (e) { return 0; } })();
   function updateObjective(s) {
     const o = call('progress', 'objective', s);
     const stage = fin(call('progress', 'tutorialStage', s), 6);
     const view = trackerView(s, o, stage);
     show(E['milestones-card'], false);   // the tracker carries the nearest milestone now
-    if (!view) { if (objKey !== '') { objKey = ''; show(E['objective-card'], false); show(E['speech-bubble'], false); } return; }
+    if (!view) { if (objKey !== '') { objKey = ''; goal.id = ''; goal.open = false; show(E['objective-card'], false); show(E['goal-pill'], false); show(E['speech-bubble'], false); } return; }
     const sp = !!s.setPiece;
     const key = view.id + '|' + view.title + '|' + view.text + '|' + view.progress + '/' + view.goal + '|' + (view.deadline >= 0 ? view.deadline : '') + '|' + (view.target || '') + '|' + view.next + '|' + (sp ? 'sp' : '') + '|' + (s.ui.tool ? s.ui.tool.id : '');
     if (key !== objKey) {
+      const changed = view.id !== goal.id; goal.id = view.id;
       objKey = key; bubble.since = clock; bubble.key = '';
-      setText(E['obj-kicker'], view.kicker); setText(E['obj-title'], view.title); setText(E['obj-text'], view.text);
+      const num = /^\d+$/.test(String(view.id)) ? String(view.id) : '';
+      setText(E['obj-kicker'], (changed && num ? 'New goal' : view.kicker) + (num && GOAL_TOTAL ? ' · ' + num + ' of ' + GOAL_TOTAL : '')); setText(E['obj-title'], view.title); setText(E['obj-text'], view.text);
+      show(E['obj-text'], !!view.text && String(view.text).replace(/\.\s*$/, '').toLowerCase() !== String(view.title).replace(/\.\s*$/, '').toLowerCase());   // U2: a text that only repeats the title stays out of the card
       setText(E['obj-why'], view.why); show(E['obj-why'], !!view.why);
       show(E['obj-prog-row'], view.goal > 1 || view.deadline >= 0);
-      show(E['obj-progress'], view.goal > 1); if (view.goal > 1) { const w = Math.round(clamp(view.progress / view.goal, 0, 1) * 100) + '%'; if (E['obj-fill'].style.width !== w) E['obj-fill'].style.width = w; }
-      setText(E['obj-count'], view.goal > 1 ? Math.round(view.progress) + ' / ' + view.goal : (view.deadline >= 0 ? 'by ' + BSU.formatDate(view.deadline) : ''));
+      const frac = view.goal > 1 ? clamp(view.progress / view.goal, 0, 1) : 0;
+      show(E['obj-progress'], view.goal > 1); if (view.goal > 1) { const w = Math.round(frac * 100) + '%'; if (E['obj-fill'].style.width !== w) E['obj-fill'].style.width = w; }
+      const countText = view.goal > 1 ? Math.round(view.progress) + ' / ' + view.goal : (view.deadline >= 0 ? 'by ' + BSU.formatDate(view.deadline) : '');
+      setText(E['obj-count'], countText);
       const tRow = view.target ? rowOf(view.target) : null; const selected = !!(s.ui.tool && tRow && s.ui.tool.id === view.target);
       show(E['btn-obj-build'], !!tRow && !sp); if (tRow) { setText(E['btn-obj-build'], selected ? 'Placing ' + tRow.name + '…' : 'Build it: ' + tRow.name); E['btn-obj-build'].dataset.id = view.target; E['btn-obj-build'].title = (tRow.blurb || '') + ' ' + money(tRow.cost); }
       show(E['btn-showme'], view.showme && !sp); show(E['btn-obj-dismiss'], view.dismiss && !sp);
@@ -2960,16 +3173,23 @@
       E['obj-title'].title = view.capped ? 'Pilings lift a building 3 ft above the flood line' : '';
       setText(E['obj-next'], view.next); show(E['obj-next'], !!view.next);
       show(E['obj-background'], false);
-      E['objective-card'].dataset.kind = view.kind;
-      show(E['objective-card'], true);
+      E['objective-card'].dataset.kind = view.kind; E['goal-pill'].dataset.kind = view.kind;
+      // the pill: "GOAL n" (or the milestone kicker) · title · count · the ring
+      setText(E['gp-kicker'], num ? 'Goal ' + num : (view.kind === 'milestone' ? 'Milestone' : 'Goal')); setText(E['gp-title'], view.title); setText(E['gp-count'], countText); show(E['gp-count'], !!countText);
+      try { E['gp-ring'].setAttribute('stroke-dashoffset', String(Math.round(56.5 * (1 - frac) * 10) / 10)); } catch (e) { /* stub */ }
+      E['goal-pill'].title = view.title + (countText ? ' · ' + countText : '') + ' · click for the goal card';
       call('render', 'drawPortrait', E['obj-portrait'], 0);
+      if (changed && !sp && !titleOn) goalOpen(true);   // a goal change opens the card on its own (it folds after 10 s without hover)
+      show(E['objective-card'], goal.open); show(E['goal-pill'], !goal.open && !sp);
     }
-    // needs strip once the Essentials tab exists (tutorial stage 4+); hidden while collapsed
+    if (sp && goal.open) goalCollapse();
+    if (goal.open && coach.step < 0 && !goal.hover && clock >= goal.until) goalCollapse();
+    // the needs gauges (in the Students popover) once the Essentials tab exists (tutorial stage 4+)
     const needsOn = stage >= 4 && !sp;
-    show(E['needs-strip'], needsOn); if (needsOn) refreshNeeds(s);
-    // speech bubble: idle 8 s → the last ticker line for 6 s (not while collapsed)
+    show(E['needs-strip'], needsOn); show(E['needs-empty'], !needsOn); if (needsOn) refreshNeeds(s);
+    // speech bubble (inside the open card): idle 8 s → the last news line for 6 s
     const bubOn = !E['speech-bubble'].classList.contains('hidden');
-    if (sp || coach.step >= 0) { if (bubOn) { show(E['speech-bubble'], false); bubble.since = clock; } return; }
+    if (sp || coach.step >= 0 || !goal.open) { if (bubOn) { show(E['speech-bubble'], false); bubble.since = clock; } return; }
     if (!bubOn && clock - bubble.since >= L.bubbleIdleMs && s.ticker && s.ticker.length) {
       const line = s.ticker[s.ticker.length - 1]; const bk = line.text + '|' + line.tick;
       if (bk !== bubble.key) { bubble.key = bk; bubble.until = clock + L.bubbleMs; setText(E['speech-bubble'], line.text); show(E['speech-bubble'], true); call('render', 'drawPortrait', E['obj-portrait'], 1); }
@@ -2978,26 +3198,12 @@
   }
 
   // ---------------------------------------------------------------------------
-  // Ticker (60 px/s), ticker log
+  // News (U2: state.ticker lines as snackbars; the Log panel is the history)
   // ---------------------------------------------------------------------------
-  /** re-read state.ticker (progress pushes) */
-  M.ticker = function (state) { tk.lastLen = -1; if (tk.logOpen) rebuildLog(state || stateOf()); };
-  function nextTickerLine(s) {
-    const lines = s.ticker || []; if (!lines.length) return null;
-    if (tk.seen < lines.length) { const l = lines[tk.seen]; tk.seen++; return l; }
-    const recent = lines.slice(Math.max(0, lines.length - 5)); const l = recent[tk.cycle % recent.length]; tk.cycle = (tk.cycle || 0) + 1; return l;
-  }
-  function updateTicker(s, dtMs) {
-    const lines = s.ticker || [];
-    if (tk.lastLen !== lines.length) { tk.lastLen = lines.length; if (tk.seen > lines.length) tk.seen = Math.max(0, lines.length - 1); if (lines.length && lines.length - tk.seen > 3) tk.seen = lines.length - 3; }
-    const vw = fin(E.ticker.clientWidth, fin(window.innerWidth, 1280)) || 1280;
-    if (!tk.line) { tk.line = nextTickerLine(s); if (!tk.line) { setText(E['ticker-track'], ''); return; } setText(E['ticker-track'], tk.line.text || ''); E['ticker-track'].dataset.kind = tk.line.kind || 'info'; tk.x = vw; tk.w = fin(E['ticker-track'].offsetWidth, 0) || (String(tk.line.text || '').length * 7); }
-    tk.x -= L.tickerPxPerSec * dtMs / 1000;
-    if (tk.x < -tk.w - 40) { tk.line = null; return; }
-    const tr = 'translateX(' + Math.round(tk.x) + 'px)'; if (E['ticker-track'].style.transform !== tr) E['ticker-track'].style.transform = tr;
-  }
-  function rebuildLog(s) {
-    if (!dom() || !s) return; const lg = E['ticker-log']; clear(lg);
+  /** re-read state.ticker (progress pushes): the next update shows any new line; an open Log panel refreshes */
+  M.ticker = function (state) { tk.lastLen = -1; const s = state || stateOf(); if (s && s.ui && s.ui.panel === 'log' && dom()) refreshPanel(s, 'log'); };
+  function rebuildLog(s, lg) {
+    if (!dom() || !s || !lg) return; clear(lg);
     const lines = (s.ticker || []).slice(-L.logMax).reverse();
     if (!lines.length) lg.appendChild(el('div', 'log-line muted', 'Nothing yet.'));
     for (const l of lines) { const d = el('div', 'log-line'); d.dataset.kind = l.kind || 'info'; d.appendChild(el('span', 'log-day', BSU.formatDate(fin(l.day, 0)))); d.appendChild(el('span', 'log-text', l.text || '')); if (Number.isFinite(l.subject) && l.subject >= 0) d.addEventListener('click', function () { const p = tileOf(l.subject); call('render', 'panToTile', p.tx, p.ty); }); lg.appendChild(d); }
@@ -3006,10 +3212,13 @@
   // ---------------------------------------------------------------------------
   // Set pieces, perf chip, uiQueue
   // ---------------------------------------------------------------------------
+  let fabShown = null;
   function updateSetPiece(s) {
-    const sp = s.setPiece; const hidePalette = !!sp || titleOn || !paletteKey.split('|')[0];
+    const sp = s.setPiece; const hasTabs = !!paletteKey.split('|')[0]; const hidePalette = !!sp || titleOn || !hasTabs || !pal.open;   // U2: the Build sheet shows only while open
     if (hidePalette !== paletteHidden) { paletteHidden = hidePalette; show(E.palette, !hidePalette); cls(E.hud, 'no-palette', hidePalette); if (hidePalette) hideTooltip(); }   // a palette-item tooltip must not outlive the palette
-    cls(E.hud, 'setpiece', !!sp); cls(E['objective-card'], 'collapsed', !!sp);
+    const fabOn = !sp && !titleOn && hasTabs && !pal.open && !card && !bm.open && !menuEdit && !s.ui.panel;   // the FAB hides while the sheet, a panel, a card or the build menu is open
+    if (fabOn !== fabShown) { fabShown = fabOn; show(E['fab-build'], fabOn); }
+    cls(E.hud, 'setpiece', !!sp);
     if (sp && bm.open) M.closeBuildMenu();
     const skip = !!(sp && sp.skippable && fin(sp.tick, 0) >= L.skipAfterTick);
     if (skip !== skipShown) { skipShown = skip; show(E['btn-skip'], skip); }
@@ -3050,7 +3259,7 @@
   M.update = function (state, dtMs) {
     if (!inited || !state || !state.ui) return;
     root = state; dtMs = fin(dtMs, 16.67); clock += dtMs;
-    if (dom()) { try { const raw = M.settings().uiScale; const want = wantScale(raw); if (want !== appliedScale || (isAuto(raw) ? 'auto' : want) !== uiMode) applyScale(raw); if (clock - fitAt > 1000) { fitAt = clock; const tb = E.topbar; if (tb && fitLevel < 6 && tb.scrollWidth > tb.clientWidth + 1) fitTopbar(); } } catch (e) { /* stub */ } }
+    if (dom()) { try { const raw = M.settings().uiScale; const want = wantScale(raw); if (want !== appliedScale || (isAuto(raw) ? 'auto' : want) !== uiMode) applyScale(raw); if (clock - fitAt > 1000) { fitAt = clock; const tb = E.topbar; if (tb && fitLevel < 2 && tb.scrollWidth > tb.clientWidth + 1) fitTopbar(); } } catch (e) { /* stub */ } }
     if (titleOn) { sec('title', function (s) { refreshMuteButtons(); if (s.ui.panel) updatePanels(s); }, state, dtMs); return; }
     sec('queue', drainQueue, state, dtMs);
     sec('pan', heldPan, state, dtMs);
@@ -3063,7 +3272,8 @@
     sec('toast', updateToast, state, dtMs);
     sec('cards', updateCards, state, dtMs);
     sec('inspect', function (s) { if (insp && (inspDirty || clock - inspAt >= L.refreshMs)) refreshInspect(s); }, state, dtMs);
-    sec('ticker', updateTicker, state, dtMs);
+    sec('news', updateNews, state, dtMs);
+    sec('popovers', function (s) { syncPopovers(); if (popVisible('budget')) refreshMiniBudget(s); }, state, dtMs);   // U2
     sec('palette', function (s) { if (paletteDirty) M.refreshPalette(s); else refreshPips(s); }, state, dtMs);
     sec('buildmenu', updateBuildMenu, state, dtMs);
     sec('coach', updateCoach, state, dtMs);
@@ -3075,27 +3285,29 @@
     sec('undochip', updateUndoChip, state, dtMs);
     sec('perf', updatePerf, state, dtMs);
     sec('issues', updateIssues, state, dtMs);
-    sec('legend', function (s) { const ov = fin(s.ui.overlay, 0); const list = (BSU.data && BSU.data.overlays) || []; for (const o of list) cls(E.ovBtns[o.ov], 'active', o.ov === ov); const o = list.find(function (x) { return x.ov === ov; }); show(E.legend, !!o); if (o) setText(E.legend, o.name + ' · ' + o.legend.join(' → ')); }, state, dtMs);
+    sec('legend', function (s) { const ov = fin(s.ui.overlay, 0); const list = (BSU.data && BSU.data.overlays) || []; for (const o of list) { const on = o.ov === ov; cls(E.ovBtns[o.ov], 'active', on); E.ovBtns[o.ov].setAttribute('aria-pressed', on ? 'true' : 'false'); } const o = list.find(function (x) { return x.ov === ov; }) || null; refreshLegend(o); const lit = E['ov-lit']; show(lit, !!o); if (o) { setText(lit, o.key); lit.title = o.name + ' overlay on (' + o.key + ' turns it off)'; } }, state, dtMs);   // U2: the filter chips, the legend and the lit chip in the bar
   };
   /** every newGame (fresh) and load: close everything, tool null, palette refresh from the new root */
   M.reset = function (state, fresh) {
     try {
       root = state || null; void fresh;
+      if (state && state.ui && state.ui.settings && state.ui.settings !== migratedFor) { migratedFor = state.ui.settings; try { migrateSettings(); } catch (e) { uerr('migrateSettings', e); } }   // U2: the old hudMode / hudCollapsed keys leave on the first game that carries them
       toolLocked = false; live.down = null; live.run = []; live.runTile = -1; mcSet(live, 'IDLE');
       if (state && state.ui) { state.ui.tool = null; state.ui.panel = null; }
       card = null; cardQueue.length = 0; toast = null; toastQueue.length = 0; for (const k in gameDecs) delete gameDecs[k]; insp = null; renaming = null; focusedInput = null; hint = null; manualAlert = null; itemHover = null; hoverKey = '';
-      for (let k = notifs.length - 1; k >= 0; k--) { notifs[k].closed = true; } notifs.length = 0;
+      for (let k = notifs.length - 1; k >= 0; k--) { notifs[k].closed = true; } notifs.length = 0; snackQueue.length = 0;
       odo.cash = NaN; odo.students = NaN; odo.lastStudents = NaN; odo.holdUntil = -1; odo.deltaUntil = 0;
-      tk = { x: 0, line: null, seen: Math.max(0, ((state && state.ticker) || []).length - 1), w: 0, lastLen: -1, logOpen: false, cycle: 0 };
+      tk = { seen: Math.max(0, ((state && state.ticker) || []).length - 1), lastLen: -1 };   // the latest line shows once after a load
       alertClosedKey = ''; tray.suggestOpen = false; tray.sopen = {};
+      pops.open = null; goal.open = false; goal.id = ''; goal.hover = false; pal.open = false; fabShown = null; legendKey = ''; mbAt = -1e9;   // U2
       bubble = { since: clock, until: 0, key: '' }; objKey = ''; alertKey = ''; alertAt = -1e9; msAt = -1e9; speedKey = ''; paletteKey = ''; palShownTab = ''; pipKey = ''; paletteDirty = true; capacityShown = false; skipShown = false; paletteHidden = null; hudFade = false;   // null: the first updateSetPiece re-syncs #palette and #hud.no-palette (a stale no-palette from the title / tutorial left a 0-height palette after newGame/load)
       M.debug.open = false; M.hoverTile = -1; lastGhost = null;
       tray.key = ''; tray.rows = []; tray.hadIssues = false; tray.clearAt = -1e9; heldI = false; spotToggled = false; try { if (BSU.issues) { BSU.issues.select(null); BSU.issues.spotlight(false); BSU.issues.pulse(null); } } catch (e) { /* */ }
       bm.open = false; bm.hover = null; bm.selected = null; bm.pulseId = null; bm.key = ''; bm.detailKey = ''; bm.dirty = true; needsCache = null; needsAt = -1e9; needsKey = ''; coach.step = -1; coach.armedAt = 0; coach.paused = false;
       for (const k in held) held[k] = false;
       if (dom()) {
-        show(E.cards, false); clear(E.cards); show(E['decision-toast'], false); show(E.inspect, false); cls(E.hud, 'inspect-open', false); show(E['ghost-label'], false); show(E.tooltip, false); show(E.popover, false); show(E.hint, false); show(E['voice-card'], false); show(E['alert-strip'], false); show(E['ticker-log'], false); show(E['btn-skip'], false); show(E.palette, true); show(E['build-menu'], false); cls(E.hud, 'bm-open', false); show(E.coach, false); cls(E['objective-card'], 'collapsed', false);
-        clear(E.notifications); show(E['notif-dismiss'], false); setText(E['ticker-track'], ''); E['ticker-track'].style.transform = 'translateX(0px)';
+        show(E.cards, false); clear(E.cards); show(E['decision-toast'], false); show(E.inspect, false); cls(E.hud, 'inspect-open', false); show(E['ghost-label'], false); show(E.tooltip, false); show(E.hint, false); show(E['voice-card'], false); show(E['alert-strip'], false); show(E['btn-skip'], false); show(E.palette, false); show(E['fab-build'], false); show(E['build-menu'], false); cls(E.hud, 'bm-open', false); show(E.coach, false); show(E['objective-card'], false); show(E['goal-pill'], false);
+        syncPopovers(); clear(E.notifications); show(E['notif-dismiss'], false);
         for (const name in panels) { const p = panels[name]; if (p.el) show(p.el, false); }
         if (E.hud) E.hud.dataset.panel = '';
         call('render', 'ghost', null);
@@ -3121,7 +3333,7 @@
       for (const k of need) A(seen.has(keyId(k, false, false)), 'key missing: ' + k);
       A(seen.has(keyId('s', true, false)) && seen.has(keyId('z', true, false)) && seen.has(keyId('p', true, false)), 'ctrl S/Z/P present');
       A(!seen.has(keyId('q', false, false)), 'q is unbound');
-      A(seen.has(keyId('g', false, false)) && keymap().get(keyId('g', false, false)) === 'buildMenu', 'G opens the build menu');
+      A(keymap().get(keyId('g', false, false)) === 'palette' && keymap().get(keyId('g', false, true)) === 'buildMenu', 'G toggles the Build sheet, Shift+G the full build menu');
       // UX pass helpers (pure over the private state)
       s.economy.students = 500; const nd = needsOf(s); A(nd.terms.length === 5 && nd.binding && nd.binding.build === 'dorm' && /Beds full/.test(nd.binding.text), 'needs: 500 students, no beds → Beds full → dorm (' + (nd.binding && nd.binding.text) + ')');
       const rc = recommend(s); A(rc.dorm === 'Needed', 'recommend marks the binding fix (' + JSON.stringify(rc) + ')');
@@ -3177,7 +3389,7 @@
       A(tabVisible('housing', true, 0) === false && tabVisible('housing', true, 2) === true && tabVisible('essentials', true, 0) === true && tabVisible('paths', false, 3) === false, 'tab visibility rule');
       // 9. skeleton through M.el
       if (inited) {
-        const ids = ['hud', 'topbar', 'brand', 'stat-cash', 'stat-students', 'chip-capacity', 'stat-prestige', 'stat-happiness', 'stat-ecology', 'stat-date', 'sky-glyph', 'chip-weather', 'speed', 'btn-budget', 'btn-season', 'btn-storm', 'btn-land', 'btn-almanac', 'btn-menu', 'btn-mute', 'chip-endowed', 'alert-strip', 'alert-icon', 'alert-text', 'alert-action', 'alert-gator', 'minimap-wrap', 'minimap', 'minimap-viewport', 'overlay-buttons', 'legend', 'objective-card', 'obj-portrait', 'obj-title', 'obj-text', 'obj-progress', 'obj-count', 'btn-showme', 'btn-obj-dismiss', 'obj-background', 'speech-bubble', 'voice-card', 'milestones-card', 'notifications', 'decision-toast', 'dt-text', 'dt-countdown', 'btn-dt-yes', 'btn-dt-no', 'inspect', 'insp-title', 'insp-sub', 'btn-insp-close', 'insp-sprite', 'insp-body', 'insp-actions', 'ghost-label', 'undo-chip', 'tooltip', 'popover', 'pop-title', 'pop-next', 'ticker', 'ticker-track', 'btn-ticker-log', 'ticker-log', 'palette', 'palette-tabs', 'palette-items', 'btn-bulldoze', 'btn-palette-info', 'cards', 'perf-chip', 'perfmode-chip', 'hint', 'panels', 'title', 'title-name', 'title-tag', 'btn-charter', 'btn-continue', 'title-seed', 'btn-title-settings', 'btn-title-mute', 'title-campus'];
+        const ids = ['hud', 'topbar', 'brand', 'stat-cash', 'stat-students', 'chip-capacity', 'stat-prestige', 'stat-happiness', 'stat-ecology', 'date-chip', 'stat-date', 'sky-glyph', 'chip-weather', 'speed', 'btn-alerts', 'alerts-badge', 'ov-lit', 'btn-layers', 'btn-map', 'btn-menu', 'btn-mute', 'chip-endowed', 'btn-budget', 'btn-season', 'btn-storm', 'btn-land', 'btn-almanac', 'btn-milestones', 'btn-log', 'btn-settings', 'btn-howto', 'btn-about', 'alert-strip', 'alert-icon', 'alert-text', 'alert-action', 'alert-gator', 'goal-pill', 'gp-kicker', 'gp-title', 'gp-count', 'pop-needs', 'pop-budget', 'pop-alerts', 'pop-layers', 'pop-map', 'pop-menu', 'btn-map-pin', 'mb-income', 'mb-net', 'btn-mb-open', 'minimap-wrap', 'minimap', 'minimap-viewport', 'overlay-buttons', 'legend', 'objective-card', 'obj-portrait', 'obj-title', 'obj-text', 'obj-progress', 'obj-count', 'btn-showme', 'btn-obj-dismiss', 'btn-goal-collapse', 'obj-background', 'speech-bubble', 'needs-strip', 'needs-text', 'needs-apps', 'voice-card', 'milestones-card', 'snack-lane', 'notifications', 'notif-dismiss', 'decision-toast', 'dt-text', 'dt-countdown', 'btn-dt-yes', 'btn-dt-no', 'inspect', 'insp-title', 'insp-sub', 'btn-insp-close', 'insp-sprite', 'insp-body', 'insp-actions', 'ghost-label', 'undo-chip', 'tooltip', 'popover', 'pop-title', 'pop-next', 'palette', 'palette-tabs', 'palette-items', 'btn-bulldoze', 'btn-palette-info', 'btn-palette-close', 'fab-build', 'cards', 'perf-chip', 'perfmode-chip', 'hint', 'hud-chip', 'panels', 'title', 'title-name', 'title-tag', 'btn-charter', 'btn-continue', 'title-seed', 'btn-title-settings', 'btn-title-mute', 'title-campus'];
         for (const id of ids) A(isEl(E[id]) && E[id].id === id, 'skeleton id through M.el: ' + id);
         A(E.msRows.length === 3 && E.popLines.length === L.popLines && Object.keys(E.speedBtns).length === 5 && Object.keys(E.ovBtns).length === 6, 'ms-rows, pop-lines, speed and overlay buttons exist');
       } else notes.push('skeleton check skipped (init not run)');

@@ -2792,9 +2792,9 @@
     if (frameNo - FB.hudAt < 120) return;
     FB.hudAt = frameNo;
     try {
-      const tb = document.getElementById('topbar'), tk = document.getElementById('ticker');
+      const tb = document.getElementById('topbar'), pal = document.getElementById('palette');   // UI refresh U2: the ticker is gone; the Build sheet (palette) is the only bottom chrome, and it hides during a set piece
       if (tb && Number.isFinite(tb.offsetHeight) && tb.offsetHeight > 0) FB.hudTop = tb.offsetHeight;
-      if (tk && Number.isFinite(tk.offsetHeight)) FB.hudBot = tk.offsetHeight;
+      FB.hudBot = (pal && pal.classList && !pal.classList.contains('hidden') && Number.isFinite(pal.offsetHeight)) ? pal.offsetHeight : 0;
     } catch (e) { /* headless */ }
   }
   function fbEllipsis(g, text, maxW) {

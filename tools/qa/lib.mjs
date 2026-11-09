@@ -250,7 +250,7 @@ export async function openGame(opts = {}) {
   // ---- UI helpers (real clicks on real DOM) ----
   /** close whatever can block a click: open cards, the notification stack, optionally the open panel (never the armed tool) */
   g.clearUi = async ({ panel = true } = {}) => {
-    await ev(`(function () { try { BSU.ui.closeCard(); } catch (e) {} try { BSU.ui.dismissNotifs(); } catch (e) {} ${panel ? 'try { if (BSU.state.ui.panel) BSU.ui.openPanel(null); } catch (e) {}' : ''} return true; })()`);
+    await ev(`(function () { try { BSU.ui.closeCard(); } catch (e) {} try { BSU.ui.dismissNotifs(); } catch (e) {} try { if (BSU.ui.closePopover) BSU.ui.closePopover(); } catch (e) {} try { if (BSU.ui.goalOpen) BSU.ui.goalOpen(false); } catch (e) {} ${panel ? 'try { if (BSU.state.ui.panel) BSU.ui.openPanel(null); } catch (e) {}' : ''} return true; })()`);   // U2: the open popover and the goal card too
     await sleep(60);
   };
   /** wait until the camera stops moving (pan eases, zoom steps): two identical readings 70 ms apart */
@@ -269,6 +269,7 @@ export async function openGame(opts = {}) {
   };
   /** arm a catalog tool the way a player does: open its palette tab, click its item. Falls back to selectTool (noted) when the item is not clickable. */
   g.pickTool = async (id) => {
+    await ev(`(function () { if (BSU.ui.openPalette && !BSU.ui.paletteOpen()) BSU.ui.openPalette(true); return true; })()`); await sleep(120);   // U2: the palette is the Build sheet, hidden at rest
     const tab = await ev(`(function () { var t = BSU.data.tabs.find(function (t) { return t.rows.indexOf(${JSON.stringify(id)}) >= 0; }); return t ? t.id : null; })()`);
     if (tab && (await ev(`BSU.state.ui.paletteTab`)) !== tab) { await g.clickEl(`#palette-tabs .tab[data-tab="${tab}"]`); await sleep(100); }
     const clicked = await g.clickEl(`#palette-items [data-id="${id}"]`);

@@ -779,7 +779,8 @@
       cardWordsMax: 12,                      // §10.1
       touchTargetPx: 44,                     // §11.7
       zoomSteps: [0.5, 0.65, 0.8, 1, 1.25, 1.5, 1.75, 2, 2.5],   // hud + zoom pass: the player's zoom steps (+ / − / wheel); render.zooms stay the three MASTER zooms the atlas and chunks are baked at
-      hudModes: ['full', 'compact', 'hidden']   // hud + zoom pass: H cycles, Shift+H → full (ui.setHudMode)
+      hudModes: ['full', 'hidden'],          // UI refresh U2: H hides the HUD (screenshots), Shift+H / H restores; not a setting any more (ui.setHudMode)
+      snackMs: 6000, snackMax: 2             // UI refresh U2: news and notification snackbars (bottom-centre lane): 6 s each, two visible, the rest queue
     },
     art: {                                   // docs/PLAN_HD_ART.md (H0 pipeline pass): the HD brush pipeline
       hd: {
@@ -1347,7 +1348,7 @@
         camera: { x: (founders.tx - founders.ty) * 32, y: (founders.tx + founders.ty) * 16, zoom: 1, tx: 0, ty: 0, follow: -1 },
         overlay: BSU.OV.NONE, speed: 1, speedBefore: 1, tool: null, panel: null, paletteTab: 'essentials',
         tabsSeen: {}, newPips: {}, tabsIntroduced: {},
-        settings: { volume: P.audio.defaultVolume, muted: false, particles: 'high', shake: true, colorblind: false, autoSimHint: false, coachSeen: false, hudMode: 'full', hudCollapsed: { goals: false, needs: false, minimap: false, issues: false, palette: false }, alerts: 'normal', mutedIssues: {}, tieCardSeen: false },   // paths pass: tieCardSeen = the one-time "Tied in" card has shown. hud + zoom pass: hudMode full | compact | hidden; hudCollapsed = per-element pills in full mode (ui.hudCollapse). calm alerts pass: alerts normal | quiet | off, mutedIssues {kind: true}
+        settings: { volume: P.audio.defaultVolume, muted: false, particles: 'high', shake: true, colorblind: false, autoSimHint: false, coachSeen: false, keepMinimap: false, keepOverlays: false, alerts: 'normal', mutedIssues: {}, tieCardSeen: false },   // paths pass: tieCardSeen = the one-time "Tied in" card has shown. UI refresh U2: keepMinimap / keepOverlays pin the Map / Layers popovers open (the old hudMode / hudCollapsed keys are read once by ui.js on load and dropped). calm alerts pass: alerts normal | quiet | off, mutedIssues {kind: true}
         issues: { snoozed: {}, dismissed: {} },   // calm alerts pass: the Issues tray's snoozes {id: {until (tick), severity, days}} and dismissals {id: sig}, saved with the game
         perfMode: false
       },

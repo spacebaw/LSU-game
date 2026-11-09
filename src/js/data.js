@@ -1268,8 +1268,9 @@
     { key: '1', action: 'pick1', shift: true }, { key: '2', action: 'pick2', shift: true }, { key: '3', action: 'pick3', shift: true },
     { key: '4', action: 'pick4', shift: true }, { key: '5', action: 'pick5', shift: true }, { key: '6', action: 'pick6', shift: true },
     { key: '7', action: 'pick7', shift: true }, { key: '8', action: 'pick8', shift: true }, { key: '9', action: 'pick9', shift: true },
-    { key: 'g', action: 'buildMenu' }, { key: 'x', action: 'bulldoze' }, { key: 'r', action: 'rotate' }, { key: 'Home', action: 'home' }, { key: '.', action: 'follow' },
-    { key: 'h', action: 'hud' }, { key: 'h', action: 'hudFull', shift: true },   // hud + zoom pass: H cycles full → compact → hidden, Shift+H restores full (Home now pans to Founders' Hall)
+    { key: 'g', action: 'palette' }, { key: 'g', action: 'buildMenu', shift: true },   // UI refresh U2: G toggles the Build sheet (the palette, same as the Build FAB); Shift+G opens the full build menu
+    { key: 'x', action: 'bulldoze' }, { key: 'r', action: 'rotate' }, { key: 'Home', action: 'home' }, { key: '.', action: 'follow' },
+    { key: 'h', action: 'hud' }, { key: 'h', action: 'hudFull', shift: true },   // hud + zoom pass / U2: H hides the HUD, Shift+H (or H again) restores it (Home now pans to Founders' Hall)
     { key: 'Escape', action: 'escape' },
     { key: 's', action: 'save', ctrl: true }, { key: 'z', action: 'undo', ctrl: true }, { key: 'p', action: 'postcard', ctrl: true },
     { key: 'm', action: 'mute' },
@@ -1409,7 +1410,7 @@
   const coach = [
     { id: 'stats', target: 'stats', title: 'Your money and your campus', text: 'Cash pays for buildings and upkeep; students pay tuition. Prestige, Happiness and Ecology grow next year’s applicant pool. Click any number for the breakdown.' },
     { id: 'goals', target: 'objective-card', title: 'Your current goal', text: 'Ms. Thibodeaux keeps the goal here, with why it matters. “Build it” opens the right building; “Show me” pans the camera there. Click the card to see every milestone.' },
-    { id: 'menu', target: 'build-menu', title: 'The build menu', text: 'Press G, or the gold Build button, any time. Pick a category on the left, then a building. Gold ★ marks what the campus needs right now; greyed cards tell you what unlocks them.' },
+    { id: 'menu', target: 'build-menu', title: 'The build menu', text: 'The gold Build button (or G) opens the quick bar; Shift+G opens this full menu. Pick a category on the left, then a building. Gold ★ marks what the campus needs right now; greyed cards tell you what unlocks them.' },
     { id: 'place', target: '', title: 'Placing things', text: 'Click a tile to place a building. Paths, roads, levees and canals are dragged. Esc or right-click cancels. The label beside the cursor says why a spot will not work.' },
     { id: 'needs', target: 'needs-strip', title: 'What the campus needs', text: 'Beds, seats, dining, power and water: used against capacity. Whichever is full is the brake on enrollment; click the line under the gauges to build the fix.' },
     { id: 'swamp', target: 'overlay-buttons', title: 'Mind the water', text: 'This is a swamp. F shows flood risk. Levees keep the surge out; canals and pumps move the rain to the bayou. Célestine comes in Year 1.' }
@@ -1541,7 +1542,7 @@
       check(['beds', 'seats', 'dining', 'power', 'water', 'wastewater', 'parking'].every(k => D.needs[k] && !!C[D.needs[k].build] && D.needs[k].label.length > 0), 'needs table');
       check(['power', 'water', 'path', 'road', 'marsh'].every(k => D.requirements[k].glyph && D.requirements[k].text) && Object.keys(D.requirements.place).length === 17, 'requirements table')   // L3: + PLACE.FILL;
       check(D.coach.length === 6 && D.coach.every(c => c.id && c.title && c.text.length > 0 && typeof c.target === 'string'), '6 coach steps');
-      check(D.keys.some(k => k.key === 'g' && k.action === 'buildMenu' && !k.ctrl && !k.shift) && !D.keys.some(k => k.key === 'q'), 'G opens the build menu; Q stays unbound');
+      check(D.keys.some(k => k.key === 'g' && k.action === 'palette' && !k.ctrl && !k.shift) && D.keys.some(k => k.key === 'g' && k.action === 'buildMenu' && !k.ctrl && k.shift) && !D.keys.some(k => k.key === 'q'), 'G toggles the Build sheet, Shift+G the full build menu; Q stays unbound');
       check(D.overlays.length === 6 && D.overlays[2].legend.join() === 'Ambient,Annoying,Biblical,State Bird', '6 overlays, K legend');
       check(D.failureCards.bankruptcy.options.length === 3 && D.failureCards.underwater.options.length === 1 && D.failureCards.probation.options.length === 1, 'failure cards');
       // 8. frozen

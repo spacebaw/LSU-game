@@ -277,22 +277,35 @@ scenario('save-load', 'save then load (identical snapshot), then load the v1 fix
   await g.clearUi();
 });
 
-scenario('hud-modes', 'H cycles full > compact > hidden; Shift+H returns to full', async (c) => {
+scenario('hud-modes', 'H hides the HUD, H again or Shift+H restores it; not a setting (U2); the popovers open one at a time', async (c) => {
   const { g } = c;
   await c.fresh();
   const mode = () => g.eval(`BSU.ui.hudMode()`), dom = () => g.eval(`document.getElementById('hud').dataset.hud`);
-  c.ok((await mode()) === 'full', 'starts in the full HUD');
-  const seen = [];
-  for (let i = 0; i < 3; i++) { await g.key('h'); await sleep(150); seen.push(await mode()); c.ok((await dom()) === seen[i], `H #${i + 1}: ${seen[i]} (the DOM follows)`); if (seen[i] === 'compact') await c.shot('hud-compact'); if (seen[i] === 'hidden') await c.shot('hud-hidden'); }
-  c.ok(seen.join('>') === 'compact>hidden>full', `H cycles ${seen.join(' > ')}`);
+  c.ok((await mode()) === 'full' && (await g.eval(`BSU.ui.hudModes().join()`)) === 'full,hidden', 'starts in the full HUD; the two states are full / hidden');
+  await g.key('h'); await sleep(150);
+  c.ok((await mode()) === 'hidden' && (await dom()) === 'hidden' && await g.elVisible('#hud-chip'), 'H hides the HUD (the "HUD hidden" chip shows)'); await c.shot('hud-hidden');
   await g.key('h'); await sleep(120);
-  c.ok((await mode()) === 'compact', 'compact again');
-  await g.key('h', { shift: true }); await sleep(150);
-  c.ok((await mode()) === 'full', 'Shift+H returns to full');
-  await g.key('h'); await g.key('h'); await sleep(100);
-  c.ok((await mode()) === 'hidden' && (await g.eval(`BSU.ui.settings().hudMode`)) === 'hidden', 'the mode is a saved setting (hidden)');
-  await g.key('h', { shift: true }); await sleep(100);
-  await g.eval(`(BSU.ui.setHudMode('full'), true)`);
+  c.ok((await mode()) === 'full' && (await dom()) === 'full', 'H again restores it');
+  await g.key('h'); await g.key('h', { shift: true }); await sleep(150);
+  c.ok((await mode()) === 'full', 'Shift+H restores too');
+  c.ok((await g.eval(`!('hudMode' in BSU.ui.settings()) && !('hudCollapsed' in BSU.ui.settings()) && typeof BSU.ui.settings().keepMinimap === 'boolean'`)), 'hudMode / hudCollapsed are gone from the settings; keepMinimap is there');
+  // the at-rest screen and its popovers (a fresh game opens the goal card for its first goal: fold it first)
+  await g.clearUi(); await sleep(150);
+  c.ok(await g.elVisible('#goal-pill') && !(await g.elVisible('#objective-card')) && await g.elVisible('#fab-build') && !(await g.elVisible('#palette')) && !(await g.elVisible('#pop-needs')), 'at rest: the goal pill and the Build FAB; no card, no sheet, no popover');
+  await g.clickEl('#stat-students'); await sleep(250);
+  c.ok((await g.eval(`BSU.ui.popover()`)) === 'needs' && await g.elVisible('#pop-needs') && await g.elVisible('#needs-strip'), 'the Students chip opens the needs popover'); await c.shot('pop-needs');
+  await g.clickEl('#btn-alerts'); await sleep(250);
+  c.ok((await g.eval(`BSU.ui.popover()`)) === 'alerts' && !(await g.elVisible('#pop-needs')) && await g.elVisible('#pop-alerts'), 'Alerts replaces it (one at a time)'); await c.shot('pop-alerts');
+  await g.key('Escape'); await sleep(150);
+  c.ok((await g.eval(`BSU.ui.popover()`)) === null && !(await g.elVisible('#pop-alerts')), 'Escape closes the open popover');
+  await g.clickEl('#btn-map'); await sleep(250); await g.clickEl('#btn-map-pin'); await sleep(250);
+  c.ok((await g.eval(`BSU.ui.settings().keepMinimap === true`)) && await g.elVisible('#pop-map'), 'the Map pin keeps the minimap open (a setting)');
+  await g.clickEl('#btn-map'); await sleep(250);
+  c.ok((await g.eval(`BSU.ui.settings().keepMinimap === false`)) && !(await g.elVisible('#pop-map')), 'the Map icon unpins and closes it');
+  await g.clickEl('#goal-pill'); await sleep(250);
+  c.ok(await g.elVisible('#objective-card') && !(await g.elVisible('#goal-pill')), 'the goal pill opens the goal card'); await c.shot('goal-card');
+  await g.eval(`(BSU.ui.dismissNotifs(), true)`); await g.key('Escape'); await sleep(150);
+  c.ok(await g.elVisible('#goal-pill') && !(await g.elVisible('#objective-card')), 'Escape folds it back to the pill');
 });
 
 scenario('zoom-steps', 'every zoom step at dpr 1 and dpr 2, with real frames at each', async (c) => {
@@ -328,6 +341,8 @@ scenario('build-tabs', 'every build tab: click it, count its items; Tab / Shift+
   const tabs = await g.eval(`BSU.data.tabs.map(function (t) { return { id: t.id, n: t.rows.length }; })`);
   await g.eval(`(BSU.data.tabs.forEach(function (t) { BSU.ui.introduceTab(BSU.state, t.id); }), true)`);
   await sleep(300); await g.clearUi();
+  await g.key('g'); await sleep(300);
+  c.ok(await g.eval(`BSU.ui.paletteOpen()`) && await g.elVisible('#palette'), 'G opens the Build sheet (U2: the palette is hidden at rest)');
   for (const t of tabs) {
     const clicked = await g.clickEl(`#palette-tabs .tab[data-tab="${t.id}"]`); await sleep(120);
     const cur = await g.eval(`BSU.state.ui.paletteTab`);
@@ -344,11 +359,17 @@ scenario('build-tabs', 'every build tab: click it, count its items; Tab / Shift+
   c.ok((await g.eval(`BSU.state.ui.paletteTab`)) === tabs[0].id, 'Shift+Tab moves back');
   c.ok(await g.pickTool('lecture_hall'), 'a palette item arms its tool');
   await g.key('Escape'); await sleep(100);
-  c.ok(!(await g.eval(`BSU.ui.tool()`)), 'Escape disarms it');
+  c.ok(!(await g.eval(`BSU.ui.tool()`)) && await g.eval(`BSU.ui.paletteOpen()`), 'Escape disarms it (the sheet stays)');
   await g.key('g'); await sleep(300);
-  c.ok(await g.eval(`BSU.ui.buildMenuOpen()`), 'G opens the Build menu'); await c.shot('build-menu');
+  c.ok(!(await g.eval(`BSU.ui.paletteOpen()`)) && !(await g.eval(`BSU.ui.buildMenuOpen()`)), 'G closes the sheet again (U2: G is the sheet, not the full menu)');
+  await g.key('g', { shift: true }); await sleep(300);
+  c.ok(await g.eval(`BSU.ui.buildMenuOpen()`), 'Shift+G opens the full Build menu'); await c.shot('build-menu');
   await g.key('Escape'); await sleep(150);
   c.ok(!(await g.eval(`BSU.ui.buildMenuOpen()`)), 'Escape closes it');
+  await g.clickEl('#fab-build'); await sleep(250);
+  c.ok(await g.eval(`BSU.ui.paletteOpen()`) && await g.elVisible('#palette') && !(await g.elVisible('#fab-build')), 'the Build FAB opens the sheet and hides while it is open');
+  await g.key('Escape'); await sleep(150);
+  c.ok(!(await g.eval(`BSU.ui.paletteOpen()`)) && await g.elVisible('#fab-build'), 'Escape closes the sheet; the FAB is back');
 });
 
 scenario('issues-tray', 'Issues tray: Fix arms the remedy, Link it lays the tie, snooze hides the row', async (c) => {
@@ -358,8 +379,10 @@ scenario('issues-tray', 'Issues tray: Fix arms the remedy, Link it lays the tie,
   await g.days(20); await g.clearUi();
   c.need(await g.eval(`BSU.issues.list(BSU.state).length > 0`), 'the new campus has issues (power, water, beds…)');
   await sleep(300);
+  const alerts = async () => { await g.eval(`(BSU.ui.openPopover('alerts'), true)`); await sleep(300); };   // U2: the tray lives in the Alerts popover
   // Fix: arms the suggested building
-  await g.clearUi({ panel: false });
+  await g.clearUi({ panel: false }); await alerts();
+  c.ok(await g.elVisible('#pop-alerts') && await g.elVisible('#alerts-badge') && /^\d+$/.test((await g.elText('#alerts-badge')) || ''), 'the Alerts icon carries the open count and its popover opens');
   c.ok(await g.clickButtonText('#issues-tray', 'Fix'), 'the tray has a Fix button');
   await sleep(250);
   const armed = await g.eval(`(BSU.ui.tool() && BSU.ui.tool().id) || null`);
@@ -371,7 +394,7 @@ scenario('issues-tray', 'Issues tray: Fix arms the remedy, Link it lays the tie,
   c.need(spot, 'a lecture hall spot with a 2+ tile tie exists');
   const placed = await g.eval(`BSU.buildings.place(BSU.state, 'lecture_hall', ${spot.tx}, ${spot.ty}, { rot: 0, noTie: true }).ok`);
   c.need(placed, 'the lecture hall is placed without its tie');
-  await g.days(12); await g.clearUi({ panel: false }); await sleep(400);
+  await g.days(12); await g.clearUi({ panel: false }); await sleep(400); await alerts();
   c.ok(await g.eval(`BSU.issues.suggestions(BSU.state).some(function (i) { return i.kind === 'unlinkedPath'; })`), 'the untied hall is an unlinked-path suggestion');
   if (!(await g.clickButtonText('#issues-tray', 'Suggestions'))) c.ok(false, 'the Suggestions header can be clicked');
   await sleep(350);
@@ -380,7 +403,7 @@ scenario('issues-tray', 'Issues tray: Fix arms the remedy, Link it lays the tie,
   await sleep(300); await g.tick(80); await sleep(300);
   c.ok(!(await g.eval(`BSU.issues.list(BSU.state).concat(BSU.issues.suggestions(BSU.state)).some(function (i) { return i.kind === 'unlinkedPath'; })`)), 'Link it ties the building in and the row is gone');
   // snooze: the zz button hides a row and the hidden pill appears
-  await g.clearUi({ panel: false }); await sleep(200);
+  await g.clearUi({ panel: false }); await sleep(200); await alerts();
   const before = await g.eval(`BSU.issues.hiddenList(BSU.state).length`);
   const zz = await g.eval(`(function () { var b = Array.from(document.querySelectorAll('#issues-tray button')).filter(function (e) { return /^zz/.test(e.textContent) && e.getBoundingClientRect().width > 0; })[0]; if (!b) return null; var q = b.getBoundingClientRect(); return { x: q.left + q.width / 2, y: q.top + q.height / 2 }; })()`);
   c.need(zz, 'a visible snooze (zz) button exists');

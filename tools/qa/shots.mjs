@@ -2,7 +2,7 @@
 // Screenshot matrix for eyeballing after an art pass. Stable file names in the out dir (default tools/qa/out/):
 //   title.png  howto.png  about.png
 //   day-1280x800.png  day-1440x900.png  day-1920x1080.png          (dense campus, scripted midday sky, camera framed on the campus)
-//   hud-full.png  hud-compact.png  hud-hidden.png                   (1440x900; H, H, then Shift+H)
+//   hud-full.png  hud-hidden.png                                    (1440x900; H, then Shift+H; U2 folded the compact mode away)
 //   zoom-0.5.png  zoom-2.5.png                                      (1440x900)
 //   night-lights.png  night-game.png                                (scripted night; a Stadium II night game with masts and fireworks)
 //   fog.png  rain.png  hurricane.png                                (dawn mist; a map-wide downpour; a Cat 3 landfall)
@@ -67,7 +67,6 @@ for (const [w, h] of SIZES) {
 
     if (main && want('hud')) {
       await shot(g, 'hud-full');
-      await g.key('h'); await sleep(450); await shot(g, 'hud-compact');
       await g.key('h'); await sleep(450); await shot(g, 'hud-hidden');
       await g.key('h', { shift: true }); await sleep(450);
       if ((await g.eval(`BSU.ui.hudMode()`)) !== 'full') { problems++; console.log('  Shift+H did not return to the full HUD'); }

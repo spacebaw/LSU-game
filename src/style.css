@@ -1,4 +1,4 @@
-/* BAYOU STATE — style.css (owned by ui.js; ARCHITECTURE §7.6). UI refresh U1: the token sheet of docs/UI_STYLE.md §1 (light, flat, Material 3 roles), every component re-skinned where it stands. Every length is rem (1rem = 10 px at 100 %, html{font-size} follows --ui-scale). No external fonts/images/@import. No gradients, blur, glass or text-shadow; the serif lives only on the title wordmark; gold only on the charter button, the objective card's Build it and the palette's Build toggle. */
+/* BAYOU STATE — style.css (owned by ui.js; ARCHITECTURE §7.6). UI refresh U1: the token sheet of docs/UI_STYLE.md §1 (light, flat, Material 3 roles), every component re-skinned where it stands. U2: the at-rest screen (app bar chips, goal pill ↔ card, Build FAB, snackbar lane) and the popovers (needs, mini budget, Alerts, Layers, Map, Menu). Every length is rem (1rem = 10 px at 100 %, html{font-size} follows --ui-scale). No external fonts/images/@import. No gradients, blur, glass or text-shadow; the serif lives only on the title wordmark; gold only on the charter button, the goal card's Build it and the Build FAB. */
 :root {
   --ui-scale: 1;
   /* colour roles (M3 names, light scheme) */
@@ -34,7 +34,7 @@
 @media (prefers-reduced-motion: reduce) { :root { --dur-std: 0ms; --dur-open: 0ms; --dur-close: 0ms; } }
 html { font-size: calc(10px * var(--ui-scale)); }
 /* layout tokens (the skeleton U2-U4 replace) and aliases for the pre-refresh type names (--fs-small / --fs-lead / --fs-num) */
-:root{--fs-small:var(--fs-body);--fs-lead:var(--fs-title);--fs-num:var(--fs-title-lg);--sp-7:3.2rem;--topbar-h:4.8rem;--ticker-h:2.8rem;--palette-h:18rem;--pal-tabs-h:3.4rem;--pal-gap:1.2rem;--pal-pad-b:.8rem;--pal-tile-w:11.2rem;--pal-icon:6.4rem;--inspect-w:38rem;--bot:calc(var(--palette-h) + var(--ticker-h) + var(--gutter))}
+:root{--fs-small:var(--fs-body);--fs-lead:var(--fs-title);--fs-num:var(--fs-title-lg);--sp-7:3.2rem;--topbar-h:4.8rem;--palette-h:18rem;--pal-tabs-h:3.4rem;--pal-gap:1.2rem;--pal-pad-b:.8rem;--pal-tile-w:11.2rem;--pal-icon:6.4rem;--inspect-w:38rem;--bot:calc(var(--palette-h) + var(--gutter))}
 *{box-sizing:border-box}
 html,body{margin:0;padding:0;height:100%;background:var(--surface-container-high);overflow:hidden}
 body{font:400 var(--fs-body)/var(--lh-body) var(--font);color:var(--on-surface);-webkit-font-smoothing:antialiased;user-select:none;-webkit-user-select:none}
@@ -46,14 +46,19 @@ body{font:400 var(--fs-body)/var(--lh-body) var(--font);color:var(--on-surface);
 :focus-visible{outline:2px solid var(--primary);outline-offset:2px}
 button,input{font-family:inherit}
 /* floating surfaces: surface at 94 % over the map, 1 px outline-variant edge, elevation 2; panels, cards and the build menu are opaque and sit at elevation 3 */
-.panel,#inspect,#objective-card,#voice-card,#milestones-card,#decision-toast,#popover,.card,#ticker-log,#ghost-label,#tooltip,#hint,.notif,#alert-strip,#build-menu,#minimap-wrap,#undo-chip,#perf-chip,#perfmode-chip,#issues-head,.issue-row,.gh-pbp,#score-bug-hud {
+.panel,#inspect,#objective-card,#voice-card,#milestones-card,.popover,#popover,.card,#ghost-label,#tooltip,#hint,.snackbar,#alert-strip,#build-menu,#undo-chip,#perf-chip,#perfmode-chip,.gh-pbp,#score-bug-hud,#goal-pill {
 background:var(--surface-float);border:1px solid var(--outline-variant);color:var(--on-surface);border-radius:var(--shape-md);box-shadow:var(--elev-2);
 }
 #panels .panel,#build-menu{background:var(--surface);box-shadow:var(--elev-3)}
 .card,#cards .card{background:var(--surface-container-high);border:0;border-radius:var(--shape-lg);box-shadow:var(--elev-3)}
-#decision-toast,.coach-box{box-shadow:var(--elev-3)}
-#hint,#undo-chip,#perf-chip,#perfmode-chip,#issues-head,.issue-row,.gh-pbp{box-shadow:var(--elev-1)}
-#issues-head,.issue-row,#ghost-label{border-radius:var(--shape-sm)}
+.snackbar,.coach-box{box-shadow:var(--elev-3)}
+#hint,#undo-chip,#perf-chip,#perfmode-chip,.gh-pbp,#goal-pill{box-shadow:var(--elev-1)}
+#ghost-label,.snackbar{border-radius:var(--shape-sm)} #goal-pill{border-radius:var(--shape-pill)}
+/* state layer for the non-.btn controls (stat chips, the date chip, the goal pill, the FAB, the gauges): hover 8 %, press 12 % of their own text colour */
+.sl{position:relative} .sl::before{content:"";position:absolute;inset:0;border-radius:inherit;background:currentColor;opacity:0;pointer-events:none;transition:opacity var(--dur-std) var(--ease-std)}
+.sl:hover::before{opacity:var(--state-hover)} .sl:active::before{opacity:var(--state-press)}
+/* the inline SVG icons (UI_STYLE §6): 24 px, stroke 2, round */
+svg.ic{width:var(--icon);height:var(--icon);flex:none;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;pointer-events:none} svg.ic.sm{width:1.8rem;height:1.8rem} svg.ic[data-icon="pause"]{stroke-width:3}
 /* buttons: filled (primary) / tonal (default) / text / icon; 40 px visual, 44 px target (the ::after extension), a state layer in currentColor (hover 8 %, press 12 %) */
 .btn{position:relative;display:inline-flex;align-items:center;justify-content:center;gap:var(--sp-2);height:var(--control-h);min-height:var(--control-h);padding:0 2rem;border:0;border-radius:var(--shape-pill);background:var(--secondary-container);color:var(--on-secondary-container);font:500 var(--fs-body)/1 var(--font);letter-spacing:.01em;white-space:nowrap;cursor:pointer;pointer-events:auto;transition:background-color var(--dur-std) var(--ease-std)}
 .btn::before{content:"";position:absolute;inset:0;border-radius:inherit;background:currentColor;opacity:0;pointer-events:none;transition:opacity var(--dur-std) var(--ease-std)}
@@ -71,7 +76,8 @@ background:var(--surface-float);border:1px solid var(--outline-variant);color:va
 .card .btn.icon,#popover .btn.icon,#inspect .btn.icon,.panel-head .icon,.issue-row .btn.icon-sm,#issues-head .btn.icon{width:3.2rem;min-width:3.2rem;height:3.2rem;min-height:3.2rem}
 .btn.active,.btn[aria-pressed="true"]{background:var(--primary);color:var(--on-primary)}
 .btn .key{display:inline-flex;align-items:center;justify-content:center;min-width:1.8rem;height:1.8rem;margin-left:.4rem;padding:0 .4rem;border-radius:.4rem;border:1px solid currentColor;font:600 var(--fs-label)/1 var(--font);opacity:.8}
-.btn.gold,#btn-charter,#btn-obj-build,#btn-build-menu{background:var(--tertiary);color:var(--on-tertiary);font-weight:600;box-shadow:var(--elev-1)}
+.btn.gold,#btn-charter,#btn-obj-build,#fab-build{background:var(--tertiary);color:var(--on-tertiary);font-weight:600;box-shadow:var(--elev-1)}
+.btn.text{background:transparent;color:var(--primary);padding:0 1.2rem}
 /* selection controls: unselected = outlined / transparent, selected = secondary-container */
 .toggle{min-width:6.4rem;background:transparent;color:var(--on-surface);box-shadow:inset 0 0 0 1px var(--outline)}
 .toggle.active,.toggle[aria-pressed="true"]{background:var(--secondary-container);color:var(--on-secondary-container);box-shadow:inset 0 0 0 1px var(--secondary-container)}
@@ -96,51 +102,53 @@ background:var(--surface-float);border:1px solid var(--outline-variant);color:va
 .row.quote .v{font-style:italic;color:var(--on-surface-variant);text-align:left}
 .card-kicker,.panel-title{font:500 var(--fs-label)/1.2 var(--font);letter-spacing:var(--track-label);text-transform:uppercase;color:var(--on-surface-variant);margin-bottom:var(--sp-2)}
 .panel-title{font-size:var(--fs-headline);font-weight:600;line-height:1.2;letter-spacing:0;text-transform:none;color:var(--on-surface);margin:0 0 var(--sp-3)}
-#hud{position:absolute;inset:0;pointer-events:none;--bot:calc(var(--palette-h) + var(--ticker-h) + var(--gutter));--side:max(var(--gutter),calc((100vw - 130rem) / 2));--mid:calc(100vw - 2 * var(--side) - 76rem)}   /* --side keeps the docked cards in a 130-rem column centred on very wide windows (= the gutter below ~1700 px); re-declared here so #hud.no-palette's --palette-h:0 reaches it */
+#hud{position:absolute;inset:0;pointer-events:none;--bot:calc(var(--palette-h) + var(--gutter));--side:max(var(--gutter),calc((100vw - 130rem) / 2));--mid:calc(100vw - 2 * var(--side) - 76rem)}   /* --side keeps the docked cards in a 130-rem column centred on very wide windows (= the gutter below ~1700 px); re-declared here so #hud.no-palette's --palette-h:0 reaches it */
 #hud>*{pointer-events:auto}
 #hud.no-palette{--palette-h:0px}
-#hud.setpiece #milestones-card,#hud.setpiece #voice-card,#hud.setpiece #overlay-buttons,#hud.setpiece #notifications{opacity:0;pointer-events:none}
-/* top bar: opaque surface, elevation 0, 1 px bottom edge; stats are chips (value over label), the speed control a segmented button */
-#topbar{position:absolute;left:0;right:0;top:0;height:var(--topbar-h);display:flex;align-items:center;gap:var(--sp-2);padding:0 var(--sp-2) 0 var(--sp-3);background:var(--surface);border-bottom:1px solid var(--outline-variant)}
+#hud.setpiece #milestones-card,#hud.setpiece #voice-card,#hud.setpiece #goal-pill,#hud.setpiece #objective-card,#hud.setpiece #fab-build,#hud.setpiece #notifications,#hud.setpiece #notif-dismiss{opacity:0;pointer-events:none}
+/* app bar (U2): opaque surface, elevation 0, 1 px bottom edge; brand · stat chips · date chip · speed · Alerts [lit chip] Layers Map Menu mute. A size container: under 118 rem of bar width the stat labels, the cap suffix and the weather line hide (the needs popover still carries the cap) */
+#topbar{position:absolute;left:0;right:0;top:0;height:var(--topbar-h);display:flex;align-items:center;gap:var(--sp-2);padding:0 var(--sp-2) 0 var(--sp-3);background:var(--surface);border-bottom:1px solid var(--outline-variant);container-type:inline-size;container-name:appbar}
+#topbar .grow{flex:1 1 0;min-width:0}
 #brand{display:flex;align-items:center;gap:var(--sp-2);font:700 var(--fs-title)/1 var(--font);color:var(--primary);letter-spacing:.06em;white-space:nowrap}
 #brand .brand-mark{display:flex;align-items:center;justify-content:center;width:3.2rem;height:3.2rem;border-radius:.8rem;background:var(--primary);color:var(--on-primary);font-size:1.8rem;letter-spacing:0}
+#topbar.tight #brand .brand-name{display:none}
 .stats{display:flex;align-items:center;gap:var(--sp-1);height:100%}
-.stat{position:relative;display:grid;grid-template-columns:auto auto;justify-content:start;align-content:center;column-gap:.5rem;row-gap:.2rem;height:var(--control-h);min-width:7rem;padding:0 1.4rem;flex:0 0 auto;white-space:nowrap;cursor:pointer;border-radius:var(--shape-pill);background:var(--surface-container);color:var(--on-surface);transition:opacity .4s}
-.stat::before{content:"";position:absolute;inset:0;border-radius:inherit;background:currentColor;opacity:0;pointer-events:none;transition:opacity var(--dur-std) var(--ease-std)}
-.stat:hover::before{opacity:var(--state-hover)} .stat:active::before{opacity:var(--state-press)}
-.stat-label{grid-area:2 / 1 / 3 / 3;font:500 var(--fs-label)/1.2rem var(--font);white-space:nowrap;letter-spacing:var(--track-label);text-transform:uppercase;color:var(--on-surface-variant)}
-.stat .odometer{grid-area:1 / 1;font:600 var(--fs-title-lg)/1.6rem var(--font);color:var(--on-surface);font-variant-numeric:tabular-nums;white-space:nowrap}
+.btn.stat{display:inline-flex;align-items:center;gap:.6rem;height:var(--control-h);min-height:var(--control-h);padding:0 1.2rem 0 .8rem;flex:0 0 auto;white-space:nowrap;border-radius:var(--shape-pill);background:var(--surface-container);color:var(--on-surface);transition:opacity .4s,background-color var(--dur-std) var(--ease-std)}
+.stat>svg.ic{color:var(--primary)}
+.btn.stat.selected,#date-chip.selected{background:var(--secondary-container);color:var(--on-secondary-container)}
+.stat .txt,#date-chip .txt{display:flex;flex-direction:column;align-items:flex-start;line-height:1} .stat .line{display:inline-flex;align-items:baseline;gap:.4rem}
+.stat .odometer{font:600 var(--fs-title-lg)/1.6rem var(--font);color:var(--on-surface);font-variant-numeric:tabular-nums;white-space:nowrap}
+.stat-label{font:500 var(--fs-label)/1.2rem var(--font);white-space:nowrap;letter-spacing:var(--track-label);text-transform:uppercase;color:var(--on-surface-variant)}
+#chip-capacity{font:500 var(--fs-label)/1 var(--font);color:var(--on-surface-variant);white-space:nowrap;font-variant-numeric:tabular-nums}
 #stat-cash .odometer{min-width:7ch} #stat-students .odometer{min-width:5.5ch} #stat-prestige .odometer,#stat-happiness .odometer,#stat-ecology .odometer{min-width:3ch}   /* sized for −$123.4M / 20,000 / 100 so a growing number never reflows its neighbours */
 #stat-cash.neg .odometer{color:var(--error)}
+.stat .dot{position:absolute;top:.3rem;left:2.4rem;width:.9rem;height:.9rem;border-radius:50%;background:var(--error);border:2px solid var(--surface);pointer-events:none}
 .stat .delta{position:absolute;left:50%;top:calc(100% + .4rem);padding:3px 1rem;border-radius:var(--shape-pill);background:var(--surface);border:1px solid var(--outline-variant);box-shadow:var(--elev-1);white-space:nowrap;z-index:1;font:600 var(--fs-label)/1 var(--font);color:var(--on-surface);opacity:0;transform:translate(-50%,-.6rem);transition:opacity .6s,transform .6s;pointer-events:none}
 .stat .delta.on{opacity:1;transform:translate(-50%,0);transition:opacity .1s,transform .1s}
 .stat .delta[data-sign="pos"]{color:var(--success)} .stat .delta[data-sign="neg"]{color:var(--error)}
-#chip-capacity{grid-area:2 / 1 / 3 / 3;display:block;min-height:0;font:500 var(--fs-label)/1.2rem var(--font);letter-spacing:var(--track-label);white-space:nowrap;font-variant-numeric:tabular-nums;text-transform:uppercase;color:var(--on-surface-variant);background:none;border:0;padding:0;border-radius:0;box-shadow:none}
 .stats.pre .stat{opacity:0}
 .stats .stat{transition-delay:0s}
 .stats .stat:nth-child(2){transition-delay:.1s} .stats .stat:nth-child(3){transition-delay:.2s} .stats .stat:nth-child(4){transition-delay:.3s} .stats .stat:nth-child(5){transition-delay:.4s}
-#date-chip{margin-left:auto;display:flex;flex-direction:row;align-items:center;justify-content:center;gap:var(--sp-3);height:var(--control-h);padding:0 1.4rem;border-radius:var(--shape-pill);background:var(--surface-container);white-space:nowrap}   /* date and weather share one row and one centre line with the speed control */
-#stat-date{display:flex;align-items:center;gap:.8rem;font:600 var(--fs-title)/1 var(--font);white-space:nowrap;color:var(--on-surface)}
-#sky-glyph{font-size:1.6rem}
-#chip-weather{min-height:0;padding:0;background:none;box-shadow:none;border-radius:0;font:500 var(--fs-label)/1.2 var(--font);letter-spacing:var(--track-label);text-transform:uppercase;color:var(--on-surface-variant)}
+#date-chip{display:inline-flex;align-items:center;gap:.6rem;height:var(--control-h);padding:0 1.2rem 0 .8rem;border:0;border-radius:var(--shape-pill);background:var(--surface-container);color:var(--on-surface);white-space:nowrap;cursor:pointer;font-family:inherit}
+#stat-date{font:600 var(--fs-title)/1.6rem var(--font);white-space:nowrap;color:var(--on-surface)}
+#sky-glyph{font-size:1.8rem;line-height:1;width:2.4rem;text-align:center}
+#chip-weather{font:500 var(--fs-label)/1.2rem var(--font);letter-spacing:var(--track-label);text-transform:uppercase;color:var(--on-surface-variant)}
+#chip-weather.warn{color:var(--warn)} #chip-weather.water{color:var(--water)}
 #speed{display:flex;flex:0 0 auto;height:var(--control-h);border:1px solid var(--outline);border-radius:var(--shape-pill);overflow:hidden;background:var(--surface)}
 .speed-btn{position:relative;min-width:3.6rem;height:100%;min-height:0;padding:0 1rem;border-radius:0;border-left:1px solid var(--outline);background:transparent;color:var(--on-surface);font:500 var(--fs-body)/1 var(--font);text-align:center;box-shadow:none}
-.speed-btn:first-child{border-left:0} .speed-btn::after{display:none}
+.speed-btn:first-child{border-left:0} .speed-btn::after{display:none} .speed-btn svg.ic{width:2rem;height:2rem}
 .speed-btn.active,.speed-btn[aria-pressed="true"]{background:var(--secondary-container);color:var(--on-secondary-container)}
-.panel-btns{display:flex;gap:.2rem}
-.tb{padding:0 var(--sp-3);display:inline-flex;align-items:center;gap:var(--sp-2);font-size:var(--fs-body);position:relative;background:transparent;color:var(--on-surface)}
-.tb .glyph{font-size:1.6rem;line-height:1}
-#btn-storm .dot{display:none;position:absolute;right:.2rem;top:.2rem;width:1rem;height:1rem;border-radius:50%;background:var(--error);border:2px solid var(--surface)}
+#topbar .actions{display:flex;align-items:center;gap:.2rem}
+#topbar .actions .btn.icon.selected{background:var(--secondary-container);color:var(--on-secondary-container)}
+.btn.icon .badge{position:absolute;top:.1rem;right:.1rem;min-width:1.6rem;height:1.6rem;padding:0 .4rem;border-radius:var(--shape-pill);background:var(--error);color:var(--on-error);font:600 var(--fs-label)/1.6rem var(--font);text-align:center;letter-spacing:0}
+.btn.icon .badge.dot{min-width:.8rem;width:.8rem;height:.8rem;padding:0;top:.5rem;right:.5rem;background:var(--success)}
+.btn.lit-chip{height:2.4rem;min-height:2.4rem;min-width:2.4rem;padding:0 .6rem;margin:0 .2rem;border-radius:var(--shape-pill);background:var(--secondary-container);color:var(--on-secondary-container);font:600 var(--fs-label)/1 var(--font);box-shadow:inset 0 0 0 1px var(--secondary)}
+#btn-storm .dot{display:none;position:absolute;right:4.4rem;top:50%;margin-top:-.5rem;width:1rem;height:1rem;border-radius:50%;background:var(--error);border:2px solid var(--surface)}
 #btn-storm.live .dot{display:block;animation:pulse 1.2s infinite}
 @keyframes pulse{0%,100%{transform:scale(1);opacity:1} 50%{transform:scale(1.35);opacity:.7} }
-#chip-endowed{font-size:var(--fs-label)}
-#topbar.compact .tb .label{display:none} #topbar.compact .tb .glyph{display:inline;font-size:1.8rem} #topbar.compact .tb{padding:0 1rem;min-width:3.6rem;justify-content:center}
-.tb.glyph-only .glyph{display:inline;font-size:1.8rem}
-#topbar.tight{gap:var(--sp-2)} #topbar.tight #brand .brand-name{display:none}
-#topbar.cap .tb{flex-direction:column;justify-content:center;gap:3px;height:4.4rem;min-height:4.4rem;padding:0 1rem;min-width:5.6rem;border-radius:var(--shape-sm)} #topbar.cap .tb .glyph{font-size:1.8rem} #topbar.cap .tb .label{font:500 var(--fs-label)/1 var(--font);letter-spacing:var(--track-label);text-transform:uppercase}
-#topbar.tighter .stat{padding:0 .8rem;min-width:6.4rem} #topbar.tighter #chip-weather{display:none}
-#topbar.tightest #stat-students .stat-label{display:block !important}   /* the capacity chip is the Students tile's caption; without it the tile still says what it is */
-#topbar.tightest{gap:.8rem} #topbar.tightest #chip-capacity{display:none} #topbar.bare #date-chip{display:none}
+#chip-endowed{font-size:var(--fs-label);min-height:2.4rem;padding:.2rem 1rem;margin-left:.4rem}
+@container appbar (max-width:118rem){.stat-label,#chip-capacity,#chip-weather{display:none !important} .btn.stat{padding-right:.8rem} .stats{gap:.2rem}}
+#topbar.bare .stat-label,#topbar.bare #chip-capacity,#topbar.bare #chip-weather{display:none !important} #topbar.bare .btn.stat{padding-right:.8rem}
 /* the game-day score bug */
 #score-bug-hud{position:absolute;left:var(--side);top:calc(var(--topbar-h) + 1.6rem);display:flex;flex-direction:column;align-items:flex-start;gap:.8rem;padding:1rem 1.6rem 1rem 1.4rem;border-left:.4rem solid var(--primary);font:600 var(--fs-body)/1 var(--font);pointer-events:none;font-variant-numeric:tabular-nums}
 .sb-main,.sb-dd{display:flex;align-items:center;gap:1.2rem;white-space:nowrap}
@@ -154,23 +162,32 @@ background:var(--surface-float);border:1px solid var(--outline-variant);color:va
 #alert-strip[data-kind="danger"]{border-left-color:var(--error)} #alert-strip[data-kind="water"]{border-left-color:var(--water)} #alert-strip[data-kind="wildlife"]{border-left-color:var(--success)}
 #alert-icon{font-size:2rem}
 #alert-gator{cursor:pointer;background:var(--secondary-container);color:var(--on-secondary-container)}
-#minimap-wrap{position:absolute;right:var(--side);top:calc(var(--topbar-h) + 1.6rem);width:21rem;height:21rem;padding:.4rem;transition:transform var(--dur-open) var(--ease-decel)}
-#hud.inspect-open #minimap-wrap,#hud.inspect-open #overlay-buttons,#hud.inspect-open #voice-card{transform:translateX(calc(-1 * var(--inspect-w) - var(--gutter)))}
+/* the Map popover's minimap (render.js draws it; the viewport box is positioned by render inside #minimap-wrap) */
+#minimap-wrap{position:relative;width:20rem;height:20rem}
 #minimap{display:block;width:20rem;height:20rem;border-radius:.8rem;cursor:pointer;box-shadow:0 0 0 1px var(--outline-variant)}
 #minimap-viewport{position:absolute;pointer-events:none}
-#overlay-buttons{position:absolute;right:var(--side);top:calc(var(--topbar-h) + 23.6rem);width:21rem;display:grid;grid-template-columns:repeat(6,1fr);gap:.4rem;transition:transform var(--dur-open) var(--ease-decel)}
-.ov-btn{width:100%;min-width:0;height:3.6rem;min-height:3.6rem;padding:0;border-radius:.8rem;background:var(--surface-float);color:var(--on-surface-variant);box-shadow:inset 0 0 0 1px var(--outline);font-weight:600}
-.ov-btn::after{display:none}
-.ov-btn.active,.ov-btn[aria-pressed="true"]{background:var(--secondary-container);color:var(--on-secondary-container);box-shadow:inset 0 0 0 1px var(--secondary)}
-#legend{grid-column:1 / -1;justify-content:center;font-size:var(--fs-label);white-space:normal;text-align:center;background:var(--surface-float);color:var(--on-surface-variant);box-shadow:inset 0 0 0 1px var(--outline-variant)}
-/* objective card, needs strip */
-#objective-card,#voice-card,#milestones-card{position:absolute;left:var(--side);width:36rem;padding:1.6rem}
-#objective-card{top:calc(var(--topbar-h) + 1.6rem);width:36rem}
+/* the Layers popover: six filter chips (key cap + name) and the legend of the active overlay */
+#overlay-buttons{display:flex;flex-wrap:wrap;gap:var(--sp-2)}
+.btn.ov-btn{height:3.2rem;min-height:3.2rem;padding:0 1.2rem 0 .8rem;gap:.6rem;border-radius:.8rem;background:transparent;color:var(--on-surface-variant);box-shadow:inset 0 0 0 1px var(--outline);font-weight:500}
+.ov-btn::after{top:-.6rem;bottom:-.6rem}
+.ov-btn .key{display:inline-flex;align-items:center;justify-content:center;width:2rem;height:2rem;margin:0;padding:0;border:0;border-radius:.5rem;background:var(--surface-container-high);color:var(--on-surface);font:600 var(--fs-label)/1 var(--font);opacity:1}
+.ov-btn.active,.ov-btn[aria-pressed="true"]{background:var(--secondary-container);color:var(--on-secondary-container);box-shadow:inset 0 0 0 1px var(--secondary-container)} .ov-btn.active .key{background:var(--secondary);color:var(--on-secondary)}
+#legend{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-2) var(--sp-3);margin-top:var(--sp-3);padding-top:var(--sp-3);border-top:1px solid var(--outline-variant);color:var(--on-surface-variant);font-size:var(--fs-body)}
+#legend .sw{display:inline-flex;align-items:center;gap:.4rem;white-space:nowrap} #legend .sw i{display:inline-block;width:1.4rem;height:1.4rem;border-radius:.3rem;border:1px solid var(--outline-variant)} #legend .note{flex-basis:100%;font-size:var(--fs-label)}
+/* goal pill (at rest) ↔ goal card (U2): top-left under the bar; the card opens on click or a goal change and folds after 10 s without hover */
+#goal-pill{position:absolute;left:var(--gutter);top:calc(var(--bar-h) + 8px);display:inline-flex;align-items:center;gap:var(--sp-2);height:var(--control-h);max-width:calc(100vw - 2 * var(--gutter) - 20rem);padding:0 .8rem;color:var(--on-surface);font:500 var(--fs-body)/1 var(--font);white-space:nowrap;cursor:pointer;z-index:2;font-family:var(--font)}
+#goal-pill .ring{width:2.4rem;height:2.4rem;flex:none;transform:rotate(-90deg)} #goal-pill .ring .track{fill:none;stroke:var(--surface-container-high);stroke-width:3} #goal-pill .ring .fill{fill:none;stroke:var(--primary);stroke-width:3;stroke-linecap:round}
+#goal-pill .kicker{font:500 var(--fs-label)/1 var(--font);letter-spacing:var(--track-label);text-transform:uppercase;color:var(--primary)}
+#goal-pill .ttl{font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis} #goal-pill .count{color:var(--on-surface-variant);font-variant-numeric:tabular-nums} #goal-pill svg.ic{color:var(--on-surface-variant)}
+#goal-pill[data-kind="interrupt"] .kicker{color:var(--warn)}
+#objective-card,#voice-card,#milestones-card{position:absolute;left:var(--gutter);width:36rem;padding:1.6rem}
+#objective-card{top:calc(var(--bar-h) + 8px);z-index:2}
 #objective-card[data-kind="background"]{border-left:.4rem solid var(--water)}
 #objective-card[data-kind="interrupt"]{border-left:.4rem solid var(--warn)}
 .obj-head{display:flex;gap:1.2rem;align-items:flex-start}
 #obj-portrait{width:4.8rem;height:4.8rem;flex:0 0 4.8rem;border-radius:50%;background:var(--primary-container);border:1px solid var(--outline-variant);image-rendering:pixelated}
-.obj-col{flex:1 1 auto;min-width:0;padding-right:2.8rem;cursor:pointer}
+.obj-col{flex:1 1 auto;min-width:0;cursor:pointer}
+.obj-head .btn.icon{width:3.2rem;min-width:3.2rem;height:3.2rem;min-height:3.2rem;flex:none;margin-top:-.2rem}
 #obj-title{font:600 var(--fs-title)/1.25 var(--font);color:var(--on-surface)}
 #obj-text{font-size:var(--fs-body);margin-top:.4rem;color:var(--on-surface)}
 .obj-kicker{font:500 var(--fs-label)/1 var(--font);letter-spacing:var(--track-label);text-transform:uppercase;color:var(--primary);margin-bottom:.4rem}
@@ -179,30 +196,26 @@ background:var(--surface-float);border:1px solid var(--outline-variant);color:va
 .obj-prog-row{display:flex;align-items:center;gap:1.2rem;margin-top:1.2rem} .obj-prog-row .bar{flex:1 1 auto}
 .obj-actions{display:flex;align-items:center;gap:.8rem;margin-top:1.2rem;flex-wrap:wrap}
 #obj-count{font:500 var(--fs-body)/1 var(--font);color:var(--on-surface-variant);font-variant-numeric:tabular-nums;white-space:nowrap}
-.obj-next{margin-top:1.2rem;font-size:var(--fs-body);color:var(--on-surface-variant);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-#btn-obj-dismiss{position:absolute;right:1.2rem;top:1.2rem}
-#objective-card.collapsed{width:auto;max-width:36rem;padding:.8rem 1.4rem;border-left-width:1px}
-#objective-card.collapsed .obj-head{align-items:center;gap:1.2rem} #objective-card.collapsed #obj-portrait{width:3.2rem;height:3.2rem;flex-basis:3.2rem}
-#objective-card.collapsed .obj-col{padding-right:0}
-#objective-card.collapsed #obj-text,#objective-card.collapsed #obj-why,#objective-card.collapsed .obj-prog-row,#objective-card.collapsed .obj-actions,#objective-card.collapsed .obj-next,#objective-card.collapsed #needs-strip,#objective-card.collapsed #btn-obj-dismiss,#objective-card.collapsed #speech-bubble,#objective-card.collapsed .obj-kicker{display:none !important}
-#objective-card.collapsed #obj-title{font-size:var(--fs-body);white-space:nowrap}
+.obj-next{margin-top:1.2rem;padding-top:1.2rem;border-top:1px solid var(--outline-variant);font-size:var(--fs-body);color:var(--on-surface-variant);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #hud.short #objective-card #obj-why,#hud.short #objective-card .obj-next{display:none}
-#hud.scorebug #objective-card.collapsed{top:calc(var(--topbar-h) + 11.2rem)}
-/* needs strip: five gauges + the binding line (ok success, warn warn, bad error) */
-#needs-strip{margin-top:1.2rem;padding-top:1.2rem;border-top:1px solid var(--outline-variant)}
-.needs-gauges{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:.8rem;overflow:hidden}
-.need{position:relative;cursor:pointer;border-radius:.8rem;padding:.4rem;min-width:0;overflow:hidden}
-.need::before{content:"";position:absolute;inset:0;border-radius:inherit;background:currentColor;opacity:0;pointer-events:none;transition:opacity var(--dur-std) var(--ease-std)} .need:hover::before{opacity:var(--state-hover)}
-.need-label{font:500 var(--fs-label)/1 var(--font);letter-spacing:var(--track-label);text-transform:uppercase;color:var(--on-surface-variant)}
-.need .bar{height:.8rem;margin:.6rem 0 .4rem;overflow:hidden;max-width:100%} .need .fill{background:var(--success)} .need-val{font:500 var(--fs-label)/1.1 var(--font);color:var(--on-surface);font-variant-numeric:tabular-nums;white-space:nowrap}
+#hud.scorebug #goal-pill,#hud.scorebug #objective-card{top:calc(var(--bar-h) + 11.2rem)}
+/* needs (the Students chip's popover): six gauge rows (label · bar · value), the binding line (ok success, warn warn, bad error), Locate, the applicants line */
+.needs-gauges{display:flex;flex-direction:column;gap:.4rem}
+.need{display:grid;grid-template-columns:6.4rem 1fr 9rem;align-items:center;gap:var(--sp-3);min-height:2.8rem;padding:0 .4rem;border-radius:.8rem;cursor:pointer}
+.need-label{font:500 var(--fs-body)/1 var(--font);color:var(--on-surface)}
+.need .bar{height:.8rem;margin:0} .need .fill{background:var(--success)} .need-val{text-align:right;font:500 var(--fs-body)/1 var(--font);color:var(--on-surface-variant);font-variant-numeric:tabular-nums;white-space:nowrap}
 .need[data-level="warn"] .fill{background:var(--warn)} .need[data-level="bad"] .fill{background:var(--error)} .need[data-level="bad"] .need-val{color:var(--error)}
-.needs-text{display:block;width:100%;margin-top:1.2rem;text-align:left;font:500 var(--fs-body)/1.35 var(--font);color:var(--on-primary-container);background:var(--primary-container);border:0;border-radius:var(--shape-sm);padding:1rem 1.2rem;cursor:pointer;white-space:normal}
+.needs-row{display:flex;align-items:center;gap:.6rem;margin-top:var(--sp-3)} .needs-row #needs-text{flex:1 1 auto;min-width:0}
+.needs-text{display:block;text-align:left;font:500 var(--fs-body)/1.35 var(--font);color:var(--on-primary-container);background:var(--primary-container);border:0;border-radius:var(--shape-sm);padding:1rem 1.2rem;cursor:pointer;white-space:normal}
 .needs-text:hover{background:var(--secondary-container)} .needs-text:disabled{cursor:default;opacity:1}
 .needs-text[data-level="bad"]{color:var(--on-error-container);background:var(--error-container)} .needs-text[data-level="ok"]{color:var(--on-surface-variant);background:none;padding-left:0}
+#needs-locate{flex:0 0 auto;padding:0 .8rem;min-height:2.8rem;height:2.8rem;font-size:var(--fs-label)}
+.needs-apps{margin-top:var(--sp-2);font-size:var(--fs-label);color:var(--on-surface-variant)}
 #obj-background{margin-top:1.2rem;padding-top:.8rem;border-top:1px solid var(--outline-variant);border-bottom:0;font-size:var(--fs-body);color:var(--on-surface-variant);display:block}
 #speech-bubble{position:absolute;left:1.2rem;top:calc(100% + 1.2rem);max-width:34rem;padding:1rem 1.4rem;font:italic var(--fs-body)/1.4 var(--font);color:var(--on-primary-container);background:var(--primary-container);border-radius:var(--shape-md);box-shadow:var(--elev-2);animation:rise var(--dur-open) var(--ease-decel);z-index:1}
 #speech-bubble::after{content:"";position:absolute;left:2.8rem;top:-.8rem;border:.8rem solid transparent;border-bottom-color:var(--primary-container);border-top:0}
-#voice-card{left:auto;right:var(--side);bottom:var(--bot);width:36rem;border-left:.4rem solid var(--secondary)}   /* the bottom centre belongs to the notification stack; the voice card takes the old notification slot at the right */
+#voice-card{left:auto;right:var(--side);bottom:calc(var(--bot) + 7.2rem);width:36rem;border-left:.4rem solid var(--secondary)}   /* above the Build FAB at the right; the bottom centre belongs to the snackbar lane (U3 makes it a dialog) */
+#hud.inspect-open #voice-card{transform:translateX(calc(-1 * var(--inspect-w) - var(--gutter)))}
 .voice-student{font:600 var(--fs-body)/1.2 var(--font);color:var(--primary);margin-bottom:.4rem}
 #voice-text{font-size:var(--fs-body)} #voice-payoff{font-size:var(--fs-body);color:var(--on-surface-variant);margin-top:.8rem}
 #milestones-card{bottom:var(--bot);width:36rem}
@@ -212,40 +225,38 @@ background:var(--surface-float);border:1px solid var(--outline-variant);color:va
 .card-actions{display:flex;gap:var(--sp-2);margin-top:1.6rem;flex-wrap:wrap}
 @keyframes rise{from{opacity:0;transform:translateY(.6rem)} to{opacity:1;transform:none} }
 @keyframes rise-x{from{opacity:0;transform:translate(-50%,.6rem)} to{opacity:1;transform:translateX(-50%)} }
-/* the notification stack (snackbars arrive in U2) */
-#notifications{position:absolute;left:50%;transform:translateX(-50%);bottom:var(--bot);height:14.4rem;width:min(44rem,var(--mid));display:flex;flex-direction:column;justify-content:flex-end;gap:.8rem;align-items:stretch;overflow:hidden;pointer-events:none !important;transition:transform var(--dur-open) var(--ease-decel)}
-#notifications .notif{pointer-events:auto}
-#notifications .notif:nth-last-child(n+3){display:none}   /* the newest two show (the older ones return as these expire); keeps the stack out of the map centre */
-#hud:has(#hint:not(.hidden)) #notifications{bottom:calc(var(--bot) + 6rem)}   /* the hint sits just above the palette too; the stack rides above it */
-.notif{display:flex;flex-wrap:wrap;align-items:center;gap:.8rem 1.2rem;padding:.8rem 1.2rem .8rem 1.6rem;border-radius:var(--shape-sm);box-shadow:var(--elev-3);font-size:var(--fs-body);line-height:1.4;border-left:.4rem solid var(--outline);animation:slide-in var(--dur-open) var(--ease-decel)}
+/* snackbars (U2): a bottom-centre lane, news and notifications at most two high (the rest queue), the decision snackbar under them with its countdown line */
+#snack-lane{position:absolute;left:50%;bottom:var(--bot);transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:var(--sp-2);width:min(64rem,calc(100vw - 2 * var(--gutter) - 32rem));pointer-events:none !important;z-index:6;transition:bottom var(--dur-open) var(--ease-decel)}
+#snack-lane>*{pointer-events:auto} #notifications{display:flex;flex-direction:column;align-items:center;gap:var(--sp-2);width:100%;pointer-events:none !important}
+#hud:has(#hint:not(.hidden)) #snack-lane{bottom:calc(var(--bot) + 5.6rem)}   /* the hint sits just above the sheet too; the lane rides above it */
+#hud:has(#decision-toast.dt-opts:not(.hidden)) #snack-lane{width:min(96rem,calc(100vw - 30rem))}
+.snackbar{position:relative;display:flex;flex-wrap:wrap;align-items:center;gap:.4rem 1rem;width:auto;min-width:min(34rem,100%);max-width:100%;padding:var(--sp-2) var(--sp-2) var(--sp-2) var(--sp-4);font:400 var(--fs-body)/1.35 var(--font);overflow:hidden;pointer-events:auto;border-left:.4rem solid var(--outline);animation:rise var(--dur-open) var(--ease-decel)}
 .notif[data-kind="water"]{border-left-color:var(--water)} .notif[data-kind="wildlife"]{border-left-color:var(--success)}
 .notif[data-kind="money"],.notif[data-kind="sports"]{border-left-color:var(--warn)} .notif[data-kind="event"]{border-left-color:var(--secondary)} .notif[data-kind="danger"]{border-left-color:var(--error)}
-.notif-text{order:1;flex:1 1 calc(100% - 5.2rem);min-width:0} .notif-close{order:2} .notif-action{order:3}
+.notif-text{order:1;flex:1 1 20rem;min-width:0} .notif-text.link{cursor:pointer} .notif-text.link:hover{text-decoration:underline dotted}
+.notif-close{order:3} .btn.notif-action{order:2;height:3.2rem;min-height:3.2rem;padding:0 1rem;background:transparent;color:var(--primary)}
+.notif .locate{box-shadow:inset 0 0 0 1px var(--outline)}
 .notif.paw .notif-text::before{content:"🐾 "}
-@keyframes slide-in{from{opacity:0;transform:translateY(1.2rem)} to{opacity:1;transform:none} }
-/* decision toast */
-#decision-toast{position:absolute;top:calc(var(--topbar-h) + 7.2rem);left:50%;transform:translateX(-50%);width:clamp(36rem,var(--mid),64rem);padding:2rem;z-index:9;animation:rise-x var(--dur-open) var(--ease-decel)}
-#dt-text{font:600 var(--fs-title)/1.45 var(--font);margin-bottom:1.2rem}
-#dt-countdown{height:.4rem} #dt-countdown .fill{background:var(--primary)}
-#decision-toast.dt-opts{width:clamp(36rem,var(--mid),64rem)}
-/* during a game set piece the engine's option toast docks where the game strip sits (the strip hides under it) and lays its options in a row, so the field, the halftime band and the 4th-down spot stay in view */
-#hud.setpiece #decision-toast.dt-opts{top:auto;bottom:calc(var(--bot) - .4rem);width:min(96rem,calc(100vw - 30rem));padding:1.2rem 1.6rem 1rem}
-#hud.setpiece #decision-toast.dt-opts #dt-text{font-size:var(--fs-body);margin-bottom:.8rem}
-#hud.setpiece #decision-toast.dt-opts #dt-options{flex-direction:row;flex-wrap:wrap;gap:.8rem;margin-bottom:.8rem}
-#hud.setpiece #decision-toast.dt-opts #dt-options .btn{flex:1 1 26rem;min-height:4rem;padding:.8rem 1.2rem}
-#hud.setpiece #decision-toast.dt-opts #dt-foot{margin-top:.6rem}
-#hud.setpiece #decision-toast.dt-opts:not(.hidden) ~ #game-hud{visibility:hidden}
-#decision-toast .card-actions{margin-top:1.6rem}
-#decision-toast .card-actions .btn{min-height:4.4rem;padding:0 2rem;font-size:var(--fs-body)}
-#decision-toast .btn .key{margin-left:1rem;min-width:2.4rem;font-size:var(--fs-label);text-align:center;font-weight:600}
-#dt-options{display:flex;flex-direction:column;gap:.8rem;margin-bottom:1.2rem}
+.notif-why{order:4;flex:1 1 100%;font-size:var(--fs-label);line-height:1.3;color:var(--on-surface-variant)}
+#notif-dismiss{align-self:flex-end;opacity:.85}
+/* the decision snackbar: bold lead · No (text) · Yes (tonal) · the 3 px primary countdown line along the bottom edge; an engine decision (football) lays its options as a column, a row during the set piece */
+#decision-toast{border-left:.4rem solid var(--primary);padding-bottom:calc(var(--sp-2) + .3rem);z-index:9}
+#dt-text{font:600 var(--fs-body)/1.4 var(--font)}
+#decision-toast .acts{order:2;display:flex;align-items:center;gap:.2rem}
+#decision-toast .acts .btn{height:3.6rem;min-height:3.6rem;padding:0 1.4rem}
+#decision-toast .btn .key{margin-left:.6rem;min-width:1.8rem;font-size:var(--fs-label);text-align:center;font-weight:600}
+#dt-countdown{position:absolute;left:0;right:0;bottom:0;height:.3rem;border-radius:0;background:transparent;overflow:hidden} #dt-countdown .fill{background:var(--primary);border-radius:0 .3rem .3rem 0}
+#dt-options{order:2;display:flex;flex-direction:column;gap:.6rem;flex:1 1 100%}
 #dt-options .btn{display:flex;align-items:center;gap:1.2rem;text-align:left;justify-content:flex-start;padding:1rem 1.4rem;min-height:4.4rem;font-size:var(--fs-body)}
 #dt-options .btn .key{order:-1;margin:0}
 #dt-options .btn.def{box-shadow:inset 0 0 0 2px var(--primary)}
 .dt-p{margin-left:auto;font-weight:700;font-variant-numeric:tabular-nums}
 .dt-d{min-width:4rem;text-align:right;font:600 var(--fs-body)/1 var(--font);color:var(--on-surface-variant)} .dt-d.up{color:var(--success)} .dt-d.down{color:var(--error)}
 #dt-options .btn.primary .dt-d,#dt-options .btn.primary .dt-d.up,#dt-options .btn.primary .dt-d.down{color:inherit}
-#dt-foot{margin-top:1.2rem;font-size:var(--fs-body);color:var(--on-surface-variant)}
+#dt-foot{order:5;flex:1 1 100%;font-size:var(--fs-label);color:var(--on-surface-variant)}
+#hud.setpiece #decision-toast.dt-opts #dt-options{flex-direction:row;flex-wrap:wrap;gap:.8rem}
+#hud.setpiece #decision-toast.dt-opts #dt-options .btn{flex:1 1 26rem;min-height:4rem;padding:.8rem 1.2rem}
+#hud.setpiece:has(#decision-toast.dt-opts:not(.hidden)) #game-hud{visibility:hidden}
 /* inspect */
 #inspect{position:absolute;right:var(--side);top:calc(var(--topbar-h) + 1.6rem);bottom:var(--bot);width:var(--inspect-w);padding:1.6rem;display:flex;flex-direction:column;gap:1.2rem;overflow:hidden;transform:translateX(0);transition:transform var(--dur-open) var(--ease-decel),opacity var(--dur-open) var(--ease-decel)}
 #inspect.hidden{display:flex !important;transform:translateX(calc(var(--inspect-w) + 4rem));opacity:0;pointer-events:none}
@@ -274,8 +285,8 @@ input.rename:focus{border-color:var(--primary);box-shadow:inset 0 0 0 1px var(--
 .pop-line .k{color:var(--on-surface-variant)} .pop-line .v[data-sign="pos"]{color:var(--success)} .pop-line .v[data-sign="neg"]{color:var(--error)}
 #pop-next{margin-top:.8rem;font-size:var(--fs-body);color:var(--on-surface-variant)}
 #popover .btn.icon{position:absolute;right:1.2rem;top:1.2rem}
-#hint{position:absolute;left:50%;bottom:calc(var(--palette-h) + var(--ticker-h) + 1.6rem);transform:translateX(-50%);padding:1rem 1.6rem;font-size:var(--fs-body);display:flex;gap:1.2rem;align-items:center;border-radius:var(--shape-pill);animation:rise-x var(--dur-open) var(--ease-decel);z-index:4}
-#undo-chip{position:absolute;left:var(--side);bottom:calc(var(--palette-h) + var(--ticker-h) + 1.6rem);z-index:4;display:flex;align-items:center;gap:1.2rem;padding:1rem 1.6rem 1.4rem;font-size:var(--fs-body);overflow:hidden;animation:rise var(--dur-open) var(--ease-decel);border-radius:var(--shape-sm)}
+#hint{position:absolute;left:50%;bottom:var(--bot);transform:translateX(-50%);padding:1rem 1.6rem;font-size:var(--fs-body);display:flex;gap:1.2rem;align-items:center;border-radius:var(--shape-pill);animation:rise-x var(--dur-open) var(--ease-decel);z-index:4}
+#undo-chip{position:absolute;left:var(--side);bottom:calc(var(--bot) + 1.6rem);z-index:4;display:flex;align-items:center;gap:1.2rem;padding:1rem 1.6rem 1.4rem;font-size:var(--fs-body);overflow:hidden;animation:rise var(--dur-open) var(--ease-decel);border-radius:var(--shape-sm)}
 #undo-chip .uc-glyph{font-size:1.8rem;line-height:1}
 #undo-chip .uc-main{max-width:30rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #undo-chip .uc-bar{position:absolute;left:0;right:0;bottom:0;height:.4rem;background:var(--surface-container-high)}
@@ -283,23 +294,21 @@ input.rename:focus{border-color:var(--primary);box-shadow:inset 0 0 0 1px var(--
 #perf-chip,#perfmode-chip{position:absolute;left:var(--gutter);top:calc(var(--topbar-h) + 1.6rem);padding:.4rem 1.2rem;border-radius:var(--shape-pill);font-family:ui-monospace,Menlo,monospace;font-size:var(--fs-label)}
 #perfmode-chip{left:auto;right:calc(var(--gutter) + 24rem);color:var(--primary)}
 #btn-skip{position:absolute;right:var(--side);bottom:var(--bot);z-index:4;box-shadow:var(--elev-2)}
-/* ticker (the snackbar lane and Log panel replace it in U2) */
-#ticker{position:absolute;left:0;right:0;bottom:var(--palette-h);height:var(--ticker-h);background:var(--surface);border-top:1px solid var(--outline-variant);overflow:hidden;display:flex;align-items:center}
-#ticker-track{position:absolute;left:0;top:0;height:var(--ticker-h);line-height:var(--ticker-h);white-space:nowrap;font-size:var(--fs-body);color:var(--on-surface);padding-left:var(--gutter);cursor:pointer;will-change:transform}
-#ticker-track:not(:empty)::before{content:"▸ ";color:var(--primary)}
-#ticker-track[data-kind="danger"]{color:var(--error)} #ticker-track[data-kind="water"]{color:var(--water)} #ticker-track[data-kind="wildlife"]{color:var(--success)} #ticker-track[data-kind="money"],#ticker-track[data-kind="sports"]{color:var(--secondary)}
-#ticker::after{content:"";position:absolute;right:0;top:0;bottom:0;width:calc(var(--gutter) * 2 + 3.2rem);background:var(--surface);z-index:1}   /* the marquee ran under and past the log button */
-#btn-ticker-log{position:absolute;right:var(--gutter);top:2px;padding:0;width:3.2rem;min-width:3.2rem;height:2.4rem;min-height:2.4rem;z-index:1;font-size:1.4rem;border-radius:var(--shape-sm)}
-#btn-ticker-log::after{display:none}
-#ticker-log{position:absolute;right:var(--side);bottom:calc(var(--ticker-h) + .8rem);width:48rem;max-height:36rem;overflow-y:auto;padding:1.2rem 1.6rem;font-size:var(--fs-body);line-height:1.4;z-index:5}
+/* the Log panel (U2: the ticker's history, Menu → Log): one line per news item, newest first, a click pans to its subject */
+.log-list{display:flex;flex-direction:column;font-size:var(--fs-body);line-height:1.4}
 .log-line{display:flex;gap:1.2rem;padding:.6rem 0;border-bottom:1px solid var(--surface-container-high);cursor:pointer}
 .log-line:hover{color:var(--primary)}
 .log-day{flex:0 0 8.8rem;color:var(--on-surface-variant);font-variant-numeric:tabular-nums}
-/* palette: a 180-px bar = 34-px tabs + 12-px breathing room + a 126-px tile row + 8 px below; every tile is a vertical stack (icon, name, price) and nothing overlaps (U4 turns it into the Build sheet) */
-#palette{position:absolute;left:0;right:0;bottom:0;height:var(--palette-h);background:var(--surface);border-top:1px solid var(--outline-variant);display:grid;grid-template-columns:auto 1fr auto;grid-template-rows:var(--pal-tabs-h) 1fr;box-shadow:var(--elev-3)}
+/* the Build FAB (U2): bottom-right at the gutter, gold, 56 px; hidden while the sheet, a panel, a card or the build menu is open; shifts left of an open inspect */
+#fab-build{position:absolute;right:var(--gutter);bottom:var(--gutter);display:inline-flex;align-items:center;gap:var(--sp-2);height:var(--fab-h);padding:0 2rem 0 1.6rem;border:0;border-radius:var(--shape-pill);box-shadow:var(--elev-3);font:600 var(--fs-title)/1 var(--font);cursor:pointer;z-index:4;animation:rise var(--dur-open) var(--ease-decel)}
+#fab-build .key{display:inline-flex;align-items:center;justify-content:center;min-width:2rem;height:2rem;border-radius:.5rem;border:1.5px solid currentColor;font:600 var(--fs-label)/1 var(--font);opacity:.85}
+#hud.inspect-open #fab-build{right:calc(var(--inspect-w) + 2 * var(--gutter))}
+/* palette (the interim Build sheet, hidden at rest): a 180-px bar = 34-px tabs + 12-px breathing room + a 126-px tile row + 8 px below; every tile is a vertical stack (icon, name, price) and nothing overlaps (U4 turns it into the real sheet) */
+#palette{position:absolute;left:0;right:0;bottom:0;height:var(--palette-h);background:var(--surface);border-top:1px solid var(--outline-variant);display:grid;grid-template-columns:auto 1fr auto;grid-template-rows:var(--pal-tabs-h) 1fr;box-shadow:var(--elev-3);z-index:5;animation:rise var(--dur-open) var(--ease-decel)}
+#btn-palette-close{position:absolute;right:var(--gutter);top:.1rem;width:3.2rem;min-width:3.2rem;height:3.2rem;min-height:3.2rem;z-index:1}
 #btn-build-menu{grid-column:1;grid-row:1 / span 2;align-self:stretch;margin:calc(var(--pal-tabs-h) + var(--pal-gap)) .8rem var(--pal-pad-b) var(--gutter);width:10.4rem;height:auto;min-height:0;padding:0;border-radius:var(--shape-md);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.6rem;font-size:var(--fs-title);line-height:1;box-shadow:var(--elev-3)}
 #btn-build-menu::after{display:none}
-#btn-build-menu .glyph{font-size:3.2rem;line-height:1} #btn-build-menu .key{margin:0}
+#btn-build-menu .glyph{font-size:3.2rem;line-height:1} #btn-build-menu .key{margin:0} #btn-build-menu .label{font-size:var(--fs-body)}
 #palette-tabs{grid-column:2;display:flex;align-items:flex-end;gap:.2rem;padding:0 1.2rem;border-bottom:1px solid var(--outline-variant);overflow:hidden}
 .tab{position:relative;font:500 var(--fs-body)/1 var(--font);color:var(--on-surface-variant);background:transparent;border:0;border-radius:.8rem .8rem 0 0;padding:.8rem 1.4rem .9rem;cursor:pointer;transition:background-color var(--dur-std) var(--ease-std);white-space:nowrap}
 .tab:hover{background:var(--surface-container)} .tab.active{color:var(--primary)}
@@ -328,10 +337,9 @@ input.rename:focus{border-color:var(--primary);box-shadow:inset 0 0 0 1px var(--
 .palette-side .btn.active{background:var(--secondary-container);color:var(--on-secondary-container)}
 #palette.compact .item{width:8rem;flex-basis:8rem} #palette.compact .item .name,#palette.compact .item .cost,#palette.compact .item .cond{display:none}
 #palette.compact .tab .tab-name{font-size:var(--fs-body)}
-@media (max-width:1180px){.tb .label{display:none} .stat{min-width:7.2rem;padding:0 .8rem} #chip-weather{display:none} }
 /* cards (dialogs) over a scrim, panels */
-#cards{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:var(--topbar-h) 2rem calc(var(--palette-h) + var(--ticker-h));background:var(--scrim);z-index:8}   /* centred on the map area, not the whole window */
-.card{width:60rem;max-width:calc(100vw - 4rem);max-height:calc(100vh - var(--topbar-h) - var(--palette-h) - var(--ticker-h) - 3.2rem);overflow:auto;padding:2.4rem;animation:rise var(--dur-open) var(--ease-decel)}
+#cards{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:var(--topbar-h) 2rem var(--bot);background:var(--scrim);z-index:8}   /* centred on the map area, not the whole window */
+.card{width:60rem;max-width:calc(100vw - 4rem);max-height:calc(100vh - var(--topbar-h) - var(--bot) - 3.2rem);overflow:auto;padding:2.4rem;animation:rise var(--dur-open) var(--ease-decel)}
 .card-title{font:600 var(--fs-headline)/1.25 var(--font);color:var(--on-surface)}
 .card-body{margin-top:1.2rem;font-size:var(--fs-body);line-height:1.5;color:var(--on-surface-variant)}
 .card-body p{margin:0 0 1.2rem}
@@ -340,7 +348,7 @@ input.rename:focus{border-color:var(--primary);box-shadow:inset 0 0 0 1px var(--
 .board-list{display:flex;flex-direction:column;gap:.8rem}
 .board-card{text-align:left;height:auto;padding:1.2rem 1.6rem;white-space:normal;justify-content:flex-start;flex-direction:column;align-items:flex-start;border-radius:var(--shape-sm);background:var(--surface);color:var(--on-surface)}
 .board-name{font-weight:600;font-size:var(--fs-body);line-height:1.3} .board-text{font-size:var(--fs-body);line-height:1.4;color:var(--on-surface-variant);font-weight:400;margin-top:.4rem}
-#panels{position:absolute;inset:0;pointer-events:none;z-index:4;display:flex;align-items:center;justify-content:center;padding:calc(var(--topbar-h) + 1.6rem) 2rem calc(var(--palette-h) + var(--ticker-h) + 1.6rem)}   /* panels centre in the map area (flex, no transform: crisp text); U3 turns the host into the side sheet */
+#panels{position:absolute;inset:0;pointer-events:none;z-index:4;display:flex;align-items:center;justify-content:center;padding:calc(var(--topbar-h) + 1.6rem) 2rem calc(var(--gutter) + 1.6rem)}   /* panels centre in the map area (flex, no transform: crisp text); U3 turns the host into the side sheet */
 #panels .panel{position:relative;flex:0 1 auto;width:72rem;max-width:100%;max-height:100%;overflow:auto;padding:2rem;pointer-events:auto;animation:rise var(--dur-open) var(--ease-decel)}
 .panel-head{position:absolute;right:1.2rem;top:1.2rem;z-index:5}
 .panel-status{font:500 var(--fs-label)/1.3 var(--font);letter-spacing:var(--track-label);text-transform:uppercase;color:var(--on-surface-variant);margin:-.4rem 0 1.2rem}
@@ -382,7 +390,7 @@ input[type="checkbox"]{accent-color:var(--primary)}
 .title-foot{font:500 var(--fs-label)/1 var(--font);letter-spacing:.1em;text-transform:uppercase;color:var(--on-surface-variant);margin-top:.8rem}
 #app.title-on #panels .panel{z-index:11}
 /* the build menu (G), the coach-mark tour, card pulse (U4 turns the menu into the expanded Build sheet) */
-#build-menu{position:absolute;left:50%;top:calc(var(--topbar-h) + 1.6rem);transform:translateX(-50%);width:min(130rem,calc(100vw - 4rem));height:min(68rem,calc(100vh - var(--topbar-h) - var(--palette-h) - var(--ticker-h) - 3.2rem));display:flex;flex-direction:column;z-index:6;padding:0;animation:rise-x var(--dur-open) var(--ease-decel)}
+#build-menu{position:absolute;left:50%;top:calc(var(--topbar-h) + 1.6rem);transform:translateX(-50%);width:min(130rem,calc(100vw - 4rem));height:min(68rem,calc(100vh - var(--topbar-h) - var(--bot) - 3.2rem));display:flex;flex-direction:column;z-index:6;padding:0;animation:rise-x var(--dur-open) var(--ease-decel)}
 #build-menu.hidden{display:none !important}
 .bm-head{display:flex;align-items:center;gap:1.6rem;padding:1.2rem 1.6rem 1.2rem 2rem;border-bottom:1px solid var(--outline-variant)} .bm-head .panel-title{margin:0}
 .bm-sub{font-size:var(--fs-body);color:var(--on-surface-variant);flex:1 1 auto} #btn-bm-close{margin-left:auto;align-self:center}
@@ -414,8 +422,8 @@ input[type="checkbox"]{accent-color:var(--primary)}
 @keyframes bm-pulse{0%,100%{box-shadow:0 0 0 0 transparent;transform:none} 40%{box-shadow:0 0 0 .5rem var(--primary-container);transform:scale(1.03)} }
 .bm-card.pulse{animation:bm-pulse 1.3s ease-in-out 2;border-color:var(--primary)}
 #hud.bm-open #hint,#hud.bm-open #tooltip{display:none !important}
-#hud.bm-open #objective-card,#hud.bm-open #minimap-wrap,#hud.bm-open #overlay-buttons,#hud.bm-open #alert-strip,#hud.bm-open #notifications,#hud.bm-open #undo-chip{opacity:.12;pointer-events:none;transition:opacity var(--dur-open)}
-#objective-card,#minimap-wrap,#overlay-buttons,#notifications,#voice-card{transition-property:opacity,transform;transition-duration:var(--dur-open)}
+#hud.bm-open #objective-card,#hud.bm-open #goal-pill,#hud.bm-open #alert-strip,#hud.bm-open #notifications,#hud.bm-open #undo-chip{opacity:.12;pointer-events:none;transition:opacity var(--dur-open)}
+#objective-card,#goal-pill,#notifications,#voice-card{transition-property:opacity,transform;transition-duration:var(--dur-open)}
 #hud .hud-fade{opacity:.12;pointer-events:none}
 .bm-card.reco .bm-name{padding-right:12.4rem}
 /* coach: the scrim panes tile everything but the target, the ring is the target's rect + a 3 px primary line, the box is opaque (the pane / ring moves keep their position transitions: an overlay, no layout cost) */
@@ -428,44 +436,28 @@ input[type="checkbox"]{accent-color:var(--primary)}
 .coach-box .card-actions{margin-top:1.2rem;align-items:center} .coach-box #btn-coach-next{margin-left:auto}
 .coach-box .card-actions .btn:not(.primary){background:transparent;color:var(--primary)}
 @media (max-width:1365px){#build-menu{top:calc(var(--topbar-h) + 1.2rem)} .bm-body{grid-template-columns:16rem 1fr 34rem}}
-/* hud modes (hud + zoom pass): H cycles full → compact → hidden, Shift+H restores. #hud[data-hud] carries the mode; a part with .pill is drawn as icon + one reading (compact mode, or folded by its ▾ in full mode); .pill.peek = opened by hover / click until the pointer leaves */
-.hud-pill{display:none;align-items:center;gap:.6rem;padding:.2rem .4rem;font:500 var(--fs-body)/1.6rem var(--font);color:var(--on-surface);white-space:nowrap;cursor:pointer;pointer-events:auto;user-select:none}
-.hud-pill .pg{font-size:1.5rem;line-height:1} .hud-pill .pc{color:var(--on-surface-variant);font-size:var(--fs-label)}
-.hud-pill:hover .pt{text-decoration:underline dotted}
-.pill:not(.peek)>.hud-pill{display:inline-flex}
-.btn.hud-chev{width:2.2rem;min-width:2.2rem;height:2.2rem;min-height:2.2rem;padding:0;font-size:1.1rem;line-height:2rem;opacity:.7;flex:0 0 auto}
-.btn.hud-chev:hover{opacity:1}
-#objective-card.pill:not(.peek){width:auto;max-width:36rem;padding:.6rem 1.2rem;display:flex;align-items:center;border-radius:var(--shape-pill);border-left:1px solid var(--outline-variant)}
-#objective-card.pill:not(.peek)>*:not(.hud-pill){display:none !important}
-#objective-card #hud-chev-goals{position:absolute;right:1.2rem;top:4.6rem}
-#objective-card.collapsed #hud-chev-goals{display:none !important}
-.needs-row #hud-chev-needs{flex:0 0 auto}
-#needs-strip.pill:not(.peek){padding-top:.8rem;display:flex;align-items:center}
-#needs-strip.pill:not(.peek)>*:not(.hud-pill){display:none !important}
-#minimap-wrap #hud-chev-minimap{position:absolute;right:.6rem;top:.6rem;z-index:2}
-#minimap-wrap.pill:not(.peek){width:auto;height:auto;padding:.4rem .8rem;display:flex;align-items:center;border-radius:var(--shape-pill)}
-#minimap-wrap.pill:not(.peek)>*:not(.hud-pill){display:none !important}
-#hud:has(#minimap-wrap.pill:not(.peek)) #overlay-buttons{top:calc(var(--topbar-h) + 6.4rem)}
-#hud:has(#minimap-wrap.pill:not(.peek)) #issues-tray{top:calc(var(--topbar-h) + 11.2rem)}
-#hud:has(#minimap-wrap.pill:not(.peek)):has(#legend:not(.hidden)) #issues-tray{top:calc(var(--topbar-h) + 14.2rem)}
-#issues-tray.pill:not(.peek){width:auto;max-width:36rem}
-#issues-tray.pill:not(.peek) #issues-head .sub,#issues-tray.pill:not(.peek) #issues-head #issues-spot,#issues-tray.pill:not(.peek) #issues-head #issues-clear{display:none}
-#hud.pal-pill{--palette-h:4.4rem}
-#palette.pill:not(.peek){left:var(--side);right:auto;height:auto;display:flex;align-items:center;padding:.4rem .8rem;bottom:calc(var(--ticker-h) + .8rem);background:var(--surface-float);border:1px solid var(--outline-variant);border-radius:var(--shape-pill);box-shadow:var(--elev-2)}
-#palette.pill:not(.peek)>*:not(.hud-pill){display:none !important}
-#palette #hud-chev-palette{position:absolute;right:.6rem;top:.6rem;z-index:2}
-#hud[data-hud="compact"] .stats .stat:not(#stat-cash){display:flex;flex-direction:row;align-items:baseline;align-self:center;height:auto;gap:.5rem;min-width:0;padding:.3rem .8rem}
-#hud[data-hud="compact"] #stat-students .stat-label{display:block !important}
-#hud[data-hud="compact"] .stats .stat:not(#stat-cash) .odometer{font-size:var(--fs-title)}
-#hud[data-hud="compact"] .stats .stat:not(#stat-cash) .stat-label{font-size:var(--fs-label)}
-#hud[data-hud="compact"] #chip-capacity{display:none}
-#hud[data-hud="compact"] .btn.hud-chev{opacity:.55}
+/* popovers (U2): 360 wide (Alerts / Layers 400, Map fits its canvas, Menu 320), radius 16, padding 16, elevation 2, surface-float, 8 px under the bar; the stat-chip popovers sit on the left gutter, the icon popovers right-align to their icon (ui.js sets `right`) */
+.popover{position:absolute;top:calc(var(--bar-h) + 8px);left:var(--gutter);width:36rem;max-width:calc(100vw - 2 * var(--gutter));max-height:calc(100vh - var(--bar-h) - 8px - var(--gutter));overflow:auto;padding:var(--sp-4);z-index:7;animation:rise var(--dur-open) var(--ease-decel)}
+.popover.alerts,.popover.layers,.popover.map,.popover.menu{left:auto;right:var(--gutter)} .popover.alerts,.popover.layers{width:40rem} .popover.map{width:auto;padding:var(--sp-3)} .popover.menu{width:32rem;padding:var(--sp-2)}
+.popover .head{display:flex;align-items:flex-start;gap:var(--sp-2);margin:-.4rem 0 var(--sp-2)} .popover.menu .head{margin:.4rem 0 .4rem;padding-left:var(--sp-3)}
+.popover .head .tcol{flex:1;min-width:0} .popover .head .title{font:600 var(--fs-title)/1.2 var(--font);color:var(--on-surface)} .popover .head .sub{font-size:var(--fs-label);color:var(--on-surface-variant);margin-top:.2rem}
+.popover .head .btn.icon{width:3.2rem;min-width:3.2rem;height:3.2rem;min-height:3.2rem;margin:-.2rem -.6rem 0 0;flex:none} .popover .head .btn.icon.selected{background:var(--secondary-container);color:var(--on-secondary-container)}
+#issues-head.clear .title{color:var(--success)}
+.popover .rows{display:flex;flex-direction:column;gap:.6rem} .popover .rows .row{border-bottom:0;padding:0} .popover .rows .row .k{color:var(--on-surface)} .popover .rows .row.total{border-top:1px solid var(--outline-variant);padding-top:.6rem;font-weight:600} .popover .row .v.good{color:var(--success)} .popover .row .v.bad{color:var(--error)}
+.popover .foot{display:flex;justify-content:flex-end;gap:var(--sp-2);margin-top:var(--sp-3)} .popover.map .foot{justify-content:flex-start;font-size:var(--fs-label);margin-top:var(--sp-2)}
+.popover.map .body{padding:0}
+.menu-list{display:flex;flex-direction:column;gap:.2rem} .menu-list .divider{height:1px;background:var(--outline-variant);margin:var(--sp-2) var(--sp-3)}
+.btn.list-item{position:relative;justify-content:flex-start;gap:var(--sp-3);width:100%;height:auto;min-height:4.8rem;padding:.6rem var(--sp-3) .6rem var(--sp-4);border-radius:var(--shape-sm);background:transparent;color:var(--on-surface);font-weight:400;text-align:left;white-space:normal}
+.list-item .t{flex:1;min-width:0;line-height:1.3} .list-item .t small{display:block;color:var(--on-surface-variant);font-size:var(--fs-label)}
+.list-item .hk{display:inline-flex;align-items:center;justify-content:center;min-width:2.2rem;height:2.2rem;padding:0 .5rem;border-radius:.5rem;border:1px solid var(--outline-variant);color:var(--on-surface-variant);font:600 var(--fs-label)/1 var(--font)}
+/* H hides everything but the decision snackbar, cards, chips and the coach (screenshots); Shift+H or H restores (U2: the compact mode and the per-part pills are gone) */
 #hud[data-hud="hidden"]{--palette-h:0px}
-#hud[data-hud="hidden"]>*:not(#decision-toast):not(#cards):not(#hud-chip):not(#ghost-label):not(#tooltip):not(#hint):not(#btn-skip):not(#coach):not(#inspect):not(#build-menu):not(#perfmode-chip){display:none !important}
+#hud[data-hud="hidden"]>*:not(#snack-lane):not(#cards):not(#hud-chip):not(#ghost-label):not(#tooltip):not(#hint):not(#btn-skip):not(#coach):not(#inspect):not(#build-menu):not(#perfmode-chip){display:none !important}
+#hud[data-hud="hidden"] #notifications,#hud[data-hud="hidden"] #notif-dismiss{display:none !important}
 #hud-chip{position:absolute;right:var(--side);bottom:1.2rem;z-index:4;font:500 var(--fs-body)/1.6rem var(--font);color:var(--primary);background:var(--surface-float);box-shadow:inset 0 0 0 1px var(--outline-variant);padding:.5rem 1.2rem;min-height:0;height:auto;border-radius:var(--shape-pill)}
 #hud-chip:hover{opacity:1}
 /* numbers never wrap or jitter: U+2212 and "$" are both prefix-numeric, so a bare "−$1.69M" may break after the minus unless the box is nowrap */
-.num,[data-nw],.stat .odometer,.stat .delta,#chip-capacity,#chip-weather,#stat-date,.speed-btn,.need-val,#obj-count,.ms-count,.log-day,.item .cost,.bm-cost,.bm-upkeep,.dt-p,.dt-d,.fb-sl-val,.fb-tr .ovr,.fb-tr .cost,.fb-tr .dt,.mo-count,.menu-count,.sb-score,.sb-clock,.sum-pts,.fb-bud-total,.fb-bud-sub,.fb-bud-row .v,#issues-head .n,.issue-row .a,.issue-row .btn,.fb-record,.hud-pill .pt,.land-price .v,.btn .key{white-space:nowrap;font-variant-numeric:tabular-nums}
+.num,[data-nw],.stat .odometer,.stat .delta,#chip-capacity,#chip-weather,#stat-date,.speed-btn,.need-val,#obj-count,#gp-count,.ms-count,.log-day,.item .cost,.bm-cost,.bm-upkeep,.dt-p,.dt-d,.fb-sl-val,.fb-tr .ovr,.fb-tr .cost,.fb-tr .dt,.mo-count,.menu-count,.sb-score,.sb-clock,.sum-pts,.fb-bud-total,.fb-bud-sub,.fb-bud-row .v,#issues-count,.issue-row .a,.issue-row .btn,.fb-record,.popover .row .v,.land-price .v,.btn .key{white-space:nowrap;font-variant-numeric:tabular-nums}
 .row .k{min-width:0}
 /* ui_panels.js (ARCH §7.7): Budget columns, Storm pick-list, Almanac grid; the rest reuses .row/.bar/.seg/.btn */
 .bud-grid{display:flex;gap:2rem;margin-bottom:1.2rem}
@@ -567,29 +559,18 @@ input[type="checkbox"]{accent-color:var(--primary)}
 .pick-list .row.pick .v,.pick-list .row.sp-boarded .v{margin-left:auto;flex:0 0 auto}
 .sp-dim{color:var(--on-surface-variant);font-size:var(--fs-label)} .pick-list .row.pick .k,.pick-list .row.sp-boarded .k{flex:1 1 auto;min-width:0}
 .pick-list .row.sp-boarded{color:var(--success)} .pick-list .row.sp-boarded .v{color:var(--success)}
-/* issue spotlight */
-#issues-tray{position:absolute;right:var(--side);top:calc(var(--topbar-h) + 28.4rem);width:27rem;display:flex;flex-direction:column;gap:.4rem;pointer-events:auto;transition:transform var(--dur-open) var(--ease-decel);z-index:3}
-#hud:has(#legend:not(.hidden)) #issues-tray{top:calc(var(--topbar-h) + 31.4rem)}
-#hud.inspect-open #issues-tray{display:none}   /* qa pass 4: shifted beside the inspect panel it sat on the notification stack at every width and scale; issues stay reachable (I, minimap pips) */
-#hud.setpiece #issues-tray{opacity:0;pointer-events:none}
-#issues-head{display:flex;align-items:center;gap:.6rem;padding:.5rem .6rem .5rem 1rem;border-radius:var(--shape-sm);background:var(--surface-float);border:1px solid var(--outline-variant);box-shadow:var(--elev-2);font-size:var(--fs-body);line-height:1.3;cursor:pointer;min-height:3.4rem}
-#issues-head .n{font-weight:700;color:var(--primary);white-space:nowrap} #issues-head.clear .n{color:var(--success)}
-#issues-head .sub{font-size:var(--fs-label);color:var(--on-surface-variant);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;flex:1 1 auto}
-#issues-head .btn{padding:0 .8rem;min-height:2.4rem;height:2.4rem;font-size:var(--fs-label);flex:0 0 auto}
-#issues-head .btn.active{background:var(--primary);color:var(--on-primary)}
-#issues-head #issues-toggle{width:2.4rem;min-width:2.4rem;padding:0}
-#issues-list{display:flex;flex-direction:column;gap:.3rem;overflow:hidden}
-#issues-tray.collapsed #issues-list,#issues-tray.collapsed #issues-more{display:none}
-.issue-row{display:grid;grid-template-columns:2.2rem minmax(0,1fr) auto auto;align-items:center;gap:.5rem;padding:.5rem .5rem .5rem .7rem;border-left:.4rem solid var(--primary);font-size:var(--fs-label);line-height:1.25;cursor:pointer;transition:background-color var(--dur-std) var(--ease-std)}
+/* the Alerts popover's list (the issue spotlight pass's tray): rows with the glyph tile, title + age, Fix / ⌖ / zz / ✕ / bell; the In progress section; Suggestions; the hidden line */
+#issues-tray{display:flex;flex-direction:column;gap:.4rem}
+#issues-list{display:flex;flex-direction:column;gap:.2rem}
+.issue-row{display:grid;grid-template-columns:3.2rem minmax(0,1fr) auto auto auto auto auto;align-items:center;gap:.4rem;padding:.5rem .2rem .5rem 0;border-top:1px solid var(--outline-variant);font-size:var(--fs-label);line-height:1.25;cursor:pointer;border-radius:.6rem;transition:background-color var(--dur-std) var(--ease-std)}
+.issue-row:first-child{border-top:0}
 .issue-row:hover,.issue-row.sel{background:var(--secondary-container)} .issue-row.sel{box-shadow:inset 0 0 0 2px var(--primary)}
-.issue-row canvas{width:2.2rem;height:2.2rem;display:block;padding:.2rem;border-radius:.6rem;background:var(--primary)}   /* the glyph keeps its kind colour (the map beacons use it); the purple plate is what makes it read on a light row */
-.issue-row .t{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600;color:var(--on-surface)} .issue-row .a{font-size:var(--fs-label);color:var(--on-surface-variant);font-weight:400}
-.issue-row .btn{padding:0 .8rem;min-height:2.4rem;height:2.4rem;font-size:var(--fs-label);min-width:0;background:transparent;color:var(--primary)}
+.issue-row canvas{width:3.2rem;height:3.2rem;display:block;padding:.6rem;border-radius:.8rem;background:var(--primary)}   /* the glyph keeps its kind colour (the map beacons use it); the purple plate is what makes it read on a light row */
+.issue-row .t{min-width:0;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;font:600 var(--fs-body)/1.25 var(--font);color:var(--on-surface)} .issue-row .a{font-size:var(--fs-label);color:var(--on-surface-variant);font-weight:400;white-space:nowrap}
+.issue-row .btn{padding:0 .8rem;min-height:2.8rem;height:2.8rem;font-size:var(--fs-label);min-width:0;background:transparent;color:var(--primary)}
 .issue-row .btn::after{top:-.4rem;bottom:-.4rem}
-.issue-row .btn.fix{background:var(--primary);color:var(--on-primary);font-weight:600}
-#issues-more{font-size:var(--fs-label);color:var(--on-surface-variant);text-align:center;padding:.1rem 0}
-.needs-row{display:flex;align-items:center;gap:.6rem} .needs-row #needs-text{flex:1 1 auto;min-width:0}
-#needs-locate{flex:0 0 auto;padding:0 .8rem;min-height:2.4rem;height:2.4rem;font-size:var(--fs-label)}
+.issue-row .btn.fix{font-weight:600}
+#issues-more{font-size:var(--fs-label);color:var(--on-surface-variant);text-align:center;padding:.2rem 0}
 .notif .locate{background:transparent;color:var(--primary);box-shadow:inset 0 0 0 1px var(--outline)}
 
 /* staff */
@@ -638,35 +619,26 @@ input[type="checkbox"]{accent-color:var(--primary)}
 /* gators */
 #alert-close{margin-left:.2rem;opacity:.7}#alert-close:hover{opacity:1}
 #hud.inspect-open #alert-strip{top:calc(var(--topbar-h) + 28.4rem);left:calc(var(--side) + 36rem + (100vw - 2 * var(--side) - 36rem - var(--inspect-w) - var(--gutter)) / 2);max-width:clamp(24rem,calc(100vw - 2 * var(--side) - 36rem - var(--inspect-w) - 4rem),60rem)}   /* qa pass 4: beside an open inspect the strip drops under the shifted overlay keys, centred between the goal card and the panel (clear of the minimap at 1280) */
-#notif-dismiss{position:absolute;right:calc(50% - min(44rem,var(--mid)) / 2);bottom:calc(var(--bot) + 14.8rem);z-index:3}#hud:has(#hint:not(.hidden)) #notif-dismiss{bottom:calc(var(--bot) + 20.8rem)}#hud.setpiece #notif-dismiss{opacity:0;pointer-events:none}
-.notif-why{order:4;flex:1 1 100%;font-size:var(--fs-label);line-height:1.3;opacity:.72}
-#notif-dismiss{pointer-events:auto;opacity:.85}
-.issue-row .why{grid-column:1 / -1;min-width:0;font-size:var(--fs-label);line-height:1.25;opacity:.7;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.issue-row .why{grid-column:2 / -1;min-width:0;font-size:var(--fs-label);line-height:1.25;color:var(--on-surface-variant);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #inspect .row.why .v{white-space:normal;text-align:left;opacity:.8}
-
 /* issues v2 */
-#issues-tray{width:36rem}
-.issue-row{grid-template-columns:2.2rem minmax(0,1fr) auto auto auto auto auto;gap:.4rem}
 .issue-row .btn.locate{color:var(--primary);font-size:1.5rem}
 .issue-row .btn.badge{padding:0 .6rem;min-width:0;font-weight:700;color:var(--primary);box-shadow:inset 0 0 0 1px var(--outline)}
-.issue-row .btn.icon-sm{width:2.4rem;min-width:2.4rem;padding:0;color:var(--on-surface-variant)} .issue-row .btn.icon-sm:hover{color:var(--on-surface)}
-.issue-row.sub{margin-left:1.2rem;border-left-width:.25rem;opacity:.92}
-.issue-row.progress{grid-template-columns:2.2rem minmax(0,1fr) auto;border-left-style:dashed;background:var(--surface-container-low)} .issue-row.progress .t{color:var(--on-surface-variant);font-weight:500}
-#issues-progress{display:flex;flex-direction:column;gap:.3rem} #issues-progress .ph{font-size:var(--fs-label);letter-spacing:.08em;text-transform:uppercase;color:var(--on-surface-variant);padding:.2rem 0 0 .8rem}
-#issues-progress-list{display:flex;flex-direction:column;gap:.3rem}
-#issues-tray.collapsed #issues-progress,#issues-tray.collapsed #issues-hidden{display:none}
-#issues-head #issues-clear{color:var(--on-primary);background:var(--primary);font-weight:600}
-#issues-hidden{align-self:center;padding:0 .8rem;min-height:2.2rem;height:2.2rem;line-height:2rem;font-size:var(--fs-label);color:var(--on-surface-variant)}
-
-/* calm alerts pass: the tray's Suggestions group + the mute bell (append-only) */
-#issues-suggest{display:flex;flex-direction:column;gap:.3rem}
-#issues-suggest #issues-suggest-head{align-self:flex-start;padding:0 .8rem;min-height:2.2rem;height:2.2rem;line-height:2rem;font-size:var(--fs-label);color:var(--on-surface-variant);letter-spacing:.04em}
+.issue-row .btn.icon-sm{width:2.8rem;min-width:2.8rem;padding:0;color:var(--on-surface-variant)} .issue-row .btn.icon-sm:hover{color:var(--on-surface)}
+.issue-row.sub{opacity:.92} .issue-row.sub canvas{width:2.4rem;height:2.4rem;padding:.4rem;margin-left:.8rem}
+.issue-row.progress{grid-template-columns:3.2rem minmax(0,1fr) auto;background:var(--surface-container-low)} .issue-row.progress .t{color:var(--on-surface-variant);font-weight:500}
+#issues-progress{display:flex;flex-direction:column;gap:.2rem} #issues-progress .ph{font:500 var(--fs-label)/1.2 var(--font);letter-spacing:var(--track-label);text-transform:uppercase;color:var(--on-surface-variant);padding:.6rem 0 .2rem}
+#issues-progress-list{display:flex;flex-direction:column;gap:.2rem}
+#pop-alerts .foot .btn.primary{font-weight:600}
+#issues-hidden{align-self:flex-start;padding:0 .8rem;min-height:2.4rem;height:2.4rem;font-size:var(--fs-label);color:var(--on-surface-variant);background:transparent}
+/* calm alerts pass: the Suggestions group + the mute bell */
+#issues-suggest{display:flex;flex-direction:column;gap:.2rem}
+#issues-suggest #issues-suggest-head{align-self:flex-start;padding:0 .8rem;min-height:2.4rem;height:2.4rem;font-size:var(--fs-label);color:var(--on-surface-variant);letter-spacing:.04em;background:transparent}
 #issues-suggest.open #issues-suggest-head{color:var(--on-surface)}
-#issues-suggest-list{display:flex;flex-direction:column;gap:.3rem}
-.issue-row.suggest{opacity:.82;border-left-style:dotted} .issue-row.suggest:hover{opacity:1}
-.issue-row.lead{grid-template-columns:2.2rem minmax(0,1fr) auto auto auto auto auto auto}
+#issues-suggest-list{display:flex;flex-direction:column;gap:.2rem}
+.issue-row.suggest{opacity:.82} .issue-row.suggest:hover{opacity:1}
+.issue-row.lead{grid-template-columns:3.2rem minmax(0,1fr) auto auto auto auto auto auto}
 .issue-row .btn.bell{font-size:1.2rem} .issue-row .btn.bell.muted{color:var(--primary)}
-#issues-tray.collapsed #issues-suggest{display:none}
 /* paths pass (Track P): the inspect card's network pill, the Link it button, the first-tie card */
 .insp-pill{display:inline-block;padding:.2rem .9rem;border-radius:1.2rem;font-size:var(--fs-label);font-weight:700;line-height:1.5;margin:0 0 .6rem;border:1px solid transparent}
 .insp-pill.grey{background:var(--surface-container-high);color:var(--on-surface-variant);border-color:var(--outline-variant)}
@@ -685,8 +657,8 @@ input[type="checkbox"]{accent-color:var(--primary)}
 #panel-land .land-swatch{display:inline-block;width:1.2rem;height:1.2rem;border-radius:.2rem;border:1px solid}
 #palette .item.land-card .icon.glyph{display:flex;align-items:center;justify-content:center;font-size:3.2rem;width:6.4rem;height:6.4rem;border:1px solid var(--outline-variant);border-radius:.6rem;background:var(--primary-container)}
 
-/* the last shed step (date chip gone) squeezes the buttons too, so even the compact HUD at 1280 x 800 / 115 % keeps every button on screen */
-#topbar.tightest .tb,#topbar.bare .tb{min-width:3.2rem;padding:0 .8rem} #topbar.tightest .speed-btn,#topbar.bare .speed-btn{min-width:2.8rem} #topbar.bare{gap:.6rem}   /* H7: the button squeeze starts at `tightest`, so the compact HUD (whose capacity chip is already folded away) keeps the date chip at 1440 */
+/* the last shed step squeezes the speed segments too, so the bar at 1280 x 800 / 115 % keeps every control on screen */
+#topbar.bare .speed-btn{min-width:2.8rem;padding:0 .6rem} #topbar.bare{gap:.6rem}
 
 /* framing pass (public site): the first screen explains itself. Subtitle, How to play / About buttons, a quiet small-screen note, and the two panels; same tokens and surfaces as H6 */
 .title-hint{display:none;font:var(--fs-body)/1.3 var(--font);letter-spacing:.02em;color:var(--on-surface-variant)}
