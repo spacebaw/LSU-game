@@ -28,7 +28,7 @@ function makeCtx2d(canvas) {
   });
 }
 
-class ClassList { constructor() { this.s = new Set(); } add(...a) { a.forEach(x => this.s.add(x)); } remove(...a) { a.forEach(x => this.s.delete(x)); } toggle(x, f) { if (f === undefined) f = !this.s.has(x); f ? this.s.add(x) : this.s.delete(x); return f; } contains(x) { return this.s.has(x); } }
+class ClassList { constructor() { this.s = new Set(); } add(...a) { a.forEach(x => { if (/\s/.test(String(x)) || x === '') throw new Error("Failed to execute 'add' on 'DOMTokenList': the token '" + x + "' is empty or contains HTML space characters"); this.s.add(x); }); } remove(...a) { a.forEach(x => this.s.delete(x)); } toggle(x, f) { if (f === undefined) f = !this.s.has(x); f ? this.s.add(x) : this.s.delete(x); return f; } contains(x) { return this.s.has(x); } }
 
 class Element {
   constructor(tag = 'div') {

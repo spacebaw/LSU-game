@@ -108,7 +108,11 @@
     settings: ['M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z', 'M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z'],
     calendar: ['M5 5h14v15H5z', 'M5 10h14', 'M9 3v4', 'M15 3v4'], flag: ['M6 21V4', 'M6 5h11l-2 4 2 4H6'], list: ['M5 6h14', 'M5 12h14', 'M5 18h9'],
     cyclone: ['M12 12h.01', 'M12 8a4 4 0 0 1 4 4 6 6 0 0 1-6 6 8 8 0 0 1-8-8 10 10 0 0 1 10-10'], football: ['M4 20C4 10 10 4 20 4c0 10-6 16-16 16z', 'M9 15l6-6', 'M11 9l4 4'],
-    landscape: ['M3 19l6-10 4 6 3-4 5 8z'], help: ['M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z', 'M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.4-1 .9-1 1.7', 'M12 17h.01']
+    landscape: ['M3 19l6-10 4 6 3-4 5 8z'],
+    // U4: the Build sheet (expand / collapse, search, bulldoze)
+    open_in_full: ['M14 4h6v6', 'M20 4l-7 7', 'M10 20H4v-6', 'M4 20l7-7'], close_fullscreen: ['M20 10h-6V4', 'M14 10l7-7', 'M4 14h6v6', 'M10 14l-7 7'],
+    search: ['M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14z', 'M16.5 16.5 21 21'], delete: ['M5 7h14', 'M9 7V4h6v3', 'M7 7l1 13h8l1-13', 'M10 11v5', 'M14 11v5'],
+    help: ['M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z', 'M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.4-1 .9-1 1.7', 'M12 17h.01']
   };
   const ICON_FILLED = { star: true };
   /** the legend swatches of the Layers popover (the overlays themselves are canvas colours in render.js; these echo its OV_COLORS at the legend's four steps) */
@@ -208,7 +212,8 @@
   let objKey = '', msAt = -1e9, panelAt = -1e9, perfAt = -1e9, speedKey = '', skipShown = false, paletteHidden = false, errCount = 0;
   let pendingPlaceSound = 0;
   // UX pass: build menu, needs strip cache, coach-mark tour
-  const bm = { open: false, hover: null, selected: null, pulseId: null, pulseUntil: 0, focusUntil: 0, keepOpen: false, key: '', detailKey: '', dirty: true };
+  const kb = { in: false, id: null, el: null };       // U4: keyboard focus inside the Build sheet (arrows move it, Enter arms the focused card); set by G / Shift+G / a card gaining focus
+  const bm = { open: false, query: '', hover: null, selected: null, pulseId: null, pulseUntil: 0, focusUntil: 0, keepOpen: false, key: '', detailKey: '', dirty: true };
   let needsCache = null, needsAt = -1e9, needsKey = '';
   const coach = { step: -1, armedAt: 0, paused: false, overlayBefore: 0, layoutAt: -1e9 };
   // U2: the HUD has one at-rest state; H hides everything (screenshots), Shift+H / H restores. Not a setting: the old settings.hudMode is read once on load (migrateSettings)
@@ -435,20 +440,39 @@
     const n = el('div', null, ''); n.id = 'pop-next'; p.appendChild(n); const x = btn('btn-pop-close', null, 'icon', function () { closePopover(); }); x.title = 'Close (Esc)'; x.appendChild(icon('close')); p.appendChild(x);
     E.popover = p; E['pop-title'] = t; E['pop-next'] = n; return p;
   }
-  /** U2: the palette is the interim Build sheet (hidden at rest; the FAB / G toggle it, Esc or its ✕ closes it; U4 rebuilds it) */
+  /** U4: the palette is the collapsed Build sheet (a bottom sheet: handle row with the expand and close icons, the category tabs, the card scroller, bulldoze + info at the right); hidden at rest, the FAB / G open it, Esc or its ✕ closes it */
   function buildPalette() {
-    const p = el('div', 'hidden'); p.id = 'palette'; const tabs = el('div'); tabs.id = 'palette-tabs'; const items = el('div'); items.id = 'palette-items';
+    const p = el('div', 'hidden bottom-sheet'); p.id = 'palette'; p.setAttribute('role', 'dialog'); p.setAttribute('aria-label', 'Build');
+    const hr = el('div', 'handle-row'); const handle = handleBtn('pal-handle', 'Expand the build sheet (Shift+G)'); hr.appendChild(handle);
+    const corner = el('div', 'corner');
+    const bmBtn = iconBtn('btn-build-menu', 'open_in_full', 'Expand to the full build sheet (Shift+G)', function () { const s = stateOf(); if (!s) return; if (bm.open) M.collapseBuildSheet(); else M.openBuildMenu(s, {}); });
+    const close = iconBtn('btn-palette-close', 'close', 'Close the Build sheet (Esc)', function () { M.openPalette(false); });
+    corner.appendChild(bmBtn); corner.appendChild(close); hr.appendChild(corner);
+    const tabs = el('div'); tabs.id = 'palette-tabs'; tabs.setAttribute('role', 'tablist');
+    const row = el('div', 'pal-row'); const items = el('div'); items.id = 'palette-items';
     const side = el('div', 'palette-side');
-    const bull = btn('btn-bulldoze', '🔨', '', function () { const s = stateOf(); const t = s && s.ui.tool; M.selectTool(s, t && t.id === 'bulldoze' ? null : 'bulldoze'); }); bull.title = 'Bulldoze (X)';
-    const info = btn('btn-palette-info', '⋯', '', function () { cls(E.palette, 'compact', !E.palette.classList.contains('compact')); paletteFade(); }); info.title = 'Compact palette';
-    // palette pass: the quick-bar scrolls sideways (no scrollbar; a mouse wheel scrolls it, the edges fade while there is more to see)
+    const bull = iconBtn('btn-bulldoze', 'delete', 'Bulldoze (X)', function () { const s = stateOf(); const t = s && s.ui.tool; M.selectTool(s, t && t.id === 'bulldoze' ? null : 'bulldoze'); });
+    const info = iconBtn('btn-palette-info', 'info', 'How the build sheet works (opens How to play)', function () { M.openPanel('howto'); });
+    // palette pass: the card row scrolls sideways (no scrollbar; a mouse wheel scrolls it, the edges fade while there is more to see)
     try { items.addEventListener('scroll', function () { paletteFade(); }); items.addEventListener('wheel', function (ev) { if (items.scrollWidth <= items.clientWidth + 1 || Math.abs(fin(ev.deltaX, 0)) >= Math.abs(fin(ev.deltaY, 0))) return; items.scrollLeft += ev.deltaY; ev.preventDefault(); }, { passive: false }); } catch (e) { /* stub */ }
-    side.appendChild(bull); side.appendChild(info);
-    const bmBtn = btn('btn-build-menu', '', 'primary', function () { const s = stateOf(); if (!s) return; if (bm.open) M.closeBuildMenu(); else M.openBuildMenu(s, {}); }); bmBtn.title = 'The full build menu (Shift+G)';
-    bmBtn.appendChild(el('span', 'glyph', '🏗')); bmBtn.appendChild(el('span', 'label', 'All buildings')); bmBtn.appendChild(el('span', 'key', '⇧G'));
-    const close = btn('btn-palette-close', null, 'icon', function () { M.openPalette(false); }); close.title = 'Close the Build sheet (Esc)'; close.appendChild(icon('close'));
-    p.appendChild(bmBtn); p.appendChild(tabs); p.appendChild(items); p.appendChild(side); p.appendChild(close);
-    E.palette = p; E['palette-tabs'] = tabs; E['palette-items'] = items; E['btn-bulldoze'] = bull; E['btn-palette-info'] = info; E['btn-build-menu'] = bmBtn; E['btn-palette-close'] = close; E.tabEls = {}; E.itemEls = {}; return p;
+    side.appendChild(bull); side.appendChild(info); row.appendChild(items); row.appendChild(side);
+    p.appendChild(hr); p.appendChild(tabs); p.appendChild(row);
+    E.palette = p; E['palette-tabs'] = tabs; E['palette-items'] = items; E['btn-bulldoze'] = bull; E['btn-palette-info'] = info; E['btn-build-menu'] = bmBtn; E['btn-palette-close'] = close; E['pal-handle'] = handle; E.tabEls = {}; E.itemEls = {}; return p;
+  }
+  /** U4: the sheet's drag handle: a click toggles collapsed / expanded; a drag of 24 px up expands, down collapses (down from the collapsed sheet closes it) */
+  function handleBtn(id, title) {
+    const h = plainBtn(id, 'sheet-handle', null); h.title = title; h.setAttribute('aria-label', title); h.appendChild(el('span', 'handle'));
+    let y0 = null, dragged = false;
+    const toggle = function () { const s = stateOf(); if (!s) return; if (bm.open) M.collapseBuildSheet(); else M.openBuildMenu(s, {}); };
+    try {
+      h.addEventListener('pointerdown', function (ev) { y0 = fin(ev.clientY, 0); dragged = false; });
+      h.addEventListener('pointerup', function (ev) {
+        if (y0 === null) return; const dy = fin(ev.clientY, 0) - y0; y0 = null;
+        if (Math.abs(dy) >= 24) { dragged = true; const s = stateOf(); if (dy < 0) { if (!bm.open && s) M.openBuildMenu(s, {}); } else if (bm.open) M.collapseBuildSheet(); else M.openPalette(false); }
+      });
+      h.addEventListener('click', function () { if (dragged) { dragged = false; return; } toggle(); });
+    } catch (e) { /* stub */ }
+    return h;
   }
   /** U2: the gold Build FAB (bottom-right): construction icon · "Build" · key cap G; toggles the Build sheet; hidden while the sheet, a panel, a card or the build menu is open */
   function buildFab() {
@@ -681,7 +705,7 @@
   const POP_ANCHOR = { needs: 'stat-students', budget: 'stat-cash', alerts: 'btn-alerts', layers: 'btn-layers', map: 'btn-map', breakdown: null };
   function popEl(name) { return name === 'breakdown' ? E.popover : E['pop-' + name]; }
   function popPinned(name) { const set = M.settings(); return (name === 'map' && !!set.keepMinimap) || (name === 'layers' && !!set.keepOverlays); }
-  function popVisible(name) { return !sheet.open && (pops.open === name || popPinned(name)); }   // U3: the Menu sheet covers the right gutter, so a pinned popover steps aside while it is open
+  function popVisible(name) { return !sheet.open && !bm.open && (pops.open === name || popPinned(name)); }   // U3: the Menu sheet covers the right gutter, so a pinned popover steps aside while it is open
   /** icon popovers right-align to their icon (clamped to the gutter); the stat-chip popovers sit on the left gutter (CSS); a pinned Layers stacks under a visible Map */
   function placePopover(name) {
     const p = popEl(name); if (!p || !p.style) return;
@@ -705,6 +729,7 @@
   function openPopover(name) {
     if (!popEl(name) || titleOn) return false;
     if (sheet.open) M.openPanel(null);   // U3: one of sheet / popover / Build sheet at a time: a popover closes the Menu sheet
+    if (pal.open || bm.open) M.openPalette(false);   // U4: … and the Build sheet
     pops.open = name;
     if (dom()) { syncPopovers(); placePopover(name); hideTooltip(); }
     return true;
@@ -750,11 +775,83 @@
   M.goalOpen = function (on) { if (on === false) goalCollapse(); else goalOpen(false); return goal.open; };
   M.goalExpanded = function () { return goal.open; };
 
-  // ---- the Build sheet (U2: today's palette shown by the FAB / G; U4 rebuilds it) -----------------------------------------------------
-  M.openPalette = function (on) { try { const v = on === undefined ? !pal.open : !!on; if (v === pal.open) return pal.open; if (v && (sheet.open || M.panel())) M.openPanel(null); pal.open = v;   // U3: one of sheet / popover / Build sheet at a time
- paletteHidden = null; const s = stateOf(); if (s && dom()) updateSetPiece(s); if (!v) hideTooltip(); return pal.open; } catch (e) { uerr('openPalette', e); return pal.open; } };
+  // ---- the Build sheet (U4): closed | collapsed (#palette, the quick bar) | expanded (#build-menu, 80 % height). pal.open = the sheet is up in either state; bm.open = it is expanded.
+  //      One of Menu sheet / transient popover / Build sheet at a time; the inspect card may stay. Esc closes it outright from either state (the ⤢ / handle / Shift+G collapse it).
+  function sheetSync() { try { const s = stateOf(); if (s && dom()) updateSetPiece(s); } catch (e) { /* stub */ } }
+  M.openPalette = function (on, opts) {
+    try {
+      const v = on === undefined ? !pal.open : !!on; opts = opts || {};
+      if (!v) {
+        if (!pal.open && !bm.open) return false;
+        if (bm.open) bmShut(false);
+        pal.open = false; kbClear(); kb.id = null; paletteHidden = null; hideTooltip(); sheetSync(); emit('ui:buildMenu', { open: false, state: 'closed' }); return false;
+      }
+      if (bm.open) { M.collapseBuildSheet(); }   // openPalette(true) from the expanded sheet: back to the quick bar
+      if (!pal.open) {
+        if (sheet.open || M.panel()) M.openPanel(null); closePopover(); menuEdit && M.closeMenuEditor();
+        pal.open = true; paletteHidden = null; paletteDirty = true; sheetSync(); emit('ui:buildMenu', { open: false, state: 'collapsed' });
+      }
+      if (opts.focus) { const s = stateOf(); if (s && dom()) M.refreshPalette(s); kbStart(); }
+      return pal.open;
+    } catch (e) { uerr('openPalette', e); return pal.open; }
+  };
   M.togglePalette = function () { return M.openPalette(); };
   M.paletteOpen = function () { return pal.open; };
+  /** 'closed' | 'collapsed' | 'expanded' */
+  M.buildSheetState = function () { return bm.open ? 'expanded' : (pal.open ? 'collapsed' : 'closed'); };
+  /** the expanded sheet back to the collapsed one (⤢, the handle, Shift+G; arming a card) */
+  M.collapseBuildSheet = function () { try { if (!bm.open) return; bmShut(true); } catch (e) { uerr('collapseBuildSheet', e); } };
+  M.expandBuildSheet = function () { const s = stateOf(); if (s) M.openBuildMenu(s, {}); return bm.open; };
+  /** the id of the card that has the keyboard focus in the open sheet (null when none) */
+  M.focusedCard = function () { return kb.in ? kb.id : null; };
+  M.focusCard = function (id) { try { if (!pal.open && !bm.open) return false; return kbSet(id, true); } catch (e) { uerr('focusCard', e); return false; } };
+  M.searchBuildings = function (text) { try { bm.query = String(text == null ? '' : text).trim().toLowerCase(); bm.dirty = true; bm.key = ''; if (E['bm-search'] && E['bm-search'].value !== String(text || '')) E['bm-search'].value = String(text || ''); const s = stateOf(); if (s && bm.open) refreshBuildMenu(s); return bm.query; } catch (e) { uerr('searchBuildings', e); return ''; } };
+  M.buildQuery = function () { return bm.query; };
+  /** the ids of the cards on show, in reading order (collapsed: the scroller; expanded: the grid) */
+  function cardOrder() { const box = bm.open ? E['bm-cards'] : E['palette-items']; const out = []; if (!box) return out; for (const c of box.children) if (c && c.dataset && c.dataset.id) out.push(c.dataset.id); return out; }
+  function cardEl(id) { if (bm.open) return (E.bmCards || {})[id] || null; if (E.itemEls && E.itemEls[id]) return E.itemEls[id]; const box = E['palette-items']; if (box) for (const c of box.children) if (c.dataset && c.dataset.id === id) return c; return null; }
+  /** put the keyboard focus on a card (and the real DOM focus, scrolled into view inside its own scroller: never scrollIntoView, it shifts the fixed #app) */
+  function kbSet(id, doFocus) {
+    const c = id ? cardEl(id) : null; if (!c) return false;
+    kb.id = id; kb.in = true; if (bm.open) bm.hover = id;
+    if (kb.el && kb.el !== c) cls(kb.el, 'kbf', false); cls(c, 'kbf', true); kb.el = c;   // the ring is a class, not :focus-visible alone: a mouse-opened sheet then moved by the keyboard still shows it
+    if (doFocus && dom()) { try { if (typeof c.focus === 'function') c.focus({ preventScroll: true }); } catch (e) { /* stub */ } }
+    if (bm.open) scrollCardIntoView(id); else scrollItemIntoView(c);
+    return true;
+  }
+  function kbClear() { kb.in = false; if (kb.el) { cls(kb.el, 'kbf', false); kb.el = null; } }
+  function scrollItemIntoView(c) { const box = E['palette-items']; if (!box || !c) return; try { const l = fin(c.offsetLeft, 0) - fin(box.offsetLeft, 0), w = fin(c.offsetWidth, 0), sl = fin(box.scrollLeft, 0), cw = fin(box.clientWidth, 0); if (l < sl + 12) box.scrollLeft = Math.max(0, l - 12); else if (cw > 0 && l + w > sl + cw - 12) box.scrollLeft = l + w - cw + 12; } catch (e) { /* stub */ } }
+  /** G / Shift+G: the keyboard is in the sheet: the armed tool's card, else the first card */
+  function kbStart() {
+    const ids = cardOrder(); if (!ids.length) return; const s = stateOf(); const t = s && s.ui && s.ui.tool ? s.ui.tool.id : null;
+    kbSet(kb.id && ids.indexOf(kb.id) >= 0 ? kb.id : (t && ids.indexOf(t) >= 0 ? t : (bm.selected && ids.indexOf(bm.selected) >= 0 ? bm.selected : ids[0])), true);
+  }
+  function kbRestore() { const ids = cardOrder(); if (!ids.length) return; kbSet(kb.id && ids.indexOf(kb.id) >= 0 ? kb.id : ids[0], true); }
+  /** columns of the expanded grid: the cards that share the first row's top */
+  function bmCols(ids) { const first = ids.length ? E.bmCards[ids[0]] : null; if (!first) return 1; let n = 0; for (const id of ids) { if (fin(E.bmCards[id].offsetTop, 0) === fin(first.offsetTop, 0)) n++; else break; } return Math.max(1, n); }
+  /** ← → move through the cards (↑ ↓ by rows in the expanded grid); no wrap; the first press with nothing focused lands on the armed / first card. true = consumed */
+  function kbArrow(key) {
+    const ids = cardOrder(); if (!ids.length) return false;
+    const horiz = key === 'ArrowLeft' || key === 'ArrowRight'; if (!horiz && !bm.open) return false;   // the quick bar is one row: ↑ ↓ keep panning the map
+    let i = kb.id ? ids.indexOf(kb.id) : -1;
+    if (i < 0) { kbStart(); return true; }
+    if (horiz) i += key === 'ArrowRight' ? 1 : -1; else { const cols = bmCols(ids); const j = i + (key === 'ArrowDown' ? cols : -cols); i = j >= ids.length && i < ids.length - 1 && key === 'ArrowDown' && Math.floor(i / cols) < Math.floor((ids.length - 1) / cols) ? ids.length - 1 : j; }
+    i = Math.max(0, Math.min(ids.length - 1, i)); kbSet(ids[i], true); return true;
+  }
+  /** Enter / Space on the focused card = a click on it (a button that has the DOM focus keeps its own Enter) */
+  function kbEnterOk() { try { const a = typeof document !== 'undefined' ? document.activeElement : null; return !a || a === document.body || (a.dataset && a.dataset.id === kb.id); } catch (e) { return true; } }
+  /** the one way a card arms its tool (click, Enter, the Place button): a greyed card says why instead; the expanded sheet collapses so the map is in view */
+  function armCard(s, id, place) {
+    if (!s || !s.ui) return false;
+    if (id === 'land') { M.openPanel('land'); return true; }
+    const r = rowOf(id); if (!r) return false; const u = unlockOf(s, id);
+    if (!u.ok) { call('audio', 'play', 'invalid'); M.notify(s, { kind: 'info', text: r.name + ' — unlocks: ' + (u.reason || 'later'), ttl: 4000 }); return false; }
+    const t = s.ui.tool; bm.selected = id;
+    if (bm.open || place) { if (!(t && t.id === id)) M.selectTool(s, id); if (bm.open) M.collapseBuildSheet(); }
+    else M.selectTool(s, t && t.id === id ? null : id);
+    return true;
+  }
+  function unlockText(reason) { const r = String(reason || 'later'); return /^unlocks?\b/i.test(r) ? r : 'Unlocks: ' + r; }
 
   // ---------------------------------------------------------------------------
   // DOM listeners → the machine (pointer / wheel / keys / gestures)
@@ -1004,7 +1101,7 @@
   // the live machine: callbacks bound to render/buildings/inspect
   const live = makeMachine({
     getTool: function () { const s = stateOf(); return s && s.ui ? s.ui.tool : null; },
-    setTool: function (t) { if (!t || !ghostPin || ghostPin.id !== t.id) ghostPin = null; const s = stateOf(); if (s && s.ui) { s.ui.tool = t; } markToolDom(s); if (t && bm.open && !bm.keepOpen) M.closeBuildMenu(); try { emit('ui:tool', { tool: t ? t.id : null }); } catch (e) { uerr('emit:tool', e); } },
+    setTool: function (t) { if (!t || !ghostPin || ghostPin.id !== t.id) ghostPin = null; const s = stateOf(); if (s && s.ui) { s.ui.tool = t; } markToolDom(s); if (t && bm.open && !bm.keepOpen) M.collapseBuildSheet(); try { emit('ui:tool', { tool: t ? t.id : null }); } catch (e) { uerr('emit:tool', e); } },
     isDrag: function (id) { const r = rowOf(id); return !!(r && r.kind === 'drag'); },
     rotatable: function (id) { const r = rowOf(id); return !!(r && r.rotatable); },
     locked: function () { return toolLocked; },
@@ -1153,6 +1250,12 @@
         else if (!heldN) { heldN = true; nDownAt = clock; nHeldLong = false; }
         return true;
       }
+      // U4: the Build sheet owns ← → ↑ ↓ (cards), Enter / Space (arm the focused card) and / (search) while the keyboard is in it
+      if ((pal.open || bm.open) && !mods.ctrl && !mods.meta && !mods.alt) {
+        if (kb.in && (key === 'ArrowLeft' || key === 'ArrowRight' || key === 'ArrowUp' || key === 'ArrowDown') && kbArrow(key)) return true;
+        if (kb.in && kb.id && (key === 'Enter' || key === ' ') && kbEnterOk()) { armCard(s, kb.id, false); return true; }
+        if (key === '/' && !mods.repeat) { if (!bm.open) M.openBuildMenu(s, {}); const inp = E['bm-search']; if (inp && dom()) { kb.in = false; try { inp.focus(); } catch (e) { /* stub */ } } return true; }
+      }
       let k = key;
       if (k === '+') k = '=';   // hud + zoom pass: + (Shift+=) and = both zoom in
       if (mods.shift && typeof mods.code === 'string' && /^Digit[1-9]$/.test(mods.code)) k = mods.code.slice(5);
@@ -1186,8 +1289,8 @@
       case 'nextTab': cycleTab(s, 1); return true;
       case 'prevTab': cycleTab(s, -1); return true;
       case 'bulldoze': { const t = s.ui.tool; if (toolLocked) return true; M.selectTool(s, t && t.id === 'bulldoze' ? null : 'bulldoze'); return true; }
-      case 'palette': { if (titleOn || s.setPiece) return true; if (bm.open) M.closeBuildMenu(); M.togglePalette(); return true; }   // U2: G toggles the Build sheet (same as the FAB)
-      case 'buildMenu': { if (bm.open) M.closeBuildMenu(); else M.openBuildMenu(s, {}); return true; }   // Shift+G: the full menu
+      case 'palette': { if (titleOn || s.setPiece) return true; if (pal.open) M.openPalette(false); else M.openPalette(true, { focus: true }); return true; }   // U4: G toggles the Build sheet (collapsed or expanded: closes it; closed: opens the quick bar with the keyboard in it)
+      case 'buildMenu': { if (titleOn || s.setPiece) return true; if (bm.open) M.collapseBuildSheet(); else M.openBuildMenu(s, { kbd: true }); return true; }   // U4: Shift+G expands the sheet (from closed or collapsed); again = back to the quick bar
       case 'rotate': return mcStep(live, { type: 'key', key: 'r', px: lastPx, py: lastPy }) || true;
       case 'home': { const f = s.plot && s.plot.founders; if (f) call('render', 'panToTile', f.tx + 1, f.ty + 1); return true; }
       case 'follow': { const cam = s.ui.camera; if (cam && cam.follow >= 0) { call('render', 'follow', -1); } else { const a = call('agents', 'follow', s); if (a && Number.isFinite(a.id)) call('render', 'follow', a.id); } return true; }
@@ -1863,7 +1966,7 @@
   M.introduceTab = function (state, tab) { try { const s = state || stateOf(); if (!s || !s.ui || !tab) return; if (!s.ui.tabsIntroduced[tab]) { s.ui.tabsIntroduced[tab] = true; if (s.ui.paletteTab !== tab) s.ui.newPips[tab] = true; } paletteDirty = true; } catch (e) { uerr('introduceTab', e); } };
   /** palette pass: the label a tile shows when the full name will not fit two 15-px lines (the tooltip and the build menu keep the full name) */
   const PAL_SHORT = { 'Mosquito Abatement Station': 'Mosquito Abatement', 'Bat House / Purple Martin Tower': 'Bat House', 'Marsh Restoration Program': 'Marsh Restoration', 'Coastal Studies Institute': 'Coastal Institute' };
-  let palShownTab = '';
+  let palShownTab = '', palRecoKey = '', palRecoAt = -1e9;
   /** palette pass: fade the quick-bar's left / right edge only while there is more to scroll to that side */
   function paletteFade() {
     try {
@@ -1877,15 +1980,17 @@
     try {
       const s = state || stateOf(); if (!dom() || !s || !s.ui) return;
       paletteDirty = false;
-      const vis = visibleTabs(s), cur = currentTab(s);
+      const vis = visibleTabs(s), cur = currentTab(s); const reco = recommend(s);
       if (cur && s.ui.paletteTab !== cur.id) s.ui.paletteTab = cur.id;
-      const key = vis.map(function (t) { return t.id; }).join(',') + '|' + (cur ? cur.id : '') + '|' + (cur ? cur.rows.map(function (id) { const u = unlockOf(s, id); return id + (u.ok ? '+' : '-' + u.reason); }).join(',') : '');
+      const key = vis.map(function (t) { return t.id; }).join(',') + '|' + (cur ? cur.id : '') + '|' + (cur ? cur.rows.map(function (id) { const u = unlockOf(s, id); return id + (u.ok ? '+' : '-' + u.reason) + (reco[id] || ''); }).join(',') : '');
+      palRecoKey = JSON.stringify(reco); palRecoAt = clock;
       if (key === paletteKey) { refreshPips(s); return; }
+      const hadKb = kb.in;
       const tabChanged = !!cur && cur.id !== palShownTab; palShownTab = cur ? cur.id : '';
       paletteKey = key; bm.dirty = true;
       const tabs = E['palette-tabs']; clear(tabs); E.tabEls = {};
       for (const t of vis) {
-        const b = el('button', 'tab' + (cur && cur.id === t.id ? ' active' : '')); b.type = 'button'; b.dataset.tab = t.id;
+        const b = el('button', 'tab' + (cur && cur.id === t.id ? ' active' : '')); b.type = 'button'; b.dataset.tab = t.id; b.setAttribute('role', 'tab'); b.setAttribute('aria-selected', cur && cur.id === t.id ? 'true' : 'false');
         b.appendChild(el('span', 'tab-name', t.name)); const pip = el('span', 'pip hidden'); b.appendChild(pip);
         b.addEventListener('click', function () { setTab(stateOf(), t.id); });
         tabs.appendChild(b); E.tabEls[t.id] = { el: b, pip: pip };
@@ -1894,13 +1999,15 @@
       if (cur) for (const id of cur.rows) {
         if (id === 'founders_hall') continue;
         const r = rowOf(id); if (!r) continue; const u = unlockOf(s, id);
-        const it = el('div', 'item' + (u.ok ? '' : ' locked')); it.dataset.id = id; it.setAttribute('tabindex', '0'); it.setAttribute('role', 'button');
-        // palette pass: a vertical stack, nothing overlaps: framed icon -> name (two lines reserved, centred) -> price in plain dim gold (drag rows: '$2,000/tile')
+        const it = el('div', 'item' + (u.ok ? '' : ' locked') + (reco[id] ? ' reco' : '')); it.dataset.id = id; it.setAttribute('tabindex', '0'); it.setAttribute('role', 'button'); if (!u.ok) it.setAttribute('aria-disabled', 'true');
+        // palette pass: a vertical stack, nothing overlaps: framed icon -> name (two lines reserved, centred) -> price (U4: or the "Unlocks at …" line of a greyed card); the ★ rides the icon's corner
         const ic = el('canvas', 'icon'); ic.width = 64; ic.height = 64; it.appendChild(ic); call('render', 'drawIcon', ic, id);
         const nm = el('div', 'name'); nm.appendChild(el('span', '', PAL_SHORT[r.name] || r.name)); it.appendChild(nm);
-        const cost = el('div', 'cost', money(r.cost)); if (r.kind === 'drag') cost.appendChild(el('span', 'per', '/tile')); it.appendChild(cost);
-        if (!u.ok) { const cd = el('div', 'cond'); cd.appendChild(el('span', 'k', 'Unlocks')); cd.appendChild(el('span', 'why', u.reason || 'Locked')); it.appendChild(cd); }
-        it.addEventListener('click', function () { const st = stateOf(); if (!u.ok) { call('audio', 'play', 'invalid'); if (u.reason) M.notify(st, { kind: 'info', text: u.reason, ttl: 4000 }); return; } const t = st.ui.tool; M.selectTool(st, t && t.id === id ? null : id); });
+        if (u.ok) { const cost = el('div', 'cost', money(r.cost)); if (r.kind === 'drag') cost.appendChild(el('span', 'per', '/tile')); it.appendChild(cost); }
+        else { const cd = el('div', 'cost cond'); cd.appendChild(el('span', 'why', unlockText(u.reason))); it.appendChild(cd); }
+        if (reco[id]) { const st = el('span', 'star'); st.title = badgeText(reco[id]); st.appendChild(icon('star', 'sm')); it.appendChild(st); }
+        it.addEventListener('click', function () { armCard(stateOf(), id, false); });
+        it.addEventListener('focus', function () { kb.id = id; kb.in = true; });
         it.addEventListener('pointerenter', function (ev) { itemHover = { key: 'item:' + id, id: id, since: clock, px: fin(ev.clientX, 0), py: fin(ev.clientY, 0) }; try { const q = it.getBoundingClientRect(); itemHover.ax = q.left + q.width / 2; itemHover.ay = q.top - 8; } catch (e) { /* stub */ } });
         it.addEventListener('pointermove', function (ev) { if (itemHover && itemHover.id === id) { itemHover.px = fin(ev.clientX, itemHover.px); itemHover.py = fin(ev.clientY, itemHover.py); } });
         it.addEventListener('pointerleave', function () { if (itemHover && itemHover.id === id) { itemHover = null; hideTooltip(); } });
@@ -1908,7 +2015,7 @@
       }
       if (cur && cur.id === 'grounds' && BSU.land) items.appendChild(landCard(s));   // L2: the "Charter land" card opens the Land Office
       if (tabChanged) { try { items.scrollLeft = 0; } catch (e) { /* stub */ } }
-      refreshPips(s); markToolDom(s); paletteFade();
+      refreshPips(s); markToolDom(s); paletteFade(); if (hadKb && !bm.open) kbRestore();
     } catch (e) { uerr('refreshPalette', e); }
   };
   /** L2: the Grounds tab's "Charter land" card: a deed glyph, the cheapest section for sale (or the reason there is none), click = the Land Office */
@@ -1920,6 +2027,7 @@
     it.appendChild(el('div', 'cost', !fin(st.sections, 0) ? 'Charter complete' : (fin(st.forSale, 0) ? 'from ' + money(st.cheapest) : 'Land Office')));
     it.title = 'Land Office (O): buy 16 × 16 sections of state land next to your campus';
     it.addEventListener('click', function () { M.openPanel('land'); });
+    it.addEventListener('focus', function () { kb.id = 'land'; kb.in = true; });
     return it;
   }
   function refreshPips(s) { const pk = JSON.stringify(s.ui.newPips || {}) + '|' + s.ui.paletteTab; if (pk === pipKey) return; pipKey = pk; for (const id in E.tabEls) { show(E.tabEls[id].pip, !!s.ui.newPips[id]); cls(E.tabEls[id].el, 'active', id === s.ui.paletteTab); } }
@@ -2109,105 +2217,165 @@
     if (row.alwaysPilings && RQ.marsh) out.push({ glyph: RQ.marsh.glyph, text: 'Always on Pilings (in the price)' });
     return out;
   }
-  // ---- the build menu
+  // ---- the expanded Build sheet (#build-menu): the quick bar grown to 80 % height
   function buildBuildMenu() {
-    const m = el('div', 'hidden'); m.id = 'build-menu';
-    const head = el('div', 'bm-head'); head.appendChild(el('div', 'panel-title', 'Build')); const sub = el('div', 'bm-sub', 'Pick a category, then a building. ★ marks what the campus needs right now; greyed cards say what unlocks them.'); sub.id = 'bm-sub'; head.appendChild(sub);
-    const close = btn('btn-bm-close', '✕', 'icon', function () { M.closeBuildMenu(); }); head.appendChild(close);
+    const m = el('div', 'hidden bottom-sheet expanded'); m.id = 'build-menu'; m.setAttribute('role', 'dialog'); m.setAttribute('aria-label', 'Build');
+    const hr = el('div', 'handle-row'); const handle = handleBtn('bm-handle', 'Collapse to the quick bar (Shift+G)'); hr.appendChild(handle);
+    const head = el('div', 'bm-head'); head.appendChild(el('div', 'bm-title', 'Build')); const sub = el('div', 'bm-sub', 'Pick a category, then a building. ★ marks what the campus needs right now; greyed cards say what unlocks them.'); sub.id = 'bm-sub'; head.appendChild(sub);
+    const field = el('label', 'text-field'); field.appendChild(icon('search')); const input = el('input'); input.id = 'bm-search'; input.type = 'search'; input.placeholder = 'Search buildings'; input.setAttribute('aria-label', 'Search buildings'); input.autocomplete = 'off'; input.spellcheck = false; field.appendChild(input);
+    try {
+      input.addEventListener('input', function () { M.searchBuildings(input.value); });
+      input.addEventListener('focus', function () { focusedInput = input; }); input.addEventListener('blur', function () { if (focusedInput === input) focusedInput = null; });
+      input.addEventListener('keydown', function (ev) {
+        if (ev.key === 'Escape') { ev.preventDefault(); ev.stopPropagation(); if (input.value) { M.searchBuildings(''); } else { input.blur(); M.openPalette(false); } }
+        else if (ev.key === 'Enter' || ev.key === 'ArrowDown') { ev.preventDefault(); input.blur(); const ids = cardOrder(); if (ids.length) kbSet(ids[0], true); }
+      });
+    } catch (e) { /* stub */ }
+    const collapse = iconBtn('btn-bm-collapse', 'close_fullscreen', 'Back to the quick bar (Shift+G)', function () { M.collapseBuildSheet(); });
+    const close = iconBtn('btn-bm-close', 'close', 'Close the Build sheet (Esc)', function () { M.closeBuildMenu(); });
+    head.appendChild(field); head.appendChild(collapse); head.appendChild(close);
     const body = el('div', 'bm-body'); const cats = el('div'); cats.id = 'bm-cats'; const cards = el('div'); cards.id = 'bm-cards'; const detail = el('div'); detail.id = 'bm-detail';
+    const dbody = el('div', 'bm-dbody'); dbody.id = 'bm-dbody'; const dfoot = el('div', 'bm-dfoot'); dfoot.id = 'bm-dfoot'; detail.appendChild(dbody); detail.appendChild(dfoot);
     body.appendChild(cats); body.appendChild(cards); body.appendChild(detail);
-    const foot = el('div', 'bm-foot'); const ft = el('span', null, ''); ft.id = 'bm-foot-text'; foot.appendChild(ft);
-    const bull = btn('btn-bm-bulldoze', '🔨 Demolish', 'small', function () { const s = stateOf(); if (!s) return; M.selectTool(s, 'bulldoze'); M.closeBuildMenu(); }); foot.appendChild(bull);
-    m.appendChild(head); m.appendChild(body); m.appendChild(foot);
-    E['build-menu'] = m; E['bm-cats'] = cats; E['bm-cards'] = cards; E['bm-detail'] = detail; E['bm-foot-text'] = ft; E['btn-bm-close'] = close; E.bmCards = {}; E.bmCats = {}; return m;
+    m.appendChild(hr); m.appendChild(head); m.appendChild(body);
+    E['build-menu'] = m; E['bm-cats'] = cats; E['bm-cards'] = cards; E['bm-detail'] = detail; E['bm-dbody'] = dbody; E['bm-dfoot'] = dfoot; E['bm-search'] = input; E['bm-handle'] = handle; E['btn-bm-collapse'] = collapse; E['btn-bm-close'] = close; E.bmCards = {}; E.bmCats = {};
+    try {
+      for (const root of [m, E.palette]) if (root) {
+        root.addEventListener('focusin', function () { kb.in = true; });
+        root.addEventListener('focusout', function (ev) { const r = ev.relatedTarget; if (!r || !root.contains(r)) { if (!kbKeep) kbClear(); } });
+      }
+    } catch (e) { /* stub */ }
+    return m;
   }
+  let kbKeep = false;   // true while the sheet rebuilds its cards (the removed card's focusout is not the player leaving)
   function tabFor(s, id) {
     const vis = visibleTabs(s); const cur = vis.find(function (t) { return t.id === s.ui.paletteTab; });
     if (cur && cur.rows.indexOf(id) >= 0) return cur.id;
     const ess = vis.find(function (t) { return t.id === 'essentials'; }); if (ess && ess.rows.indexOf(id) >= 0) return 'essentials';
     const r = rowOf(id); const own = r && vis.find(function (t) { return t.id === r.tab; }); return own ? own.id : (cur ? cur.id : (vis[0] ? vis[0].id : null));
   }
-  /** openBuildMenu(state, {tab?, focus?: id, pulse?}) — focus picks the tab holding that card, selects it in the detail and pulses it */
+  /** openBuildMenu(state, {tab?, focus?: id, pulse?, kbd?}) — the expanded sheet (Shift+G). focus picks the tab holding that card, selects it in the detail, pulses it and gives it the keyboard focus; kbd puts the keyboard in the sheet */
   M.openBuildMenu = function (state, opts) {
     try {
       const s = state || stateOf(); if (!s || !s.ui || titleOn || s.setPiece) return; opts = opts || {};
       if (!visibleTabs(s).length) return;
       if (menuEdit) M.closeMenuEditor();   // tutorial stages 1–3: no tab yet, the objective hands the tool over
-      bm.open = true;
+      if (!pal.open && (sheet.open || M.panel())) M.openPanel(null);
+      const was = bm.open; bm.open = true; pal.open = true; paletteHidden = null;
+      if (!was) { bm.query = ''; if (E['bm-search']) E['bm-search'].value = ''; }
       if (opts.focus && rowOf(opts.focus)) { const t = tabFor(s, opts.focus); if (t) setTab(s, t); bm.selected = opts.focus; bm.pulseId = opts.pulse ? opts.focus : null; bm.pulseUntil = clock + 2600; bm.focusUntil = clock + 2600; }
       else if (opts.tab) setTab(s, opts.tab);
-      bm.hover = null; bm.dirty = true;
-      if (dom()) { show(E['build-menu'], true); cls(E.hud, 'bm-open', true); closePopover(); hideTooltip(); refreshBuildMenu(s); scrollCardIntoView(opts.focus); }
-      emit('ui:buildMenu', { open: true, tab: s.ui.paletteTab, focus: opts.focus || null });
+      bm.hover = null; bm.dirty = true; bm.key = '';
+      if (dom()) { show(E['build-menu'], true); cls(E.hud, 'bm-open', true); closePopover(); hideTooltip(); refreshBuildMenu(s); scrollCardIntoView(opts.focus); if (!was) sheetSync(); }
+      if (opts.focus && rowOf(opts.focus)) kbSet(opts.focus, true); else if (opts.kbd || (was && kb.in)) kbStart();
+      emit('ui:buildMenu', { open: true, state: 'expanded', tab: s.ui.paletteTab, focus: opts.focus || null });
     } catch (e) { uerr('openBuildMenu', e); }
   };
   /** scroll the card grid (never the page: scrollIntoView would shift the fixed #app) */
   function scrollCardIntoView(id) { const c = id && E.bmCards[id], grid = E['bm-cards']; if (!c || !grid) return; try { const top = fin(c.offsetTop, 0) - fin(grid.offsetTop, 0); if (Number.isFinite(top) && (top < fin(grid.scrollTop, 0) || top + fin(c.offsetHeight, 0) > fin(grid.scrollTop, 0) + fin(grid.clientHeight, 0))) grid.scrollTop = Math.max(0, top - 10); } catch (e) { /* stub */ } }
-  M.closeBuildMenu = function () { try { if (!bm.open) return; bm.open = false; bm.hover = null; bm.pulseId = null; bm.scrollTab = ''; if (dom()) { show(E['build-menu'], false); cls(E.hud, 'bm-open', false); } emit('ui:buildMenu', { open: false }); } catch (e) { uerr('closeBuildMenu', e); } };
+  /** shut the expanded sheet: collapse = the quick bar stays up; else the whole sheet closes */
+  function bmShut(collapse) {
+    if (!bm.open) return;
+    const keep = kb.in && collapse; bm.open = false; bm.hover = null; bm.pulseId = null; bm.scrollTab = ''; bm.query = ''; bm.key = ''; bm.detailKey = '';
+    const inp = E['bm-search']; if (inp) { try { if (inp.value) inp.value = ''; if (focusedInput === inp) { focusedInput = null; inp.blur(); } } catch (e) { /* stub */ } }
+    if (dom()) { show(E['build-menu'], false); cls(E.hud, 'bm-open', false); }
+    if (!collapse) { pal.open = false; kbClear(); kb.id = null; } else { paletteDirty = true; }
+    paletteHidden = null; sheetSync();
+    emit('ui:buildMenu', { open: false, collapsed: !!collapse, state: collapse ? 'collapsed' : 'closed' });
+    if (collapse) { const s = stateOf(); if (s && dom()) { M.refreshPalette(s); if (keep) kbRestore(); else if (kb.id && !cardEl(kb.id)) kb.id = null; } }
+  }
+  /** close the whole Build sheet from the expanded state (Esc, ✕, the set piece); M.collapseBuildSheet() keeps the quick bar */
+  M.closeBuildMenu = function () { try { if (!bm.open) return; bmShut(false); } catch (e) { uerr('closeBuildMenu', e); } };
   M.buildMenuOpen = function () { return bm.open; };
   function badgeText(kind) { return kind === 'Goal' ? '★ Goal' : kind === 'Needed' ? '★ Needed now' : '★ Recommended'; }
+  /** the ids the expanded grid shows: the current category, or (a search term) every visible category's match */
+  function bmRows(s, vis, cur) {
+    const ok = function (id) { return id !== 'founders_hall' && !!rowOf(id); };
+    if (!bm.query) return cur ? cur.rows.filter(ok) : [];
+    const q = bm.query.split(/\s+/).filter(Boolean), out = [], seen = {};
+    for (const t of vis) for (const id of t.rows) {
+      if (!ok(id) || seen[id]) continue; const r = rowOf(id);
+      const hay = (r.name + ' ' + t.name + ' ' + (r.blurb || '') + ' ' + (r.desc || '') + ' ' + id).toLowerCase();
+      if (q.every(function (w) { return hay.indexOf(w) >= 0; })) { seen[id] = 1; out.push(id); }
+    }
+    return out;
+  }
   function refreshBuildMenu(s) {
     if (!dom() || !bm.open || !s || !s.ui) return;
     bm.dirty = false;
     const vis = visibleTabs(s), cur = currentTab(s); if (cur && s.ui.paletteTab !== cur.id) s.ui.paletteTab = cur.id;
-    const reco = recommend(s);
-    const key = vis.map(function (t) { return t.id + (s.ui.newPips[t.id] ? '!' : ''); }).join(',') + '|' + (cur ? cur.id : '') + '|' + (cur ? cur.rows.map(function (id) { const u = unlockOf(s, id); return id + (u.ok ? '+' : '-' + u.reason) + (reco[id] || ''); }).join(',') : '') + '|' + fin(s.economy && s.economy.cash, 0);
-    const foot = needsNow(s); setText(E['bm-foot-text'], foot && foot.binding ? foot.binding.text : '');
+    const reco = recommend(s); const rows = bmRows(s, vis, cur);
+    const key = vis.map(function (t) { return t.id + (s.ui.newPips[t.id] ? '!' : ''); }).join(',') + '|' + (bm.query ? 'q:' + bm.query : (cur ? cur.id : '')) + '|' + rows.map(function (id) { const u = unlockOf(s, id); return id + (u.ok ? '+' : '-' + u.reason) + (reco[id] || ''); }).join(',') + '|' + fin(s.economy && s.economy.cash, 0);
     if (key !== bm.key) {
-      bm.key = key;
-      const cats = E['bm-cats']; clear(cats); E.bmCats = {};
-      for (const t of vis) {
-        const b = el('button', 'bm-cat' + (cur && cur.id === t.id ? ' active' : '')); b.type = 'button'; b.dataset.tab = t.id;
-        b.appendChild(el('span', 'bm-cat-name', t.name)); const n = t.rows.filter(function (id) { return id !== 'founders_hall' && unlockOf(s, id).ok; }).length; b.appendChild(el('span', 'bm-cat-count', n + '/' + t.rows.filter(function (id) { return id !== 'founders_hall'; }).length));
-        if (t.rows.some(function (id) { return reco[id]; })) b.appendChild(el('span', 'bm-cat-star', '★'));
-        if (s.ui.newPips[t.id]) b.appendChild(el('span', 'pip'));
-        b.addEventListener('click', function () { const st = stateOf(); setTab(st, t.id); bm.hover = null; bm.dirty = true; });
-        cats.appendChild(b); E.bmCats[t.id] = b;
-      }
-      if (cur && bm.scrollTab !== cur.id) { bm.scrollTab = cur.id; const act = E.bmCats[cur.id]; try { if (act) { const cr = cats.getBoundingClientRect(), ar = act.getBoundingClientRect(); if (ar.bottom > cr.bottom) cats.scrollTop += ar.bottom - cr.bottom + 4; else if (ar.top < cr.top) cats.scrollTop -= cr.top - ar.top + 4; } } catch (e) { /* stub */ } }   // H7: bring the active category into view when the tab changes / the menu opens (not on a refresh; never scrollIntoView: it shifts #app)
-      const cards = E['bm-cards']; clear(cards); E.bmCards = {};
-      if (cur) for (const id of cur.rows) {
-        if (id === 'founders_hall') continue; const r = rowOf(id); if (!r) continue; const u = unlockOf(s, id);
-        const c = el('div', 'bm-card' + (u.ok ? '' : ' locked') + (reco[id] ? ' reco' : '')); c.dataset.id = id; c.setAttribute('tabindex', '0'); c.setAttribute('role', 'button');
-        const top = el('div', 'bm-top'); const ic = el('canvas', 'icon'); ic.width = 64; ic.height = 64; top.appendChild(ic); call('render', 'drawIcon', ic, id);
-        const tcol = el('div', 'bm-tcol'); tcol.appendChild(el('div', 'bm-name', r.name));
-        const price = el('div', 'bm-price'); price.appendChild(el('span', 'bm-cost', money(r.cost) + (r.kind === 'drag' || r.kind === 'paint' ? '/tile' : (r.kind === 'upgrade' ? ' +40% of the building' : '')))); if (r.upkeep) price.appendChild(el('span', 'bm-upkeep', money(r.upkeep) + '/mo')); tcol.appendChild(price);
-        const reqs = el('div', 'bm-reqs'); for (const q of requirementsOf(r)) { const sp = el('span', 'bm-req'); sp.appendChild(el('span', 'rq-g', q.glyph)); if (REQ_LABEL[q.glyph]) sp.appendChild(el('span', 'rq-l', REQ_LABEL[q.glyph])); sp.title = q.text; reqs.appendChild(sp); } if (r.w > 1 || r.h > 1) { const fp = el('span', 'bm-req fp', r.w + '×' + r.h); fp.title = 'Footprint ' + r.w + '×' + r.h + ' tiles' + (r.rotatable ? ' (R rotates)' : ''); reqs.appendChild(fp); } tcol.appendChild(reqs);
-        top.appendChild(tcol); c.appendChild(top);
-        c.appendChild(el('div', 'bm-blurb', r.blurb || r.desc || ''));
-        c.appendChild(el('div', 'bm-why', r.why || ''));
-        if (reco[id]) c.appendChild(el('div', 'bm-badge', badgeText(reco[id])));
-        if (!u.ok) { const lk = el('div', 'bm-lock'); lk.appendChild(el('span', 'bm-lock-ic', '🔒')); lk.appendChild(el('span', null, 'Unlocks: ' + (u.reason || 'later'))); c.appendChild(lk); }
-        c.addEventListener('click', function () { const st = stateOf(); if (!st) return; if (!u.ok) { call('audio', 'play', 'invalid'); M.notify(st, { kind: 'info', text: r.name + ' — unlocks: ' + (u.reason || 'later'), ttl: 4000 }); return; } bm.selected = id; M.selectTool(st, id); M.closeBuildMenu(); });
-        c.addEventListener('pointerenter', function () { bm.hover = id; }); c.addEventListener('pointerleave', function () { if (bm.hover === id) bm.hover = null; });
-        c.addEventListener('focus', function () { bm.hover = id; });
-        cards.appendChild(c); E.bmCards[id] = c;
-      }
-      bm.detailKey = '';
+      bm.key = key; kbKeep = true;
+      try {
+        const cats = E['bm-cats']; clear(cats); E.bmCats = {};
+        for (const t of vis) {
+          const act = !bm.query && cur && cur.id === t.id;
+          const b = el('button', 'bm-cat list-item' + (act ? ' active selected' : '')); b.type = 'button'; b.dataset.tab = t.id; b.setAttribute('aria-pressed', act ? 'true' : 'false');
+          b.appendChild(el('span', 'bm-cat-name', t.name));
+          if (t.rows.some(function (id) { return reco[id]; })) { const st = el('span', 'bm-cat-star'); st.appendChild(icon('star', 'sm')); b.appendChild(st); }
+          if (s.ui.newPips[t.id]) b.appendChild(el('span', 'pip'));
+          const all = t.rows.filter(function (id) { return id !== 'founders_hall'; }); const n = all.filter(function (id) { return unlockOf(s, id).ok; }).length;
+          b.appendChild(el('span', 'bm-cat-count', n + '/' + all.length));
+          b.addEventListener('click', function () { const st = stateOf(); if (bm.query) { bm.query = ''; if (E['bm-search']) E['bm-search'].value = ''; } setTab(st, t.id); bm.hover = null; bm.dirty = true; bm.key = ''; });
+          cats.appendChild(b); E.bmCats[t.id] = b;
+        }
+        if (cur && bm.scrollTab !== cur.id) { bm.scrollTab = cur.id; const act = E.bmCats[cur.id]; try { if (act) { const cr = cats.getBoundingClientRect(), ar = act.getBoundingClientRect(); if (ar.bottom > cr.bottom) cats.scrollTop += ar.bottom - cr.bottom + 4; else if (ar.top < cr.top) cats.scrollTop -= cr.top - ar.top + 4; } } catch (e) { /* stub */ } }   // H7: bring the active category into view when the tab changes / the menu opens (not on a refresh; never scrollIntoView: it shifts #app)
+        const cards = E['bm-cards']; clear(cards); E.bmCards = {};
+        if (!rows.length) cards.appendChild(el('div', 'bm-empty', bm.query ? 'No building matches “' + bm.query + '”.' : 'Nothing to build in this category yet.'));
+        for (const id of rows) {
+          const r = rowOf(id); const u = unlockOf(s, id);
+          const c = el('div', 'bm-card grid-card' + (u.ok ? '' : ' locked') + (reco[id] ? ' reco' : '')); c.dataset.id = id; c.setAttribute('tabindex', '0'); c.setAttribute('role', 'button'); if (!u.ok) c.setAttribute('aria-disabled', 'true');
+          const ic = el('canvas', 'icon'); ic.width = 64; ic.height = 64; c.appendChild(ic); call('render', 'drawIcon', ic, id);
+          c.appendChild(el('div', 'bm-name', r.name));
+          const price = el('div', 'bm-price'); price.appendChild(el('span', 'bm-cost', money(r.cost) + (r.kind === 'drag' || r.kind === 'paint' ? '/tile' : (r.kind === 'upgrade' ? ' +40%' : '')))); if (r.upkeep || !(r.kind === 'drag' || r.kind === 'paint')) price.appendChild(el('span', 'bm-upkeep', r.upkeep ? '· ' + money(r.upkeep) + '/mo' : '· no upkeep')); c.appendChild(price);
+          if (u.ok) { const reqs = el('div', 'bm-reqs'); for (const q of requirementsOf(r)) { const sp = el('span', 'bm-req'); if (REQ_LABEL[q.glyph]) sp.appendChild(el('span', 'rq-l', REQ_LABEL[q.glyph])); else sp.appendChild(el('span', 'rq-g', q.glyph)); sp.title = q.text; reqs.appendChild(sp); } if (r.w > 1 || r.h > 1) { const fp = el('span', 'bm-req fp', r.w + '×' + r.h); fp.title = 'Footprint ' + r.w + '×' + r.h + ' tiles' + (r.rotatable ? ' (R rotates)' : ''); reqs.appendChild(fp); } c.appendChild(reqs); }
+          else { const lk = el('div', 'bm-lock'); lk.appendChild(el('span', null, unlockText(u.reason))); c.appendChild(lk); }
+          if (reco[id]) { const st = el('span', 'bm-star star'); st.title = badgeText(reco[id]); st.appendChild(icon('star', 'sm')); c.appendChild(st); }
+          c.addEventListener('click', function () { armCard(stateOf(), id, false); });
+          c.addEventListener('pointerenter', function () { bm.hover = id; }); c.addEventListener('pointerleave', function () { if (bm.hover === id) bm.hover = null; });
+          c.addEventListener('focus', function () { bm.hover = id; kb.id = id; kb.in = true; });
+          cards.appendChild(c); E.bmCards[id] = c;
+        }
+        bm.detailKey = '';
+        if (kb.in && kb.id && E.bmCards[kb.id]) { try { if (typeof E.bmCards[kb.id].focus === 'function' && document.activeElement !== E['bm-search']) E.bmCards[kb.id].focus({ preventScroll: true }); } catch (e) { /* stub */ } }
+      } finally { kbKeep = false; }
     }
-    refreshDetail(s, reco);
+    refreshDetail(s, reco, rows);
   }
-  function refreshDetail(s, reco) {
-    const cur = currentTab(s); const rows = cur ? cur.rows.filter(function (id) { return id !== 'founders_hall'; }) : [];
+  function refreshDetail(s, reco, rowsIn) {
+    const rows = rowsIn || bmRows(s, visibleTabs(s), currentTab(s));
     const sel = bm.selected && rows.indexOf(bm.selected) >= 0 ? bm.selected : null;
-    let id = (sel && clock < fin(bm.focusUntil, 0)) ? sel : (bm.hover || sel);
+    let id = (sel && clock < fin(bm.focusUntil, 0)) ? sel : (bm.hover && rows.indexOf(bm.hover) >= 0 ? bm.hover : sel);
     if (!id) { for (const k of rows) if (reco[k]) { id = k; break; } }
     if (!id) id = rows[0] || null;
     const r = rowOf(id); const u = r ? unlockOf(s, id) : { ok: false, reason: '' };
     const key = (id || '') + '|' + (r ? (u.ok ? '+' : u.reason) : '') + '|' + (reco[id] || '') + '|' + (s.ui.tool ? s.ui.tool.id : '');
-    for (const k in E.bmCards) { cls(E.bmCards[k], 'hover', k === id); cls(E.bmCards[k], 'active', !!(s.ui.tool && s.ui.tool.id === k)); }
-    if (key === bm.detailKey) return; bm.detailKey = key;
-    const d = E['bm-detail']; clear(d); if (!r) { d.appendChild(el('div', 'muted', 'Nothing to build in this category yet.')); return; }
+    for (const k in E.bmCards) { cls(E.bmCards[k], 'hover', k === id); const armed = !!(s.ui.tool && s.ui.tool.id === k); cls(E.bmCards[k], 'active', armed); cls(E.bmCards[k], 'selected', armed); }
+    if (key === bm.detailKey) return; bm.detailKey = key; bm.detailId = id;
+    const d = E['bm-dbody'], f = E['bm-dfoot']; clear(d); clear(f); if (!r) { d.appendChild(el('div', 'muted', bm.query ? 'No building matches your search.' : 'Nothing to build in this category yet.')); return; }
     const head = el('div', 'bm-dhead'); const ic = el('canvas', 'icon'); ic.width = 96; ic.height = 96; head.appendChild(ic); call('render', 'drawIcon', ic, id);
-    const col = el('div'); col.appendChild(el('div', 'bm-dname', r.name)); col.appendChild(el('div', 'bm-dsub', money(r.cost) + (r.kind === 'drag' || r.kind === 'paint' ? ' per tile' : '') + (r.upkeep ? ' · ' + money(r.upkeep) + '/mo upkeep' : ' · no upkeep') + (r.kind === 'footprint' ? ' · ' + r.w + '×' + r.h + ' tiles' : ''))); head.appendChild(col); d.appendChild(head);
-    if (reco[id]) d.appendChild(el('div', 'bm-badge inline', badgeText(reco[id]) + (reco[id] === 'Goal' ? ' — your current objective' : ' — ' + ((needsNow(s) || {}).binding || {}).text)));
+    const col = el('div'); col.appendChild(el('div', 'bm-dname', r.name)); col.appendChild(el('div', 'bm-dsub', money(r.cost) + (r.kind === 'drag' || r.kind === 'paint' ? ' per tile' : '') + (r.upkeep ? ' · ' + money(r.upkeep) + '/mo upkeep' : ' · no upkeep') + (r.kind === 'footprint' ? ' · ' + r.w + '×' + r.h + ' tiles' : (r.w > 1 || r.h > 1 ? ' · ' + r.w + '×' + r.h : '')))); head.appendChild(col); d.appendChild(head);
+    if (reco[id]) { const bn = el('div', 'bm-badge inline'); bn.appendChild(icon('star', 'sm')); bn.appendChild(el('span', null, (reco[id] === 'Goal' ? 'Goal · your current objective' : badgeText(reco[id]).replace('★ ', '') + ' · ' + ((needsNow(s) || {}).binding || {}).text))); d.appendChild(bn); }
     d.appendChild(el('div', 'bm-dblurb', r.blurb || ''));
-    d.appendChild(el('div', 'bm-dwhy', '“' + (r.why || '') + '”'));
+    if (r.why) d.appendChild(el('div', 'bm-dwhy', '“' + r.why + '”'));
     const eff = effectLines(r); if (eff.length) { d.appendChild(el('div', 'card-kicker', 'Effects')); const ul = el('div', 'bm-list'); for (const line of eff) ul.appendChild(el('div', 'bm-li', line)); d.appendChild(ul); }
     const rq = requirementsOf(r); if (rq.length) { d.appendChild(el('div', 'card-kicker', 'Needs')); const ul = el('div', 'bm-list'); for (const q of rq) ul.appendChild(el('div', 'bm-li', q.glyph + ' ' + q.text)); d.appendChild(ul); }
     if (r.desc) d.appendChild(el('div', 'bm-ddesc', r.desc));
-    if (!u.ok) d.appendChild(el('div', 'bm-dlock', '🔒 Unlocks: ' + (u.reason || 'later')));
-    else { const sel = !!(s.ui.tool && s.ui.tool.id === id); const go = btn(null, sel ? 'Place it on the map ▸' : 'Build this', 'primary', function () { const st = stateOf(); if (!st) return; bm.selected = id; if (!sel) M.selectTool(st, id); M.closeBuildMenu(); }); d.appendChild(go); }   // an already-selected tool (Build it) still needs the menu out of the way: the button closes it instead of going dead
+    if (!u.ok) d.appendChild(el('div', 'bm-dlock', unlockText(u.reason)));
+    else {
+      const go = btn('btn-bm-place', 'Place', 'primary', function () { armCard(stateOf(), id, true); }); go.appendChild(el('span', 'key', 'Enter')); f.appendChild(go); E['btn-bm-place'] = go;
+      const show_ = btn('btn-bm-show', 'Show on map', 'text', function () { showOnMap(stateOf(), id); }); f.appendChild(show_); E['btn-bm-show'] = show_;
+    }
+  }
+  /** "Show on map": the camera goes to the nearest built one; none built = a note (the sheet collapses so the map is in view) */
+  function showOnMap(s, id) {
+    if (!s) return; const r = rowOf(id); const list = (call('buildings', 'list', s, id) || []).filter(function (b) { return b && Number.isFinite(b.tx); });
+    if (!list.length) { M.notify(s, { kind: 'info', text: 'No ' + (r ? r.name : 'such building') + ' on campus yet', ttl: 3500 }); return; }
+    const cam = s.ui && s.ui.camera; let best = list[list.length - 1];
+    if (cam && Number.isFinite(cam.x) && Number.isFinite(cam.y)) { let bd = 1e18; for (const b of list) { const d = (b.tx - cam.x) * (b.tx - cam.x) + (b.ty - cam.y) * (b.ty - cam.y); if (d < bd) { bd = d; best = b; } } }
+    M.collapseBuildSheet(); call('render', 'panToTile', best.tx + fin(best.w, 1) / 2, best.ty + fin(best.h, 1) / 2);
   }
   function updateBuildMenu(s) {
     if (!dom()) return;
@@ -2237,10 +2405,14 @@
     if (!coach.armedAt) coach.armedAt = clock;
     return fin(s.economy && s.economy.students, 0) >= 100 || clock - coach.armedAt > 8000 * 10 / fin(PT.baseTps, 5);   // the founders' count-up runs on sim ticks: the fallback stretches with the base clock
   }
-  /** the element a step spotlights: the 'menu' step rings the objective's Goal card when the open menu holds it (else the whole menu) */
+  /** the element a step spotlights: the 'menu' step rings the objective's Goal card inside the open Build sheet, collapsed or expanded (else the whole sheet) */
   function coachTarget(s, st) {
     if (!st.target) return null;
-    if (st.id === 'menu' && bm.open) { const o = call('progress', 'objective', s); const t = o ? objTarget(s, o) : null; const c = t && E.bmCards ? E.bmCards[t] : null; if (c) { scrollCardIntoView(t); return c; } }
+    if (st.id === 'menu' && (bm.open || pal.open)) {   // U4: the goal's card inside the open sheet (expanded grid or the quick bar), else the whole sheet
+      const o = call('progress', 'objective', s); const t = o ? objTarget(s, o) : null; const c = t ? cardEl(t) : null;
+      if (c) { if (bm.open) scrollCardIntoView(t); else scrollItemIntoView(c); return c; }
+      return bm.open ? E['build-menu'] : E.palette;
+    }
     return E[st.target];
   }
   function updateCoach(s) {
@@ -2302,7 +2474,7 @@
   /** Settings → replay: forget the flag and let the next frame start the tour (Settings closes) */
   M.startCoach = function (state, opts) { try { const s = state || stateOf(); M.settings().coachSeen = false; M.saveSettings(); coach.step = -1; coach.armedAt = clock - 1e5; if (s && s.ui && s.ui.panel) M.openPanel(null); if (opts && opts.now === true && s && dom()) coachStart(s); } catch (e) { uerr('startCoach', e); } };   // hud + zoom pass: {now: true} starts the tour at once (tests; headless has no eligibility)
   M.coachStep = function () { return coach.step; };
-  M._ux = { needsOf: needsOf, recommend: recommend, objTarget: objTarget, effectLines: effectLines, requirementsOf: requirementsOf, utilityWarning: utilityWarning };
+  M._ux = { needsOf: needsOf, recommend: recommend, objTarget: objTarget, effectLines: effectLines, requirementsOf: requirementsOf, utilityWarning: utilityWarning, coachTarget: coachTarget };
 
   // ---------------------------------------------------------------------------
   // Issue spotlight pass: the Issues tray (docked under the minimap / overlay keys), Fix / Locate, keys
@@ -2342,7 +2514,7 @@
       return { ok: true, spot: null };
     }
     // a spot: no full-screen menu (it would hide the ghost) — the palette tab shows the card, the tool is armed and the ghost pinned on the spot; the camera jumps there
-    if (bm.open) M.closeBuildMenu();
+    if (bm.open) M.collapseBuildSheet();
     const tab = tabFor(s, id); if (tab) setTab(s, tab);
     call('render', 'panToTile', spot.tx + ((row.w | 0) - 1) / 2, spot.ty + ((row.h | 0) - 1) / 2, false);
     const q = call('render', 'tileToScreen', spot.tx, spot.ty); if (q && Number.isFinite(q.x)) { lastPx = q.x; lastPy = q.y; }
@@ -3008,8 +3180,11 @@
   /** the key table, one entry per column: k = the key chip, t = what it does, b = the data.keys bindings the row documents ([key, ctrl, shift, action]; ui.test checks every one against BSU.data.keys). N, I, Alt and the mouse are handled in keydown / the pointer machine, not data.keys */
   const HOW_KEYS = [
     { h: 'Build', rows: [
-      { k: 'G', t: 'Build sheet (Shift: the full menu)', b: [['g', 0, 0, 'palette'], ['g', 0, 1, 'buildMenu']] },
+      { k: 'G', t: 'Build sheet (Shift+G: the full sheet; Esc closes)', b: [['g', 0, 0, 'palette'], ['g', 0, 1, 'buildMenu']] },
       { k: 'Tab', t: 'Next build tab (Shift: previous)', b: [['Tab', 0, 0, 'nextTab'], ['Tab', 0, 1, 'prevTab']] },
+      { k: '← →', t: 'In the Build sheet: move between cards (↑ ↓ by rows in the full sheet)', b: [] },
+      { k: 'Enter', t: 'Arm the focused card', b: [] },
+      { k: '/', t: 'Search the full Build sheet', b: [] },
       { k: 'Shift+1–9', t: 'Pick item 1 to 9', b: [['1', 0, 1, 'pick1'], ['9', 0, 1, 'pick9']] },
       { k: 'X', t: 'Bulldoze', b: [['x', 0, 0, 'bulldoze']] },
       { k: 'R', t: 'Rotate while placing', b: [['r', 0, 0, 'rotate']] },
@@ -3315,7 +3490,7 @@
   // ---------------------------------------------------------------------------
   let fabShown = null;
   function updateSetPiece(s) {
-    const sp = s.setPiece; const hasTabs = !!paletteKey.split('|')[0]; const hidePalette = !!sp || titleOn || !hasTabs || !pal.open;   // U2: the Build sheet shows only while open
+    const sp = s.setPiece; const hasTabs = !!paletteKey.split('|')[0]; const hidePalette = !!sp || titleOn || !hasTabs || !pal.open || bm.open;   // U2: the Build sheet shows only while open
     if (hidePalette !== paletteHidden) { paletteHidden = hidePalette; show(E.palette, !hidePalette); cls(E.hud, 'no-palette', hidePalette); if (hidePalette) hideTooltip(); }   // a palette-item tooltip must not outlive the palette
     const fabOn = !sp && !titleOn && hasTabs && !pal.open && !card && !voiceOpen() && !bm.open && !menuEdit && !sheet.open && !s.ui.panel;   // the FAB hides while the Build sheet, the Menu sheet, a card or the build menu is open
     if (fabOn !== fabShown) { fabShown = fabOn; show(E['fab-build'], fabOn); }
@@ -3375,7 +3550,7 @@
     sec('inspect', function (s) { if (insp && (inspDirty || clock - inspAt >= L.refreshMs)) refreshInspect(s); }, state, dtMs);
     sec('news', updateNews, state, dtMs);
     sec('popovers', function (s) { syncPopovers(); if (popVisible('budget')) refreshMiniBudget(s); }, state, dtMs);   // U2
-    sec('palette', function (s) { if (paletteDirty) M.refreshPalette(s); else refreshPips(s); }, state, dtMs);
+    sec('palette', function (s) { if (!paletteDirty && pal.open && clock - palRecoAt >= L.refreshMs) { palRecoAt = clock; if (JSON.stringify(recommend(s)) !== palRecoKey) paletteDirty = true; } if (paletteDirty) M.refreshPalette(s); else refreshPips(s); }, state, dtMs);
     sec('buildmenu', updateBuildMenu, state, dtMs);
     sec('coach', updateCoach, state, dtMs);
     sec('hint', updateHint, state, dtMs);
@@ -3401,7 +3576,7 @@
       odo.cash = NaN; odo.students = NaN; odo.lastStudents = NaN; odo.holdUntil = -1; odo.deltaUntil = 0;
       tk = { seen: Math.max(0, ((state && state.ticker) || []).length - 1), lastLen: -1 };   // the latest line shows once after a load
       alertClosedKey = ''; tray.suggestOpen = false; tray.sopen = {};
-      pops.open = null; goal.open = false; goal.id = ''; goal.hover = false; pal.open = false; fabShown = null; legendKey = ''; mbAt = -1e9;   // U2
+      pops.open = null; goal.open = false; goal.id = ''; goal.hover = false; pal.open = false; kb.in = false; kb.id = null; bm.query = ''; fabShown = null; legendKey = ''; mbAt = -1e9;   // U2
       bubble = { since: clock, until: 0, key: '' }; objKey = ''; alertKey = ''; alertAt = -1e9; msAt = -1e9; speedKey = ''; paletteKey = ''; palShownTab = ''; pipKey = ''; paletteDirty = true; capacityShown = false; skipShown = false; paletteHidden = null; hudFade = false;   // null: the first updateSetPiece re-syncs #palette and #hud.no-palette (a stale no-palette from the title / tutorial left a 0-height palette after newGame/load)
       M.debug.open = false; M.hoverTile = -1; lastGhost = null;
       tray.key = ''; tray.rows = []; tray.hadIssues = false; tray.clearAt = -1e9; heldI = false; spotToggled = false; try { if (BSU.issues) { BSU.issues.select(null); BSU.issues.spotlight(false); BSU.issues.pulse(null); } } catch (e) { /* */ }

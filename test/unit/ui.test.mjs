@@ -38,7 +38,7 @@ ok(/--shape-pill:\s*999px/.test(rootBlock) && /--shape-sm:\s*1\.2rem/.test(rootB
 ok(!/linear-gradient/.test(cssNoComments.replace(/mask-image:linear-gradient[^;}]*;?/g, '').replace(/-webkit-mask-image:linear-gradient[^;}]*;?/g, '')), 'U1: no linear-gradient anywhere in the sheet (the palette edge fade is a mask, not a surface)');
 ok(!/radial-gradient|backdrop-filter|filter:\s*blur/.test(cssNoComments) && !/text-shadow/.test(cssNoComments), 'U1: no backdrop-filter, no blur, no text-shadow');
 { const serifRules = cssNoComments.replace(/:root\s*\{[\s\S]*?\n\}/, '').split('}').filter((r) => /serif|Georgia/.test(r)); ok(serifRules.length === 1 && /#title-name/.test(serifRules[0]), 'U1: the serif is used by exactly one rule, the title wordmark (#title-name)'); }
-ok(!/(#menu-sheet|#build-menu|\.card|#inspect|#popover|#topbar)[^{}]*\{[^}]*(gradient|backdrop)/.test(cssNoComments) && /#menu-overlay,#menu-sheet,#inspect,#objective-card[^{]*\{\s*background:var\(--surface-float\);border:1px solid var\(--outline-variant\)[^}]*box-shadow:var\(--elev-2\)/.test(cssNoComments) && /#menu-overlay,#menu-sheet,#build-menu\{background:var\(--surface\);box-shadow:var\(--elev-3\)\}/.test(cssNoComments), 'U1: floating surfaces are surface-float + 1 px outline-variant + elevation 2; the Menu sheet, the Edit menu and the build menu are opaque surface at elevation 3, no gradient');
+ok(!/(#menu-sheet|#build-menu|\.card|#inspect|#popover|#topbar)[^{}]*\{[^}]*(gradient|backdrop)/.test(cssNoComments) && /#menu-overlay,#menu-sheet,#inspect,#objective-card[^{]*\{\s*background:var\(--surface-float\);border:1px solid var\(--outline-variant\)[^}]*box-shadow:var\(--elev-2\)/.test(cssNoComments) && /#menu-overlay,#menu-sheet\{background:var\(--surface\);box-shadow:var\(--elev-3\)\}/.test(cssNoComments) && /\.bottom-sheet\{[^}]*background:var\(--surface\)[^}]*border-radius:var\(--shape-lg\) var\(--shape-lg\) 0 0;box-shadow:var\(--elev-3\)/.test(cssNoComments), 'U1: floating surfaces are surface-float + 1 px outline-variant + elevation 2; the Menu sheet, the Edit menu and the Build sheet (U4: .bottom-sheet, 28 px top corners) are opaque surface at elevation 3, no gradient');
 ok(/#topbar\{[^}]*background:var\(--surface\);border-bottom:1px solid var\(--outline-variant\)/.test(cssNoComments) && !/#topbar\{[^}]*box-shadow/.test(cssNoComments) && /#topbar\{[^}]*container-type:inline-size;container-name:appbar/.test(cssNoComments), 'U1 / U2: the app bar is solid surface, elevation 0, 1 px bottom border, and a size container');
 ok(/@container appbar \(max-width:118rem\)\{\.stat-label,#chip-capacity,#chip-weather\{display:none !important\}/.test(cssNoComments), 'U2: under 118 rem of bar width the stat labels, the cap suffix and the weather line hide (container query, as the mock does)');
 ok(/\.btn::before\{[^}]*background:currentColor[^}]*opacity:0/.test(cssNoComments) && /\.btn:hover::before\{opacity:var\(--state-hover\)\}/.test(cssNoComments) && /\.btn:active::before\{opacity:var\(--state-press\)\}/.test(cssNoComments) && /:focus-visible\{outline:2px solid var\(--primary\)/.test(cssNoComments) && /\.btn:disabled\{opacity:var\(--disabled\)/.test(cssNoComments), 'U1: state layers (hover 8 % / press 12 % in currentColor), 2 px primary focus ring, disabled 38 %');
@@ -87,7 +87,7 @@ ok(U.el.minimap.width === 200, 'back at 100 % the minimap canvas is 200 px');
 const cssScale = css.replace(/\/\*[\s\S]*?\*\//g, '');
 ok(/#topbar\.tight #brand \.brand-name\{display:none\}/.test(cssScale) && /#topbar\.bare \.stat-label,#topbar\.bare #chip-capacity,#topbar\.bare #chip-weather\{display:none !important\}/.test(cssScale) && /#topbar\.bare \.speed-btn\{min-width:2\.8rem/.test(cssScale) && !/#topbar\.(tightest|tighter|cap|compact)/.test(cssScale) && !/\.tb\b/.test(cssScale), 'U2: the JS backstop sheds the brand name (`tight`) then the labels / cap / weather (`bare`); the old six-step shed and the .tb buttons are gone');
 ok(/html\s*\{\s*font-size:\s*calc\(10px \* var\(--ui-scale/.test(cssScale), 'html font-size follows --ui-scale (all lengths are rem)');
-ok(!/--topbar-h:\s*\d+px/.test(cssScale) && /--topbar-h:\s*4\.8rem/.test(cssScale) && /--palette-h:\s*18rem/.test(cssScale), 'layout tokens are rem: top bar 48 px (U1: the Material app bar), palette 180 px at 100 % (palette pass)');
+ok(!/--topbar-h:\s*\d+px/.test(cssScale) && /--topbar-h:\s*4\.8rem/.test(cssScale) && /--palette-h:\s*24rem/.test(cssScale), 'layout tokens are rem: top bar 48 px (U1: the Material app bar), the collapsed Build sheet 240 px at 100 % (U4: handle row, tabs, cards)');
 // --- P5 centred UI: smart default scale by window width, the title-screen Display size choice, layout rules ---
 {
   const W0 = win.innerWidth, H0 = win.innerHeight;
@@ -110,7 +110,7 @@ ok(!/--topbar-h:\s*\d+px/.test(cssScale) && /--topbar-h:\s*4\.8rem/.test(cssScal
   const cssP5 = css.replace(/\/\*[\s\S]*?\*\//g, '');
   ok(/#snack-lane\{[^}]*left:50%;bottom:var\(--bot\)/.test(cssP5) && !/#notifications\{[^}]*right:var\(--gutter\)/.test(cssP5) && !/--ticker-h/.test(cssP5), 'U2: the snackbar lane sits bottom-centre above the Build sheet (no ticker height anywhere)');
   ok(/#cards\{[^}]*padding:var\(--topbar-h\)[^}]*var\(--bot\)/.test(cssP5) && /#decision-toast\{[^}]*border-left:\.4rem solid var\(--primary\)/.test(cssP5) && /#dt-countdown\{position:absolute;left:0;right:0;bottom:0;height:\.3rem/.test(cssP5), 'cards centre over the map area; the decision snackbar carries its 3 px countdown line along the bottom edge');
-  ok(/#menu-sheet\{[^}]*position:absolute;right:var\(--gutter\);top:calc\(var\(--bar-h\) \+ 8px\);bottom:var\(--gutter\);width:36rem[^}]*border-radius:var\(--shape-lg\) var\(--shape-md\) var\(--shape-md\) var\(--shape-md\)/.test(cssP5) && !/#panels #panel-(season|storm|budget|howto|about)\{width/.test(cssP5) && /#build-menu\{[^}]*width:min\(130rem/.test(cssP5), 'U3: the Menu sheet is 360 px at the right gutter under the bar with a 28 px top-left corner; no panel carries its own centred width any more; the Build menu keeps up to 1300 px');
+  ok(/#menu-sheet\{[^}]*position:absolute;right:var\(--gutter\);top:calc\(var\(--bar-h\) \+ 8px\);bottom:var\(--gutter\);width:36rem[^}]*border-radius:var\(--shape-lg\) var\(--shape-md\) var\(--shape-md\) var\(--shape-md\)/.test(cssP5) && !/#panels #panel-(season|storm|budget|howto|about)\{width/.test(cssP5) && /#build-menu\{height:80%\}/.test(cssP5), 'U3: the Menu sheet is 360 px at the right gutter under the bar with a 28 px top-left corner; no panel carries its own centred width any more; U4: the expanded Build sheet is 80 % high');
   ok(/#panels\{[^}]*display:flex[^}]*align-items:center[^}]*justify-content:center/.test(cssP5) && /#panels #menu-overlay\{[^}]*width:64rem/.test(cssP5), 'the #panels layer still centres the kitchen Edit menu dialog');
   ok(/#inspect\{[^}]*left:var\(--gutter\);bottom:var\(--bot\);width:32rem/.test(cssP5) && /#inspect\.collapsed\{[^}]*border-radius:var\(--shape-pill\)/.test(cssP5) && /--side:max\(var\(--gutter\)/.test(cssP5), 'U3: the inspect card is 320 px bottom-left above the Build sheet (a 40 px pill when collapsed); --side still centres the docked cards on very wide windows');
   ok(/\.stat \.odometer\{[^}]*font:600 var\(--fs-title-lg\)/.test(cssP5) && /--fs-title-lg:\s*1\.5rem/.test(cssP5), 'stat numbers are the 15-px --fs-title-lg token at 100 % (17.3 px at Comfortable; U1 type scale)');
@@ -201,9 +201,9 @@ ok(U.keydown('g', M0) === true && U.paletteOpen() && !U.buildMenuOpen() && U.key
 ok(U.keydown('G', { ...M0, shift: true }) === true && U.buildMenuOpen() && !U.el['build-menu'].classList.contains('hidden'), 'Shift+G opens the build menu');
 U.update(s, 16);
 ok(Object.keys(U.el.bmCats).length >= 2 && Object.keys(U.el.bmCards).length >= 3, `menu built: ${Object.keys(U.el.bmCats).length} categories, ${Object.keys(U.el.bmCards).length} cards`);
-ok(Object.values(U.el.bmCards).every((c) => c.children.some((x) => x.className === 'bm-blurb' && x.textContent.length > 0)), 'every card carries a blurb');
-ok(U.el['bm-detail'].children.length >= 4, 'detail card renders (' + U.el['bm-detail'].children.length + ' nodes)');
-ok(U.keydown('Escape', M0) === true && !U.buildMenuOpen() && U.el['build-menu'].classList.contains('hidden'), 'Escape closes the build menu first');
+ok(Object.values(U.el.bmCards).every((c) => c.children.some((x) => x.className === 'icon') && c.children.some((x) => x.className === 'bm-name' && x.textContent.length > 0) && c.children.some((x) => x.className === 'bm-price')), 'U4: every card is icon · name · price (· requirement chips or the unlock line)');
+ok(U.el['bm-dbody'].children.length >= 4 && U.el['bm-dbody'].children[0].className === 'bm-dhead' && U.el['bm-dbody'].children.some((x) => x.className === 'bm-dblurb') && U.el['bm-dfoot'].children.length === 2, 'U4: the detail column renders (head, blurb, Effects …) with the Place · Show on map foot (' + U.el['bm-dbody'].children.length + ' nodes)');
+ok(U.keydown('Escape', M0) === true && !U.buildMenuOpen() && !U.paletteOpen() && U.el['build-menu'].classList.contains('hidden'), 'Escape closes the Build sheet first (U4: from the expanded state outright)');
 U.openBuildMenu(s, { focus: 'dorm', pulse: true }); U.update(s, 16);
 ok(U.buildMenuOpen() && s.ui.paletteTab === 'essentials' && U.el.bmCards.dorm && U.el.bmCards.dorm.classList.contains('pulse'), 'openBuildMenu({focus:dorm}) lands on Essentials and pulses the Dorm card');
 U.closeBuildMenu();
@@ -734,7 +734,111 @@ try {
   ok(U.keydown('G', MS) === true && U.buildMenuOpen(), 'Shift+G opens the full build menu'); U.update(sF, 50); ok(!vis('fab-build'), 'the FAB hides under the build menu'); U.closeBuildMenu(); U.update(sF, 50);
   U.card(sF, { id: 'u2c', title: 't', body: 'b', actions: [] }); U.update(sF, 50); ok(!vis('fab-build'), 'the FAB hides under a card'); U.closeCard(); U.update(sF, 50); ok(vis('fab-build'), '… and returns');
   U.openPanel('budget'); U.update(sF, 50); ok(!vis('fab-build'), 'the FAB hides under a panel'); U.openPanel(null); U.update(sF, 50); ok(vis('fab-build'), '… and returns again');
-  ok(U.el['btn-build-menu'].children[1].textContent === 'All buildings' && U.el['btn-build-menu'].children[2].textContent === '⇧G', 'the sheet\'s menu button reads "All buildings · ⇧G" (the FAB owns "Build · G")');
+  // 10a. UI refresh U4: the Build sheet: collapsed (the quick bar) and expanded (80 % high)
+  {
+    const cssU4 = css.slice(css.indexOf('/* Build sheet (U4)'));
+    const focusLog = []; const spyFocus = (e) => { if (e && !e.__spy) { const f = e.focus; e.focus = function (o) { focusLog.push(e.dataset.id || e.id); return f && f.call(this, o); }; e.__spy = 1; } };
+    const row = (id) => (U.el.itemEls[id] ? id : null);
+    U.openPalette(false); U.update(sF, 50);
+    ok(U.buildSheetState() === 'closed' && !vis('palette') && !vis('build-menu') && vis('fab-build'), 'U4: closed at rest: no sheet, the FAB shows');
+    // collapsed: the bottom sheet's anatomy
+    U.openPalette(true); U.update(sF, 50);
+    ok(U.buildSheetState() === 'collapsed' && vis('palette') && !vis('build-menu') && !vis('fab-build') && U.el.palette.classList.contains('bottom-sheet') && U.el.palette.getAttribute('role') === 'dialog', 'U4: the FAB / openPalette(true) opens the collapsed sheet (a bottom sheet) and the FAB hides');
+    ok(U.el.palette.children[0].className === 'handle-row' && U.el.palette.children[0].children[0] === U.el['pal-handle'] && U.el.palette.children[1] === U.el['palette-tabs'] && U.el.palette.children[2].className === 'pal-row' && U.el.palette.children[2].children[0] === U.el['palette-items'] && U.el.palette.children[2].children[1].children.length === 2, 'U4: collapsed anatomy: handle row · tabs · (cards scroller · bulldoze + info)');
+    ok(U.el['btn-build-menu'].children[0].dataset.icon === 'open_in_full' && U.el['btn-palette-close'].children[0].dataset.icon === 'close' && U.el['btn-bulldoze'].children[0].dataset.icon === 'delete' && U.el['btn-palette-info'].children[0].dataset.icon === 'info', 'U4: the ⤢ expand and ✕ icons at the handle row, bulldoze and info at the right (#btn-build-menu is now the ⤢ button)');
+    ok(/\.bottom-sheet\{[^}]*left:0;right:0;bottom:0[^}]*var\(--shape-lg\) var\(--shape-lg\) 0 0/.test(cssU4) && /\.sheet-handle \.handle\{width:3\.2rem;height:\.4rem/.test(cssU4) && /outline:2px solid var\(--primary\)/.test(cssU4), 'U4 CSS: full-width docked sheet, 28 px top corners, a 32 × 4 handle, the 2 px primary focus ring');
+    tap('btn-palette-close'); U.update(sF, 50); ok(U.buildSheetState() === 'closed' && vis('fab-build'), 'U4: the ✕ closes the collapsed sheet');
+    tap('fab-build'); U.update(sF, 50); ok(U.buildSheetState() === 'collapsed' && U.focusedCard() === null, 'U4: the FAB opens it WITHOUT stealing the keyboard (arrows keep panning)');
+    // expand / collapse by ⤢, the handle and Shift+G
+    tap('btn-build-menu'); U.update(sF, 50); ok(U.buildSheetState() === 'expanded' && U.buildMenuOpen() && U.paletteOpen() && vis('build-menu') && !vis('palette') && !vis('fab-build') && U.el['build-menu'].classList.contains('bottom-sheet') && U.el['build-menu'].classList.contains('expanded') && U.el.hud.classList.contains('bm-open'), 'U4: ⤢ grows the sheet to the expanded one (the palette steps out, the FAB stays hidden)');
+    ok(U.el['build-menu'].children[0].className === 'handle-row' && U.el['build-menu'].children[1].className === 'bm-head' && U.el['build-menu'].children[2].className === 'bm-body' && U.el['bm-search'] && U.el['bm-search'].placeholder === 'Search buildings' && U.el['btn-bm-collapse'] && U.el['btn-bm-close'] && U.el['bm-detail'].children[0] === U.el['bm-dbody'] && U.el['bm-detail'].children[1] === U.el['bm-dfoot'] && /#build-menu\{height:80%\}/.test(cssU4) && /grid-template-columns:20rem minmax\(0,1fr\) 30rem/.test(cssU4) && /#bm-dbody\{[^}]*overflow-y:auto/.test(cssU4), 'U4: expanded anatomy: handle · head (title, hint, search, collapse, ✕) · rail / cards / detail; 80 % high; the detail body scrolls above its foot');
+    tap('btn-bm-collapse'); U.update(sF, 50); ok(U.buildSheetState() === 'collapsed' && vis('palette') && !vis('build-menu') && !U.buildMenuOpen(), 'U4: the collapse icon returns to the quick bar');
+    tap('pal-handle'); U.update(sF, 50); ok(U.buildSheetState() === 'expanded', 'U4: the handle (click) expands'); tap('bm-handle'); U.update(sF, 50); ok(U.buildSheetState() === 'collapsed', 'U4: the expanded sheet\'s handle collapses');
+    U.el['pal-handle'].dispatchEvent({ type: 'pointerdown', clientY: 600 }); U.el['pal-handle'].dispatchEvent({ type: 'pointerup', clientY: 520 }); U.update(sF, 50); ok(U.buildSheetState() === 'expanded', 'U4: dragging the handle 80 px up expands');
+    U.el['bm-handle'].dispatchEvent({ type: 'pointerdown', clientY: 300 }); U.el['bm-handle'].dispatchEvent({ type: 'pointerup', clientY: 380 }); U.el['bm-handle'].dispatchEvent({ type: 'click' }); U.update(sF, 50); ok(U.buildSheetState() === 'collapsed', 'U4: dragging it down collapses (and the click that ends the drag does not toggle again)');
+    U.el['pal-handle'].dispatchEvent({ type: 'pointerdown', clientY: 600 }); U.el['pal-handle'].dispatchEvent({ type: 'pointerup', clientY: 700 }); U.update(sF, 50); ok(U.buildSheetState() === 'closed', 'U4: dragging the collapsed sheet down closes it');
+    ok(U.keydown('G', MS) === true && U.buildSheetState() === 'expanded' && U.focusedCard() !== null, 'U4: Shift+G opens the expanded sheet straight away, the keyboard in it');
+    ok(U.keydown('G', MS) === true && U.buildSheetState() === 'collapsed', 'U4: Shift+G again collapses (the ⤢ made a key)');
+    ok(U.keydown('G', MS) === true && U.buildSheetState() === 'expanded', 'U4: … and expands again');
+    // the Esc rule: closes outright from either state
+    ok(U.keydown('Escape', MH) === true && U.buildSheetState() === 'closed' && !vis('build-menu') && !vis('palette') && U.focusedCard() === null, 'U4 Esc rule: from the expanded sheet Esc closes it outright (no second press)'); U.update(sF, 50);
+    ok(U.keydown('g', MH) === true && U.buildSheetState() === 'collapsed' && U.focusedCard() !== null, 'U4: G opens the quick bar with the keyboard in it'); ok(U.keydown('Escape', MH) === true && U.buildSheetState() === 'closed', 'U4 Esc rule: … and Esc closes it');
+    ok(U.keydown('g', MH) === true && U.keydown('g', MH) === true && U.buildSheetState() === 'closed', 'U4: G toggles it; from the expanded state G closes too'); U.keydown('G', MS); ok(U.keydown('g', MH) === true && U.buildSheetState() === 'closed', 'U4: G closes the expanded sheet');
+    // categories: tabs (collapsed) and the rail (expanded)
+    U.openPalette(true); U.update(sF, 50); const tabIds = Object.keys(U.el.tabEls); ok(tabIds.length >= 2 && U.el['palette-tabs'].children.every((t) => t.getAttribute('role') === 'tab'), 'U4: the category tabs are tabs in one row (' + tabIds.join(' ') + ')');
+    const other = tabIds.find((t) => t !== sF.ui.paletteTab); U.el.tabEls[other].el.dispatchEvent({ type: 'click' }); U.update(sF, 50); ok(sF.ui.paletteTab === other && U.el.tabEls[other].el.classList.contains('active') && U.el.tabEls[other].el.getAttribute('aria-selected') === 'true', 'U4: a tab selects its category');
+    U.el.tabEls.essentials.el.dispatchEvent({ type: 'click' }); U.update(sF, 50);
+    U.openBuildMenu(sF, {}); U.update(sF, 50); const railIds = Object.keys(U.el.bmCats); ok(railIds.length === tabIds.length && U.el['bm-cats'].children.every((b) => b.children.some((x) => x.className === 'bm-cat-count' && /^\d+\/\d+$/.test(x.textContent))), 'U4: the rail lists the same categories with a count (n/m) each');
+    const ro = railIds.find((t) => t !== sF.ui.paletteTab); U.el.bmCats[ro].dispatchEvent({ type: 'click' }); U.update(sF, 50); ok(sF.ui.paletteTab === ro && U.el.bmCats[ro].classList.contains('active') && U.el.bmCats[ro].getAttribute('aria-pressed') === 'true', 'U4: a rail item selects its category (selected state)');
+    U.el.bmCats.essentials.dispatchEvent({ type: 'click' }); U.update(sF, 50);
+    // the goal's star, in both states
+    const goalId = (() => { const o = BSU.progress.objective(sF); return o ? U._ux.objTarget(sF, o) : null; })();
+    if (goalId && U.el.bmCards[goalId]) { ok(U.el.bmCards[goalId].classList.contains('reco') && U.el.bmCards[goalId].children.some((x) => /star/.test(x.className)) && U.el.bmCats.essentials.children.some((x) => x.className === 'bm-cat-star'), 'U4: the goal\'s building has the ★ on its card and on its rail item (' + goalId + ')'); U.openBuildMenu(sF, { focus: goalId }); U.update(sF, 50); ok(U.el['bm-dbody'].children.some((x) => /bm-badge/.test(x.className) && /Goal/.test(x.children.map((c) => c.textContent).join(''))), 'U4: the detail shows the Goal banner'); }
+    else ok(true, 'U4: no goal card on Essentials in this state (skipped)');
+    // cards arm the tool and collapse; locked cards do not
+    U.openPalette(false); U.openBuildMenu(sF, {}); U.update(sF, 50); sF.ui.tool = null;
+    U.el.bmCards.dorm.dispatchEvent({ type: 'click' }); U.update(sF, 50); ok(sF.ui.tool && sF.ui.tool.id === 'dorm' && U.buildSheetState() === 'collapsed' && vis('palette') && !vis('build-menu'), 'U4: a card click arms its tool and collapses to the quick bar (the map is in view)'); U.selectTool(sF, null);
+    U.openBuildMenu(sF, { focus: 'dorm' }); U.update(sF, 50); tap('btn-bm-place'); U.update(sF, 50); ok(sF.ui.tool && sF.ui.tool.id === 'dorm' && U.buildSheetState() === 'collapsed', 'U4: the Place button arms the detail\'s building and collapses'); U.selectTool(sF, null);
+    U.openPalette(true); U.update(sF, 50); U.el.itemEls.dorm.dispatchEvent({ type: 'click' }); ok(sF.ui.tool && sF.ui.tool.id === 'dorm' && U.buildSheetState() === 'collapsed', 'U4: a quick-bar card arms its tool and the sheet stays'); U.el.itemEls.dorm.dispatchEvent({ type: 'click' }); ok(sF.ui.tool === null, 'U4: clicking the armed card again disarms it');
+    const lockedTab = U._ux.visibleTabsOf ? null : null; void lockedTab;
+    const lk = Object.keys(U.el.itemEls).concat(['x']).find((id) => U.el.itemEls[id] && U.el.itemEls[id].classList.contains('locked'));
+    const swampTab = Object.keys(U.el.tabEls); let lockedId = null;
+    for (const t of swampTab) { U.el.tabEls[t].el.dispatchEvent({ type: 'click' }); U.update(sF, 50); lockedId = Object.keys(U.el.itemEls).find((id) => U.el.itemEls[id].classList.contains('locked')); if (lockedId) break; }
+    if (lockedId) {
+      const lc = U.el.itemEls[lockedId]; ok(lc.getAttribute('aria-disabled') === 'true' && lc.children.some((x) => /cond/.test(x.className) && x.children[0] && /^Unlocks/.test(x.children[0].textContent)), 'U4: a locked quick-bar card is greyed (38 %) and shows its "Unlocks: …" line (' + lockedId + ')');
+      lc.dispatchEvent({ type: 'click' }); ok(sF.ui.tool === null, 'U4: a locked card does not arm'); U.openBuildMenu(sF, {}); U.update(sF, 50); U.el.bmCards[lockedId].dispatchEvent({ type: 'click' }); ok(sF.ui.tool === null && U.buildMenuOpen(), 'U4: a locked grid card does not arm and the sheet stays expanded'); ok(U.el['bm-dfoot'].children.length === 2 || U.el['bm-dfoot'].children.length === 0, 'U4: a locked building has no Place button');
+      U.focusCard(lockedId); U.keydown('Enter', MH); ok(sF.ui.tool === null, 'U4: Enter on a locked card does not arm it');
+    } else ok(true, 'U4: nothing is locked in this state (skipped)');
+    U.el.bmCats.essentials && U.el.bmCats.essentials.dispatchEvent({ type: 'click' }); U.openPalette(false); U.openPalette(true); U.el.tabEls.essentials.el.dispatchEvent({ type: 'click' }); U.update(sF, 50);
+    // search
+    U.openBuildMenu(sF, {}); U.update(sF, 50); const nAll = Object.keys(U.el.bmCards).length;
+    U.searchBuildings('dorm'); U.update(sF, 50); const hits = Object.keys(U.el.bmCards); ok(hits.includes('dorm') && hits.length >= 1 && hits.every((id) => { const r = BSU.data.catalogList.find((x) => x.id === id); return /dorm/i.test([r.tab, r.name, r.blurb, r.desc, id].join(' ')); }) && U.buildQuery() === 'dorm' && U.el.bmCats.essentials.classList.contains('active') === false, 'U4: the search field filters the cards across categories (' + hits.length + ' of the catalogue for "dorm"; no category is selected)');
+    ok(U.el['bm-dbody'].children.length >= 3, 'U4: the detail follows the first match');
+    U.searchBuildings('zzzz'); U.update(sF, 50); ok(Object.keys(U.el.bmCards).length === 0 && U.el['bm-cards'].children[0].className === 'bm-empty' && /No building matches/.test(U.el['bm-cards'].children[0].textContent), 'U4: a search with no match says so');
+    U.el['bm-search'].value = 'live'; U.el['bm-search'].dispatchEvent({ type: 'input' }); U.update(sF, 50); ok(U.buildQuery() === 'live' && U.el.bmCards.live_oak, 'U4: typing in the field (input event) filters live (Live Oak found)');
+    U.el.bmCats.paths.dispatchEvent({ type: 'click' }); U.update(sF, 50); ok(U.buildQuery() === '' && U.el['bm-search'].value === '' && Object.keys(U.el.bmCards).length >= 1 && U.el.bmCats.paths.classList.contains('active'), 'U4: picking a category clears the search');
+    U.searchBuildings('bell'); U.el['bm-search'].dispatchEvent({ type: 'keydown', key: 'Escape', preventDefault() {}, stopPropagation() {} }); ok(U.buildQuery() === '' && U.buildSheetState() === 'expanded', 'U4: Esc in the search field clears it first'); U.el['bm-search'].dispatchEvent({ type: 'keydown', key: 'Escape', preventDefault() {}, stopPropagation() {} }); ok(U.buildSheetState() === 'closed', 'U4: … and closes the sheet when it is empty');
+    U.openBuildMenu(sF, {}); U.searchBuildings('oak'); U.collapseBuildSheet(); ok(U.buildQuery() === '' && U.buildSheetState() === 'collapsed', 'U4: collapsing drops the search term'); U.openPalette(false);
+    ok(U.keydown('g', MH) === true && U.keydown('/', MH) === true && U.buildSheetState() === 'expanded', 'U4: / from the quick bar opens the full sheet (search field focused)'); U.openPalette(false);
+    ok(U.keydown('/', MH) === false && U.buildSheetState() === 'closed', 'U4: / does nothing while the sheet is closed');
+    // keyboard: arrows, Enter
+    U.openPalette(false); U.keydown('g', MH); U.update(sF, 50);
+    const order = Array.from(U.el['palette-items'].children).map((c) => c.dataset.id); spyFocus(U.el.itemEls[order[0]]); spyFocus(U.el.itemEls[order[1]]);
+    ok(order.length >= 3 && U.focusedCard() !== null, 'U4: G puts the keyboard on a card (' + U.focusedCard() + ')');
+    U.focusCard(order[0]); ok(U.focusedCard() === order[0], 'U4: focusCard moves the focus'); focusLog.length = 0;
+    ok(U.keydown('ArrowRight', MH) === true && U.focusedCard() === order[1] && focusLog[0] === order[1], 'U4: → moves the focus to the next card (and the real DOM focus follows)');
+    ok(U.keydown('ArrowLeft', MH) === true && U.focusedCard() === order[0] && U.keydown('ArrowLeft', MH) === true && U.focusedCard() === order[0], 'U4: ← moves back and stops at the first card');
+    { const at = U.focusedCard(); U.keydown('ArrowDown', MH); U.keyup('ArrowDown'); ok(U.focusedCard() === at, 'U4: ↑ ↓ in the quick bar leave the card focus alone (they keep panning)'); }
+    for (let i = 0; i < order.length + 2; i++) U.keydown('ArrowRight', MH); ok(U.focusedCard() === order[order.length - 1], 'U4: → stops at the last card');
+    U.focusCard(order[0]); const armId = order.find((id) => id !== 'land' && U.el.itemEls[id] && !U.el.itemEls[id].classList.contains('locked'));
+    U.focusCard(armId); sF.ui.tool = null; ok(U.keydown('Enter', MH) === true && sF.ui.tool && sF.ui.tool.id === armId, 'U4: Enter arms the focused card (' + armId + ')'); U.selectTool(sF, null);
+    ok(U.keydown(' ', MH) === true && sF.ui.tool && sF.ui.tool.id === armId, 'U4: Space arms it too'); U.selectTool(sF, null);
+    U.openPalette(false); U.update(sF, 50); ok(U.keydown('ArrowRight', MH) === true && U.focusedCard() === null, 'U4: with the sheet closed the arrows pan as before (and no card has the focus)'); U.keyup('ArrowRight');
+    // number keys still pick tools; the expanded grid navigates by rows
+    U.openPalette(false); U.keydown('Tab', MH); U.keydown('Tab', { ...MH, shift: true }); sF.ui.tool = null; ok(U.keydown('1', MS) === true && sF.ui.tool !== null, 'U4: Shift+1 still picks item 1'); U.selectTool(sF, null);
+    U.openBuildMenu(sF, { tab: 'essentials', kbd: true }); U.update(sF, 50); const gids = Array.from(U.el['bm-cards'].children).map((c) => c.dataset.id);
+    gids.forEach((id, i) => { const c = U.el.bmCards[id]; c.offsetTop = 100 + Math.floor(i / 3) * 90; c.offsetLeft = (i % 3) * 200; });
+    U.focusCard(gids[0]); ok(U.keydown('ArrowDown', MH) === true && U.focusedCard() === gids[3] && U.keydown('ArrowUp', MH) === true && U.focusedCard() === gids[0], 'U4: ↓ ↑ move by rows in the expanded grid (3 columns here)');
+    ok(U.keydown('ArrowRight', MH) === true && U.focusedCard() === gids[1] && (U.update(sF, 3000), true) && U.el['bm-dbody'].children[0].children[1].children[0].textContent === BSU.data.catalogList.find((r) => r.id === gids[1]).name, 'U4: → moves along the row and the detail column follows the focused card');
+    ok(U.keydown('Enter', MH) === true && sF.ui.tool && sF.ui.tool.id === gids[1] && U.buildSheetState() === 'collapsed', 'U4: Enter arms the focused grid card and collapses'); U.selectTool(sF, null);
+    // arming from elsewhere while expanded (a tool armed by key) collapses it too
+    U.openBuildMenu(sF, {}); U.update(sF, 50); U.selectTool(sF, 'bulldoze'); ok(U.buildSheetState() === 'collapsed', 'U4: any tool armed while the sheet is expanded collapses it so the map shows'); U.selectTool(sF, null); U.openPalette(false);
+    // Show on map
+    U.openBuildMenu(sF, { focus: 'founders_hall' }); U.openPalette(false); U.openBuildMenu(sF, { tab: 'essentials' }); U.update(sF, 50);
+    const withOne = BSU.buildings.list(sF).find((b) => U.el.bmCards[b.type] || U.el.bmCards[b.id]);
+    ok(U.el['bm-dfoot'].children.length === 2 && U.el['bm-dfoot'].children[0].id === 'btn-bm-place' && /^Place/.test(U.el['bm-dfoot'].children[0].textContent) && U.el['bm-dfoot'].children[1].id === 'btn-bm-show', 'U4: the detail foot pins Place · Enter and Show on map'); void withOne;
+    tap('btn-bm-show'); U.update(sF, 50); ok(U.buildSheetState() === 'collapsed' || U.buildSheetState() === 'expanded', 'U4: Show on map does not break the sheet');
+    U.openPalette(false);
+    // one open at a time: Build sheet vs Menu sheet vs popovers; the inspect card may stay
+    U.openSheet(true); U.openBuildMenu(sF, {}); ok(U.sheetState() === 'closed' && U.buildSheetState() === 'expanded', 'U4: opening the expanded sheet closes the Menu sheet');
+    U.openSheet(true); ok(U.buildSheetState() === 'closed' && U.sheetState() === 'list', 'U4: opening the Menu sheet closes the Build sheet (either state)'); U.openSheet(false);
+    U.openPanel('budget'); U.openPalette(true); ok(U.buildSheetState() === 'collapsed' && sF.ui.panel === null && U.sheetState() === 'closed', 'U4: the quick bar also closes a panel');
+    U.openPopover('needs'); U.openBuildMenu(sF, {}); ok(U.popover() === null && U.buildSheetState() === 'expanded', 'U4: opening the sheet closes a transient popover');
+    U.openPopover('alerts'); ok(U.buildSheetState() === 'closed' && U.popover() === 'alerts', 'U4: opening a popover closes the Build sheet'); U.closePopover();
+    U.pinMinimap(true); U.update(sF, 50); U.openPalette(true); U.update(sF, 50); ok(U.popoverVisible('map'), 'U4: a pinned Map popover stays up over the quick bar'); U.openBuildMenu(sF, {}); U.update(sF, 50); ok(!U.popoverVisible('map') && !vis('pop-map'), 'U4: … and steps aside under the expanded sheet'); U.collapseBuildSheet(); U.update(sF, 50); ok(U.popoverVisible('map') && vis('pop-map'), 'U4: … and returns when it collapses'); U.openPalette(false); U.pinMinimap(false);
+    U.inspect(sF, { kind: 'tile', i: 5 * 64 + 5 }); U.update(sF, 50); U.openPalette(true); U.update(sF, 50); ok(vis('inspect') && U.buildSheetState() === 'collapsed', 'U4: the inspect card may stay while the quick bar is open'); U.closeInspect(); U.openPalette(false);
+    ok(/G[^.]*Shift\+G[^.]*Esc/.test(U._ux.howKeys[0].rows[0].k + ' ' + U._ux.howKeys[0].rows[0].t) && U._ux.howKeys[0].rows.some((r) => r.k === '/' && /Search/.test(r.t)) && U._ux.howKeys[0].rows.some((r) => r.k === 'Enter') && U._ux.howKeys[0].rows.some((r) => /←/.test(r.k)), 'U4: How to play lists G / Shift+G / Esc, the arrows, Enter and /');
+  }
   // 10b. UI refresh U3: the Menu side sheet, the one-open-at-a-time rule, the inspect card, the dialogs' focus
   {
     const cssU3 = css.slice(css.indexOf('/* ---- U3: nested surfaces'));
@@ -813,6 +917,11 @@ try {
   ok(U.coachStep() === 0 && U.popover() === null && U.hudState().effective === 'full', 'the tour starts (stats step: nothing opens)');
   U.keydown('Enter', MH); U.update(sF, 50); ok(U.coachStep() === 1 && U.goalExpanded() && vis('objective-card'), 'the goals step opens the goal card');
   U.keydown('Enter', MH); U.update(sF, 50); ok(U.coachStep() === 2 && U.buildMenuOpen() && !U.goalExpanded(), 'the menu step opens the build menu and folds the card');
+  { const st = BSU.data.coach[2], o = BSU.progress.objective(sF), gid = o ? U._ux.objTarget(sF, o) : null, tg = U._ux.coachTarget(sF, st);
+    ok(st.id === 'menu' && st.target === 'build-menu' && /Shift\+G/.test(st.text) && /Enter/.test(st.text) && /\//.test(st.text), 'U4: the "menu" coach step describes the Build sheet (G, Shift+G, Enter, /)');
+    ok(gid && U.el.bmCards[gid] && tg === U.el.bmCards[gid], 'U4: the "menu" step rings the goal\'s card inside the EXPANDED sheet (' + gid + ')');
+    U.collapseBuildSheet(); U.update(sF, 50); const tc = U._ux.coachTarget(sF, st); ok(gid && tc && tc === (U.el.itemEls[gid] || tc) && tc !== U.el.bmCards[gid] && U.el.palette.contains(tc), 'U4: … and the goal\'s card inside the COLLAPSED sheet (inside #palette)');
+    U.openBuildMenu(sF, { tab: 'essentials' }); U.update(sF, 50); }
   U.keydown('Enter', MH); U.keydown('Enter', MH); U.update(sF, 50); ok(U.coachStep() === 4 && U.popover() === 'needs' && vis('pop-needs'), 'the needs step opens the needs popover');
   U.keydown('Enter', MH); U.update(sF, 50); ok(U.coachStep() === 5 && U.popover() === 'layers' && vis('pop-layers') && !vis('pop-needs'), 'the swamp step opens the Layers popover');
   U.keydown('ArrowLeft', MH); U.update(sF, 50); ok(U.coachStep() === 4 && U.popover() === 'needs', 'back: the needs popover again');

@@ -1029,9 +1029,14 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - ui.keepOverlays(on)
 - ui.goalOpen(on)
 - ui.goalExpanded()
-- ui.openPalette(on)
+- ui.openPalette(on, opts?)   // U4: opens / closes the Build sheet (collapsed); opts.focus puts the keyboard in it; openPalette(true) from the expanded sheet collapses it
 - ui.togglePalette()
-- ui.paletteOpen()
+- ui.paletteOpen()   // the Build sheet is up in either state
+- ui.buildSheetState()   // U4: 'closed' | 'collapsed' | 'expanded'
+- ui.collapseBuildSheet()   // U4: expanded -> collapsed (⤢, the handle, Shift+G, arming a card)
+- ui.expandBuildSheet()   // U4: = openBuildMenu(state, {})
+- ui.focusedCard() / ui.focusCard(id)   // U4: the card with the keyboard focus in the open sheet (null when none) / move it
+- ui.searchBuildings(text) / ui.buildQuery()   // U4: the expanded sheet's search
 - ui.icon(name, cls)
 - ui._snacks()
 - ui._machine(cb)
@@ -1053,9 +1058,9 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - ui.menuEditorOpen()
 - ui.introduceTab(state, tab)
 - ui.refreshPalette(state)
-- ui.openBuildMenu(state, opts)
-- ui.closeBuildMenu()
-- ui.buildMenuOpen()
+- ui.openBuildMenu(state, opts)   // U4: the EXPANDED sheet; opts {tab?, focus?: id, pulse?, kbd?}
+- ui.closeBuildMenu()   // U4: closes the whole Build sheet from the expanded state (collapseBuildSheet keeps the quick bar)
+- ui.buildMenuOpen()   // U4: true while the sheet is EXPANDED
 - ui.startCoach(state, opts)
 - ui.coachStep()
 - ui.alertMode()
