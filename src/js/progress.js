@@ -1071,7 +1071,7 @@
     if (rest > 0) call('economy', 'addStudents', state, rest, 'founding');
     M.achieve(state, 'welcome');
     M.ticker(state, 'First 120 students arrive at Bayou State. One asks where the parking is.', null, 'event', fin(state.plot && state.plot.landing, NONE));
-    if (!p.hints.mute) { p.hints.mute = true; ui(state, 'hint', 'mute', '🔊 on · M to mute'); }
+    if (!p.hints.mute) { p.hints.mute = true; ui(state, 'hint', 'mute', 'Sound on · M to mute'); }
   }
   /** session (skipTutorial): stage 6, Objectives 1–5 done without grants, every tab introduced, hints set, first-warning drops off; queues NO cell (D57) */
   M.applySkipTutorial = function (state) {

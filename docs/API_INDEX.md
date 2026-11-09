@@ -415,6 +415,15 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - headless.fastForwardDays(n)
 - headless.state()
 
+## BSU.icons   // U5: the one inline-SVG registry (src/js/icons.js, before ui.js); 24 × 24, stroke 2 in currentColor, a few filled
+- icons.get(name, cls?)   // a fresh <svg class="ic cls" viewBox="0 0 24 24" data-icon=name>; cls: 'sm' 18 px, 's20' 20 px, 'hidden', …; an unknown name → an empty svg, recorded in missing()
+- icons.names()   // every name, sorted (74)
+- icons.has(name) / icons.paths(name) / icons.isFilled(name)
+- icons.fromGlyph(ch)   // the registry name for an emoji / text glyph data.js or an old caller still carries (⚡ 💧 🚶 🛣 🪵 ↔ 🌀 🦟 🌡 🌊 🚱 🐊 …), else null
+- icons.requested() / icons.missing()   // names asked for / asked for but absent (tests)
+- icons.pathValid(d)   // the structural path check the contract test uses
+- icons.selfTest()
+
 ## BSU.hydro
 - values: _deps:object
 - hydro.init(state)
@@ -1037,7 +1046,9 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - ui.expandBuildSheet()   // U4: = openBuildMenu(state, {})
 - ui.focusedCard() / ui.focusCard(id)   // U4: the card with the keyboard focus in the open sheet (null when none) / move it
 - ui.searchBuildings(text) / ui.buildQuery()   // U4: the expanded sheet's search
-- ui.icon(name, cls)
+- ui.icon(name, cls)   // U5: = BSU.icons.get (kept for ui_panels and the tests)
+- ui.reduceMotion(on?)   // U5: settings.reduceMotion (default = the media query, unset until the player flips it); sets / clears <body class="reduce-motion"> and saves; returns the state
+- ui._coachPlace(rect, boxW, boxH, vw, vh, limitY)   // U5: pure placement of the coach card ({x, y, pos}): never over `rect`, inside the window, above limitY
 - ui._snacks()
 - ui._machine(cb)
 - ui.pointer(type, px, py, button, mods)
@@ -1061,7 +1072,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - ui.openBuildMenu(state, opts)   // U4: the EXPANDED sheet; opts {tab?, focus?: id, pulse?, kbd?}
 - ui.closeBuildMenu()   // U4: closes the whole Build sheet from the expanded state (collapseBuildSheet keeps the quick bar)
 - ui.buildMenuOpen()   // U4: true while the sheet is EXPANDED
-- ui.startCoach(state, opts)
+- ui.startCoach(state, opts)   // U5: the card's counter reads "Quick tour · 3 of 6" (CSS upper-cases it); its buttons are Back / Skip tour / Next ("Geaux build" last)
 - ui.coachStep()
 - ui.alertMode()
 - ui.alertModes()

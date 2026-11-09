@@ -27,7 +27,7 @@ ok(!/Math\.random|ctx\.filter|shadowBlur|\.filter\s*=/.test(mmSrc + crSrc), 'no 
 ok(/BSU\.brush/.test(mmSrc) && /B\.stroke\(|B\.poly\(|B\.softEllipse\(|B\.tone\(/.test(mmSrc) && !/putImageData[\s\S]*fillRect/.test(mmSrc), 'the minimap is drawn through BSU.brush (stroke / poly / softEllipse / tone)');
 ok(!/fillRect/.test(mmSrc) && !/fillRect/.test(crSrc), 'no fillRect pixels left in the minimap or the crowd (the pixel-era marks)');
 ok(!/pixelated/.test((css.match(/#minimap\{[^}]*\}/) || [''])[0]), '#minimap is no longer image-rendering: pixelated (the canvas is at device resolution)');
-ok(Buffer.byteLength(css) <= 96 * 1024, `style.css <= 96 KB (${(Buffer.byteLength(css) / 1024).toFixed(1)} KB)`);
+ok(Buffer.byteLength(css) <= 108 * 1024, `style.css <= 108 KB (${(Buffer.byteLength(css) / 1024).toFixed(1)} KB)`);
 
 // --- a recording context --------------------------------------------------------------------------------------------------
 function rec() {

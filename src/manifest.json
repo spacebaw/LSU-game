@@ -23,6 +23,7 @@
     "sprites_entities_hd.js",
     "render.js",
     "render_fx.js",
+    "icons.js",
     "ui.js",
     "ui_panels.js",
     "audio.js",

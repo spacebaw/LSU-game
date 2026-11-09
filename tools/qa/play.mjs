@@ -405,7 +405,7 @@ scenario('issues-tray', 'Issues tray: Fix arms the remedy, Link it lays the tie,
   // snooze: the zz button hides a row and the hidden pill appears
   await g.clearUi({ panel: false }); await sleep(200); await alerts();
   const before = await g.eval(`BSU.issues.hiddenList(BSU.state).length`);
-  const zz = await g.eval(`(function () { var b = Array.from(document.querySelectorAll('#issues-tray button')).filter(function (e) { return /^zz/.test(e.textContent) && e.getBoundingClientRect().width > 0; })[0]; if (!b) return null; var q = b.getBoundingClientRect(); return { x: q.left + q.width / 2, y: q.top + q.height / 2 }; })()`);
+  const zz = await g.eval(`(function () { var b = Array.from(document.querySelectorAll('#issues-tray button')).filter(function (e) { return e.dataset.act === 'snooze' && e.getBoundingClientRect().width > 0; })[0]; if (!b) return null; var q = b.getBoundingClientRect(); return { x: q.left + q.width / 2, y: q.top + q.height / 2 }; })()`);
   c.need(zz, 'a visible snooze (zz) button exists');
   await g.click(zz.x, zz.y); await sleep(350);
   const after = await g.eval(`BSU.issues.hiddenList(BSU.state).length`);

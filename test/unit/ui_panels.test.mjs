@@ -275,7 +275,7 @@ ok(st && st.ok, 'ui.selfTest ok (includes ui_panels pushed tests) ' + (st && st.
   const selIds = [rows[1]._id, rows[2]._id], cashA = sp.economy.cash;
   click(boardSel); refreshN(sp, 1);
   ok(sp.economy.cash === cashA - 10000 && selIds.every((id) => B.get(sp, id).data.boardedUntil >= sp.calendar.day), 'Board Up selected: charged $10,000, both buildings boarded (precautionary, at once)');
-  ok(/^✓ Board Up/.test(done.textContent) && !done.classList.contains('hidden') && host._windSel.size === 0, 'confirmation strip shown, selection cleared: ' + done.textContent.slice(0, 70));
+  ok(/^Board Up/.test(done.textContent) && !done.classList.contains('hidden') && host._windSel.size === 0, 'confirmation strip shown, selection cleared: ' + done.textContent.slice(0, 70));
   ok(list.children.filter((r) => /sp-boarded/.test(r.className)).length === 2 && /Boarded until/.test(allText(list.children.filter((r) => /sp-boarded/.test(r.className))[0])), 'boarded rows show ✓ and the until date');
   // Select all WR ≤ 2, then clear
   click(byId(host, 'btn-selwr2')); refreshN(sp, 2);
@@ -316,14 +316,15 @@ ok(st && st.ok, 'ui.selfTest ok (includes ui_panels pushed tests) ' + (st && st.
   ok(allBtn.textContent.indexOf('$' + plan.cost.toLocaleString('en-US')) > 0 && !allBtn.disabled, 'the button carries the total: ' + allBtn.textContent);
   const cashD = sp.economy.cash; click(allBtn); refreshN(sp, 1);
   ok(sp.economy.cash === cashD - plan.cost, 'Prepare everything charged exactly the listed total ($' + plan.cost + ')');
-  ok(/^✓ Prepare everything/.test(done.textContent), 'confirmation: ' + done.textContent.slice(0, 80));
-  ok(storm.preDrain === true && host._predrain.btn.disabled && /^✓ Pre-draining/.test(host._predrain.btn.textContent), 'pre-drain now reads ✓ Pre-draining');
+  ok(/^Prepare everything/.test(done.textContent), 'confirmation: ' + done.textContent.slice(0, 80));
+  ok(storm.preDrain === true && host._predrain.btn.disabled && /^Pre-draining/.test(host._predrain.btn.textContent), 'pre-drain now reads Pre-draining');
+  { const ic = findAll(host._predrain.lines, (e) => e.dataset && e.dataset.icon); const sb = findAll(host._sbList || host._root || host, (e) => e.dataset && e.dataset.icon === 'check'); ok(ic.length === 0 || ic.every((e) => e.dataset.icon === 'check' || e.dataset.icon === 'close'), 'U5: the pump rows lead with a check or a cross icon, not a ✓ / ✗ character (' + ic.map((e) => e.dataset.icon).join(' ') + ')'); ok(!/[✓✗⚠⏳●]/.test(textOf(host)), 'U5: no ✓ ✗ ⚠ ⏳ ● character is left in the Storm panel text'); }
   ok(B.boardInfo(sp).rows.some((r) => r.queued > 0), 'the boards went into the crew queue');
   // each remaining action: callable through its button, with the reason when it cannot
   ok(!host._evacuate.btn.disabled && /Evacuate · \$[\d,]+/.test(host._evacuate.btn.textContent) && /students/.test(host._evacuate.effect.textContent), 'evacuate shows price and effect: ' + host._evacuate.effect.textContent.slice(0, 80));
   ok(host._evacuate.lines.children.length >= 2, 'evacuate lists the shelter buildings and the shelter-in-place total (' + host._evacuate.lines.children.length + ' rows)');
   const cashE = sp.economy.cash, evq = W.prepQuote(sp, 'evacuate'); click(host._evacuate.btn); refreshN(sp, 1);
-  ok(sp.economy.cash === cashE - evq.cost && storm.evacuated && host._evacuate.btn.disabled && /^✓ Evacuated/.test(host._evacuate.btn.textContent), 'Evacuate runs once, then reads ✓ Evacuated');
+  ok(sp.economy.cash === cashE - evq.cost && storm.evacuated && host._evacuate.btn.disabled && /^Evacuated/.test(host._evacuate.btn.textContent), 'Evacuate runs once, then reads Evacuated');
   ok(host._spillway.btn.disabled && host._spillway.why.textContent.length > 5, 'spillway: still disabled with its reason (' + host._spillway.why.textContent + ')');
   // every control: either enabled, or a visible reason
   const ctls = [host._predrain, host._spillway, host._evacuate, host._repairall];
@@ -424,13 +425,13 @@ ok(st && st.ok, 'ui.selfTest ok (includes ui_panels pushed tests) ' + (st && st.
   // PLAN_V2 P1: three staff cards, candidates per role, the gate hint, a Hire refused by the headroom then one that signs, a two-click Fire with the buyout, the two cards
   {
     const V0 = BSU.sports.staff(s0);
-    ok(/★★☆☆☆/.test(textOf(byId(host, 'sea-hc-stars'))) && /Interim OC/.test(textOf(host._staffGrid.slots[1])) && /Interim DC/.test(textOf(host._staffGrid.slots[2])) && byId(host, 'btn-fire-oc').classList.contains('hidden') && !byId(host, 'btn-fire').classList.contains('hidden'), 'Staff: the HC star bar, interim coordinators (no Fire on an interim), Fire on the HC');
+    ok((function () { const st = findAll(byId(host, 'sea-hc-stars'), (e) => e.dataset && e.dataset.icon === 'star'); return st.length === 5 && st.filter((e) => !e.classList.contains('off')).length === 2; })() && /Interim OC/.test(textOf(host._staffGrid.slots[1])) && /Interim DC/.test(textOf(host._staffGrid.slots[2])) && byId(host, 'btn-fire-oc').classList.contains('hidden') && !byId(host, 'btn-fire').classList.contains('hidden'), 'Staff: the HC star bar, interim coordinators (no Fire on an interim), Fire on the HC');
     ok(/Why no 5★/.test(textOf(byId(host, 'sea-staff-hint'))) && new RegExp('up to ' + V0.maxStars + '★').test(textOf(byId(host, 'sea-staff-hint'))), 'the "Why no 5★?" hint names the gate (' + textOf(byId(host, 'sea-staff-hint')).slice(0, 60) + '…)');
     BSU.sports.refreshCandidates(s0); U.update(s0, 600);
     const groups = findAll(byId(host, 'sea-candidates'), (e) => /\bfb-cand-group\b/.test(e.className));
     const rows = findAll(byId(host, 'sea-candidates'), (e) => /\bfb-cand\b/.test(e.className) && e.dataset && e.dataset.idx);
     ok(groups.length === 3 && groups.map((g) => g.dataset.role).join() === 'hc,oc,dc' && rows.length === 9 && rows.filter((r) => r.dataset.role === 'dc').length === 3, 'Candidates: a group per role, three rows each');
-    ok(findAll(byId(host, 'sea-candidates'), (e) => /fb-reach/.test(e.className)).length === 3 && rows.every((r) => /★/.test(textOf(r)) && /\/yr/.test(textOf(r)) && / yrs/.test(textOf(r)) && findAll(r, (e) => e.tagName === 'BUTTON').length === 1), 'every row: stars, salary/yr, years, a Hire button; one reach badge per role');
+    ok(findAll(byId(host, 'sea-candidates'), (e) => /fb-reach/.test(e.className)).length === 3 && rows.every((r) => findAll(r, (e) => e.dataset && e.dataset.icon === 'star').length === 5 && /\/yr/.test(textOf(r)) && / yrs/.test(textOf(r)) && findAll(r, (e) => e.tagName === 'BUTTON').length === 1), 'every row: stars, salary/yr, years, a Hire button; one reach badge per role');
     const ocRow = rows.find((r) => r.dataset.role === 'oc' && r.dataset.idx === '0'); const hireBtn = findAll(ocRow, (e) => e.tagName === 'BUTTON')[0];
     BSU.economy.setCoaching(s0, 3000000); U.update(s0, 600);
     click(hireBtn); U.update(s0, 600);
@@ -578,7 +579,7 @@ ok(st && st.ok, 'ui.selfTest ok (includes ui_panels pushed tests) ' + (st && st.
   // Settings: one consolidated list, in order; every row wired to its settings key
   U.openPanel('settings'); const st = U.el['panel-settings']; const rows = findAll(st, (e) => /\bset-row\b/.test(e.className || ''));
   const label = (r) => r.children[0].textContent;
-  ok(rows.map(label).join('|') === 'Display size|Alerts|Audio|Keep the minimap open|Keep overlays visible|Particles|Screen shake|Colour-blind overlays|Tour|Game', 'Settings rows in order: ' + rows.map(label).join(' | '));
+  ok(rows.map(label).join('|') === 'Display size|Alerts|Audio|Keep the minimap open|Keep overlays visible|Particles|Screen shake|Reduce motion|Colour-blind overlays|Tour|Game', 'Settings rows in order: ' + rows.map(label).join(' | '));
   ok(rows.every((r) => r.children.length === 2) && !findAll(st, (e) => e.id === 'btn-set-howto' || e.id === 'keys' || (e.className || '').indexOf('legend-table') >= 0).length, 'each row is a label and one control; no sub-panels, no key table or legend (How to play and the Layers popover carry those)');
   const set = U.settings(); const click = (id) => dom.getElementById(id).dispatchEvent({ type: 'click' });
   const sizes = findAll(st, (e) => /seg-btn/.test(e.className || '') && e.dataset && e.dataset.scale !== undefined);
@@ -592,6 +593,7 @@ ok(st && st.ok, 'ui.selfTest ok (includes ui_panels pushed tests) ' + (st && st.
   click('chk-keep-overlays'); ok(set.keepOverlays === true, 'Keep overlays visible → settings.keepOverlays'); click('chk-keep-overlays'); ok(set.keepOverlays === false, '… off again');
   click('seg-particles'); ok(set.particles === 'low' && dom.getElementById('seg-particles').textContent === 'Off', 'Particles → settings.particles low'); click('seg-particles'); ok(set.particles === 'high', '… high again');
   click('chk-shake'); ok(set.shake === false, 'Screen shake → settings.shake'); click('chk-shake'); ok(set.shake === true, '… on again');
+  { const rm0 = !!set.reduceMotion; click('chk-reduce-motion'); ok(set.reduceMotion === !rm0 && dom.body.classList.contains('reduce-motion') === !rm0 && dom.getElementById('chk-reduce-motion').textContent === (set.reduceMotion ? 'On' : 'Off'), 'U5: Reduce motion → settings.reduceMotion and the body class'); click('chk-reduce-motion'); ok(!!set.reduceMotion === rm0 && dom.body.classList.contains('reduce-motion') === rm0, '… and back'); }
   click('chk-colorblind'); ok(set.colorblind === true && dom.getElementById('chk-colorblind').getAttribute('aria-pressed') === 'true', 'Colour-blind overlays → settings.colorblind'); click('chk-colorblind'); ok(set.colorblind === false, '… off again');
   ok(!!dom.getElementById('btn-coach-replay') && !!dom.getElementById('btn-save-manual') && !!dom.getElementById('btn-load') && !!dom.getElementById('btn-newgame'), 'the Tour replay and Save / Load / New game rows stay');
   U.openPanel(null);

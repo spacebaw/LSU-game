@@ -86,35 +86,17 @@
   };
   const M0 = { ctrl: false, shift: false, meta: false, alt: false };
   const TILE_NAMES = ['Open water', 'Bayou', 'Marsh', 'Wet ground', 'Dry ground', 'High ground', 'Drained marsh', 'Pond'];
-  const SKY_GLYPH = ['🌅', '☀', '🌅', '🌆', '🌙'];
+  const SKY_GLYPH = ['sunrise', 'sunny', 'sunset', 'sunset', 'moon'];   // U5: registry names (Dawn, Day, Golden, Dusk, Night)
   const SKY_NAME = ['Dawn', 'Day', 'Golden', 'Dusk', 'Night'];
-  const MOOD_FACES = ['😞', '🙁', '😐', '🙂', '😄'];
-  const HINT_TEXT = { dredgeFill: 'Dredge spoil from the bayou raises marsh to dry land in ten days. Ecology pays for it.', saveUnavailable: 'Saves unavailable in this browser mode', perfMode: 'Performance mode', mute: '🔊 on · M to mute', pauseToPlan: 'Pause to plan', desireLine: 'Students want a path here' };
+  const MOOD_FACES = ['mood_bad', 'mood_bad', 'mood_neutral', 'mood', 'mood'];   // U5: registry names
+  const HINT_TEXT = { dredgeFill: 'Dredge spoil from the bayou raises marsh to dry land in ten days. Ecology pays for it.', saveUnavailable: 'Saves unavailable in this browser mode', perfMode: 'Performance mode', mute: 'Sound on · M to mute', pauseToPlan: 'Pause to plan', desireLine: 'Students want a path here' };
   const PANEL_KEYS = { budget: 'Budget', season: 'Season', storm: 'Storm', land: 'Land Office', almanac: 'Almanac', milestones: 'Milestones', log: 'Log', settings: 'Settings', howto: 'How to play', about: 'About', debug: 'Debug' };   // L2: land; U2: log
-  // UI refresh U2: the inline SVG icons of docs/UI_STYLE.md §6 (24 px, stroke 2, round; U5 registers the same paths for the rest of the chrome)
+  // UI refresh U5: every icon comes from the one registry, BSU.icons (src/js/icons.js); `icon(name, cls)` below is the short local name for icons.get
   const SVG_NS = 'http://www.w3.org/2000/svg';
-  const ICONS = {
-    notifications: ['M6 16v-5a6 6 0 0 1 12 0v5l1.5 2h-15z', 'M10 21h4'], layers: ['M12 3 3 8l9 5 9-5-9-5z', 'M3 12l9 5 9-5', 'M3 16l9 5 9-5'], map: ['M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z', 'M9 4v14', 'M15 6v14'],
-    menu: ['M4 7h16', 'M4 12h16', 'M4 17h16'], close: ['M6 6l12 12', 'M18 6 6 18'], expand_less: ['M6 15l6-6 6 6'], expand_more: ['M6 9l6 6 6-6'], chevron_right: ['M9 6l6 6-6 6'],
-    construction: ['M4 20l7-7', 'M9 11l5-5 4 4-5 5z', 'M15 5l2-2 4 4-2 2'], pause: ['M8 5v14', 'M16 5v14'], push_pin: ['M12 17v5', 'M8 3h8l-1 6 3 3v2H6v-2l3-3z'],
-    info: ['M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z', 'M12 11v5', 'M12 8h.01'], warning: ['M12 3 2 21h20z', 'M12 10v5', 'M12 18h.01'], check: ['M5 12l4 4L19 7'],
-    star: ['M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z'],
-    paid: ['M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z', 'M12 6.5v11', 'M14.8 9.3c-.4-1-1.5-1.6-2.8-1.6-1.6 0-2.8.8-2.8 2 0 2.7 5.6 1.3 5.6 4.1 0 1.3-1.3 2-2.8 2-1.4 0-2.5-.7-2.9-1.7'],
-    group: ['M9 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6z', 'M3 20a6 6 0 0 1 12 0', 'M16 5.5a3 3 0 0 1 0 5.5', 'M21 20a6 6 0 0 0-4.5-5.8'],
-    mood: ['M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z', 'M8.5 14.5a4.5 4.5 0 0 0 7 0', 'M9 10h.01', 'M15 10h.01'], eco: ['M5 19c0-8 5-13 14-13 0 9-5 13-11 13', 'M5 19l7-7'],
-    volume_up: ['M4 10v4h4l5 4V6L8 10z', 'M16 9a4 4 0 0 1 0 6', 'M18.5 6.5a7.5 7.5 0 0 1 0 11'], volume_off: ['M4 10v4h4l5 4V6L8 10z', 'M16 9l5 6', 'M21 9l-5 6'],
-    // U3: the Menu sheet (docs/UI_STYLE.md §6; the mock's sprite)
-    arrow_back: ['M19 12H5', 'M11 6l-6 6 6 6'],
-    settings: ['M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z', 'M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z'],
-    calendar: ['M5 5h14v15H5z', 'M5 10h14', 'M9 3v4', 'M15 3v4'], flag: ['M6 21V4', 'M6 5h11l-2 4 2 4H6'], list: ['M5 6h14', 'M5 12h14', 'M5 18h9'],
-    cyclone: ['M12 12h.01', 'M12 8a4 4 0 0 1 4 4 6 6 0 0 1-6 6 8 8 0 0 1-8-8 10 10 0 0 1 10-10'], football: ['M4 20C4 10 10 4 20 4c0 10-6 16-16 16z', 'M9 15l6-6', 'M11 9l4 4'],
-    landscape: ['M3 19l6-10 4 6 3-4 5 8z'],
-    // U4: the Build sheet (expand / collapse, search, bulldoze)
-    open_in_full: ['M14 4h6v6', 'M20 4l-7 7', 'M10 20H4v-6', 'M4 20l7-7'], close_fullscreen: ['M20 10h-6V4', 'M14 10l7-7', 'M4 14h6v6', 'M10 14l-7 7'],
-    search: ['M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14z', 'M16.5 16.5 21 21'], delete: ['M5 7h14', 'M9 7V4h6v3', 'M7 7l1 13h8l1-13', 'M10 11v5', 'M14 11v5'],
-    help: ['M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z', 'M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.4-1 .9-1 1.7', 'M12 17h.01']
-  };
-  const ICON_FILLED = { star: true };
+  /** U5: the glyph beside each overlay chip's key letter (F flood, W water, K mosquito, P power, C coverage, E ecology) */
+  const OV_ICON = { F: 'wave', W: 'drop', K: 'mosquito', P: 'bolt', C: 'crowd', E: 'eco' };
+  /** U5: a snackbar's kind → its leading icon */
+  const SNACK_ICON = { info: 'info', danger: 'warning', water: 'drop', wildlife: 'pets', money: 'paid', sports: 'football', event: 'calendar', milestone: 'star', good: 'check_circle' };
   /** the legend swatches of the Layers popover (the overlays themselves are canvas colours in render.js; these echo its OV_COLORS at the legend's four steps) */
   const OV_LEGEND = {
     F: ['rgba(224,68,62,.2)', 'rgba(224,68,62,.35)', 'rgba(224,68,62,.5)', 'rgba(224,68,62,.7)'], W: ['rgba(79,163,214,.2)', 'rgba(79,163,214,.35)', 'rgba(79,163,214,.5)', 'rgba(79,163,214,.7)'],
@@ -149,13 +131,8 @@
   /** a plain button (no .btn styling: the goal pill, the FAB) */
   function plainBtn(id, cls_, onClick) { const b = el('button', cls_); if (id) b.id = id; b.type = 'button'; if (onClick) b.addEventListener('click', function (ev) { try { onClick(ev); } catch (e) { uerr('click:' + id, e); } }); return b; }
   /** U2: an inline SVG icon (svg.ic) from the ICONS table; `cls_` adds classes (e.g. 'sm', 'hidden') through classList so show() / cls() work on it in both the DOM and the stub */
-  function icon(name, cls_) {
-    const s = document.createElementNS(SVG_NS, 'svg'); s.setAttribute('class', 'ic'); s.setAttribute('viewBox', '0 0 24 24'); s.setAttribute('aria-hidden', 'true'); s.dataset.icon = name;
-    if (cls_) for (const c of String(cls_).split(' ')) if (c) s.classList.add(c);
-    for (const d of (ICONS[name] || [])) { const p = document.createElementNS(SVG_NS, 'path'); p.setAttribute('d', d); if (ICON_FILLED[name]) { p.setAttribute('fill', 'currentColor'); p.setAttribute('stroke', 'none'); } s.appendChild(p); }
-    return s;
-  }
-  M.icon = function (name, cls_) { return icon(name, cls_); };   // U3: the icon table for ui_panels and the tests
+  function icon(name, cls_) { return BSU.icons.get(name, cls_); }
+  M.icon = function (name, cls_) { return icon(name, cls_); };   // U3: kept as an alias of BSU.icons.get for ui_panels and the tests
   function iconBtn(id, name, title, onClick) { const b = btn(id, null, 'icon', onClick); b.title = title || ''; b.appendChild(icon(name)); if (id) E[id] = b; return b; }
   function money(n) { return BSU.formatMoney(fin(n, 0)); }
   /** H6 number rules: the sign is part of the number (a true minus U+2212, never a hyphen: formatMoney already does it for cash), thousands are grouped, and every
@@ -218,7 +195,7 @@
   const coach = { step: -1, armedAt: 0, paused: false, overlayBefore: 0, layoutAt: -1e9 };
   // U2: the HUD has one at-rest state; H hides everything (screenshots), Shift+H / H restores. Not a setting: the old settings.hudMode is read once on load (migrateSettings)
   const HUD_MODES = (BSU.params.ui && Array.isArray(BSU.params.ui.hudModes) && BSU.params.ui.hudModes.length >= 2) ? BSU.params.ui.hudModes.slice() : ['full', 'hidden'];
-  let hudModeNow = 'full', migratedFor = null;
+  let hudModeNow = 'full', migratedFor = null, rmApplied = null;
   const hudSt = { eff: '', chipOn: null, wheelAcc: 0, wheelAt: -1e9, wheelStepAt: -1e9 };
 
   // ---------------------------------------------------------------------------
@@ -252,7 +229,7 @@
   }
   function buildTopbar() {
     const tb = el('div'); tb.id = 'topbar'; E.topbar = tb;
-    const brand = el('div', null, ''); brand.id = 'brand'; brand.appendChild(el('span', 'brand-mark', '▣')); brand.appendChild(el('span', 'brand-name', 'BAYOU STATE')); E.brand = brand; tb.appendChild(brand);
+    const brand = el('div', null, ''); brand.id = 'brand'; brand.appendChild((function () { const bmk = el('span', 'brand-mark'); bmk.appendChild(icon('eco')); return bmk; })()); brand.appendChild(el('span', 'brand-name', 'BAYOU STATE')); E.brand = brand; tb.appendChild(brand);
     const stats = el('div', 'stats'); E.stats = stats; tb.appendChild(stats);
     stats.appendChild(statEl('stat-cash', 'Cash', 'cash', 'paid', function () { togglePopover('budget'); }));
     const st = statEl('stat-students', 'Students', 'students', 'group', function () { togglePopover('needs'); }); const cap = el('span', 'cap hidden', ''); cap.id = 'chip-capacity'; E['chip-capacity'] = cap; E['stat-students-line'].appendChild(cap); stats.appendChild(st);
@@ -262,7 +239,7 @@
     tb.appendChild(el('div', 'grow'));
     // the date-and-weather chip: sky glyph · date (title size) over the weather line (label size); click = the Almanac
     const dc = plainBtn('date-chip', 'sl', function () { M.openPanel('almanac'); }); dc.title = 'Almanac';
-    const glyph = el('span', null, '☀'); glyph.id = 'sky-glyph'; dc.appendChild(glyph);
+    const glyph = el('span'); glyph.id = 'sky-glyph'; glyph.dataset.icon = 'sunny'; glyph.appendChild(icon('sunny')); dc.appendChild(glyph);
     const dtx = el('span', 'txt'); const date = el('span'); date.id = 'stat-date'; const dateText = el('span', 'date-text', ''); date.appendChild(dateText); dtx.appendChild(date);
     const wx = el('span', 'lbl', ''); wx.id = 'chip-weather'; dtx.appendChild(wx); dc.appendChild(dtx);
     E['stat-date'] = date; E['stat-date-text'] = dateText; E['sky-glyph'] = glyph; E['chip-weather'] = wx; E['date-chip'] = dc; tb.appendChild(dc);
@@ -315,7 +292,7 @@
     const ic = el('span', null, ''); ic.id = 'alert-icon'; const tx = el('span', null, ''); tx.id = 'alert-text';
     const act = btn('alert-action', '', 'small', function () { const s = stateOf(); const sp = currentAlert; if (sp && sp.action && typeof sp.action.fn === 'function') sp.action.fn(s); });
     const g = el('span', 'chip gator hidden', ''); g.id = 'alert-gator'; g.addEventListener('click', function () { const sp = currentAlert; if (sp && sp.gator && Number.isFinite(sp.gator.i)) { const t = tileOf(sp.gator.i); call('render', 'panToTile', t.tx, t.ty); } });
-    const x = btn('alert-close', '✕', 'icon', function () { closeAlert(); });   // every chip can be closed (the #alert-gator chip is Le Grand's, the lake legend: ambient)
+    const x = btn('alert-close', null, 'icon', function () { closeAlert(); }); x.appendChild(icon('close'));   // every chip can be closed (the #alert-gator chip is Le Grand's, the lake legend: ambient)
     x.title = 'Dismiss (the Log keeps every line)';
     a.appendChild(ic); a.appendChild(tx); a.appendChild(act); a.appendChild(g); a.appendChild(x);
     E['alert-strip'] = a; E['alert-icon'] = ic; E['alert-text'] = tx; E['alert-action'] = act; E['alert-gator'] = g; E['alert-close'] = x; return a;
@@ -336,7 +313,7 @@
   function buildOverlays() {
     const wrap = el('div'); wrap.id = 'overlay-buttons'; E['overlay-buttons'] = wrap; E.ovBtns = {};
     const list = (BSU.data && BSU.data.overlays) || [];
-    for (const o of list) { const b = btn(null, null, 'ov-btn', function () { const s = stateOf(); M.setOverlay(s, s && s.ui.overlay === o.ov ? OV.NONE : o.ov); }); b.dataset.ov = String(o.ov); b.title = o.name + ' (' + o.key + ')'; b.setAttribute('aria-pressed', 'false'); b.appendChild(el('span', 'key', o.key)); b.appendChild(el('span', 'ov-name', o.name)); wrap.appendChild(b); E.ovBtns[o.ov] = b; }
+    for (const o of list) { const b = btn(null, null, 'ov-btn', function () { const s = stateOf(); M.setOverlay(s, s && s.ui.overlay === o.ov ? OV.NONE : o.ov); }); b.dataset.ov = String(o.ov); b.title = o.name + ' (' + o.key + ')'; b.setAttribute('aria-pressed', 'false'); b.appendChild(el('span', 'key', o.key)); b.appendChild(icon(OV_ICON[o.key] || 'layers', 'sm')); b.appendChild(el('span', 'ov-name', o.name)); wrap.appendChild(b); E.ovBtns[o.ov] = b; }
     const legend = el('div', 'hidden', ''); legend.id = 'legend'; E.legend = legend;
     return [wrap, legend];
   }
@@ -425,14 +402,14 @@
   function buildInspect() {
     const p = el('div', 'panel side inspect-card hidden'); p.id = 'inspect';
     const head = el('div', 'insp-head'); const sprite = el('canvas'); sprite.id = 'insp-sprite'; sprite.width = 64; sprite.height = 64;
-    const col = el('div', 'insp-col'); const title = el('div', null, ''); title.id = 'insp-title'; const sub = el('div', null, ''); sub.id = 'insp-sub'; col.appendChild(title); col.appendChild(sub);
+    const col = el('div', 'insp-col'); const title = el('div', null, ''); title.id = 'insp-title'; const sub = el('div', null, ''); sub.id = 'insp-sub'; const meta = el('div', null, ''); meta.id = 'insp-meta'; col.appendChild(title); col.appendChild(meta); col.appendChild(sub);   // U5: the pill's one-line meta (hidden while the card is open)
     const fold = btn('btn-insp-collapse', null, 'icon', function (ev) { if (ev && ev.stopPropagation) ev.stopPropagation(); M.collapseInspect(); }); fold.title = 'Collapse'; const less = icon('expand_less', 'hidden'), more = icon('expand_more'); fold.appendChild(more); fold.appendChild(less);
     const close = btn('btn-insp-close', null, 'icon', function (ev) { if (ev && ev.stopPropagation) ev.stopPropagation(); M.closeInspect(); }); close.title = 'Close (Esc)'; close.appendChild(icon('close'));
     head.appendChild(sprite); head.appendChild(col); head.appendChild(fold); head.appendChild(close);
     const body = el('div', 'rows'); body.id = 'insp-body'; const acts = el('div', 'insp-actions'); acts.id = 'insp-actions';
     p.appendChild(head); p.appendChild(body); p.appendChild(acts);
     p.addEventListener('click', function () { if (inspCollapsed) M.collapseInspect(false); });
-    E.inspect = p; E['insp-title'] = title; E['insp-sub'] = sub; E['btn-insp-collapse'] = fold; E['insp-fold-more'] = more; E['insp-fold-less'] = less; E['btn-insp-close'] = close; E['insp-sprite'] = sprite; E['insp-body'] = body; E['insp-actions'] = acts; return p;
+    E.inspect = p; E['insp-title'] = title; E['insp-sub'] = sub; E['insp-meta'] = meta; E['btn-insp-collapse'] = fold; E['insp-fold-more'] = more; E['insp-fold-less'] = less; E['btn-insp-close'] = close; E['insp-sprite'] = sprite; E['insp-body'] = body; E['insp-actions'] = acts; return p;
   }
   function buildPopover() {
     const p = el('div', 'hidden'); p.id = 'popover'; const t = el('div', null, ''); t.id = 'pop-title'; p.appendChild(t); E.popLines = [];
@@ -487,25 +464,25 @@
     const name = el('h1', null, 'BAYOU STATE'); name.id = 'title-name';
     const tag = el('div', null, 'Build a university in the swamp. Keep it above water.'); tag.id = 'title-tag';   // framing pass: the one-line subtitle for a first-time visitor
     const hint = el('div', 'title-hint', 'Best on a laptop in Chrome or Safari');   // shown by CSS only under 900 px wide or on a touch-only device; never blocks play
-    const charter = btn('btn-charter', 'Click to charter the university.', 'primary big', function () { charterClick(); });
-    const cont = btn('btn-continue', 'Continue', 'big', function () { call('audio', 'unlock'); call('session', 'continue_'); }); cont.disabled = true;
-    const help = el('div', 'title-row title-help');
-    const howBtn = btn('btn-title-howto', 'How to play', 'small', function () { M.openPanel('howto'); });
-    const aboutBtn = btn('btn-title-about', 'About this build', 'small', function () { M.openPanel('about'); });
-    help.appendChild(howBtn); help.appendChild(aboutBtn);
-    const row = el('div', 'title-row');
-    const seedLab = el('label', 'seed-label', 'Seed'); const seed = el('input'); seed.id = 'title-seed'; seed.type = 'text'; seed.placeholder = 'random'; seed.setAttribute('inputmode', 'numeric'); seed.setAttribute('autocomplete', 'off');
+    const charter = btn('btn-charter', 'Charter the university', 'primary big', function () { charterClick(); });
+    const cont = btn('btn-continue', 'Continue', '', function () { call('audio', 'unlock'); call('session', 'continue_'); }); cont.disabled = true;
+    const help = el('div', 'title-row title-help');   // U5: Continue · How to play · About · Settings, one row of text buttons
+    const howBtn = btn('btn-title-howto', 'How to play', '', function () { M.openPanel('howto'); });
+    const aboutBtn = btn('btn-title-about', 'About this build', '', function () { M.openPanel('about'); });
+    const row = el('div', 'title-row title-seedrow');
+    const seedLab = el('label', 'of seed-label'); seedLab.appendChild(el('span', 'of-l', 'Seed')); const seed = el('input'); seed.id = 'title-seed'; seed.type = 'text'; seed.placeholder = 'random'; seed.setAttribute('inputmode', 'numeric'); seed.setAttribute('autocomplete', 'off');
     seed.addEventListener('focus', function () { focusedInput = seed; }); seed.addEventListener('blur', function () { if (focusedInput === seed) focusedInput = null; });
     seedLab.appendChild(seed);
-    const ts = btn('btn-title-settings', 'Settings', 'small', function () { M.openPanel('settings'); });
-    const tm = btn('btn-title-mute', '🔊', 'small icon', function () { toggleMute(); });
-    row.appendChild(seedLab); row.appendChild(ts); row.appendChild(tm);
+    const ts = btn('btn-title-settings', 'Settings', '', function () { M.openPanel('settings'); });
+    help.appendChild(cont); help.appendChild(howBtn); help.appendChild(aboutBtn); help.appendChild(ts);
+    const tm = btn('btn-title-mute', null, 'icon', function () { toggleMute(); }); tm.title = 'Mute (M)'; const tmOn = icon('volume_up'), tmOff = icon('volume_off', 'hidden'); tm.appendChild(tmOn); tm.appendChild(tmOff); E['btn-title-mute-on'] = tmOn; E['btn-title-mute-off'] = tmOff;
+    row.appendChild(seedLab); row.appendChild(tm);
     const sz = el('div', 'title-size'); sz.appendChild(el('span', 'title-size-label', 'Display size')); const szs = el('div', 'seg'); const szn = el('div', 'seg-note hidden', '');   // P5: Compact 100 / Comfortable 115 / Large 130 / Auto
     SIZE_CHOICES.forEach(function (c) { const b = btn('btn-size-' + c[0], c[1], 'seg-btn', function () { M.setUiScale(c[2]); refreshTitleSize(); }); b.dataset.scale = String(c[2]); if (c[3]) b.appendChild(el('span', 'pct', c[3])); b.title = c[2] === 'auto' ? 'Pick the size from this window (1366 px and up: 115 %, 1680 px and up: 130 %)' : c[1] + ' (' + c[3] + ')'; szs.appendChild(b); });
     sz.appendChild(szs); sz.appendChild(szn);
     const campus = el('canvas', 'hidden'); campus.id = 'title-campus'; campus.width = 320; campus.height = 200;
     const foot = el('div', 'title-foot', 'Louisiana. One ridge. Mind the water.');
-    box.appendChild(kicker); box.appendChild(name); box.appendChild(tag); box.appendChild(hint); box.appendChild(charter); box.appendChild(cont); box.appendChild(help); box.appendChild(row); box.appendChild(sz); box.appendChild(campus); box.appendChild(foot);
+    box.appendChild(kicker); box.appendChild(name); box.appendChild(tag); box.appendChild(hint); box.appendChild(charter); box.appendChild(help); box.appendChild(row); box.appendChild(sz); box.appendChild(campus); box.appendChild(foot);
     t.appendChild(box);
     E.title = t; E['title-name'] = name; E['title-tag'] = tag; E['btn-charter'] = charter; E['btn-continue'] = cont; E['title-seed'] = seed; E['btn-title-settings'] = ts; E['btn-title-mute'] = tm; E['title-hint'] = hint; E['btn-title-howto'] = howBtn; E['btn-title-about'] = aboutBtn; E['title-campus'] = campus; E['title-size'] = sz; E['title-size-note'] = szn; return t;
   }
@@ -539,7 +516,7 @@
   /** menu layout pass: the Edit menu overlay (a 64-rem panel centred over the map, the existing panel chrome + close button): title, live summary, presets, "x / cap" count, the inline reason line, the dish grid, the note. Built once; syncMenuOverlay updates it in place */
   function buildMenuOverlay() {
     const p = el('div', 'panel menu-overlay hidden'); p.id = 'menu-overlay';
-    const head = el('div', 'panel-head'); const x = btn('btn-menu-close', '✕', 'icon', function () { M.closeMenuEditor(); }); x.title = 'Close (Esc)'; head.appendChild(x);
+    const head = el('div', 'panel-head'); const x = btn('btn-menu-close', null, 'icon', function () { M.closeMenuEditor(); }); x.appendChild(icon('close')); x.title = 'Close (Esc)'; head.appendChild(x);
     const title = el('div', 'panel-title', 'Menu'); title.id = 'menu-title';
     const sum = el('div', 'menu-sum', ''); sum.id = 'menu-sum';
     const bar = el('div', 'mo-bar'); const pre = el('div', 'menu-presets'); pre.id = 'menu-presets';
@@ -554,10 +531,10 @@
   function buildChips() {
     const perf = el('div', 'chip hidden', ''); perf.id = 'perf-chip'; const pm = el('div', 'chip hidden', 'Performance mode'); pm.id = 'perfmode-chip';
     const h = el('div', 'hidden'); h.id = 'hint'; const ht = el('span', null, ''); const ha = btn('btn-hint-action', '', 'small hidden', function () { if (hint && hint.action && typeof hint.action.fn === 'function') { hint.action.fn(stateOf()); } hideHint(); }); h.appendChild(ht); h.appendChild(ha);
-    const skip = btn('btn-skip', 'Skip ▸', 'hidden', function () { const s = stateOf(); if (s && s.setPiece) call('session', 'skipSetPiece', s); });
+    const skip = btn('btn-skip', 'Skip', 'hidden', function () { const s = stateOf(); if (s && s.setPiece) call('session', 'skipSetPiece', s); }); skip.appendChild(icon('skip_next', 's20'));
     // undo pass: the Undo chip (above the palette, bottom-left) — shown for the undo window after any placement or drag run; click = Ctrl+Z
     const uc = btn('undo-chip', '', 'hidden', function () { doUndo(stateOf()); }); const ucMain = el('span', 'uc-main', ''); const ucBar = el('span', 'uc-bar'); const ucFill = el('span', 'uc-fill'); ucBar.appendChild(ucFill);
-    uc.appendChild(el('span', 'uc-glyph', '↶')); uc.appendChild(ucMain); uc.appendChild(el('span', 'key', 'Ctrl+Z')); uc.appendChild(ucBar);
+    uc.appendChild((function () { const g = el('span', 'uc-glyph'); g.appendChild(icon('undo', 's20')); return g; })()); uc.appendChild(ucMain); uc.appendChild(el('span', 'key', 'Ctrl+Z')); uc.appendChild(ucBar);
     E['undo-chip'] = uc; E['undo-main'] = ucMain; E['undo-fill'] = ucFill;
     const hc = btn('hud-chip', 'HUD hidden · H', 'chip hidden', function () { M.setHudMode('full'); }); hc.title = 'Show the HUD again (H or Shift+H)'; E['hud-chip'] = hc;   // hud + zoom pass / U2: H hides, Shift+H or H restores
     E['perf-chip'] = perf; E['perfmode-chip'] = pm; E.hint = h; E['hint-text'] = ht; E['btn-hint-action'] = ha; E['btn-skip'] = skip; return [perf, pm, h, skip, uc, hc];
@@ -622,7 +599,7 @@
   /** the minimap canvas's backing size: 200 px × the UI scale × the device pixel ratio (≤ 2, render's cap), so render draws it at device resolution; the CSS box stays 20 rem */
   function mmPx(eff) { let d = 1; try { d = Math.min(2, Math.max(1, Number(window.devicePixelRatio) || 1)); } catch (e) { d = 1; } return Math.round(MM_BASE * eff * d); }
   /** P5 Display size choices (title screen): the three presets the plan names + Auto (= the viewport default below) */
-  const SIZE_CHOICES = [['compact', 'Compact', 1, '100%'], ['comfortable', 'Comfortable', 1.15, '115%'], ['large', 'Large', 1.3, '130%'], ['auto', 'Auto', 'auto', '']];
+  const SIZE_CHOICES = [['compact', 'Compact', 1, '100\u00a0%'], ['comfortable', 'Comfortable', 1.15, '115\u00a0%'], ['large', 'Large', 1.3, '130\u00a0%'], ['auto', 'Auto', 'auto', '']];
   let appliedScale = 1, effScale = 1, uiMode = 'auto';   // the chosen factor / what the window can actually hold / 'auto' or the explicit factor
   function scaleOf(v) { v = Number(v); if (!Number.isFinite(v) || v <= 0) return 1; if (v > 3) v /= 100; let b = 1; for (const c of UI_SCALES) if (Math.abs(c - v) < Math.abs(b - v)) b = c; return b; }
   /** P5 smart default by window width: < 1366 → 100 %, 1366–1679 → 115 %, ≥ 1680 → 130 % (effectiveScale still caps it to what the window holds) */
@@ -650,7 +627,7 @@
       const box = E['title-size']; if (!box) return;
       for (const b of box.children[1].children) { const d = b.dataset.scale; cls(b, 'active', d === 'auto' ? uiMode === 'auto' : uiMode !== 'auto' && Number(d) === appliedScale); b.setAttribute('aria-pressed', b.classList.contains('active') ? 'true' : 'false'); }
       const note = E['title-size-note']; const lim = effScale < appliedScale - 0.005;
-      const txt = uiMode === 'auto' ? 'Auto picks ' + Math.round(effScale * 100) + '% for this window.' : lim ? 'Limited to ' + Math.round(effScale * 100) + '% by this window size.' : '';
+      const txt = uiMode === 'auto' ? 'Auto picks ' + Math.round(effScale * 100) + '\u00a0% for this window.' : lim ? 'Limited to ' + Math.round(effScale * 100) + '\u00a0% by this window size.' : '';
       if (note) { setText(note, txt); show(note, !!txt); }
     } catch (e) { /* stub */ }
   }
@@ -680,18 +657,25 @@
   /** what render_fx's label placement reads: the mode, plus which parts are drawn small or not at all right now (a "pill" in the H7 sense: the goal pill, a closed Map / Alerts popover, the closed Build sheet) */
   M.hudState = function () { return { mode: hudModeOf(), effective: hudEffective(), collapsed: {}, pill: { goals: !goal.open, needs: true, minimap: !popVisible('map'), issues: !popVisible('alerts'), palette: !pal.open } }; };
   /** U2 settings migration, once per settings object (boot, newGame, load): the old hudMode ('hidden' → the HUD starts hidden, else nothing) and hudCollapsed keys leave; keepMinimap / keepOverlays default off */
+  /** U5: the OS-level reduced-motion preference (the default of settings.reduceMotion) */
+  function prefersReducedMotion() { try { return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches); } catch (e) { return false; } }
+  /** U5: settings.reduceMotion → the `reduce-motion` class on <body>, which the CSS keys off (every animation and transition goes to 0) */
+  function applyReduceMotion() { if (!dom()) return; const on = !!M.settings().reduceMotion; if (on !== rmApplied) { rmApplied = on; cls(document.body, 'reduce-motion', on); } }
+  M.reduceMotion = function (on) { const set = M.settings(); if (on !== undefined) { set.reduceMotion = !!on; M.saveSettings(); } applyReduceMotion(); return !!set.reduceMotion; };
   function migrateSettings() {
     const set = M.settings(); let changed = false;
     if ('hudMode' in set) { if (set.hudMode === 'hidden') hudModeNow = 'hidden'; delete set.hudMode; changed = true; }
     if ('hudCollapsed' in set) { delete set.hudCollapsed; changed = true; }
     if (typeof set.keepMinimap !== 'boolean') { set.keepMinimap = false; changed = true; }
     if (typeof set.keepOverlays !== 'boolean') { set.keepOverlays = false; changed = true; }
+    if (typeof set.reduceMotion !== 'boolean') set.reduceMotion = prefersReducedMotion();   // U5: unset → follows the media query (not written back: the key is saved when the player flips the switch, and migration runs on the contract's default object before the stored settings are read)
     if (changed) M.saveSettings();
   }
   /** per frame: the mode on #hud and the "HUD hidden" chip */
   function updateHud(s) {
     if (!dom() || !E.hud) return;
     if (s && s.ui && s.ui.settings !== migratedFor) { migratedFor = s.ui.settings; try { migrateSettings(); } catch (e) { uerr('migrateSettings', e); } }
+    applyReduceMotion();
     const eff = hudEffective();
     if (E.hud.dataset.hud !== eff) { E.hud.dataset.hud = eff; hudSt.eff = eff; fitTopbar(); coach.layoutAt = -1e9; if (eff === 'hidden') { hideTooltip(); show(E['ghost-label'], false); } }
     const chip = eff === 'hidden' && !titleOn; if (chip !== hudSt.chipOn) { hudSt.chipOn = chip; show(E['hud-chip'], chip); }
@@ -1313,8 +1297,10 @@
     let dx = 0, dy = 0; if (held.left) dx -= L.panPx; if (held.right) dx += L.panPx; if (held.up) dy -= L.panPx; if (held.down) dy += L.panPx;
     if (dx || dy) { const s = stateOf(); const z = s && s.ui.camera ? fin(s.ui.camera.zoom, 1) : 1; call('render', 'panBy', dx / z, dy / z, true); }
   }
+  /** U5: swap the date chip's weather icon (a registry name) */
+  function setSkyIcon(name) { const g = E['sky-glyph']; if (!g || g.dataset.icon === name) return; g.dataset.icon = name; while (g.firstChild) g.removeChild(g.firstChild); g.appendChild(icon(name)); }
   function toggleMute() { const s = stateOf(); if (!s) return; const set = M.settings(); const on = !set.muted; set.muted = on; call('audio', 'mute', on); M.saveSettings(); refreshMuteButtons(); }
-  function refreshMuteButtons() { const set = M.settings(); const m = !!(set && set.muted); show(E['btn-mute-on'], !m); show(E['btn-mute-off'], m); if (E['btn-mute']) E['btn-mute'].title = m ? 'Unmute (M)' : 'Mute (M)'; if (E['btn-title-mute']) setText(E['btn-title-mute'], m ? '🔇' : '🔊'); }
+  function refreshMuteButtons() { const set = M.settings(); const m = !!(set && set.muted); show(E['btn-mute-on'], !m); show(E['btn-mute-off'], m); if (E['btn-mute']) E['btn-mute'].title = m ? 'Unmute (M)' : 'Mute (M)'; show(E['btn-title-mute-on'], !m); show(E['btn-title-mute-off'], m); }
   function toggleDebug(s) { const open = !M.debug.open; M.debug.open = open; if (dom()) M.openPanel(open ? 'debug' : (s.ui.panel === 'debug' ? null : s.ui.panel)); call('progress', 'debugOpen', s, open); }
   function postcard(s) {
     const r = call('render', 'postcard', s, undefined); let url = typeof r === 'string' ? r : (r && typeof r.toDataURL === 'function' ? r.toDataURL('image/png') : '');
@@ -1653,11 +1639,14 @@
   function syncInspectFold() { cls(E.inspect, 'collapsed', inspCollapsed); show(E['insp-fold-more'], !inspCollapsed); show(E['insp-fold-less'], inspCollapsed); if (E['btn-insp-collapse']) E['btn-insp-collapse'].title = inspCollapsed ? 'Expand' : 'Collapse'; }
   M.closeInspect = function () { closeInspectDom(); if (live.state === 'INSPECTING') mcSet(live, 'IDLE'); };
   function closeInspectDom() { insp = null; renaming = null; inspCollapsed = false; if (menuEdit) M.closeMenuEditor(); if (focusedInput && focusedInput !== E['title-seed']) focusedInput = null; if (dom()) { syncInspectFold(); show(E.inspect, false); cls(E.hud, 'inspect-open', false); } }
-  function row(k, v, cls_) { const r = el('div', 'row' + (cls_ ? ' ' + cls_ : '')); r.appendChild(el('span', 'k', k)); r.appendChild(el('span', 'v', v)); return r; }
+  function row(k, v, cls_) { const r = el('div', 'row' + (cls_ ? ' ' + cls_ : '')); r.appendChild(el('span', 'k', k)); const isNode = v && typeof v === 'object' && v.tagName; const vv = el('span', 'v', isNode ? null : v); if (isNode) vv.appendChild(v); r.appendChild(vv); return r; }   // U5: v may be a node (an icon meter, a check mark)
   function action(label, fn, cls_) { return btn(null, label, 'small' + (cls_ ? ' ' + cls_ : ''), function () { const s = stateOf(); const r = fn(s); if (r && r.ok === false && r.reason) M.notify(s, { kind: 'info', text: r.reason, ttl: 4000 }); inspAt = -1e9; }); }
-  function stars(n) { n = clamp(fin(n, 0) | 0, 0, 5); return '★★★★★'.slice(0, n) + '☆☆☆☆☆'.slice(0, 5 - n); }
+  /** U5: a 0–max readout as `max` small icons, the first n lit (star for a quality, dot for a rating), the rest dim; text lines carry the same number in words */
+  function meter(n, max, name) { const w = el('span', 'meter'); w.title = clamp(fin(n, 0) | 0, 0, max) + ' of ' + max; for (let k = 0; k < max; k++) w.appendChild(icon(name || 'star', 'sm' + (k < n ? '' : ' off'))); return w; }
+  /** U5: a label with a check / cross after it (Power ✓): 'Power' + a small success or error icon */
+  function mark(text, ok) { const w = el('span', 'mark ' + (ok ? 'ok' : 'no')); w.appendChild(el('span', null, text)); w.appendChild(icon(ok ? 'check' : 'close', 'sm')); return w; }
   /** P6: appeal 1–4 as four stars (the mean rounds) */
-  function appealStars(n) { n = clamp(Math.round(fin(n, 0)), 0, 4); return '★★★★'.slice(0, n) + '☆☆☆☆'.slice(0, 4 - n); }
+  function appealStars(n) { n = clamp(Math.round(fin(n, 0)), 0, 4); return n + ' of 4'; }
   /** the preset whose dishes (its first `cap`, any order) are exactly the card, or null */
   function menuPresetKey(ms) {
     const presets = (BSU.data && BSU.data.menuPresets) || {}, have = ms.menu.slice().sort().join();
@@ -1742,7 +1731,7 @@
         const chips = el('span', 'chips');
         chips.appendChild(el('span', 'chip-m cost', '$' + (Math.round(d.cost * 100) / 100)));
         chips.appendChild(el('span', 'chip-m prep', 'prep ' + d.prep));
-        chips.appendChild(el('span', 'chip-m appeal', '★' + clamp(Math.round(fin(d.appeal, 1)), 1, 4)));   // "★4": narrow enough for four columns
+        chips.appendChild((function () { const c = el('span', 'chip-m appeal'); c.appendChild(icon('star', 'sm')); c.appendChild(el('span', null, String(clamp(Math.round(fin(d.appeal, 1)), 1, 4)))); return c; })());   // "★4": narrow enough for four columns
         cell.appendChild(chips); grid.appendChild(cell);
       }
       if (keep > 0) E['menu-overlay'].scrollTop = keep;
@@ -1752,7 +1741,7 @@
       const listed = ms.menu.indexOf(d.id) >= 0, special = ms.specials.indexOf(d.id) >= 0, inSeason = call('buildings', 'dishActive', s, d.id) !== false;
       const c = 'btn dish tier-' + d.tier + (listed || special ? ' on' : '') + (!inSeason ? ' off-season' : '') + (special ? ' special' : '');
       if (cell.className !== c) cell.className = c;
-      const nm = cell.children[0]; setText(nm, d.name + (special ? ' ✦' : ''));
+      const nm = cell.children[0]; setText(nm, d.name + (special ? ' · special' : ''));
     }
     // count + inline reason
     const full = ms.menu.length >= ms.cap;
@@ -1774,7 +1763,7 @@
     if (!insp || !dom() || !s) return;
     inspAt = clock; inspDirty = false;
     const body = E['insp-body'], acts = E['insp-actions']; clear(body); clear(acts);
-    const spr = E['insp-sprite']; let hasSprite = false;
+    const spr = E['insp-sprite']; let hasSprite = false; let inspMeta = '';   // U5: the pill's meta line (a building's key stat, else the sub line)
     const kind = insp.kind;
     if (menuEdit && !(kind === 'building' && insp.id === menuEdit.id)) M.closeMenuEditor();   // the overlay belongs to the inspected kitchen
     if (kind === 'building') {
@@ -1783,20 +1772,21 @@
       if (!renaming) setText(E['insp-title'], b.name || r.name);
       setText(E['insp-sub'], r.name + (b.tier > 0 && r.tiers && r.tiers[b.tier - 1] ? ' · ' + (r.tiers[b.tier - 1].name || 'Tier ' + b.tier) : '') + (b.pilings ? ' · on pilings' : ''));
       call('render', 'drawIcon', spr, b.type); hasSprite = true;
+      inspMeta = b.ruin ? 'Ruin' : b.built < 1 ? 'Under construction ' + Math.round(fin(b.built, 0) * 100) + '%' : b.flooded ? 'Flooded' : b.blackout ? 'No power' : ef.beds ? ef.beds + ' beds' : ef.seats ? ef.seats + ' seats' : ef.feeds ? 'feeds ~' + (ef.feeds | 0) + ' a day' : '';
       if (b.ruin) body.appendChild(row('Status', 'Ruin', 'bad')); else if (b.built < 1) body.appendChild(row('Status', 'Under construction ' + Math.round(fin(b.built, 0) * 100) + '%')); else if (b.flooded) body.appendChild(row('Status', 'Flooded', 'bad')); else if (b.blackout) body.appendChild(row('Status', 'Blackout', 'bad')); else if (b.closedUntil >= 0 && b.closedUntil > dayOf(s)) body.appendChild(row('Status', 'Closed · reopens ' + BSU.formatDate(b.closedUntil)));
       const ms = ef.feeds ? call('buildings', 'menuOf', s, b.id) : null;   // P6: a kitchen feeds its menu's throughput
       if (ms && b.built >= 1 && !b.ruin) body.appendChild(menuSection(s, b, ms));   // menu layout pass: first in the body, so the summary and Edit menu never need scrolling to
       if (ef.beds) body.appendChild(row('Beds', String(ef.beds))); if (ef.seats) body.appendChild(row('Seats', String(ef.seats))); if (ef.feeds) body.appendChild(row('Feeds', ms ? '~' + ms.throughput.toLocaleString('en-US') + ' a day (menu)' : String(ef.feeds)));
-      if (ef.quality) body.appendChild(row('Quality', stars(ef.quality)));
+      if (ef.quality) body.appendChild(row('Quality', meter(ef.quality, 5, 'star')));
       body.appendChild(row('Ground', (TILE_NAMES[tl.type[i0]] || '') + ' · ' + ft(tl.elev[i0])));
       const depth = call('hydro', 'footprintDepth', s, b.id); if (Number.isFinite(depth) && depth > 0.01) body.appendChild(row('Water', ft(depth), 'water'));
       body.appendChild(row('Saturation', Math.round(fin(tl.sat[i0], 0) * 100) + '%'));
       const rate = call('terrain', 'subsidenceRate', s, i0, true); if (Number.isFinite(rate) && rate > 0) body.appendChild(row('Sinking', rate.toFixed(2) + ' ft/yr · dropped ' + fin(b.sunk, 0).toFixed(2) + ' ft'));
-      if (r.wr) body.appendChild(row('Wind rating', '▮▮▮▮▮'.slice(0, r.wr) + '▯▯▯▯▯'.slice(0, 5 - r.wr)));
+      if (r.wr) body.appendChild(row('Wind rating', meter(r.wr, 5, 'dot')));
       if (b.hp < 1) body.appendChild(row('Damage', Math.round((1 - fin(b.hp, 1)) * 100) + '%', 'bad'));
       if (ef.shelter) body.appendChild(row('Shelter', String(ef.shelter)));
-      const util = []; if (r.needsPower) util.push('Power ' + (b.powered ? '✓' : '✗')); if (r.needsWater) util.push('Water ' + (b.watered ? '✓' : '✗')); if (util.length) body.appendChild(row('Utilities', util.join(' · ')));
-      const risk = call('hydro', 'riskAt', s, i0); if (Number.isFinite(risk) && risk >= 0.3) body.appendChild(row('Flood risk', ft(risk) + ' after 2 in of rain ⚠', 'bad'));
+      const util = el('span', 'marks'); if (r.needsPower) util.appendChild(mark('Power', !!b.powered)); if (r.needsWater) util.appendChild(mark('Water', !!b.watered)); if (util.children.length) body.appendChild(row('Utilities', util));
+      const risk = call('hydro', 'riskAt', s, i0); if (Number.isFinite(risk) && risk >= 0.3) body.appendChild(row('Flood risk', ft(risk) + ' after 2 in of rain', 'bad'));
       if (b.type === 'generator' && b.data) body.appendChild(row('Fuel', fin(b.data.fuelDays, 0) + ' days'));
       const res = (s.agents || []).find(function (a) { return a && a.home === b.id && a.state !== 'GONE'; });
       if (res) { const q = call('agents', 'inspect', s, res.id); if (q && q.quote) body.appendChild(row('A resident', '“' + q.quote + '”', 'quote')); }
@@ -1814,7 +1804,7 @@
       }
       if (r.tiers && r.tiers.length > fin(b.tier, 0)) acts.appendChild(action('Upgrade', function (st) { return call('buildings', 'upgrade', st, b.id); }));
       if (b.type === 'generator') acts.appendChild(action('Refuel +3 days $5k', function (st) { return call('buildings', 'refuel', st, b.id); }));
-      if (b.type === 'wildlife_post') acts.appendChild(action((b.data && b.data.nutriaBounty ? '✓ ' : '') + 'Nutria bounty', function (st) { return call('buildings', 'setPolicy', st, b.id, 'nutriaBounty', !(b.data && b.data.nutriaBounty)); }));
+      if (b.type === 'wildlife_post') acts.appendChild(action((b.data && b.data.nutriaBounty ? 'On · ' : '') + 'Nutria bounty', function (st) { return call('buildings', 'setPolicy', st, b.id, 'nutriaBounty', !(b.data && b.data.nutriaBounty)); }));
       if (b.type === 'abatement') acts.appendChild(action(b.data && b.data.active === false ? 'Abatement off → on' : 'Abatement on → off', function (st) { return call('buildings', 'setPolicy', st, b.id, 'active', !(b.data && b.data.active !== false)); }));
       if ((tl.type[i0] === T.WET || tl.type[i0] === T.DRAINED) && r.kind === 'footprint') acts.appendChild(action('Re-grade', function (st) { return call('buildings', 'regrade', st, b.id); }));
       if (r.demolishable !== false) acts.appendChild(action('Demolish', function (st) { const rr = call('buildings', 'remove', st, b.id, 'demolish'); if (rr && rr.ok) { closeInspectDom(); } return rr; }, 'danger'));
@@ -1853,7 +1843,7 @@
       if (!a) { closeInspectDom(); return; }
       setText(E['insp-title'], q.name || a.name || 'Student'); setText(E['insp-sub'], (q.major || a.major || '') + ' · Year ' + fin(q.year || a.year, 1));
       const mood = clamp(fin(q.mood, fin(a.mood, 0.5)), 0, 1);
-      body.appendChild(row('Mood', MOOD_FACES[Math.min(4, Math.floor(mood * 5))] + ' ' + Math.round(mood * 100) + '%'));
+      body.appendChild(row('Mood', (function () { const w = el('span', 'mark'); w.appendChild(icon(MOOD_FACES[Math.min(4, Math.floor(mood * 5))], 'sm')); w.appendChild(el('span', null, Math.round(mood * 100) + '%')); return w; })()));
       body.appendChild(row('Doing', q.activity || a.state || ''));
       if (q.quote) body.appendChild(row('Says', '“' + q.quote + '”', 'quote'));
       if (a.home >= 0) body.appendChild(row('Lives at', nameOfBuilding(s, a.home)));
@@ -1883,6 +1873,7 @@
       setText(E['insp-title'], insp.kind); setText(E['insp-sub'], '');
     }
     show(spr, hasSprite);
+    setText(E['insp-meta'], inspMeta || (E['insp-sub'] ? E['insp-sub'].textContent : ''));
     if (menuEdit) syncMenuOverlay(s);
   }
   function startRename(b) {
@@ -1926,7 +1917,7 @@
     if (!hoverKey || card || s.ui.panel || live.state === 'PLACING' || live.state === 'DRAGGING' || live.state === 'PANNING') { if (!taggedGator(s)) hideTooltip(); return; }
     if (clock - hoverSince < L.tooltipMs) return;
     const parts = hoverKey.split(':'); let text = '', at = null;
-    if (parts[0] === 'gator') { const g = parts[1] === 'legend' ? s.wildlife.leGrand : gatorsOf(s).find(function (x) { return x && String(x.id) === parts[1]; }); if (g) { text = '🐊 ' + (g.name || 'Gator'); at = call('render', 'entityScreen', g); } }
+    if (parts[0] === 'gator') { const g = parts[1] === 'legend' ? s.wildlife.leGrand : gatorsOf(s).find(function (x) { return x && String(x.id) === parts[1]; }); if (g) { text = (g.name || 'Gator'); at = call('render', 'entityScreen', g); } }
     else if (parts[0] === 'agent') { const a = (s.agents || [])[parseInt(parts[1], 10)]; if (a) { text = a.name || 'Student'; at = call('render', 'entityScreen', a); } }
     else if (parts[0] === 'building') { const b = call('buildings', 'get', s, parseInt(parts[1], 10)); if (b) { const r = rowOf(b.type) || {}; text = (b.name || r.name || b.type) + (b.name && r.name && b.name !== r.name ? ' · ' + r.name : ''); } }
     if (!text) { hideTooltip(); return; }
@@ -1941,7 +1932,7 @@
       if (at.y < top || at.y > bot) return false;
       let ty = at.y - 44;   // gator pass: the tag drops under the gator when it would sit on the alert strip (beside an open inspect the strip shares the map centre)
       try { const st = E['alert-strip']; if (st && !st.classList.contains('hidden')) { const r = st.getBoundingClientRect(); if (ty + 32 > r.top && ty < r.bottom && at.x + 50 > r.left && at.x - 50 < r.right) ty = at.y + 12; } } catch (e) { /* stub */ }
-      E.tooltip.dataset.kind = 'gator'; showTooltipAt('🐊 ' + (g.name || 'Gator'), at.x - 40, ty); return true; } } }
+      E.tooltip.dataset.kind = 'gator'; showTooltipAt((g.name || 'Gator'), at.x - 40, ty); return true; } } }
     return false;
   }
 
@@ -2022,7 +2013,7 @@
   function landCard(s) {
     const st = call('land', 'stats', s) || {};
     const it = el('div', 'item land-card'); it.dataset.id = 'land'; it.setAttribute('tabindex', '0'); it.setAttribute('role', 'button');
-    const ic = el('div', 'icon glyph', '📜'); it.appendChild(ic);
+    const ic = el('div', 'icon glyph'); ic.appendChild(icon('landscape')); it.appendChild(ic);
     const nm = el('div', 'name'); nm.appendChild(el('span', '', 'Charter land')); it.appendChild(nm);
     it.appendChild(el('div', 'cost', !fin(st.sections, 0) ? 'Charter complete' : (fin(st.forSale, 0) ? 'from ' + money(st.cheapest) : 'Land Office')));
     it.title = 'Land Office (O): buy 16 × 16 sections of state land next to your campus';
@@ -2167,7 +2158,7 @@
     if (e.parkingSpaces) add(e.parkingSpaces + ' parking spaces (they count toward the lot requirement)');
     if (e.seats) add(e.seats + ' lecture seats');
     if (e.feeds) add('Feeds ' + e.feeds.toLocaleString('en-US') + ' students' + within(e.diningRadius) + (row && (row.id === 'dining_hall' || row.id === 'poboy') ? ' with a standard menu (up to ' + (row.id === 'poboy' ? 3 : 10) + ' dishes: cheap feeds more, premium draws more)' : ''));
-    if (e.quality) add('Housing quality ' + '★★★★★'.slice(0, clamp(e.quality | 0, 0, 5)));
+    if (e.quality) add('Housing quality ' + clamp(e.quality | 0, 0, 5) + ' of 5');
     if (e.happiness && e.happiness.value) add((e.happiness.value > 0 ? '+' : '−') + Math.abs(e.happiness.value) + ' happiness' + (e.happiness.radius > 0 ? within(e.happiness.radius) : ' campus-wide'));
     if (e.landmark) add('Landmark +' + e.landmark + ' (prestige)');
     if (e.academic) add('Academic +' + e.academic + ' (prestige)');
@@ -2207,6 +2198,8 @@
   }
   /** requirement glyphs for a row → [{glyph, text}] */
   const REQ_LABEL = { '⚡': 'Power', '💧': 'Water', '🚶': 'Path', '🛣': 'Road', '🪵': 'Pilings', '↔': 'Drag' };   // UI scale pass: the requirement glyphs carry a word
+  /** U5: a requirement's data glyph (data.js keeps the emoji) → its registry icon */
+  function reqIcon(g) { return BSU.icons.fromGlyph(g) || 'help'; }
   function requirementsOf(row) {
     const RQ = (BSU.data && BSU.data.requirements) || {}; const out = []; if (!row) return out;
     const place = RQ.place && RQ.place[row.placeRule]; if (place && row.placeRule !== BSU.PLACE.LAND) out.push(place);
@@ -2221,7 +2214,7 @@
   function buildBuildMenu() {
     const m = el('div', 'hidden bottom-sheet expanded'); m.id = 'build-menu'; m.setAttribute('role', 'dialog'); m.setAttribute('aria-label', 'Build');
     const hr = el('div', 'handle-row'); const handle = handleBtn('bm-handle', 'Collapse to the quick bar (Shift+G)'); hr.appendChild(handle);
-    const head = el('div', 'bm-head'); head.appendChild(el('div', 'bm-title', 'Build')); const sub = el('div', 'bm-sub', 'Pick a category, then a building. ★ marks what the campus needs right now; greyed cards say what unlocks them.'); sub.id = 'bm-sub'; head.appendChild(sub);
+    const head = el('div', 'bm-head'); head.appendChild(el('div', 'bm-title', 'Build')); const sub = el('div', 'bm-sub', 'Pick a category, then a building. The star marks what the campus needs right now; greyed cards say what unlocks them.'); sub.id = 'bm-sub'; head.appendChild(sub);
     const field = el('label', 'text-field'); field.appendChild(icon('search')); const input = el('input'); input.id = 'bm-search'; input.type = 'search'; input.placeholder = 'Search buildings'; input.setAttribute('aria-label', 'Search buildings'); input.autocomplete = 'off'; input.spellcheck = false; field.appendChild(input);
     try {
       input.addEventListener('input', function () { M.searchBuildings(input.value); });
@@ -2287,7 +2280,7 @@
   /** close the whole Build sheet from the expanded state (Esc, ✕, the set piece); M.collapseBuildSheet() keeps the quick bar */
   M.closeBuildMenu = function () { try { if (!bm.open) return; bmShut(false); } catch (e) { uerr('closeBuildMenu', e); } };
   M.buildMenuOpen = function () { return bm.open; };
-  function badgeText(kind) { return kind === 'Goal' ? '★ Goal' : kind === 'Needed' ? '★ Needed now' : '★ Recommended'; }
+  function badgeText(kind) { return kind === 'Goal' ? 'Goal' : kind === 'Needed' ? 'Needed now' : 'Recommended'; }
   /** the ids the expanded grid shows: the current category, or (a search term) every visible category's match */
   function bmRows(s, vis, cur) {
     const ok = function (id) { return id !== 'founders_hall' && !!rowOf(id); };
@@ -2330,7 +2323,7 @@
           const ic = el('canvas', 'icon'); ic.width = 64; ic.height = 64; c.appendChild(ic); call('render', 'drawIcon', ic, id);
           c.appendChild(el('div', 'bm-name', r.name));
           const price = el('div', 'bm-price'); price.appendChild(el('span', 'bm-cost', money(r.cost) + (r.kind === 'drag' || r.kind === 'paint' ? '/tile' : (r.kind === 'upgrade' ? ' +40%' : '')))); if (r.upkeep || !(r.kind === 'drag' || r.kind === 'paint')) price.appendChild(el('span', 'bm-upkeep', r.upkeep ? '· ' + money(r.upkeep) + '/mo' : '· no upkeep')); c.appendChild(price);
-          if (u.ok) { const reqs = el('div', 'bm-reqs'); for (const q of requirementsOf(r)) { const sp = el('span', 'bm-req'); if (REQ_LABEL[q.glyph]) sp.appendChild(el('span', 'rq-l', REQ_LABEL[q.glyph])); else sp.appendChild(el('span', 'rq-g', q.glyph)); sp.title = q.text; reqs.appendChild(sp); } if (r.w > 1 || r.h > 1) { const fp = el('span', 'bm-req fp', r.w + '×' + r.h); fp.title = 'Footprint ' + r.w + '×' + r.h + ' tiles' + (r.rotatable ? ' (R rotates)' : ''); reqs.appendChild(fp); } c.appendChild(reqs); }
+          if (u.ok) { const reqs = el('div', 'bm-reqs'); for (const q of requirementsOf(r)) { const sp = el('span', 'bm-req'); sp.appendChild(icon(reqIcon(q.glyph), 'sm')); if (REQ_LABEL[q.glyph]) sp.appendChild(el('span', 'rq-l', REQ_LABEL[q.glyph])); sp.title = q.text; reqs.appendChild(sp); } if (r.w > 1 || r.h > 1) { const fp = el('span', 'bm-req fp', r.w + '×' + r.h); fp.title = 'Footprint ' + r.w + '×' + r.h + ' tiles' + (r.rotatable ? ' (R rotates)' : ''); reqs.appendChild(fp); } c.appendChild(reqs); }
           else { const lk = el('div', 'bm-lock'); lk.appendChild(el('span', null, unlockText(u.reason))); c.appendChild(lk); }
           if (reco[id]) { const st = el('span', 'bm-star star'); st.title = badgeText(reco[id]); st.appendChild(icon('star', 'sm')); c.appendChild(st); }
           c.addEventListener('click', function () { armCard(stateOf(), id, false); });
@@ -2357,11 +2350,11 @@
     const d = E['bm-dbody'], f = E['bm-dfoot']; clear(d); clear(f); if (!r) { d.appendChild(el('div', 'muted', bm.query ? 'No building matches your search.' : 'Nothing to build in this category yet.')); return; }
     const head = el('div', 'bm-dhead'); const ic = el('canvas', 'icon'); ic.width = 96; ic.height = 96; head.appendChild(ic); call('render', 'drawIcon', ic, id);
     const col = el('div'); col.appendChild(el('div', 'bm-dname', r.name)); col.appendChild(el('div', 'bm-dsub', money(r.cost) + (r.kind === 'drag' || r.kind === 'paint' ? ' per tile' : '') + (r.upkeep ? ' · ' + money(r.upkeep) + '/mo upkeep' : ' · no upkeep') + (r.kind === 'footprint' ? ' · ' + r.w + '×' + r.h + ' tiles' : (r.w > 1 || r.h > 1 ? ' · ' + r.w + '×' + r.h : '')))); head.appendChild(col); d.appendChild(head);
-    if (reco[id]) { const bn = el('div', 'bm-badge inline'); bn.appendChild(icon('star', 'sm')); bn.appendChild(el('span', null, (reco[id] === 'Goal' ? 'Goal · your current objective' : badgeText(reco[id]).replace('★ ', '') + ' · ' + ((needsNow(s) || {}).binding || {}).text))); d.appendChild(bn); }
+    if (reco[id]) { const bn = el('div', 'bm-badge inline'); bn.appendChild(icon('star', 'sm')); bn.appendChild(el('span', null, (reco[id] === 'Goal' ? 'Goal · your current objective' : badgeText(reco[id]) + ' · ' + ((needsNow(s) || {}).binding || {}).text))); d.appendChild(bn); }
     d.appendChild(el('div', 'bm-dblurb', r.blurb || ''));
     if (r.why) d.appendChild(el('div', 'bm-dwhy', '“' + r.why + '”'));
     const eff = effectLines(r); if (eff.length) { d.appendChild(el('div', 'card-kicker', 'Effects')); const ul = el('div', 'bm-list'); for (const line of eff) ul.appendChild(el('div', 'bm-li', line)); d.appendChild(ul); }
-    const rq = requirementsOf(r); if (rq.length) { d.appendChild(el('div', 'card-kicker', 'Needs')); const ul = el('div', 'bm-list'); for (const q of rq) ul.appendChild(el('div', 'bm-li', q.glyph + ' ' + q.text)); d.appendChild(ul); }
+    const rq = requirementsOf(r); if (rq.length) { d.appendChild(el('div', 'card-kicker', 'Needs')); const ul = el('div', 'bm-list'); for (const q of rq) { const li = el('div', 'bm-li'); li.appendChild(icon(reqIcon(q.glyph), 's20')); li.appendChild(el('span', null, q.text)); ul.appendChild(li); } d.appendChild(ul); }
     if (r.desc) d.appendChild(el('div', 'bm-ddesc', r.desc));
     if (!u.ok) d.appendChild(el('div', 'bm-dlock', unlockText(u.reason)));
     else {
@@ -2390,7 +2383,7 @@
     for (let k = 0; k < 4; k++) { const p = el('div', 'coach-pane'); c.appendChild(p); E.coachPanes.push(p); }
     const ring = el('div', 'coach-ring hidden'); c.appendChild(ring); E['coach-ring'] = ring;
     const box = el('div', 'coach-box'); box.id = 'coach-box'; const step = el('div', 'card-kicker', ''); step.id = 'coach-step'; const title = el('div', 'coach-title', ''); title.id = 'coach-title'; const text = el('div', 'coach-text', ''); text.id = 'coach-text';
-    const acts = el('div', 'card-actions'); const back = btn('btn-coach-back', '◂ Back', 'small hidden', function () { coachNext(stateOf(), -1); }); const skip = btn('btn-coach-skip', 'Skip tour', 'small', function () { coachFinish(stateOf(), false); }); const next = btn('btn-coach-next', 'Next ▸', 'primary', function () { coachNext(stateOf(), 1); });
+    const acts = el('div', 'card-actions'); const back = btn('btn-coach-back', 'Back', 'small hidden', function () { coachNext(stateOf(), -1); }); const skip = btn('btn-coach-skip', 'Skip tour', 'small', function () { coachFinish(stateOf(), false); }); const next = btn('btn-coach-next', 'Next', 'primary', function () { coachNext(stateOf(), 1); });
     acts.appendChild(back); acts.appendChild(skip); acts.appendChild(next);
     box.appendChild(step); box.appendChild(title); box.appendChild(text); box.appendChild(acts); c.appendChild(box);
     E.coach = c; E['coach-box'] = box; E['coach-step'] = step; E['coach-title'] = title; E['coach-text'] = text; E['btn-coach-back'] = back; E['btn-coach-skip'] = skip; E['btn-coach-next'] = next; return c;
@@ -2428,7 +2421,7 @@
     if (st.id === 'menu') M.openBuildMenu(s, { tab: 'essentials' }); else if (bm.open) M.closeBuildMenu();
     if (st.id === 'swamp') M.setOverlay(s, OV.FLOOD); else if (fin(s.ui.overlay, 0) === OV.FLOOD && coach.overlayBefore !== OV.FLOOD) M.setOverlay(s, coach.overlayBefore);
     setText(E['coach-step'], 'Quick tour · ' + (coach.step + 1) + ' of ' + steps.length); setText(E['coach-title'], st.title); setText(E['coach-text'], st.text);
-    setText(E['btn-coach-next'], coach.step === steps.length - 1 ? 'Geaux build ▸' : 'Next ▸'); show(E['btn-coach-back'], coach.step > 0);
+    setText(E['btn-coach-next'], coach.step === steps.length - 1 ? 'Geaux build' : 'Next'); show(E['btn-coach-back'], coach.step > 0);
     // U2: a step that points inside a popover or the goal card opens that surface for the step (the tour itself always runs in the full HUD)
     if (st.target === 'needs-strip') openPopover('needs'); else if (st.target === 'overlay-buttons') openPopover('layers'); else closePopover();
     if (st.target === 'objective-card') goalOpen(true); else if (goal.open) goalCollapse();
@@ -2455,22 +2448,32 @@
     const P4 = E.coachPanes; const put = function (p, x, y, w, h) { p.style.left = Math.round(x) + 'px'; p.style.top = Math.round(y) + 'px'; p.style.width = Math.round(Math.max(0, w)) + 'px'; p.style.height = Math.round(Math.max(0, h)) + 'px'; };
     if (r) { put(P4[0], 0, 0, vw, r.y); put(P4[1], 0, r.y, r.x, r.h); put(P4[2], r.x + r.w, r.y, vw - r.x - r.w, r.h); put(P4[3], 0, r.y + r.h, vw, vh - r.y - r.h); put(E['coach-ring'], r.x, r.y, r.w, r.h); show(E['coach-ring'], true); }
     else { put(P4[0], 0, 0, vw, vh); put(P4[1], 0, 0, 0, 0); put(P4[2], 0, 0, 0, 0); put(P4[3], 0, 0, 0, 0); show(E['coach-ring'], false); }
-    const box = E['coach-box']; const bw = fin(box.offsetWidth, 400) || 400, bh = fin(box.offsetHeight, 170) || 170;
-    let bx, by;
-    if (!r) { bx = (vw - bw) / 2; by = (vh - bh) / 2 - 40; }
-    else {
-      const pal = E.palette; let lim = vh - 8;   // UI scale pass: the box stays above the palette unless the palette is what is being shown
-      try { if (pal && !pal.classList.contains('hidden') && tgt !== pal && !(pal.contains && tgt && pal.contains(tgt))) lim = Math.min(lim, fin(pal.getBoundingClientRect().top, vh) - 8); } catch (e) { /* stub */ }
-      let side = false;
-      if (r.y + r.h + 14 + bh <= lim) by = r.y + r.h + 14;
-      else if (r.h > bh * 0.5 && r.x + r.w + 16 + bw <= vw - 12) { side = true; bx = r.x + r.w + 16; by = clamp(r.y, 12, Math.max(12, lim - bh)); }   // a tall docked card (the goals tracker): the box goes beside it
-      else if (r.y - 14 - bh >= 8) by = r.y - 14 - bh; else by = vh - bh - 16;
-      if (!side) bx = clamp(r.x + r.w / 2 - bw / 2, 12, vw - bw - 12);
-      if (r.w > vw * 0.6 && r.h > vh * 0.5) { bx = clamp(r.x + r.w - bw - 12, 12, vw - bw - 12); by = vh - bh - 16; }   // a huge target (the build menu): bottom-right over it
-    }
-    box.style.left = Math.round(bx) + 'px'; box.style.top = Math.round(by) + 'px';
-    box.dataset.pos = r ? (by > r.y ? 'below' : 'above') : 'center';
+    const box = E['coach-box']; const bw = fin(box.offsetWidth, 340) || 340, bh = fin(box.offsetHeight, 170) || 170;
+    let lim = vh - 8;   // the box stays above the Build sheet unless the sheet is what is being shown
+    try { const pal = E.palette; if (r && pal && !pal.classList.contains('hidden') && tgt !== pal && !(pal.contains && tgt && pal.contains(tgt))) lim = Math.min(lim, fin(pal.getBoundingClientRect().top, vh) - 8); } catch (e) { /* stub */ }
+    const at = coachPlace(r, bw, bh, vw, vh, lim);
+    box.style.left = Math.round(at.x) + 'px'; box.style.top = Math.round(at.y) + 'px';
+    box.dataset.pos = at.pos;
   }
+  /** U5: where the coach card goes: never over its own target. `r` is the spotlight rect {x, y, w, h} (null = centred). Tries below / above (above first for a target in the
+   *  lower half) right-aligned to a target on the right side, then right / left of it, then the four window corners; the first spot that fits the window (and sits above
+   *  `lim`, the Build sheet's top) without touching the rect wins; if none is clear (a target as big as the window) the corner with the least overlap. → {x, y, pos} */
+  function coachPlace(r, bw, bh, vw, vh, lim) {
+    const G = 14, E0 = 12; lim = Number.isFinite(lim) ? lim : vh - 8;
+    if (!r) return { x: (vw - bw) / 2, y: (vh - bh) / 2 - 40, pos: 'center' };
+    const rightSide = r.x + r.w / 2 > vw / 2;
+    const hx = clamp(rightSide ? r.x + r.w - bw : r.x, E0, Math.max(E0, vw - bw - E0)), vy = clamp(r.y + r.h / 2 - bh / 2, 8, Math.max(8, lim - bh));
+    const below = { pos: 'below', x: hx, y: r.y + r.h + G }, above = { pos: 'above', x: hx, y: r.y - G - bh };
+    const cands = (r.y + r.h / 2 > vh / 2) ? [above, below] : [below, above];
+    cands.push({ pos: 'right', x: r.x + r.w + G, y: vy }, { pos: 'left', x: r.x - G - bw, y: vy });
+    const inside = function (c) { return c.x >= E0 - 0.5 && c.y >= 8 - 0.5 && c.x + bw <= vw - E0 + 0.5 && c.y + bh <= lim + 0.5; };
+    const hit = function (c) { const ox = Math.min(c.x + bw, r.x + r.w) - Math.max(c.x, r.x), oy = Math.min(c.y + bh, r.y + r.h) - Math.max(c.y, r.y); return ox > 0 && oy > 0 ? ox * oy : 0; };
+    for (const c of cands) if (inside(c) && hit(c) === 0) return c;
+    const corners = [{ pos: 'corner', x: vw - bw - E0, y: lim - bh }, { pos: 'corner', x: E0, y: lim - bh }, { pos: 'corner', x: vw - bw - E0, y: 56 }, { pos: 'corner', x: E0, y: 56 }];
+    let best = corners[0], bo = Infinity; for (const c of corners) { const o = hit(c); if (o < bo) { bo = o; best = c; } }
+    return best;
+  }
+  M._coachPlace = coachPlace;   // tests
   /** Settings → replay: forget the flag and let the next frame start the tour (Settings closes) */
   M.startCoach = function (state, opts) { try { const s = state || stateOf(); M.settings().coachSeen = false; M.saveSettings(); coach.step = -1; coach.armedAt = clock - 1e5; if (s && s.ui && s.ui.panel) M.openPanel(null); if (opts && opts.now === true && s && dom()) coachStart(s); } catch (e) { uerr('startCoach', e); } };   // hud + zoom pass: {now: true} starts the tour at once (tests; headless has no eligibility)
   M.coachStep = function () { return coach.step; };
@@ -2631,20 +2634,20 @@
     opts = opts || {};
     const row = el('div', 'issue-row' + (sel ? ' sel' : '') + (opts.lead ? ' lead' : '') + (opts.sub ? ' sub' : '') + (opts.progress ? ' progress' : '')); row.dataset.id = it.id; row.dataset.kind = it.kind;
     row.title = (opts.progress && it.progress) ? ('In progress: ' + it.progress.text + '\n' + rowTitle(it)) : rowTitle(it);
-    const ic = el('canvas'); ic.width = 18; ic.height = 18; try { const g = ic.getContext('2d'); if (g && has('render', 'drawIssueGlyph')) call('render', 'drawIssueGlyph', g, it.glyph, 9, 9, 7, it.color || '#FDD023'); } catch (e) { /* stub */ }
+    const ic = el('span', 'ig'); ic.dataset.sev = String(it.severity || 1); ic.appendChild(icon(BSU.icons.has(it.glyph) ? it.glyph : 'warning', 's20'));   // U5: the kind's registry icon on a severity tile (the map beacons stay canvas)
     const col = el('div', 't', (opts.progress && it.progress) ? it.progress.text : it.title); const age = el('span', 'a', ' · ' + (issuesApi() ? issuesApi().ageText(s, it) : '')); col.appendChild(age);
     row.appendChild(ic); row.appendChild(col);
     const I = issuesApi(), sd = fin(P.issues && P.issues.snoozeDays, 3);
     if (opts.count > 1) { const bd = btn(null, '×' + opts.count, 'small badge', function () { const o = opts.suggest ? tray.sopen : tray.open; o[it.kind] = !o[it.kind]; tray.key = ''; }); bd.title = opts.count + ' ' + (I ? I.labelOf(it.kind).toLowerCase() : it.kind) + ' issues: click to ' + (opts.expanded ? 'fold them' : 'list them all'); row.appendChild(bd); }
     let fix = null;
     if (!opts.progress) { fix = btn(null, it.kind === 'unlinkedPath' ? 'Link it' : 'Fix', 'small fix', function () { const st = stateOf(); if (st) fixIssue(st, issuesApi().byId(st, it.id) || it); }); fix.title = it.fix || 'Fix it'; row.appendChild(fix); }   // paths pass: the Not linked suggestion's button reads Link it
-    const loc = btn(null, '⌖', 'small icon-sm locate', function () { const st = stateOf(); if (st) locateIssue(st, issuesApi().byId(st, it.id) || it); }); loc.title = 'Locate: ease the camera there (I cycles)'; loc.dataset.act = 'locate'; row.appendChild(loc);
+    const loc = btn(null, null, 'small icon-sm locate', function () { const st = stateOf(); if (st) locateIssue(st, issuesApi().byId(st, it.id) || it); }); loc.appendChild(icon('my_location', 'sm')); loc.title = 'Locate: ease the camera there (I cycles)'; loc.dataset.act = 'locate'; row.appendChild(loc);
     if (!opts.progress) {
-      const zz = btn(null, 'zz', 'small icon-sm', function () { const st = stateOf(); const I2 = issuesApi(); if (st && I2 && I2.snooze(st, it.id)) { tray.key = ''; M.notify(st, { kind: 'info', text: 'Snoozed ' + sd + ' days: ' + it.title, ttl: 2500 }); } }); zz.title = 'Snooze ' + sd + ' days: hides this row until ' + BSU.formatDate(dayOf(s) + sd) + '; it comes back sooner if it gets worse'; zz.dataset.act = 'snooze'; row.appendChild(zz);
-      const dm = btn(null, '✕', 'small icon-sm', function () { const st = stateOf(); const I2 = issuesApi(); if (st && I2 && I2.dismiss(st, it.id)) tray.key = ''; }); dm.title = 'Dismiss: hides this row until the condition changes (it gets worse, or moves to a new stage)'; dm.dataset.act = 'dismiss'; row.appendChild(dm);
+      const zz = btn(null, null, 'small icon-sm', function () { const st = stateOf(); const I2 = issuesApi(); if (st && I2 && I2.snooze(st, it.id)) { tray.key = ''; M.notify(st, { kind: 'info', text: 'Snoozed ' + sd + ' days: ' + it.title, ttl: 2500 }); } }); zz.appendChild(icon('snooze', 'sm')); zz.title = 'Snooze ' + sd + ' days: hides this row until ' + BSU.formatDate(dayOf(s) + sd) + '; it comes back sooner if it gets worse'; zz.dataset.act = 'snooze'; row.appendChild(zz);
+      const dm = btn(null, null, 'small icon-sm', function () { const st = stateOf(); const I2 = issuesApi(); if (st && I2 && I2.dismiss(st, it.id)) tray.key = ''; }); dm.appendChild(icon('close', 'sm')); dm.title = 'Dismiss: hides this row until the condition changes (it gets worse, or moves to a new stage)'; dm.dataset.act = 'dismiss'; row.appendChild(dm);
     }
     // calm alerts pass: the bell on a group's lead row mutes that kind (rows move under Suggestions, no beacons, no toasts; remembered); a muted kind's bell unmutes it
-    if (opts.lead && !opts.progress && I && (opts.muted || !opts.suggest)) { const bell = btn(null, opts.muted ? '🔕' : '🔔', 'small icon-sm bell' + (opts.muted ? ' muted' : ''), function () { M.muteIssueKind(it.kind, !opts.muted); const st = stateOf(); if (st) M.notify(st, { kind: 'info', text: (opts.muted ? 'Unmuted: ' : 'Muted: ') + (I.labelOf(it.kind)) + (opts.muted ? '' : ' · its rows sit under Suggestions (no beacons, no toasts)'), ttl: 3000 }); }); bell.title = opts.muted ? 'Unmute ' + I.labelOf(it.kind).toLowerCase() + ': back to the main list, beacons and toasts' : 'Mute ' + I.labelOf(it.kind).toLowerCase() + ': rows move under Suggestions, no beacons, no toasts (remembered)'; bell.dataset.act = 'mute'; row.appendChild(bell); }
+    if (opts.lead && !opts.progress && I && (opts.muted || !opts.suggest)) { const bell = btn(null, null, 'small icon-sm bell' + (opts.muted ? ' muted' : ''), function () { M.muteIssueKind(it.kind, !opts.muted); const st = stateOf(); if (st) M.notify(st, { kind: 'info', text: (opts.muted ? 'Unmuted: ' : 'Muted: ') + (I.labelOf(it.kind)) + (opts.muted ? '' : ' · its rows sit under Suggestions (no beacons, no toasts)'), ttl: 3000 }); }); bell.appendChild(icon(opts.muted ? 'notifications_off' : 'notifications', 'sm')); bell.title = opts.muted ? 'Unmute ' + I.labelOf(it.kind).toLowerCase() + ': back to the main list, beacons and toasts' : 'Mute ' + I.labelOf(it.kind).toLowerCase() + ': rows move under Suggestions, no beacons, no toasts (remembered)'; bell.dataset.act = 'mute'; row.appendChild(bell); }
     const why = (!opts.progress && it.why) ? el('div', 'why', it.why) : null; if (why) { why.title = it.why; row.appendChild(why); }   // gator pass: the one-line "why it matters" as a full-width second grid row
     row.addEventListener('click', function (ev) { if (ev && ev.target && ev.target !== row && ev.target !== col && ev.target !== ic && ev.target !== age && ev.target !== why) return; const st = stateOf(); if (st) locateIssue(st, issuesApi().byId(st, it.id) || it); });
     return { el: row, age: age, id: it.id };
@@ -2680,7 +2683,7 @@
       const showClear = clock - tray.clearAt < 3000 || hidden.length > 0;
       show(E['issues-tray'], showClear);
       const k = 'clear|' + hidden.length;
-      if (tray.key !== k) { tray.key = k; setText(E['issues-count'], 'All clear ✓'); setText(E['issues-sub'], sugg.length ? sugg.length + (sugg.length === 1 ? ' suggestion' : ' suggestions') : 'Nothing needs you right now'); cls(E['issues-head'], 'clear', true); clear(E['issues-list']); clear(E['issues-progress-list']); show(E['issues-progress'], false); clear(E['issues-suggest-list']); show(E['issues-suggest'], false); tray.rows = []; show(E['issues-more'], false); show(E['issues-clear'], false); hiddenLine(hidden); }
+      if (tray.key !== k) { tray.key = k; setText(E['issues-count'], 'All clear'); setText(E['issues-sub'], sugg.length ? sugg.length + (sugg.length === 1 ? ' suggestion' : ' suggestions') : 'Nothing needs you right now'); cls(E['issues-head'], 'clear', true); clear(E['issues-list']); clear(E['issues-progress-list']); show(E['issues-progress'], false); clear(E['issues-suggest-list']); show(E['issues-suggest'], false); tray.rows = []; show(E['issues-more'], false); show(E['issues-clear'], false); hiddenLine(hidden); }
       return;
     }
     tray.hadIssues = true; show(E['issues-tray'], true);
@@ -2695,7 +2698,7 @@
     if (key !== tray.key) {
       tray.key = key; tray.ageAt = clock;
       const none = main.length === 0;
-      setText(E['issues-count'], none ? (prog.length ? 'No open issues' : 'All clear ✓') : 'Alerts · ' + main.length + (main.length === 1 ? ' issue' : ' issues'));
+      setText(E['issues-count'], none ? (prog.length ? 'No open issues' : 'All clear') : 'Alerts · ' + main.length + (main.length === 1 ? ' issue' : ' issues'));
       const w3 = main.filter(function (it) { return it.severity >= 3; }).length; const subs = []; if (w3) subs.push(w3 + ' urgent'); if (prog.length) subs.push(prog.length + ' in progress'); if (none && sugg.length) subs.push(sugg.length + (sugg.length === 1 ? ' suggestion' : ' suggestions')); if (!subs.length) subs.push('I cycles the issues');
       setText(E['issues-sub'], subs.join(' · '));
       show(E['issues-clear'], res.rows.length > 0); setText(E['issues-clear'], 'Clear ' + res.rows.length + (res.total > 0 ? ' · ' + money(res.total) : ''));
@@ -2708,7 +2711,7 @@
       const rest = (plan.length - shown) + (prog.length - pShown); setText(E['issues-more'], rest > 0 ? '+' + rest + ' more · I cycles through all' : ''); show(E['issues-more'], rest > 0);
       // the Suggestions group: a one-line header (count, caret), the rows only while unfolded
       clear(E['issues-suggest-list']); show(E['issues-suggest'], sugg.length > 0);
-      if (sugg.length) { setText(E['issues-suggest-head'], (tray.suggestOpen ? '▾ ' : '▸ ') + 'Suggestions · ' + sugg.length + (sShown < splan.length && tray.suggestOpen ? ' (' + sShown + ' shown)' : '')); cls(E['issues-suggest'], 'open', tray.suggestOpen && sShown > 0); for (let k = 0; k < sShown; k++) { const p = splan[k]; const r = issueRow(s, p.it, p.it.id === sel, p); r.el.classList.add('suggest'); E['issues-suggest-list'].appendChild(r.el); tray.rows.push(r); } }
+      if (sugg.length) { setText(E['issues-suggest-head'], 'Suggestions · ' + sugg.length + (sShown < splan.length && tray.suggestOpen ? ' (' + sShown + ' shown)' : '')); cls(E['issues-suggest'], 'open', tray.suggestOpen && sShown > 0); for (let k = 0; k < sShown; k++) { const p = splan[k]; const r = issueRow(s, p.it, p.it.id === sel, p); r.el.classList.add('suggest'); E['issues-suggest-list'].appendChild(r.el); tray.rows.push(r); } }
       hiddenLine(hidden);
     } else if (clock - tray.ageAt >= 1000) {
       tray.ageAt = clock; for (const r of tray.rows) { const it = I.byId(s, r.id); if (it) setText(r.age, ' · ' + I.ageText(s, it)); }
@@ -2782,6 +2785,7 @@
     if (lk && lk.length && issuesApi() && s && issuesApi().ofKinds(s, lk).length) { const b = btn(null, 'Locate', 'notif-action small locate', function () { const st = stateOf(); const it = issueFirstOf(st, lk); if (it) locateIssue(st, it); else M.notify(st, { kind: 'info', text: 'Already resolved', ttl: 2500 }); closeNotif(n, 'action'); }); d.appendChild(b); }   // issue spotlight pass
     if (n.news) { const b = btn(null, 'Log', 'notif-action small', function () { M.openPanel('log'); }); b.title = 'Every news line (the Log)'; d.appendChild(b); }
     const x = btn(null, null, 'notif-close icon', function () { closeNotif(n, 'close'); }); x.title = 'Dismiss'; x.appendChild(icon('close')); d.appendChild(x);
+    const lead = icon(spec.milestone ? 'star' : spec.stamp === 'paw' ? 'pets' : (SNACK_ICON[n.kind] || 'info'), 's20 kind'); d.appendChild(lead);   // U5: the kind's icon (CSS order puts it first; the text stays children[0] for the tests)
     return d;
   }
   /** a snack takes one of the two slots at once; when both are taken a news line waits in order (the queue holds six; older waiting lines are dropped with
@@ -3032,7 +3036,7 @@
   function syncSheet() {
     if (!dom()) return;
     const s = stateOf(); const name = s && s.ui ? s.ui.panel : null; const on = sheet.open;
-    show(E['menu-sheet'], on); cls(E['btn-menu'], 'selected', on);
+    show(E['menu-sheet'], on); cls(E['btn-menu'], 'selected', on); cls(E.app, 'sheet-open', on);   // U5: .sheet-open + .title-on = the title card dims and slides aside (CSS)
     cls(E['menu-sheet'], 'panel-state', on && !!name);
     setText(E['sheet-title'], name ? (PANEL_TITLES[name] || PANEL_KEYS[name] || name) : 'Menu');
     show(E['btn-sheet-back'], on && !!name && !titleOn);   // opened from the title screen there is no list to go back to
@@ -3127,7 +3131,7 @@
       if (on) {
         let can = !!opts.canContinue; if (!can) { try { can = !!window.localStorage.getItem('bsu.last'); } catch (e) { can = false; } }
         E['btn-continue'].disabled = !can; show(E['btn-continue'], can); refreshMuteButtons(); refreshTitleSize();
-        try { const slots = call('session', 'slots') || []; const last = slots.find(function (x) { return x && (x.last || x.slot === 'bsu.last'); }); if (last && last.label) E['btn-continue'].title = last.label; } catch (e) { /* optional */ }
+        try { const slots = call('session', 'slots') || []; const last = slots.find(function (x) { return x && (x.last || x.slot === 'bsu.last'); }); if (last && last.label) { E['btn-continue'].title = last.label; setText(E['btn-continue'], 'Continue · ' + String(last.label).split(' · ')[0].slice(0, 24)); } else setText(E['btn-continue'], 'Continue'); } catch (e) { /* optional */ }
       } else { if (focusedInput === E['title-seed']) focusedInput = null; }
     } catch (e) { uerr('showTitle', e); }
   };
@@ -3138,7 +3142,7 @@
     call('session', 'newGame', seed === undefined ? {} : { seed: seed });
     void s;
   }
-  M.settings = function () { const s = stateOf(); if (s && s.ui && s.ui.settings) return s.ui.settings; return { volume: 0.5, muted: false, particles: 'high', shake: true, colorblind: false, autoSimHint: false, keepMinimap: false, keepOverlays: false, alerts: 'normal', mutedIssues: {}, tieCardSeen: false }; };
+  M.settings = function () { const s = stateOf(); if (s && s.ui && s.ui.settings) return s.ui.settings; return { volume: 0.5, muted: false, particles: 'high', shake: true, colorblind: false, autoSimHint: false, keepMinimap: false, keepOverlays: false, reduceMotion: false, alerts: 'normal', mutedIssues: {}, tieCardSeen: false }; };
   /** mirror state.ui.settings to localStorage['bsu.settings'] (a failure → one 'saveUnavailable' hint) */
   M.saveSettings = function () { try { window.localStorage.setItem('bsu.settings', JSON.stringify(M.settings())); } catch (e) { const s = stateOf(); if (s) M.hint(s, 'saveUnavailable'); } };
   /** stat popover from economy.breakdown */
@@ -3235,7 +3239,7 @@
       ['Fiction', 'Bayou State University is made up. No real trademarks.']];
     for (const r of rows) { const d = el('div', 'about-row'); d.appendChild(el('span', 'k', r[0])); d.appendChild(el('span', 'v', r[1])); host.appendChild(d); }
   }
-  const ABOUT_MODULES = 28;   // src/manifest.json (ui.test checks it)
+  const ABOUT_MODULES = 29;   // src/manifest.json (ui.test checks it)
 
   // Settings panel (built in): U3 consolidated it into one list inside the Menu sheet, in this order: Display size, Alerts, Audio (volume + mute),
   // Keep the minimap open, Keep overlays visible, Particles, Shake, Colour-blind; then the Tour replay and Save / Load / New game. Every settings key keeps its name and its migration.
@@ -3260,6 +3264,7 @@
     host._keepOv = chk('chk-keep-overlays', 'Keep overlays visible', function () { return !!M.settings().keepOverlays; }, function (v) { M.settings().keepOverlays = v; syncPopovers(); });
     host._particles = chk('seg-particles', 'Particles', function () { return M.settings().particles !== 'low'; }, function (v) { M.settings().particles = v ? 'high' : 'low'; });
     host._shake = chk('chk-shake', 'Screen shake', function () { return M.settings().shake !== false; }, function (v) { M.settings().shake = v; });
+    host._rm = chk('chk-reduce-motion', 'Reduce motion', function () { return !!M.settings().reduceMotion; }, function (v) { M.reduceMotion(v); }); host._rm.title = 'Turns off the sheet, popover and dialog animations (follows your system setting until you change it)';
     host._cb = chk('chk-colorblind', 'Colour-blind overlays', function () { return !!M.settings().colorblind; }, function (v) { M.settings().colorblind = v; });
     rowEl('Tour', btn('btn-coach-replay', 'Replay the 60-second tour', 'small', function () { M.startCoach(stateOf()); }));
     const acts = el('div', 'set-actions');
@@ -3271,11 +3276,11 @@
   }
   function refreshSettingsPanel(s, host) {
     if (!host) return;
-    [host._audio, host._particles, host._shake, host._cb, host._keepMap, host._keepOv].forEach(function (b) { if (!b || !b._get) return; const on = !!b._get(); setText(b, on ? 'On' : 'Off'); b.setAttribute('aria-pressed', on ? 'true' : 'false'); });
+    [host._audio, host._particles, host._shake, host._rm, host._cb, host._keepMap, host._keepOv].forEach(function (b) { if (!b || !b._get) return; const on = !!b._get(); setText(b, on ? 'On' : 'Off'); b.setAttribute('aria-pressed', on ? 'true' : 'false'); });
     if (host._alerts) for (const b of host._alerts.children) { const on = b.dataset.alerts === alertModeOf(); cls(b, 'active', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); }   // calm alerts pass
     if (host._vol) host._vol.value = String(fin(M.settings().volume, 0.5));
     if (host._uiScale) for (const b of host._uiScale.children) { const d = b.dataset.scale; const on = d === 'auto' ? uiMode === 'auto' : uiMode !== 'auto' && Number(d) === appliedScale; cls(b, 'active', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); }
-    if (host._uiNote) { const lim = effScale < appliedScale - 0.005; const txt = uiMode === 'auto' ? 'Auto picks ' + Math.round(effScale * 100) + '% for this window.' : lim ? 'Limited to ' + Math.round(effScale * 100) + '% by this window size.' : ''; show(host._uiNote, !!txt); if (txt) setText(host._uiNote, txt); }
+    if (host._uiNote) { const lim = effScale < appliedScale - 0.005; const txt = uiMode === 'auto' ? 'Auto picks ' + Math.round(effScale * 100) + '\u00a0% for this window.' : lim ? 'Limited to ' + Math.round(effScale * 100) + '\u00a0% by this window size.' : ''; show(host._uiNote, !!txt); if (txt) setText(host._uiNote, txt); }
     void s;
   }
   // Debug panel (built in; hidden; Backquote). ui_panels may re-register 'debug' with the full params tree.
@@ -3321,17 +3326,22 @@
       const H = fin(call('weather', 'forecastSurge', s), 0); const g = H > 0 ? call('buildings', 'gaps', s, H) : null; const gl = g && Array.isArray(g.gaps) ? g.gaps : [];
       const ring = gl.length ? 'ring open at ' + (gl[0].name || 'the shore') : (H > 0 ? 'ring holds at ' + H.toFixed(0) + ' ft' : '');
       const days = Math.max(0, fin(st.landfallDay, day) - day);
-      return { icon: '🌀', text: (st.name || 'Hurricane') + ' · Cat ' + fin(st.forecastCat || st.cat, 1) + (st.phase >= STORM.LANDFALL ? ' · landfall' : ' · landfall in ' + days + (days === 1 ? ' day' : ' days')) + (ring ? ' · ' + ring : ''), action: { label: 'Prepare', fn: function () { M.openPanel('storm'); } }, kind: 'danger' };
+      return { icon: 'cyclone', text: (st.name || 'Hurricane') + ' · Cat ' + fin(st.forecastCat || st.cat, 1) + (st.phase >= STORM.LANDFALL ? ' · landfall' : ' · landfall in ' + days + (days === 1 ? ' day' : ' days')) + (ring ? ' · ' + ring : ''), action: { label: 'Prepare', fn: function () { M.openPanel('storm'); } }, kind: 'danger' };
     }
-    if (s.wildlife && fin(s.wildlife.biblicalDays, 0) > 0) return { icon: '🦟', text: 'Mosquito emergency · biblical', action: { label: 'Show', fn: function (st) { M.setOverlay(st, OV.MOSQUITO); } }, kind: 'wildlife' };
-    const heat = call('weather', 'heat', s); if (heat && heat.wave) return { icon: '🌡', text: 'Heat wave · index ' + Math.round(fin(heat.index, 0)), kind: 'danger' };
+    if (s.wildlife && fin(s.wildlife.biblicalDays, 0) > 0) return { icon: 'mosquito', text: 'Mosquito emergency · biblical', action: { label: 'Show', fn: function (st) { M.setOverlay(st, OV.MOSQUITO); } }, kind: 'wildlife' };
+    const heat = call('weather', 'heat', s); if (heat && heat.wave) return { icon: 'thermostat', text: 'Heat wave · index ' + Math.round(fin(heat.index, 0)), kind: 'danger' };
     const list = call('buildings', 'list', s) || [];
-    const black = list.find(function (b) { return b && b.blackout && b.built >= 1 && !b.ruin; }); if (black) return { icon: '⚡', text: 'Blackout · ' + (black.name || black.type), action: { label: 'Show me', fn: function () { call('render', 'panToTile', black.tx, black.ty); } }, kind: 'danger' };
+    const black = list.find(function (b) { return b && b.blackout && b.built >= 1 && !b.ruin; }); if (black) return { icon: 'bolt', text: 'Blackout · ' + (black.name || black.type), action: { label: 'Show me', fn: function () { call('render', 'panToTile', black.tx, black.ty); } }, kind: 'danger' };
     const flooded = list.find(function (b) { if (!b || !b.flooded || b.ruin) return false; const r = rowOf(b.type); return b.type === 'founders_hall' || (r && r.needsPower); });
-    if (flooded) return { icon: '🌊', text: (flooded.name || flooded.type) + ' is flooded', action: { label: 'Show me', fn: function () { call('render', 'panToTile', flooded.tx, flooded.ty); } }, kind: 'water' };
-    if (call('buildings', 'boilWaterTriggered', s)) return { icon: '🚱', text: 'Boil-water advisory', kind: 'water' };
-    const lg = s.wildlife && s.wildlife.leGrand; if (lg) { const left = Math.max(0, fin(s.wildlife.leGrandDay, day) + 3 - day); const i = clamp(Math.floor(fin(lg.tx, 0)), 0, W - 1) + clamp(Math.floor(fin(lg.ty, 0)), 0, HGT - 1) * W; return { icon: '🐊', text: '', gator: { name: 'Le Grand at the cypress lake · ' + left + (left === 1 ? ' day' : ' days'), i: i }, kind: 'wildlife' }; }
+    if (flooded) return { icon: 'wave', text: (flooded.name || flooded.type) + ' is flooded', action: { label: 'Show me', fn: function () { call('render', 'panToTile', flooded.tx, flooded.ty); } }, kind: 'water' };
+    if (call('buildings', 'boilWaterTriggered', s)) return { icon: 'no_water', text: 'Boil-water advisory', kind: 'water' };
+    const lg = s.wildlife && s.wildlife.leGrand; if (lg) { const left = Math.max(0, fin(s.wildlife.leGrandDay, day) + 3 - day); const i = clamp(Math.floor(fin(lg.tx, 0)), 0, W - 1) + clamp(Math.floor(fin(lg.ty, 0)), 0, HGT - 1) * W; return { icon: 'gator', text: '', gator: { name: 'Le Grand at the cypress lake · ' + left + (left === 1 ? ' day' : ' days'), i: i }, kind: 'wildlife' }; }
     return null;
+  }
+  /** U5: the alert strip's icon: a registry name, or (callers of ui.alert that still pass an emoji) the name the registry maps it to */
+  function setAlertIcon(name) {
+    const e = E['alert-icon']; if (!e) return; const n = !name ? '' : BSU.icons.has(name) ? name : (BSU.icons.fromGlyph(name) || 'warning');
+    if (e.dataset.icon === n) return; e.dataset.icon = n; while (e.firstChild) e.removeChild(e.firstChild); if (n) e.appendChild(icon(n));
   }
   function updateAlert(s) {
     if (clock - alertAt < L.refreshMs) return; alertAt = clock;
@@ -3339,7 +3349,7 @@
     const key = spec ? (spec.icon || '') + '|' + (spec.text || '') + '|' + (spec.gator ? spec.gator.name : '') + '|' + (spec.action ? spec.action.label : '') : '';
     if (key === alertKey) return; alertKey = key;
     if (!spec || key === alertClosedKey) { show(E['alert-strip'], false); return; }   // gator pass: a chip closed with ✕ stays closed until the alert changes
-    setText(E['alert-icon'], spec.icon || ''); setText(E['alert-text'], spec.text || ''); show(E['alert-text'], !!spec.text);
+    setAlertIcon(spec.icon); setText(E['alert-text'], spec.text || ''); show(E['alert-text'], !!spec.text);
     show(E['alert-action'], !!(spec.action && spec.action.label)); if (spec.action) setText(E['alert-action'], spec.action.label || 'Go');
     show(E['alert-gator'], !!spec.gator); if (spec.gator) setText(E['alert-gator'], spec.gator.name);
     E['alert-strip'].dataset.kind = spec.kind || 'info'; show(E['alert-strip'], true);
@@ -3379,11 +3389,11 @@
     setText(E['stat-date-text'], (d.str || '') + (season ? ' · ' + season : ''));
     const ph = clamp(fin(s.sky && s.sky.phase, SKY.DAY), 0, 4);
     const stm = call('weather', 'storm', s); const sph = (stm && !stm.nearMiss) ? fin(stm.phase, 0) : 0;   // the storm owns the glyph from the outer bands through landfall
-    setText(E['sky-glyph'], sph === STORM.LANDFALL ? '🌀' : sph === STORM.BANDS ? '⛈' : SKY_GLYPH[ph]); E['sky-glyph'].title = sph === STORM.LANDFALL ? 'Landfall' : sph === STORM.BANDS ? 'Outer bands' : SKY_NAME[ph];
+    setSkyIcon(sph === STORM.LANDFALL ? 'cyclone' : sph === STORM.BANDS ? 'storm' : (s.weather && fin(s.weather.rainRate, 0) > 0) ? 'rainy' : SKY_GLYPH[ph]); E['sky-glyph'].title = sph === STORM.LANDFALL ? 'Landfall' : sph === STORM.BANDS ? 'Outer bands' : SKY_NAME[ph];
     // weather chip
     const heat = call('weather', 'heat', s) || { index: fin(s.weather && s.weather.heat, 70), advisory: false }; const river = call('weather', 'riverStage', s) || { river: 0, window: false };
     let rainTmrw = false; try { const rd = s.weather && s.weather.rainDays; if (Array.isArray(rd)) { const tm = dayOf(s) + 1; rainTmrw = rd.some(function (r) { return r === tm || (r && r.day === tm); }); } } catch (err) { rainTmrw = false; }
-    let wx = Math.round(fin(heat.index, 0)) + '°'; if (rainTmrw) wx += ' · Rain tmrw'; if (river.window && fin(river.river, 0) > 0) wx += ' · River +' + fin(river.river, 0).toFixed(0) + ' ft'; if (s.weather && fin(s.weather.rainRate, 0) > 0) wx = '🌧 ' + wx;
+    let wx = Math.round(fin(heat.index, 0)) + '°'; if (rainTmrw) wx += ' · Rain tmrw'; if (river.window && fin(river.river, 0) > 0) wx += ' · River +' + fin(river.river, 0).toFixed(0) + ' ft'; 
     setText(E['chip-weather'], wx); cls(E['chip-weather'], 'warn', !!heat.advisory); cls(E['chip-weather'], 'water', !!river.window);
     // endowment
     show(E['chip-endowed'], fin(e.endowment, 0) > 0);

@@ -44,6 +44,10 @@
   function setText(e, s) { if (!e) return; s = tidyText(e, s == null ? '' : String(s)); if (e.textContent !== s) e.textContent = s; }
   function show(e, on) { if (!e) return; const hid = e.classList.contains('hidden'); if (on && hid) e.classList.remove('hidden'); else if (!on && !hid) e.classList.add('hidden'); }
   function cls(e, c, on) { if (!e) return; const h = e.classList.contains(c); if (on && !h) e.classList.add(c); else if (!on && h) e.classList.remove(c); }
+  /** U5: icons come from the one registry (BSU.icons); `lead(text, icon, cls)` is a span with a small icon before the text, `starRow(n)` five star icons, n lit */
+  function icon(name, cls_) { return BSU.icons.get(name, cls_); }
+  function lead(text, name, cls_) { const w = el('span', cls_ || null); w.appendChild(icon(name, 'sm')); w.appendChild(el('span', null, text)); return w; }
+  function fillStars(host, n) { clear(host); if (n === null || n === undefined) return; n = clamp(int(n, 0), 0, 5); for (let k = 0; k < 5; k++) host.appendChild(icon('star', 'sm' + (k < n ? '' : ' off'))); }
   function clear(e) { if (!e) return; while (e.firstChild) e.removeChild(e.firstChild); }
   function btn(id, label, cls_, onClick) { const b = el('button', 'btn' + (cls_ ? ' ' + cls_ : ''), label); if (id) b.id = id; b.type = 'button'; if (onClick) b.addEventListener('click', function (ev) { try { onClick(ev); } catch (e) { BSU.error('ui_panels', 'click:' + (id || label), e); } }); return b; }
   function money(n) { return BSU.formatMoney(fin(n, 0)); }
@@ -147,7 +151,7 @@
     const rw = call('economy', 'runway', s) || { months: 0, nextPayDay: -1, red: false };
     clear(host._runway);
     const rRow = el('div', 'row' + (rw.red ? ' bad' : ''));
-    rRow.appendChild(el('span', 'k', rw.red ? '● Runway' : 'Runway'));
+    { const rk = rw.red ? lead('Runway', 'dot', 'k bad') : el('span', 'k', 'Runway'); rRow.appendChild(rk); }
     rRow.appendChild(el('span', 'v', rw.nextPayDay >= 0 ? (int(rw.months, 0) + ' months to ' + BSU.formatDate(rw.nextPayDay) + ' payday') : (int(rw.months, 0) + ' months')));
     host._runway.appendChild(rRow);
     const netRow = el('div', 'row' + (net < 0 ? ' bad' : '')); netRow.appendChild(el('span', 'k', 'NET')); netRow.appendChild(el('span', 'v', (net >= 0 ? '+' : '') + money(net))); host._runway.appendChild(netRow);
@@ -227,7 +231,7 @@
     host['_' + key] = ctl; return ctl;
   }
   function syncAction(ctl, q, doneLabel, extra) {
-    const label = q.alreadyDone ? '✓ ' + doneLabel : ctl.label + (q.cost > 0 ? ' · ' + usd(q.cost) : (extra || ''));
+    const label = q.alreadyDone ? doneLabel : ctl.label + (q.cost > 0 ? ' · ' + usd(q.cost) : (extra || ''));
     setText(ctl.btn, label); ctl.btn.disabled = !q.ok; cls(ctl.btn, 'done', !!q.alreadyDone);
     setText(ctl.effect, q.ok ? q.effectText : (q.effectText || ''));
     setText(ctl.why, q.ok ? '' : q.reason); cls(ctl.why, 'done', !!q.alreadyDone);
@@ -242,7 +246,7 @@
       msg = label + (r.cost > 0 ? ' (' + usd(r.cost) + ')' : '') + ': ' + (r.effectText || 'done');
       notify(s, msg, 'money'); call('progress', 'ticker', s, msg, {}, 'event');
     } else { msg = label + ': ' + r.reason; notify(s, msg, 'event'); }
-    host._doneMsg = { ok: !!r.ok, text: (r.ok ? '✓ ' : '✗ ') + msg, day: todayOf(s), storm: stormKey(s) };
+    host._doneMsg = { ok: !!r.ok, text: msg, day: todayOf(s), storm: stormKey(s) };
     if (r.ok && Array.isArray(r.affected)) { const gone = new Set(r.affected); if (action === 'boardUp') for (const id of Array.from(host._windSel || [])) if (gone.has(id)) host._windSel.delete(id); }
     if (r.ok && action === 'sandbags' && Array.isArray(r.runs)) for (const k of r.runs) host._sbSel.delete(k);
     if (action === 'prepareAll') { host._windSel.clear(); host._sbSel.clear(); }
@@ -377,11 +381,11 @@
       H = fin(call('weather', 'forecastSurge', s, UI.panels.storm.testCat), fin(PS.surge && PS.surge[fc], 5));
       drawCone(s, host._cone, H);
       const ringClosed = !!call('buildings', 'ringClosed', s, H);
-      if (ringClosed) setText(host._ring, 'Ring closed at ' + H + ' ft ✓');
+      if (ringClosed) setText(host._ring, 'Ring closed at ' + H + ' ft');
       else { const g = call('buildings', 'gaps', s, H) || { gaps: [], weak: [], gates: [], reachedBuildings: [] }; setText(host._ring, formatRingLine(H, g)); host._lastGaps = g; }
       const g2 = host._lastGaps || call('buildings', 'gaps', s, H) || { reachedBuildings: [] };
       const rb = g2.reachedBuildings || [];
-      setText(host._reached, rb.length ? ('Reached buildings: ' + rb.map(function (r) { return nameOf(s, r.id) + ' (' + Math.round(r.depth * 10) / 10 + ' ft) ⚠'; }).join(' · ')) : 'Reached buildings: none');
+      setText(host._reached, rb.length ? ('Reached buildings: ' + rb.map(function (r) { return nameOf(s, r.id) + ' (' + Math.round(r.depth * 10) / 10 + ' ft)'; }).join(' · ')) : 'Reached buildings: none');
     }
     setText(host._status, stormStatus(s, storm, H, fc));
     if (host._doneMsg && (host._doneMsg.day !== todayOf(s) || host._doneMsg.storm !== stormKey(s))) host._doneMsg = null;   // a confirmation lives for the day it was made, then the status below speaks for itself
@@ -420,7 +424,7 @@
           row.appendChild(el('span', 'v', usd(r.cost))); host._windList.appendChild(row);
         } else {
           const row = el('div', 'row sp-boarded'); row._key = r.id;
-          row.appendChild(el('span', 'k', (r.queued > 0 ? '⏳ ' : '✓ ') + r.name)); row.appendChild(el('span', 'sp-wr', 'WR ' + r.wr));
+          row.appendChild(lead(r.name, r.queued > 0 ? 'hourglass' : 'check', 'k')); row.appendChild(el('span', 'sp-wr', 'WR ' + r.wr));
           row.appendChild(el('span', 'v', r.queued > 0 ? 'Crew queued (#' + r.queued + ')' : 'Boarded until ' + dateStr(r.until)));
           host._windList.appendChild(row);
         }
@@ -430,7 +434,7 @@
     const nWr2 = rows.filter(function (r) { return r.eligible && r.wr <= 2; }).length;
     setText(host._boardSum, qSel ? ('Selected ' + qSel.count + ' · ' + usd(qSel.cost) + ' total. ' + qSel.effectText) : (qAll.count ? ('Nothing ticked. Board Up all: ' + qAll.count + ' buildings · ' + usd(qAll.cost) + '. ' + qAll.effectText) : (qAll.reason || '')));
     setText(host._boardSel, qSel ? 'Board Up selected (' + qSel.count + ') · ' + usd(qSel.cost) : 'Board Up selected'); host._boardSel.disabled = !qSel || !qSel.ok;
-    setText(host._boardAll, qAll.count ? 'Board Up all (' + qAll.count + ') · ' + usd(qAll.cost) : (qAll.alreadyDone ? '✓ All boarded' : 'Board Up all')); host._boardAll.disabled = !qAll.ok;
+    setText(host._boardAll, qAll.count ? 'Board Up all (' + qAll.count + ') · ' + usd(qAll.cost) : (qAll.alreadyDone ? 'All boarded' : 'Board Up all')); host._boardAll.disabled = !qAll.ok;
     host._selWr2.disabled = !nWr2; host._selNone.disabled = !host._windSel.size;
     setText(host._boardWhy, whyText([['Board Up selected', qSel || { ok: false, reason: 'tick at least one building' }], ['Board Up all', qAll], ['Select WR ≤ 2', nWr2 ? { ok: true } : { ok: false, reason: 'no unboarded building has WR 2 or lower' }]]));
 
@@ -443,7 +447,7 @@
       host._sbKey = skey; clear(host._sbList);
       if (!runs.length) host._sbList.appendChild(el('div', 'row dim', 'No levee faces the water at ' + H + ' ft. Build a levee first.'));
       runs.forEach(function (r) {
-        const info2 = r.length + ' tiles · integrity ' + r.integrity + '%' + (r.weak ? ' ⚠ weak' : '');
+        const info2 = r.length + ' tiles · integrity ' + r.integrity + '%' + (r.weak ? ' · weak' : '');
         if (!r.sandbagged) {
           const row = el('label', 'row pick'); const cb = el('input'); cb.type = 'checkbox'; cb.checked = host._sbSel.has(r.key);
           cb.addEventListener('change', function () { if (cb.checked) host._sbSel.add(r.key); else host._sbSel.delete(r.key); refreshStorm(stateFor(host), host); });
@@ -451,7 +455,7 @@
           row.appendChild(cb); row.appendChild(el('span', 'k', r.name)); row.appendChild(el('span', 'sp-dim', info2)); row.appendChild(el('span', 'v', usd(r.cost))); host._sbList.appendChild(row);
         } else {
           const row = el('div', 'row sp-boarded'); row._key = r.key;
-          row.appendChild(el('span', 'k', '✓ ' + r.name)); row.appendChild(el('span', 'sp-dim', info2)); row.appendChild(el('span', 'v', 'Sandbagged')); host._sbList.appendChild(row);
+          row.appendChild(lead(r.name, 'check', 'k')); row.appendChild(el('span', 'sp-dim', info2)); row.appendChild(el('span', 'v', 'Sandbagged')); host._sbList.appendChild(row);
         }
       });
     }
@@ -459,7 +463,7 @@
     const nWeak = runs.filter(function (r) { return r.weak && !r.sandbagged; }).length;
     setText(host._sbSum, sSel ? ('Selected ' + host._sbSel.size + ' · ' + usd(sSel.cost) + ' total. ' + sSel.effectText) : (sAll.ok ? ('Nothing ticked. Sandbag all: ' + usd(sAll.cost) + '. ' + sAll.effectText) : (sAll.reason || '')));
     setText(host._sbSelBtn, sSel ? 'Sandbag selected (' + host._sbSel.size + ') · ' + usd(sSel.cost) : 'Sandbag selected'); host._sbSelBtn.disabled = !sSel || !sSel.ok;
-    setText(host._sandbags, sAll.ok ? 'Sandbag all · ' + usd(sAll.cost) : (sAll.alreadyDone ? '✓ All sandbagged' : 'Sandbag all')); host._sandbags.disabled = !sAll.ok;
+    setText(host._sandbags, sAll.ok ? 'Sandbag all · ' + usd(sAll.cost) : (sAll.alreadyDone ? 'All sandbagged' : 'Sandbag all')); host._sandbags.disabled = !sAll.ok;
     host._sbWeak.disabled = !nWeak;
     setText(host._sbWhy, whyText([['Sandbag selected', sSel || { ok: false, reason: 'tick at least one levee run' }], ['Sandbag all', sAll], ['Select weak runs', nWeak ? { ok: true } : { ok: false, reason: sWeak.reason || 'no weak runs' }]]));
 
@@ -467,7 +471,7 @@
     const pk = (pd.pumps || []).map(function (p) { return p.id + ':' + (p.running ? 1 : 0) + ':' + p.district; }).join('|');
     if (host._predrain.key !== pk) {
       host._predrain.key = pk; clear(host._predrain.lines);
-      (pd.pumps || []).forEach(function (p) { const r = el('div', 'row'); r.appendChild(el('span', 'k', (p.running ? '✓ ' : '✗ ') + p.name)); r.appendChild(el('span', 'v', p.running ? (p.district > 0 ? 'powered · drains ' + p.district + ' canal tiles · up to ' + p.ftPerDay + ' ft/day doubled' : 'powered, but not on a canal') : 'no power, will not run')); host._predrain.lines.appendChild(r); });
+      (pd.pumps || []).forEach(function (p) { const r = el('div', 'row'); r.appendChild(lead(p.name, p.running ? 'check' : 'close', 'k')); r.appendChild(el('span', 'v', p.running ? (p.district > 0 ? 'powered · drains ' + p.district + ' canal tiles · up to ' + p.ftPerDay + ' ft/day doubled' : 'powered, but not on a canal') : 'no power, will not run')); host._predrain.lines.appendChild(r); });
     }
     syncAction(host._spillway, q('spillway'), 'Spillway open');
 
@@ -478,7 +482,7 @@
       host._evacuate.key = ek; clear(host._evacuate.lines);
       if (ev.students != null) {
         (ev.shelters || []).forEach(function (p) { const r = el('div', 'row'); r.appendChild(el('span', 'k', p.name)); r.appendChild(el('span', 'v', 'shelters up to ' + p.capacity.toLocaleString('en-US'))); host._evacuate.lines.appendChild(r); });
-        const t = el('div', 'row sp-total'); t.appendChild(el('span', 'k', 'Shelter in place')); t.appendChild(el('span', 'v', Math.min(ev.capacity, ev.students).toLocaleString('en-US') + ' of ' + ev.students.toLocaleString('en-US') + ' students ' + (ev.capacity >= ev.students ? '✓' : '✗')));
+        const t = el('div', 'row sp-total'); t.appendChild(el('span', 'k', 'Shelter in place')); t.appendChild(el('span', 'v', Math.min(ev.capacity, ev.students).toLocaleString('en-US') + ' of ' + ev.students.toLocaleString('en-US') + ' students' + (ev.capacity >= ev.students ? ' · covered' : ' · short')));
         host._evacuate.lines.appendChild(t);
       }
     }
@@ -609,7 +613,7 @@
     const v = el('span', 'v'); v.appendChild(control); r.appendChild(v); wrap.appendChild(r);
     const fx = el('div', 'fb-fx'); if (fxId) fx.id = fxId; wrap.appendChild(fx); parent.appendChild(wrap); return fx;
   }
-  function stars(n) { n = clamp(int(n, 0), 0, 5); return '★'.repeat(n) + '☆'.repeat(5 - n); }
+  
   /** rebuild a region only when its content key changed */
   function region(host, name, key, box, fill) {
     if (host._keys[name] === key) return;
@@ -905,7 +909,7 @@
       const k = host._staffCards[role], c = V && V[role], card = host._staffGrid.slots[ri];
       cls(card, 'interim', !!(c && c.interim)); cls(card, 'empty', !c);
       setText(k.nameText, c ? c.name : (hasTeam ? 'Vacant' : 'No ' + roleLabel(role).toLowerCase() + ' yet'));
-      setText(k.starBar, c ? stars(c.stars) : ''); k.starBar.title = c ? c.stars + ' of 5 stars' : '';
+      fillStars(k.starBar, c ? c.stars : null); k.starBar.title = c ? c.stars + ' of 5 stars' : '';
       setText(k.rep, c && c.rep ? '"' + c.rep + '"' : ''); show(k.rep, !!(c && c.rep));
       setText(k.style, c ? (c.style ? styleName(c.style) : (c.interim ? 'No scheme' : 'Unknown')) : '—'); k.style.title = c && c.style ? styleDesc(c.style) : '';
       setText(k.salary, c ? money(c.salary) + '/yr' + (c.reach ? ' · reach hire' : '') : '—');
@@ -924,9 +928,9 @@
         if (!list.length) { g.appendChild(el('div', 'fb-empty', ST.candidates || 'Candidates refresh each off-season (Dec 9) and after a firing.')); box.appendChild(g); return; }
         list.forEach(function (c) {
           const r = el('div', 'row fb-cand'); r.dataset.role = role; r.dataset.idx = String(c.idx);
-          const kk = el('span', 'k'); kk.appendChild(el('span', 'nm', c.name + ' ')); kk.appendChild(el('span', 'fb-stars', stars(c.stars)));
+          const kk = el('span', 'k'); kk.appendChild(el('span', 'nm', c.name + ' ')); { const fs0 = el('span', 'fb-stars'); fillStars(fs0, c.stars); kk.appendChild(fs0); }
           if (c.reach) kk.appendChild(el('span', 'fb-reach', ST.reach || 'reach'));
-          kk.appendChild(el('span', 'dim', ' · ' + styleName(c.style) + (c.fit ? ' ✓ fit' : '') + ' · ' + money(c.salary) + '/yr · ' + c.years + ' yrs'));
+          kk.appendChild(el('span', 'dim', ' · ' + styleName(c.style) + (c.fit ? ' · fit' : '') + ' · ' + money(c.salary) + '/yr · ' + c.years + ' yrs'));
           kk.title = (c.rep ? c.rep + ' · ' : '') + (c.quote ? '"' + c.quote + '"' : ''); r.appendChild(kk);
           const need = c.fee + Math.max(0, c.salary - (V[role] ? V[role].salary : 0));
           const b = btn(null, 'Hire · ' + money(c.fee), 'small' + (need > headroom ? ' over' : ''), function () { hireClick(host, role, c.idx); });
@@ -1149,7 +1153,8 @@
     const main = el('div', 'sb-main'); const home = el('span', 'sb-team', 'BSU'), sc = el('span', 'sb-score', ''), away = el('span', 'sb-team', ''), clk = el('span', 'sb-clock', '');
     main.appendChild(home); main.appendChild(sc); main.appendChild(away); main.appendChild(clk);
     const dd = el('div', 'sb-dd hidden'); dd.id = 'sb-dd';
-    const poss = el('span', 'sb-poss', ''), down = el('span', 'sb-down', ''), spot = el('span', 'sb-spot', ''), to = el('span', 'sb-to', ''), wp = el('span', 'sb-wp', '');
+    const poss = el('span', 'sb-poss'), down = el('span', 'sb-down', ''), spot = el('span', 'sb-spot', ''), to = el('span', 'sb-to', ''), wp = el('span', 'sb-wp', '');
+    const pr = icon('play_arrow', 'sm hidden'), pl = icon('play_arrow_left', 'sm hidden'); poss.appendChild(pl); poss.appendChild(pr); poss._r = pr; poss._l = pl;   // U5: the possession arrows
     dd.appendChild(poss); dd.appendChild(down); dd.appendChild(spot); dd.appendChild(to); dd.appendChild(wp);
     bug.appendChild(main); bug.appendChild(dd);
     bug._p = { home: home, sc: sc, away: away, clk: clk, dd: dd, poss: poss, down: down, spot: spot, to: to, wp: wp };
@@ -1209,7 +1214,7 @@
       if (watched && lv.phase !== 'final') {
         show(dd, true);
         const ph = lv.phase, kick = g.phase === 'kickoff', tryPt = g.phase === 'try';
-        setText(P.poss, ph === 'halftime' || ph === 'pregame' ? '' : (poss === 0 ? '▶' : (poss === 1 ? '◀' : '')));
+        { const pg = !(ph === 'halftime' || ph === 'pregame'); show(P.poss._r, pg && poss === 0); show(P.poss._l, pg && poss === 1); }
         setText(P.down, ph === 'halftime' ? 'Halftime' : (ph === 'pregame' ? 'Pre-game' : (kick ? 'Kickoff' : (tryPt ? 'Try' : downText(lv.down, lv.distance, lv.spot)))));
         setText(P.spot, ph === 'halftime' || ph === 'pregame' ? '' : 'ball on ' + spotText(lv.spot, g.opp, lv.oppAbbr));
         setText(P.to, lv.timeouts ? 'TO ' + lv.timeouts[0] + '–' + lv.timeouts[1] : '');
@@ -1344,7 +1349,7 @@
       if (reward.cash) rt = '+' + money(reward.cash); else if (reward.prestige) rt = '+' + reward.prestige + ' prestige'; else if (reward.effect) rt = capitalize(reward.effect);
       const wrap = el('div');
       const top = el('div', 'row');
-      top.appendChild(el('span', 'k ms-name', (earned ? '✓ ' : '') + m.name));
+      top.appendChild(earned ? lead(m.name, 'check', 'k ms-name') : el('span', 'k ms-name', m.name));
       const day = earned && s.progress && s.progress.milestones && s.progress.milestones[m.id] ? s.progress.milestones[m.id].day : -1;
       top.appendChild(el('span', 'v ms-count', earned ? (day >= 0 ? BSU.formatDate(day) : '') : rt));
       wrap.appendChild(top);

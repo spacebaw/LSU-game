@@ -110,14 +110,14 @@ if (list.length >= 2) {
   ok(tray && !tray.classList.contains('hidden') && /\d+ issues?/.test(U.el['issues-count'].textContent), 'tray shown: ' + U.el['issues-count'].textContent);
   const rows = U.el['issues-list'].children;
   ok(rows.length >= 1 && rows.length <= 6 && rows[0].dataset.id === list[0].id, `tray rows (${rows.length}) start with the top issue`);
-  { const ch = Array.from(rows[0].children).map((c) => c.textContent), fi = ch.indexOf('Fix'); ok(rows[0].children[0].tagName === 'CANVAS' && fi >= 2 && fi <= 3 && ch[fi + 1] === '⌖' && ch[fi + 2] === 'zz' && ch[fi + 3] === '✕' && (ch.length === fi + 4 || /bell/.test(rows[0].children[fi + 4].className) || rows[0].children[fi + 4].className === 'why'), 'row = glyph, title, [×N], Fix, ⌖ (Locate), zz, ✕ (+ a why-line for gators)'); }   // gator pass + issues v2
+  { const ch = Array.from(rows[0].children).map((c) => (c.dataset && c.dataset.act) || c.textContent), fi = ch.indexOf('Fix'); ok(rows[0].children[0].tagName === 'SPAN' && /\big\b/.test(rows[0].children[0].className) && rows[0].children[0].children[0].dataset.icon === BSU.issues.glyphOf(rows[0].dataset.kind) && fi >= 2 && fi <= 3 && ch[fi + 1] === 'locate' && ch[fi + 2] === 'snooze' && ch[fi + 3] === 'dismiss' && (ch.length === fi + 4 || /bell/.test(rows[0].children[fi + 4].className) || rows[0].children[fi + 4].className === 'why'), 'row = icon tile, title, [×N], Fix, Locate, Snooze, Dismiss (+ a why-line for gators)'); }   // gator pass + issues v2
   ok(U.issues.locate(s, list[0].id) === true && I.selectedId() === list[0].id, 'ui.issues.locate selects + pans');
   if (s.setPiece) H.tick(700);   // the arrival set piece keeps the build menu shut
   const upIt = list.find((it) => it.kind === 'unpowered');
   const fr = upIt ? U.issues.fix(s, upIt.id) : null; ok(fr && fr.ok !== false && (U.buildMenuOpen() === true || (s.ui.tool && s.ui.tool.id === 'substation')) && I.selectedId() === upIt.id, 'ui.issues.fix(unpowered) arms the Substation (palette card, or the build menu when no spot is in reach) and selects the issue'); U.closeBuildMenu(); U.selectTool(s, null);
   ok(!list.some((it) => it.kind === 'gatorOnCampus') && !I.all(s).some((it) => /^gator:/.test(it.id)), 'calm pass: no gator rows, ever');
   ok(Array.from(U.el['issues-list'].children).every((r) => r.dataset.kind !== 'unlinkedPath' && r.dataset.kind !== 'mosquitoHotspot'), 'the main list carries no severity-1 kind (they are suggestions)');
-  { const lead = rows[0]; const bell = Array.from(lead.children).find((c) => /bell/.test(c.className)); ok(!!bell && bell.dataset.act === 'mute' && bell.textContent === '🔔', 'a lead row carries the mute bell'); }
+  { const lead = rows[0]; const bell = Array.from(lead.children).find((c) => /bell/.test(c.className)); ok(!!bell && bell.dataset.act === 'mute' && bell.children[0].dataset.icon === 'notifications', 'a lead row carries the mute bell'); }
   // needs strip Locate button follows the binding line
   U.update(s, 600); const nl = U.el['needs-locate']; ok(!!nl, '#needs-locate exists (hidden=' + (nl && nl.classList.contains('hidden')) + ')');
   // a notification about power gains Locate

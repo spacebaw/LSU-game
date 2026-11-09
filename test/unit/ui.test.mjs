@@ -24,7 +24,7 @@ ok(!/innerHTML/.test(src), 'no innerHTML (every node is created and kept in M.el
 ok(!/querySelector|closest\(|matches\(|instanceof\s+(Node|HTMLInputElement|HTMLCanvasElement|Text)/.test(src), 'no querySelector/closest/matches/instanceof Node');
 ok(!/setTimeout|setInterval/.test(src.replace(/\/\/.*$/gm, '')), 'no timers for game logic');
 const css = readFileSync(join(root, 'src', 'style.css'), 'utf8');
-ok(Buffer.byteLength(css) <= 96 * 1024, `style.css ≤ 96 KB (${(Buffer.byteLength(css) / 1024).toFixed(1)} KB)`);   // H6: 76 → 96 KB (every font-size is now a var(--fs-*) token, longer than the literal it replaced, plus the H6 block)
+ok(Buffer.byteLength(css) <= 108 * 1024, `style.css ≤ 108 KB (${(Buffer.byteLength(css) / 1024).toFixed(1)} KB)`);   // H6: 76 → 96 KB (every font-size is now a var(--fs-*) token, longer than the literal it replaced, plus the H6 block)
    // hud + zoom pass: the hud modes block (70 → 76 KB);   // gator pass: the chip ✕, the relocated strip beside an open inspect, Dismiss all, why-lines (68 → 70 KB);   // P6 dining menus: the inspect Menu section (64 → 68 KB); UX pass: build menu + tracker + coach marks (was 25 KB); football pass D: Season panel, game HUD, summary card (was 40 KB); UI scale pass: every length in rem + scale tokens (was 48 KB)
 const cssNoComments = css.replace(/\/\*[\s\S]*?\*\//g, '');
 ok(!/@import|url\(/.test(cssNoComments), 'css: no @import / url()');
@@ -182,7 +182,7 @@ ok(!('founders_hall' in U.el.itemEls), "founders_hall never appears in the palet
 
 ok(U.el['stat-cash-value'].textContent === BSU.formatMoney(s.economy.cash) || /^\$/.test(U.el['stat-cash-value'].textContent), 'cash odometer renders money: ' + U.el['stat-cash-value'].textContent);
 ok(/Y1/.test(U.el['stat-date-text'].textContent), 'date text: ' + U.el['stat-date-text'].textContent);
-ok(U.el['sky-glyph'].textContent.length > 0, 'sky glyph set');
+ok(!!U.el['sky-glyph'].dataset.icon && BSU.icons.has(U.el['sky-glyph'].dataset.icon) && U.el['sky-glyph'].children[0].tagName === 'SVG' && U.el['sky-glyph'].children[0].dataset.icon === U.el['sky-glyph'].dataset.icon, 'sky glyph set (an icon from the registry: ' + U.el['sky-glyph'].dataset.icon + ')');
 const M0 = { ctrl: false, shift: false, meta: false, alt: false };
 // --- menu layout pass: the CSS the Edit menu overlay and the inspect body rely on ---------------------------------------
 {
@@ -190,7 +190,7 @@ const M0 = { ctrl: false, shift: false, meta: false, alt: false };
   ok(/#panels #menu-overlay\{[^}]*width:64rem/.test(cssM), 'the Edit menu overlay is a 64-rem dialog in the centring #panels layer');
   ok(/\.menu-grid\{[^}]*grid-template-columns:repeat\(auto-fill,minmax\(13\.\d+rem,1fr\)\)/.test(cssM), 'the dish grid packs 3-4 columns (auto-fill, 13.x-rem minimum)');
   ok(/\.btn\.dish\.tier-cheap\{[^}]*\}[^]*tier-standard[^]*tier-premium/.test(cssM) && /\.mo-reason\.flash\{/.test(cssM) && /\.mo-count\.full\{/.test(cssM), 'tier colours, the inline reason and the full count are styled');
-  ok(/#insp-body\{[^}]*flex:1 1 0[^}]*min-height:0[^}]*overflow-y:auto/.test(css) && /#inspect\{[^}]*bottom:var\(--bot\)[^}]*max-height:max\(24rem,calc\(100vh/.test(css), 'the inspect body takes the card height left after the head and actions (the card is capped so it never reaches the goal pill) and scrolls only past it');
+  ok(/#insp-body\{[^}]*flex:0 1 auto[^}]*min-height:0[^}]*overflow-y:auto/.test(css) && /#inspect\{[^}]*bottom:var\(--bot\)[^}]*max-height:max\(24rem,calc\(100vh/.test(css), 'the inspect body takes the card height left after the head and actions (the card is capped so it never reaches the goal pill) and scrolls only past it');
 }
 // --- UX pass: goals tracker, needs strip, build menu, coach helpers ----------------------
 for (const id of ['issues-tray', 'issues-head', 'issues-count', 'issues-spot', 'issues-list', 'issues-more', 'needs-locate']) ok(U.el[id] && U.el[id].id === id, 'issue spotlight skeleton #' + id);   // issue spotlight pass: the Issues tray under the minimap + the needs-strip Locate
@@ -330,7 +330,7 @@ if (spot) {
     ok(!!menu && menu.classList.contains('insp-menu') && U_['insp-body'].children[0] === menu, 'a complete hall shows the Menu section first in the body');
     ok(U_['insp-body'].children.some((c) => c.children[0] && c.children[0].textContent === 'Feeds' && /^~1,200 a day \(menu\)$/.test(c.children[1].textContent)), 'the Feeds row reads the menu throughput');
     const sum = () => nb(menu.children[1].textContent), editBtn = () => menu.children[0].children[1];
-    ok(/^Serves ~1,200\/day · appeal ★★☆☆ · food \$[\d,.kM]+\/mo · Campus Classic$/.test(sum()), 'summary line: ' + sum());
+    ok(/^Serves ~1,200\/day · appeal 2 of 4 · food \$[\d,.kM]+\/mo · Campus Classic$/.test(sum()), 'summary line: ' + sum());
     ok(editBtn().id === 'btn-edit-menu' && editBtn().textContent === 'Edit menu' && menu.children[0].children[0].children[1].textContent === '10 / 10', 'Edit menu button + the 10 / 10 count in the head');
     ok(menu.children.length === 2 && !U_['insp-body'].children.some((c) => c.classList && c.classList.contains('menu-grid')), 'the dish grid is not in the inspect body any more (summary + button only)');
     // open the overlay
@@ -341,7 +341,7 @@ if (spot) {
     const dishes = BSU.data.dishes.filter((d) => !d.festival);
     ok(presets().length === 3 && presets().map((p) => p.textContent).join('|') === "Cheap & Fast|Campus Classic|Chef's Table" && presets().find((p) => p.dataset.preset === 'classic').classList.contains('on'), 'overlay: three presets, Campus Classic lit');
     ok(cells().length === dishes.length && cells().length === 23 && dishes.every((d) => cells().some((c) => c.dataset.dish === d.id)), 'the grid shows every dish (23; the festival special stays off out of its window)');
-    ok(on().length === 10 && cells().every((c) => /tier-(cheap|standard|premium)/.test(c.className) && c.children[1].children.length === 3 && /^\$/.test(c.children[1].children[0].textContent) && /^prep \d$/.test(c.children[1].children[1].textContent) && /^★\d$/.test(c.children[1].children[2].textContent)), '10 on; tier colour + cost / prep / appeal chips on every cell');
+    ok(on().length === 10 && cells().every((c) => /tier-(cheap|standard|premium)/.test(c.className) && c.children[1].children.length === 3 && /^\$/.test(c.children[1].children[0].textContent) && /^prep \d$/.test(c.children[1].children[1].textContent) && /^\d$/.test(c.children[1].children[2].children[1].textContent) && c.children[1].children[2].children[0].dataset.icon === 'star'), '10 on; tier colour + cost / prep / appeal chips on every cell');
     ok(U_['menu-count'].textContent === '10 / 10' && U_['menu-count'].classList.contains('full') && /Menu is full \(10 of 10\)/.test(U_['menu-reason'].textContent), 'count "10 / 10" and the full-card reason inline: ' + U_['menu-reason'].textContent);
     ok(/×1 throughput/.test(U_['menu-note'].textContent) && /a plate/.test(U_['menu-note'].textContent), 'note line: ' + U_['menu-note'].textContent);
     // cells are updated in place across the half-second refresh (focus / scroll survive)
@@ -350,10 +350,10 @@ if (spot) {
     ok(cells()[3] === keepCell && cells().length === 23 && ov.scrollTop === keepScroll && !ov.classList.contains('hidden'), 'a refresh keeps the same cells, the overlay open and its scroll');
     menu = openOn(); ok(U.menuEditorOpen() && menu.children[0].children[1].textContent === 'Close editor', 'the section knows the editor is open ("Close editor")');
     presets().find((p) => p.dataset.preset === 'chef').dispatchEvent({ type: 'click' });
-    ok(/^Serves ~800\/day · appeal ★★★★/.test(nb(U_['menu-sum'].textContent)) && presets().find((p) => p.dataset.preset === 'chef').classList.contains('on') && on().length === 7 && U_['menu-count'].textContent === '7 / 10' && !U_['menu-count'].classList.contains('full'), "Chef's Table: 800 a day, four stars, 7 dishes on, 7 / 10");
-    menu = openOn(); ok(/^Serves ~800\/day · appeal ★★★★ · food \$[\d,.kM]+\/mo · Chef's Table$/.test(sum()), 'the inspect summary follows: ' + sum());
+    ok(/^Serves ~800\/day · appeal 4 of 4/.test(nb(U_['menu-sum'].textContent)) && presets().find((p) => p.dataset.preset === 'chef').classList.contains('on') && on().length === 7 && U_['menu-count'].textContent === '7 / 10' && !U_['menu-count'].classList.contains('full'), "Chef's Table: 800 a day, four stars, 7 dishes on, 7 / 10");
+    menu = openOn(); ok(/^Serves ~800\/day · appeal 4 of 4 · food \$[\d,.kM]+\/mo · Chef's Table$/.test(sum()), 'the inspect summary follows: ' + sum());
     presets().find((p) => p.dataset.preset === 'cheap').dispatchEvent({ type: 'click' });
-    ok(/^Serves ~2,400\/day · appeal ★☆☆☆/.test(nb(U_['menu-sum'].textContent)) && on().length === 8 && /Cheap & Fast$/.test(nb(U_['menu-sum'].textContent)), 'Cheap & Fast: 2,400 a day, one star, 8 dishes on');
+    ok(/^Serves ~2,400\/day · appeal 1 of 4/.test(nb(U_['menu-sum'].textContent)) && on().length === 8 && /Cheap & Fast$/.test(nb(U_['menu-sum'].textContent)), 'Cheap & Fast: 2,400 a day, one star, 8 dishes on');
     // fill to the cap through the grid, then the eleventh answers with a reason on the overlay's own line
     const off = () => cells().filter((c) => !c.classList.contains('on'));
     const two = off().slice(0, 2); two[0].dispatchEvent({ type: 'click' }); two[1].dispatchEvent({ type: 'click' });
@@ -533,7 +533,7 @@ try {
   if (pb) pb.powered = false; I.invalidate(); U.update(s, 600); U.update(s, 600);
   const lead = U.el['issues-list'].children[0];
   const bell = lead ? Array.from(lead.children).find((c) => /bell/.test(c.className)) : null;
-  ok(!!lead && !!bell && bell.textContent === '🔔', 'a lead row carries the mute bell (' + (lead && lead.dataset.kind) + ')');
+  ok(!!lead && !!bell && bell.children[0].dataset.icon === 'notifications', 'a lead row carries the mute bell (' + (lead && lead.dataset.kind) + ')');
   const mk = lead ? lead.dataset.kind : 'unpowered';
   if (bell) bell.dispatchEvent({ type: 'click' }); U.update(s, 600); U.update(s, 600);
   ok(U.settings().mutedIssues && U.settings().mutedIssues[mk] === true && I.muted(s, mk) && /"mutedIssues":\{[^}]*"[a-zA-Z]+":true/.test(win.localStorage.getItem('bsu.settings') || ''), 'the bell writes settings.mutedIssues (persisted)');
@@ -542,7 +542,7 @@ try {
   U.issues.toggleSuggestions(true); U.update(s, 600); U.update(s, 600);
   const srow = Array.from(U.el['issues-suggest-list'].children).find((r) => r.dataset.kind === mk);
   const sbell = srow ? Array.from(srow.children).find((c) => /bell/.test(c.className)) : null;
-  ok(!!srow && srow.classList.contains('suggest') && !!sbell && sbell.textContent === '🔕', 'unfolded: the muted row sits under Suggestions with an unmute bell');
+  ok(!!srow && srow.classList.contains('suggest') && !!sbell && sbell.children[0].dataset.icon === 'notifications_off', 'unfolded: the muted row sits under Suggestions with an unmute bell');
   if (sbell) sbell.dispatchEvent({ type: 'click' }); U.update(s, 600); U.update(s, 600);
   ok(!I.muted(s, mk) && !U.settings().mutedIssues[mk] && I.main(s).some((it) => it.kind === mk), 'the unmute bell restores the kind');
   U.issues.toggleSuggestions(false); if (pb) pb.powered = true; I.invalidate(); U.dismissNotifs(); win.innerHeight = 800;
@@ -1120,8 +1120,138 @@ try {
   ok(/--fs-small:var\(--fs-body\);--fs-lead:var\(--fs-title\);--fs-num:var\(--fs-title-lg\)/.test(css) && /--fs-label:\s*1\.05rem/.test(css) && /--fs-body:\s*1\.2rem/.test(css), 'type tokens: label 10.5 / body 12 / title 13 / title-lg 15 / headline 17 px at 100 %; the pre-refresh names stay as aliases');
   const fsLit = (cssNoComments.match(/font-size:\s*\d*\.?\d+rem|font:[^;}]*?\s\d*\.?\d+rem\//g) || []).map((x) => parseFloat(x.match(/(\d*\.?\d+)rem/)[1]));
   ok(fsLit.length > 0 && fsLit.every((v) => v >= 1.1 || v === 1.05), 'no literal font-size under 1.1 rem is left (they all read a token): ' + fsLit.filter((v) => v < 1.1).join(','));
-  ok(/--gutter:\s*16px/.test(css) && !/--panel-bg|--g-gold|--g-purple/.test(css) && Buffer.byteLength(css) < 96 * 1024, 'U1 surfaces: 16-px gutter, the old gradient tokens (--panel-bg, --g-gold, --g-purple) are gone');
+  ok(/--gutter:\s*16px/.test(css) && !/--panel-bg|--g-gold|--g-purple/.test(css) && Buffer.byteLength(css) < 108 * 1024, 'U1 surfaces: 16-px gutter, the old gradient tokens (--panel-bg, --g-gold, --g-purple) are gone');
 } catch (e) { ok(false, 'H6 type + spacing: ' + (e.stack || e)); }
+
+// --- UI refresh U5: the title card, the coach card and its placement rule, the icon registry in the DOM, motion, reduce motion, the inspect pill's meta line ----------
+try {
+  BSU.session.newGame({ seed: 42, skipTutorial: true, size: 64 }); const s5 = BSU.state; U.showTitle(false); U.settings().coachSeen = true; U.openPanel(null); U.closePopover(); U.openPalette(false); U.dismissNotifs(); U.closeInspect();
+  const MH = { ctrl: false, shift: false, meta: false, alt: false };
+  const lsSet = () => { try { return JSON.parse(win.localStorage.getItem('bsu.settings')); } catch (e) { return null; } };
+  const vis = (id) => !!U.el[id] && !U.el[id].classList.contains('hidden');
+  const tap = (id) => U.el[id].dispatchEvent({ type: 'click' });
+  const icOf = (n) => (n && n.children || []).find((c) => c.tagName === 'SVG');
+  const nbsp = '\u00a0', dom = win.document; BSU.headless.tick(5); BSU.headless.tick(900); BSU.headless.render();
+  { const sp = BSU.headless.findSpot('dorm'); if (sp) { s5.economy.cash = 5e6; const pr = BSU.headless.place('dorm', sp.x, sp.y); if (pr && pr.ok !== false) BSU.headless.tick(60); } }
+  // 1. the title card: kicker · wordmark · tagline · charter · text-button row · seed field + mute · display size · footer
+  U.showTitle(true, { canContinue: true }); U.update(s5, 50);
+  const box = U.el.title.children[0];
+  ok(U.el.title.id === 'title' && box.className === 'title-box' && box.children.map((c) => c.id || c.className).join(',') === 'title-kicker,title-name,title-tag,title-hint,btn-charter,title-row title-help,title-row title-seedrow,title-size,title-campus,title-foot', 'U5 title card DOM: ' + box.children.map((c) => c.id || c.className).join(','));
+  ok(box.children[0].textContent === 'A campus builder in the swamp' && U.el['title-name'].textContent === 'BAYOU STATE' && /Keep it above water/.test(U.el['title-tag'].textContent) && box.children[9].textContent === 'Louisiana. One ridge. Mind the water.', 'U5 title: kicker, wordmark, tagline and the footer line');
+  ok(U.el['btn-charter'].textContent === 'Charter the university' && U.el['btn-charter'].classList.contains('primary'), 'U5 title: the gold button reads "Charter the university"');
+  const help = box.children[5];
+  ok(help.children.map((c) => c.id).join(',') === 'btn-continue,btn-title-howto,btn-title-about,btn-title-settings' && help.children.map((c) => c.textContent).slice(1).join('|') === 'How to play|About this build|Settings' && /^Continue/.test(help.children[0].textContent) && help.children.every((c) => !c.classList.contains('primary') && !c.classList.contains('big')), 'U5 title: Continue · How to play · About · Settings are one row of text buttons');
+  const seedRow = box.children[6], field = seedRow.children[0];
+  ok(field.classList.contains('of') && field.children[0].className === 'of-l' && field.children[0].textContent === 'Seed' && field.children[1] === U.el['title-seed'] && U.el['title-seed'].placeholder === 'random' && seedRow.children[1] === U.el['btn-title-mute'] && U.el['btn-title-mute'].classList.contains('icon'), 'U5 title: the seed is an outlined field (label in the border) with the mute icon button beside it');
+  ok(U.el['btn-title-mute-on'].dataset.icon === 'volume_up' && U.el['btn-title-mute-off'].dataset.icon === 'volume_off' && !U.el['btn-title-mute-on'].classList.contains('hidden') && U.el['btn-title-mute-off'].classList.contains('hidden'), 'U5 title: the mute button carries the registry icons (sound on shows volume_up)');
+  tap('btn-title-mute'); ok(U.settings().muted === true && U.el['btn-title-mute-on'].classList.contains('hidden') && !U.el['btn-title-mute-off'].classList.contains('hidden') && U.el['btn-mute-off'] && !U.el['btn-mute-off'].classList.contains('hidden'), 'U5 title: muting swaps the icon (and the bar\'s)');
+  tap('btn-title-mute'); ok(U.settings().muted === false && !U.el['btn-title-mute-on'].classList.contains('hidden'), 'U5 title: unmuting swaps it back');
+  const szBox = U.el['title-size'], seg = szBox.children[1];
+  ok(szBox.children[0].textContent === 'Display size' && seg.children.map((c) => c.id).join(',') === 'btn-size-compact,btn-size-comfortable,btn-size-large,btn-size-auto' && seg.children.slice(0, 3).map((c) => c.children[0].textContent).join('|') === `100${nbsp}%|115${nbsp}%|130${nbsp}%` && seg.classList.contains('seg'), 'U5 title: Display size is the segmented control (Compact 100 % · Comfortable 115 % · Large 130 % · Auto)');
+  seg.children[3].dispatchEvent({ type: 'click' }); ok(seg.children[3].classList.contains('active') && new RegExp('^Auto picks \\d+' + nbsp + '% for this window\\.$').test(U.el['title-size-note'].textContent) && !U.el['title-size-note'].classList.contains('hidden'), 'U5 title: Auto shows "Auto picks N % for this window." (' + U.el['title-size-note'].textContent + ')');
+  seg.children[2].dispatchEvent({ type: 'click' }); ok(seg.children[2].classList.contains('active') && !seg.children[3].classList.contains('active') && U.uiScale() === 1.3, 'U5 title: Large selects 130 %'); seg.children[0].dispatchEvent({ type: 'click' }); ok(U.uiScale() === 1, 'U5 title: Compact selects 100 %'); seg.children[3].dispatchEvent({ type: 'click' });
+  // the card steps aside while the Menu sheet is open over it, and comes back
+  ok(U.el.app.classList.contains('title-on') && !U.el.app.classList.contains('sheet-open'), 'U5 title: no sheet, no sheet-open class');
+  tap('btn-title-howto'); ok(U.panel() === 'howto' && U.el.app.classList.contains('sheet-open') && U.el.app.classList.contains('title-on') && vis('menu-sheet'), 'U5 title: How to play opens in the Menu sheet over the title (app.title-on.sheet-open)');
+  U.keydown('Escape', MH); ok(U.panel() === null && !U.el.app.classList.contains('sheet-open') && vis('title'), 'U5 title: Esc closes the sheet, the class goes, the title is still up');
+  tap('btn-title-settings'); ok(U.panel() === 'settings' && U.el.app.classList.contains('sheet-open'), 'U5 title: Settings opens in the sheet too'); tap('btn-sheet-close'); ok(!U.el.app.classList.contains('sheet-open'), 'U5 title: the sheet\'s close button restores the card');
+  tap('btn-title-about'); ok(U.panel() === 'about' && U.el.app.classList.contains('sheet-open'), 'U5 title: About opens in the sheet too'); U.openPanel(null);
+  { const cssN = css.replace(/\/\*[\s\S]*?\*\//g, '');
+    ok(/#app\.title-on\.sheet-open \.title-box\{opacity:\.\d+;transform:translateX\(-12rem\) scale\(\.97\);pointer-events:none\}/.test(cssN) && /#title \.title-box\{transition:opacity var\(--dur-open\) var\(--ease-decel\),transform var\(--dur-open\) var\(--ease-decel\)\}/.test(cssN), 'U5 CSS: while the sheet is open the title card dims, slides aside and ignores the pointer, animated in opacity / transform');
+    ok(/\.of \.of-l\{position:absolute;[^}]*background:var\(--surface\)/.test(cssN) && /#title-seed\{[^}]*border:1px solid var\(--outline\)/.test(cssN) && /#title-name\{[^}]*font:700 var\(--fs-display\)\/1\.1 var\(--font-serif\);[^}]*border-bottom:\.4rem solid var\(--tertiary\)/.test(cssN), 'U5 CSS: the outlined seed field, the serif wordmark with its gold underline');
+  }
+  U.showTitle(false); U.update(s5, 50);
+  // 2. the coach card: counter label, title, body, Back / Skip tour text buttons and a filled Next
+  U.settings().coachSeen = false; U.startCoach(s5, { now: true }); U.update(s5, 50);
+  const cb = U.el['coach-box'], nSteps = BSU.data.coach.length;
+  ok(cb.children.map((c) => c.id || c.className).join(',') === 'coach-step,coach-title,coach-text,card-actions' && cb.children[0].classList.contains('card-kicker') && cb.children[3].children.map((c) => c.id).join(',') === 'btn-coach-back,btn-coach-skip,btn-coach-next', 'U5 coach card DOM: counter label · title · body · Back / Skip tour / Next');
+  ok(U.el['coach-step'].textContent === 'Quick tour · 1 of ' + nSteps && U.el['coach-title'].textContent === BSU.data.coach[0].title && U.el['btn-coach-back'].classList.contains('hidden') && U.el['btn-coach-skip'].textContent === 'Skip tour' && U.el['btn-coach-next'].textContent === 'Next' && U.el['btn-coach-next'].classList.contains('primary') && !U.el['btn-coach-skip'].classList.contains('primary'), 'U5 coach: "Quick tour · 1 of N" (the CSS upper-cases it), Skip tour is text, Next is filled');
+  U.keydown('Enter', MH); U.update(s5, 50); ok(U.coachStep() === 1 && U.el['coach-step'].textContent === 'Quick tour · 2 of ' + nSteps && !U.el['btn-coach-back'].classList.contains('hidden') && U.el['btn-coach-back'].textContent === 'Back', 'U5 coach: step 2 counts and shows Back');
+  for (let k = 2; k < nSteps; k++) { U.keydown('Enter', MH); U.update(s5, 50); }
+  ok(U.coachStep() === nSteps - 1 && U.el['btn-coach-next'].textContent === 'Geaux build' && U.el['coach-step'].textContent === 'Quick tour · ' + nSteps + ' of ' + nSteps, 'U5 coach: the last step ends with "Geaux build"');
+  ok(![U.el['btn-coach-back'], U.el['btn-coach-next'], U.el['btn-coach-skip'], U.el['btn-skip']].some((b) => /[▸◂]/.test(b.textContent)), 'U5 coach and Skip buttons carry no text arrows');
+  U.keydown('Escape', MH); U.update(s5, 50); ok(U.coachStep() === -1, 'U5 coach: Esc skips'); U.settings().coachSeen = true;
+  { const cssN = css.replace(/\/\*[\s\S]*?\*\//g, '');
+    ok(/\.coach-box\{[^}]*border-radius:var\(--shape-lg\)/.test(cssN) && /\.snackbar,\.coach-box\{box-shadow:var\(--elev-3\)\}/.test(cssN) && /\.coach-pane\{[^}]*background:var\(--scrim\)/.test(cssN) && /\.coach-ring\{[^}]*border:3px solid var\(--primary\)/.test(cssN), 'U5 CSS: the coach is a card (28 px corners, elevation 3), the panes use the scrim, the ring is 3 px primary');
+    const kf = (cssN.match(/@keyframes ring-pulse\{[\s\S]*?\}\}/) || [''])[0];
+    ok(/transform:scale/.test(kf) && /opacity/.test(kf) && !/(left|top|width|height|margin|padding)\s*:/.test(kf) && /\.coach-ring::after\{[^}]*animation:ring-pulse/.test(cssN), 'U5 CSS: the ring pulse animates transform and opacity only');
+    ok(/body\.reduce-motion \.coach-ring::after\{animation:none/.test(cssN) && /@media \(prefers-reduced-motion: reduce\)\{\.coach-ring::after\{animation:none/.test(cssN), 'U5 CSS: the pulse stops under reduce motion and the media query');
+  }
+  // 3. where the card goes: never over its own target
+  { const P = U._coachPlace, vw = 1440, vh = 900, bw = 340, bh = 190; let seed = 7; const rnd = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
+    const hit = (c, r) => Math.min(c.x + bw, r.x + r.w) - Math.max(c.x, r.x) > 0 && Math.min(c.y + bh, r.y + r.h) - Math.max(c.y, r.y) > 0;
+    const inWin = (c, lim) => c.x >= 11.5 && c.y >= 7.5 && c.x + bw <= vw - 11.5 && c.y + bh <= (lim || vh - 8) + 0.5;
+    const fab = { x: 1280, y: 820, w: 150, h: 72 }, chip = { x: 160, y: 4, w: 150, h: 48 }, card = { x: 666, y: 360, w: 240, h: 100 };
+    const pf = P(fab, bw, bh, vw, vh), pc = P(chip, bw, bh, vw, vh), pk = P(card, bw, bh, vw, vh, 640);
+    ok(pf.pos === 'above' && !hit(pf, fab) && inWin(pf) && pf.x + bw <= fab.x + fab.w + 0.5 && pf.x >= 12, 'U5 placement: over the FAB (bottom right) the card goes above it, right-aligned, clear');
+    ok(pc.pos === 'below' && !hit(pc, chip) && inWin(pc) && pc.x === 160, 'U5 placement: under an app-bar chip the card goes below it, left-aligned to the chip');
+    ok(!hit(pk, card) && inWin(pk, 640), 'U5 placement: a card in the Build sheet grid is cleared (limit 640: ' + pk.pos + ' ' + Math.round(pk.x) + ',' + Math.round(pk.y) + ')');
+    ok(P(null, bw, bh, vw, vh).pos === 'center', 'U5 placement: no target = centred');
+    const huge = { x: 8, y: 56, w: 1424, h: 836 }, ph = P(huge, bw, bh, vw, vh); ok(ph.pos === 'corner' && inWin(ph), 'U5 placement: a target as big as the window takes the corner with the least overlap');
+    let bad = 0, tried = 0; for (let k = 0; k < 400; k++) { const r = { x: Math.round(rnd() * 1200), y: Math.round(rnd() * 760), w: 40 + Math.round(rnd() * 360), h: 30 + Math.round(rnd() * 260) }; const c = P(r, bw, bh, vw, vh); tried++; if (!inWin(c) || hit(c, r)) bad++; }
+    ok(bad === 0, 'U5 placement: 400 random targets up to 400 × 290 in a 1440 × 900 window: the card is always inside the window and clear of its target (' + bad + ' bad of ' + tried + ')');
+    // the live layout agrees: after a step the box does not intersect the ring rect that layoutCoach set
+    U.settings().coachSeen = false; U.startCoach(s5, { now: true }); U.update(s5, 50);
+    ok(['below', 'above', 'right', 'left', 'corner', 'center'].indexOf(U.el['coach-box'].dataset.pos) >= 0, 'U5 coach: layoutCoach records where it put the card (' + U.el['coach-box'].dataset.pos + ')'); U.keydown('Escape', MH); U.settings().coachSeen = true;
+  }
+  // 4. icons in the DOM: the registry feeds the bar, the chips, the snackbars, the alert strip, the overlay chips, the inspect card
+  ok(U.icon('close').dataset.icon === 'close' && U.icon('close') !== U.icon('close') && BSU.icons.has('close') && U.icon('star', 'sm').classList.contains('sm'), 'U5 icons: ui.icon is BSU.icons.get (a fresh svg each time)');
+  ok(U.el.brand.children[0].className === 'brand-mark' && icOf(U.el.brand.children[0]).dataset.icon === 'eco', 'U5 icons: the brand mark is the leaf icon, not a text glyph');
+  ok(U.el['sky-glyph'].children[0].tagName === 'SVG' && BSU.icons.has(U.el['sky-glyph'].dataset.icon), 'U5 icons: the date chip\'s weather glyph is a registry icon (' + U.el['sky-glyph'].dataset.icon + ')');
+  U.dismissNotifs(); U.notify(s5, { kind: 'danger', text: 'Tiger Hall has no power.', ttl: 9000 }); U.notify(s5, { kind: 'water', text: 'Roux Hall is flooded.', ttl: 9000 });
+  { const sn = U.el.notifications.children; ok(sn.length === 2 && sn[0].children[0].textContent === 'Tiger Hall has no power.' && icOf(sn[0]).dataset.icon === 'warning' && icOf(sn[1]).dataset.icon === 'drop' && sn.every((c) => icOf(c).classList.contains('kind')), 'U5 icons: a snackbar leads with its kind\'s icon (danger → warning, water → drop); the text stays the first child'); }
+  U.dismissNotifs(); U.notify(s5, { kind: 'info', text: 'Saved', ttl: 9000 }); ok(icOf(U.el.notifications.children[0]).dataset.icon === 'info', 'U5 icons: an info snackbar carries the info icon'); U.dismissNotifs();
+  U.alert(s5, { icon: 'bolt', text: 'Blackout · Tiger Hall', kind: 'danger' }); U.update(s5, 600); ok(vis('alert-strip') && U.el['alert-icon'].children[0].dataset.icon === 'bolt', 'U5 icons: the alert strip shows a registry icon by name');
+  U.alert(s5, { icon: '🐊', text: 'A gator', kind: 'wildlife' }); U.update(s5, 600); ok(U.el['alert-icon'].children[0].dataset.icon === 'gator', 'U5 icons: a caller that still passes an emoji gets the registry icon for it'); U.alert(s5, null); U.closeAlert();
+  ok(Object.keys(U.el.ovBtns).length === 6 && Object.keys(U.el.ovBtns).every((k) => { const b = U.el.ovBtns[k]; return b.children.length === 3 && b.children[0].className === 'key' && b.children[1].tagName === 'SVG' && b.children[2].className === 'ov-name'; }) && ['wave', 'drop', 'mosquito', 'bolt', 'crowd', 'eco'].join() === Object.keys(U.el.ovBtns).map((k) => U.el.ovBtns[k].children[1].dataset.icon).join(), 'U5 icons: each overlay chip is key letter · glyph (flood wave, water drop, mosquito, bolt, crowd, leaf) · name');
+  ok(U.el['btn-menu-close'] && icOf(U.el['btn-menu-close']).dataset.icon === 'close' && icOf(U.el['alert-close']).dataset.icon === 'close' && U.el['alert-close'].textContent === '' && icOf(U.el['btn-skip']).dataset.icon === 'skip_next' && icOf(U.el['undo-chip'].children[0]).dataset.icon === 'undo', 'U5 icons: ✕ buttons, Skip and the undo chip use registry icons');
+  ok(icOf(U.el['btn-insp-collapse']) && U.el['btn-insp-collapse'].children.map((c) => c.dataset.icon).join() === 'expand_more,expand_less' && U.el['btn-bulldoze'].children[0].dataset.icon === 'delete' && U.el['btn-palette-info'].children[0].dataset.icon === 'info' && U.el['btn-build-menu'].children[0].dataset.icon === 'open_in_full', 'U5 icons: the inspect chevrons, bulldoze, info and expand buttons');
+  { const items = U.el['sheet-list'].children.filter((c) => c.id); ok(items.length === 10 && items.every((b) => b.children[0].dataset.icon && BSU.icons.has(b.children[0].dataset.icon)), 'U5 icons: the ten Menu list items each lead with a registry icon (' + items.map((b) => b.children[0].dataset.icon).join(' ') + ')'); }
+  { const used = BSU.icons.requested(), miss = BSU.icons.missing(); ok(used.length >= 30 && miss.length === 0, 'U5 icons: ' + used.length + ' distinct icons asked for so far, none missing' + (miss.length ? ' (missing: ' + miss.join(', ') + ')' : '')); }
+  // the requirement glyphs data.js still carries map to registry icons
+  { const RQ = BSU.data.requirements, gl = [RQ.power.glyph, RQ.water.glyph, RQ.path.glyph, RQ.road.glyph, RQ.marsh.glyph, RQ.place[BSU.PLACE.PATH].glyph]; ok(gl.every((g) => BSU.icons.fromGlyph(g)) && gl.map((g) => BSU.icons.fromGlyph(g)).join() === 'bolt,drop,walk,road,pilings,swap_horiz', 'U5 icons: every data.js requirement glyph has a registry icon (' + gl.map((g) => BSU.icons.fromGlyph(g)).join(' ') + ')'); }
+  // the detail NEEDS list: icon + text, no glyph character
+  U.openBuildMenu(s5, { tab: 'housing' }); U.focusCard('dorm'); U.update(s5, 600);
+  { const lists = U.el['bm-detail'].children[0].children.filter((c) => c.className === 'bm-list'), list = lists[lists.length - 1]; const lis = list ? list.children : []; ok(lis.length >= 2 && lis.every((li) => li.className === 'bm-li' && li.children[0].tagName === 'SVG' && li.children[0].classList.contains('s20') && li.children[1].textContent.length > 8 && !/[⚡\u{1F4A7}\u{1F6B6}]/u.test(li.children[1].textContent)), 'U5 icons: the detail NEEDS rows are icon + text (' + lis.map((li) => li.children[0].dataset.icon).join(' ') + ')'); }
+  ok(U.el.bmCards.dorm && U.el.bmCards.dorm.children.some((c) => /bm-reqs/.test(c.className) && c.children.every((q) => q.className === 'bm-req fp' || (q.children[0].tagName === 'SVG' && q.children[0].classList.contains('sm')))), 'U5 icons: a card\'s requirement chips are icon (+ word)');
+  U.closeBuildMenu(); U.openPalette(false);
+  // 5. the inspect pill's meta line
+  { const dorm = (s5.buildings || []).find((b) => b && b.type === 'dorm'); if (dorm) { dorm.built = 1; dorm.ruin = false; dorm.flooded = false; dorm.blackout = false; U.inspect(s5, { kind: 'building', id: dorm.id }); U.update(s5, 600);
+      ok(U.el['insp-meta'] && U.el['insp-meta'].textContent.length > 0 && U.el['insp-meta'].parentNode === U.el['insp-title'].parentNode && U.el['insp-title'].parentNode.children.map((c) => c.id).join() === 'insp-title,insp-meta,insp-sub', 'U5 inspect: a meta line sits between the title and the sub line (' + U.el['insp-meta'].textContent + ')');
+      ok(/^\d+ beds$|^No power$|^Flooded$|^Under construction|^Ruin$/.test(U.el['insp-meta'].textContent), 'U5 inspect: a dorm\'s meta is its key stat or its status');
+      const cssN = css.replace(/\/\*[\s\S]*?\*\//g, ''); ok(/#insp-meta\{display:none\}/.test(cssN) && /#inspect\.collapsed #insp-meta\{display:block/.test(cssN) && /#insp-body\{flex:0 1 auto/.test(cssN), 'U5 CSS: the meta shows only in the collapsed pill; the card body no longer collapses to nothing');
+      U.closeInspect(); } else ok(false, 'U5 inspect: no built dorm to inspect'); }
+  // 6. motion: 160 ms state layers, 240 ms opening (keyframes), 160 ms accelerate closing (transitions into .hidden), transform / opacity only
+  { const cssN = css.replace(/\/\*[\s\S]*?\*\//g, '');
+    ok(/--dur-std:\s*160ms/.test(cssN) && /--dur-open:\s*240ms/.test(cssN) && /--dur-close:\s*160ms/.test(cssN) && /--ease-decel:\s*cubic-bezier\(\.05, \.7, \.1, 1\)/.test(cssN) && /--ease-accel:\s*cubic-bezier\(\.3, 0, \.8, \.15\)/.test(cssN), 'U5 motion tokens: 160 / 240 / 160 ms, emphasized decelerate and accelerate');
+    const closing = (cssN.match(/\.popover,#menu-sheet,\.bottom-sheet,#cards,#voice-card,#objective-card,#goal-pill\{transition:[^}]*\}/) || [''])[0];
+    ok(/opacity var\(--dur-close\) var\(--ease-accel\)/.test(closing) && /transform var\(--dur-close\) var\(--ease-accel\)/.test(closing) && /display var\(--dur-close\) allow-discrete/.test(closing) && !/(left|top|width|height)\b/.test(closing), 'U5 motion: popovers, both sheets, dialogs and the goal pill / card close in 160 ms accelerate (opacity + transform, display waits)');
+    ok(/\.popover\.hidden,#cards\.hidden,#voice-card\.hidden,#objective-card\.hidden,#goal-pill\.hidden\{opacity:0;transform:translateY\(\.8rem\);pointer-events:none\}/.test(cssN) && /#menu-sheet\.hidden\{opacity:0;transform:translateX\(2\.4rem\)/.test(cssN) && /\.bottom-sheet\.hidden\{opacity:0;transform:translateY\(4rem\)/.test(cssN), 'U5 motion: the closed look of each surface (fade + 8 px, the side sheet 24 px right, the bottom sheet 40 px down)');
+    ok(/\.popover\{[^}]*animation:rise var\(--dur-open\) var\(--ease-decel\)/.test(cssN) && /#menu-sheet\{[^}]*animation:sheet-in var\(--dur-open\) var\(--ease-decel\)/.test(cssN) && /\.bottom-sheet\{[^}]*animation:sheet-up var\(--dur-open\) var\(--ease-decel\)/.test(cssN) && /\.card\{[^}]*animation:rise var\(--dur-open\) var\(--ease-decel\)/.test(cssN) && /\.snackbar\{[^}]*animation:rise/.test(cssN) && /#objective-card,#goal-pill\{animation:rise var\(--dur-open\) var\(--ease-decel\)\}/.test(cssN), 'U5 motion: popovers, sheets, dialogs, snackbars and the goal card open in 240 ms decelerate');
+    const kfs = ['rise', 'sheet-in', 'sheet-up', 'ring-pulse'].map((n) => (cssN.match(new RegExp('@keyframes ' + n + '\\{[\\s\\S]*?\\}\\s*\\}')) || [''])[0]); ok(kfs.every((k) => k && /transform/.test(k) && /opacity/.test(k) && !/(left|top|width|height)\s*:/.test(k)), 'U5 motion: the opening keyframes move transform and opacity only');
+    ok(/body\.reduce-motion\{--dur-std:0ms;--dur-open:0ms;--dur-close:0ms\}/.test(cssN) && /body\.reduce-motion \*,body\.reduce-motion \*::before,body\.reduce-motion \*::after\{animation-duration:\.01ms !important;[^}]*transition-duration:\.01ms !important/.test(cssN) && /@media \(prefers-reduced-motion: reduce\)\s*\{\s*:root\s*\{[^}]*--dur-open:\s*0ms/.test(cssN), 'U5 motion: reduce motion (the body class and the media query) zeroes every duration');
+  }
+  // 7. the reduce-motion setting: default follows the media query, migrated once, a switch in Settings, a body class
+  U.openPanel('settings'); U.update(s5, 50);
+  const rmSw = dom.getElementById('chk-reduce-motion'); ok(!!rmSw && rmSw.textContent === (U.settings().reduceMotion ? 'On' : 'Off'), 'U5 settings: a "Reduce motion" switch');
+  U.reduceMotion(false); ok(U.settings().reduceMotion === false && !dom.body.classList.contains('reduce-motion') && lsSet().reduceMotion === false, 'U5 reduce motion: off → no body class, saved');
+  rmSw.dispatchEvent({ type: 'click' }); ok(U.settings().reduceMotion === true && dom.body.classList.contains('reduce-motion') && lsSet().reduceMotion === true && rmSw.textContent === 'On', 'U5 reduce motion: the switch sets the body class and saves the key');
+  rmSw.dispatchEvent({ type: 'click' }); ok(U.settings().reduceMotion === false && !dom.body.classList.contains('reduce-motion'), 'U5 reduce motion: and off again'); U.openPanel(null);
+  { const keep = win.matchMedia, ls0 = JSON.parse(win.localStorage.getItem('bsu.settings') || '{}');
+    delete ls0.reduceMotion; win.localStorage.setItem('bsu.settings', JSON.stringify(ls0)); win.matchMedia = (q) => ({ matches: /prefers-reduced-motion/.test(q), media: q });
+    BSU.session.newGame({ seed: 5, skipTutorial: true, size: 64 }); U.showTitle(false); U.update(BSU.state, 50);
+    ok(U.settings().reduceMotion === true && dom.body.classList.contains('reduce-motion'), 'U5 migration: no saved key + the system prefers reduced motion → the setting starts on, the body class is set');
+    win.matchMedia = (q) => ({ matches: false, media: q }); delete ls0.reduceMotion; win.localStorage.setItem('bsu.settings', JSON.stringify(ls0));
+    BSU.session.newGame({ seed: 6, skipTutorial: true, size: 64 }); U.showTitle(false); U.update(BSU.state, 50);
+    ok(U.settings().reduceMotion === false && !dom.body.classList.contains('reduce-motion'), 'U5 migration: no saved key + no system preference → off');
+    ls0.reduceMotion = true; win.localStorage.setItem('bsu.settings', JSON.stringify(ls0)); BSU.session.newGame({ seed: 8, skipTutorial: true, size: 64 }); U.showTitle(false); U.update(BSU.state, 50);
+    ok(U.settings().reduceMotion === true && dom.body.classList.contains('reduce-motion'), 'U5 migration: a saved true is kept whatever the media query says');
+    ls0.reduceMotion = false; win.matchMedia = (q) => ({ matches: true, media: q }); win.localStorage.setItem('bsu.settings', JSON.stringify(ls0)); BSU.session.newGame({ seed: 9, skipTutorial: true, size: 64 }); U.showTitle(false); U.update(BSU.state, 50);
+    ok(U.settings().reduceMotion === false && !dom.body.classList.contains('reduce-motion'), 'U5 migration: a saved false (the player turned it off) beats the media query');
+    win.matchMedia = keep; U.reduceMotion(false); U.settings().coachSeen = true; U.saveSettings();
+    ok(BSU.data && JSON.stringify(Object.keys(BSU.newState(1).ui.settings)).indexOf('reduceMotion') > 0 && BSU.newState(1).ui.settings.reduceMotion === null, 'U5 contract: the default settings carry reduceMotion: null (unset → follows the media query)');
+  }
+} catch (e) { ok(false, 'U5 block: ' + (e.stack || e)); }
 
 console.log(`\n${passes} passed, ${failures} failed`);
 process.exit(failures ? 1 : 0);
