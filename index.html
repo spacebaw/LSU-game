@@ -53,10 +53,10 @@ body{font:400 var(--fs-body)/var(--lh-body) var(--font);color:var(--on-surface);
 :focus-visible{outline:2px solid var(--primary);outline-offset:2px}
 button,input{font-family:inherit}
 /* floating surfaces: surface at 94 % over the map, 1 px outline-variant edge, elevation 2; panels, cards and the build menu are opaque and sit at elevation 3 */
-.panel,#inspect,#objective-card,#voice-card,#milestones-card,.popover,#popover,.card,#ghost-label,#tooltip,#hint,.snackbar,#alert-strip,#build-menu,#undo-chip,#perf-chip,#perfmode-chip,.gh-pbp,#score-bug-hud,#goal-pill {
+#menu-overlay,#menu-sheet,#inspect,#objective-card,#milestones-card,.popover,#popover,.card,#ghost-label,#tooltip,#hint,.snackbar,#alert-strip,#build-menu,#undo-chip,#perf-chip,#perfmode-chip,.gh-pbp,#score-bug-hud,#goal-pill {
 background:var(--surface-float);border:1px solid var(--outline-variant);color:var(--on-surface);border-radius:var(--shape-md);box-shadow:var(--elev-2);
 }
-#panels .panel,#build-menu{background:var(--surface);box-shadow:var(--elev-3)}
+#menu-overlay,#menu-sheet,#build-menu{background:var(--surface);box-shadow:var(--elev-3)}
 .card,#cards .card{background:var(--surface-container-high);border:0;border-radius:var(--shape-lg);box-shadow:var(--elev-3)}
 .snackbar,.coach-box{box-shadow:var(--elev-3)}
 #hint,#undo-chip,#perf-chip,#perfmode-chip,.gh-pbp,#goal-pill{box-shadow:var(--elev-1)}
@@ -80,7 +80,7 @@ svg.ic{width:var(--icon);height:var(--icon);flex:none;fill:none;stroke:currentCo
 .btn.big{height:4.8rem;min-height:4.8rem;padding:0 2.4rem;font-size:var(--fs-title)}
 .btn.icon{width:var(--control-h);min-width:var(--control-h);padding:0;background:transparent;color:var(--on-surface-variant);font-size:var(--fs-title-lg);line-height:1}
 .btn.icon::after{inset:-.2rem}
-.card .btn.icon,#popover .btn.icon,#inspect .btn.icon,.panel-head .icon,.issue-row .btn.icon-sm,#issues-head .btn.icon{width:3.2rem;min-width:3.2rem;height:3.2rem;min-height:3.2rem}
+.card .btn.icon,#popover .btn.icon,#inspect .btn.icon,#menu-overlay .panel-head .icon,.issue-row .btn.icon-sm,#issues-head .btn.icon{width:3.2rem;min-width:3.2rem;height:3.2rem;min-height:3.2rem}
 .btn.active,.btn[aria-pressed="true"]{background:var(--primary);color:var(--on-primary)}
 .btn .key{display:inline-flex;align-items:center;justify-content:center;min-width:1.8rem;height:1.8rem;margin-left:.4rem;padding:0 .4rem;border-radius:.4rem;border:1px solid currentColor;font:600 var(--fs-label)/1 var(--font);opacity:.8}
 .btn.gold,#btn-charter,#btn-obj-build,#fab-build{background:var(--tertiary);color:var(--on-tertiary);font-weight:600;box-shadow:var(--elev-1)}
@@ -187,7 +187,7 @@ svg.ic{width:var(--icon);height:var(--icon);flex:none;fill:none;stroke:currentCo
 #goal-pill .kicker{font:500 var(--fs-label)/1 var(--font);letter-spacing:var(--track-label);text-transform:uppercase;color:var(--primary)}
 #goal-pill .ttl{font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis} #goal-pill .count{color:var(--on-surface-variant);font-variant-numeric:tabular-nums} #goal-pill svg.ic{color:var(--on-surface-variant)}
 #goal-pill[data-kind="interrupt"] .kicker{color:var(--warn)}
-#objective-card,#voice-card,#milestones-card{position:absolute;left:var(--gutter);width:36rem;padding:1.6rem}
+#objective-card,#milestones-card{position:absolute;left:var(--gutter);width:36rem;padding:1.6rem}
 #objective-card{top:calc(var(--bar-h) + 8px);z-index:2}
 #objective-card[data-kind="background"]{border-left:.4rem solid var(--water)}
 #objective-card[data-kind="interrupt"]{border-left:.4rem solid var(--warn)}
@@ -221,10 +221,10 @@ svg.ic{width:var(--icon);height:var(--icon);flex:none;fill:none;stroke:currentCo
 #obj-background{margin-top:1.2rem;padding-top:.8rem;border-top:1px solid var(--outline-variant);border-bottom:0;font-size:var(--fs-body);color:var(--on-surface-variant);display:block}
 #speech-bubble{position:absolute;left:1.2rem;top:calc(100% + 1.2rem);max-width:34rem;padding:1rem 1.4rem;font:italic var(--fs-body)/1.4 var(--font);color:var(--on-primary-container);background:var(--primary-container);border-radius:var(--shape-md);box-shadow:var(--elev-2);animation:rise var(--dur-open) var(--ease-decel);z-index:1}
 #speech-bubble::after{content:"";position:absolute;left:2.8rem;top:-.8rem;border:.8rem solid transparent;border-bottom-color:var(--primary-container);border-top:0}
-#voice-card{left:auto;right:var(--side);bottom:calc(var(--bot) + 7.2rem);width:36rem;border-left:.4rem solid var(--secondary)}   /* above the Build FAB at the right; the bottom centre belongs to the snackbar lane (U3 makes it a dialog) */
-#hud.inspect-open #voice-card{transform:translateX(calc(-1 * var(--inspect-w) - var(--gutter)))}
-.voice-student{font:600 var(--fs-body)/1.2 var(--font);color:var(--primary);margin-bottom:.4rem}
-#voice-text{font-size:var(--fs-body)} #voice-payoff{font-size:var(--fs-body);color:var(--on-surface-variant);margin-top:.8rem}
+/* the student voice (U3): a dialog like the cards; #voice-card is its scrim host, #voice-dialog the card */
+#voice-card{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:var(--topbar-h) 2rem var(--bot);background:var(--scrim);z-index:8}
+.voice-student{margin-top:0}
+#voice-payoff:empty{display:none} #voice-payoff{font-style:italic}
 #milestones-card{bottom:var(--bot);width:36rem}
 .ms-row{display:grid;grid-template-columns:1fr 10rem 6.4rem;align-items:center;gap:1.2rem;padding:.6rem 0;font-size:var(--fs-body)}
 .ms-name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -265,19 +265,27 @@ svg.ic{width:var(--icon);height:var(--icon);flex:none;fill:none;stroke:currentCo
 #hud.setpiece #decision-toast.dt-opts #dt-options .btn{flex:1 1 26rem;min-height:4rem;padding:.8rem 1.2rem}
 #hud.setpiece:has(#decision-toast.dt-opts:not(.hidden)) #game-hud{visibility:hidden}
 /* inspect */
-#inspect{position:absolute;right:var(--side);top:calc(var(--topbar-h) + 1.6rem);bottom:var(--bot);width:var(--inspect-w);padding:1.6rem;display:flex;flex-direction:column;gap:1.2rem;overflow:hidden;transform:translateX(0);transition:transform var(--dur-open) var(--ease-decel),opacity var(--dur-open) var(--ease-decel)}
-#inspect.hidden{display:flex !important;transform:translateX(calc(var(--inspect-w) + 4rem));opacity:0;pointer-events:none}
-.insp-head{display:flex;gap:1.2rem;align-items:flex-start}
-#insp-sprite{width:6.4rem;height:6.4rem;flex:0 0 6.4rem;border-radius:var(--shape-sm);background:var(--surface-container);border:1px solid var(--outline-variant);image-rendering:pixelated}
+/* inspect card (U3): bottom-left above the Build sheet at the gutter, 32 rem, elevation 2; collapsed (.collapsed) it is a 40 px pill: sprite, title, chevron up, close */
+#inspect{position:absolute;left:var(--gutter);bottom:var(--bot);width:32rem;max-height:max(24rem,calc(100vh - var(--topbar-h) - var(--bot) - 28rem));padding:var(--sp-3) var(--sp-4) var(--sp-4);display:flex;flex-direction:column;gap:var(--sp-3);overflow:hidden;z-index:3;transition:opacity var(--dur-open) var(--ease-decel),transform var(--dur-open) var(--ease-decel)}
+#inspect.hidden{display:flex !important;transform:translateY(1.6rem);opacity:0;pointer-events:none;visibility:hidden}
+.insp-head{display:flex;gap:var(--sp-3);align-items:center} .insp-head .btn.icon{flex:none;margin-right:-.6rem} .insp-head .btn.icon+.btn.icon{margin-left:-1rem}
+#insp-sprite{width:5.6rem;height:5.6rem;flex:0 0 5.6rem;border-radius:var(--shape-sm);background:var(--surface-container);border:1px solid var(--outline-variant);image-rendering:pixelated}
 .insp-col{flex:1 1 auto;min-width:0}
 #insp-title{font:600 var(--fs-title)/1.25 var(--font);color:var(--on-surface);word-break:break-word}
 #insp-sub{font-size:var(--fs-label);color:var(--on-surface-variant);margin-top:.4rem}
 #insp-body{flex:1 1 0;min-height:0;overflow-y:auto;overscroll-behavior:contain}   /* takes exactly the height left between the head and the actions (the panel itself is pinned top bar → palette) and scrolls only past it */
 .insp-head,#insp-actions{flex:none}
-#insp-actions{display:flex;flex-wrap:wrap;gap:.8rem;padding-top:1.2rem;border-top:1px solid var(--outline-variant)}
+#insp-actions{display:flex;flex-wrap:wrap;gap:var(--sp-2);padding-top:var(--sp-2);border-top:1px solid var(--outline-variant)}
 input.rename{width:100%;height:var(--control-h);font:600 var(--fs-title)/1.2 var(--font);color:var(--on-surface);background:var(--surface);border:1px solid var(--outline);border-radius:.8rem;padding:0 1.2rem;outline:none}
 input.rename:focus{border-color:var(--primary);box-shadow:inset 0 0 0 1px var(--primary)}
-#inspect[data-kind="gator"]{border-left:.4rem solid var(--success)} #inspect[data-kind="agent"]{border-left:.4rem solid var(--secondary)} #inspect[data-kind="levee"],#inspect[data-kind="tile"]{border-left:.4rem solid var(--water)} #inspect[data-kind="building"]{border-left:.4rem solid var(--primary)}
+#inspect.collapsed{width:auto;max-width:calc(100vw - 2 * var(--gutter) - 20rem);height:var(--control-h);padding:0 .4rem;flex-direction:row;align-items:center;gap:0;border-radius:var(--shape-pill);box-shadow:var(--elev-1);cursor:pointer}
+#inspect.collapsed .insp-head{gap:var(--sp-2);flex:1 1 auto;min-width:0}
+#inspect.collapsed #insp-sprite{width:3.2rem;height:3.2rem;flex:0 0 3.2rem;border-radius:50%}
+#inspect.collapsed #insp-title{font:600 var(--fs-body)/1.2 var(--font);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#inspect.collapsed #insp-sub,#inspect.collapsed #insp-body,#inspect.collapsed #insp-actions{display:none}
+#inspect.collapsed .insp-col{flex:1 1 auto}
+#inspect.collapsed .insp-head .btn.icon{margin:0;width:3.2rem;min-width:3.2rem;height:3.2rem;min-height:3.2rem}
+#hud.inspect-open #snack-lane{left:calc(50% + (32rem + var(--gutter)) / 2)} #hud.inspect-open #undo-chip{left:calc(var(--gutter) + 33.6rem)}
 #ghost-label{position:absolute;left:0;top:0;padding:.8rem 1.2rem;font-size:var(--fs-body);line-height:1.35;pointer-events:none;z-index:5;max-width:34rem;border-left:.4rem solid var(--success)}
 #ghost-label .l1{font-weight:600} #ghost-label .l2{font-size:var(--fs-label);color:var(--on-surface-variant);margin-top:2px}
 #ghost-label[data-color="yellow"]{border-left-color:var(--warn)} #ghost-label[data-color="red"]{border-left-color:var(--error)} #ghost-label[data-color="red"] .l1{color:var(--error)}
@@ -306,10 +314,9 @@ input.rename:focus{border-color:var(--primary);box-shadow:inset 0 0 0 1px var(--
 .log-line{display:flex;gap:1.2rem;padding:.6rem 0;border-bottom:1px solid var(--surface-container-high);cursor:pointer}
 .log-line:hover{color:var(--primary)}
 .log-day{flex:0 0 8.8rem;color:var(--on-surface-variant);font-variant-numeric:tabular-nums}
-/* the Build FAB (U2): bottom-right at the gutter, gold, 56 px; hidden while the sheet, a panel, a card or the build menu is open; shifts left of an open inspect */
+/* the Build FAB (U2): bottom-right at the gutter, gold, 56 px; hidden while the sheet, a panel, a card or the build menu is open */
 #fab-build{position:absolute;right:var(--gutter);bottom:var(--gutter);display:inline-flex;align-items:center;gap:var(--sp-2);height:var(--fab-h);padding:0 2rem 0 1.6rem;border:0;border-radius:var(--shape-pill);box-shadow:var(--elev-3);font:600 var(--fs-title)/1 var(--font);cursor:pointer;z-index:4;animation:rise var(--dur-open) var(--ease-decel)}
 #fab-build .key{display:inline-flex;align-items:center;justify-content:center;min-width:2rem;height:2rem;border-radius:.5rem;border:1.5px solid currentColor;font:600 var(--fs-label)/1 var(--font);opacity:.85}
-#hud.inspect-open #fab-build{right:calc(var(--inspect-w) + 2 * var(--gutter))}
 /* palette (the interim Build sheet, hidden at rest): a 180-px bar = 34-px tabs + 12-px breathing room + a 126-px tile row + 8 px below; every tile is a vertical stack (icon, name, price) and nothing overlaps (U4 turns it into the real sheet) */
 #palette{position:absolute;left:0;right:0;bottom:0;height:var(--palette-h);background:var(--surface);border-top:1px solid var(--outline-variant);display:grid;grid-template-columns:auto 1fr auto;grid-template-rows:var(--pal-tabs-h) 1fr;box-shadow:var(--elev-3);z-index:5;animation:rise var(--dur-open) var(--ease-decel)}
 #btn-palette-close{position:absolute;right:var(--gutter);top:.1rem;width:3.2rem;min-width:3.2rem;height:3.2rem;min-height:3.2rem;z-index:1}
@@ -346,7 +353,7 @@ input.rename:focus{border-color:var(--primary);box-shadow:inset 0 0 0 1px var(--
 #palette.compact .tab .tab-name{font-size:var(--fs-body)}
 /* cards (dialogs) over a scrim, panels */
 #cards{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:var(--topbar-h) 2rem var(--bot);background:var(--scrim);z-index:8}   /* centred on the map area, not the whole window */
-.card{width:60rem;max-width:calc(100vw - 4rem);max-height:calc(100vh - var(--topbar-h) - var(--bot) - 3.2rem);overflow:auto;padding:2.4rem;animation:rise var(--dur-open) var(--ease-decel)}
+.card{width:42rem;max-width:calc(100vw - 4rem);max-height:calc(100vh - var(--topbar-h) - var(--bot) - 3.2rem);overflow:auto;padding:2.4rem;animation:rise var(--dur-open) var(--ease-decel)}
 .card-title{font:600 var(--fs-headline)/1.25 var(--font);color:var(--on-surface)}
 .card-body{margin-top:1.2rem;font-size:var(--fs-body);line-height:1.5;color:var(--on-surface-variant)}
 .card-body p{margin:0 0 1.2rem}
@@ -356,12 +363,30 @@ input.rename:focus{border-color:var(--primary);box-shadow:inset 0 0 0 1px var(--
 .board-card{text-align:left;height:auto;padding:1.2rem 1.6rem;white-space:normal;justify-content:flex-start;flex-direction:column;align-items:flex-start;border-radius:var(--shape-sm);background:var(--surface);color:var(--on-surface)}
 .board-name{font-weight:600;font-size:var(--fs-body);line-height:1.3} .board-text{font-size:var(--fs-body);line-height:1.4;color:var(--on-surface-variant);font-weight:400;margin-top:.4rem}
 #panels{position:absolute;inset:0;pointer-events:none;z-index:4;display:flex;align-items:center;justify-content:center;padding:calc(var(--topbar-h) + 1.6rem) 2rem calc(var(--gutter) + 1.6rem)}   /* panels centre in the map area (flex, no transform: crisp text); U3 turns the host into the side sheet */
-#panels .panel{position:relative;flex:0 1 auto;width:72rem;max-width:100%;max-height:100%;overflow:auto;padding:2rem;pointer-events:auto;animation:rise var(--dur-open) var(--ease-decel)}
-.panel-head{position:absolute;right:1.2rem;top:1.2rem;z-index:5}
+/* the Menu side sheet (U3): right gutter, under the bar, to the bottom gutter; opaque, elevation 3, 28 px top-left corner; no scrim (the map stays live) */
+#menu-sheet{position:absolute;right:var(--gutter);top:calc(var(--bar-h) + 8px);bottom:var(--gutter);width:36rem;max-width:calc(100vw - 2 * var(--gutter));display:flex;flex-direction:column;border-radius:var(--shape-lg) var(--shape-md) var(--shape-md) var(--shape-md);overflow:hidden;pointer-events:auto;animation:sheet-in var(--dur-open) var(--ease-decel)}
+@keyframes sheet-in{from{opacity:0;transform:translateX(2.4rem)} to{opacity:1;transform:none}}
+#menu-sheet.hidden{display:none}
+.sheet-head{display:flex;align-items:center;gap:var(--sp-2);flex:none;min-height:5.6rem;padding:var(--sp-2) var(--sp-2) var(--sp-2) var(--sp-5);border-bottom:1px solid var(--outline-variant)}
+#menu-sheet.panel-state .sheet-head{padding-left:var(--sp-2)}
+.sheet-head .title{flex:1;min-width:0;font:600 var(--fs-headline)/1.2 var(--font);color:var(--on-surface);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sheet-head .btn.icon{width:4rem;min-width:4rem;height:4rem;min-height:4rem;flex:none;color:var(--on-surface)}
+.sheet-body{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:var(--sp-2)}
+#menu-sheet .panel{padding:var(--sp-2) var(--sp-2) var(--sp-5);min-width:0;background:transparent;border:0;box-shadow:none}
+#menu-sheet .panel.hidden{display:none}
+#menu-sheet .panel>.panel-title:first-child,#menu-sheet .panel>#storm-title{display:none}
+#menu-sheet .panel .card-kicker{margin-top:var(--sp-4)} #menu-sheet .panel>.card-kicker:first-child,#menu-sheet .panel>.panel-title+.card-kicker{margin-top:0}
+#menu-sheet .panel-status{margin-top:0}
+
 .panel-status{font:500 var(--fs-label)/1.3 var(--font);letter-spacing:var(--track-label);text-transform:uppercase;color:var(--on-surface-variant);margin:-.4rem 0 1.2rem}
-#panels .panel .card-kicker{margin-top:2rem}
-.set-row{display:flex;align-items:flex-start;justify-content:space-between;gap:1.6rem;padding:.8rem 0;border-bottom:1px solid var(--surface-container-high);font-size:var(--fs-body)}
-.set-row .k{color:var(--on-surface-variant);flex:0 0 14rem;padding-top:.8rem}
+
+.set-row{display:flex;align-items:center;justify-content:space-between;gap:var(--sp-3);min-height:4.8rem;padding:var(--sp-2) 0;border-bottom:1px solid var(--surface-container-high);font-size:var(--fs-body)}
+.set-row.stack{flex-direction:column;align-items:stretch;gap:var(--sp-2)}
+.set-row .k{color:var(--on-surface);flex:1 1 auto;min-width:0}
+.set-row.stack .seg-wrap{align-items:stretch} .set-row.stack .seg{display:flex;width:100%} .set-row.stack .seg-btn{flex:1 1 0;min-width:0;padding:0 .6rem;white-space:nowrap}
+.set-row .seg-note{font-size:var(--fs-label);line-height:1.35}
+.set-audio{display:flex;align-items:center;gap:var(--sp-3)} .set-audio input[type="range"]{width:11rem} .set-actions{display:flex;gap:var(--sp-2);flex-wrap:wrap;justify-content:flex-end}
+.seg-btn .pct{margin-left:.4rem;font-weight:400;color:var(--on-surface-variant)} .seg-btn.active .pct{color:inherit}
 input[type="range"]{width:20rem;accent-color:var(--primary)}
 input[type="checkbox"]{accent-color:var(--primary)}
 .legend-table,.keys-table{display:flex;flex-direction:column;gap:.6rem;flex:1 1 auto}
@@ -395,7 +420,6 @@ input[type="checkbox"]{accent-color:var(--primary)}
 #title-seed:focus{border-color:var(--primary);box-shadow:inset 0 0 0 1px var(--primary)}
 #title-seed::placeholder{color:var(--on-surface-variant)}
 .title-foot{font:500 var(--fs-label)/1 var(--font);letter-spacing:.1em;text-transform:uppercase;color:var(--on-surface-variant);margin-top:.8rem}
-#app.title-on #panels .panel{z-index:11}
 /* the build menu (G), the coach-mark tour, card pulse (U4 turns the menu into the expanded Build sheet) */
 #build-menu{position:absolute;left:50%;top:calc(var(--topbar-h) + 1.6rem);transform:translateX(-50%);width:min(130rem,calc(100vw - 4rem));height:min(68rem,calc(100vh - var(--topbar-h) - var(--bot) - 3.2rem));display:flex;flex-direction:column;z-index:6;padding:0;animation:rise-x var(--dur-open) var(--ease-decel)}
 #build-menu.hidden{display:none !important}
@@ -445,8 +469,8 @@ input[type="checkbox"]{accent-color:var(--primary)}
 @media (max-width:1365px){#build-menu{top:calc(var(--topbar-h) + 1.2rem)} .bm-body{grid-template-columns:16rem 1fr 34rem}}
 /* popovers (U2): 360 wide (Alerts / Layers 400, Map fits its canvas, Menu 320), radius 16, padding 16, elevation 2, surface-float, 8 px under the bar; the stat-chip popovers sit on the left gutter, the icon popovers right-align to their icon (ui.js sets `right`) */
 .popover{position:absolute;top:calc(var(--bar-h) + 8px);left:var(--gutter);width:36rem;max-width:calc(100vw - 2 * var(--gutter));max-height:calc(100vh - var(--bar-h) - 8px - var(--gutter));overflow:auto;padding:var(--sp-4);z-index:7;animation:rise var(--dur-open) var(--ease-decel)}
-.popover.alerts,.popover.layers,.popover.map,.popover.menu{left:auto;right:var(--gutter)} .popover.alerts,.popover.layers{width:40rem} .popover.map{width:auto;padding:var(--sp-3)} .popover.menu{width:32rem;padding:var(--sp-2)}
-.popover .head{display:flex;align-items:flex-start;gap:var(--sp-2);margin:-.4rem 0 var(--sp-2)} .popover.menu .head{margin:.4rem 0 .4rem;padding-left:var(--sp-3)}
+.popover.alerts,.popover.layers,.popover.map{left:auto;right:var(--gutter)} .popover.alerts,.popover.layers{width:40rem} .popover.map{width:auto;padding:var(--sp-3)}
+.popover .head{display:flex;align-items:flex-start;gap:var(--sp-2);margin:-.4rem 0 var(--sp-2)}
 .popover .head .tcol{flex:1;min-width:0} .popover .head .title{font:600 var(--fs-title)/1.2 var(--font);color:var(--on-surface)} .popover .head .sub{font-size:var(--fs-label);color:var(--on-surface-variant);margin-top:.2rem}
 .popover .head .btn.icon{width:3.2rem;min-width:3.2rem;height:3.2rem;min-height:3.2rem;margin:-.2rem -.6rem 0 0;flex:none} .popover .head .btn.icon.selected{background:var(--secondary-container);color:var(--on-secondary-container)}
 #issues-head.clear .title{color:var(--success)}
@@ -455,6 +479,7 @@ input[type="checkbox"]{accent-color:var(--primary)}
 .popover.map .body{padding:0}
 .menu-list{display:flex;flex-direction:column;gap:.2rem} .menu-list .divider{height:1px;background:var(--outline-variant);margin:var(--sp-2) var(--sp-3)}
 .btn.list-item{position:relative;justify-content:flex-start;gap:var(--sp-3);width:100%;height:auto;min-height:4.8rem;padding:.6rem var(--sp-3) .6rem var(--sp-4);border-radius:var(--shape-sm);background:transparent;color:var(--on-surface);font-weight:400;text-align:left;white-space:normal}
+.list-item svg.lead{flex:none;width:2.4rem;height:2.4rem;color:var(--on-surface-variant)} .list-item svg.go{flex:none;width:2rem;height:2rem;color:var(--on-surface-variant)}
 .list-item .t{flex:1;min-width:0;line-height:1.3} .list-item .t small{display:block;color:var(--on-surface-variant);font-size:var(--fs-label)}
 .list-item .hk{display:inline-flex;align-items:center;justify-content:center;min-width:2.2rem;height:2.2rem;padding:0 .5rem;border-radius:.5rem;border:1px solid var(--outline-variant);color:var(--on-surface-variant);font:600 var(--fs-label)/1 var(--font)}
 /* H hides everything but the decision snackbar, cards, chips and the coach (screenshots); Shift+H or H restores (U2: the compact mode and the per-part pills are gone) */
@@ -467,7 +492,7 @@ input[type="checkbox"]{accent-color:var(--primary)}
 .num,[data-nw],.stat .odometer,.stat .delta,#chip-capacity,#chip-weather,#stat-date,.speed-btn,.need-val,#obj-count,#gp-count,.ms-count,.log-day,.item .cost,.bm-cost,.bm-upkeep,.dt-p,.dt-d,.fb-sl-val,.fb-tr .ovr,.fb-tr .cost,.fb-tr .dt,.mo-count,.menu-count,.sb-score,.sb-clock,.sum-pts,.fb-bud-total,.fb-bud-sub,.fb-bud-row .v,#issues-count,.issue-row .a,.issue-row .btn,.fb-record,.popover .row .v,.land-price .v,.btn .key{white-space:nowrap;font-variant-numeric:tabular-nums}
 .row .k{min-width:0}
 /* ui_panels.js (ARCH §7.7): Budget columns, Storm pick-list, Almanac grid; the rest reuses .row/.bar/.seg/.btn */
-.bud-grid{display:flex;gap:2rem;margin-bottom:1.2rem}
+.bud-grid{display:flex;flex-direction:column;gap:0;margin-bottom:var(--sp-2)} #alm-achievements.bud-grid{flex-direction:row}
 .bud-col{flex:1 1 0;min-width:0}
 .bud-apps{font-size:var(--fs-body);color:var(--on-surface-variant);margin:.4rem 0 1.2rem}
 .pick-list{display:flex;flex-direction:column;gap:.4rem;max-height:20rem;overflow-y:auto;margin:.8rem 0}
@@ -483,7 +508,6 @@ input[type="checkbox"]{accent-color:var(--primary)}
 .pb-line{font-size:var(--fs-body);line-height:1.4;color:var(--on-surface-variant);border-left:3px solid transparent;padding-left:1rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-height:2rem}
 .pb-line.empty{opacity:.25} .pb-line.opp{border-left-color:var(--outline)} .pb-line.key{border-left-color:var(--primary)}
 .pb-line.new{color:var(--on-surface);font-weight:600;background:var(--secondary-container)}
-#panels #panel-season{width:110rem}
 .fb-record{font:600 var(--fs-body)/1.3 var(--font);color:var(--primary);margin:-.4rem 0 1.2rem}
 .fb-cols{display:grid;grid-template-columns:1fr 1fr;gap:1.2rem 2.4rem} .fb-col{min-width:0} .fb-col>.card-kicker{margin-top:1.6rem} .fb-col>.card-kicker:first-child{margin-top:0}
 .fb-ctl{padding:.6rem 0 .8rem;border-bottom:1px solid var(--surface-container-high)} .fb-ctl .row{border-bottom:0;align-items:center;padding:.4rem 0}
@@ -536,7 +560,7 @@ input[type="checkbox"]{accent-color:var(--primary)}
 #panel-season:focus{outline:none}
 @media (max-width:1365px){.fb-ov,.fb-sched,.fb-rec,.fb-roster-cols{grid-template-columns:1fr} .fb-staff{grid-template-columns:1.4fr 1fr 1fr}}
 @media (max-width:1000px){.fb-staff{grid-template-columns:1fr}}
-@media (max-width:900px){#panels #panel-season{width:72rem} .fb-bud-grid{grid-template-columns:1fr}}
+@media (max-width:900px){.fb-bud-grid{grid-template-columns:1fr}}
 #card-gamesummary{width:60rem}
 .sum-banner{display:flex;align-items:center;justify-content:center;gap:1.6rem;padding:1.2rem 1.6rem;border-radius:var(--shape-md);background:var(--surface-container-low);border:1px solid var(--outline-variant)}
 .sum-banner.win{border-color:var(--success)} .sum-banner.loss{border-color:var(--error)}
@@ -549,7 +573,6 @@ input[type="checkbox"]{accent-color:var(--primary)}
 .alm-sub{font:600 var(--fs-label)/1 var(--font);letter-spacing:.08em;text-transform:uppercase;color:var(--on-surface-variant);margin:1.2rem 0 .4rem} .row.dim{color:var(--on-surface-variant);font-style:italic} .alm-note{font-size:var(--fs-label);color:var(--on-surface-variant);margin:-2px 0 .4rem 1.2rem}
 
 /* storm prep */
-#panels #panel-storm,#panels #panel-budget{width:72rem}
 .sp-all{margin:0 0 1.6rem;padding:1.4rem 1.6rem;border:1px solid var(--outline-variant);border-radius:var(--shape-sm);background:var(--secondary-container)}
 .sp-all .btn.primary{width:100%;margin-top:.8rem}
 .sp-steps{margin-top:.8rem} .sp-steps .row.sp-total,.sp-lines .row.sp-total{font-weight:700;color:var(--primary)}
@@ -604,7 +627,8 @@ input[type="checkbox"]{accent-color:var(--primary)}
 .menu-count{font-size:var(--fs-body);color:var(--on-surface-variant);font-variant-numeric:tabular-nums}
 .menu-sum{font-size:var(--fs-body);line-height:1.4;color:var(--on-surface)}
 #insp-body .row{padding:.45rem 0}
-#panels #menu-overlay{width:64rem;padding:1.6rem 1.6rem 1.6rem;z-index:5}
+#panels #menu-overlay{position:relative;flex:0 1 auto;width:64rem;max-width:100%;max-height:100%;overflow:auto;padding:1.6rem;pointer-events:auto;z-index:5;animation:rise var(--dur-open) var(--ease-decel)}
+#menu-overlay .panel-head{position:absolute;right:1.2rem;top:1.2rem;z-index:5}
 #menu-overlay .panel-title{margin:0 0 .3rem;padding-right:4.8rem;font-size:var(--fs-headline)}
 #menu-overlay .menu-sum{margin-bottom:1rem;color:var(--on-surface-variant)}
 .mo-bar{display:flex;align-items:center;justify-content:space-between;gap:1.2rem;margin-bottom:.6rem}
@@ -625,7 +649,6 @@ input[type="checkbox"]{accent-color:var(--primary)}
 #menu-overlay .menu-note{margin-top:.9rem;font-size:var(--fs-label);color:var(--on-surface-variant)}
 /* gators */
 #alert-close{margin-left:.2rem;opacity:.7}#alert-close:hover{opacity:1}
-#hud.inspect-open #alert-strip{top:calc(var(--topbar-h) + 28.4rem);left:calc(var(--side) + 36rem + (100vw - 2 * var(--side) - 36rem - var(--inspect-w) - var(--gutter)) / 2);max-width:clamp(24rem,calc(100vw - 2 * var(--side) - 36rem - var(--inspect-w) - 4rem),60rem)}   /* qa pass 4: beside an open inspect the strip drops under the shifted overlay keys, centred between the goal card and the panel (clear of the minimap at 1280) */
 .issue-row .why{grid-column:2 / -1;min-width:0;font-size:var(--fs-label);line-height:1.25;color:var(--on-surface-variant);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #inspect .row.why .v{white-space:normal;text-align:left;opacity:.8}
 /* issues v2 */
@@ -672,8 +695,8 @@ input[type="checkbox"]{accent-color:var(--primary)}
 .title-help{margin-top:0;gap:var(--sp-2);flex-wrap:wrap;justify-content:center}
 @media (max-width:899px),(hover:none) and (pointer:coarse){.title-hint{display:block}}
 @media (max-width:899px){#title{overflow:auto}.title-box{min-width:0;margin:auto;padding:var(--sp-6) var(--sp-4) var(--sp-5)}#title-name{font-size:4.4rem;letter-spacing:.04em}.title-row{flex-wrap:wrap;justify-content:center}}
-#app.title-on #panels{z-index:11;padding:2rem}   /* #panels is its own stacking context (z 4), so the panel-level z 11 above never lifted it over #title (z 10): Settings opened behind the title card */
-#panels #panel-howto{width:98rem;padding:1.6rem 2rem} #panels #panel-about{width:54rem}
+#app.title-on #panels{z-index:11}   /* #panels is its own stacking context (z 4), so it needs the lift over #title (z 10) for Settings / How to play / About opened from the title screen */
+#app.title-on #menu-sheet{top:var(--gutter)}
 .how-goal{margin:0 0 var(--sp-3);max-width:84rem;font-size:var(--fs-body);line-height:1.5}
 .how-groups,.how-keys{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--sp-5)}
 .how-col .card-kicker{margin:0 0 var(--sp-2)}
@@ -685,7 +708,38 @@ input[type="checkbox"]{accent-color:var(--primary)}
 .about-row{display:grid;grid-template-columns:8rem minmax(0,1fr);gap:var(--sp-3);padding:var(--sp-2) 0;border-bottom:1px solid var(--surface-container-high);font-size:var(--fs-body);line-height:1.45}
 .about-row .k{color:var(--on-surface-variant)}
 @media (max-width:899px){.how-groups,.how-keys{grid-template-columns:1fr;gap:var(--sp-3)}}
-#app.title-on:has(#panels .panel:not(.hidden)) .title-box{opacity:0;pointer-events:none}   /* a panel opened from the title: the card steps back instead of peeking out around it */
+
+/* ---- U3: nested surfaces inside the Menu sheet (36 rem wide: stacked sections, tables fit, the body scrolls) ---- */
+#menu-sheet .bud-col>.card-kicker{margin:var(--sp-4) 0 var(--sp-1)} #menu-sheet .bud-col:first-child>.card-kicker{margin-top:0}
+#menu-sheet .seg.sizes{height:5rem} #menu-sheet .seg.sizes .seg-btn{flex-direction:column;gap:0;padding:0 .4rem;line-height:1.2} #menu-sheet .seg.sizes .seg-btn .pct{display:block;margin:0;font-size:var(--fs-label)}
+#menu-sheet .row{font-size:var(--fs-body);align-items:center} #menu-sheet .row .v{min-width:0;overflow-wrap:anywhere}
+#menu-sheet input[type="range"],#menu-sheet .fb-slider{width:100%;max-width:100%;min-width:0}
+#menu-sheet .seg{max-width:100%;flex-wrap:nowrap} #menu-sheet .seg-btn{padding:0 1rem}
+#menu-sheet canvas{max-width:100%;height:auto}
+#menu-sheet .fb-ov,#menu-sheet .fb-sched,#menu-sheet .fb-rec,#menu-sheet .fb-roster-cols,#menu-sheet .fb-cols,#menu-sheet .fb-bud-grid,#menu-sheet .fb-cand-groups,#menu-sheet .fb-staff{grid-template-columns:minmax(0,1fr)}
+#menu-sheet .fb-tr{grid-template-columns:3rem minmax(0,1fr) 7rem 2.8rem 3rem 4.4rem;gap:.4rem;font-size:var(--fs-label)} #menu-sheet .fb-th{letter-spacing:.02em} #menu-sheet .fb-pr{grid-template-columns:3rem minmax(0,1fr) 3rem 5rem auto}
+#menu-sheet .fb-sc,#menu-sheet .fb-tr.sched-head{grid-template-columns:5.6rem minmax(0,1fr) 4.8rem 1.6rem 5.2rem} #menu-sheet .fb-rh{grid-template-columns:3.6rem 3rem minmax(0,1fr) 3rem 5.2rem}
+#menu-sheet .fb-tabs{flex-wrap:wrap} #menu-sheet .fb-tab{padding:0 1.2rem}
+#menu-sheet .fb-pages{min-height:0} #menu-sheet .fb-record{white-space:normal}
+#menu-sheet .fb-ctl-row{gap:var(--sp-3) var(--sp-4)}
+#menu-sheet .pick-list{max-height:24rem}
+#menu-sheet .sp-done{margin-right:0}
+#menu-sheet .how-groups,#menu-sheet .how-keys{grid-template-columns:minmax(0,1fr);gap:var(--sp-3)}
+#menu-sheet .how-goal{max-width:none}
+#menu-sheet .about-row{grid-template-columns:6.4rem minmax(0,1fr)}
+#menu-sheet .legend-row{grid-template-columns:5rem minmax(0,1fr)} #menu-sheet .legend-row .v{grid-column:2}
+#menu-sheet .dbg-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+#menu-sheet .log-list,#menu-sheet .ms-list{min-width:0}
+#menu-sheet #panel-milestones .row:has(+ .row .bar){border-bottom:0;padding-bottom:0} #menu-sheet #panel-milestones .row .bar{margin-top:0 !important}
+#menu-sheet .how-kcol{grid-template-columns:8.8rem minmax(0,1fr)}
+
+/* ---- U3: dialogs (the cards and the student voice): 28 px corners, title, body, actions right-aligned (text button, then the filled one), Esc = the dismiss action ---- */
+#cards .card-actions,#voice-dialog .card-actions{justify-content:flex-end;margin-top:var(--sp-5)}
+#cards .card-actions .btn:not(.primary),#voice-dialog .card-actions .btn:not(.primary){background:transparent;color:var(--primary)} #cards .card-actions .btn.primary,#voice-dialog .card-actions .btn.primary{order:2}
+#cards .card-actions .btn{white-space:normal;height:auto;min-height:var(--control-h);padding-top:.8rem;padding-bottom:.8rem;text-align:center}
+.card:focus,#voice-dialog:focus{outline:none}
+#cards .card[tabindex],#voice-dialog[tabindex]{outline:none}
+
 </style>
 </head>
 <body>
@@ -14218,7 +14272,7 @@ input[type="checkbox"]{accent-color:var(--primary)}
         const cost = fin(call('buildings', 'repairCost', state, b.id), 0), can = afford(state, cost);
         mk(out, 'damaged', 'damaged:' + b.id, Object.assign({
           severity: b.ruin ? 3 : 2, title: name + (b.ruin ? ' is in ruins' : ' is storm-damaged'),
-          fix: (b.ruin ? 'Ruined: Fix rebuilds it' : 'Damaged: Fix repairs it') + ' for ' + money(cost) + (can ? '' : ' (not enough cash)') + ' · Repair all is in the Storm panel',
+          fix: (b.ruin ? 'Ruined: Fix rebuilds it' : 'Damaged: Fix repairs it') + ' for ' + money(cost) + (can ? '' : ' (not enough cash)') + ' · Repair all is in Menu → Storm',
           persist: can ? 'Repair ' + money(cost) + ' · one click' : 'Not enough cash: the repair costs ' + money(cost) + ' (you have ' + money(cashOf(state)) + ')',
           action: { repair: b.id }, cost: cost, resolvable: can, stage: b.ruin ? 'ruin' : 'hp'
         }, base));
@@ -14295,7 +14349,7 @@ input[type="checkbox"]{accent-color:var(--primary)}
           const integ = tl.integrity[worst] | 0, tiles = run.slice(0, LEVEE_RUN_MAX);
           const q = call('buildings', 'leveeRunQuote', state, tiles) || { ok: false, cost: 0, count: tiles.length, reason: '' };
           mk(out, 'weakLevee', 'weakLevee:' + run[0], { severity: integ < half ? 3 : 2, title: 'Levee weak (' + integ + '%)' + (run.length > 1 ? ' · ' + run.length + ' tiles' : ''),
-            fix: 'Weak levee: Fix repairs the whole run (' + q.count + (q.count === 1 ? ' tile' : ' tiles') + ', ' + money(q.cost) + ')' + (q.ok ? '' : ' — ' + q.reason) + ' · the Storm panel repairs them all',
+            fix: 'Weak levee: Fix repairs the whole run (' + q.count + (q.count === 1 ? ' tile' : ' tiles') + ', ' + money(q.cost) + ')' + (q.ok ? '' : ' — ' + q.reason) + ' · Menu → Storm repairs them all',
             persist: q.ok ? 'Repair the run: ' + money(q.cost) + ' · one click' : (q.reason || 'Cannot repair'), tiles: tiles, anchor: tileAnchor(worst), action: { repairLevee: worst, run: tiles }, cost: fin(q.cost, 0), resolvable: !!q.ok, stage: integ < half ? 'half' : 'weak' });
         }
       }
@@ -19623,7 +19677,7 @@ input[type="checkbox"]{accent-color:var(--primary)}
       const raise = Math.round(int(c.salary, 0) * num(PF.poach.raise, 0.25));
       st.offers[r] = { year: year, answered: false, accepted: false, raise: raise };
       const p = { role: r, label: roleLabel(r), name: c.name, stars: c.stars, salary: c.salary, raise: raise, newSalary: c.salary + raise, years: c.years, year: year };
-      ticker(state, c.name + ' (' + c.stars + '★) is taking calls: a ' + Math.round(num(PF.poach.raise, 0.25) * 100) + '% raise keeps them (Season panel → Staff).', {});
+      ticker(state, c.name + ' (' + c.stars + '★) is taking calls: a ' + Math.round(num(PF.poach.raise, 0.25) * 100) + '% raise keeps them (Menu → Season → Staff).', {});
       emit(EV.STAFF_OFFER, p);
       out.push(p);
     }
@@ -21239,7 +21293,7 @@ input[type="checkbox"]{accent-color:var(--primary)}
     call('progress', 'sportsCard', state, { id: 'springGame', kicker: 'Newsflash · Athletics', title: L.springTitle,
       body: ['The first look at the ' + L.bsuNick + ': ' + L.springNames[0] + ' (the starters) against the ' + L.springNames[1] + ' scrimmage squad on the Practice Field, ' + when + '.',
         'No gate and no record: a concession line, +' + num(PE.spring.happiness, 1) + ' happiness, and your first 4th-down call.',
-        'Coach ' + ((sp.coach && sp.coach.name) || 'Cheramie') + ' runs the ' + sp.playbook + ' playbook. Change it in the Season panel before kickoff.'] });
+        'Coach ' + ((sp.coach && sp.coach.name) || 'Cheramie') + ' runs the ' + sp.playbook + ' playbook. Change it in Menu → Season before kickoff.'] });
   }
   /** The scheduled day: start the set piece unless the day is busy (tutorial, a storm on the board, a set piece, a game today) → the next day. */
   function trySpring(state) {
@@ -39662,15 +39716,15 @@ input[type="checkbox"]{accent-color:var(--primary)}
 //   │  ├─ #alert-strip.hidden  #alert-icon #alert-text #alert-action #alert-gator
 //   │  ├─ #goal-pill (at rest: ring + #gp-kicker #gp-title #gp-count) ↔ #objective-card (the goal card: canvas#obj-portrait #obj-kicker #obj-title #obj-text #obj-why
 //   │  │     #btn-goal-collapse #btn-obj-dismiss #obj-progress(.fill) #obj-count #btn-obj-build #btn-showme #obj-next #obj-background #speech-bubble)
-//   │  ├─ #voice-card.hidden  #voice-text #voice-payoff #btn-voice-accept #btn-voice-decline
+//   │  ├─ #voice-card.hidden (the scrim host)  #voice-dialog.card  #voice-student #voice-text #voice-payoff #btn-voice-decline #btn-voice-accept
 //   │  ├─ #milestones-card.hidden  .ms-row×3
 //   │  ├─ popovers (.popover, anchored under their chip / icon; ui.openPopover / closePopover):
 //   │  │   #pop-needs(#needs-strip(.need×6 #needs-text #needs-locate) #needs-apps) · #pop-budget(#mb-income #mb-expense #mb-net #mb-runway #btn-mb-open) ·
 //   │  │   #pop-alerts(#issues-head(#issues-count #issues-sub) #issues-tray(#issues-list #issues-progress #issues-more #issues-suggest #issues-hidden) #issues-spot #issues-clear) ·
 //   │  │   #pop-layers(#overlay-buttons(.ov-btn[data-ov=1..6]) #legend) · #pop-map(#btn-map-pin #minimap-wrap(canvas#minimap #minimap-viewport)) ·
-//   │  │   #pop-menu(#btn-budget #btn-season #btn-storm(.dot) #btn-land #btn-almanac #btn-milestones #btn-log #btn-settings #btn-howto #btn-about)   (U3: the side sheet)
+//   │  │   (the Menu is the side sheet #menu-sheet in #panels, below)
 //   │  ├─ #snack-lane  #notif-dismiss · #notifications(.snackbar.notif[data-kind]) · #decision-toast.snackbar.decision(#dt-text #dt-options #btn-dt-no #btn-dt-yes #dt-foot #dt-countdown(.fill))
-//   │  ├─ #inspect.panel.side.hidden  #insp-title #insp-sub #btn-insp-close canvas#insp-sprite #insp-body #insp-actions  (a kitchen's #insp-menu = summary + #btn-edit-menu)
+//   │  ├─ #inspect.inspect-card.hidden[.collapsed = the pill]  canvas#insp-sprite #insp-title #insp-sub #btn-insp-collapse #btn-insp-close #insp-body #insp-actions  (a kitchen's #insp-menu = summary + #btn-edit-menu)
 //   │  ├─ #ghost-label.hidden · #tooltip.hidden · #popover.hidden(#pop-title .pop-line×7 #pop-next)   (the stat breakdown: Prestige / Happiness / Ecology)
 //   │  ├─ #palette.hidden (the interim Build sheet; G / the FAB toggle it)  #btn-build-menu · #palette-tabs(.tab[data-tab] .pip) · #palette-items(.item[data-id]) · #btn-bulldoze · #btn-palette-info · #btn-palette-close
 //   │  ├─ #fab-build (the gold Build FAB, bottom-right)
@@ -39678,7 +39732,7 @@ input[type="checkbox"]{accent-color:var(--primary)}
 //   │  ├─ #coach.hidden  .coach-pane×4 · .coach-ring · .coach-box(#coach-step #coach-title #coach-text #btn-coach-back #btn-coach-skip #btn-coach-next)
 //   │  ├─ #cards (modal stack: .card#card-<id> .card-title .card-body .card-actions)
 //   │  └─ #perf-chip.hidden · #perfmode-chip.hidden · #hint.hidden · #btn-skip.hidden · #undo-chip · #hud-chip
-//   ├─ #panels  (#panel-<name>.panel built through registerPanel; settings + howto + about + log + debug + milestones built in here)
+//   ├─ #panels  (the layer over the map)  #menu-sheet.side-sheet(#sheet-head(#btn-sheet-back #sheet-title #btn-sheet-close) #sheet-body(#sheet-list(.list-item#btn-budget … #btn-about) #panel-<name>.panel built through registerPanel)) · #menu-overlay (the kitchen's Edit menu dialog)
 //   └─ #title  #title-name #title-tag .title-hint #btn-charter #btn-continue #btn-title-howto #btn-title-about input#title-seed #btn-title-settings #btn-title-mute
 //
 // Input state machine (ARCHITECTURE §7.3):
@@ -39738,7 +39792,13 @@ input[type="checkbox"]{accent-color:var(--primary)}
     paid: ['M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z', 'M12 6.5v11', 'M14.8 9.3c-.4-1-1.5-1.6-2.8-1.6-1.6 0-2.8.8-2.8 2 0 2.7 5.6 1.3 5.6 4.1 0 1.3-1.3 2-2.8 2-1.4 0-2.5-.7-2.9-1.7'],
     group: ['M9 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6z', 'M3 20a6 6 0 0 1 12 0', 'M16 5.5a3 3 0 0 1 0 5.5', 'M21 20a6 6 0 0 0-4.5-5.8'],
     mood: ['M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z', 'M8.5 14.5a4.5 4.5 0 0 0 7 0', 'M9 10h.01', 'M15 10h.01'], eco: ['M5 19c0-8 5-13 14-13 0 9-5 13-11 13', 'M5 19l7-7'],
-    volume_up: ['M4 10v4h4l5 4V6L8 10z', 'M16 9a4 4 0 0 1 0 6', 'M18.5 6.5a7.5 7.5 0 0 1 0 11'], volume_off: ['M4 10v4h4l5 4V6L8 10z', 'M16 9l5 6', 'M21 9l-5 6']
+    volume_up: ['M4 10v4h4l5 4V6L8 10z', 'M16 9a4 4 0 0 1 0 6', 'M18.5 6.5a7.5 7.5 0 0 1 0 11'], volume_off: ['M4 10v4h4l5 4V6L8 10z', 'M16 9l5 6', 'M21 9l-5 6'],
+    // U3: the Menu sheet (docs/UI_STYLE.md §6; the mock's sprite)
+    arrow_back: ['M19 12H5', 'M11 6l-6 6 6 6'],
+    settings: ['M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z', 'M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z'],
+    calendar: ['M5 5h14v15H5z', 'M5 10h14', 'M9 3v4', 'M15 3v4'], flag: ['M6 21V4', 'M6 5h11l-2 4 2 4H6'], list: ['M5 6h14', 'M5 12h14', 'M5 18h9'],
+    cyclone: ['M12 12h.01', 'M12 8a4 4 0 0 1 4 4 6 6 0 0 1-6 6 8 8 0 0 1-8-8 10 10 0 0 1 10-10'], football: ['M4 20C4 10 10 4 20 4c0 10-6 16-16 16z', 'M9 15l6-6', 'M11 9l4 4'],
+    landscape: ['M3 19l6-10 4 6 3-4 5 8z'], help: ['M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z', 'M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.4-1 .9-1 1.7', 'M12 17h.01']
   };
   const ICON_FILLED = { star: true };
   /** the legend swatches of the Layers popover (the overlays themselves are canvas colours in render.js; these echo its OV_COLORS at the legend's four steps) */
@@ -39781,6 +39841,7 @@ input[type="checkbox"]{accent-color:var(--primary)}
     for (const d of (ICONS[name] || [])) { const p = document.createElementNS(SVG_NS, 'path'); p.setAttribute('d', d); if (ICON_FILLED[name]) { p.setAttribute('fill', 'currentColor'); p.setAttribute('stroke', 'none'); } s.appendChild(p); }
     return s;
   }
+  M.icon = function (name, cls_) { return icon(name, cls_); };   // U3: the icon table for ui_panels and the tests
   function iconBtn(id, name, title, onClick) { const b = btn(id, null, 'icon', onClick); b.title = title || ''; b.appendChild(icon(name)); if (id) E[id] = b; return b; }
   function money(n) { return BSU.formatMoney(fin(n, 0)); }
   /** H6 number rules: the sign is part of the number (a true minus U+2212, never a hyphen: formatMoney already does it for cash), thousands are grouped, and every
@@ -39817,7 +39878,7 @@ input[type="checkbox"]{accent-color:var(--primary)}
   let toast = null; const toastQueue = [];
   const gameDecs = {};   // football pass D: game:decision payloads (options with win probabilities) by decision id, consumed by the toast
   let card = null; const cardQueue = [];
-  let insp = null, inspAt = -1e9, inspDirty = false, renaming = null;
+  let insp = null, inspAt = -1e9, inspDirty = false, renaming = null, inspCollapsed = false;   // U3: inspCollapsed = the card shows as its one-line pill
   let menuEdit = null, menuReason = { text: '', until: 0 }, menuSig = '';   // menu layout pass: the Edit menu overlay ({id} while open, never saved), its inline refusal line, the dish-grid signature (cells are rebuilt only when the set changes)
   let tk = { seen: 0, lastLen: -1 };       // U2: the news lines of state.ticker already shown as snackbars (the Log panel lists them all)
   const snackQueue = [];                   // U2: notifications / news waiting for one of the two snackbar slots ({spec, kind, …} like `notifs`)
@@ -39825,6 +39886,8 @@ input[type="checkbox"]{accent-color:var(--primary)}
   M._goalCollapseMs = 10000;               // the card folds this long after it opened (hover restarts it; tests shorten it)
   const pops = { open: null };             // U2: the one transient popover (needs | budget | alerts | layers | map | menu | breakdown) or null
   const pal = { open: false };             // U2: the Build sheet (today's palette) shown by the FAB / G
+  const sheet = { open: false };           // U3: the Menu side sheet (list state when state.ui.panel is null, panel state when it names the open panel)
+  const dlg = { prev: null };              // U3: the element that had focus before a dialog (card / voice) opened; focus goes back to it on close
   const odo = { cash: NaN, students: NaN, shownStudents: NaN, holdUntil: -1, lastStudents: NaN, deltaUntil: 0 };
   const held = { up: false, down: false, left: false, right: false };
   let hint = null;                         // {until, untilTick}
@@ -39868,9 +39931,9 @@ input[type="checkbox"]{accent-color:var(--primary)}
     E[id] = s; E[id + '-value'] = val; E[id + '-delta'] = d; E[id + '-label'] = lab; E[id + '-dot'] = dot; E[id + '-line'] = line;
     return s;
   }
-  /** U2 Menu list item (the interim Menu popover; U3's side sheet keeps these ids): label, a small second line, the hotkey cap */
-  function menuItem(id, label, sub, key, onClick) {
-    const b = btn(id, null, 'list-item', function () { closePopover(); onClick(); }); const t = el('span', 't', label); if (sub) t.appendChild(el('small', null, sub)); b.appendChild(t); if (key) b.appendChild(el('span', 'hk', key)); b.title = label + (key ? ' (' + key + ')' : ''); E[id] = b; return b;
+  /** U3 Menu list item (a row of the side sheet's list state; U2's interim popover kept these ids): leading icon, label + a small second line, the hotkey cap */
+  function menuItem(id, label, sub, key, iconName, onClick) {
+    const b = btn(id, null, 'list-item sl', function () { onClick(); }); if (iconName) b.appendChild(icon(iconName, 'lead')); const t = el('span', 't', label); if (sub) t.appendChild(el('small', null, sub)); b.appendChild(t); if (key) b.appendChild(el('span', 'hk', key)); else b.appendChild(icon('chevron_right', 'go')); b.title = label + (key ? ' (' + key + ')' : ''); E[id] = b; return b;
   }
   function buildTopbar() {
     const tb = el('div'); tb.id = 'topbar'; E.topbar = tb;
@@ -39900,7 +39963,7 @@ input[type="checkbox"]{accent-color:var(--primary)}
     const lit = btn('ov-lit', '', 'lit-chip hidden', function () { togglePopover('layers'); }); E['ov-lit'] = lit; acts.appendChild(lit);
     acts.appendChild(iconBtn('btn-layers', 'layers', 'Layers (F W K P C E)', function () { togglePopover('layers'); }));
     acts.appendChild(iconBtn('btn-map', 'map', 'Map', function () { togglePopover('map'); }));
-    acts.appendChild(iconBtn('btn-menu', 'menu', 'Menu', function () { togglePopover('menu'); }));
+    acts.appendChild(iconBtn('btn-menu', 'menu', 'Menu', function () { M.toggleMenu(); }));
     const mute = btn('btn-mute', null, 'icon', function () { toggleMute(); }); mute.title = 'Mute (M)'; const mOn = icon('volume_up'), mOff = icon('volume_off', 'hidden'); mute.appendChild(mOn); mute.appendChild(mOff); E['btn-mute'] = mute; E['btn-mute-on'] = mOn; E['btn-mute-off'] = mOff; acts.appendChild(mute);
     const endowed = el('span', 'chip gold hidden', 'Endowed'); endowed.id = 'chip-endowed'; E['chip-endowed'] = endowed; acts.appendChild(endowed);
     return tb;
@@ -39914,7 +39977,7 @@ input[type="checkbox"]{accent-color:var(--primary)}
     E['pop-' + name] = p; E['pop-' + name + '-title'] = t;
     return { el: p, head: head, tcol: tcol, title: t, close: x, body: body };
   }
-  /** U2: every popover (needs, mini budget, Alerts, Layers, Map, Menu); one is open at a time (openPopover); the Map / Layers ones can be pinned through settings */
+  /** U2: every popover (needs, mini budget, Alerts, Layers, Map; U3 moved the Menu to the side sheet); one is open at a time (openPopover); the Map / Layers ones can be pinned through settings */
   function buildPopovers() {
     const out = [];
     const nd = popShell('needs', 'What the campus needs', 'needs'); nd.body.appendChild(buildNeedsStrip()); const ne = el('div', 'muted hidden', 'Nothing to report yet: the first buildings set what the campus needs.'); ne.id = 'needs-empty'; nd.body.appendChild(ne); E['needs-empty'] = ne; out.push(nd.el);
@@ -39930,19 +39993,6 @@ input[type="checkbox"]{accent-color:var(--primary)}
     const ly = popShell('layers', 'Layers', 'layers'); const ov = buildOverlays(); ly.body.appendChild(ov[0]); ly.body.appendChild(ov[1]); out.push(ly.el);
     const mp = popShell('map', 'Map', 'map'); const pin = btn('btn-map-pin', null, 'icon', function () { M.pinMinimap(); }); pin.appendChild(icon('push_pin')); pin.title = 'Keep the minimap open (remembered)'; mp.head.insertBefore(pin, mp.close); E['btn-map-pin'] = pin;
     mp.body.appendChild(buildMinimap()); const mft = el('div', 'foot muted', 'Click to pan · the pin keeps it open'); mft.id = 'map-foot'; mp.el.appendChild(mft); out.push(mp.el);
-    const mn = popShell('menu', 'Menu', 'menu'); const list = el('div', 'menu-list'); mn.body.appendChild(list);
-    list.appendChild(menuItem('btn-budget', 'Budget', 'Income, expenses, tuition and faculty', 'B', function () { M.openPanel('budget'); }));
-    list.appendChild(menuItem('btn-season', 'Season', 'Schedule, roster, the coach', 'N', function () { M.openPanel('season'); }));
-    const storm = menuItem('btn-storm', 'Storm', 'Board up, sandbags, pumps, shelters', 'T', function () { M.openPanel('storm'); }); const dot = el('span', 'dot'); storm.appendChild(dot); E['btn-storm-dot'] = dot; list.appendChild(storm);
-    list.appendChild(menuItem('btn-land', 'Land Office', 'Buy the next section of state land', 'O', function () { M.openPanel('land'); }));   // L2: the Land Office (a deed)
-    list.appendChild(menuItem('btn-almanac', 'Almanac', 'The year so far, by month', '', function () { M.openPanel('almanac'); }));
-    list.appendChild(menuItem('btn-milestones', 'Milestones', 'Every goal, done and to come', 'L', function () { M.openPanel('milestones'); }));
-    list.appendChild(menuItem('btn-log', 'Log', 'The last 30 news lines', '', function () { M.openPanel('log'); }));
-    list.appendChild(el('div', 'divider'));
-    list.appendChild(menuItem('btn-settings', 'Settings', '', '', function () { M.openPanel('settings'); }));
-    list.appendChild(menuItem('btn-howto', 'How to play', '', '', function () { M.openPanel('howto'); }));
-    list.appendChild(menuItem('btn-about', 'About this build', '', '', function () { M.openPanel('about'); }));
-    out.push(mn.el);
     return out;
   }
   function buildAlert() {
@@ -40035,10 +40085,11 @@ input[type="checkbox"]{accent-color:var(--primary)}
     c.appendChild(bub); c.appendChild(head); c.appendChild(progRow); c.appendChild(acts); c.appendChild(next); c.appendChild(bg);
     E['objective-card'] = c; E['obj-portrait'] = portrait; E['obj-kicker'] = kick; E['obj-title'] = title; E['obj-text'] = text; E['obj-why'] = why; E['obj-progress'] = prog; E['obj-prog-row'] = progRow; E['obj-fill'] = fill; E['obj-count'] = count; E['obj-actions'] = acts;
     E['btn-obj-build'] = build; E['btn-showme'] = showme; E['btn-postcard-obj'] = post; E['btn-obj-dismiss'] = dis; E['btn-goal-collapse'] = fold; E['obj-next'] = next; E['obj-background'] = bg; E['speech-bubble'] = bub;
-    const v = el('div', 'hidden'); v.id = 'voice-card'; const vh = el('div', 'card-kicker', 'Student voice'); const vs = el('div', 'voice-student', ''); const vt = el('div', null, ''); vt.id = 'voice-text'; const vp = el('div', null, ''); vp.id = 'voice-payoff';
-    const va = el('div', 'card-actions'); const acc = btn('btn-voice-accept', 'Accept', 'primary small', function () { answerVoice(true); }); const dec = btn('btn-voice-decline', 'Decline', 'small', function () { answerVoice(false); }); va.appendChild(acc); va.appendChild(dec);
-    v.appendChild(vh); v.appendChild(vs); v.appendChild(vt); v.appendChild(vp); v.appendChild(va);
-    E['voice-card'] = v; E['voice-student'] = vs; E['voice-text'] = vt; E['voice-payoff'] = vp; E['btn-voice-accept'] = acc; E['btn-voice-decline'] = dec;
+    // U3: the student voice is a dialog like the cards: #voice-card is its scrim host, #voice-dialog the card (Decline = the dismiss action, Esc)
+    const v = el('div', 'hidden'); v.id = 'voice-card'; const vd = el('div', 'card voice-dialog'); vd.id = 'voice-dialog'; const vh = el('div', 'card-kicker', 'Student voice'); const vs = el('div', 'voice-student card-title', ''); const vt = el('div', 'card-body'); vt.id = 'voice-text'; const vp = el('div', 'card-body voice-payoff', ''); vp.id = 'voice-payoff';
+    const va = el('div', 'card-actions'); const acc = btn('btn-voice-accept', 'Accept', 'primary', function () { answerVoice(true); }); const dec = btn('btn-voice-decline', 'Decline', '', function () { answerVoice(false); }); va.appendChild(dec); va.appendChild(acc);
+    vd.appendChild(vh); vd.appendChild(vs); vd.appendChild(vt); vd.appendChild(vp); vd.appendChild(va); v.appendChild(vd);
+    E['voice-card'] = v; E['voice-dialog'] = vd; E['voice-student'] = vs; E['voice-text'] = vt; E['voice-payoff'] = vp; E['btn-voice-accept'] = acc; E['btn-voice-decline'] = dec;
     const ms = el('div', 'hidden'); ms.id = 'milestones-card'; const mh = el('div', 'card-kicker', 'Next milestones'); ms.appendChild(mh); E.msRows = [];
     for (let k = 0; k < 3; k++) { const r = el('div', 'ms-row'); const n = el('span', 'ms-name', ''); const b = el('div', 'bar'); const f = el('div', 'fill'); b.appendChild(f); const cnt = el('span', 'ms-count', ''); r.appendChild(n); r.appendChild(b); r.appendChild(cnt); ms.appendChild(r); E.msRows.push({ row: r, name: n, fill: f, count: cnt }); }
     E['milestones-card'] = ms;
@@ -40055,15 +40106,18 @@ input[type="checkbox"]{accent-color:var(--primary)}
     t.appendChild(tx); t.appendChild(opts); t.appendChild(acts); t.appendChild(foot); t.appendChild(bar);
     E['decision-toast'] = t; E['dt-text'] = tx; E['dt-options'] = opts; E['dt-foot'] = foot; E['dt-countdown'] = bar; E['dt-fill'] = fill; E['btn-dt-yes'] = y; E['btn-dt-no'] = n; E['dt-actions'] = acts; return t;
   }
+  /** U3: the inspect card (bottom-left above the lane): sprite · title + sub · collapse chevron · ✕; rows; actions. Collapsed (.collapsed) it is a one-line pill (sprite, title, chevron up, ✕) that re-expands on a click */
   function buildInspect() {
-    const p = el('div', 'panel side hidden'); p.id = 'inspect';
+    const p = el('div', 'panel side inspect-card hidden'); p.id = 'inspect';
     const head = el('div', 'insp-head'); const sprite = el('canvas'); sprite.id = 'insp-sprite'; sprite.width = 64; sprite.height = 64;
     const col = el('div', 'insp-col'); const title = el('div', null, ''); title.id = 'insp-title'; const sub = el('div', null, ''); sub.id = 'insp-sub'; col.appendChild(title); col.appendChild(sub);
-    const close = btn('btn-insp-close', '✕', 'icon', function () { M.closeInspect(); });
-    head.appendChild(sprite); head.appendChild(col); head.appendChild(close);
+    const fold = btn('btn-insp-collapse', null, 'icon', function (ev) { if (ev && ev.stopPropagation) ev.stopPropagation(); M.collapseInspect(); }); fold.title = 'Collapse'; const less = icon('expand_less', 'hidden'), more = icon('expand_more'); fold.appendChild(more); fold.appendChild(less);
+    const close = btn('btn-insp-close', null, 'icon', function (ev) { if (ev && ev.stopPropagation) ev.stopPropagation(); M.closeInspect(); }); close.title = 'Close (Esc)'; close.appendChild(icon('close'));
+    head.appendChild(sprite); head.appendChild(col); head.appendChild(fold); head.appendChild(close);
     const body = el('div', 'rows'); body.id = 'insp-body'; const acts = el('div', 'insp-actions'); acts.id = 'insp-actions';
     p.appendChild(head); p.appendChild(body); p.appendChild(acts);
-    E.inspect = p; E['insp-title'] = title; E['insp-sub'] = sub; E['btn-insp-close'] = close; E['insp-sprite'] = sprite; E['insp-body'] = body; E['insp-actions'] = acts; return p;
+    p.addEventListener('click', function () { if (inspCollapsed) M.collapseInspect(false); });
+    E.inspect = p; E['insp-title'] = title; E['insp-sub'] = sub; E['btn-insp-collapse'] = fold; E['insp-fold-more'] = more; E['insp-fold-less'] = less; E['btn-insp-close'] = close; E['insp-sprite'] = sprite; E['insp-body'] = body; E['insp-actions'] = acts; return p;
   }
   function buildPopover() {
     const p = el('div', 'hidden'); p.id = 'popover'; const t = el('div', null, ''); t.id = 'pop-title'; p.appendChild(t); E.popLines = [];
@@ -40121,7 +40175,33 @@ input[type="checkbox"]{accent-color:var(--primary)}
     t.appendChild(box);
     E.title = t; E['title-name'] = name; E['title-tag'] = tag; E['btn-charter'] = charter; E['btn-continue'] = cont; E['title-seed'] = seed; E['btn-title-settings'] = ts; E['btn-title-mute'] = tm; E['title-hint'] = hint; E['btn-title-howto'] = howBtn; E['btn-title-about'] = aboutBtn; E['title-campus'] = campus; E['title-size'] = sz; E['title-size-note'] = szn; return t;
   }
-  function buildPanelsHost() { const p = el('div'); p.id = 'panels'; E.panels = p; p.appendChild(buildMenuOverlay()); return p; }
+  /** U3: #panels is the layer over the map (pointer-events none) that holds the Menu side sheet (#menu-sheet) and the kitchen's Edit menu dialog (#menu-overlay) */
+  function buildPanelsHost() { const p = el('div'); p.id = 'panels'; E.panels = p; p.appendChild(buildSheet()); p.appendChild(buildMenuOverlay()); return p; }
+  /** U3: the Menu side sheet. Head: back arrow (panel state only) · title · ✕. Body: the list state (#sheet-list, the ten list items) and the registered panels' hosts (#panel-<name>, one visible at a time), scrolling inside the sheet */
+  function buildSheet() {
+    const sh = el('aside', 'side-sheet hidden'); sh.id = 'menu-sheet'; sh.setAttribute('aria-label', 'Menu');
+    const head = el('div', 'sheet-head'); head.id = 'sheet-head';
+    const back = btn('btn-sheet-back', null, 'icon hidden', function () { M.panelBack(); }); back.title = 'Back to the menu'; back.appendChild(icon('arrow_back'));
+    const title = el('div', 'title', 'Menu'); title.id = 'sheet-title';
+    const close = btn('btn-sheet-close', null, 'icon', function () { M.openPanel(null); }); close.title = 'Close (Esc)'; close.appendChild(icon('close'));
+    head.appendChild(back); head.appendChild(title); head.appendChild(close);
+    const body = el('div', 'sheet-body'); body.id = 'sheet-body';
+    const list = el('div', 'menu-list'); list.id = 'sheet-list'; body.appendChild(list);
+    list.appendChild(menuItem('btn-budget', 'Budget', 'Income, expenses, tuition and faculty', 'B', 'paid', function () { M.openPanel('budget'); }));
+    list.appendChild(menuItem('btn-season', 'Season', 'Schedule, roster, the coach', 'N', 'football', function () { M.openPanel('season'); }));
+    const storm = menuItem('btn-storm', 'Storm', 'Board up, sandbags, pumps, shelters', 'T', 'cyclone', function () { M.openPanel('storm'); }); const dot = el('span', 'dot'); storm.appendChild(dot); E['btn-storm-dot'] = dot; list.appendChild(storm);
+    list.appendChild(menuItem('btn-land', 'Land Office', 'Buy the next section of state land', 'O', 'landscape', function () { M.openPanel('land'); }));   // L2: the Land Office (a deed)
+    list.appendChild(menuItem('btn-almanac', 'Almanac', 'The year so far, by month', '', 'calendar', function () { M.openPanel('almanac'); }));
+    list.appendChild(menuItem('btn-milestones', 'Milestones', 'Every goal, done and to come', 'L', 'flag', function () { M.openPanel('milestones'); }));
+    list.appendChild(menuItem('btn-log', 'Log', 'The last 30 news lines', '', 'list', function () { M.openPanel('log'); }));
+    list.appendChild(el('div', 'divider'));
+    list.appendChild(menuItem('btn-settings', 'Settings', '', '', 'settings', function () { M.openPanel('settings'); }));
+    list.appendChild(menuItem('btn-howto', 'How to play', '', '', 'help', function () { M.openPanel('howto'); }));
+    list.appendChild(menuItem('btn-about', 'About this build', '', '', 'info', function () { M.openPanel('about'); }));
+    sh.appendChild(head); sh.appendChild(body);
+    E['menu-sheet'] = sh; E['sheet-head'] = head; E['btn-sheet-back'] = back; E['sheet-title'] = title; E['btn-sheet-close'] = close; E['sheet-body'] = body; E['sheet-list'] = list;
+    return sh;
+  }
   /** menu layout pass: the Edit menu overlay (a 64-rem panel centred over the map, the existing panel chrome + close button): title, live summary, presets, "x / cap" count, the inline reason line, the dish grid, the note. Built once; syncMenuOverlay updates it in place */
   function buildMenuOverlay() {
     const p = el('div', 'panel menu-overlay hidden'); p.id = 'menu-overlay';
@@ -40288,10 +40368,10 @@ input[type="checkbox"]{accent-color:var(--primary)}
   // menu (the icons) and breakdown (today's #popover for Prestige / Happiness / Ecology). Esc, an outside press or the same control closes
   // it; the control shows `selected` while it is open. The Map and Layers popovers can be pinned (settings.keepMinimap / keepOverlays):
   // a pinned one stays through Esc / outside presses and while another popover is open; its icon unpins it.
-  const POP_ANCHOR = { needs: 'stat-students', budget: 'stat-cash', alerts: 'btn-alerts', layers: 'btn-layers', map: 'btn-map', menu: 'btn-menu', breakdown: null };
+  const POP_ANCHOR = { needs: 'stat-students', budget: 'stat-cash', alerts: 'btn-alerts', layers: 'btn-layers', map: 'btn-map', breakdown: null };
   function popEl(name) { return name === 'breakdown' ? E.popover : E['pop-' + name]; }
   function popPinned(name) { const set = M.settings(); return (name === 'map' && !!set.keepMinimap) || (name === 'layers' && !!set.keepOverlays); }
-  function popVisible(name) { return pops.open === name || popPinned(name); }
+  function popVisible(name) { return !sheet.open && (pops.open === name || popPinned(name)); }   // U3: the Menu sheet covers the right gutter, so a pinned popover steps aside while it is open
   /** icon popovers right-align to their icon (clamped to the gutter); the stat-chip popovers sit on the left gutter (CSS); a pinned Layers stacks under a visible Map */
   function placePopover(name) {
     const p = popEl(name); if (!p || !p.style) return;
@@ -40314,6 +40394,7 @@ input[type="checkbox"]{accent-color:var(--primary)}
   }
   function openPopover(name) {
     if (!popEl(name) || titleOn) return false;
+    if (sheet.open) M.openPanel(null);   // U3: one of sheet / popover / Build sheet at a time: a popover closes the Menu sheet
     pops.open = name;
     if (dom()) { syncPopovers(); placePopover(name); hideTooltip(); }
     return true;
@@ -40360,7 +40441,8 @@ input[type="checkbox"]{accent-color:var(--primary)}
   M.goalExpanded = function () { return goal.open; };
 
   // ---- the Build sheet (U2: today's palette shown by the FAB / G; U4 rebuilds it) -----------------------------------------------------
-  M.openPalette = function (on) { try { const v = on === undefined ? !pal.open : !!on; if (v === pal.open) return pal.open; pal.open = v; paletteHidden = null; const s = stateOf(); if (s && dom()) updateSetPiece(s); if (!v) hideTooltip(); return pal.open; } catch (e) { uerr('openPalette', e); return pal.open; } };
+  M.openPalette = function (on) { try { const v = on === undefined ? !pal.open : !!on; if (v === pal.open) return pal.open; if (v && (sheet.open || M.panel())) M.openPanel(null); pal.open = v;   // U3: one of sheet / popover / Build sheet at a time
+ paletteHidden = null; const s = stateOf(); if (s && dom()) updateSetPiece(s); if (!v) hideTooltip(); return pal.open; } catch (e) { uerr('openPalette', e); return pal.open; } };
   M.togglePalette = function () { return M.openPalette(); };
   M.paletteOpen = function () { return pal.open; };
 
@@ -40386,7 +40468,7 @@ input[type="checkbox"]{accent-color:var(--primary)}
       if (typeof window.addEventListener === 'function') {
         window.addEventListener('keydown', function (e) {
           try {
-            if (isTextTarget(e.target)) return;
+            if (isTextTarget(e.target) && !(e.key === 'Escape' && e.target.type === 'range')) return;   // U3: Esc still closes the sheet from a focused slider
             const handled = M.keydown(e.key, modsOf(e));
             if (handled && shouldPrevent(e)) e.preventDefault();
           } catch (err) { uerr('keydown', err); }
@@ -40638,7 +40720,7 @@ input[type="checkbox"]{accent-color:var(--primary)}
       if (ghostPin && ghostPin.fresh && type === 'move' && Math.hypot(px - ghostPin.px0, py - ghostPin.py0) > 12) ghostPin.fresh = false;   // issues v2: the armed ghost follows the pointer once it travels onto the map (it still snaps back within ~2 tiles of the spot)
       heldShift = !!mods.shift; heldAlt = !!mods.alt;
       if (titleOn) return;
-      if (type === 'down' && s.ui.panel && !s.ui.tool && !bm.open) { M.openPanel(null); return; }   // a map click dismisses an open panel
+      if (type === 'down' && (sheet.open || s.ui.panel) && !s.ui.tool && !bm.open) { M.openPanel(null); return; }   // a map click dismisses the open Menu sheet (U3: the list state too)
       if (type === 'down') { if (call('progress', 'tutorialStage', s) === 1) { call('progress', 'skipSwoop', s); return; } if (s.setPiece) call('render', 'captureCameraTouch', s); closePopover(); if (goal.open && coach.step < 0) goalCollapse(); if (bm.open) M.closeBuildMenu(); }   // U2: a map press is an outside click for the popover and the goal card; a press while the menu is up (Build it keeps it open) is the player's answer: close it and place   // the swoop-skipping click must not also open the tile inspector behind the charter card
       if (type === 'move' || type === 'down') { const i = tileIndexAt(px, py); M.hoverTile = i; if (BSU.render) BSU.render.hoverTile = i; }
       mcStep(live, { type: type, px: px, py: py, button: fin(button, 0) | 0, mods: mods });
@@ -40719,12 +40801,14 @@ input[type="checkbox"]{accent-color:var(--primary)}
         if (key === 'Enter' || key === 'Escape') { if (renaming && focusedInput === renaming.input) { if (key === 'Enter') commitRename(s); else cancelRename(); return true; } if (focusedInput === E['title-seed'] && key === 'Enter') { charterClick(); return true; } }
         return false;
       }
+      // (3-) the student voice dialog: Esc declines (its dismiss action); Enter is left alone (accepting is a choice)
+      if (voiceOpen() && key === 'Escape' && !card && !s.ui.tool && !insp && !sheet.open && !s.ui.panel) { answerVoice(false); return true; }
       // (3) an open card takes Enter / Escape
       if (card) {
         if (key === 'Enter') { cardPrimary(s); return true; }
-        if (key === 'Escape' && !s.ui.tool && !insp && !s.ui.panel) { if (card.spec.modal === true) return true; M.closeCard(); return true; }   // Esc peels one layer: tool → inspect → panel → card
+        if (key === 'Escape' && !s.ui.tool && !insp && !sheet.open && !s.ui.panel) { if (card.spec.modal === true) return true; cardDismiss(s); return true; }   // Esc peels one layer: tool → inspect → Menu sheet → card (U3: the card's dismiss action)
       }
-      if (titleOn) { if (key === 'Escape' && s.ui.panel) { M.openPanel(null); return true; } return false; }   // framing pass: Esc closes How to play / About / Settings on the title screen
+      if (titleOn) { if (key === 'Escape' && (sheet.open || s.ui.panel)) { M.openPanel(null); return true; } return false; }   // framing pass: Esc closes How to play / About / Settings on the title screen
       // (3b) the coach-mark tour owns the keyboard while it is up: Enter/→/Space next, ← back, Esc skips
       if (coach.step >= 0 && !coach.paused) {
         if (key === 'Enter' || key === 'ArrowRight' || key === ' ') { coachNext(s, 1); return true; }
@@ -40740,8 +40824,8 @@ input[type="checkbox"]{accent-color:var(--primary)}
         if (bm.open) { M.closeBuildMenu(); return true; }
         if (mcStep(live, { type: 'key', key: 'Escape', px: lastPx, py: lastPy })) return true;
         if (pal.open) { M.openPalette(false); return true; }   // U2: the Build sheet, once the tool is down
-        if (s.ui.panel) { M.openPanel(null); return true; }
-        if (card) { M.closeCard(); return true; }
+        if (sheet.open || s.ui.panel) { M.openPanel(null); return true; }   // U3: Esc closes the Menu sheet whatever it shows
+        if (card) { cardDismiss(s); return true; }
         if (spotToggled || (issuesApi() && issuesApi().selectedId() !== null)) { clearIssueUi(); return true; }   // issue spotlight pass: Esc #5 clears the issue selection / spotlight
         if (notifs.length || snackQueue.length) { M.dismissNotifs(); return true; }   // gator pass: Esc #6 clears the notification stack
         if (goal.open && coach.step < 0) { goalCollapse(); return true; }   // U2: Esc #7 folds the goal card to its pill
@@ -41146,12 +41230,16 @@ input[type="checkbox"]{accent-color:var(--primary)}
     try {
       const s = state || stateOf(); if (!s || !target || !target.kind) return;
       insp = { kind: target.kind, id: fin(target.id, -1), i: fin(target.i, -1), legend: !!target.legend }; inspAt = -1e9; renaming = null;
-      if (dom()) { E.inspect.dataset.kind = insp.kind; show(E.inspect, true); cls(E.hud, 'inspect-open', true); refreshInspect(s); }
+      if (dom()) { E.inspect.dataset.kind = insp.kind; inspCollapsed = false; syncInspectFold(); show(E.inspect, true); cls(E.hud, 'inspect-open', true); refreshInspect(s); }
       if (live.state === 'IDLE') mcSet(live, 'INSPECTING');
     } catch (e) { uerr('inspect', e); }
   };
+  /** U3: fold the inspect card to its one-line pill (on / off; no argument toggles) */
+  M.collapseInspect = function (on) { try { inspCollapsed = on === undefined ? !inspCollapsed : !!on; if (dom()) syncInspectFold(); return inspCollapsed; } catch (e) { uerr('collapseInspect', e); return false; } };
+  M.inspectCollapsed = function () { return !!insp && inspCollapsed; };
+  function syncInspectFold() { cls(E.inspect, 'collapsed', inspCollapsed); show(E['insp-fold-more'], !inspCollapsed); show(E['insp-fold-less'], inspCollapsed); if (E['btn-insp-collapse']) E['btn-insp-collapse'].title = inspCollapsed ? 'Expand' : 'Collapse'; }
   M.closeInspect = function () { closeInspectDom(); if (live.state === 'INSPECTING') mcSet(live, 'IDLE'); };
-  function closeInspectDom() { insp = null; renaming = null; if (menuEdit) M.closeMenuEditor(); if (focusedInput && focusedInput !== E['title-seed']) focusedInput = null; if (dom()) { show(E.inspect, false); cls(E.hud, 'inspect-open', false); } }
+  function closeInspectDom() { insp = null; renaming = null; inspCollapsed = false; if (menuEdit) M.closeMenuEditor(); if (focusedInput && focusedInput !== E['title-seed']) focusedInput = null; if (dom()) { syncInspectFold(); show(E.inspect, false); cls(E.hud, 'inspect-open', false); } }
   function row(k, v, cls_) { const r = el('div', 'row' + (cls_ ? ' ' + cls_ : '')); r.appendChild(el('span', 'k', k)); r.appendChild(el('span', 'v', v)); return r; }
   function action(label, fn, cls_) { return btn(null, label, 'small' + (cls_ ? ' ' + cls_ : ''), function () { const s = stateOf(); const r = fn(s); if (r && r.ok === false && r.reason) M.notify(s, { kind: 'info', text: r.reason, ttl: 4000 }); inspAt = -1e9; }); }
   function stars(n) { n = clamp(fin(n, 0) | 0, 0, 5); return '★★★★★'.slice(0, n) + '☆☆☆☆☆'.slice(0, 5 - n); }
@@ -42364,8 +42452,12 @@ input[type="checkbox"]{accent-color:var(--primary)}
     if (!list.length && !spec.modal) acts.appendChild(btn(null, spec.closeLabel || 'Continue', 'primary', function () { M.closeCard(); }));
     c.appendChild(acts);
     if (spec.clickToClose) c.addEventListener('click', function () { M.closeCard(); });
-    clear(E.cards); E.cards.appendChild(c); show(E.cards, true); card.el = c;
+    clear(E.cards); E.cards.appendChild(c); show(E.cards, true); card.el = c; dialogFocus(c);
   }
+  /** the open dialog card's id (the queue is not counted), or null; U3 */
+  M.cardOpen = function () { return card ? card.spec.id : null; };
+  /** the student-voice dialog is on screen (U3) */
+  M.voiceOpen = function () { return voiceOpen(); };
   function runCardAction(a) { const s = stateOf(); let keep = false; try { if (typeof a.fn === 'function') keep = a.fn(s) === true || a.keep === true; } catch (e) { uerr('card:action', e); } if (!keep) M.closeCard(); }
   function cardPrimary(s) { if (!card) return; const list = Array.isArray(card.spec.actions) ? card.spec.actions : []; const a = list.find(function (x) { return x.primary; }) || list[0]; if (a) runCardAction(a); else if (!card.spec.modal) M.closeCard(); }
   /** close the current card (or a queued one by id) */
@@ -42377,6 +42469,7 @@ input[type="checkbox"]{accent-color:var(--primary)}
       if (dom()) { clear(E.cards); show(E.cards, false); }
       if (typeof c.spec.onClose === 'function') { try { c.spec.onClose(stateOf()); } catch (e) { uerr('card:onClose', e); } }
       if (cardQueue.length) { const s = stateOf(); if (s) openCard(s, cardQueue.shift()); }
+      if (dom() && !card) dialogRestore();
     } catch (e) { uerr('closeCard', e); }
   };
   function updateCards(s) {
@@ -42387,9 +42480,24 @@ input[type="checkbox"]{accent-color:var(--primary)}
   function showVoice(s, spec) {
     if (!dom()) return;
     setText(E['voice-student'], (spec.student || '') + (spec.major ? ' · ' + spec.major : '')); setText(E['voice-text'], spec.text || ''); setText(E['voice-payoff'], spec.payoff || '');
-    E['voice-card'].dataset.voice = spec.voiceId || ''; show(E['voice-card'], true);
+    E['voice-card'].dataset.voice = spec.voiceId || ''; show(E['voice-card'], true); dialogFocus(E['voice-dialog']);
   }
-  function answerVoice(accept) { const s = stateOf(); const id = E['voice-card'] && E['voice-card'].dataset.voice; if (s && id) call('progress', 'answerVoice', s, id, !!accept); if (dom()) show(E['voice-card'], false); }
+  function answerVoice(accept) { const s = stateOf(); const id = E['voice-card'] && E['voice-card'].dataset.voice; if (s && id) call('progress', 'answerVoice', s, id, !!accept); if (dom()) { show(E['voice-card'], false); dialogRestore(); } }
+  function voiceOpen() { return !!(dom() && E['voice-card'] && !E['voice-card'].classList.contains('hidden')); }
+  /** U3 dialogs: focus moves into the dialog when it opens (the dialog itself, tabindex -1: Enter / Esc stay with the key handler) and back to what had it when the last one closes */
+  function dialogFocus(elm) {
+    try {
+      if (!dlg.prev && typeof document !== 'undefined') { const a = document.activeElement; if (a && a !== document.body && typeof a.focus === 'function' && !(E.cards && E.cards.contains(a)) && !(E['voice-card'] && E['voice-card'].contains(a))) dlg.prev = a; }
+      elm.tabIndex = -1; elm.setAttribute('role', 'dialog'); elm.setAttribute('aria-modal', 'true'); elm.focus();
+    } catch (e) { /* stub */ }
+  }
+  function dialogRestore() {
+    if (card || voiceOpen()) return;
+    const p = dlg.prev; dlg.prev = null;
+    try { if (p && p.isConnected !== false && typeof p.focus === 'function') p.focus(); else if (E.world && typeof E.world.focus === 'function') E.world.focus(); } catch (e) { /* stub */ }
+  }
+  /** Esc on a card: its dismiss action (`dismiss: true`: Later, Not now, Decline all, Back), else just closing it */
+  function cardDismiss(s) { if (!card) return; const list = Array.isArray(card.spec.actions) ? card.spec.actions : []; const a = list.find(function (x) { return x && x.dismiss === true; }); if (a) runCardAction(a); else M.closeCard(); void s; }
   function registerBuiltins() {
     const reg = function (id, fn) { if (!M.cards[id]) M.registerCard(id, fn); };
     reg('charter', function (s, p) {
@@ -42412,7 +42520,7 @@ input[type="checkbox"]{accent-color:var(--primary)}
       const body = el('div', 'board-list');
       const actions = [];
       cards.forEach(function (cid) { const d = defs.find(function (x) { return x.id === cid; }) || { id: cid, name: cid, text: '' }; const b = btn(null, '', 'board-card', function () { call('progress', 'answerBoard', stateOf(), cid); M.closeCard(); }); b.appendChild(el('div', 'board-name', d.name)); b.appendChild(el('div', 'board-text', d.text)); body.appendChild(b); });
-      actions.push({ label: 'Decline all', fn: function (st) { call('progress', 'answerBoard', st, null); } });
+      actions.push({ label: 'Decline all', dismiss: true, fn: function (st) { call('progress', 'answerBoard', st, null); } });
       return { id: 'board', kicker: 'Board of Regents', title: 'The Board has a proposal', body: body, actions: actions };
     });
     reg('recap', function (s, p) {
@@ -42420,8 +42528,8 @@ input[type="checkbox"]{accent-color:var(--primary)}
       if (Array.isArray(p.lines)) lines.push.apply(lines, p.lines); else { for (const k in p) if (typeof p[k] === 'string' || typeof p[k] === 'number') lines.push(k.replace(/([A-Z])/g, ' $1').replace(/^./, function (c) { return c.toUpperCase(); }) + ': ' + (typeof p[k] === 'number' && Math.abs(p[k]) >= 1000 ? money(p[k]) : p[k])); }
       return { id: 'recap', kicker: "Founders' Day", title: p.title || ('Year ' + fin(p.year, fin(s && s.calendar && s.calendar.year, 1) - 1) + ' in review'), body: lines.length ? lines : ['Another year on the ridge.'], actions: [{ label: 'Postcard', fn: function (st) { postcard(st); return true; } }, { label: 'Onward', primary: true }] };
     });
-    reg('versionMismatch', function (s, p) { p = p || {}; return { id: 'versionMismatch', kicker: 'Save', title: 'That save is from another version', body: 'Version ' + fin(p.version, 0) + ' cannot be loaded here. Start fresh with the same seed (' + fin(p.seed, 0) + ')?', actions: [{ label: 'Start fresh, same seed', primary: true, fn: function () { call('audio', 'unlock'); M.showTitle(false); call('session', 'newGame', { seed: fin(p.seed, 0) >>> 0 }); } }, { label: 'Back' }] }; });
-    if (!panels.settings) M.registerPanel('settings', { build: buildSettingsPanel, refresh: refreshSettingsPanel, events: ['speed:changed'] });
+    reg('versionMismatch', function (s, p) { p = p || {}; return { id: 'versionMismatch', kicker: 'Save', title: 'That save is from another version', body: 'Version ' + fin(p.version, 0) + ' cannot be loaded here. Start fresh with the same seed (' + fin(p.seed, 0) + ')?', actions: [{ label: 'Start fresh, same seed', primary: true, fn: function () { call('audio', 'unlock'); M.showTitle(false); call('session', 'newGame', { seed: fin(p.seed, 0) >>> 0 }); } }, { label: 'Back', dismiss: true }] }; });
+    if (!panels.settings) M.registerPanel('settings', { build: buildSettingsPanel, refresh: refreshSettingsPanel, events: [] });
     if (!panels.howto) M.registerPanel('howto', { build: buildHowPanel, refresh: null, events: [] });
     if (!panels.about) M.registerPanel('about', { build: buildAboutPanel, refresh: null, events: [] });
     if (!panels.debug) M.registerPanel('debug', { build: buildDebugPanel, refresh: refreshDebugPanel, events: [] });
@@ -42434,23 +42542,70 @@ input[type="checkbox"]{accent-color:var(--primary)}
   // ---------------------------------------------------------------------------
   function panelHost(name) {
     const p = panels[name]; if (!p) return null;
-    if (!p.el && dom()) { const host = el('div', 'panel hidden'); host.id = 'panel-' + name; const head = el('div', 'panel-head'); const x = btn(null, '✕', 'icon', function () { M.openPanel(null); }); head.appendChild(x); host.appendChild(head); E.panels.appendChild(host); p.el = host; E['panel-' + name] = host; }
+    if (!p.el && dom()) { const host = el('div', 'panel hidden'); host.id = 'panel-' + name; E['sheet-body'].appendChild(host); p.el = host; E['panel-' + name] = host; }   // U3: the panel lives in the sheet body (the ✕ and the title are the sheet's head)
     return p.el;
   }
-  /** open a registered panel (closes any other); null closes; `Esc` closes */
+  const PANEL_TITLES = { budget: 'Budget', season: 'Season', storm: 'Storm', land: 'Land Office', almanac: 'Almanac', milestones: 'Milestones', log: 'Log', settings: 'Settings', howto: 'How to play', about: 'About this build', debug: 'Debug' };
+  /** U3: show the sheet in the state state.ui.panel names (null = the list): head title, back arrow, list vs panel host, the Menu icon's selected look, the FAB / pinned popovers stepping aside */
+  function syncSheet() {
+    if (!dom()) return;
+    const s = stateOf(); const name = s && s.ui ? s.ui.panel : null; const on = sheet.open;
+    show(E['menu-sheet'], on); cls(E['btn-menu'], 'selected', on);
+    cls(E['menu-sheet'], 'panel-state', on && !!name);
+    setText(E['sheet-title'], name ? (PANEL_TITLES[name] || PANEL_KEYS[name] || name) : 'Menu');
+    show(E['btn-sheet-back'], on && !!name && !titleOn);   // opened from the title screen there is no list to go back to
+    show(E['sheet-list'], !name);
+    for (const k in panels) { const pp = panels[k]; if (pp.el) show(pp.el, on && k === name); }
+    if (E['sheet-body']) E['sheet-body'].scrollTop = 0;
+    syncPopovers(); fabShown = null;
+  }
+  /** U3: the Menu sheet in its list state (on / off; no argument toggles). Opening it closes the popover and the Build sheet; a panel already open in it stays */
+  M.openSheet = function (on) {
+    try {
+      const s = stateOf(); const v = on === undefined ? !sheet.open : !!on;
+      if (!v) { if (sheet.open || (s && s.ui && s.ui.panel)) M.openPanel(null); return false; }
+      if (sheet.open) return true;
+      if (!s || !s.ui) return false;
+      if (menuEdit) M.closeMenuEditor();
+      closePopover(); hideTooltip(); if (pal.open) M.openPalette(false);
+      sheet.open = true; if (dom()) syncSheet();
+      emit('ui:panel', { panel: s.ui.panel || null, sheet: true });
+      return true;
+    } catch (e) { uerr('openSheet', e); return false; }
+  };
+  /** the Menu icon: closes the sheet when it is open, else opens its list */
+  M.toggleMenu = function () { return M.openSheet(!(sheet.open || M.panel())); };
+  /** the Menu sheet is open (list or panel state); with a name: that panel is the one showing */
+  M.panelOpen = function (name) { const s = stateOf(); const p = s && s.ui ? s.ui.panel : null; return name ? p === name && sheet.open : sheet.open || !!p; };
+  /** 'closed' | 'list' | 'panel' */
+  M.sheetState = function () { const s = stateOf(); const p = s && s.ui ? s.ui.panel : null; return !(sheet.open || p) ? 'closed' : p ? 'panel' : 'list'; };
+  /** the back arrow: the open panel closes and the sheet shows its list again (a no-op in the list state) */
+  M.panelBack = function () { try { const s = stateOf(); if (!s || !s.ui || !s.ui.panel) return false; if (titleOn) { M.openPanel(null); return true; } closePanelOnly(s); sheet.open = true; if (dom()) syncSheet(); emit('ui:panel', { panel: null, sheet: true }); return true; } catch (e) { uerr('panelBack', e); return false; } };
+  /** close the sheet (list or panel); the same as openPanel(null) */
+  M.closePanel = function () { M.openPanel(null); };
+  function closePanelOnly(s) {
+    const prev = s.ui.panel; if (!prev) return;
+    const pp = panels[prev]; s.ui.panel = null;
+    if (pp && pp.el && dom()) show(pp.el, false);
+    if (pp && typeof pp.close === 'function') { try { pp.close(s); } catch (e) { uerr('panel:close', e); } }
+    if (prev === 'debug') { M.debug.open = false; call('progress', 'debugOpen', s, false); }
+    if (E.hud && E.hud.dataset.panel) E.hud.dataset.panel = '';
+  }
+  /** open a registered panel inside the Menu sheet (closing the one showing; hotkeys deep-link); null closes the panel and the sheet; the same hotkey again calls openPanel(null) */
   M.openPanel = function (name) {
     try {
       const s = stateOf(); if (!s || !s.ui) return;
       const prev = s.ui.panel;
       if (name && menuEdit) M.closeMenuEditor();   // one centred overlay at a time
-      if (prev && prev !== name) { const pp = panels[prev]; if (pp && pp.el && dom()) show(pp.el, false); if (pp && typeof pp.close === 'function') { try { pp.close(s); } catch (e) { uerr('panel:close', e); } } if (prev === 'debug' && name !== 'debug') { M.debug.open = false; call('progress', 'debugOpen', s, false); } }
-      if (!name) { s.ui.panel = null; if (prev) emit('ui:panel', { panel: null }); return; }
+      if (prev && prev !== name) closePanelOnly(s);
+      if (!name) { const was = sheet.open || !!prev; sheet.open = false; if (dom()) syncSheet(); if (was) emit('ui:panel', { panel: null }); return; }
       const p = panels[name]; if (!p) { s.ui.panel = null; M.notify(s, { kind: 'info', text: (PANEL_KEYS[name] || name) + ' panel is not available yet', ttl: 3000 }); return; }
-      s.ui.panel = name;
+      s.ui.panel = name; sheet.open = true;
       if (dom()) {
-        closePopover(); hideTooltip();
+        closePopover(); hideTooltip(); if (pal.open) M.openPalette(false);
         const host = panelHost(name);
-        if (host) { if (!p.built) { p.built = true; try { if (typeof p.build === 'function') p.build(host, s); } catch (e) { uerr('panel:build:' + name, e); } } show(host, true); refreshPanel(s, name); }
+        if (host) { if (!p.built) { p.built = true; try { if (typeof p.build === 'function') p.build(host, s); } catch (e) { uerr('panel:build:' + name, e); } } refreshPanel(s, name); }
+        syncSheet();
         if (E.hud) E.hud.dataset.panel = name;
       }
       if (name === 'debug') { M.debug.open = true; call('progress', 'debugOpen', s, true); }
@@ -42460,12 +42615,12 @@ input[type="checkbox"]{accent-color:var(--primary)}
   M.panel = function () { const s = stateOf(); return s && s.ui ? s.ui.panel : null; };
   function refreshPanel(s, name) { const p = panels[name]; if (!p || !p.el) return; p.lastRefresh = clock; try { if (typeof p.refresh === 'function') p.refresh(s, p.el); } catch (e) { uerr('panel:refresh:' + name, e); } }
   /** UI scale pass: a panel wide enough to reach the docked cards (goals tracker, minimap, overlay keys, notifications, voice card) fades just the ones it overlaps, so no half-hidden text peeks out around it */
-  const FADE_IDS = ['objective-card', 'goal-pill', 'snack-lane', 'voice-card', 'alert-strip', 'undo-chip', 'inspect', 'fab-build'];   // 'inspect' fades only under the Edit menu overlay (menu layout pass); U2: the popovers close when a panel opens
+  const FADE_IDS = ['objective-card', 'goal-pill', 'snack-lane', 'alert-strip', 'undo-chip', 'inspect', 'fab-build'];   // 'inspect' fades only under the Edit menu overlay (menu layout pass); U2: the popovers close when a panel opens
   let fadeAt = -1e9;
   function syncPanelFade(s) {
     if (!dom() || clock - fadeAt < 250) return; fadeAt = clock;
     try {
-      const name = s && s.ui ? s.ui.panel : null; let host = name && panels[name] ? panels[name].el : null;
+      let host = sheet.open ? E['menu-sheet'] : null;   // U3: the Menu sheet (list or panel) fades the HUD pieces it overlaps
       if (menuEdit && E['menu-overlay']) host = E['menu-overlay'];
       let p = null; if (host && !host.classList.contains('hidden') && typeof host.getBoundingClientRect === 'function') p = host.getBoundingClientRect();
       for (const id of FADE_IDS) {
@@ -42551,7 +42706,7 @@ input[type="checkbox"]{accent-color:var(--primary)}
       { k: 'Alt', t: 'Hold to skip the auto tie', b: [] },
       { k: 'Ctrl+Z', t: 'Undo', b: [['z', 1, 0, 'undo']] },
       { k: 'Esc', t: 'Cancel or close', b: [['Escape', 0, 0, 'escape']] }] },
-    { h: 'Panels', rows: [
+    { h: 'Menu', rows: [
       { k: 'O', t: 'Land Office', b: [['o', 0, 0, 'land']] },
       { k: 'B', t: 'Budget', b: [['b', 0, 0, 'budget']] },
       { k: 'T', t: 'Storm', b: [['t', 0, 0, 'storm']] },
@@ -42597,46 +42752,46 @@ input[type="checkbox"]{accent-color:var(--primary)}
   }
   const ABOUT_MODULES = 28;   // src/manifest.json (ui.test checks it)
 
-  // Settings panel (built in; ui_panels may re-register 'settings' with a fuller sheet)
+  // Settings panel (built in): U3 consolidated it into one list inside the Menu sheet, in this order: Display size, Alerts, Audio (volume + mute),
+  // Keep the minimap open, Keep overlays visible, Particles, Shake, Colour-blind; then the Tour replay and Save / Load / New game. Every settings key keeps its name and its migration.
   function buildSettingsPanel(host, s) {
     host.appendChild(el('div', 'panel-title', 'Settings'));
     const set = M.settings();
-    const rowEl = function (label, control) { const r = el('div', 'set-row'); r.appendChild(el('span', 'k', label)); r.appendChild(control); host.appendChild(r); return r; };
-    const chk = function (id, label, get, put) { const b = btn(id, '', 'toggle', function () { put(!get()); M.saveSettings(); refreshSettingsPanel(stateOf(), host); }); b.setAttribute('aria-pressed', get() ? 'true' : 'false'); setText(b, get() ? 'On' : 'Off'); rowEl(label, b); b._get = get; return b; };
-    { const hb = el('div', 'card-actions'); hb.appendChild(btn('btn-set-howto', 'How to play', 'small', function () { M.openPanel('howto'); })); hb.appendChild(btn('btn-set-about', 'About this build', 'small', function () { M.openPanel('about'); })); rowEl('Help', hb); }   // framing pass: the in-game way back to both panels
-    host._audio = chk('chk-audio', 'Sound', function () { return !M.settings().muted; }, function (v) { M.settings().muted = !v; call('audio', 'mute', !v); refreshMuteButtons(); });
-    const vol = el('input'); vol.id = 'sl-volume'; vol.type = 'range'; vol.min = '0'; vol.max = '1'; vol.step = '0.05'; vol.value = String(fin(set.volume, 0.5)); vol.addEventListener('input', function () { const v = clamp(parseFloat(vol.value) || 0, 0, 1); M.settings().volume = v; call('audio', 'setVolume', v); M.saveSettings(); }); rowEl('Volume', vol); host._vol = vol;
-    host._particles = chk('seg-particles', 'Particles (high)', function () { return M.settings().particles !== 'low'; }, function (v) { M.settings().particles = v ? 'high' : 'low'; });
+    const rowEl = function (label, control, stack) { const r = el('div', 'set-row' + (stack ? ' stack' : '')); r.appendChild(el('span', 'k', label)); r.appendChild(control); host.appendChild(r); return r; };
+    const chk = function (id, label, get, put, stack) { const b = btn(id, '', 'toggle', function () { put(!get()); M.saveSettings(); refreshSettingsPanel(stateOf(), host); }); b.setAttribute('aria-pressed', get() ? 'true' : 'false'); setText(b, get() ? 'On' : 'Off'); b._get = get; if (label) rowEl(label, b, stack); return b; };
+    // 1. Display size: the title screen's segmented control (Compact 100 % · Comfortable 115 % · Large 130 % · Auto)
+    const us = el('div', 'seg sizes'); host._uiScale = us;
+    SIZE_CHOICES.forEach(function (c) { const b = btn('btn-uiscale-' + c[0], c[1], 'seg-btn', function () { M.setUiScale(c[2]); refreshSettingsPanel(stateOf(), host); }); b.dataset.scale = String(c[2]); if (c[3]) b.appendChild(el('span', 'pct', c[3])); b.title = c[2] === 'auto' ? 'Pick the size from this window (1366 px and up: 115 %, 1680 px and up: 130 %)' : 'Interface size ' + c[3]; us.appendChild(b); });
+    const uw = el('div', 'seg-wrap'); const un = el('div', 'seg-note hidden', ''); host._uiNote = un; uw.appendChild(us); uw.appendChild(un); rowEl('Display size', uw, true);   // UI scale pass (C7)
+    // 2. Alerts: Normal / Quiet / Off (calm alerts pass)
+    const as = el('div', 'seg'); host._alerts = as; [['normal', 'Normal', 'Map beacons from severity 2 (at most 6), issue toasts once per kind per week'], ['quiet', 'Quiet', 'Beacons only for severity 3; no toasts except decisions'], ['off', 'Off', 'The Alerts list folds to its count; no beacons, no toasts']].forEach(function (d) { const b = btn('btn-alerts-' + d[0], d[1], 'seg-btn', function () { M.setAlertMode(d[0]); refreshSettingsPanel(stateOf(), host); }); b.dataset.alerts = d[0]; b.title = d[2]; as.appendChild(b); });
+    const aw = el('div', 'seg-wrap'); aw.appendChild(as); aw.appendChild(el('div', 'seg-note', 'Quiet keeps beacons to severity 3 and drops the toasts; Off folds the Alerts list to its count. The bell on an alert row mutes that kind.')); rowEl('Alerts', aw, true);
+    // 3. Audio: the volume slider and the mute switch (On = sound on)
+    const au = el('div', 'set-audio'); const vol = el('input'); vol.id = 'sl-volume'; vol.type = 'range'; vol.min = '0'; vol.max = '1'; vol.step = '0.05'; vol.value = String(fin(set.volume, 0.5)); vol.setAttribute('aria-label', 'Volume'); vol.addEventListener('input', function () { const v = clamp(parseFloat(vol.value) || 0, 0, 1); M.settings().volume = v; call('audio', 'setVolume', v); M.saveSettings(); }); host._vol = vol;
+    host._audio = chk('chk-audio', null, function () { return !M.settings().muted; }, function (v) { M.settings().muted = !v; call('audio', 'mute', !v); refreshMuteButtons(); }); host._audio.title = 'Sound on / muted (M)';
+    au.appendChild(vol); au.appendChild(host._audio); rowEl('Audio', au);
+    // 4-5. the popovers the player can keep on screen (U2); 6-8. effects and the colour-blind palette
+    host._keepMap = chk('chk-keep-minimap', 'Keep the minimap open', function () { return !!M.settings().keepMinimap; }, function (v) { M.settings().keepMinimap = v; syncPopovers(); });
+    host._keepOv = chk('chk-keep-overlays', 'Keep overlays visible', function () { return !!M.settings().keepOverlays; }, function (v) { M.settings().keepOverlays = v; syncPopovers(); });
+    host._particles = chk('seg-particles', 'Particles', function () { return M.settings().particles !== 'low'; }, function (v) { M.settings().particles = v ? 'high' : 'low'; });
     host._shake = chk('chk-shake', 'Screen shake', function () { return M.settings().shake !== false; }, function (v) { M.settings().shake = v; });
-    host._cb = chk('chk-colorblind', 'Colorblind overlays', function () { return !!M.settings().colorblind; }, function (v) { M.settings().colorblind = v; });
-    const sp = el('div', 'seg'); [0, 1, 2, 4, 8].forEach(function (v) { const b = btn(null, v === 0 ? 'Pause' : v + '×', 'seg-btn', function () { M.setSpeed(stateOf(), v); refreshSettingsPanel(stateOf(), host); }); b.dataset.speed = String(v); sp.appendChild(b); }); rowEl('Speed', sp); host._speed = sp;
-    const us = el('div', 'seg'); host._uiScale = us; UI_SCALES.forEach(function (v) { const b = btn('btn-uiscale-' + Math.round(v * 100), Math.round(v * 100) + '%', 'seg-btn', function () { M.setUiScale(v); refreshSettingsPanel(stateOf(), host); }); b.dataset.scale = String(v); b.title = 'Interface size ' + Math.round(v * 100) + '%'; us.appendChild(b); });
-    { const ab = btn('btn-uiscale-auto', 'Auto', 'seg-btn', function () { M.setUiScale('auto'); refreshSettingsPanel(stateOf(), host); }); ab.dataset.scale = 'auto'; ab.title = 'Pick the interface size from this window'; us.appendChild(ab); }   // P5
-    const uw = el('div', 'seg-wrap'); const un = el('div', 'seg-note hidden', ''); host._uiNote = un; uw.appendChild(us); uw.appendChild(un); rowEl('UI size', uw);   // UI scale pass (C7)
-    host._keepMap = chk('chk-keep-minimap', 'Keep the minimap open', function () { return !!M.settings().keepMinimap; }, function (v) { M.settings().keepMinimap = v; syncPopovers(); });   // U2: the Map popover stays pinned
-    host._keepOv = chk('chk-keep-overlays', 'Keep overlays visible', function () { return !!M.settings().keepOverlays; }, function (v) { M.settings().keepOverlays = v; syncPopovers(); });   // U2: the Layers popover stays open
-    rowEl('HUD', el('div', 'seg-note', 'H hides every panel for a clean view of the campus · Shift+H (or H again) brings it back'));
-    // calm alerts pass: Alerts Normal / Quiet / Off
-    const as = el('div', 'seg'); host._alerts = as; [['normal', 'Normal', 'Map beacons from severity 2 (at most 6), issue toasts once per kind per week'], ['quiet', 'Quiet', 'Beacons only for severity 3; no toasts except decisions'], ['off', 'Off', 'The Issues tray folds to its count; no beacons, no toasts']].forEach(function (d) { const b = btn('btn-alerts-' + d[0], d[1], 'seg-btn', function () { M.setAlertMode(d[0]); refreshSettingsPanel(stateOf(), host); }); b.dataset.alerts = d[0]; b.title = d[2]; as.appendChild(b); });
-    const aw = el('div', 'seg-wrap'); aw.appendChild(as); aw.appendChild(el('div', 'seg-note', 'Low-priority rows (unlinked paths, mosquito hotspots) and muted kinds sit under Suggestions in the tray · the 🔔 on a tray row mutes that kind · hold I or toggle Spotlight to light every issue')); rowEl('Alerts', aw);
+    host._cb = chk('chk-colorblind', 'Colour-blind overlays', function () { return !!M.settings().colorblind; }, function (v) { M.settings().colorblind = v; });
     rowEl('Tour', btn('btn-coach-replay', 'Replay the 60-second tour', 'small', function () { M.startCoach(stateOf()); }));
-    const leg = el('div', 'legend-table'); for (const o of ((BSU.data && BSU.data.overlays) || [])) { const r = el('div', 'legend-row'); r.appendChild(el('span', 'key', o.key)); r.appendChild(el('span', 'k', o.name)); r.appendChild(el('span', 'v', o.legend.join(' · '))); leg.appendChild(r); } rowEl('Overlays', leg);
-    const keys = el('div', 'keys-table'); keys.id = 'keys'; const KEYNAMES = { ' ': 'Space' }; for (const k of ((BSU.data && BSU.data.keys) || [])) { if (/^pan|^pick[2-9]|^toast/.test(k.action)) continue; const r = el('div', 'legend-row'); r.appendChild(el('span', 'key', (k.ctrl ? 'Ctrl+' : '') + (k.shift ? 'Shift+' : '') + (KEYNAMES[k.key] || (k.key.length === 1 ? k.key.toUpperCase() : k.key)))); r.appendChild(el('span', 'k', k.action === 'pick1' ? 'pick item 1–9' : k.action.replace(/([A-Z])/g, ' $1').toLowerCase())); keys.appendChild(r); } rowEl('Keys', keys);
-    const acts = el('div', 'card-actions');
+    const acts = el('div', 'set-actions');
     acts.appendChild(btn('btn-save-manual', 'Save', 'small', function () { call('session', 'save', 'manual.0'); }));
     acts.appendChild(btn('btn-load', 'Load', 'small', function () { call('session', 'continue_'); M.openPanel(null); }));
     acts.appendChild(btn('btn-newgame', 'New game', 'small danger', function () { M.openPanel(null); M.showTitle(true, {}); }));
-    host.appendChild(acts);
+    rowEl('Game', acts);
     void s;
   }
   function refreshSettingsPanel(s, host) {
     if (!host) return;
     [host._audio, host._particles, host._shake, host._cb, host._keepMap, host._keepOv].forEach(function (b) { if (!b || !b._get) return; const on = !!b._get(); setText(b, on ? 'On' : 'Off'); b.setAttribute('aria-pressed', on ? 'true' : 'false'); });
-    if (host._alerts) for (const b of host._alerts.children) cls(b, 'active', b.dataset.alerts === alertModeOf());   // calm alerts pass
-    if (host._speed) for (const b of host._speed.children) cls(b, 'active', String(fin(s.ui.speed, 1)) === b.dataset.speed);
+    if (host._alerts) for (const b of host._alerts.children) { const on = b.dataset.alerts === alertModeOf(); cls(b, 'active', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); }   // calm alerts pass
     if (host._vol) host._vol.value = String(fin(M.settings().volume, 0.5));
-    if (host._uiScale) for (const b of host._uiScale.children) { const d = b.dataset.scale; cls(b, 'active', d === 'auto' ? uiMode === 'auto' : uiMode !== 'auto' && Number(d) === appliedScale); }
+    if (host._uiScale) for (const b of host._uiScale.children) { const d = b.dataset.scale; const on = d === 'auto' ? uiMode === 'auto' : uiMode !== 'auto' && Number(d) === appliedScale; cls(b, 'active', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); }
     if (host._uiNote) { const lim = effScale < appliedScale - 0.005; const txt = uiMode === 'auto' ? 'Auto picks ' + Math.round(effScale * 100) + '% for this window.' : lim ? 'Limited to ' + Math.round(effScale * 100) + '% by this window size.' : ''; show(host._uiNote, !!txt); if (txt) setText(host._uiNote, txt); }
+    void s;
   }
   // Debug panel (built in; hidden; Backquote). ui_panels may re-register 'debug' with the full params tree.
   function buildDebugPanel(host) {
@@ -42852,7 +43007,7 @@ input[type="checkbox"]{accent-color:var(--primary)}
   function updateSetPiece(s) {
     const sp = s.setPiece; const hasTabs = !!paletteKey.split('|')[0]; const hidePalette = !!sp || titleOn || !hasTabs || !pal.open;   // U2: the Build sheet shows only while open
     if (hidePalette !== paletteHidden) { paletteHidden = hidePalette; show(E.palette, !hidePalette); cls(E.hud, 'no-palette', hidePalette); if (hidePalette) hideTooltip(); }   // a palette-item tooltip must not outlive the palette
-    const fabOn = !sp && !titleOn && hasTabs && !pal.open && !card && !bm.open && !menuEdit && !s.ui.panel;   // the FAB hides while the sheet, a panel, a card or the build menu is open
+    const fabOn = !sp && !titleOn && hasTabs && !pal.open && !card && !voiceOpen() && !bm.open && !menuEdit && !sheet.open && !s.ui.panel;   // the FAB hides while the Build sheet, the Menu sheet, a card or the build menu is open
     if (fabOn !== fabShown) { fabShown = fabOn; show(E['fab-build'], fabOn); }
     cls(E.hud, 'setpiece', !!sp);
     if (sp && bm.open) M.closeBuildMenu();
@@ -42930,6 +43085,7 @@ input[type="checkbox"]{accent-color:var(--primary)}
       if (state && state.ui && state.ui.settings && state.ui.settings !== migratedFor) { migratedFor = state.ui.settings; try { migrateSettings(); } catch (e) { uerr('migrateSettings', e); } }   // U2: the old hudMode / hudCollapsed keys leave on the first game that carries them
       toolLocked = false; live.down = null; live.run = []; live.runTile = -1; mcSet(live, 'IDLE');
       if (state && state.ui) { state.ui.tool = null; state.ui.panel = null; }
+      sheet.open = false; dlg.prev = null; inspCollapsed = false;   // U3
       card = null; cardQueue.length = 0; toast = null; toastQueue.length = 0; for (const k in gameDecs) delete gameDecs[k]; insp = null; renaming = null; focusedInput = null; hint = null; manualAlert = null; itemHover = null; hoverKey = '';
       for (let k = notifs.length - 1; k >= 0; k--) { notifs[k].closed = true; } notifs.length = 0; snackQueue.length = 0;
       odo.cash = NaN; odo.students = NaN; odo.lastStudents = NaN; odo.holdUntil = -1; odo.deltaUntil = 0;
@@ -42945,6 +43101,7 @@ input[type="checkbox"]{accent-color:var(--primary)}
         show(E.cards, false); clear(E.cards); show(E['decision-toast'], false); show(E.inspect, false); cls(E.hud, 'inspect-open', false); show(E['ghost-label'], false); show(E.tooltip, false); show(E.hint, false); show(E['voice-card'], false); show(E['alert-strip'], false); show(E['btn-skip'], false); show(E.palette, false); show(E['fab-build'], false); show(E['build-menu'], false); cls(E.hud, 'bm-open', false); show(E.coach, false); show(E['objective-card'], false); show(E['goal-pill'], false);
         syncPopovers(); clear(E.notifications); show(E['notif-dismiss'], false);
         for (const name in panels) { const p = panels[name]; if (p.el) show(p.el, false); }
+        syncSheet();
         if (E.hud) E.hud.dataset.panel = '';
         call('render', 'ghost', null);
         if (state && state.ui) { M.refreshPalette(state); markToolDom(state); refreshMuteButtons(); }
@@ -43025,7 +43182,7 @@ input[type="checkbox"]{accent-color:var(--primary)}
       A(tabVisible('housing', true, 0) === false && tabVisible('housing', true, 2) === true && tabVisible('essentials', true, 0) === true && tabVisible('paths', false, 3) === false, 'tab visibility rule');
       // 9. skeleton through M.el
       if (inited) {
-        const ids = ['hud', 'topbar', 'brand', 'stat-cash', 'stat-students', 'chip-capacity', 'stat-prestige', 'stat-happiness', 'stat-ecology', 'date-chip', 'stat-date', 'sky-glyph', 'chip-weather', 'speed', 'btn-alerts', 'alerts-badge', 'ov-lit', 'btn-layers', 'btn-map', 'btn-menu', 'btn-mute', 'chip-endowed', 'btn-budget', 'btn-season', 'btn-storm', 'btn-land', 'btn-almanac', 'btn-milestones', 'btn-log', 'btn-settings', 'btn-howto', 'btn-about', 'alert-strip', 'alert-icon', 'alert-text', 'alert-action', 'alert-gator', 'goal-pill', 'gp-kicker', 'gp-title', 'gp-count', 'pop-needs', 'pop-budget', 'pop-alerts', 'pop-layers', 'pop-map', 'pop-menu', 'btn-map-pin', 'mb-income', 'mb-net', 'btn-mb-open', 'minimap-wrap', 'minimap', 'minimap-viewport', 'overlay-buttons', 'legend', 'objective-card', 'obj-portrait', 'obj-title', 'obj-text', 'obj-progress', 'obj-count', 'btn-showme', 'btn-obj-dismiss', 'btn-goal-collapse', 'obj-background', 'speech-bubble', 'needs-strip', 'needs-text', 'needs-apps', 'voice-card', 'milestones-card', 'snack-lane', 'notifications', 'notif-dismiss', 'decision-toast', 'dt-text', 'dt-countdown', 'btn-dt-yes', 'btn-dt-no', 'inspect', 'insp-title', 'insp-sub', 'btn-insp-close', 'insp-sprite', 'insp-body', 'insp-actions', 'ghost-label', 'undo-chip', 'tooltip', 'popover', 'pop-title', 'pop-next', 'palette', 'palette-tabs', 'palette-items', 'btn-bulldoze', 'btn-palette-info', 'btn-palette-close', 'fab-build', 'cards', 'perf-chip', 'perfmode-chip', 'hint', 'hud-chip', 'panels', 'title', 'title-name', 'title-tag', 'btn-charter', 'btn-continue', 'title-seed', 'btn-title-settings', 'btn-title-mute', 'title-campus'];
+        const ids = ['hud', 'topbar', 'brand', 'stat-cash', 'stat-students', 'chip-capacity', 'stat-prestige', 'stat-happiness', 'stat-ecology', 'date-chip', 'stat-date', 'sky-glyph', 'chip-weather', 'speed', 'btn-alerts', 'alerts-badge', 'ov-lit', 'btn-layers', 'btn-map', 'btn-menu', 'btn-mute', 'chip-endowed', 'btn-budget', 'btn-season', 'btn-storm', 'btn-land', 'btn-almanac', 'btn-milestones', 'btn-log', 'btn-settings', 'btn-howto', 'btn-about', 'alert-strip', 'alert-icon', 'alert-text', 'alert-action', 'alert-gator', 'goal-pill', 'gp-kicker', 'gp-title', 'gp-count', 'pop-needs', 'pop-budget', 'pop-alerts', 'pop-layers', 'pop-map', 'btn-map-pin', 'mb-income', 'mb-net', 'btn-mb-open', 'minimap-wrap', 'minimap', 'minimap-viewport', 'overlay-buttons', 'legend', 'objective-card', 'obj-portrait', 'obj-title', 'obj-text', 'obj-progress', 'obj-count', 'btn-showme', 'btn-obj-dismiss', 'btn-goal-collapse', 'obj-background', 'speech-bubble', 'needs-strip', 'needs-text', 'needs-apps', 'voice-card', 'voice-dialog', 'milestones-card', 'snack-lane', 'notifications', 'notif-dismiss', 'decision-toast', 'dt-text', 'dt-countdown', 'btn-dt-yes', 'btn-dt-no', 'inspect', 'insp-title', 'insp-sub', 'btn-insp-close', 'btn-insp-collapse', 'insp-sprite', 'insp-body', 'insp-actions', 'ghost-label', 'undo-chip', 'tooltip', 'popover', 'pop-title', 'pop-next', 'palette', 'palette-tabs', 'palette-items', 'btn-bulldoze', 'btn-palette-info', 'btn-palette-close', 'fab-build', 'cards', 'menu-sheet', 'sheet-head', 'sheet-title', 'sheet-body', 'sheet-list', 'btn-sheet-back', 'btn-sheet-close', 'perf-chip', 'perfmode-chip', 'hint', 'hud-chip', 'panels', 'title', 'title-name', 'title-tag', 'btn-charter', 'btn-continue', 'title-seed', 'btn-title-settings', 'btn-title-mute', 'title-campus'];
         for (const id of ids) A(isEl(E[id]) && E[id].id === id, 'skeleton id through M.el: ' + id);
         A(E.msRows.length === 3 && E.popLines.length === L.popLines && Object.keys(E.speedBtns).length === 5 && Object.keys(E.ovBtns).length === 6, 'ms-rows, pop-lines, speed and overlay buttons exist');
       } else notes.push('skeleton check skipped (init not run)');
@@ -44690,7 +44847,7 @@ input[type="checkbox"]{accent-color:var(--primary)}
     return {
       id: 'newsflash', kicker: 'Breaking', title: 'HURRICANE ' + String(p.name || '').toUpperCase(),
       body: 'Cat ' + fin(p.forecastCat, p.cat) + ' ± 1 · landfall ' + (p.landfallDay >= 0 ? BSU.formatDate(p.landfallDay) : 'soon') + '.' + year1Hint,
-      actions: [{ label: 'Prepare', primary: true, fn: function () { UI.openPanel('storm'); } }, { label: 'Later' }]
+      actions: [{ label: 'Prepare', primary: true, fn: function () { UI.openPanel('storm'); } }, { label: 'Later', dismiss: true }]
     };
   });
   UI.registerCard('wetfeet', function (s, p) {
@@ -44701,7 +44858,7 @@ input[type="checkbox"]{accent-color:var(--primary)}
     return {
       id: 'wetfeet', kicker: 'Wet Feet', title: bName + ' took on water',
       body: ['Pilings − 25% on this building, from now on.', 'A canal within 2 tiles drains it faster.', 'A levee ring keeps the next storm out.'],
-      actions: [{ label: 'Add Pilings', primary: true, fn: function () { if (bId >= 0) { const r = call('buildings', 'retrofitPilings', s, bId); if (r && !r.ok) notify(s, r.reason); } } }, { label: 'Later' }]
+      actions: [{ label: 'Add Pilings', primary: true, fn: function () { if (bId >= 0) { const r = call('buildings', 'retrofitPilings', s, bId); if (r && !r.ok) notify(s, r.reason); } } }, { label: 'Later', dismiss: true }]
     };
   });
   UI.registerCard('failure', function (s, p) {
@@ -44712,7 +44869,7 @@ input[type="checkbox"]{accent-color:var(--primary)}
     const actions = opts.map(function (o) {
       return { label: o.text.length > 60 ? o.text.slice(0, 57) + '…' : o.text, fn: function (st) { if (answered) return true; answered = true; call('progress', 'answerFailure', st, p.kind, o.id); } };
     });
-    if (p.kind === 'bankruptcy') actions.push({ label: 'Not now', fn: function (st) { if (answered) return true; answered = true; call('progress', 'answerFailure', st, p.kind, null); } });
+    if (p.kind === 'bankruptcy') actions.push({ label: 'Not now', dismiss: true, fn: function (st) { if (answered) return true; answered = true; call('progress', 'answerFailure', st, p.kind, null); } });
     return { id: 'failure', kicker: 'Failure', title: def.title, body: opts.map(function (o) { return o.text; }), actions: actions, modal: true };
   });
   UI.registerCard('damage', function (s, p) {
@@ -44727,7 +44884,7 @@ input[type="checkbox"]{accent-color:var(--primary)}
     return {
       id: 'damage', kicker: (report.name || 'Storm') + ' · Cat ' + fin(report.cat, 0), title: 'Damage report: ' + money(report.bill),
       body: [report.tarps + ' blue tarps.'].concat(lines),
-      actions: [{ label: 'Repair All ' + money(report.bill), primary: true, fn: function (st) { call('buildings', 'repairAll', st); call('buildings', 'repairAllLevees', st); } }, { label: 'Later' }],
+      actions: [{ label: 'Repair All ' + money(report.bill), primary: true, fn: function (st) { call('buildings', 'repairAll', st); call('buildings', 'repairAllLevees', st); } }, { label: 'Later', dismiss: true }],
       onClose: function (st) { call('weather', 'closeReport', st); }
     };
   });
@@ -44758,7 +44915,7 @@ input[type="checkbox"]{accent-color:var(--primary)}
     return {
       id: 'recruitboard-' + (p.why || 'open'), kicker: C.kicker || 'Recruiting', title: fill(C.title || 'The recruiting board', m),
       body: [fill(C.body || '', m), 'Lock: ' + BSU.formatDate(fin(p.lockDay, 0)) + '.'],
-      actions: [{ label: RT.open || 'Open the Recruiting tab', primary: true, fn: function () { UI.openPanel('season'); const h = UI.el && UI.el['panel-season']; if (h && h._tabBtns) setTab(h, 'recruiting', true); } }, { label: RT.later || 'Later' }]
+      actions: [{ label: RT.open || 'Open the Recruiting tab', primary: true, fn: function () { UI.openPanel('season'); const h = UI.el && UI.el['panel-season']; if (h && h._tabBtns) setTab(h, 'recruiting', true); } }, { label: RT.later || 'Later', dismiss: true }]
     };
   });
   UI.registerCard('poached', function (s, p) {
@@ -44766,7 +44923,7 @@ input[type="checkbox"]{accent-color:var(--primary)}
     return {
       id: 'poached-' + role, kicker: 'Breaking', title: (p.name || 'Your coach') + ' poached by ' + (p.poacher || 'a rival program'),
       body: [fin(p.stars, 0) + '★ ' + label.toLowerCase() + ', ' + money(p.salary) + ' a year, gone. ' + (p.interim || 'Interim staff') + ' holds the clipboard.', 'Three candidates are waiting on the Staff tab.'],
-      actions: [{ label: 'Open the Staff tab', primary: true, fn: function () { UI.openPanel('season'); const h = UI.el && UI.el['panel-season']; if (h && h._tabBtns) setTab(h, 'staff', true); } }, { label: 'Later' }]
+      actions: [{ label: 'Open the Staff tab', primary: true, fn: function () { UI.openPanel('season'); const h = UI.el && UI.el['panel-season']; if (h && h._tabBtns) setTab(h, 'staff', true); } }, { label: 'Later', dismiss: true }]
     };
   });
 

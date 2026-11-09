@@ -26,15 +26,15 @@
 //   │  ├─ #alert-strip.hidden  #alert-icon #alert-text #alert-action #alert-gator
 //   │  ├─ #goal-pill (at rest: ring + #gp-kicker #gp-title #gp-count) ↔ #objective-card (the goal card: canvas#obj-portrait #obj-kicker #obj-title #obj-text #obj-why
 //   │  │     #btn-goal-collapse #btn-obj-dismiss #obj-progress(.fill) #obj-count #btn-obj-build #btn-showme #obj-next #obj-background #speech-bubble)
-//   │  ├─ #voice-card.hidden  #voice-text #voice-payoff #btn-voice-accept #btn-voice-decline
+//   │  ├─ #voice-card.hidden (the scrim host)  #voice-dialog.card  #voice-student #voice-text #voice-payoff #btn-voice-decline #btn-voice-accept
 //   │  ├─ #milestones-card.hidden  .ms-row×3
 //   │  ├─ popovers (.popover, anchored under their chip / icon; ui.openPopover / closePopover):
 //   │  │   #pop-needs(#needs-strip(.need×6 #needs-text #needs-locate) #needs-apps) · #pop-budget(#mb-income #mb-expense #mb-net #mb-runway #btn-mb-open) ·
 //   │  │   #pop-alerts(#issues-head(#issues-count #issues-sub) #issues-tray(#issues-list #issues-progress #issues-more #issues-suggest #issues-hidden) #issues-spot #issues-clear) ·
 //   │  │   #pop-layers(#overlay-buttons(.ov-btn[data-ov=1..6]) #legend) · #pop-map(#btn-map-pin #minimap-wrap(canvas#minimap #minimap-viewport)) ·
-//   │  │   #pop-menu(#btn-budget #btn-season #btn-storm(.dot) #btn-land #btn-almanac #btn-milestones #btn-log #btn-settings #btn-howto #btn-about)   (U3: the side sheet)
+//   │  │   (the Menu is the side sheet #menu-sheet in #panels, below)
 //   │  ├─ #snack-lane  #notif-dismiss · #notifications(.snackbar.notif[data-kind]) · #decision-toast.snackbar.decision(#dt-text #dt-options #btn-dt-no #btn-dt-yes #dt-foot #dt-countdown(.fill))
-//   │  ├─ #inspect.panel.side.hidden  #insp-title #insp-sub #btn-insp-close canvas#insp-sprite #insp-body #insp-actions  (a kitchen's #insp-menu = summary + #btn-edit-menu)
+//   │  ├─ #inspect.inspect-card.hidden[.collapsed = the pill]  canvas#insp-sprite #insp-title #insp-sub #btn-insp-collapse #btn-insp-close #insp-body #insp-actions  (a kitchen's #insp-menu = summary + #btn-edit-menu)
 //   │  ├─ #ghost-label.hidden · #tooltip.hidden · #popover.hidden(#pop-title .pop-line×7 #pop-next)   (the stat breakdown: Prestige / Happiness / Ecology)
 //   │  ├─ #palette.hidden (the interim Build sheet; G / the FAB toggle it)  #btn-build-menu · #palette-tabs(.tab[data-tab] .pip) · #palette-items(.item[data-id]) · #btn-bulldoze · #btn-palette-info · #btn-palette-close
 //   │  ├─ #fab-build (the gold Build FAB, bottom-right)
@@ -42,7 +42,7 @@
 //   │  ├─ #coach.hidden  .coach-pane×4 · .coach-ring · .coach-box(#coach-step #coach-title #coach-text #btn-coach-back #btn-coach-skip #btn-coach-next)
 //   │  ├─ #cards (modal stack: .card#card-<id> .card-title .card-body .card-actions)
 //   │  └─ #perf-chip.hidden · #perfmode-chip.hidden · #hint.hidden · #btn-skip.hidden · #undo-chip · #hud-chip
-//   ├─ #panels  (#panel-<name>.panel built through registerPanel; settings + howto + about + log + debug + milestones built in here)
+//   ├─ #panels  (the layer over the map)  #menu-sheet.side-sheet(#sheet-head(#btn-sheet-back #sheet-title #btn-sheet-close) #sheet-body(#sheet-list(.list-item#btn-budget … #btn-about) #panel-<name>.panel built through registerPanel)) · #menu-overlay (the kitchen's Edit menu dialog)
 //   └─ #title  #title-name #title-tag .title-hint #btn-charter #btn-continue #btn-title-howto #btn-title-about input#title-seed #btn-title-settings #btn-title-mute
 //
 // Input state machine (ARCHITECTURE §7.3):
@@ -102,7 +102,13 @@
     paid: ['M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z', 'M12 6.5v11', 'M14.8 9.3c-.4-1-1.5-1.6-2.8-1.6-1.6 0-2.8.8-2.8 2 0 2.7 5.6 1.3 5.6 4.1 0 1.3-1.3 2-2.8 2-1.4 0-2.5-.7-2.9-1.7'],
     group: ['M9 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6z', 'M3 20a6 6 0 0 1 12 0', 'M16 5.5a3 3 0 0 1 0 5.5', 'M21 20a6 6 0 0 0-4.5-5.8'],
     mood: ['M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z', 'M8.5 14.5a4.5 4.5 0 0 0 7 0', 'M9 10h.01', 'M15 10h.01'], eco: ['M5 19c0-8 5-13 14-13 0 9-5 13-11 13', 'M5 19l7-7'],
-    volume_up: ['M4 10v4h4l5 4V6L8 10z', 'M16 9a4 4 0 0 1 0 6', 'M18.5 6.5a7.5 7.5 0 0 1 0 11'], volume_off: ['M4 10v4h4l5 4V6L8 10z', 'M16 9l5 6', 'M21 9l-5 6']
+    volume_up: ['M4 10v4h4l5 4V6L8 10z', 'M16 9a4 4 0 0 1 0 6', 'M18.5 6.5a7.5 7.5 0 0 1 0 11'], volume_off: ['M4 10v4h4l5 4V6L8 10z', 'M16 9l5 6', 'M21 9l-5 6'],
+    // U3: the Menu sheet (docs/UI_STYLE.md §6; the mock's sprite)
+    arrow_back: ['M19 12H5', 'M11 6l-6 6 6 6'],
+    settings: ['M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z', 'M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z'],
+    calendar: ['M5 5h14v15H5z', 'M5 10h14', 'M9 3v4', 'M15 3v4'], flag: ['M6 21V4', 'M6 5h11l-2 4 2 4H6'], list: ['M5 6h14', 'M5 12h14', 'M5 18h9'],
+    cyclone: ['M12 12h.01', 'M12 8a4 4 0 0 1 4 4 6 6 0 0 1-6 6 8 8 0 0 1-8-8 10 10 0 0 1 10-10'], football: ['M4 20C4 10 10 4 20 4c0 10-6 16-16 16z', 'M9 15l6-6', 'M11 9l4 4'],
+    landscape: ['M3 19l6-10 4 6 3-4 5 8z'], help: ['M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z', 'M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.4-1 .9-1 1.7', 'M12 17h.01']
   };
   const ICON_FILLED = { star: true };
   /** the legend swatches of the Layers popover (the overlays themselves are canvas colours in render.js; these echo its OV_COLORS at the legend's four steps) */
@@ -145,6 +151,7 @@
     for (const d of (ICONS[name] || [])) { const p = document.createElementNS(SVG_NS, 'path'); p.setAttribute('d', d); if (ICON_FILLED[name]) { p.setAttribute('fill', 'currentColor'); p.setAttribute('stroke', 'none'); } s.appendChild(p); }
     return s;
   }
+  M.icon = function (name, cls_) { return icon(name, cls_); };   // U3: the icon table for ui_panels and the tests
   function iconBtn(id, name, title, onClick) { const b = btn(id, null, 'icon', onClick); b.title = title || ''; b.appendChild(icon(name)); if (id) E[id] = b; return b; }
   function money(n) { return BSU.formatMoney(fin(n, 0)); }
   /** H6 number rules: the sign is part of the number (a true minus U+2212, never a hyphen: formatMoney already does it for cash), thousands are grouped, and every
@@ -181,7 +188,7 @@
   let toast = null; const toastQueue = [];
   const gameDecs = {};   // football pass D: game:decision payloads (options with win probabilities) by decision id, consumed by the toast
   let card = null; const cardQueue = [];
-  let insp = null, inspAt = -1e9, inspDirty = false, renaming = null;
+  let insp = null, inspAt = -1e9, inspDirty = false, renaming = null, inspCollapsed = false;   // U3: inspCollapsed = the card shows as its one-line pill
   let menuEdit = null, menuReason = { text: '', until: 0 }, menuSig = '';   // menu layout pass: the Edit menu overlay ({id} while open, never saved), its inline refusal line, the dish-grid signature (cells are rebuilt only when the set changes)
   let tk = { seen: 0, lastLen: -1 };       // U2: the news lines of state.ticker already shown as snackbars (the Log panel lists them all)
   const snackQueue = [];                   // U2: notifications / news waiting for one of the two snackbar slots ({spec, kind, …} like `notifs`)
@@ -189,6 +196,8 @@
   M._goalCollapseMs = 10000;               // the card folds this long after it opened (hover restarts it; tests shorten it)
   const pops = { open: null };             // U2: the one transient popover (needs | budget | alerts | layers | map | menu | breakdown) or null
   const pal = { open: false };             // U2: the Build sheet (today's palette) shown by the FAB / G
+  const sheet = { open: false };           // U3: the Menu side sheet (list state when state.ui.panel is null, panel state when it names the open panel)
+  const dlg = { prev: null };              // U3: the element that had focus before a dialog (card / voice) opened; focus goes back to it on close
   const odo = { cash: NaN, students: NaN, shownStudents: NaN, holdUntil: -1, lastStudents: NaN, deltaUntil: 0 };
   const held = { up: false, down: false, left: false, right: false };
   let hint = null;                         // {until, untilTick}
@@ -232,9 +241,9 @@
     E[id] = s; E[id + '-value'] = val; E[id + '-delta'] = d; E[id + '-label'] = lab; E[id + '-dot'] = dot; E[id + '-line'] = line;
     return s;
   }
-  /** U2 Menu list item (the interim Menu popover; U3's side sheet keeps these ids): label, a small second line, the hotkey cap */
-  function menuItem(id, label, sub, key, onClick) {
-    const b = btn(id, null, 'list-item', function () { closePopover(); onClick(); }); const t = el('span', 't', label); if (sub) t.appendChild(el('small', null, sub)); b.appendChild(t); if (key) b.appendChild(el('span', 'hk', key)); b.title = label + (key ? ' (' + key + ')' : ''); E[id] = b; return b;
+  /** U3 Menu list item (a row of the side sheet's list state; U2's interim popover kept these ids): leading icon, label + a small second line, the hotkey cap */
+  function menuItem(id, label, sub, key, iconName, onClick) {
+    const b = btn(id, null, 'list-item sl', function () { onClick(); }); if (iconName) b.appendChild(icon(iconName, 'lead')); const t = el('span', 't', label); if (sub) t.appendChild(el('small', null, sub)); b.appendChild(t); if (key) b.appendChild(el('span', 'hk', key)); else b.appendChild(icon('chevron_right', 'go')); b.title = label + (key ? ' (' + key + ')' : ''); E[id] = b; return b;
   }
   function buildTopbar() {
     const tb = el('div'); tb.id = 'topbar'; E.topbar = tb;
@@ -264,7 +273,7 @@
     const lit = btn('ov-lit', '', 'lit-chip hidden', function () { togglePopover('layers'); }); E['ov-lit'] = lit; acts.appendChild(lit);
     acts.appendChild(iconBtn('btn-layers', 'layers', 'Layers (F W K P C E)', function () { togglePopover('layers'); }));
     acts.appendChild(iconBtn('btn-map', 'map', 'Map', function () { togglePopover('map'); }));
-    acts.appendChild(iconBtn('btn-menu', 'menu', 'Menu', function () { togglePopover('menu'); }));
+    acts.appendChild(iconBtn('btn-menu', 'menu', 'Menu', function () { M.toggleMenu(); }));
     const mute = btn('btn-mute', null, 'icon', function () { toggleMute(); }); mute.title = 'Mute (M)'; const mOn = icon('volume_up'), mOff = icon('volume_off', 'hidden'); mute.appendChild(mOn); mute.appendChild(mOff); E['btn-mute'] = mute; E['btn-mute-on'] = mOn; E['btn-mute-off'] = mOff; acts.appendChild(mute);
     const endowed = el('span', 'chip gold hidden', 'Endowed'); endowed.id = 'chip-endowed'; E['chip-endowed'] = endowed; acts.appendChild(endowed);
     return tb;
@@ -278,7 +287,7 @@
     E['pop-' + name] = p; E['pop-' + name + '-title'] = t;
     return { el: p, head: head, tcol: tcol, title: t, close: x, body: body };
   }
-  /** U2: every popover (needs, mini budget, Alerts, Layers, Map, Menu); one is open at a time (openPopover); the Map / Layers ones can be pinned through settings */
+  /** U2: every popover (needs, mini budget, Alerts, Layers, Map; U3 moved the Menu to the side sheet); one is open at a time (openPopover); the Map / Layers ones can be pinned through settings */
   function buildPopovers() {
     const out = [];
     const nd = popShell('needs', 'What the campus needs', 'needs'); nd.body.appendChild(buildNeedsStrip()); const ne = el('div', 'muted hidden', 'Nothing to report yet: the first buildings set what the campus needs.'); ne.id = 'needs-empty'; nd.body.appendChild(ne); E['needs-empty'] = ne; out.push(nd.el);
@@ -294,19 +303,6 @@
     const ly = popShell('layers', 'Layers', 'layers'); const ov = buildOverlays(); ly.body.appendChild(ov[0]); ly.body.appendChild(ov[1]); out.push(ly.el);
     const mp = popShell('map', 'Map', 'map'); const pin = btn('btn-map-pin', null, 'icon', function () { M.pinMinimap(); }); pin.appendChild(icon('push_pin')); pin.title = 'Keep the minimap open (remembered)'; mp.head.insertBefore(pin, mp.close); E['btn-map-pin'] = pin;
     mp.body.appendChild(buildMinimap()); const mft = el('div', 'foot muted', 'Click to pan · the pin keeps it open'); mft.id = 'map-foot'; mp.el.appendChild(mft); out.push(mp.el);
-    const mn = popShell('menu', 'Menu', 'menu'); const list = el('div', 'menu-list'); mn.body.appendChild(list);
-    list.appendChild(menuItem('btn-budget', 'Budget', 'Income, expenses, tuition and faculty', 'B', function () { M.openPanel('budget'); }));
-    list.appendChild(menuItem('btn-season', 'Season', 'Schedule, roster, the coach', 'N', function () { M.openPanel('season'); }));
-    const storm = menuItem('btn-storm', 'Storm', 'Board up, sandbags, pumps, shelters', 'T', function () { M.openPanel('storm'); }); const dot = el('span', 'dot'); storm.appendChild(dot); E['btn-storm-dot'] = dot; list.appendChild(storm);
-    list.appendChild(menuItem('btn-land', 'Land Office', 'Buy the next section of state land', 'O', function () { M.openPanel('land'); }));   // L2: the Land Office (a deed)
-    list.appendChild(menuItem('btn-almanac', 'Almanac', 'The year so far, by month', '', function () { M.openPanel('almanac'); }));
-    list.appendChild(menuItem('btn-milestones', 'Milestones', 'Every goal, done and to come', 'L', function () { M.openPanel('milestones'); }));
-    list.appendChild(menuItem('btn-log', 'Log', 'The last 30 news lines', '', function () { M.openPanel('log'); }));
-    list.appendChild(el('div', 'divider'));
-    list.appendChild(menuItem('btn-settings', 'Settings', '', '', function () { M.openPanel('settings'); }));
-    list.appendChild(menuItem('btn-howto', 'How to play', '', '', function () { M.openPanel('howto'); }));
-    list.appendChild(menuItem('btn-about', 'About this build', '', '', function () { M.openPanel('about'); }));
-    out.push(mn.el);
     return out;
   }
   function buildAlert() {
@@ -399,10 +395,11 @@
     c.appendChild(bub); c.appendChild(head); c.appendChild(progRow); c.appendChild(acts); c.appendChild(next); c.appendChild(bg);
     E['objective-card'] = c; E['obj-portrait'] = portrait; E['obj-kicker'] = kick; E['obj-title'] = title; E['obj-text'] = text; E['obj-why'] = why; E['obj-progress'] = prog; E['obj-prog-row'] = progRow; E['obj-fill'] = fill; E['obj-count'] = count; E['obj-actions'] = acts;
     E['btn-obj-build'] = build; E['btn-showme'] = showme; E['btn-postcard-obj'] = post; E['btn-obj-dismiss'] = dis; E['btn-goal-collapse'] = fold; E['obj-next'] = next; E['obj-background'] = bg; E['speech-bubble'] = bub;
-    const v = el('div', 'hidden'); v.id = 'voice-card'; const vh = el('div', 'card-kicker', 'Student voice'); const vs = el('div', 'voice-student', ''); const vt = el('div', null, ''); vt.id = 'voice-text'; const vp = el('div', null, ''); vp.id = 'voice-payoff';
-    const va = el('div', 'card-actions'); const acc = btn('btn-voice-accept', 'Accept', 'primary small', function () { answerVoice(true); }); const dec = btn('btn-voice-decline', 'Decline', 'small', function () { answerVoice(false); }); va.appendChild(acc); va.appendChild(dec);
-    v.appendChild(vh); v.appendChild(vs); v.appendChild(vt); v.appendChild(vp); v.appendChild(va);
-    E['voice-card'] = v; E['voice-student'] = vs; E['voice-text'] = vt; E['voice-payoff'] = vp; E['btn-voice-accept'] = acc; E['btn-voice-decline'] = dec;
+    // U3: the student voice is a dialog like the cards: #voice-card is its scrim host, #voice-dialog the card (Decline = the dismiss action, Esc)
+    const v = el('div', 'hidden'); v.id = 'voice-card'; const vd = el('div', 'card voice-dialog'); vd.id = 'voice-dialog'; const vh = el('div', 'card-kicker', 'Student voice'); const vs = el('div', 'voice-student card-title', ''); const vt = el('div', 'card-body'); vt.id = 'voice-text'; const vp = el('div', 'card-body voice-payoff', ''); vp.id = 'voice-payoff';
+    const va = el('div', 'card-actions'); const acc = btn('btn-voice-accept', 'Accept', 'primary', function () { answerVoice(true); }); const dec = btn('btn-voice-decline', 'Decline', '', function () { answerVoice(false); }); va.appendChild(dec); va.appendChild(acc);
+    vd.appendChild(vh); vd.appendChild(vs); vd.appendChild(vt); vd.appendChild(vp); vd.appendChild(va); v.appendChild(vd);
+    E['voice-card'] = v; E['voice-dialog'] = vd; E['voice-student'] = vs; E['voice-text'] = vt; E['voice-payoff'] = vp; E['btn-voice-accept'] = acc; E['btn-voice-decline'] = dec;
     const ms = el('div', 'hidden'); ms.id = 'milestones-card'; const mh = el('div', 'card-kicker', 'Next milestones'); ms.appendChild(mh); E.msRows = [];
     for (let k = 0; k < 3; k++) { const r = el('div', 'ms-row'); const n = el('span', 'ms-name', ''); const b = el('div', 'bar'); const f = el('div', 'fill'); b.appendChild(f); const cnt = el('span', 'ms-count', ''); r.appendChild(n); r.appendChild(b); r.appendChild(cnt); ms.appendChild(r); E.msRows.push({ row: r, name: n, fill: f, count: cnt }); }
     E['milestones-card'] = ms;
@@ -419,15 +416,18 @@
     t.appendChild(tx); t.appendChild(opts); t.appendChild(acts); t.appendChild(foot); t.appendChild(bar);
     E['decision-toast'] = t; E['dt-text'] = tx; E['dt-options'] = opts; E['dt-foot'] = foot; E['dt-countdown'] = bar; E['dt-fill'] = fill; E['btn-dt-yes'] = y; E['btn-dt-no'] = n; E['dt-actions'] = acts; return t;
   }
+  /** U3: the inspect card (bottom-left above the lane): sprite · title + sub · collapse chevron · ✕; rows; actions. Collapsed (.collapsed) it is a one-line pill (sprite, title, chevron up, ✕) that re-expands on a click */
   function buildInspect() {
-    const p = el('div', 'panel side hidden'); p.id = 'inspect';
+    const p = el('div', 'panel side inspect-card hidden'); p.id = 'inspect';
     const head = el('div', 'insp-head'); const sprite = el('canvas'); sprite.id = 'insp-sprite'; sprite.width = 64; sprite.height = 64;
     const col = el('div', 'insp-col'); const title = el('div', null, ''); title.id = 'insp-title'; const sub = el('div', null, ''); sub.id = 'insp-sub'; col.appendChild(title); col.appendChild(sub);
-    const close = btn('btn-insp-close', '✕', 'icon', function () { M.closeInspect(); });
-    head.appendChild(sprite); head.appendChild(col); head.appendChild(close);
+    const fold = btn('btn-insp-collapse', null, 'icon', function (ev) { if (ev && ev.stopPropagation) ev.stopPropagation(); M.collapseInspect(); }); fold.title = 'Collapse'; const less = icon('expand_less', 'hidden'), more = icon('expand_more'); fold.appendChild(more); fold.appendChild(less);
+    const close = btn('btn-insp-close', null, 'icon', function (ev) { if (ev && ev.stopPropagation) ev.stopPropagation(); M.closeInspect(); }); close.title = 'Close (Esc)'; close.appendChild(icon('close'));
+    head.appendChild(sprite); head.appendChild(col); head.appendChild(fold); head.appendChild(close);
     const body = el('div', 'rows'); body.id = 'insp-body'; const acts = el('div', 'insp-actions'); acts.id = 'insp-actions';
     p.appendChild(head); p.appendChild(body); p.appendChild(acts);
-    E.inspect = p; E['insp-title'] = title; E['insp-sub'] = sub; E['btn-insp-close'] = close; E['insp-sprite'] = sprite; E['insp-body'] = body; E['insp-actions'] = acts; return p;
+    p.addEventListener('click', function () { if (inspCollapsed) M.collapseInspect(false); });
+    E.inspect = p; E['insp-title'] = title; E['insp-sub'] = sub; E['btn-insp-collapse'] = fold; E['insp-fold-more'] = more; E['insp-fold-less'] = less; E['btn-insp-close'] = close; E['insp-sprite'] = sprite; E['insp-body'] = body; E['insp-actions'] = acts; return p;
   }
   function buildPopover() {
     const p = el('div', 'hidden'); p.id = 'popover'; const t = el('div', null, ''); t.id = 'pop-title'; p.appendChild(t); E.popLines = [];
@@ -485,7 +485,33 @@
     t.appendChild(box);
     E.title = t; E['title-name'] = name; E['title-tag'] = tag; E['btn-charter'] = charter; E['btn-continue'] = cont; E['title-seed'] = seed; E['btn-title-settings'] = ts; E['btn-title-mute'] = tm; E['title-hint'] = hint; E['btn-title-howto'] = howBtn; E['btn-title-about'] = aboutBtn; E['title-campus'] = campus; E['title-size'] = sz; E['title-size-note'] = szn; return t;
   }
-  function buildPanelsHost() { const p = el('div'); p.id = 'panels'; E.panels = p; p.appendChild(buildMenuOverlay()); return p; }
+  /** U3: #panels is the layer over the map (pointer-events none) that holds the Menu side sheet (#menu-sheet) and the kitchen's Edit menu dialog (#menu-overlay) */
+  function buildPanelsHost() { const p = el('div'); p.id = 'panels'; E.panels = p; p.appendChild(buildSheet()); p.appendChild(buildMenuOverlay()); return p; }
+  /** U3: the Menu side sheet. Head: back arrow (panel state only) · title · ✕. Body: the list state (#sheet-list, the ten list items) and the registered panels' hosts (#panel-<name>, one visible at a time), scrolling inside the sheet */
+  function buildSheet() {
+    const sh = el('aside', 'side-sheet hidden'); sh.id = 'menu-sheet'; sh.setAttribute('aria-label', 'Menu');
+    const head = el('div', 'sheet-head'); head.id = 'sheet-head';
+    const back = btn('btn-sheet-back', null, 'icon hidden', function () { M.panelBack(); }); back.title = 'Back to the menu'; back.appendChild(icon('arrow_back'));
+    const title = el('div', 'title', 'Menu'); title.id = 'sheet-title';
+    const close = btn('btn-sheet-close', null, 'icon', function () { M.openPanel(null); }); close.title = 'Close (Esc)'; close.appendChild(icon('close'));
+    head.appendChild(back); head.appendChild(title); head.appendChild(close);
+    const body = el('div', 'sheet-body'); body.id = 'sheet-body';
+    const list = el('div', 'menu-list'); list.id = 'sheet-list'; body.appendChild(list);
+    list.appendChild(menuItem('btn-budget', 'Budget', 'Income, expenses, tuition and faculty', 'B', 'paid', function () { M.openPanel('budget'); }));
+    list.appendChild(menuItem('btn-season', 'Season', 'Schedule, roster, the coach', 'N', 'football', function () { M.openPanel('season'); }));
+    const storm = menuItem('btn-storm', 'Storm', 'Board up, sandbags, pumps, shelters', 'T', 'cyclone', function () { M.openPanel('storm'); }); const dot = el('span', 'dot'); storm.appendChild(dot); E['btn-storm-dot'] = dot; list.appendChild(storm);
+    list.appendChild(menuItem('btn-land', 'Land Office', 'Buy the next section of state land', 'O', 'landscape', function () { M.openPanel('land'); }));   // L2: the Land Office (a deed)
+    list.appendChild(menuItem('btn-almanac', 'Almanac', 'The year so far, by month', '', 'calendar', function () { M.openPanel('almanac'); }));
+    list.appendChild(menuItem('btn-milestones', 'Milestones', 'Every goal, done and to come', 'L', 'flag', function () { M.openPanel('milestones'); }));
+    list.appendChild(menuItem('btn-log', 'Log', 'The last 30 news lines', '', 'list', function () { M.openPanel('log'); }));
+    list.appendChild(el('div', 'divider'));
+    list.appendChild(menuItem('btn-settings', 'Settings', '', '', 'settings', function () { M.openPanel('settings'); }));
+    list.appendChild(menuItem('btn-howto', 'How to play', '', '', 'help', function () { M.openPanel('howto'); }));
+    list.appendChild(menuItem('btn-about', 'About this build', '', '', 'info', function () { M.openPanel('about'); }));
+    sh.appendChild(head); sh.appendChild(body);
+    E['menu-sheet'] = sh; E['sheet-head'] = head; E['btn-sheet-back'] = back; E['sheet-title'] = title; E['btn-sheet-close'] = close; E['sheet-body'] = body; E['sheet-list'] = list;
+    return sh;
+  }
   /** menu layout pass: the Edit menu overlay (a 64-rem panel centred over the map, the existing panel chrome + close button): title, live summary, presets, "x / cap" count, the inline reason line, the dish grid, the note. Built once; syncMenuOverlay updates it in place */
   function buildMenuOverlay() {
     const p = el('div', 'panel menu-overlay hidden'); p.id = 'menu-overlay';
@@ -652,10 +678,10 @@
   // menu (the icons) and breakdown (today's #popover for Prestige / Happiness / Ecology). Esc, an outside press or the same control closes
   // it; the control shows `selected` while it is open. The Map and Layers popovers can be pinned (settings.keepMinimap / keepOverlays):
   // a pinned one stays through Esc / outside presses and while another popover is open; its icon unpins it.
-  const POP_ANCHOR = { needs: 'stat-students', budget: 'stat-cash', alerts: 'btn-alerts', layers: 'btn-layers', map: 'btn-map', menu: 'btn-menu', breakdown: null };
+  const POP_ANCHOR = { needs: 'stat-students', budget: 'stat-cash', alerts: 'btn-alerts', layers: 'btn-layers', map: 'btn-map', breakdown: null };
   function popEl(name) { return name === 'breakdown' ? E.popover : E['pop-' + name]; }
   function popPinned(name) { const set = M.settings(); return (name === 'map' && !!set.keepMinimap) || (name === 'layers' && !!set.keepOverlays); }
-  function popVisible(name) { return pops.open === name || popPinned(name); }
+  function popVisible(name) { return !sheet.open && (pops.open === name || popPinned(name)); }   // U3: the Menu sheet covers the right gutter, so a pinned popover steps aside while it is open
   /** icon popovers right-align to their icon (clamped to the gutter); the stat-chip popovers sit on the left gutter (CSS); a pinned Layers stacks under a visible Map */
   function placePopover(name) {
     const p = popEl(name); if (!p || !p.style) return;
@@ -678,6 +704,7 @@
   }
   function openPopover(name) {
     if (!popEl(name) || titleOn) return false;
+    if (sheet.open) M.openPanel(null);   // U3: one of sheet / popover / Build sheet at a time: a popover closes the Menu sheet
     pops.open = name;
     if (dom()) { syncPopovers(); placePopover(name); hideTooltip(); }
     return true;
@@ -724,7 +751,8 @@
   M.goalExpanded = function () { return goal.open; };
 
   // ---- the Build sheet (U2: today's palette shown by the FAB / G; U4 rebuilds it) -----------------------------------------------------
-  M.openPalette = function (on) { try { const v = on === undefined ? !pal.open : !!on; if (v === pal.open) return pal.open; pal.open = v; paletteHidden = null; const s = stateOf(); if (s && dom()) updateSetPiece(s); if (!v) hideTooltip(); return pal.open; } catch (e) { uerr('openPalette', e); return pal.open; } };
+  M.openPalette = function (on) { try { const v = on === undefined ? !pal.open : !!on; if (v === pal.open) return pal.open; if (v && (sheet.open || M.panel())) M.openPanel(null); pal.open = v;   // U3: one of sheet / popover / Build sheet at a time
+ paletteHidden = null; const s = stateOf(); if (s && dom()) updateSetPiece(s); if (!v) hideTooltip(); return pal.open; } catch (e) { uerr('openPalette', e); return pal.open; } };
   M.togglePalette = function () { return M.openPalette(); };
   M.paletteOpen = function () { return pal.open; };
 
@@ -750,7 +778,7 @@
       if (typeof window.addEventListener === 'function') {
         window.addEventListener('keydown', function (e) {
           try {
-            if (isTextTarget(e.target)) return;
+            if (isTextTarget(e.target) && !(e.key === 'Escape' && e.target.type === 'range')) return;   // U3: Esc still closes the sheet from a focused slider
             const handled = M.keydown(e.key, modsOf(e));
             if (handled && shouldPrevent(e)) e.preventDefault();
           } catch (err) { uerr('keydown', err); }
@@ -1002,7 +1030,7 @@
       if (ghostPin && ghostPin.fresh && type === 'move' && Math.hypot(px - ghostPin.px0, py - ghostPin.py0) > 12) ghostPin.fresh = false;   // issues v2: the armed ghost follows the pointer once it travels onto the map (it still snaps back within ~2 tiles of the spot)
       heldShift = !!mods.shift; heldAlt = !!mods.alt;
       if (titleOn) return;
-      if (type === 'down' && s.ui.panel && !s.ui.tool && !bm.open) { M.openPanel(null); return; }   // a map click dismisses an open panel
+      if (type === 'down' && (sheet.open || s.ui.panel) && !s.ui.tool && !bm.open) { M.openPanel(null); return; }   // a map click dismisses the open Menu sheet (U3: the list state too)
       if (type === 'down') { if (call('progress', 'tutorialStage', s) === 1) { call('progress', 'skipSwoop', s); return; } if (s.setPiece) call('render', 'captureCameraTouch', s); closePopover(); if (goal.open && coach.step < 0) goalCollapse(); if (bm.open) M.closeBuildMenu(); }   // U2: a map press is an outside click for the popover and the goal card; a press while the menu is up (Build it keeps it open) is the player's answer: close it and place   // the swoop-skipping click must not also open the tile inspector behind the charter card
       if (type === 'move' || type === 'down') { const i = tileIndexAt(px, py); M.hoverTile = i; if (BSU.render) BSU.render.hoverTile = i; }
       mcStep(live, { type: type, px: px, py: py, button: fin(button, 0) | 0, mods: mods });
@@ -1083,12 +1111,14 @@
         if (key === 'Enter' || key === 'Escape') { if (renaming && focusedInput === renaming.input) { if (key === 'Enter') commitRename(s); else cancelRename(); return true; } if (focusedInput === E['title-seed'] && key === 'Enter') { charterClick(); return true; } }
         return false;
       }
+      // (3-) the student voice dialog: Esc declines (its dismiss action); Enter is left alone (accepting is a choice)
+      if (voiceOpen() && key === 'Escape' && !card && !s.ui.tool && !insp && !sheet.open && !s.ui.panel) { answerVoice(false); return true; }
       // (3) an open card takes Enter / Escape
       if (card) {
         if (key === 'Enter') { cardPrimary(s); return true; }
-        if (key === 'Escape' && !s.ui.tool && !insp && !s.ui.panel) { if (card.spec.modal === true) return true; M.closeCard(); return true; }   // Esc peels one layer: tool → inspect → panel → card
+        if (key === 'Escape' && !s.ui.tool && !insp && !sheet.open && !s.ui.panel) { if (card.spec.modal === true) return true; cardDismiss(s); return true; }   // Esc peels one layer: tool → inspect → Menu sheet → card (U3: the card's dismiss action)
       }
-      if (titleOn) { if (key === 'Escape' && s.ui.panel) { M.openPanel(null); return true; } return false; }   // framing pass: Esc closes How to play / About / Settings on the title screen
+      if (titleOn) { if (key === 'Escape' && (sheet.open || s.ui.panel)) { M.openPanel(null); return true; } return false; }   // framing pass: Esc closes How to play / About / Settings on the title screen
       // (3b) the coach-mark tour owns the keyboard while it is up: Enter/→/Space next, ← back, Esc skips
       if (coach.step >= 0 && !coach.paused) {
         if (key === 'Enter' || key === 'ArrowRight' || key === ' ') { coachNext(s, 1); return true; }
@@ -1104,8 +1134,8 @@
         if (bm.open) { M.closeBuildMenu(); return true; }
         if (mcStep(live, { type: 'key', key: 'Escape', px: lastPx, py: lastPy })) return true;
         if (pal.open) { M.openPalette(false); return true; }   // U2: the Build sheet, once the tool is down
-        if (s.ui.panel) { M.openPanel(null); return true; }
-        if (card) { M.closeCard(); return true; }
+        if (sheet.open || s.ui.panel) { M.openPanel(null); return true; }   // U3: Esc closes the Menu sheet whatever it shows
+        if (card) { cardDismiss(s); return true; }
         if (spotToggled || (issuesApi() && issuesApi().selectedId() !== null)) { clearIssueUi(); return true; }   // issue spotlight pass: Esc #5 clears the issue selection / spotlight
         if (notifs.length || snackQueue.length) { M.dismissNotifs(); return true; }   // gator pass: Esc #6 clears the notification stack
         if (goal.open && coach.step < 0) { goalCollapse(); return true; }   // U2: Esc #7 folds the goal card to its pill
@@ -1510,12 +1540,16 @@
     try {
       const s = state || stateOf(); if (!s || !target || !target.kind) return;
       insp = { kind: target.kind, id: fin(target.id, -1), i: fin(target.i, -1), legend: !!target.legend }; inspAt = -1e9; renaming = null;
-      if (dom()) { E.inspect.dataset.kind = insp.kind; show(E.inspect, true); cls(E.hud, 'inspect-open', true); refreshInspect(s); }
+      if (dom()) { E.inspect.dataset.kind = insp.kind; inspCollapsed = false; syncInspectFold(); show(E.inspect, true); cls(E.hud, 'inspect-open', true); refreshInspect(s); }
       if (live.state === 'IDLE') mcSet(live, 'INSPECTING');
     } catch (e) { uerr('inspect', e); }
   };
+  /** U3: fold the inspect card to its one-line pill (on / off; no argument toggles) */
+  M.collapseInspect = function (on) { try { inspCollapsed = on === undefined ? !inspCollapsed : !!on; if (dom()) syncInspectFold(); return inspCollapsed; } catch (e) { uerr('collapseInspect', e); return false; } };
+  M.inspectCollapsed = function () { return !!insp && inspCollapsed; };
+  function syncInspectFold() { cls(E.inspect, 'collapsed', inspCollapsed); show(E['insp-fold-more'], !inspCollapsed); show(E['insp-fold-less'], inspCollapsed); if (E['btn-insp-collapse']) E['btn-insp-collapse'].title = inspCollapsed ? 'Expand' : 'Collapse'; }
   M.closeInspect = function () { closeInspectDom(); if (live.state === 'INSPECTING') mcSet(live, 'IDLE'); };
-  function closeInspectDom() { insp = null; renaming = null; if (menuEdit) M.closeMenuEditor(); if (focusedInput && focusedInput !== E['title-seed']) focusedInput = null; if (dom()) { show(E.inspect, false); cls(E.hud, 'inspect-open', false); } }
+  function closeInspectDom() { insp = null; renaming = null; inspCollapsed = false; if (menuEdit) M.closeMenuEditor(); if (focusedInput && focusedInput !== E['title-seed']) focusedInput = null; if (dom()) { syncInspectFold(); show(E.inspect, false); cls(E.hud, 'inspect-open', false); } }
   function row(k, v, cls_) { const r = el('div', 'row' + (cls_ ? ' ' + cls_ : '')); r.appendChild(el('span', 'k', k)); r.appendChild(el('span', 'v', v)); return r; }
   function action(label, fn, cls_) { return btn(null, label, 'small' + (cls_ ? ' ' + cls_ : ''), function () { const s = stateOf(); const r = fn(s); if (r && r.ok === false && r.reason) M.notify(s, { kind: 'info', text: r.reason, ttl: 4000 }); inspAt = -1e9; }); }
   function stars(n) { n = clamp(fin(n, 0) | 0, 0, 5); return '★★★★★'.slice(0, n) + '☆☆☆☆☆'.slice(0, 5 - n); }
@@ -2728,8 +2762,12 @@
     if (!list.length && !spec.modal) acts.appendChild(btn(null, spec.closeLabel || 'Continue', 'primary', function () { M.closeCard(); }));
     c.appendChild(acts);
     if (spec.clickToClose) c.addEventListener('click', function () { M.closeCard(); });
-    clear(E.cards); E.cards.appendChild(c); show(E.cards, true); card.el = c;
+    clear(E.cards); E.cards.appendChild(c); show(E.cards, true); card.el = c; dialogFocus(c);
   }
+  /** the open dialog card's id (the queue is not counted), or null; U3 */
+  M.cardOpen = function () { return card ? card.spec.id : null; };
+  /** the student-voice dialog is on screen (U3) */
+  M.voiceOpen = function () { return voiceOpen(); };
   function runCardAction(a) { const s = stateOf(); let keep = false; try { if (typeof a.fn === 'function') keep = a.fn(s) === true || a.keep === true; } catch (e) { uerr('card:action', e); } if (!keep) M.closeCard(); }
   function cardPrimary(s) { if (!card) return; const list = Array.isArray(card.spec.actions) ? card.spec.actions : []; const a = list.find(function (x) { return x.primary; }) || list[0]; if (a) runCardAction(a); else if (!card.spec.modal) M.closeCard(); }
   /** close the current card (or a queued one by id) */
@@ -2741,6 +2779,7 @@
       if (dom()) { clear(E.cards); show(E.cards, false); }
       if (typeof c.spec.onClose === 'function') { try { c.spec.onClose(stateOf()); } catch (e) { uerr('card:onClose', e); } }
       if (cardQueue.length) { const s = stateOf(); if (s) openCard(s, cardQueue.shift()); }
+      if (dom() && !card) dialogRestore();
     } catch (e) { uerr('closeCard', e); }
   };
   function updateCards(s) {
@@ -2751,9 +2790,24 @@
   function showVoice(s, spec) {
     if (!dom()) return;
     setText(E['voice-student'], (spec.student || '') + (spec.major ? ' · ' + spec.major : '')); setText(E['voice-text'], spec.text || ''); setText(E['voice-payoff'], spec.payoff || '');
-    E['voice-card'].dataset.voice = spec.voiceId || ''; show(E['voice-card'], true);
+    E['voice-card'].dataset.voice = spec.voiceId || ''; show(E['voice-card'], true); dialogFocus(E['voice-dialog']);
   }
-  function answerVoice(accept) { const s = stateOf(); const id = E['voice-card'] && E['voice-card'].dataset.voice; if (s && id) call('progress', 'answerVoice', s, id, !!accept); if (dom()) show(E['voice-card'], false); }
+  function answerVoice(accept) { const s = stateOf(); const id = E['voice-card'] && E['voice-card'].dataset.voice; if (s && id) call('progress', 'answerVoice', s, id, !!accept); if (dom()) { show(E['voice-card'], false); dialogRestore(); } }
+  function voiceOpen() { return !!(dom() && E['voice-card'] && !E['voice-card'].classList.contains('hidden')); }
+  /** U3 dialogs: focus moves into the dialog when it opens (the dialog itself, tabindex -1: Enter / Esc stay with the key handler) and back to what had it when the last one closes */
+  function dialogFocus(elm) {
+    try {
+      if (!dlg.prev && typeof document !== 'undefined') { const a = document.activeElement; if (a && a !== document.body && typeof a.focus === 'function' && !(E.cards && E.cards.contains(a)) && !(E['voice-card'] && E['voice-card'].contains(a))) dlg.prev = a; }
+      elm.tabIndex = -1; elm.setAttribute('role', 'dialog'); elm.setAttribute('aria-modal', 'true'); elm.focus();
+    } catch (e) { /* stub */ }
+  }
+  function dialogRestore() {
+    if (card || voiceOpen()) return;
+    const p = dlg.prev; dlg.prev = null;
+    try { if (p && p.isConnected !== false && typeof p.focus === 'function') p.focus(); else if (E.world && typeof E.world.focus === 'function') E.world.focus(); } catch (e) { /* stub */ }
+  }
+  /** Esc on a card: its dismiss action (`dismiss: true`: Later, Not now, Decline all, Back), else just closing it */
+  function cardDismiss(s) { if (!card) return; const list = Array.isArray(card.spec.actions) ? card.spec.actions : []; const a = list.find(function (x) { return x && x.dismiss === true; }); if (a) runCardAction(a); else M.closeCard(); void s; }
   function registerBuiltins() {
     const reg = function (id, fn) { if (!M.cards[id]) M.registerCard(id, fn); };
     reg('charter', function (s, p) {
@@ -2776,7 +2830,7 @@
       const body = el('div', 'board-list');
       const actions = [];
       cards.forEach(function (cid) { const d = defs.find(function (x) { return x.id === cid; }) || { id: cid, name: cid, text: '' }; const b = btn(null, '', 'board-card', function () { call('progress', 'answerBoard', stateOf(), cid); M.closeCard(); }); b.appendChild(el('div', 'board-name', d.name)); b.appendChild(el('div', 'board-text', d.text)); body.appendChild(b); });
-      actions.push({ label: 'Decline all', fn: function (st) { call('progress', 'answerBoard', st, null); } });
+      actions.push({ label: 'Decline all', dismiss: true, fn: function (st) { call('progress', 'answerBoard', st, null); } });
       return { id: 'board', kicker: 'Board of Regents', title: 'The Board has a proposal', body: body, actions: actions };
     });
     reg('recap', function (s, p) {
@@ -2784,8 +2838,8 @@
       if (Array.isArray(p.lines)) lines.push.apply(lines, p.lines); else { for (const k in p) if (typeof p[k] === 'string' || typeof p[k] === 'number') lines.push(k.replace(/([A-Z])/g, ' $1').replace(/^./, function (c) { return c.toUpperCase(); }) + ': ' + (typeof p[k] === 'number' && Math.abs(p[k]) >= 1000 ? money(p[k]) : p[k])); }
       return { id: 'recap', kicker: "Founders' Day", title: p.title || ('Year ' + fin(p.year, fin(s && s.calendar && s.calendar.year, 1) - 1) + ' in review'), body: lines.length ? lines : ['Another year on the ridge.'], actions: [{ label: 'Postcard', fn: function (st) { postcard(st); return true; } }, { label: 'Onward', primary: true }] };
     });
-    reg('versionMismatch', function (s, p) { p = p || {}; return { id: 'versionMismatch', kicker: 'Save', title: 'That save is from another version', body: 'Version ' + fin(p.version, 0) + ' cannot be loaded here. Start fresh with the same seed (' + fin(p.seed, 0) + ')?', actions: [{ label: 'Start fresh, same seed', primary: true, fn: function () { call('audio', 'unlock'); M.showTitle(false); call('session', 'newGame', { seed: fin(p.seed, 0) >>> 0 }); } }, { label: 'Back' }] }; });
-    if (!panels.settings) M.registerPanel('settings', { build: buildSettingsPanel, refresh: refreshSettingsPanel, events: ['speed:changed'] });
+    reg('versionMismatch', function (s, p) { p = p || {}; return { id: 'versionMismatch', kicker: 'Save', title: 'That save is from another version', body: 'Version ' + fin(p.version, 0) + ' cannot be loaded here. Start fresh with the same seed (' + fin(p.seed, 0) + ')?', actions: [{ label: 'Start fresh, same seed', primary: true, fn: function () { call('audio', 'unlock'); M.showTitle(false); call('session', 'newGame', { seed: fin(p.seed, 0) >>> 0 }); } }, { label: 'Back', dismiss: true }] }; });
+    if (!panels.settings) M.registerPanel('settings', { build: buildSettingsPanel, refresh: refreshSettingsPanel, events: [] });
     if (!panels.howto) M.registerPanel('howto', { build: buildHowPanel, refresh: null, events: [] });
     if (!panels.about) M.registerPanel('about', { build: buildAboutPanel, refresh: null, events: [] });
     if (!panels.debug) M.registerPanel('debug', { build: buildDebugPanel, refresh: refreshDebugPanel, events: [] });
@@ -2798,23 +2852,70 @@
   // ---------------------------------------------------------------------------
   function panelHost(name) {
     const p = panels[name]; if (!p) return null;
-    if (!p.el && dom()) { const host = el('div', 'panel hidden'); host.id = 'panel-' + name; const head = el('div', 'panel-head'); const x = btn(null, '✕', 'icon', function () { M.openPanel(null); }); head.appendChild(x); host.appendChild(head); E.panels.appendChild(host); p.el = host; E['panel-' + name] = host; }
+    if (!p.el && dom()) { const host = el('div', 'panel hidden'); host.id = 'panel-' + name; E['sheet-body'].appendChild(host); p.el = host; E['panel-' + name] = host; }   // U3: the panel lives in the sheet body (the ✕ and the title are the sheet's head)
     return p.el;
   }
-  /** open a registered panel (closes any other); null closes; `Esc` closes */
+  const PANEL_TITLES = { budget: 'Budget', season: 'Season', storm: 'Storm', land: 'Land Office', almanac: 'Almanac', milestones: 'Milestones', log: 'Log', settings: 'Settings', howto: 'How to play', about: 'About this build', debug: 'Debug' };
+  /** U3: show the sheet in the state state.ui.panel names (null = the list): head title, back arrow, list vs panel host, the Menu icon's selected look, the FAB / pinned popovers stepping aside */
+  function syncSheet() {
+    if (!dom()) return;
+    const s = stateOf(); const name = s && s.ui ? s.ui.panel : null; const on = sheet.open;
+    show(E['menu-sheet'], on); cls(E['btn-menu'], 'selected', on);
+    cls(E['menu-sheet'], 'panel-state', on && !!name);
+    setText(E['sheet-title'], name ? (PANEL_TITLES[name] || PANEL_KEYS[name] || name) : 'Menu');
+    show(E['btn-sheet-back'], on && !!name && !titleOn);   // opened from the title screen there is no list to go back to
+    show(E['sheet-list'], !name);
+    for (const k in panels) { const pp = panels[k]; if (pp.el) show(pp.el, on && k === name); }
+    if (E['sheet-body']) E['sheet-body'].scrollTop = 0;
+    syncPopovers(); fabShown = null;
+  }
+  /** U3: the Menu sheet in its list state (on / off; no argument toggles). Opening it closes the popover and the Build sheet; a panel already open in it stays */
+  M.openSheet = function (on) {
+    try {
+      const s = stateOf(); const v = on === undefined ? !sheet.open : !!on;
+      if (!v) { if (sheet.open || (s && s.ui && s.ui.panel)) M.openPanel(null); return false; }
+      if (sheet.open) return true;
+      if (!s || !s.ui) return false;
+      if (menuEdit) M.closeMenuEditor();
+      closePopover(); hideTooltip(); if (pal.open) M.openPalette(false);
+      sheet.open = true; if (dom()) syncSheet();
+      emit('ui:panel', { panel: s.ui.panel || null, sheet: true });
+      return true;
+    } catch (e) { uerr('openSheet', e); return false; }
+  };
+  /** the Menu icon: closes the sheet when it is open, else opens its list */
+  M.toggleMenu = function () { return M.openSheet(!(sheet.open || M.panel())); };
+  /** the Menu sheet is open (list or panel state); with a name: that panel is the one showing */
+  M.panelOpen = function (name) { const s = stateOf(); const p = s && s.ui ? s.ui.panel : null; return name ? p === name && sheet.open : sheet.open || !!p; };
+  /** 'closed' | 'list' | 'panel' */
+  M.sheetState = function () { const s = stateOf(); const p = s && s.ui ? s.ui.panel : null; return !(sheet.open || p) ? 'closed' : p ? 'panel' : 'list'; };
+  /** the back arrow: the open panel closes and the sheet shows its list again (a no-op in the list state) */
+  M.panelBack = function () { try { const s = stateOf(); if (!s || !s.ui || !s.ui.panel) return false; if (titleOn) { M.openPanel(null); return true; } closePanelOnly(s); sheet.open = true; if (dom()) syncSheet(); emit('ui:panel', { panel: null, sheet: true }); return true; } catch (e) { uerr('panelBack', e); return false; } };
+  /** close the sheet (list or panel); the same as openPanel(null) */
+  M.closePanel = function () { M.openPanel(null); };
+  function closePanelOnly(s) {
+    const prev = s.ui.panel; if (!prev) return;
+    const pp = panels[prev]; s.ui.panel = null;
+    if (pp && pp.el && dom()) show(pp.el, false);
+    if (pp && typeof pp.close === 'function') { try { pp.close(s); } catch (e) { uerr('panel:close', e); } }
+    if (prev === 'debug') { M.debug.open = false; call('progress', 'debugOpen', s, false); }
+    if (E.hud && E.hud.dataset.panel) E.hud.dataset.panel = '';
+  }
+  /** open a registered panel inside the Menu sheet (closing the one showing; hotkeys deep-link); null closes the panel and the sheet; the same hotkey again calls openPanel(null) */
   M.openPanel = function (name) {
     try {
       const s = stateOf(); if (!s || !s.ui) return;
       const prev = s.ui.panel;
       if (name && menuEdit) M.closeMenuEditor();   // one centred overlay at a time
-      if (prev && prev !== name) { const pp = panels[prev]; if (pp && pp.el && dom()) show(pp.el, false); if (pp && typeof pp.close === 'function') { try { pp.close(s); } catch (e) { uerr('panel:close', e); } } if (prev === 'debug' && name !== 'debug') { M.debug.open = false; call('progress', 'debugOpen', s, false); } }
-      if (!name) { s.ui.panel = null; if (prev) emit('ui:panel', { panel: null }); return; }
+      if (prev && prev !== name) closePanelOnly(s);
+      if (!name) { const was = sheet.open || !!prev; sheet.open = false; if (dom()) syncSheet(); if (was) emit('ui:panel', { panel: null }); return; }
       const p = panels[name]; if (!p) { s.ui.panel = null; M.notify(s, { kind: 'info', text: (PANEL_KEYS[name] || name) + ' panel is not available yet', ttl: 3000 }); return; }
-      s.ui.panel = name;
+      s.ui.panel = name; sheet.open = true;
       if (dom()) {
-        closePopover(); hideTooltip();
+        closePopover(); hideTooltip(); if (pal.open) M.openPalette(false);
         const host = panelHost(name);
-        if (host) { if (!p.built) { p.built = true; try { if (typeof p.build === 'function') p.build(host, s); } catch (e) { uerr('panel:build:' + name, e); } } show(host, true); refreshPanel(s, name); }
+        if (host) { if (!p.built) { p.built = true; try { if (typeof p.build === 'function') p.build(host, s); } catch (e) { uerr('panel:build:' + name, e); } } refreshPanel(s, name); }
+        syncSheet();
         if (E.hud) E.hud.dataset.panel = name;
       }
       if (name === 'debug') { M.debug.open = true; call('progress', 'debugOpen', s, true); }
@@ -2824,12 +2925,12 @@
   M.panel = function () { const s = stateOf(); return s && s.ui ? s.ui.panel : null; };
   function refreshPanel(s, name) { const p = panels[name]; if (!p || !p.el) return; p.lastRefresh = clock; try { if (typeof p.refresh === 'function') p.refresh(s, p.el); } catch (e) { uerr('panel:refresh:' + name, e); } }
   /** UI scale pass: a panel wide enough to reach the docked cards (goals tracker, minimap, overlay keys, notifications, voice card) fades just the ones it overlaps, so no half-hidden text peeks out around it */
-  const FADE_IDS = ['objective-card', 'goal-pill', 'snack-lane', 'voice-card', 'alert-strip', 'undo-chip', 'inspect', 'fab-build'];   // 'inspect' fades only under the Edit menu overlay (menu layout pass); U2: the popovers close when a panel opens
+  const FADE_IDS = ['objective-card', 'goal-pill', 'snack-lane', 'alert-strip', 'undo-chip', 'inspect', 'fab-build'];   // 'inspect' fades only under the Edit menu overlay (menu layout pass); U2: the popovers close when a panel opens
   let fadeAt = -1e9;
   function syncPanelFade(s) {
     if (!dom() || clock - fadeAt < 250) return; fadeAt = clock;
     try {
-      const name = s && s.ui ? s.ui.panel : null; let host = name && panels[name] ? panels[name].el : null;
+      let host = sheet.open ? E['menu-sheet'] : null;   // U3: the Menu sheet (list or panel) fades the HUD pieces it overlaps
       if (menuEdit && E['menu-overlay']) host = E['menu-overlay'];
       let p = null; if (host && !host.classList.contains('hidden') && typeof host.getBoundingClientRect === 'function') p = host.getBoundingClientRect();
       for (const id of FADE_IDS) {
@@ -2915,7 +3016,7 @@
       { k: 'Alt', t: 'Hold to skip the auto tie', b: [] },
       { k: 'Ctrl+Z', t: 'Undo', b: [['z', 1, 0, 'undo']] },
       { k: 'Esc', t: 'Cancel or close', b: [['Escape', 0, 0, 'escape']] }] },
-    { h: 'Panels', rows: [
+    { h: 'Menu', rows: [
       { k: 'O', t: 'Land Office', b: [['o', 0, 0, 'land']] },
       { k: 'B', t: 'Budget', b: [['b', 0, 0, 'budget']] },
       { k: 'T', t: 'Storm', b: [['t', 0, 0, 'storm']] },
@@ -2961,46 +3062,46 @@
   }
   const ABOUT_MODULES = 28;   // src/manifest.json (ui.test checks it)
 
-  // Settings panel (built in; ui_panels may re-register 'settings' with a fuller sheet)
+  // Settings panel (built in): U3 consolidated it into one list inside the Menu sheet, in this order: Display size, Alerts, Audio (volume + mute),
+  // Keep the minimap open, Keep overlays visible, Particles, Shake, Colour-blind; then the Tour replay and Save / Load / New game. Every settings key keeps its name and its migration.
   function buildSettingsPanel(host, s) {
     host.appendChild(el('div', 'panel-title', 'Settings'));
     const set = M.settings();
-    const rowEl = function (label, control) { const r = el('div', 'set-row'); r.appendChild(el('span', 'k', label)); r.appendChild(control); host.appendChild(r); return r; };
-    const chk = function (id, label, get, put) { const b = btn(id, '', 'toggle', function () { put(!get()); M.saveSettings(); refreshSettingsPanel(stateOf(), host); }); b.setAttribute('aria-pressed', get() ? 'true' : 'false'); setText(b, get() ? 'On' : 'Off'); rowEl(label, b); b._get = get; return b; };
-    { const hb = el('div', 'card-actions'); hb.appendChild(btn('btn-set-howto', 'How to play', 'small', function () { M.openPanel('howto'); })); hb.appendChild(btn('btn-set-about', 'About this build', 'small', function () { M.openPanel('about'); })); rowEl('Help', hb); }   // framing pass: the in-game way back to both panels
-    host._audio = chk('chk-audio', 'Sound', function () { return !M.settings().muted; }, function (v) { M.settings().muted = !v; call('audio', 'mute', !v); refreshMuteButtons(); });
-    const vol = el('input'); vol.id = 'sl-volume'; vol.type = 'range'; vol.min = '0'; vol.max = '1'; vol.step = '0.05'; vol.value = String(fin(set.volume, 0.5)); vol.addEventListener('input', function () { const v = clamp(parseFloat(vol.value) || 0, 0, 1); M.settings().volume = v; call('audio', 'setVolume', v); M.saveSettings(); }); rowEl('Volume', vol); host._vol = vol;
-    host._particles = chk('seg-particles', 'Particles (high)', function () { return M.settings().particles !== 'low'; }, function (v) { M.settings().particles = v ? 'high' : 'low'; });
+    const rowEl = function (label, control, stack) { const r = el('div', 'set-row' + (stack ? ' stack' : '')); r.appendChild(el('span', 'k', label)); r.appendChild(control); host.appendChild(r); return r; };
+    const chk = function (id, label, get, put, stack) { const b = btn(id, '', 'toggle', function () { put(!get()); M.saveSettings(); refreshSettingsPanel(stateOf(), host); }); b.setAttribute('aria-pressed', get() ? 'true' : 'false'); setText(b, get() ? 'On' : 'Off'); b._get = get; if (label) rowEl(label, b, stack); return b; };
+    // 1. Display size: the title screen's segmented control (Compact 100 % · Comfortable 115 % · Large 130 % · Auto)
+    const us = el('div', 'seg sizes'); host._uiScale = us;
+    SIZE_CHOICES.forEach(function (c) { const b = btn('btn-uiscale-' + c[0], c[1], 'seg-btn', function () { M.setUiScale(c[2]); refreshSettingsPanel(stateOf(), host); }); b.dataset.scale = String(c[2]); if (c[3]) b.appendChild(el('span', 'pct', c[3])); b.title = c[2] === 'auto' ? 'Pick the size from this window (1366 px and up: 115 %, 1680 px and up: 130 %)' : 'Interface size ' + c[3]; us.appendChild(b); });
+    const uw = el('div', 'seg-wrap'); const un = el('div', 'seg-note hidden', ''); host._uiNote = un; uw.appendChild(us); uw.appendChild(un); rowEl('Display size', uw, true);   // UI scale pass (C7)
+    // 2. Alerts: Normal / Quiet / Off (calm alerts pass)
+    const as = el('div', 'seg'); host._alerts = as; [['normal', 'Normal', 'Map beacons from severity 2 (at most 6), issue toasts once per kind per week'], ['quiet', 'Quiet', 'Beacons only for severity 3; no toasts except decisions'], ['off', 'Off', 'The Alerts list folds to its count; no beacons, no toasts']].forEach(function (d) { const b = btn('btn-alerts-' + d[0], d[1], 'seg-btn', function () { M.setAlertMode(d[0]); refreshSettingsPanel(stateOf(), host); }); b.dataset.alerts = d[0]; b.title = d[2]; as.appendChild(b); });
+    const aw = el('div', 'seg-wrap'); aw.appendChild(as); aw.appendChild(el('div', 'seg-note', 'Quiet keeps beacons to severity 3 and drops the toasts; Off folds the Alerts list to its count. The bell on an alert row mutes that kind.')); rowEl('Alerts', aw, true);
+    // 3. Audio: the volume slider and the mute switch (On = sound on)
+    const au = el('div', 'set-audio'); const vol = el('input'); vol.id = 'sl-volume'; vol.type = 'range'; vol.min = '0'; vol.max = '1'; vol.step = '0.05'; vol.value = String(fin(set.volume, 0.5)); vol.setAttribute('aria-label', 'Volume'); vol.addEventListener('input', function () { const v = clamp(parseFloat(vol.value) || 0, 0, 1); M.settings().volume = v; call('audio', 'setVolume', v); M.saveSettings(); }); host._vol = vol;
+    host._audio = chk('chk-audio', null, function () { return !M.settings().muted; }, function (v) { M.settings().muted = !v; call('audio', 'mute', !v); refreshMuteButtons(); }); host._audio.title = 'Sound on / muted (M)';
+    au.appendChild(vol); au.appendChild(host._audio); rowEl('Audio', au);
+    // 4-5. the popovers the player can keep on screen (U2); 6-8. effects and the colour-blind palette
+    host._keepMap = chk('chk-keep-minimap', 'Keep the minimap open', function () { return !!M.settings().keepMinimap; }, function (v) { M.settings().keepMinimap = v; syncPopovers(); });
+    host._keepOv = chk('chk-keep-overlays', 'Keep overlays visible', function () { return !!M.settings().keepOverlays; }, function (v) { M.settings().keepOverlays = v; syncPopovers(); });
+    host._particles = chk('seg-particles', 'Particles', function () { return M.settings().particles !== 'low'; }, function (v) { M.settings().particles = v ? 'high' : 'low'; });
     host._shake = chk('chk-shake', 'Screen shake', function () { return M.settings().shake !== false; }, function (v) { M.settings().shake = v; });
-    host._cb = chk('chk-colorblind', 'Colorblind overlays', function () { return !!M.settings().colorblind; }, function (v) { M.settings().colorblind = v; });
-    const sp = el('div', 'seg'); [0, 1, 2, 4, 8].forEach(function (v) { const b = btn(null, v === 0 ? 'Pause' : v + '×', 'seg-btn', function () { M.setSpeed(stateOf(), v); refreshSettingsPanel(stateOf(), host); }); b.dataset.speed = String(v); sp.appendChild(b); }); rowEl('Speed', sp); host._speed = sp;
-    const us = el('div', 'seg'); host._uiScale = us; UI_SCALES.forEach(function (v) { const b = btn('btn-uiscale-' + Math.round(v * 100), Math.round(v * 100) + '%', 'seg-btn', function () { M.setUiScale(v); refreshSettingsPanel(stateOf(), host); }); b.dataset.scale = String(v); b.title = 'Interface size ' + Math.round(v * 100) + '%'; us.appendChild(b); });
-    { const ab = btn('btn-uiscale-auto', 'Auto', 'seg-btn', function () { M.setUiScale('auto'); refreshSettingsPanel(stateOf(), host); }); ab.dataset.scale = 'auto'; ab.title = 'Pick the interface size from this window'; us.appendChild(ab); }   // P5
-    const uw = el('div', 'seg-wrap'); const un = el('div', 'seg-note hidden', ''); host._uiNote = un; uw.appendChild(us); uw.appendChild(un); rowEl('UI size', uw);   // UI scale pass (C7)
-    host._keepMap = chk('chk-keep-minimap', 'Keep the minimap open', function () { return !!M.settings().keepMinimap; }, function (v) { M.settings().keepMinimap = v; syncPopovers(); });   // U2: the Map popover stays pinned
-    host._keepOv = chk('chk-keep-overlays', 'Keep overlays visible', function () { return !!M.settings().keepOverlays; }, function (v) { M.settings().keepOverlays = v; syncPopovers(); });   // U2: the Layers popover stays open
-    rowEl('HUD', el('div', 'seg-note', 'H hides every panel for a clean view of the campus · Shift+H (or H again) brings it back'));
-    // calm alerts pass: Alerts Normal / Quiet / Off
-    const as = el('div', 'seg'); host._alerts = as; [['normal', 'Normal', 'Map beacons from severity 2 (at most 6), issue toasts once per kind per week'], ['quiet', 'Quiet', 'Beacons only for severity 3; no toasts except decisions'], ['off', 'Off', 'The Issues tray folds to its count; no beacons, no toasts']].forEach(function (d) { const b = btn('btn-alerts-' + d[0], d[1], 'seg-btn', function () { M.setAlertMode(d[0]); refreshSettingsPanel(stateOf(), host); }); b.dataset.alerts = d[0]; b.title = d[2]; as.appendChild(b); });
-    const aw = el('div', 'seg-wrap'); aw.appendChild(as); aw.appendChild(el('div', 'seg-note', 'Low-priority rows (unlinked paths, mosquito hotspots) and muted kinds sit under Suggestions in the tray · the 🔔 on a tray row mutes that kind · hold I or toggle Spotlight to light every issue')); rowEl('Alerts', aw);
+    host._cb = chk('chk-colorblind', 'Colour-blind overlays', function () { return !!M.settings().colorblind; }, function (v) { M.settings().colorblind = v; });
     rowEl('Tour', btn('btn-coach-replay', 'Replay the 60-second tour', 'small', function () { M.startCoach(stateOf()); }));
-    const leg = el('div', 'legend-table'); for (const o of ((BSU.data && BSU.data.overlays) || [])) { const r = el('div', 'legend-row'); r.appendChild(el('span', 'key', o.key)); r.appendChild(el('span', 'k', o.name)); r.appendChild(el('span', 'v', o.legend.join(' · '))); leg.appendChild(r); } rowEl('Overlays', leg);
-    const keys = el('div', 'keys-table'); keys.id = 'keys'; const KEYNAMES = { ' ': 'Space' }; for (const k of ((BSU.data && BSU.data.keys) || [])) { if (/^pan|^pick[2-9]|^toast/.test(k.action)) continue; const r = el('div', 'legend-row'); r.appendChild(el('span', 'key', (k.ctrl ? 'Ctrl+' : '') + (k.shift ? 'Shift+' : '') + (KEYNAMES[k.key] || (k.key.length === 1 ? k.key.toUpperCase() : k.key)))); r.appendChild(el('span', 'k', k.action === 'pick1' ? 'pick item 1–9' : k.action.replace(/([A-Z])/g, ' $1').toLowerCase())); keys.appendChild(r); } rowEl('Keys', keys);
-    const acts = el('div', 'card-actions');
+    const acts = el('div', 'set-actions');
     acts.appendChild(btn('btn-save-manual', 'Save', 'small', function () { call('session', 'save', 'manual.0'); }));
     acts.appendChild(btn('btn-load', 'Load', 'small', function () { call('session', 'continue_'); M.openPanel(null); }));
     acts.appendChild(btn('btn-newgame', 'New game', 'small danger', function () { M.openPanel(null); M.showTitle(true, {}); }));
-    host.appendChild(acts);
+    rowEl('Game', acts);
     void s;
   }
   function refreshSettingsPanel(s, host) {
     if (!host) return;
     [host._audio, host._particles, host._shake, host._cb, host._keepMap, host._keepOv].forEach(function (b) { if (!b || !b._get) return; const on = !!b._get(); setText(b, on ? 'On' : 'Off'); b.setAttribute('aria-pressed', on ? 'true' : 'false'); });
-    if (host._alerts) for (const b of host._alerts.children) cls(b, 'active', b.dataset.alerts === alertModeOf());   // calm alerts pass
-    if (host._speed) for (const b of host._speed.children) cls(b, 'active', String(fin(s.ui.speed, 1)) === b.dataset.speed);
+    if (host._alerts) for (const b of host._alerts.children) { const on = b.dataset.alerts === alertModeOf(); cls(b, 'active', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); }   // calm alerts pass
     if (host._vol) host._vol.value = String(fin(M.settings().volume, 0.5));
-    if (host._uiScale) for (const b of host._uiScale.children) { const d = b.dataset.scale; cls(b, 'active', d === 'auto' ? uiMode === 'auto' : uiMode !== 'auto' && Number(d) === appliedScale); }
+    if (host._uiScale) for (const b of host._uiScale.children) { const d = b.dataset.scale; const on = d === 'auto' ? uiMode === 'auto' : uiMode !== 'auto' && Number(d) === appliedScale; cls(b, 'active', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); }
     if (host._uiNote) { const lim = effScale < appliedScale - 0.005; const txt = uiMode === 'auto' ? 'Auto picks ' + Math.round(effScale * 100) + '% for this window.' : lim ? 'Limited to ' + Math.round(effScale * 100) + '% by this window size.' : ''; show(host._uiNote, !!txt); if (txt) setText(host._uiNote, txt); }
+    void s;
   }
   // Debug panel (built in; hidden; Backquote). ui_panels may re-register 'debug' with the full params tree.
   function buildDebugPanel(host) {
@@ -3216,7 +3317,7 @@
   function updateSetPiece(s) {
     const sp = s.setPiece; const hasTabs = !!paletteKey.split('|')[0]; const hidePalette = !!sp || titleOn || !hasTabs || !pal.open;   // U2: the Build sheet shows only while open
     if (hidePalette !== paletteHidden) { paletteHidden = hidePalette; show(E.palette, !hidePalette); cls(E.hud, 'no-palette', hidePalette); if (hidePalette) hideTooltip(); }   // a palette-item tooltip must not outlive the palette
-    const fabOn = !sp && !titleOn && hasTabs && !pal.open && !card && !bm.open && !menuEdit && !s.ui.panel;   // the FAB hides while the sheet, a panel, a card or the build menu is open
+    const fabOn = !sp && !titleOn && hasTabs && !pal.open && !card && !voiceOpen() && !bm.open && !menuEdit && !sheet.open && !s.ui.panel;   // the FAB hides while the Build sheet, the Menu sheet, a card or the build menu is open
     if (fabOn !== fabShown) { fabShown = fabOn; show(E['fab-build'], fabOn); }
     cls(E.hud, 'setpiece', !!sp);
     if (sp && bm.open) M.closeBuildMenu();
@@ -3294,6 +3395,7 @@
       if (state && state.ui && state.ui.settings && state.ui.settings !== migratedFor) { migratedFor = state.ui.settings; try { migrateSettings(); } catch (e) { uerr('migrateSettings', e); } }   // U2: the old hudMode / hudCollapsed keys leave on the first game that carries them
       toolLocked = false; live.down = null; live.run = []; live.runTile = -1; mcSet(live, 'IDLE');
       if (state && state.ui) { state.ui.tool = null; state.ui.panel = null; }
+      sheet.open = false; dlg.prev = null; inspCollapsed = false;   // U3
       card = null; cardQueue.length = 0; toast = null; toastQueue.length = 0; for (const k in gameDecs) delete gameDecs[k]; insp = null; renaming = null; focusedInput = null; hint = null; manualAlert = null; itemHover = null; hoverKey = '';
       for (let k = notifs.length - 1; k >= 0; k--) { notifs[k].closed = true; } notifs.length = 0; snackQueue.length = 0;
       odo.cash = NaN; odo.students = NaN; odo.lastStudents = NaN; odo.holdUntil = -1; odo.deltaUntil = 0;
@@ -3309,6 +3411,7 @@
         show(E.cards, false); clear(E.cards); show(E['decision-toast'], false); show(E.inspect, false); cls(E.hud, 'inspect-open', false); show(E['ghost-label'], false); show(E.tooltip, false); show(E.hint, false); show(E['voice-card'], false); show(E['alert-strip'], false); show(E['btn-skip'], false); show(E.palette, false); show(E['fab-build'], false); show(E['build-menu'], false); cls(E.hud, 'bm-open', false); show(E.coach, false); show(E['objective-card'], false); show(E['goal-pill'], false);
         syncPopovers(); clear(E.notifications); show(E['notif-dismiss'], false);
         for (const name in panels) { const p = panels[name]; if (p.el) show(p.el, false); }
+        syncSheet();
         if (E.hud) E.hud.dataset.panel = '';
         call('render', 'ghost', null);
         if (state && state.ui) { M.refreshPalette(state); markToolDom(state); refreshMuteButtons(); }
@@ -3389,7 +3492,7 @@
       A(tabVisible('housing', true, 0) === false && tabVisible('housing', true, 2) === true && tabVisible('essentials', true, 0) === true && tabVisible('paths', false, 3) === false, 'tab visibility rule');
       // 9. skeleton through M.el
       if (inited) {
-        const ids = ['hud', 'topbar', 'brand', 'stat-cash', 'stat-students', 'chip-capacity', 'stat-prestige', 'stat-happiness', 'stat-ecology', 'date-chip', 'stat-date', 'sky-glyph', 'chip-weather', 'speed', 'btn-alerts', 'alerts-badge', 'ov-lit', 'btn-layers', 'btn-map', 'btn-menu', 'btn-mute', 'chip-endowed', 'btn-budget', 'btn-season', 'btn-storm', 'btn-land', 'btn-almanac', 'btn-milestones', 'btn-log', 'btn-settings', 'btn-howto', 'btn-about', 'alert-strip', 'alert-icon', 'alert-text', 'alert-action', 'alert-gator', 'goal-pill', 'gp-kicker', 'gp-title', 'gp-count', 'pop-needs', 'pop-budget', 'pop-alerts', 'pop-layers', 'pop-map', 'pop-menu', 'btn-map-pin', 'mb-income', 'mb-net', 'btn-mb-open', 'minimap-wrap', 'minimap', 'minimap-viewport', 'overlay-buttons', 'legend', 'objective-card', 'obj-portrait', 'obj-title', 'obj-text', 'obj-progress', 'obj-count', 'btn-showme', 'btn-obj-dismiss', 'btn-goal-collapse', 'obj-background', 'speech-bubble', 'needs-strip', 'needs-text', 'needs-apps', 'voice-card', 'milestones-card', 'snack-lane', 'notifications', 'notif-dismiss', 'decision-toast', 'dt-text', 'dt-countdown', 'btn-dt-yes', 'btn-dt-no', 'inspect', 'insp-title', 'insp-sub', 'btn-insp-close', 'insp-sprite', 'insp-body', 'insp-actions', 'ghost-label', 'undo-chip', 'tooltip', 'popover', 'pop-title', 'pop-next', 'palette', 'palette-tabs', 'palette-items', 'btn-bulldoze', 'btn-palette-info', 'btn-palette-close', 'fab-build', 'cards', 'perf-chip', 'perfmode-chip', 'hint', 'hud-chip', 'panels', 'title', 'title-name', 'title-tag', 'btn-charter', 'btn-continue', 'title-seed', 'btn-title-settings', 'btn-title-mute', 'title-campus'];
+        const ids = ['hud', 'topbar', 'brand', 'stat-cash', 'stat-students', 'chip-capacity', 'stat-prestige', 'stat-happiness', 'stat-ecology', 'date-chip', 'stat-date', 'sky-glyph', 'chip-weather', 'speed', 'btn-alerts', 'alerts-badge', 'ov-lit', 'btn-layers', 'btn-map', 'btn-menu', 'btn-mute', 'chip-endowed', 'btn-budget', 'btn-season', 'btn-storm', 'btn-land', 'btn-almanac', 'btn-milestones', 'btn-log', 'btn-settings', 'btn-howto', 'btn-about', 'alert-strip', 'alert-icon', 'alert-text', 'alert-action', 'alert-gator', 'goal-pill', 'gp-kicker', 'gp-title', 'gp-count', 'pop-needs', 'pop-budget', 'pop-alerts', 'pop-layers', 'pop-map', 'btn-map-pin', 'mb-income', 'mb-net', 'btn-mb-open', 'minimap-wrap', 'minimap', 'minimap-viewport', 'overlay-buttons', 'legend', 'objective-card', 'obj-portrait', 'obj-title', 'obj-text', 'obj-progress', 'obj-count', 'btn-showme', 'btn-obj-dismiss', 'btn-goal-collapse', 'obj-background', 'speech-bubble', 'needs-strip', 'needs-text', 'needs-apps', 'voice-card', 'voice-dialog', 'milestones-card', 'snack-lane', 'notifications', 'notif-dismiss', 'decision-toast', 'dt-text', 'dt-countdown', 'btn-dt-yes', 'btn-dt-no', 'inspect', 'insp-title', 'insp-sub', 'btn-insp-close', 'btn-insp-collapse', 'insp-sprite', 'insp-body', 'insp-actions', 'ghost-label', 'undo-chip', 'tooltip', 'popover', 'pop-title', 'pop-next', 'palette', 'palette-tabs', 'palette-items', 'btn-bulldoze', 'btn-palette-info', 'btn-palette-close', 'fab-build', 'cards', 'menu-sheet', 'sheet-head', 'sheet-title', 'sheet-body', 'sheet-list', 'btn-sheet-back', 'btn-sheet-close', 'perf-chip', 'perfmode-chip', 'hint', 'hud-chip', 'panels', 'title', 'title-name', 'title-tag', 'btn-charter', 'btn-continue', 'title-seed', 'btn-title-settings', 'btn-title-mute', 'title-campus'];
         for (const id of ids) A(isEl(E[id]) && E[id].id === id, 'skeleton id through M.el: ' + id);
         A(E.msRows.length === 3 && E.popLines.length === L.popLines && Object.keys(E.speedBtns).length === 5 && Object.keys(E.ovBtns).length === 6, 'ms-rows, pop-lines, speed and overlay buttons exist');
       } else notes.push('skeleton check skipped (init not run)');

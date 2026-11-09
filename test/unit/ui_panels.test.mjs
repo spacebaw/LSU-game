@@ -246,7 +246,7 @@ ok(st && st.ok, 'ui.selfTest ok (includes ui_panels pushed tests) ' + (st && st.
   U.openPanel('storm'); refreshN(sp, 2);
   const host = U.el['panel-storm'];
   ok(!!host && !host.classList.contains('hidden'), 'storm panel opens');
-  ok(host.children[0].className.indexOf('panel-head') >= 0, 'the chrome head (close button) is still the first child');
+  ok(host.parentNode === U.el['sheet-body'] && host.children[0].className.indexOf('panel-title') >= 0 && U.el['btn-sheet-close'] && !findAll(host, (e) => /panel-head/.test(e.className || '')).length, 'U3: the panel sits in the sheet body and starts with its own title (the close button and the title live in the sheet head)');
   const status = byId(host, 'storm-status'), done = byId(host, 'storm-done');
   ok(/No storm in the Gulf — precautions available/.test(status.textContent), 'status strip with no storm: ' + status.textContent);
   for (const id of ['sp-board', 'sp-water', 'sp-people', 'sp-all', 'sp-sandbags', 'sp-predrain', 'sp-spillway', 'sp-evacuate', 'sp-repairall'])
@@ -544,6 +544,81 @@ ok(st && st.ok, 'ui.selfTest ok (includes ui_panels pushed tests) ' + (st && st.
   ok(textOf(byId(host, 'sea-starters')).indexOf(cheap.name) >= 0 && /Fr/.test(textOf(findAll(byId(host, 'sea-starters'), (e) => e.dataset && e.dataset.pos === cheap.pos)[0]) + textOf(findAll(byId(host, 'sea-starters'), (e) => e.dataset && e.dataset.pos === cheap.pos)[1] || '')), 'the freshman is on the depth chart');
   ok((BSU.errors ? BSU.errors.size : 0) === errs0, 'no BSU.error through the P2 tour');
   U.openPanel(null);
+}
+
+// ===========================================================================================================
+// UI refresh U3: every registered panel renders inside the Menu side sheet; Settings is one consolidated list
+// ===========================================================================================================
+{
+  const sU = BSU.state; const M0 = { ctrl: false, shift: false, meta: false, alt: false };
+  const dom = win.document; const hid = (e) => e.classList.contains('hidden');
+  const errs0 = BSU.errors ? BSU.errors.size : 0;
+  U.openPanel(null);
+  ok(hid(U.el['menu-sheet']) && U.sheetState() === 'closed', 'U3: the sheet is closed before the panel tour');
+  // every registered panel (the six of this module + settings, howto, about, log, debug from ui.js) opens inside the sheet without throwing
+  const NAMES = ['budget', 'season', 'storm', 'land', 'almanac', 'milestones', 'log', 'settings', 'howto', 'about', 'debug'];
+  const TITLES = { budget: 'Budget', season: 'Season', storm: 'Storm', land: 'Land Office', almanac: 'Almanac', milestones: 'Milestones', log: 'Log', settings: 'Settings', howto: 'How to play', about: 'About this build', debug: 'Debug' };
+  for (const name of NAMES) {
+    U.openPanel(name); U.update(sU, 600); U.update(sU, 600);
+    const host = U.el['panel-' + name];
+    ok(!!host && host.parentNode === U.el['sheet-body'] && !hid(host) && !hid(U.el['menu-sheet']) && sU.ui.panel === name && U.sheetState() === 'panel' && U.el['sheet-title'].textContent === TITLES[name] && NAMES.filter((n) => n !== name && U.el['panel-' + n]).every((n) => hid(U.el['panel-' + n])) && host.children.length >= 1, name + ': renders inside the sheet (title "' + TITLES[name] + '", the others hidden, ' + host.children.length + ' children)');
+  }
+  U.openPanel(null);
+  ok((BSU.errors ? BSU.errors.size : 0) === errs0 && hid(U.el['menu-sheet']), 'U3: no BSU.error through the eleven panels');
+  // the Menu list: ten items, each with its icon, name and (where it has one) hotkey cap; each opens its panel and back returns
+  U.openSheet(true);
+  const list = U.el['sheet-list']; const items = list.children.filter((c) => c.classList.contains('list-item'));
+  ok(items.length === 10 && items.map((c) => c.id).join() === 'btn-budget,btn-season,btn-storm,btn-land,btn-almanac,btn-milestones,btn-log,btn-settings,btn-howto,btn-about' && items.every((c) => /^svg$/i.test(c.children[0].tagName) && c.children[1].classList.contains('t')) && items.slice(0, 4).map((c) => c.children[2].textContent).join('') === 'BNTO' && items[5].children[2].textContent === 'L', 'U3: the Menu list: ten list items with an icon, a name and the hotkey caps B N T O · L');
+  for (const it of items) {
+    it.dispatchEvent({ type: 'click' }); const name = it.id.replace('btn-', ''); const want = { land: 'land' }[name] || name;
+    ok(sU.ui.panel === want && U.sheetState() === 'panel', it.id + ' → ' + want);
+    U.el['btn-sheet-back'].dispatchEvent({ type: 'click' }); if (U.sheetState() !== 'list') ok(false, 'back from ' + want + ' did not return to the list');
+  }
+  U.openPanel(null);
+  // Settings: one consolidated list, in order; every row wired to its settings key
+  U.openPanel('settings'); const st = U.el['panel-settings']; const rows = findAll(st, (e) => /\bset-row\b/.test(e.className || ''));
+  const label = (r) => r.children[0].textContent;
+  ok(rows.map(label).join('|') === 'Display size|Alerts|Audio|Keep the minimap open|Keep overlays visible|Particles|Screen shake|Colour-blind overlays|Tour|Game', 'Settings rows in order: ' + rows.map(label).join(' | '));
+  ok(rows.every((r) => r.children.length === 2) && !findAll(st, (e) => e.id === 'btn-set-howto' || e.id === 'keys' || (e.className || '').indexOf('legend-table') >= 0).length, 'each row is a label and one control; no sub-panels, no key table or legend (How to play and the Layers popover carry those)');
+  const set = U.settings(); const click = (id) => dom.getElementById(id).dispatchEvent({ type: 'click' });
+  const sizes = findAll(st, (e) => /seg-btn/.test(e.className || '') && e.dataset && e.dataset.scale !== undefined);
+  ok(sizes.map((b) => b.dataset.scale).join() === '1,1.15,1.3,auto' && sizes.map((b) => b.textContent.replace(/\d+%/, '')).join() === 'Compact,Comfortable,Large,Auto', 'Display size is the title screen\'s segmented control (Compact · Comfortable · Large · Auto)');
+  click('btn-uiscale-large'); U.update(sU, 600); ok(U.uiScaleMode() === 1.3 && set.uiScale === 1.3 && dom.getElementById('btn-uiscale-large').classList.contains('active') && !dom.getElementById('btn-uiscale-compact').classList.contains('active'), 'Display size → Large: settings.uiScale and the active segment follow');
+  click('btn-uiscale-auto'); ok(U.uiScaleMode() === 'auto' && dom.getElementById('btn-uiscale-auto').classList.contains('active'), 'Display size → Auto');
+  click('btn-alerts-quiet'); ok(U.alertMode() === 'quiet' && set.alerts === 'quiet' && dom.getElementById('btn-alerts-quiet').classList.contains('active') && !dom.getElementById('btn-alerts-normal').classList.contains('active'), 'Alerts → Quiet writes settings.alerts'); click('btn-alerts-normal');
+  const vol = dom.getElementById('sl-volume'); vol.value = '0.25'; vol.dispatchEvent({ type: 'input' }); ok(Math.abs(set.volume - 0.25) < 1e-9, 'the volume slider writes settings.volume');
+  const wasMuted = !!set.muted; click('chk-audio'); ok(!!set.muted === !wasMuted && dom.getElementById('chk-audio').textContent === (set.muted ? 'Off' : 'On'), 'the mute switch flips settings.muted'); click('chk-audio'); ok(!!set.muted === wasMuted, '… and back');
+  click('chk-keep-minimap'); ok(set.keepMinimap === true, 'Keep the minimap open → settings.keepMinimap'); click('chk-keep-minimap'); ok(set.keepMinimap === false, '… off again');
+  click('chk-keep-overlays'); ok(set.keepOverlays === true, 'Keep overlays visible → settings.keepOverlays'); click('chk-keep-overlays'); ok(set.keepOverlays === false, '… off again');
+  click('seg-particles'); ok(set.particles === 'low' && dom.getElementById('seg-particles').textContent === 'Off', 'Particles → settings.particles low'); click('seg-particles'); ok(set.particles === 'high', '… high again');
+  click('chk-shake'); ok(set.shake === false, 'Screen shake → settings.shake'); click('chk-shake'); ok(set.shake === true, '… on again');
+  click('chk-colorblind'); ok(set.colorblind === true && dom.getElementById('chk-colorblind').getAttribute('aria-pressed') === 'true', 'Colour-blind overlays → settings.colorblind'); click('chk-colorblind'); ok(set.colorblind === false, '… off again');
+  ok(!!dom.getElementById('btn-coach-replay') && !!dom.getElementById('btn-save-manual') && !!dom.getElementById('btn-load') && !!dom.getElementById('btn-newgame'), 'the Tour replay and Save / Load / New game rows stay');
+  U.openPanel(null);
+
+  // the cards of this module are dialogs: a scrim, their `Later` / `Not now` / `Decline all` are the dismiss action (Esc), the failure card is modal
+  const M1 = (id, p) => { U.card(sU, id, p); return U.el.cards.children[0]; };
+  while (U.cardOpen()) U.closeCard();   // earlier sections leave a game card open
+  let dlg = M1('newsflash', { name: 'Boudin', cat: 3, forecastCat: 3, landfallDay: 50 });
+  ok(dlg && dlg.id === 'card-newsflash' && !hid(U.el.cards) && U.cardOpen() === 'newsflash' && /#cards\{[^}]*background:var\(--scrim\)/.test(readFileSync(join(root, 'src', 'style.css'), 'utf8')), 'U3: the storm briefing opens as a dialog over the scrim (' + U.el.cards.children.length + ' card)');
+  ok(U.keydown('Escape', M0) === true && U.cardOpen() === null && hid(U.el.cards) && sU.ui.panel === null, 'Esc dismisses the storm briefing (Later) without opening the Storm panel');
+  dlg = M1('newsflash', { name: 'Boudin', cat: 3, forecastCat: 3, landfallDay: 50 });
+  const prep = findAll(dlg, (e) => e.tagName === 'BUTTON' && e.textContent === 'Prepare')[0]; click2(prep);
+  ok(sU.ui.panel === 'storm' && U.cardOpen() === null && U.sheetState() === 'panel', 'Prepare closes the dialog and opens the Storm panel in the sheet'); U.openPanel(null);
+  function click2(b) { b.dispatchEvent({ type: 'click' }); }
+  const bd = BSU.data.boardCards.slice(0, 2).map((c) => c.id);
+  dlg = M1('board', { cards: bd });
+  ok(U.cardOpen() === 'board' && findAll(dlg, (e) => /board-card/.test(e.className || '')).length === 2 && findAll(dlg, (e) => e.tagName === 'BUTTON' && e.textContent === 'Decline all').length === 1, 'the Board proposal is a dialog with its choices and Decline all');
+  let answered = 'none'; const answer0 = BSU.progress.answerBoard; BSU.progress.answerBoard = (st, id) => { answered = id; };
+  ok(U.keydown('Escape', M0) === true && answered === null && U.cardOpen() === null, 'Esc on the Board runs Decline all (the dismiss action)'); BSU.progress.answerBoard = answer0;
+  dlg = M1('failure', { kind: 'bankruptcy', options: ['austerity', 'hike', 'naming'] });
+  ok(U.cardOpen() === 'failure' && U.keydown('Escape', M0) === true && U.cardOpen() === 'failure', 'the failure card is modal: Esc does not close it');
+  const opt = findAll(U.el.cards.children[0], (e) => e.tagName === 'BUTTON')[0]; let fAns = 'none'; const af0 = BSU.progress.answerFailure; BSU.progress.answerFailure = (st, kind, o) => { fAns = kind + ':' + o; }; click2(opt);
+  ok(/^bankruptcy:/.test(fAns) && U.cardOpen() === null, 'a failure action answers it and closes the dialog'); BSU.progress.answerFailure = af0;
+  // a dialog over the open sheet: Esc peels the sheet first, then the dialog
+  U.openPanel('budget'); U.card(sU, 'newsflash', { name: 'Ida', cat: 2, forecastCat: 2, landfallDay: 60 });
+  ok(U.keydown('Escape', M0) === true && sU.ui.panel === null && U.cardOpen() === 'newsflash', 'Esc closes the sheet before the dialog behind it'); ok(U.keydown('Escape', M0) === true && U.cardOpen() === null, '… then the dialog');
+  ok((BSU.errors ? BSU.errors.size : 0) === errs0, 'U3: no BSU.error through the sheet, Settings and the dialogs');
 }
 
 console.log(`\n${passes} passed, ${failures} failed`);

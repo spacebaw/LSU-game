@@ -695,7 +695,7 @@
       const raise = Math.round(int(c.salary, 0) * num(PF.poach.raise, 0.25));
       st.offers[r] = { year: year, answered: false, accepted: false, raise: raise };
       const p = { role: r, label: roleLabel(r), name: c.name, stars: c.stars, salary: c.salary, raise: raise, newSalary: c.salary + raise, years: c.years, year: year };
-      ticker(state, c.name + ' (' + c.stars + '★) is taking calls: a ' + Math.round(num(PF.poach.raise, 0.25) * 100) + '% raise keeps them (Season panel → Staff).', {});
+      ticker(state, c.name + ' (' + c.stars + '★) is taking calls: a ' + Math.round(num(PF.poach.raise, 0.25) * 100) + '% raise keeps them (Menu → Season → Staff).', {});
       emit(EV.STAFF_OFFER, p);
       out.push(p);
     }
@@ -2311,7 +2311,7 @@
     call('progress', 'sportsCard', state, { id: 'springGame', kicker: 'Newsflash · Athletics', title: L.springTitle,
       body: ['The first look at the ' + L.bsuNick + ': ' + L.springNames[0] + ' (the starters) against the ' + L.springNames[1] + ' scrimmage squad on the Practice Field, ' + when + '.',
         'No gate and no record: a concession line, +' + num(PE.spring.happiness, 1) + ' happiness, and your first 4th-down call.',
-        'Coach ' + ((sp.coach && sp.coach.name) || 'Cheramie') + ' runs the ' + sp.playbook + ' playbook. Change it in the Season panel before kickoff.'] });
+        'Coach ' + ((sp.coach && sp.coach.name) || 'Cheramie') + ' runs the ' + sp.playbook + ' playbook. Change it in Menu → Season before kickoff.'] });
   }
   /** The scheduled day: start the set piece unless the day is busy (tutorial, a storm on the board, a set piece, a game today) → the next day. */
   function trySpring(state) {

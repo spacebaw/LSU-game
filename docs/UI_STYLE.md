@@ -168,6 +168,8 @@ returns to the list; B N T O L open the sheet straight to the panel.
 
 *Implemented in U2:* the list state exists as the interim Menu popover (`#pop-menu`, 320 wide, 48 px list items with the second line and the hotkey caps, a divider, Settings / How to play / About); each item opens today's centred panel. Log is a panel now (`registerPanel('log')`). Settings gained "Keep the minimap open" and "Keep overlays visible" and lost the HUD mode row (H hides, Shift+H restores; not a setting). Panel content uses `.row` / `.set-row` with 1 px `surface-container-high` dividers, `.seg` segmented buttons, `.toggle` (outlined off, `secondary-container` on) and primary-accent sliders / checkboxes.
 
+*Implemented in U3:* the side sheet is `#menu-sheet` (360 wide at 100 %, full height from the bar + 8 to the bottom gutter, **28 px top-left** corner and 16 px elsewhere per the task, elevation 3, no scrim, 1 px edge); head 56 px (back arrow only in the panel state, headline title, close); list items 48 px with a leading 24 px icon, a label-size second line and the hotkey cap (chevron where there is none); panels render in `.sheet-body` with 8 px padding. Settings is one list (label left, control right; Display size, Alerts and the audio row stack or share the row by width): Display size, Alerts, Audio, Keep the minimap open, Keep overlays visible, Particles, Screen shake, Colour-blind overlays, then Tour and Save / Load / New game. The Budget keeps the mock's stacked kicker sections; the football tables shrink their columns rather than scroll sideways. Esc closes the sheet from either state; B N T O L deep-link and the same key closes. Opened from the title screen the sheet sits at the top gutter with no back arrow.
+
 **Bottom sheet (Build)** · full width, docked, top corners 28, opaque, elevation 3, 1 px top edge; 24 px handle row (32 × 4 `outline-variant`
 pill; ⤢ and close icons at the right), 40 px category tabs (selected `primary` with a 3 px bar; `warn` pip for new items), 1 px divider, the
 palette: item cards 112 wide (64 px icon, name 600, price label) in a horizontal scroller · divider · bulldoze + info icons. ≈ 220 px tall.
@@ -187,9 +189,13 @@ for On · On); actions Pilings (tonal) · Repair (text) · Demolish (text, `erro
 
 *Implemented in U1:* the inspect side panel keeps its full-height right dock (`--inspect-w`, 4 px kind stripe on the left, 64 px sprite tile); the card / pill pair is U3.
 
+*Implemented in U3:* `#inspect` is the card (320 wide, bottom-left at the gutter above the Build sheet, 56 px sprite tile, title + label-size sub, a collapse chevron and a close icon, rows, the action row under a 1 px rule). It is capped in height (`max-height: max(24rem, 100vh − bar − sheet − 28rem)`) so it never reaches the goal pill; the body scrolls. Collapsed it is the 40 px pill with the 32 px round sprite, the name and the chevron up + close, **without** the "286 / 300 beds" meta line of the mock (the card has no single headline number for every kind it inspects: tile, levee, gator, student). The 4 px kind stripe left with the dock. Differences from the mock: the card's rows are today's `.row`s (kind-specific, many); the kitchen Menu summary and the network pill stay inside the body.
+
 **Dialog + scrim** · centred, 420 wide, `surface-container-high`, radius 28, padding 24, elevation 3, over a 32 % scrim (the bar too);
 kicker · headline · body in `on-surface-variant` · actions right-aligned (text, then filled). Esc = the dismiss action. Board, failure,
 storm and voice cards use it; the voice card's two choices are tonal + filled.
+
+*Implemented in U3:* the same dialog for every card (420 px, 28 px corners) and the student voice (`#voice-card` is its scrim host, `#voice-dialog` the card: Decline text, Accept filled). Actions are right-aligned with the filled one last; long action labels (the failure card's options) wrap inside full-height buttons. Esc runs the action flagged `dismiss: true`, else closes; focus goes in and comes back (see INTEGRATION_NOTES "UI refresh U3"). The kicker line sits above the headline as in the mock.
 
 *Implemented in U1:* `.card` (the card host) is the dialog: `surface-container-high`, radius 28, 24 px padding, elevation 3, no edge, over the 32 % scrim; the title is the headline role, the body `on-surface-variant`. Actions follow the new button rules (`.primary` = filled, default = tonal).
 

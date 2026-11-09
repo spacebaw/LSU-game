@@ -38,7 +38,7 @@ ok(/--shape-pill:\s*999px/.test(rootBlock) && /--shape-sm:\s*1\.2rem/.test(rootB
 ok(!/linear-gradient/.test(cssNoComments.replace(/mask-image:linear-gradient[^;}]*;?/g, '').replace(/-webkit-mask-image:linear-gradient[^;}]*;?/g, '')), 'U1: no linear-gradient anywhere in the sheet (the palette edge fade is a mask, not a surface)');
 ok(!/radial-gradient|backdrop-filter|filter:\s*blur/.test(cssNoComments) && !/text-shadow/.test(cssNoComments), 'U1: no backdrop-filter, no blur, no text-shadow');
 { const serifRules = cssNoComments.replace(/:root\s*\{[\s\S]*?\n\}/, '').split('}').filter((r) => /serif|Georgia/.test(r)); ok(serifRules.length === 1 && /#title-name/.test(serifRules[0]), 'U1: the serif is used by exactly one rule, the title wordmark (#title-name)'); }
-ok(!/(#panels \.panel|#build-menu|\.card|#inspect|#popover|#topbar)[^{}]*\{[^}]*(gradient|backdrop)/.test(cssNoComments) && /\.panel,#inspect,#objective-card[^{]*\{\s*background:var\(--surface-float\);border:1px solid var\(--outline-variant\)[^}]*box-shadow:var\(--elev-2\)/.test(cssNoComments) && /#panels \.panel,#build-menu\{background:var\(--surface\);box-shadow:var\(--elev-3\)\}/.test(cssNoComments), 'U1: floating surfaces are surface-float + 1 px outline-variant + elevation 2; panels and the build menu are opaque surface at elevation 3, no gradient');
+ok(!/(#menu-sheet|#build-menu|\.card|#inspect|#popover|#topbar)[^{}]*\{[^}]*(gradient|backdrop)/.test(cssNoComments) && /#menu-overlay,#menu-sheet,#inspect,#objective-card[^{]*\{\s*background:var\(--surface-float\);border:1px solid var\(--outline-variant\)[^}]*box-shadow:var\(--elev-2\)/.test(cssNoComments) && /#menu-overlay,#menu-sheet,#build-menu\{background:var\(--surface\);box-shadow:var\(--elev-3\)\}/.test(cssNoComments), 'U1: floating surfaces are surface-float + 1 px outline-variant + elevation 2; the Menu sheet, the Edit menu and the build menu are opaque surface at elevation 3, no gradient');
 ok(/#topbar\{[^}]*background:var\(--surface\);border-bottom:1px solid var\(--outline-variant\)/.test(cssNoComments) && !/#topbar\{[^}]*box-shadow/.test(cssNoComments) && /#topbar\{[^}]*container-type:inline-size;container-name:appbar/.test(cssNoComments), 'U1 / U2: the app bar is solid surface, elevation 0, 1 px bottom border, and a size container');
 ok(/@container appbar \(max-width:118rem\)\{\.stat-label,#chip-capacity,#chip-weather\{display:none !important\}/.test(cssNoComments), 'U2: under 118 rem of bar width the stat labels, the cap suffix and the weather line hide (container query, as the mock does)');
 ok(/\.btn::before\{[^}]*background:currentColor[^}]*opacity:0/.test(cssNoComments) && /\.btn:hover::before\{opacity:var\(--state-hover\)\}/.test(cssNoComments) && /\.btn:active::before\{opacity:var\(--state-press\)\}/.test(cssNoComments) && /:focus-visible\{outline:2px solid var\(--primary\)/.test(cssNoComments) && /\.btn:disabled\{opacity:var\(--disabled\)/.test(cssNoComments), 'U1: state layers (hover 8 % / press 12 % in currentColor), 2 px primary focus ring, disabled 38 %');
@@ -71,7 +71,7 @@ ok(U.el && typeof U.el === 'object' && U.debug && typeof U.debug.open === 'boole
 const app = win.document.getElementById('app');
 const hud = app.children.find((c) => c.id === 'hud');
 ok(!!hud && U.el.hud === hud, 'init built #hud under #app and kept it in M.el');
-const ids = ['topbar', 'brand', 'stat-cash', 'stat-students', 'chip-capacity', 'stat-prestige', 'stat-happiness', 'stat-ecology', 'date-chip', 'stat-date', 'sky-glyph', 'chip-weather', 'speed', 'btn-alerts', 'alerts-badge', 'ov-lit', 'btn-layers', 'btn-map', 'btn-menu', 'btn-mute', 'chip-endowed', 'btn-budget', 'btn-season', 'btn-storm', 'btn-land', 'btn-almanac', 'btn-milestones', 'btn-log', 'btn-settings', 'btn-howto', 'btn-about', 'alert-strip', 'goal-pill', 'gp-kicker', 'gp-title', 'gp-count', 'pop-needs', 'pop-budget', 'pop-alerts', 'pop-layers', 'pop-map', 'pop-menu', 'btn-map-pin', 'minimap-wrap', 'minimap', 'minimap-viewport', 'overlay-buttons', 'legend', 'objective-card', 'obj-portrait', 'obj-title', 'obj-text', 'obj-progress', 'obj-count', 'btn-showme', 'btn-obj-dismiss', 'btn-goal-collapse', 'obj-background', 'speech-bubble', 'voice-card', 'milestones-card', 'snack-lane', 'notifications', 'notif-dismiss', 'decision-toast', 'dt-text', 'dt-countdown', 'btn-dt-yes', 'btn-dt-no', 'inspect', 'insp-title', 'insp-sub', 'btn-insp-close', 'insp-sprite', 'insp-body', 'insp-actions', 'ghost-label', 'tooltip', 'popover', 'pop-title', 'pop-next', 'palette', 'palette-tabs', 'palette-items', 'btn-bulldoze', 'btn-palette-info', 'btn-palette-close', 'fab-build', 'cards', 'perf-chip', 'perfmode-chip', 'hint', 'hud-chip', 'panels', 'title', 'title-name', 'btn-charter', 'btn-continue', 'title-seed', 'btn-title-settings', 'btn-title-mute'];
+const ids = ['menu-sheet', 'sheet-head', 'sheet-title', 'sheet-body', 'sheet-list', 'btn-sheet-back', 'btn-sheet-close', 'voice-dialog', 'btn-insp-collapse', 'topbar', 'brand', 'stat-cash', 'stat-students', 'chip-capacity', 'stat-prestige', 'stat-happiness', 'stat-ecology', 'date-chip', 'stat-date', 'sky-glyph', 'chip-weather', 'speed', 'btn-alerts', 'alerts-badge', 'ov-lit', 'btn-layers', 'btn-map', 'btn-menu', 'btn-mute', 'chip-endowed', 'btn-budget', 'btn-season', 'btn-storm', 'btn-land', 'btn-almanac', 'btn-milestones', 'btn-log', 'btn-settings', 'btn-howto', 'btn-about', 'alert-strip', 'goal-pill', 'gp-kicker', 'gp-title', 'gp-count', 'pop-needs', 'pop-budget', 'pop-alerts', 'pop-layers', 'pop-map', 'btn-map-pin', 'minimap-wrap', 'minimap', 'minimap-viewport', 'overlay-buttons', 'legend', 'objective-card', 'obj-portrait', 'obj-title', 'obj-text', 'obj-progress', 'obj-count', 'btn-showme', 'btn-obj-dismiss', 'btn-goal-collapse', 'obj-background', 'speech-bubble', 'voice-card', 'milestones-card', 'snack-lane', 'notifications', 'notif-dismiss', 'decision-toast', 'dt-text', 'dt-countdown', 'btn-dt-yes', 'btn-dt-no', 'inspect', 'insp-title', 'insp-sub', 'btn-insp-close', 'insp-sprite', 'insp-body', 'insp-actions', 'ghost-label', 'tooltip', 'popover', 'pop-title', 'pop-next', 'palette', 'palette-tabs', 'palette-items', 'btn-bulldoze', 'btn-palette-info', 'btn-palette-close', 'fab-build', 'cards', 'perf-chip', 'perfmode-chip', 'hint', 'hud-chip', 'panels', 'title', 'title-name', 'btn-charter', 'btn-continue', 'title-seed', 'btn-title-settings', 'btn-title-mute'];
 let missing = ids.filter((id) => !U.el[id] || U.el[id].id !== id);
 ok(missing.length === 0, 'every §7.1 id resolves through M.el' + (missing.length ? ' (missing: ' + missing.join(',') + ')' : ''));
 ok(['ticker', 'ticker-track', 'btn-ticker-log', 'ticker-log', 'hud-chev-goals', 'hud-pill-goals', 'issues-toggle'].every((id) => !U.el[id] && !win.document.getElementById(id)), 'U2: the ticker, its log button and the HUD pills / chevrons are gone');
@@ -110,9 +110,9 @@ ok(!/--topbar-h:\s*\d+px/.test(cssScale) && /--topbar-h:\s*4\.8rem/.test(cssScal
   const cssP5 = css.replace(/\/\*[\s\S]*?\*\//g, '');
   ok(/#snack-lane\{[^}]*left:50%;bottom:var\(--bot\)/.test(cssP5) && !/#notifications\{[^}]*right:var\(--gutter\)/.test(cssP5) && !/--ticker-h/.test(cssP5), 'U2: the snackbar lane sits bottom-centre above the Build sheet (no ticker height anywhere)');
   ok(/#cards\{[^}]*padding:var\(--topbar-h\)[^}]*var\(--bot\)/.test(cssP5) && /#decision-toast\{[^}]*border-left:\.4rem solid var\(--primary\)/.test(cssP5) && /#dt-countdown\{position:absolute;left:0;right:0;bottom:0;height:\.3rem/.test(cssP5), 'cards centre over the map area; the decision snackbar carries its 3 px countdown line along the bottom edge');
-  ok(/#panels #panel-season\{width:110rem\}/.test(cssP5) && /#panels #panel-storm,#panels #panel-budget\{width:72rem\}/.test(cssP5) && /#panels \.panel\{[^}]*width:72rem/.test(cssP5) && /#build-menu\{[^}]*width:min\(130rem/.test(cssP5), 'panels centre with wider maxima: Season 1100, Storm / Budget 720, default 720, Build menu up to 1300 px');
-  ok(/#panels\{[^}]*display:flex[^}]*align-items:center[^}]*justify-content:center/.test(cssP5), 'the panel host centres its panel in the map area');
-  ok(/--inspect-w:\s*38rem/.test(cssP5) && /#inspect\{[^}]*right:var\(--side\)/.test(cssP5) && /--side:max\(var\(--gutter\)/.test(cssP5), 'inspect panel 380 px docked right with a gutter; --side centres the docked cards on very wide windows');
+  ok(/#menu-sheet\{[^}]*position:absolute;right:var\(--gutter\);top:calc\(var\(--bar-h\) \+ 8px\);bottom:var\(--gutter\);width:36rem[^}]*border-radius:var\(--shape-lg\) var\(--shape-md\) var\(--shape-md\) var\(--shape-md\)/.test(cssP5) && !/#panels #panel-(season|storm|budget|howto|about)\{width/.test(cssP5) && /#build-menu\{[^}]*width:min\(130rem/.test(cssP5), 'U3: the Menu sheet is 360 px at the right gutter under the bar with a 28 px top-left corner; no panel carries its own centred width any more; the Build menu keeps up to 1300 px');
+  ok(/#panels\{[^}]*display:flex[^}]*align-items:center[^}]*justify-content:center/.test(cssP5) && /#panels #menu-overlay\{[^}]*width:64rem/.test(cssP5), 'the #panels layer still centres the kitchen Edit menu dialog');
+  ok(/#inspect\{[^}]*left:var\(--gutter\);bottom:var\(--bot\);width:32rem/.test(cssP5) && /#inspect\.collapsed\{[^}]*border-radius:var\(--shape-pill\)/.test(cssP5) && /--side:max\(var\(--gutter\)/.test(cssP5), 'U3: the inspect card is 320 px bottom-left above the Build sheet (a 40 px pill when collapsed); --side still centres the docked cards on very wide windows');
   ok(/\.stat \.odometer\{[^}]*font:600 var\(--fs-title-lg\)/.test(cssP5) && /--fs-title-lg:\s*1\.5rem/.test(cssP5), 'stat numbers are the 15-px --fs-title-lg token at 100 % (17.3 px at Comfortable; U1 type scale)');
   ok(/#hud\.short #objective-card #obj-why/.test(cssP5), 'a short window trims the tracker so it never runs under the ticker');
 }
@@ -159,13 +159,17 @@ ok(U.state === 'IDLE' && s.ui.tool === null, 'reset: IDLE, no tool');
   const words = at.split(/\s+/).filter(Boolean).length;
   ok(words < 120, 'About stays under 120 words (' + words + ')');
   U.openPanel('settings');
-  const sh = dom.getElementById('btn-set-howto'), sa = dom.getElementById('btn-set-about');
-  ok(sh && sa, 'Settings (the in-game menu) has How to play and About buttons');
-  sh.dispatchEvent({ type: 'click' }); ok(U.panel() === 'howto', 'Settings → How to play');
-  U.openPanel('settings'); sa.dispatchEvent({ type: 'click' }); ok(U.panel() === 'about', 'Settings → About');
+  ok(!dom.getElementById('btn-set-howto') && !dom.getElementById('btn-set-about') && dom.getElementById('btn-howto') && dom.getElementById('btn-about'), 'U3: Settings no longer carries How to play / About buttons: they are rows of the Menu list');
+  ok(U.el['btn-sheet-back'].classList.contains('hidden') && !U.el['menu-sheet'].classList.contains('hidden'), 'opened from the title screen the sheet has no back arrow (there is no list to go back to)');
+  U.el['btn-sheet-back'].dispatchEvent({ type: 'click' }); U.panelBack(); ok(U.panel() === null && U.sheetState() === 'closed', 'on the title screen back just closes the sheet');
+  dom.getElementById('btn-howto').dispatchEvent({ type: 'click' }); ok(U.panel() === 'howto', 'Menu list → How to play');
+  U.openPanel(null); U.showTitle(false); U.openSheet(true); ok(U.sheetState() === 'list' && U.el['btn-sheet-back'].classList.contains('hidden'), 'in the game the Menu list shows with no back arrow');
+  dom.getElementById('btn-about').dispatchEvent({ type: 'click' }); ok(U.panel() === 'about' && !U.el['btn-sheet-back'].classList.contains('hidden'), 'Menu list → About (back arrow shown)');
+  U.el['btn-sheet-back'].dispatchEvent({ type: 'click' }); ok(U.panel() === null && U.sheetState() === 'list', 'back returns to the list');
+  U.showTitle(true, {});
   U.openPanel(null); U.showTitle(false);
   const cssF = css.slice(css.indexOf('/* framing pass'));
-  ok(/#panels #panel-howto\{width:98rem/.test(cssF) && /#panels #panel-about\{width:54rem\}/.test(cssF) && /#app\.title-on #panels\{z-index:11/.test(cssF), 'framing CSS: panel widths and the title-screen stacking fix');
+  ok(/#app\.title-on #panels\{z-index:11/.test(cssF) && /#app\.title-on #menu-sheet\{top:var\(--gutter\)\}/.test(cssF) && !/title-box\{opacity:0/.test(cssF), 'framing CSS: the title-screen stacking fix; the sheet sits at the top gutter over the title and the title card stays');
 }
 ok(Object.keys(U.el.tabEls).length >= 2 && Object.keys(U.el.itemEls).length >= 3, `palette built: ${Object.keys(U.el.tabEls).length} tabs, ${Object.keys(U.el.itemEls).length} items`);
 ok(!('founders_hall' in U.el.itemEls), "founders_hall never appears in the palette");
@@ -183,10 +187,10 @@ const M0 = { ctrl: false, shift: false, meta: false, alt: false };
 // --- menu layout pass: the CSS the Edit menu overlay and the inspect body rely on ---------------------------------------
 {
   const cssM = css.slice(css.indexOf('/* menu (P6)'));
-  ok(/#panels #menu-overlay\{[^}]*width:64rem/.test(cssM), 'the Edit menu overlay is a 64-rem panel in the centring #panels host');
+  ok(/#panels #menu-overlay\{[^}]*width:64rem/.test(cssM), 'the Edit menu overlay is a 64-rem dialog in the centring #panels layer');
   ok(/\.menu-grid\{[^}]*grid-template-columns:repeat\(auto-fill,minmax\(13\.\d+rem,1fr\)\)/.test(cssM), 'the dish grid packs 3-4 columns (auto-fill, 13.x-rem minimum)');
   ok(/\.btn\.dish\.tier-cheap\{[^}]*\}[^]*tier-standard[^]*tier-premium/.test(cssM) && /\.mo-reason\.flash\{/.test(cssM) && /\.mo-count\.full\{/.test(cssM), 'tier colours, the inline reason and the full count are styled');
-  ok(/#insp-body\{[^}]*flex:1 1 0[^}]*min-height:0[^}]*overflow-y:auto/.test(css) && /#inspect\{[^}]*top:calc\(var\(--topbar-h\) \+ 1\.6rem\);bottom:var\(--bot\)/.test(css), 'the inspect body takes the panel height left after the head and actions (panel pinned between the top bar and the palette) and scrolls only past it');
+  ok(/#insp-body\{[^}]*flex:1 1 0[^}]*min-height:0[^}]*overflow-y:auto/.test(css) && /#inspect\{[^}]*bottom:var\(--bot\)[^}]*max-height:max\(24rem,calc\(100vh/.test(css), 'the inspect body takes the card height left after the head and actions (the card is capped so it never reaches the goal pill) and scrolls only past it');
 }
 // --- UX pass: goals tracker, needs strip, build menu, coach helpers ----------------------
 for (const id of ['issues-tray', 'issues-head', 'issues-count', 'issues-spot', 'issues-list', 'issues-more', 'needs-locate']) ok(U.el[id] && U.el[id].id === id, 'issue spotlight skeleton #' + id);   // issue spotlight pass: the Issues tray under the minimap + the needs-strip Locate
@@ -608,9 +612,9 @@ try {
   ok(U.el.topbar.children.map((c) => c.id || c.className).join(',') === 'brand,stats,grow,date-chip,speed,grow,actions', 'app bar order: brand · stats · date chip · speed · actions (' + U.el.topbar.children.map((c) => c.id || c.className).join(',') + ')');
   ok(U.el.actions.children.map((c) => c.id).join(',') === 'btn-alerts,ov-lit,btn-layers,btn-map,btn-menu,btn-mute,chip-endowed', 'the right cluster: Alerts · lit chip · Layers · Map · Menu · mute · Endowed');
   ok(U.el['chip-capacity'].parentNode === U.el['stat-students-line'] && U.el['stat-students-dot'] && U.el['stat-cash-dot'] && U.el['stat-cash'].children[0].dataset.icon === 'paid' && U.el['stat-students'].children[0].dataset.icon === 'group', 'stat chips: an icon, the value line (Students carries the cap suffix), a badge dot');
-  ok(['pop-needs', 'pop-budget', 'pop-alerts', 'pop-layers', 'pop-map', 'pop-menu'].every((id) => U.el[id] && U.el[id].parentNode === U.el.hud && U.el[id].classList.contains('hidden')) && U.popover() === null, 'six popovers under #hud, all closed at rest');
+  ok(['pop-needs', 'pop-budget', 'pop-alerts', 'pop-layers', 'pop-map'].every((id) => U.el[id] && U.el[id].parentNode === U.el.hud && U.el[id].classList.contains('hidden')) && U.popover() === null, 'five popovers under #hud, all closed at rest (U3: the Menu is the side sheet, not a popover)');
   ok(U.el['needs-strip'].parentNode.parentNode === U.el['pop-needs'] && U.el['issues-tray'].parentNode.parentNode === U.el['pop-alerts'] && U.el['overlay-buttons'].parentNode.parentNode === U.el['pop-layers'] && U.el['minimap-wrap'].parentNode.parentNode === U.el['pop-map'], 'the needs strip, the issues tray, the overlay chips and the minimap moved into their popovers');
-  ok(['btn-budget', 'btn-season', 'btn-storm', 'btn-land', 'btn-almanac', 'btn-milestones', 'btn-log', 'btn-settings', 'btn-howto', 'btn-about'].every((id) => U.el[id] && U.el[id].parentNode.parentNode.parentNode === U.el['pop-menu']) && U.el['btn-budget'].children[1].textContent === 'B', 'the panel buttons (+ Milestones, Log, Settings, How to play, About) are Menu list items with their hotkey caps');
+  ok(['btn-budget', 'btn-season', 'btn-storm', 'btn-land', 'btn-almanac', 'btn-milestones', 'btn-log', 'btn-settings', 'btn-howto', 'btn-about'].every((id) => U.el[id] && U.el[id].parentNode === U.el['sheet-list'] && U.el[id].classList.contains('list-item') && U.el[id].children[0].dataset.icon) && U.el['sheet-list'].parentNode.parentNode === U.el['menu-sheet'] && U.el['btn-budget'].children[2].textContent === 'B', 'the panel buttons (+ Milestones, Log, Settings, How to play, About) are Menu sheet list items with an icon and their hotkey caps');
   ok(Object.keys(U.el.needEls).join(',') === 'beds,seats,dining,power,water,wastewater' && U.el['needs-apps'].parentNode === U.el['needs-strip'], 'the needs popover carries six gauges (Sewage is the sixth) and the applicants line');
   // 2. popovers: click, Esc, outside press, the same chip; one at a time
   tap('stat-students'); U.update(sH, 50);
@@ -624,13 +628,15 @@ try {
   U.openPopover('layers'); U.update(sH, 50);
   U.el.hud.dispatchEvent({ type: 'pointerdown', target: U.el['goal-pill'] }); U.update(sH, 50);
   ok(U.popover() === null && !vis('pop-layers'), 'a press elsewhere on the HUD closes the open popover');
-  U.openPopover('menu'); U.update(sH, 50);
-  U.el.hud.dispatchEvent({ type: 'pointerdown', target: U.el['btn-log'] }); U.el.hud.dispatchEvent({ type: 'pointerdown', target: U.el['btn-menu'] });
-  ok(U.popover() === 'menu', 'a press inside the popover (or on its icon) keeps it');
+  U.openPopover('needs'); U.update(sH, 50);
+  U.el.hud.dispatchEvent({ type: 'pointerdown', target: U.el['pop-needs'] }); U.el.hud.dispatchEvent({ type: 'pointerdown', target: U.el['stat-students'] });
+  ok(U.popover() === 'needs', 'a press inside the popover (or on its chip) keeps it');
   U.pointer('down', 400, 400, 0, MH); U.pointer('up', 400, 400, 0, MH); U.closeInspect();
   ok(U.popover() === null, 'a map press closes it too');
-  tap('btn-menu'); tap('btn-budget'); U.update(sH, 50);
-  ok(U.popover() === null && sH.ui.panel === 'budget', 'Menu → Budget opens the panel and closes the list'); U.openPanel(null);
+  tap('btn-menu'); U.update(sH, 50);
+  ok(U.sheetState() === 'list' && vis('menu-sheet') && U.el['btn-menu'].classList.contains('selected'), 'the Menu icon opens the side sheet (list state, icon selected)');
+  tap('btn-budget'); U.update(sH, 50);
+  ok(U.popover() === null && sH.ui.panel === 'budget' && U.sheetState() === 'panel' && !vis('btn-sheet-back') === false, 'Menu → Budget opens the panel inside the sheet'); U.openPanel(null);
   U.breakdown(sH, 'prestige'); ok(U.popover() === 'breakdown' && !U.el.popover.classList.contains('hidden'), 'Prestige still opens the breakdown popover');
   U.openPopover('needs'); U.update(sH, 50); ok(U.el.popover.classList.contains('hidden') && U.popover() === 'needs', '… which the next popover replaces'); U.closePopover(); U.update(sH, 50);
   // 3. the Alerts badge follows the issues list
@@ -729,6 +735,79 @@ try {
   U.card(sF, { id: 'u2c', title: 't', body: 'b', actions: [] }); U.update(sF, 50); ok(!vis('fab-build'), 'the FAB hides under a card'); U.closeCard(); U.update(sF, 50); ok(vis('fab-build'), '… and returns');
   U.openPanel('budget'); U.update(sF, 50); ok(!vis('fab-build'), 'the FAB hides under a panel'); U.openPanel(null); U.update(sF, 50); ok(vis('fab-build'), '… and returns again');
   ok(U.el['btn-build-menu'].children[1].textContent === 'All buildings' && U.el['btn-build-menu'].children[2].textContent === '⇧G', 'the sheet\'s menu button reads "All buildings · ⇧G" (the FAB owns "Build · G")');
+  // 10b. UI refresh U3: the Menu side sheet, the one-open-at-a-time rule, the inspect card, the dialogs' focus
+  {
+    const cssU3 = css.slice(css.indexOf('/* ---- U3: nested surfaces'));
+    ok(vis('btn-menu') && !vis('menu-sheet') && U.sheetState() === 'closed' && U.panelOpen() === false && U.popover() === null, 'U3: the Menu sheet is closed at rest');
+    tap('btn-menu'); U.update(sF, 50);
+    ok(vis('menu-sheet') && U.sheetState() === 'list' && sF.ui.panel === null && U.panelOpen() === true && vis('sheet-list') && !vis('btn-sheet-back') && U.el['sheet-title'].textContent === 'Menu' && !vis('fab-build') && U.el['btn-menu'].classList.contains('selected'), 'the Menu icon opens the sheet in its list state (title Menu, no back arrow, icon selected, the FAB steps aside)');
+    tap('btn-menu'); U.update(sF, 50); ok(!vis('menu-sheet') && U.sheetState() === 'closed' && vis('fab-build') && !U.el['btn-menu'].classList.contains('selected'), 'the Menu icon again closes it and the FAB returns');
+    U.openSheet(true); tap('btn-sheet-close'); ok(U.sheetState() === 'closed', 'the ✕ closes the list');
+    U.openSheet(true); ok(U.keydown('Escape', MH) === true && U.sheetState() === 'closed' && !vis('menu-sheet'), 'Esc closes the list');
+    // list → panel → back; the panel host lives in the sheet body
+    U.openSheet(true); tap('btn-settings'); U.update(sF, 50);
+    ok(U.sheetState() === 'panel' && sF.ui.panel === 'settings' && vis('btn-sheet-back') && U.el['sheet-title'].textContent === 'Settings' && !vis('sheet-list') && U.el['panel-settings'].parentNode === U.el['sheet-body'] && vis('panel-settings') && U.panelOpen('settings') && !U.panelOpen('budget'), 'a list item opens its panel inside the sheet (back arrow, title, the list hides)');
+    tap('btn-sheet-back'); U.update(sF, 50); ok(U.sheetState() === 'list' && sF.ui.panel === null && vis('sheet-list') && !vis('panel-settings') && !vis('btn-sheet-back') && U.el['sheet-title'].textContent === 'Menu', 'back returns to the list');
+    tap('btn-log'); tap('btn-sheet-close'); ok(U.sheetState() === 'closed' && sF.ui.panel === null && !vis('panel-log'), 'the ✕ closes a panel and the sheet');
+    U.openPanel('storm'); ok(U.keydown('Escape', MH) === true && U.sheetState() === 'closed' && sF.ui.panel === null, 'Esc closes a panel and the sheet in one press');
+    // hotkeys deep-link, and the same key again closes the sheet
+    for (const [k, name] of [['b', 'budget'], ['t', 'storm'], ['o', 'land'], ['l', 'milestones']]) {
+      ok(U.keydown(k, MH) === true && sF.ui.panel === name && U.sheetState() === 'panel' && vis('menu-sheet') && vis('panel-' + name), `${k.toUpperCase()} opens the sheet straight to ${name}`);
+      ok(U.keydown(k, MH) === true && sF.ui.panel === null && U.sheetState() === 'closed', `${k.toUpperCase()} again closes it`);
+    }
+    U.keydown('b', MH); U.keydown('t', MH); ok(sF.ui.panel === 'storm' && vis('panel-storm') && !vis('panel-budget'), 'another hotkey switches the panel inside the open sheet');
+    U.keydown('n', MH); U.keyup('n'); ok(sF.ui.panel === 'season', 'N (tap) deep-links to Season'); U.openPanel(null);
+    // the contract: openPanel / panel / panelOpen / closePanel / registerPanel
+    let built = 0; U.registerPanel('u3probe', { build(host) { built++; host.appendChild(win.document.createElement('div')); }, refresh() {}, events: [] });
+    U.openPanel('u3probe'); ok(built === 1 && U.panel() === 'u3probe' && U.el['panel-u3probe'].parentNode === U.el['sheet-body'] && U.el['sheet-title'].textContent === 'u3probe', 'registerPanel + openPanel: a new panel builds once into the sheet body');
+    U.closePanel(); ok(U.panel() === null && !U.panelOpen() && U.sheetState() === 'closed', 'closePanel() closes the sheet');
+    U.openPanel('u3probe'); U.openPanel(null); U.openPanel('u3probe'); ok(built === 1, 'a panel is built once, not on every open');
+    U.openPanel('nope'); ok(sF.ui.panel === null, 'an unknown panel name opens nothing'); U.openPanel(null);
+    // one of sheet / popover / Build sheet at a time
+    U.openPopover('needs'); U.openSheet(true); ok(U.popover() === null && U.sheetState() === 'list', 'opening the sheet closes the open popover');
+    U.openPopover('alerts'); ok(U.sheetState() === 'closed' && U.popover() === 'alerts', 'opening a popover closes the sheet'); U.closePopover();
+    U.openPalette(true); U.openSheet(true); ok(!U.paletteOpen() && U.sheetState() === 'list', 'opening the sheet closes the Build sheet');
+    U.openPalette(true); ok(U.sheetState() === 'closed' && U.paletteOpen(), 'opening the Build sheet closes the Menu sheet'); U.openPalette(false);
+    U.openPanel('budget'); U.openPalette(true); ok(U.sheetState() === 'closed' && sF.ui.panel === null, 'the Build sheet also closes a panel'); U.openPalette(false);
+    U.pinMinimap(true); U.update(sF, 50); ok(U.popoverVisible('map'), 'a pinned Map popover is up'); U.openSheet(true); ok(!U.popoverVisible('map') && !vis('pop-map'), 'it steps aside while the sheet is open'); U.openSheet(false); ok(U.popoverVisible('map') && vis('pop-map'), '… and returns when the sheet closes'); U.pinMinimap(false);
+    U.openSheet(true); U.update(sF, 50); ok(!vis('fab-build'), 'the FAB hides while the sheet is open'); U.pointer('down', 400, 400, 0, MH); U.pointer('up', 400, 400, 0, MH); ok(U.sheetState() === 'closed', 'a press on the map closes the sheet (a tool-less click does not also act)'); U.closeInspect();
+    // the Esc order keeps inspect before the sheet
+    U.inspect(sF, { kind: 'tile', i: 5 * 64 + 5 }); U.openSheet(true);
+    ok(U.keydown('Escape', MH) === true && !U.inspectCollapsed() && U.el.inspect.classList.contains('hidden') && U.sheetState() === 'list', 'Esc #1 closes the inspect card');
+    ok(U.keydown('Escape', MH) === true && U.sheetState() === 'closed', 'Esc #2 closes the sheet');
+    // the inspect card: bottom-left card ↔ one-line pill
+    U.inspect(sF, { kind: 'tile', i: 5 * 64 + 5 }); U.update(sF, 600);
+    ok(vis('inspect') && U.el.inspect.classList.contains('inspect-card') && !U.el.inspect.classList.contains('collapsed') && vis('insp-fold-more') && !vis('insp-fold-less') && U.el['btn-insp-collapse'].title === 'Collapse' && U.el['insp-body'].children.length >= 1 && U.inspectCollapsed() === false, 'U3: the inspect card opens expanded (rows, collapse chevron down)');
+    tap('btn-insp-collapse'); ok(U.el.inspect.classList.contains('collapsed') && U.inspectCollapsed() === true && vis('insp-fold-less') && !vis('insp-fold-more') && U.el['btn-insp-collapse'].title === 'Expand', 'the chevron collapses it to the pill (the title stays; the chevron flips)');
+    U.update(sF, 600); ok(U.el.inspect.classList.contains('collapsed') && vis('inspect'), 'the half-second refresh keeps it collapsed');
+    U.el.inspect.dispatchEvent({ type: 'click' }); ok(!U.el.inspect.classList.contains('collapsed') && U.inspectCollapsed() === false, 'a click on the pill re-expands it');
+    U.collapseInspect(true); tap('btn-insp-close'); ok(U.el.inspect.classList.contains('hidden') && !U.el.inspect.classList.contains('collapsed') && U.state === 'IDLE', 'the ✕ on the pill closes it (and a later card opens expanded)');
+    U.inspect(sF, { kind: 'tile', i: 5 * 64 + 5 }); ok(!U.el.inspect.classList.contains('collapsed'), 'a new inspect opens expanded'); U.collapseInspect(true);
+    ok(U.keydown('Escape', MH) === true && U.el.inspect.classList.contains('hidden') && U.state === 'IDLE', 'Esc closes the collapsed pill when nothing else is open'); U.update(sF, 50);
+    U.inspect(sF, { kind: 'tile', i: 5 * 64 + 5 }); U.pointer('down', 400, 400, 2, MH); U.pointer('up', 400, 400, 2, MH);
+    // dialogs: a scrim, 28 px corners, focus in and back, Esc = the dismiss action, a card without one just closes
+    const EP = Object.getPrototypeOf(win.document.createElement('div')); const focus0 = EP.focus; let focused = null; EP.focus = function () { focused = this; };
+    const trigger = win.document.createElement('button'); win.document.activeElement = trigger;
+    let ran = ''; U.card(sF, { id: 'u3d', kicker: 'k', title: 'Dialog', body: 'b', actions: [{ label: 'Open', primary: true, fn: () => { ran += 'open;'; } }, { label: 'Later', dismiss: true, fn: () => { ran += 'later;'; } }] }); U.update(sF, 50);
+    const dlg = U.el.cards.children[0];
+    ok(!U.el.cards.classList.contains('hidden') && dlg.id === 'card-u3d' && U.cardOpen() === 'u3d' && /#cards\{[^}]*background:var\(--scrim\)/.test(css) && /--scrim:\s*rgba\(28, 27, 31, \.32\)/.test(css) && /\.card,#cards \.card\{background:var\(--surface-container-high\);border:0;border-radius:var\(--shape-lg\)/.test(css) && /\.card\{width:42rem/.test(css), 'a card is a dialog: the 32 % scrim host, 28 px corners, 420 px wide');
+    ok(focused === dlg && dlg.attributes.role === 'dialog' && dlg.attributes['aria-modal'] === 'true', 'focus moves into the dialog (role=dialog, aria-modal)');
+    const acts = dlg.children[dlg.children.length - 1];
+    ok(acts.children.length === 2 && acts.children[0].classList.contains('primary') && /#cards \.card-actions\{[^}]*\}|#cards \.card-actions,#voice-dialog \.card-actions\{[^}]*justify-content:flex-end/.test(cssU3) && /\.btn\.primary[^}]*order:2/.test(cssU3), 'actions are right-aligned, the filled primary last (text button first)');
+    ok(U.keydown('Escape', MH) === true && ran === 'later;' && U.cardOpen() === null && U.el.cards.classList.contains('hidden') && focused === trigger, 'Esc runs the dismiss action, closes the dialog and focus returns to what had it');
+    focused = null; U.card(sF, { id: 'u3e', title: 'T', body: 'b', actions: [{ label: 'Go', primary: true, fn: () => { ran += 'go;'; } }] }); ok(U.keydown('Escape', MH) === true && ran === 'later;' && U.cardOpen() === null, 'a card with no dismiss action: Esc just closes it (Go does not run)');
+    U.card(sF, { id: 'u3f', title: 'T', body: 'b', actions: [{ label: 'Go', primary: true, fn: () => { ran += 'go;'; } }] }); U.card(sF, { id: 'u3g', title: 'T2', body: 'b', actions: [] }); focused = null;
+    U.closeCard(); ok(U.cardOpen() === 'u3g' && focused !== trigger, 'focus stays in the dialogs while another card is queued'); U.closeCard(); ok(U.cardOpen() === null && focused === trigger, '… and returns when the last one closes');
+    U.card(sF, { id: 'u3h', title: 'Modal', body: 'b', modal: true, actions: [{ label: 'Pick', primary: true }] }); ok(U.keydown('Escape', MH) === true && U.cardOpen() === 'u3h', 'a modal card (the failure card) ignores Esc'); U.closeCard();
+    // the student voice is a dialog too: scrim host, Decline = Esc, focus in and back
+    const dec = []; BSU.progress.answerVoice = (st, id, yes) => { dec.push(id + ':' + yes); }; focused = null;
+    U.card(sF, 'voice', { id: 'vA', student: 'Ada', major: 'Physics', text: 'Hello', payoff: 'p' }); U.update(sF, 50);
+    ok(vis('voice-card') && U.voiceOpen() && U.el['voice-dialog'].classList.contains('card') && U.el['voice-card'].children[0] === U.el['voice-dialog'] && focused === U.el['voice-dialog'] && !vis('fab-build') && /#voice-card\{[^}]*background:var\(--scrim\)/.test(css) && U.el['voice-student'].textContent === 'Ada · Physics', 'the student voice opens as a scrimmed dialog with focus in (the FAB hides)');
+    ok(U.keydown('Escape', MH) === true && dec.join() === 'vA:false' && !vis('voice-card') && focused === trigger, 'Esc declines the voice (its dismiss action) and returns focus');
+    U.card(sF, 'voice', { id: 'vB', student: 'Bo', text: 'Hi' }); tap('btn-voice-accept'); ok(dec.join() === 'vA:false,vB:true' && !vis('voice-card'), 'Accept answers yes and closes it');
+    EP.focus = focus0; delete win.document.activeElement;
+    U.update(sF, 50); U.closeInspect();
+  }
   // 11. the coach opens the surfaces its steps point at
   U.startCoach(sF, { now: true }); U.update(sF, 50);
   ok(U.coachStep() === 0 && U.popover() === null && U.hudState().effective === 'full', 'the tour starts (stats step: nothing opens)');

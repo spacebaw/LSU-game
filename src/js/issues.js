@@ -176,7 +176,7 @@
         const cost = fin(call('buildings', 'repairCost', state, b.id), 0), can = afford(state, cost);
         mk(out, 'damaged', 'damaged:' + b.id, Object.assign({
           severity: b.ruin ? 3 : 2, title: name + (b.ruin ? ' is in ruins' : ' is storm-damaged'),
-          fix: (b.ruin ? 'Ruined: Fix rebuilds it' : 'Damaged: Fix repairs it') + ' for ' + money(cost) + (can ? '' : ' (not enough cash)') + ' · Repair all is in the Storm panel',
+          fix: (b.ruin ? 'Ruined: Fix rebuilds it' : 'Damaged: Fix repairs it') + ' for ' + money(cost) + (can ? '' : ' (not enough cash)') + ' · Repair all is in Menu → Storm',
           persist: can ? 'Repair ' + money(cost) + ' · one click' : 'Not enough cash: the repair costs ' + money(cost) + ' (you have ' + money(cashOf(state)) + ')',
           action: { repair: b.id }, cost: cost, resolvable: can, stage: b.ruin ? 'ruin' : 'hp'
         }, base));
@@ -253,7 +253,7 @@
           const integ = tl.integrity[worst] | 0, tiles = run.slice(0, LEVEE_RUN_MAX);
           const q = call('buildings', 'leveeRunQuote', state, tiles) || { ok: false, cost: 0, count: tiles.length, reason: '' };
           mk(out, 'weakLevee', 'weakLevee:' + run[0], { severity: integ < half ? 3 : 2, title: 'Levee weak (' + integ + '%)' + (run.length > 1 ? ' · ' + run.length + ' tiles' : ''),
-            fix: 'Weak levee: Fix repairs the whole run (' + q.count + (q.count === 1 ? ' tile' : ' tiles') + ', ' + money(q.cost) + ')' + (q.ok ? '' : ' — ' + q.reason) + ' · the Storm panel repairs them all',
+            fix: 'Weak levee: Fix repairs the whole run (' + q.count + (q.count === 1 ? ' tile' : ' tiles') + ', ' + money(q.cost) + ')' + (q.ok ? '' : ' — ' + q.reason) + ' · Menu → Storm repairs them all',
             persist: q.ok ? 'Repair the run: ' + money(q.cost) + ' · one click' : (q.reason || 'Cannot repair'), tiles: tiles, anchor: tileAnchor(worst), action: { repairLevee: worst, run: tiles }, cost: fin(q.cost, 0), resolvable: !!q.ok, stage: integ < half ? 'half' : 'weak' });
         }
       }

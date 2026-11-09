@@ -250,7 +250,7 @@ export async function openGame(opts = {}) {
   // ---- UI helpers (real clicks on real DOM) ----
   /** close whatever can block a click: open cards, the notification stack, optionally the open panel (never the armed tool) */
   g.clearUi = async ({ panel = true } = {}) => {
-    await ev(`(function () { try { BSU.ui.closeCard(); } catch (e) {} try { BSU.ui.dismissNotifs(); } catch (e) {} try { if (BSU.ui.closePopover) BSU.ui.closePopover(); } catch (e) {} try { if (BSU.ui.goalOpen) BSU.ui.goalOpen(false); } catch (e) {} ${panel ? 'try { if (BSU.state.ui.panel) BSU.ui.openPanel(null); } catch (e) {}' : ''} return true; })()`);   // U2: the open popover and the goal card too
+    await ev(`(function () { try { BSU.ui.closeCard(); } catch (e) {} try { BSU.ui.dismissNotifs(); } catch (e) {} try { if (BSU.ui.closePopover) BSU.ui.closePopover(); } catch (e) {} try { if (BSU.ui.goalOpen) BSU.ui.goalOpen(false); } catch (e) {} ${panel ? "try { if (BSU.state.ui.panel || (BSU.ui.sheetState && BSU.ui.sheetState() !== 'closed')) BSU.ui.openPanel(null); } catch (e) {}" : ''} return true; })()`);   // U2: the open popover and the goal card too; U3: the Menu sheet (list or panel)
     await sleep(60);
   };
   /** wait until the camera stops moving (pan eases, zoom steps): two identical readings 70 ms apart */

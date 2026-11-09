@@ -1618,7 +1618,7 @@
     return {
       id: 'newsflash', kicker: 'Breaking', title: 'HURRICANE ' + String(p.name || '').toUpperCase(),
       body: 'Cat ' + fin(p.forecastCat, p.cat) + ' ± 1 · landfall ' + (p.landfallDay >= 0 ? BSU.formatDate(p.landfallDay) : 'soon') + '.' + year1Hint,
-      actions: [{ label: 'Prepare', primary: true, fn: function () { UI.openPanel('storm'); } }, { label: 'Later' }]
+      actions: [{ label: 'Prepare', primary: true, fn: function () { UI.openPanel('storm'); } }, { label: 'Later', dismiss: true }]
     };
   });
   UI.registerCard('wetfeet', function (s, p) {
@@ -1629,7 +1629,7 @@
     return {
       id: 'wetfeet', kicker: 'Wet Feet', title: bName + ' took on water',
       body: ['Pilings − 25% on this building, from now on.', 'A canal within 2 tiles drains it faster.', 'A levee ring keeps the next storm out.'],
-      actions: [{ label: 'Add Pilings', primary: true, fn: function () { if (bId >= 0) { const r = call('buildings', 'retrofitPilings', s, bId); if (r && !r.ok) notify(s, r.reason); } } }, { label: 'Later' }]
+      actions: [{ label: 'Add Pilings', primary: true, fn: function () { if (bId >= 0) { const r = call('buildings', 'retrofitPilings', s, bId); if (r && !r.ok) notify(s, r.reason); } } }, { label: 'Later', dismiss: true }]
     };
   });
   UI.registerCard('failure', function (s, p) {
@@ -1640,7 +1640,7 @@
     const actions = opts.map(function (o) {
       return { label: o.text.length > 60 ? o.text.slice(0, 57) + '…' : o.text, fn: function (st) { if (answered) return true; answered = true; call('progress', 'answerFailure', st, p.kind, o.id); } };
     });
-    if (p.kind === 'bankruptcy') actions.push({ label: 'Not now', fn: function (st) { if (answered) return true; answered = true; call('progress', 'answerFailure', st, p.kind, null); } });
+    if (p.kind === 'bankruptcy') actions.push({ label: 'Not now', dismiss: true, fn: function (st) { if (answered) return true; answered = true; call('progress', 'answerFailure', st, p.kind, null); } });
     return { id: 'failure', kicker: 'Failure', title: def.title, body: opts.map(function (o) { return o.text; }), actions: actions, modal: true };
   });
   UI.registerCard('damage', function (s, p) {
@@ -1655,7 +1655,7 @@
     return {
       id: 'damage', kicker: (report.name || 'Storm') + ' · Cat ' + fin(report.cat, 0), title: 'Damage report: ' + money(report.bill),
       body: [report.tarps + ' blue tarps.'].concat(lines),
-      actions: [{ label: 'Repair All ' + money(report.bill), primary: true, fn: function (st) { call('buildings', 'repairAll', st); call('buildings', 'repairAllLevees', st); } }, { label: 'Later' }],
+      actions: [{ label: 'Repair All ' + money(report.bill), primary: true, fn: function (st) { call('buildings', 'repairAll', st); call('buildings', 'repairAllLevees', st); } }, { label: 'Later', dismiss: true }],
       onClose: function (st) { call('weather', 'closeReport', st); }
     };
   });
@@ -1686,7 +1686,7 @@
     return {
       id: 'recruitboard-' + (p.why || 'open'), kicker: C.kicker || 'Recruiting', title: fill(C.title || 'The recruiting board', m),
       body: [fill(C.body || '', m), 'Lock: ' + BSU.formatDate(fin(p.lockDay, 0)) + '.'],
-      actions: [{ label: RT.open || 'Open the Recruiting tab', primary: true, fn: function () { UI.openPanel('season'); const h = UI.el && UI.el['panel-season']; if (h && h._tabBtns) setTab(h, 'recruiting', true); } }, { label: RT.later || 'Later' }]
+      actions: [{ label: RT.open || 'Open the Recruiting tab', primary: true, fn: function () { UI.openPanel('season'); const h = UI.el && UI.el['panel-season']; if (h && h._tabBtns) setTab(h, 'recruiting', true); } }, { label: RT.later || 'Later', dismiss: true }]
     };
   });
   UI.registerCard('poached', function (s, p) {
@@ -1694,7 +1694,7 @@
     return {
       id: 'poached-' + role, kicker: 'Breaking', title: (p.name || 'Your coach') + ' poached by ' + (p.poacher || 'a rival program'),
       body: [fin(p.stars, 0) + '★ ' + label.toLowerCase() + ', ' + money(p.salary) + ' a year, gone. ' + (p.interim || 'Interim staff') + ' holds the clipboard.', 'Three candidates are waiting on the Staff tab.'],
-      actions: [{ label: 'Open the Staff tab', primary: true, fn: function () { UI.openPanel('season'); const h = UI.el && UI.el['panel-season']; if (h && h._tabBtns) setTab(h, 'staff', true); } }, { label: 'Later' }]
+      actions: [{ label: 'Open the Staff tab', primary: true, fn: function () { UI.openPanel('season'); const h = UI.el && UI.el['panel-season']; if (h && h._tabBtns) setTab(h, 'staff', true); } }, { label: 'Later', dismiss: true }]
     };
   });
 

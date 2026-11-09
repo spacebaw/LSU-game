@@ -432,14 +432,17 @@ scenario('title-panels', 'title screen: How to play and About open and close; th
     c.ok((await g.eval(`BSU.state.ui.panel`)) === null, `Escape closes ${panel} on the title`);
   }
   await g.title(false); await sleep(300);
-  await g.clickEl('#btn-menu'); await sleep(350);
-  for (const [btn, panel] of [['#btn-set-howto', 'howto'], ['#btn-set-about', 'about']]) {
-    if (!(await g.elVisible(btn))) await g.eval(`(BSU.ui.openPanel('settings'), true)`), await sleep(300);
-    c.ok(await g.elVisible(btn), `${btn} is in Settings`);
+  await g.clickEl('#btn-menu'); await sleep(350);   // U3: the Menu icon opens the side sheet (its list); How to play and About are list items, back returns to the list
+  c.ok((await g.eval(`BSU.ui.sheetState()`)) === 'list', 'the Menu icon opens the sheet to its list');
+  for (const [btn, panel] of [['#btn-howto', 'howto'], ['#btn-about', 'about']]) {
+    c.ok(await g.elVisible(btn), `${btn} is in the Menu list`);
     await g.clickEl(btn); await sleep(300);
-    c.ok((await g.eval(`BSU.state.ui.panel`)) === panel, `Settings opens ${panel}`);
-    await g.eval(`(BSU.ui.openPanel('settings'), true)`); await sleep(200);
+    c.ok((await g.eval(`BSU.state.ui.panel`)) === panel, `the Menu list opens ${panel}`);
+    await g.clickEl('#btn-sheet-back'); await sleep(250);
+    c.ok((await g.eval(`BSU.ui.sheetState()`)) === 'list', `back from ${panel} returns to the list`);
   }
+  await g.key('Escape'); await sleep(200);
+  c.ok((await g.eval(`BSU.ui.sheetState()`)) === 'closed', 'Escape closes the sheet');
   await g.clearUi();
 });
 
