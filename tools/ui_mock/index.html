@@ -1,0 +1,824 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Bayou State · UI mock (U0)</title>
+<!--
+  Static mock of the UI refresh (docs/PLAN_UI_REFRESH.md, pass U0). Plain HTML + CSS on the token sheet in docs/UI_STYLE.md,
+  no game code. Opens from file:// and from GitHub Pages (relative paths only). The design renders inside #frame at exactly
+  the chosen viewport, scaled down with a CSS transform to fit the window. Hash: #s=<screen>&v=<WxH>&z=<100|115|130>[&bare=1].
+  Keys: ← → step screens · ` toggles the mock toolbar. window.mockCheck() reports overlapping / out-of-frame surfaces.
+-->
+<style>
+/* ============================================================ tokens (docs/UI_STYLE.md §1) ============================================================ */
+:root {
+  --ui-scale: 1;
+  /* colour roles (M3 names, light scheme) */
+  --surface: #FBFAFD; --surface-container-low: #F5F3F8; --surface-container: #EFEDF3; --surface-container-high: #E9E6EF;
+  --surface-float: rgba(251, 250, 253, .94);
+  --on-surface: #1C1B1F; --on-surface-variant: #49454F; --outline: #79757F; --outline-variant: #CAC4D0;
+  --primary: #461D7C; --on-primary: #FFFFFF; --primary-container: #E9DDFF; --on-primary-container: #1F0A47;
+  --secondary: #5E2CA5; --on-secondary: #FFFFFF; --secondary-container: #F0E7FF; --on-secondary-container: #1F0A47;
+  --tertiary: #F5B700; --on-tertiary: #2B1246; --tertiary-container: #FFE680; --on-tertiary-container: #2B1246;
+  --error: #B3261E; --on-error: #FFFFFF; --error-container: #F9DEDC; --on-error-container: #410E0B;
+  --success: #1F6B3F; --success-container: #DDF3E4; --on-success-container: #07331B;
+  --warn: #B26A00;
+  --water: #2E86BE; --moss: #5E8232;
+  --scrim: rgba(28, 27, 31, .32); --scrim-title: rgba(28, 27, 31, .48);
+  /* type */
+  --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; --font-serif: Georgia, "Times New Roman", serif;
+  --fs-display: 4.4rem; --fs-headline: 1.7rem; --fs-title-lg: 1.5rem; --fs-title: 1.3rem; --fs-body: 1.2rem; --fs-label: 1.05rem;
+  --lh-body: 1.4; --track-label: .02em;
+  /* shape */
+  --shape-pill: 999px; --shape-sm: 1.2rem; --shape-md: 1.6rem; --shape-lg: 2.8rem;
+  /* elevation */
+  --elev-1: 0 1px 2px rgba(28, 27, 31, .12); --elev-2: 0 2px 6px rgba(28, 27, 31, .16); --elev-3: 0 6px 18px rgba(28, 27, 31, .18);
+  /* spacing (4 px grid) */
+  --sp-1: .4rem; --sp-2: .8rem; --sp-3: 1.2rem; --sp-4: 1.6rem; --sp-5: 2rem; --sp-6: 2.4rem; --gutter: 16px;
+  /* sizes */
+  --bar-h: 4.8rem; --control-h: 4rem; --target: 4.4rem; --fab-h: 5.6rem; --icon: 2.4rem;
+  /* motion */
+  --dur-std: 160ms; --dur-open: 240ms; --dur-close: 160ms;
+  --ease-std: cubic-bezier(.2, 0, 0, 1); --ease-decel: cubic-bezier(.05, .7, .1, 1); --ease-accel: cubic-bezier(.3, 0, .8, .15);
+  /* states */
+  --state-hover: .08; --state-press: .12; --disabled: .38;
+}
+@media (prefers-reduced-motion: reduce) { :root { --dur-std: 0ms; --dur-open: 0ms; --dur-close: 0ms; } }
+html { font-size: calc(10px * var(--ui-scale)); }
+
+/* ============================================================ mock chrome (not part of the design) ============================================================ */
+body { margin: 0; background: #2A2830; color: var(--on-surface); font-family: var(--font); overflow: hidden; -webkit-font-smoothing: antialiased; }
+#stage { position: absolute; left: 16px; top: 16px; transform-origin: 0 0; }
+body.bare #stage { left: 0; top: 0; }
+body.bare #mocktb { display: none; }
+#frame { position: relative; overflow: hidden; background: #6F8F3C url(map.jpg) center top / cover no-repeat; font-size: var(--fs-body); line-height: var(--lh-body); }
+#mocktb { position: fixed; left: 12px; bottom: 12px; z-index: 50; display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; max-width: calc(100vw - 24px); padding: 8px 10px; background: #111; color: #DDD; font: 11px/1.3 ui-monospace, Menlo, monospace; border-radius: 6px; box-shadow: 0 2px 8px rgba(0, 0, 0, .5); }
+#mocktb .grp { display: flex; gap: 3px; align-items: center; }
+#mocktb .grp b { color: #888; margin-right: 4px; font-weight: 500; }
+#mocktb button { font: inherit; color: #DDD; background: #2A2A2A; border: 1px solid #444; border-radius: 4px; padding: 2px 7px; cursor: pointer; }
+#mocktb button:hover { background: #3A3A3A; }
+#mocktb button.on { background: #DDD; color: #111; border-color: #DDD; }
+#mocktb .name { color: #FFF; min-width: 150px; }
+body.notb #mocktb { display: none; }
+.hidden { display: none !important; }
+
+/* ============================================================ primitives ============================================================ */
+.icon { width: var(--icon); height: var(--icon); flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.icon.sm { width: 1.8rem; height: 1.8rem; }
+/* state layer: every clickable thing gets one (hover 8 %, press 12 % of its own text colour) */
+.sl { position: relative; overflow: hidden; isolation: isolate; cursor: pointer; }
+.sl::before { content: ""; position: absolute; inset: 0; border-radius: inherit; background: currentColor; opacity: 0; transition: opacity var(--dur-std) var(--ease-std); pointer-events: none; }
+.sl:hover::before { opacity: var(--state-hover); }
+.sl:active::before { opacity: var(--state-press); }
+.sl:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+button { font-family: inherit; }
+.kicker { font: 500 var(--fs-label) / 1.2 var(--font); letter-spacing: var(--track-label); text-transform: uppercase; color: var(--on-surface-variant); }
+.num { font-variant-numeric: tabular-nums; }
+.surface-float { background: var(--surface-float); border: 1px solid var(--outline-variant); }
+
+/* buttons: text / filled / tonal / gold / outlined; 40 px visual, 44 px target (the ::after hit extension) */
+.btn { position: relative; display: inline-flex; align-items: center; justify-content: center; gap: var(--sp-2); height: var(--control-h); padding: 0 2rem; border: 0; border-radius: var(--shape-pill); background: transparent; color: var(--primary); font: 500 var(--fs-body) / 1 var(--font); letter-spacing: .01em; white-space: nowrap; cursor: pointer; }
+.btn::after { content: ""; position: absolute; left: 0; right: 0; top: -.2rem; bottom: -.2rem; }
+.btn.text { padding: 0 1.2rem; }
+.btn.filled { background: var(--primary); color: var(--on-primary); box-shadow: var(--elev-1); }
+.btn.tonal { background: var(--secondary-container); color: var(--on-secondary-container); }
+.btn.gold { background: var(--tertiary); color: var(--on-tertiary); box-shadow: var(--elev-1); font-weight: 600; }
+.btn.outlined { border: 1px solid var(--outline); }
+.btn.danger { color: var(--error); }
+.btn[disabled] { opacity: var(--disabled); pointer-events: none; }
+.btn .key { display: inline-flex; align-items: center; justify-content: center; min-width: 1.8rem; height: 1.8rem; padding: 0 .4rem; border-radius: .4rem; border: 1px solid currentColor; font: 600 1rem / 1 var(--font); opacity: .8; }
+
+/* icon button: 40 px circle, 44 px target */
+.icon-btn { position: relative; display: inline-flex; align-items: center; justify-content: center; width: var(--control-h); height: var(--control-h); flex: none; padding: 0; border: 0; border-radius: var(--shape-pill); background: transparent; color: var(--on-surface-variant); cursor: pointer; }
+.icon-btn::after { content: ""; position: absolute; inset: -.2rem; }
+.icon-btn.selected { background: var(--secondary-container); color: var(--on-secondary-container); }
+.icon-btn .badge { position: absolute; top: .1rem; right: .1rem; min-width: 1.6rem; height: 1.6rem; padding: 0 .4rem; border-radius: var(--shape-pill); background: var(--error); color: var(--on-error); font: 600 1rem / 1.6rem var(--font); text-align: center; box-sizing: border-box; }
+.icon-btn .badge.dot { min-width: .8rem; width: .8rem; height: .8rem; padding: 0; top: .5rem; right: .5rem; background: var(--success); }
+
+/* segmented button */
+.segmented { display: inline-flex; height: var(--control-h); border: 1px solid var(--outline); border-radius: var(--shape-pill); overflow: hidden; background: var(--surface); }
+.segmented > button { position: relative; display: inline-flex; align-items: center; justify-content: center; gap: .4rem; min-width: 3.6rem; padding: 0 1rem; border: 0; border-left: 1px solid var(--outline); background: transparent; color: var(--on-surface); font: 500 var(--fs-body) / 1 var(--font); cursor: pointer; }
+.segmented > button:first-child { border-left: 0; }
+.segmented > button[aria-pressed="true"] { background: var(--secondary-container); color: var(--on-secondary-container); }
+.segmented > button .icon { width: 2rem; height: 2rem; }
+
+/* chips */
+.chip { position: relative; display: inline-flex; align-items: center; gap: .6rem; height: var(--control-h); padding: 0 1.2rem 0 .8rem; border: 0; border-radius: var(--shape-pill); background: var(--surface-container); color: var(--on-surface); font: 500 var(--fs-body) / 1 var(--font); white-space: nowrap; cursor: pointer; }
+.chip::after { content: ""; position: absolute; left: 0; right: 0; top: -.2rem; bottom: -.2rem; }
+.chip.selected { background: var(--secondary-container); color: var(--on-secondary-container); }
+.chip .icon { color: var(--primary); }
+.chip .txt { display: flex; flex-direction: column; align-items: flex-start; line-height: 1; }
+.chip .val { font: 600 var(--fs-title-lg) / 1.6rem var(--font); font-variant-numeric: tabular-nums; }
+.chip .val .cap { font: 500 var(--fs-label) / 1 var(--font); color: var(--on-surface-variant); margin-left: .3rem; }
+.chip .lbl { font: 500 var(--fs-label) / 1.2rem var(--font); letter-spacing: var(--track-label); text-transform: uppercase; color: var(--on-surface-variant); }
+.chip .dot { position: absolute; top: .3rem; left: 2.2rem; width: .9rem; height: .9rem; border-radius: 50%; background: var(--error); border: 2px solid var(--surface); }
+.filter-chip { position: relative; display: inline-flex; align-items: center; gap: .6rem; height: 3.2rem; padding: 0 1.2rem 0 .8rem; border: 1px solid var(--outline); border-radius: .8rem; background: transparent; color: var(--on-surface-variant); font: 500 var(--fs-body) / 1 var(--font); white-space: nowrap; cursor: pointer; }
+.filter-chip::after { content: ""; position: absolute; left: 0; right: 0; top: -.6rem; bottom: -.6rem; }
+.filter-chip .key { display: inline-flex; align-items: center; justify-content: center; width: 2rem; height: 2rem; border-radius: .5rem; background: var(--surface-container-high); color: var(--on-surface); font: 600 1.05rem / 1 var(--font); }
+.filter-chip.selected { background: var(--secondary-container); border-color: var(--secondary-container); color: var(--on-secondary-container); }
+.filter-chip.selected .key { background: var(--secondary); color: var(--on-secondary); }
+.lit-chip { display: inline-flex; align-items: center; justify-content: center; height: 2.4rem; min-width: 2.4rem; padding: 0 .6rem; border-radius: var(--shape-pill); background: var(--secondary-container); color: var(--on-secondary-container); font: 600 var(--fs-label) / 1 var(--font); border: 1px solid var(--secondary); }
+
+/* list item */
+.list-item { position: relative; display: flex; align-items: center; gap: var(--sp-3); width: 100%; min-height: 4.8rem; padding: 0 var(--sp-3) 0 var(--sp-4); border: 0; border-radius: var(--shape-sm); background: transparent; color: var(--on-surface); font: 400 var(--fs-body) / 1.3 var(--font); text-align: left; cursor: pointer; box-sizing: border-box; }
+.list-item .t { flex: 1; }
+.list-item .t small { display: block; color: var(--on-surface-variant); font-size: var(--fs-label); }
+.list-item .hk { display: inline-flex; align-items: center; justify-content: center; min-width: 2.2rem; height: 2.2rem; padding: 0 .5rem; border-radius: .5rem; border: 1px solid var(--outline-variant); color: var(--on-surface-variant); font: 600 1.05rem / 1 var(--font); }
+.list-item .icon { color: var(--on-surface-variant); }
+.list-item.selected { background: var(--secondary-container); color: var(--on-secondary-container); }
+.list-item .cnt { color: var(--on-surface-variant); font: 500 var(--fs-label) / 1 var(--font); font-variant-numeric: tabular-nums; }
+.list-item .star { color: var(--warn); }
+
+/* text field (outlined) */
+.text-field { position: relative; display: flex; align-items: center; height: var(--control-h); padding: 0 1.2rem; border: 1px solid var(--outline); border-radius: .8rem; background: var(--surface); color: var(--on-surface); font: 400 var(--fs-body) / 1 var(--font); box-sizing: border-box; gap: .8rem; }
+.text-field label { position: absolute; left: .8rem; top: -.7rem; padding: 0 .4rem; background: var(--surface); color: var(--on-surface-variant); font: 500 var(--fs-label) / 1.2 var(--font); }
+.text-field input { flex: 1; min-width: 0; border: 0; background: transparent; outline: 0; color: inherit; font: inherit; }
+.text-field input::placeholder { color: var(--on-surface-variant); }
+.text-field:focus-within { border-color: var(--primary); box-shadow: inset 0 0 0 1px var(--primary); }
+.text-field .icon { color: var(--on-surface-variant); }
+
+/* switch */
+.switch { position: relative; width: 5.2rem; height: 3.2rem; border-radius: var(--shape-pill); background: var(--primary); border: 0; cursor: pointer; flex: none; }
+.switch::after { content: ""; position: absolute; top: .4rem; right: .4rem; width: 2.4rem; height: 2.4rem; border-radius: 50%; background: var(--on-primary); }
+.switch.off { background: var(--surface-container-high); border: 2px solid var(--outline); box-sizing: border-box; }
+.switch.off::after { left: .2rem; right: auto; width: 1.6rem; height: 1.6rem; top: .6rem; background: var(--outline); }
+
+/* slider */
+.slider { position: relative; height: 1.6rem; flex: 1; }
+.slider .track { position: absolute; left: 0; right: 0; top: .6rem; height: .4rem; border-radius: var(--shape-pill); background: var(--surface-container-high); border: 1px solid var(--outline-variant); }
+.slider .fill { position: absolute; left: 0; top: .6rem; height: .6rem; border-radius: var(--shape-pill); background: var(--primary); }
+.slider .thumb { position: absolute; top: -.2rem; width: 2rem; height: 2rem; margin-left: -1rem; border-radius: 50%; background: var(--primary); box-shadow: var(--elev-1); }
+
+/* gauge (needs) */
+.gauge { display: grid; grid-template-columns: 6.4rem 1fr 9rem; align-items: center; gap: var(--sp-3); min-height: 2.8rem; }
+.gauge .k { font: 500 var(--fs-body) / 1 var(--font); }
+.gauge .bar { height: .8rem; border-radius: var(--shape-pill); background: var(--surface-container-high); overflow: hidden; }
+.gauge .fill { height: 100%; border-radius: var(--shape-pill); background: var(--success); }
+.gauge.warn .fill { background: var(--warn); }
+.gauge.bad .fill { background: var(--error); }
+.gauge .v { text-align: right; font: 500 var(--fs-body) / 1 var(--font); color: var(--on-surface-variant); font-variant-numeric: tabular-nums; }
+.gauge.bad .v { color: var(--error); }
+
+/* progress line (goal card) and the countdown line (decision snackbar) */
+.progress { display: flex; align-items: center; gap: var(--sp-3); }
+.progress .bar { flex: 1; height: .8rem; border-radius: var(--shape-pill); background: var(--surface-container-high); overflow: hidden; }
+.progress .fill { height: 100%; border-radius: var(--shape-pill); background: var(--primary); }
+.progress .count { font: 500 var(--fs-body) / 1 var(--font); color: var(--on-surface-variant); font-variant-numeric: tabular-nums; }
+
+/* divider, alert row */
+.divider { height: 1px; background: var(--outline-variant); margin: var(--sp-3) 0; }
+.alert-row { display: flex; align-items: center; gap: var(--sp-2); padding: var(--sp-2) var(--sp-3); border-radius: var(--shape-sm); background: var(--error-container); color: var(--on-error-container); font: 500 var(--fs-body) / 1.3 var(--font); }
+.alert-row .icon { color: var(--error); }
+.alert-row .btn { margin-left: auto; color: var(--error); height: 3.2rem; }
+.alert-row.ok { background: var(--success-container); color: var(--on-success-container); }
+.alert-row.ok .icon { color: var(--success); }
+
+/* ============================================================ app bar ============================================================ */
+.app-bar { position: absolute; left: 0; top: 0; right: 0; height: var(--bar-h); display: flex; align-items: center; gap: var(--sp-2); padding: 0 var(--sp-2) 0 var(--sp-3); box-sizing: border-box; background: var(--surface); border-bottom: 1px solid var(--outline-variant); container-type: inline-size; container-name: appbar; }
+.app-bar .brand { display: flex; align-items: center; justify-content: center; width: 3.2rem; height: 3.2rem; flex: none; border-radius: .8rem; background: var(--primary); color: var(--on-primary); }
+.app-bar .brand .icon { width: 2rem; height: 2rem; }
+.app-bar .stats { display: flex; gap: var(--sp-1); }
+.app-bar .grow { flex: 1; }
+.app-bar .actions { display: flex; align-items: center; gap: .2rem; }
+/* compact density: under 118 rem of bar width the stat labels hide (the icon + value stay) */
+@container appbar (max-width: 118rem) {
+  .chip.stat .lbl, .chip.stat .cap, .chip.date .lbl { display: none; }   /* the needs popover still carries the cap */
+  .chip.stat { padding-right: .8rem; }
+  .app-bar .stats { gap: .2rem; }
+}
+
+/* ============================================================ goal pill / goal card ============================================================ */
+.goal-pill { position: absolute; left: var(--gutter); top: calc(var(--bar-h) + 8px); display: inline-flex; align-items: center; gap: var(--sp-2); height: var(--control-h); padding: 0 .8rem 0 .8rem; border-radius: var(--shape-pill); box-shadow: var(--elev-1); color: var(--on-surface); font: 500 var(--fs-body) / 1 var(--font); white-space: nowrap; cursor: pointer; }
+.goal-pill .ring { width: 2.4rem; height: 2.4rem; transform: rotate(-90deg); }
+.goal-pill .ring .track { fill: none; stroke: var(--surface-container-high); stroke-width: 3; }
+.goal-pill .ring .fill { fill: none; stroke: var(--primary); stroke-width: 3; stroke-linecap: round; }
+.goal-pill .kicker { color: var(--primary); }
+.goal-pill .ttl { font-weight: 600; }
+.goal-pill .count { color: var(--on-surface-variant); font-variant-numeric: tabular-nums; }
+.goal-pill .icon { color: var(--on-surface-variant); }
+.goal-card { position: absolute; left: var(--gutter); top: calc(var(--bar-h) + 8px); width: 36rem; padding: var(--sp-4); box-sizing: border-box; border-radius: var(--shape-md); box-shadow: var(--elev-2); }
+.goal-card .head { display: flex; align-items: flex-start; gap: var(--sp-3); }
+.goal-card .portrait { width: 4.8rem; height: 4.8rem; border-radius: 50%; flex: none; border: 1px solid var(--outline-variant); }
+.goal-card .ttl { flex: 1; min-width: 0; }
+.goal-card .ttl .kicker { color: var(--primary); margin-bottom: .2rem; }
+.goal-card .ttl .title { font: 600 var(--fs-title) / 1.25 var(--font); }
+.goal-card .why { margin: var(--sp-3) 0; color: var(--on-surface-variant); }
+.goal-card .actions { display: flex; gap: var(--sp-2); margin-top: var(--sp-3); }
+.goal-card .next { margin-top: var(--sp-3); padding-top: var(--sp-3); border-top: 1px solid var(--outline-variant); color: var(--on-surface-variant); }
+.goal-card .next b { color: var(--on-surface); font-weight: 500; }
+
+/* ============================================================ FAB ============================================================ */
+.fab { position: absolute; right: var(--gutter); bottom: var(--gutter); display: inline-flex; align-items: center; gap: var(--sp-2); height: var(--fab-h); padding: 0 2rem 0 1.6rem; border: 0; border-radius: var(--shape-pill); background: var(--tertiary); color: var(--on-tertiary); box-shadow: var(--elev-3); font: 600 var(--fs-title) / 1 var(--font); cursor: pointer; }
+.fab .key { display: inline-flex; align-items: center; justify-content: center; min-width: 2rem; height: 2rem; border-radius: .5rem; border: 1.5px solid currentColor; font: 600 1.1rem / 1 var(--font); opacity: .85; }
+
+/* ============================================================ popovers ============================================================ */
+.popover { position: absolute; width: 36rem; padding: var(--sp-4); box-sizing: border-box; border-radius: var(--shape-md); box-shadow: var(--elev-2); }
+.popover .head { display: flex; align-items: center; gap: var(--sp-2); margin: -.4rem 0 var(--sp-2); }
+.popover .head .title { flex: 1; font: 600 var(--fs-title) / 1.2 var(--font); }
+.popover .head .icon-btn { margin-right: -.8rem; }
+.popover .rows { display: flex; flex-direction: column; gap: .6rem; }
+.popover .row { display: flex; justify-content: space-between; gap: var(--sp-3); font: 400 var(--fs-body) / 1.3 var(--font); }
+.popover .row .v { font-variant-numeric: tabular-nums; font-weight: 500; }
+.popover .row.total { border-top: 1px solid var(--outline-variant); padding-top: .6rem; font-weight: 600; }
+.popover .row .v.good { color: var(--success); }
+.popover .foot { display: flex; justify-content: flex-end; gap: var(--sp-2); margin-top: var(--sp-3); }
+.popover .binding { margin-top: var(--sp-3); display: flex; align-items: center; gap: var(--sp-2); color: var(--on-surface-variant); }
+.popover .binding .btn { margin-left: auto; height: 3.2rem; }
+.popover.needs .gauges { display: flex; flex-direction: column; gap: .6rem; }
+/* alerts */
+.popover.alerts { width: 40rem; padding-bottom: var(--sp-3); }
+.issue { display: flex; align-items: center; gap: var(--sp-2); padding: .6rem 0; border-top: 1px solid var(--outline-variant); }
+.issue:first-child { border-top: 0; }
+.issue .glyph { width: 3.2rem; height: 3.2rem; display: flex; align-items: center; justify-content: center; border-radius: .8rem; flex: none; }
+.issue.bad .glyph { background: var(--error-container); color: var(--error); }
+.issue.warn .glyph { background: var(--tertiary-container); color: var(--warn); }
+.issue.info .glyph { background: var(--primary-container); color: var(--primary); }
+.issue .t { flex: 1; min-width: 0; }
+.issue .t b { display: block; font-weight: 600; }
+.issue .t small { display: block; color: var(--on-surface-variant); font-size: var(--fs-label); margin-top: .1rem; }
+.issue .acts { display: flex; align-items: center; gap: 0; }
+.issue .acts .btn { padding: 0 1rem; height: 3.2rem; }
+.issue .acts .icon-btn { width: 3.2rem; height: 3.2rem; }
+/* layers */
+.popover.layers .chips { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.popover.layers .legend { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2) var(--sp-3); margin-top: var(--sp-3); padding-top: var(--sp-3); border-top: 1px solid var(--outline-variant); color: var(--on-surface-variant); }
+.popover.layers .legend .sw { display: inline-flex; align-items: center; gap: .4rem; white-space: nowrap; }
+.popover.layers .legend .note { flex-basis: 100%; font-size: var(--fs-label); }
+.popover.layers .legend .sw i { width: 1.4rem; height: 1.4rem; border-radius: .3rem; border: 1px solid var(--outline-variant); }
+/* map */
+.popover.map { width: auto; padding: var(--sp-3); }
+.popover.map img { display: block; width: 20rem; height: 20rem; border-radius: .8rem; }
+.popover.map .foot { justify-content: flex-start; color: var(--on-surface-variant); font: 400 var(--fs-label) / 1.2 var(--font); margin-top: var(--sp-2); }
+
+/* ============================================================ sheets ============================================================ */
+.side-sheet { position: absolute; right: var(--gutter); top: calc(var(--bar-h) + 8px); bottom: var(--gutter); width: 36rem; display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--outline-variant); border-radius: var(--shape-md); box-shadow: var(--elev-3); box-sizing: border-box; overflow: hidden; }
+.sheet-head { display: flex; align-items: center; gap: var(--sp-2); padding: var(--sp-2) var(--sp-2) var(--sp-2) var(--sp-4); border-bottom: 1px solid var(--outline-variant); flex: none; min-height: 5.6rem; box-sizing: border-box; }
+.sheet-head .title { flex: 1; font: 600 var(--fs-headline) / 1.2 var(--font); }
+.sheet-head.back { padding-left: var(--sp-2); }
+.sheet-body { flex: 1; overflow: auto; padding: var(--sp-2); }
+.side-sheet .menu .divider { margin: var(--sp-2) var(--sp-3); }
+/* budget inside the sheet */
+.budget { padding: var(--sp-2) var(--sp-3) var(--sp-3); }
+.budget .kicker { margin: var(--sp-3) 0 var(--sp-2); }
+.budget .kicker:first-child { margin-top: .4rem; }
+.budget .row { display: flex; justify-content: space-between; gap: var(--sp-3); padding: .5rem 0; border-bottom: 1px solid var(--surface-container-high); }
+.budget .row .v { font-variant-numeric: tabular-nums; font-weight: 500; }
+.budget .row.total { font-weight: 600; border-bottom: 0; }
+.budget .row .v.good { color: var(--success); }
+.budget .policy { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); min-height: 4.8rem; }
+.budget .policy .k { flex: 1; }
+.budget .hint { color: var(--on-surface-variant); font-size: var(--fs-label); margin: -.2rem 0 .4rem; }
+/* bottom sheet (the build palette) */
+.bottom-sheet { position: absolute; left: 0; right: 0; bottom: 0; display: flex; flex-direction: column; background: var(--surface); border-top: 1px solid var(--outline-variant); border-radius: var(--shape-lg) var(--shape-lg) 0 0; box-shadow: var(--elev-3); box-sizing: border-box; }
+.bottom-sheet .handle-row { position: relative; height: 2.4rem; flex: none; display: flex; align-items: center; justify-content: center; }
+.bottom-sheet .handle { width: 3.2rem; height: .4rem; border-radius: var(--shape-pill); background: var(--outline-variant); }
+.bottom-sheet .corner { position: absolute; right: var(--sp-3); top: .4rem; display: flex; gap: .2rem; }
+.bottom-sheet .tabs { display: flex; gap: .2rem; padding: 0 var(--sp-4); flex: none; }
+.tab { position: relative; height: 4rem; padding: 0 1.4rem; border: 0; background: transparent; color: var(--on-surface-variant); font: 500 var(--fs-body) / 1 var(--font); border-radius: .8rem .8rem 0 0; cursor: pointer; }
+.tab.selected { color: var(--primary); }
+.tab.selected::after { content: ""; position: absolute; left: 1rem; right: 1rem; bottom: 0; height: .3rem; border-radius: .3rem .3rem 0 0; background: var(--primary); }
+.tab .pip { position: absolute; top: .8rem; right: .6rem; width: .7rem; height: .7rem; border-radius: 50%; background: var(--warn); }
+.bottom-sheet .palette { display: flex; align-items: stretch; gap: var(--sp-3); padding: var(--sp-2) var(--sp-4) var(--sp-4); border-top: 1px solid var(--outline-variant); }
+.bottom-sheet .scroller { flex: 1; display: flex; gap: var(--sp-2); overflow: hidden; }
+.item-card { position: relative; display: flex; flex-direction: column; align-items: center; gap: .4rem; width: 11.2rem; padding: .8rem .6rem .8rem; border: 1px solid var(--outline-variant); border-radius: var(--shape-sm); background: var(--surface-container-low); color: var(--on-surface); cursor: pointer; box-sizing: border-box; flex: none; text-align: center; }
+.item-card img { width: 6.4rem; height: 6.4rem; border-radius: .8rem; }
+.item-card .name { font: 600 var(--fs-body) / 1.2 var(--font); }
+.item-card .price { font: 500 var(--fs-label) / 1 var(--font); color: var(--on-surface-variant); font-variant-numeric: tabular-nums; }
+.item-card .star { position: absolute; top: .4rem; right: .4rem; width: 2rem; height: 2rem; border-radius: 50%; background: var(--tertiary-container); color: var(--on-tertiary-container); display: flex; align-items: center; justify-content: center; font-size: 1.2rem; }
+.item-card .star .icon { width: 1.4rem; height: 1.4rem; }
+.item-card.selected { background: var(--secondary-container); border-color: var(--secondary); color: var(--on-secondary-container); }
+.item-card.locked { opacity: var(--disabled); }
+.bottom-sheet .tools { display: flex; flex-direction: column; justify-content: center; gap: .4rem; padding-left: var(--sp-3); border-left: 1px solid var(--outline-variant); }
+/* expanded build sheet */
+.bottom-sheet.expanded { height: 80%; }
+.bottom-sheet.expanded .build-head { display: flex; align-items: center; gap: var(--sp-3); padding: 0 var(--sp-3) var(--sp-2) var(--sp-6); flex: none; }
+.bottom-sheet.expanded .build-head .title { font: 600 var(--fs-headline) / 1.2 var(--font); }
+.bottom-sheet.expanded .build-head .sub { color: var(--on-surface-variant); flex: 1; }
+.bottom-sheet.expanded .build-head .text-field { width: 24rem; }
+.bottom-sheet.expanded .build { flex: 1; display: grid; grid-template-columns: 20rem 1fr 30rem; min-height: 0; border-top: 1px solid var(--outline-variant); }
+.bottom-sheet.expanded .rail { overflow: auto; padding: var(--sp-2); border-right: 1px solid var(--outline-variant); }
+.bottom-sheet.expanded .rail .list-item { min-height: 4rem; padding-left: var(--sp-3); }
+.bottom-sheet.expanded .cards { overflow: auto; padding: var(--sp-3); display: grid; grid-template-columns: repeat(auto-fill, minmax(21rem, 1fr)); gap: var(--sp-2); align-content: start; }
+.grid-card { position: relative; display: grid; grid-template-columns: 6.4rem 1fr; gap: .4rem var(--sp-2); padding: var(--sp-2); border: 1px solid var(--outline-variant); border-radius: var(--shape-sm); background: var(--surface-container-low); color: var(--on-surface); text-align: left; cursor: pointer; }
+.grid-card img { width: 6.4rem; height: 6.4rem; border-radius: .8rem; grid-row: span 3; }
+.grid-card .name { font: 600 var(--fs-title) / 1.2 var(--font); }
+.grid-card .price { font: 500 var(--fs-body) / 1.2 var(--font); color: var(--on-surface-variant); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.grid-card .reqs { display: flex; flex-wrap: wrap; gap: .3rem; }
+.grid-card .reqs span { padding: .2rem .6rem; border-radius: var(--shape-pill); background: var(--surface-container-high); color: var(--on-surface-variant); font: 500 var(--fs-label) / 1.2 var(--font); }
+.grid-card .star { position: absolute; top: .6rem; right: .6rem; width: 2rem; height: 2rem; border-radius: 50%; background: var(--tertiary-container); color: var(--on-tertiary-container); display: flex; align-items: center; justify-content: center; }
+.grid-card .star .icon { width: 1.4rem; height: 1.4rem; }
+.grid-card.selected { background: var(--secondary-container); border-color: var(--secondary); }
+.grid-card.selected .reqs span { background: var(--surface); }
+.bottom-sheet.expanded .detail { overflow: auto; display: flex; flex-direction: column; padding: var(--sp-4) var(--sp-4) 0; border-left: 1px solid var(--outline-variant); }
+.detail .dhead { display: flex; gap: var(--sp-3); align-items: center; }
+.detail .dhead img { width: 8rem; height: 8rem; border-radius: 1rem; }
+.detail .dhead .name { font: 600 var(--fs-headline) / 1.2 var(--font); }
+.detail .dhead .meta { color: var(--on-surface-variant); margin-top: .2rem; }
+.detail .goal-banner { display: flex; align-items: center; gap: .8rem; margin: var(--sp-3) 0; padding: .8rem 1.2rem; border-radius: var(--shape-sm); background: var(--tertiary-container); color: var(--on-tertiary-container); font-weight: 600; }
+.detail .quote { color: var(--on-surface-variant); font-style: italic; margin: var(--sp-2) 0; }
+.detail ul { margin: var(--sp-2) 0 0; padding: 0; list-style: none; }
+.detail li { padding: .5rem 0; border-bottom: 1px solid var(--surface-container-high); }
+.detail .foot { position: sticky; bottom: 0; margin-top: auto; padding: var(--sp-4) 0; background: var(--surface); display: flex; gap: var(--sp-2); }
+
+/* ============================================================ inspect card ============================================================ */
+.inspect-card { position: absolute; left: var(--gutter); bottom: var(--gutter); width: 32rem; padding: var(--sp-3) var(--sp-4) var(--sp-4); box-sizing: border-box; border-radius: var(--shape-md); box-shadow: var(--elev-2); }
+.inspect-card .head { display: flex; align-items: center; gap: var(--sp-3); }
+.inspect-card .head img { width: 5.6rem; height: 5.6rem; border-radius: .8rem; flex: none; }
+.inspect-card .head .t { flex: 1; min-width: 0; }
+.inspect-card .head .title { font: 600 var(--fs-title) / 1.2 var(--font); }
+.inspect-card .head .sub { color: var(--on-surface-variant); margin-top: .2rem; }
+.inspect-card .head .icon-btn { margin-right: -.8rem; }
+.inspect-card .rows { margin-top: var(--sp-3); }
+.inspect-card .row { display: flex; justify-content: space-between; gap: var(--sp-3); padding: .4rem 0; border-bottom: 1px solid var(--surface-container-high); }
+.inspect-card .row .v { font-weight: 500; font-variant-numeric: tabular-nums; }
+.inspect-card .row .v.ok { color: var(--success); }
+.inspect-card .actions { display: flex; gap: var(--sp-2); margin-top: var(--sp-3); }
+.inspect-pill { position: absolute; left: var(--gutter); bottom: var(--gutter); display: inline-flex; align-items: center; gap: var(--sp-2); height: var(--control-h); padding: 0 .4rem 0 .4rem; border-radius: var(--shape-pill); box-shadow: var(--elev-1); font: 500 var(--fs-body) / 1 var(--font); white-space: nowrap; }
+.inspect-pill img { width: 3.2rem; height: 3.2rem; border-radius: 50%; }
+.inspect-pill b { font-weight: 600; }
+.inspect-pill .m { color: var(--on-surface-variant); font-variant-numeric: tabular-nums; }
+.inspect-pill .icon-btn { width: 3.2rem; height: 3.2rem; }
+
+/* ============================================================ snackbars ============================================================ */
+.snack-lane { position: absolute; left: 50%; bottom: var(--gutter); transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: var(--sp-2); }
+.snackbar { position: relative; display: flex; align-items: center; gap: var(--sp-3); min-width: 34rem; max-width: 64rem; padding: var(--sp-2) var(--sp-2) var(--sp-2) var(--sp-4); box-sizing: border-box; border-radius: var(--shape-sm); box-shadow: var(--elev-3); font: 400 var(--fs-body) / 1.35 var(--font); overflow: hidden; }
+.snackbar .msg { flex: 1; }
+.snackbar .acts { display: flex; gap: .2rem; align-items: center; }
+.snackbar .countdown { position: absolute; left: 0; bottom: 0; height: .3rem; background: var(--primary); border-radius: 0 .3rem .3rem 0; }
+.snackbar.decision { padding-bottom: calc(var(--sp-2) + .3rem); }
+.snackbar.decision .msg b { font-weight: 600; }
+
+/* ============================================================ dialog + scrim ============================================================ */
+.scrim { position: absolute; inset: 0; background: var(--scrim); }
+.dialog { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 42rem; padding: var(--sp-6); box-sizing: border-box; background: var(--surface-container-high); border-radius: var(--shape-lg); box-shadow: var(--elev-3); }
+.dialog .kicker { margin-bottom: .4rem; }
+.dialog .title { font: 600 var(--fs-headline) / 1.25 var(--font); margin-bottom: var(--sp-3); }
+.dialog .body { color: var(--on-surface-variant); }
+.dialog .actions { display: flex; justify-content: flex-end; gap: var(--sp-2); margin-top: var(--sp-5); }
+
+/* ============================================================ coach ============================================================ */
+.coach-ring { position: absolute; border-radius: var(--shape-pill); box-shadow: 0 0 0 3px var(--primary), 0 0 0 9999px var(--scrim); pointer-events: none; }
+.coach-box { position: absolute; width: 34rem; padding: var(--sp-4); box-sizing: border-box; background: var(--surface); border: 1px solid var(--outline-variant); border-radius: var(--shape-md); box-shadow: var(--elev-3); }
+.coach-box .kicker { color: var(--primary); margin-bottom: .3rem; }
+.coach-box .title { font: 600 var(--fs-title) / 1.25 var(--font); margin-bottom: .6rem; }
+.coach-box .body { color: var(--on-surface-variant); }
+.coach-box .actions { display: flex; gap: var(--sp-2); margin-top: var(--sp-3); }
+.coach-box .actions .grow { flex: 1; }
+
+/* ============================================================ title card ============================================================ */
+.title-scrim { position: absolute; inset: 0; background: var(--scrim-title); }
+.title-card { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 56rem; padding: var(--sp-6) var(--sp-6) var(--sp-5); box-sizing: border-box; background: var(--surface); border-radius: var(--shape-lg); box-shadow: var(--elev-3); text-align: center; }
+.title-card .wordmark { display: inline-block; font: 700 var(--fs-display) / 1.1 var(--font-serif); letter-spacing: .06em; color: var(--primary); margin: var(--sp-2) 0 0; padding-bottom: .4rem; border-bottom: .4rem solid var(--tertiary); }
+.title-card .tag { font: italic 400 var(--fs-title) / 1.3 var(--font-serif); color: var(--on-surface-variant); margin: var(--sp-3) 0 var(--sp-4); }
+.title-card .charter { height: 4.8rem; padding: 0 3.2rem; font: 600 var(--fs-title) / 1 var(--font); }
+.title-card .links { display: flex; justify-content: center; gap: var(--sp-1); margin-top: var(--sp-2); }
+.title-card .seed { display: flex; align-items: center; justify-content: center; gap: var(--sp-3); margin-top: var(--sp-4); }
+.title-card .seed .text-field { width: 18rem; }
+.title-card .size { margin-top: var(--sp-4); }
+.title-card .size .kicker { margin-bottom: .6rem; }
+.title-card .size .segmented > button { padding: 0 1.4rem; }
+.title-card .size .segmented small { color: var(--on-surface-variant); font-weight: 400; }
+.title-card .size .hint { color: var(--on-surface-variant); font-size: var(--fs-label); margin-top: .6rem; }
+.title-card .motto { margin-top: var(--sp-4); }
+</style>
+</head>
+<body>
+
+<!-- ============================================================ icon set (24 px, stroke 2, round; reused by U5) ============================================================ -->
+<svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true">
+  <symbol id="i-notifications" viewBox="0 0 24 24"><path d="M6 16v-5a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 21h4"/></symbol>
+  <symbol id="i-layers" viewBox="0 0 24 24"><path d="M12 3 3 8l9 5 9-5-9-5z"/><path d="M3 12l9 5 9-5"/><path d="M3 16l9 5 9-5"/></symbol>
+  <symbol id="i-map" viewBox="0 0 24 24"><path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z"/><path d="M9 4v14"/><path d="M15 6v14"/></symbol>
+  <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16"/><path d="M4 12h16"/><path d="M4 17h16"/></symbol>
+  <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12"/><path d="M18 6 6 18"/></symbol>
+  <symbol id="i-arrow_back" viewBox="0 0 24 24"><path d="M19 12H5"/><path d="M11 6l-6 6 6 6"/></symbol>
+  <symbol id="i-expand_less" viewBox="0 0 24 24"><path d="M6 15l6-6 6 6"/></symbol>
+  <symbol id="i-expand_more" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></symbol>
+  <symbol id="i-chevron_right" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></symbol>
+  <symbol id="i-construction" viewBox="0 0 24 24"><path d="M4 20l7-7"/><path d="M9 11l5-5 4 4-5 5z"/><path d="M15 5l2-2 4 4-2 2"/></symbol>
+  <symbol id="i-pause" viewBox="0 0 24 24"><path d="M8 5v14" stroke-width="3"/><path d="M16 5v14" stroke-width="3"/></symbol>
+  <symbol id="i-play_arrow" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-push_pin" viewBox="0 0 24 24"><path d="M12 17v5"/><path d="M8 3h8l-1 6 3 3v2H6v-2l3-3z"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z"/><path d="M12 11v5"/><path d="M12 8h.01"/></symbol>
+  <symbol id="i-delete" viewBox="0 0 24 24"><path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="M6 7l1 14h10l1-14"/><path d="M10 11v6"/><path d="M14 11v6"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12l4 4L19 7"/></symbol>
+  <symbol id="i-warning" viewBox="0 0 24 24"><path d="M12 3 2 21h20z"/><path d="M12 10v5"/><path d="M12 18h.01"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><path d="M10.5 4a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13z"/><path d="M15.5 15.5 21 21"/></symbol>
+  <symbol id="i-open_in_full" viewBox="0 0 24 24"><path d="M14 4h6v6"/><path d="M20 4l-7 7"/><path d="M10 20H4v-6"/><path d="M4 20l7-7"/></symbol>
+  <symbol id="i-snooze" viewBox="0 0 24 24"><path d="M4 9h5l-5 6h5"/><path d="M13 5h7l-7 9h7"/></symbol>
+  <symbol id="i-star" viewBox="0 0 24 24"><path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-paid" viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z"/><path d="M12 6.5v11"/><path d="M14.8 9.3c-.4-1-1.5-1.6-2.8-1.6-1.6 0-2.8.8-2.8 2 0 2.7 5.6 1.3 5.6 4.1 0 1.3-1.3 2-2.8 2-1.4 0-2.5-.7-2.9-1.7"/></symbol>
+  <symbol id="i-group" viewBox="0 0 24 24"><path d="M9 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/><path d="M3 20a6 6 0 0 1 12 0"/><path d="M16 5.5a3 3 0 0 1 0 5.5"/><path d="M21 20a6 6 0 0 0-4.5-5.8"/></symbol>
+  <symbol id="i-mood" viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z"/><path d="M8.5 14.5a4.5 4.5 0 0 0 7 0"/><path d="M9 10h.01"/><path d="M15 10h.01"/></symbol>
+  <symbol id="i-eco" viewBox="0 0 24 24"><path d="M5 19c0-8 5-13 14-13 0 9-5 13-11 13"/><path d="M5 19l7-7"/></symbol>
+  <symbol id="i-sunny" viewBox="0 0 24 24"><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z"/><path d="M12 3v2"/><path d="M12 19v2"/><path d="M3 12h2"/><path d="M19 12h2"/><path d="M5.6 5.6l1.4 1.4"/><path d="M17 17l1.4 1.4"/><path d="M5.6 18.4 7 17"/><path d="M17 7l1.4-1.4"/></symbol>
+  <symbol id="i-volume_up" viewBox="0 0 24 24"><path d="M4 10v4h4l5 4V6L8 10z"/><path d="M16 9a4 4 0 0 1 0 6"/><path d="M18.5 6.5a7.5 7.5 0 0 1 0 11"/></symbol>
+  <symbol id="i-settings" viewBox="0 0 24 24"><path d="M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></symbol>
+</svg>
+
+<div id="stage">
+<div id="frame" data-screen="1">
+
+  <!-- ============================================================ app bar ============================================================ -->
+  <header class="app-bar" id="appbar" data-surface data-layer="bar">
+    <div class="brand" title="Bayou State"><svg class="icon"><use href="#i-eco"/></svg></div>
+    <div class="stats">
+      <button class="chip stat sl" id="chip-cash" title="Cash · click for the mini budget"><svg class="icon"><use href="#i-paid"/></svg><span class="txt"><span class="val">$4.2M</span><span class="lbl">Cash</span></span></button>
+      <button class="chip stat sl" id="chip-students" title="Students · click for what the campus needs"><svg class="icon"><use href="#i-group"/></svg><span class="dot" title="A need is binding"></span><span class="txt"><span class="val">1,520<span class="cap">cap 1,500</span></span><span class="lbl">Students</span></span></button>
+      <button class="chip stat sl" id="chip-prestige" title="Prestige"><svg class="icon"><use href="#i-star"/></svg><span class="txt"><span class="val">18</span><span class="lbl">Prestige</span></span></button>
+      <button class="chip stat sl" id="chip-happiness" title="Happiness"><svg class="icon"><use href="#i-mood"/></svg><span class="txt"><span class="val">80</span><span class="lbl">Happiness</span></span></button>
+      <button class="chip stat sl" id="chip-ecology" title="Ecology"><svg class="icon"><use href="#i-eco"/></svg><span class="txt"><span class="val">87</span><span class="lbl">Ecology</span></span></button>
+    </div>
+    <div class="grow"></div>
+    <div class="chip date sl" id="chip-date" title="Apr 9, Year 1 · Spring · clear"><svg class="icon"><use href="#i-sunny"/></svg><span class="txt"><span class="val" style="font-size:var(--fs-title)">Apr 9, Y1</span><span class="lbl">Spring · clear</span></span></div>
+    <div class="segmented" id="speed" role="group" aria-label="Speed">
+      <button class="sl" aria-pressed="false" title="Pause (Space)"><svg class="icon"><use href="#i-pause"/></svg></button>
+      <button class="sl" aria-pressed="true" title="Normal speed (1)">1×</button>
+      <button class="sl" aria-pressed="false" title="Double speed (2)">2×</button>
+      <button class="sl" aria-pressed="false" title="Fast (3)">4×</button>
+      <button class="sl" aria-pressed="false" title="Fastest (4)">8×</button>
+    </div>
+    <div class="grow"></div>
+    <div class="actions">
+      <button class="icon-btn sl" id="btn-alerts" title="Alerts (I)"><svg class="icon"><use href="#i-notifications"/></svg><span class="badge">3</span></button>
+      <span class="lit-chip hidden" id="ov-lit" title="Flood Risk overlay on (F)" data-surface data-layer="inbar">F</span>
+      <button class="icon-btn sl" id="btn-layers" title="Layers (F W K P C E)"><svg class="icon"><use href="#i-layers"/></svg></button>
+      <button class="icon-btn sl" id="btn-map" title="Map (M)"><svg class="icon"><use href="#i-map"/></svg></button>
+      <button class="icon-btn sl" id="btn-menu" title="Menu (Esc)"><svg class="icon"><use href="#i-menu"/></svg></button>
+    </div>
+  </header>
+
+  <!-- ============================================================ goal pill / card ============================================================ -->
+  <button class="goal-pill surface-float sl" id="goal-pill" data-surface data-layer="base" title="Click for the goal card">
+    <svg class="ring" viewBox="0 0 24 24"><circle class="track" cx="12" cy="12" r="9"/><circle class="fill" cx="12" cy="12" r="9" stroke-dasharray="56.5" stroke-dashoffset="33.9"/></svg>
+    <span class="kicker">Goal 6</span><span class="ttl">Plant 5 Live Oaks along a path</span><span class="count">2 / 5</span>
+    <svg class="icon"><use href="#i-expand_more"/></svg>
+  </button>
+  <section class="goal-card surface-float" id="goal-card" data-surface data-layer="base">
+    <div class="head">
+      <img class="portrait" src="thumbs/portrait.png" alt="Ms. Thibodeaux">
+      <div class="ttl"><div class="kicker">New goal · 6 of 22</div><div class="title">Plant 5 Live Oaks along a path</div></div>
+      <button class="icon-btn sl" title="Dismiss this goal"><svg class="icon"><use href="#i-close"/></svg></button>
+    </div>
+    <p class="why">Shade cuts the August heat penalty, and oaks are the cheapest happiness in the game.</p>
+    <div class="progress"><div class="bar"><div class="fill" style="width:40%"></div></div><span class="count">2 / 5</span></div>
+    <div class="actions"><button class="btn gold sl">Build it: Live Oak</button><button class="btn tonal sl">Show me</button></div>
+    <div class="next"><span class="kicker">Next up</span> · <b>Lay a 10-tile Campus Road: the parade route</b></div>
+  </section>
+
+  <!-- ============================================================ Build FAB ============================================================ -->
+  <button class="fab sl" id="fab" data-surface data-layer="base" title="Build (G)"><svg class="icon"><use href="#i-construction"/></svg>Build<span class="key">G</span></button>
+
+  <!-- ============================================================ popovers ============================================================ -->
+  <section class="popover needs surface-float" id="pop-needs" data-surface data-layer="transient" data-anchor="#chip-students" data-align="gutter">
+    <div class="head"><div class="title">What the campus needs</div><button class="icon-btn sl" title="Close (Esc)"><svg class="icon"><use href="#i-close"/></svg></button></div>
+    <div class="gauges">
+      <div class="gauge"><span class="k">Beds</span><div class="bar"><div class="fill" style="width:84%"></div></div><span class="v">1,520 / 1,800</span></div>
+      <div class="gauge warn"><span class="k">Seats</span><div class="bar"><div class="fill" style="width:95%"></div></div><span class="v">1,520 / 1,600</span></div>
+      <div class="gauge"><span class="k">Dining</span><div class="bar"><div class="fill" style="width:63%"></div></div><span class="v">1,520 / 2,400</span></div>
+      <div class="gauge"><span class="k">Power</span><div class="bar"><div class="fill" style="width:58%"></div></div><span class="v">23 / 40</span></div>
+      <div class="gauge"><span class="k">Water</span><div class="bar"><div class="fill" style="width:45%"></div></div><span class="v">18 / 40</span></div>
+      <div class="gauge bad"><span class="k">Sewage</span><div class="bar"><div class="fill" style="width:100%"></div></div><span class="v">1,520 / 1,500</span></div>
+    </div>
+    <div class="binding">Seats fill first → next: <b>Lecture Hall</b><button class="btn text sl">Build</button></div>
+    <div class="alert-row" style="margin-top:var(--sp-2)"><svg class="icon"><use href="#i-warning"/></svg><span>Sewage full (1,520 / 1,500) → build a Wastewater Plant</span><button class="btn text sl">Build</button></div>
+  </section>
+
+  <section class="popover surface-float" id="pop-budget" data-surface data-layer="transient" data-anchor="#chip-cash" data-align="gutter">
+    <div class="head"><div class="title">This month</div><button class="icon-btn sl" title="Close (Esc)"><svg class="icon"><use href="#i-close"/></svg></button></div>
+    <div class="rows">
+      <div class="row"><span>Income</span><span class="v">$1.38M</span></div>
+      <div class="row"><span>Expenses</span><span class="v">$1.29M</span></div>
+      <div class="row total"><span>Net</span><span class="v good">+$88k</span></div>
+      <div class="row"><span>Runway</span><span class="v">Covered to Aug 5 payday</span></div>
+    </div>
+    <div class="foot"><button class="btn tonal sl">Open Budget <span class="key">B</span></button></div>
+  </section>
+
+  <section class="popover alerts surface-float" id="pop-alerts" data-surface data-layer="transient" data-anchor="#btn-alerts" data-align="end">
+    <div class="head"><div class="title">Alerts · 3</div><button class="icon-btn sl" title="Close (Esc)"><svg class="icon"><use href="#i-close"/></svg></button></div>
+    <div class="issues">
+      <div class="issue bad"><div class="glyph"><svg class="icon sm"><use href="#i-warning"/></svg></div><div class="t"><b>Sewage full (1,520 / 1,500)</b><small>Enrollment stalls until a Wastewater Plant is built</small></div><div class="acts"><button class="btn text sl">Build</button><button class="icon-btn sl" title="Snooze 3 days"><svg class="icon sm"><use href="#i-snooze"/></svg></button><button class="icon-btn sl" title="Dismiss"><svg class="icon sm"><use href="#i-close"/></svg></button></div></div>
+      <div class="issue warn"><div class="glyph"><svg class="icon sm"><use href="#i-construction"/></svg></div><div class="t"><b>Freshman Dorm 2 damaged</b><small>Condition 61 % · repair $84k</small></div><div class="acts"><button class="btn text sl">Fix</button><button class="icon-btn sl" title="Snooze 3 days"><svg class="icon sm"><use href="#i-snooze"/></svg></button><button class="icon-btn sl" title="Dismiss"><svg class="icon sm"><use href="#i-close"/></svg></button></div></div>
+      <div class="issue info"><div class="glyph"><svg class="icon sm"><use href="#i-info"/></svg></div><div class="t"><b>Boardwalk not linked</b><small>12 tiles off the path network · gravel tie $6k</small></div><div class="acts"><button class="btn text sl">Link it</button><button class="icon-btn sl" title="Snooze 3 days"><svg class="icon sm"><use href="#i-snooze"/></svg></button><button class="icon-btn sl" title="Dismiss"><svg class="icon sm"><use href="#i-close"/></svg></button></div></div>
+    </div>
+    <div class="foot"><button class="btn tonal sl">Spotlight</button><button class="btn filled sl">Clear 3 · $90k</button></div>
+  </section>
+
+  <section class="popover layers surface-float" id="pop-layers" data-surface data-layer="transient" data-anchor="#btn-layers" data-align="end" style="width:40rem">
+    <div class="head"><div class="title">Layers</div><button class="icon-btn sl" title="Close (Esc)"><svg class="icon"><use href="#i-close"/></svg></button></div>
+    <div class="chips">
+      <button class="filter-chip selected sl"><span class="key">F</span>Flood Risk</button>
+      <button class="filter-chip sl"><span class="key">W</span>Water</button>
+      <button class="filter-chip sl"><span class="key">K</span>Mosquito</button>
+      <button class="filter-chip sl"><span class="key">P</span>Power &amp; Water</button>
+      <button class="filter-chip sl"><span class="key">C</span>Coverage</button>
+      <button class="filter-chip sl"><span class="key">E</span>Ecology</button>
+    </div>
+    <div class="legend"><span class="sw"><i style="background:#DCEBF7"></i>0 ft</span><span class="sw"><i style="background:#9CC7EA"></i>0.3</span><span class="sw"><i style="background:#4FA3D6"></i>0.6</span><span class="sw"><i style="background:#1F5F8F"></i>1+ ft</span><span class="note">The same letter again turns it off · Settings can keep overlays visible</span></div>
+  </section>
+
+  <section class="popover map surface-float" id="pop-map" data-surface data-layer="transient" data-anchor="#btn-map" data-align="end">
+    <div class="head"><div class="title">Map</div><button class="icon-btn selected sl" title="Pinned: stays open"><svg class="icon"><use href="#i-push_pin"/></svg></button><button class="icon-btn sl" title="Close (Esc)"><svg class="icon"><use href="#i-close"/></svg></button></div>
+    <img src="thumbs/minimap.png" alt="Minimap">
+    <div class="foot">Click to pan · pinned stays open</div>
+  </section>
+
+  <!-- ============================================================ bottom sheet: collapsed palette ============================================================ -->
+  <section class="bottom-sheet" id="bsheet" data-surface data-layer="transient">
+    <div class="handle-row"><div class="handle" title="Drag up for the full build sheet"></div><div class="corner"><button class="icon-btn sl" title="Expand (Shift+G)"><svg class="icon"><use href="#i-open_in_full"/></svg></button><button class="icon-btn sl" title="Close (Esc)"><svg class="icon"><use href="#i-close"/></svg></button></div></div>
+    <div class="tabs">
+      <button class="tab selected sl">Essentials<span class="pip"></span></button><button class="tab sl">Paths</button><button class="tab sl">Utilities<span class="pip"></span></button><button class="tab sl">Academic</button><button class="tab sl">Housing</button><button class="tab sl">Dining</button><button class="tab sl">Sports</button><button class="tab sl">Life</button><button class="tab sl">Swamp</button><button class="tab sl">Grounds</button>
+    </div>
+    <div class="palette">
+      <div class="scroller">
+        <button class="item-card sl"><img src="thumbs/path.png" alt=""><span class="name">Gravel Path</span><span class="price">$2,000 / tile</span></button>
+        <button class="item-card sl"><img src="thumbs/dorm.png" alt=""><span class="name">Freshman Dorm</span><span class="price">$700k</span></button>
+        <button class="item-card sl"><img src="thumbs/dining_hall.png" alt=""><span class="name">Dining Hall</span><span class="price">$500k</span></button>
+        <button class="item-card sl"><img src="thumbs/lecture_hall.png" alt=""><span class="name">Lecture Hall</span><span class="price">$600k</span></button>
+        <button class="item-card sl"><img src="thumbs/poboy.png" alt=""><span class="name">Po'boy Shack</span><span class="price">$60k</span></button>
+        <button class="item-card sl"><img src="thumbs/quad.png" alt=""><span class="name">Quad Lawn</span><span class="price">$30k</span></button>
+        <button class="item-card sl"><span class="star" title="The current goal"><svg class="icon"><use href="#i-star"/></svg></span><img src="thumbs/live_oak.png" alt=""><span class="name">Live Oak</span><span class="price">$12k</span></button>
+      </div>
+      <div class="tools"><button class="icon-btn sl" title="Bulldoze (X)"><svg class="icon"><use href="#i-delete"/></svg></button><button class="icon-btn sl" title="What do these do?"><svg class="icon"><use href="#i-info"/></svg></button></div>
+    </div>
+  </section>
+
+  <!-- ============================================================ bottom sheet: expanded build sheet ============================================================ -->
+  <section class="bottom-sheet expanded" id="bsheet-x" data-surface data-layer="transient">
+    <div class="handle-row"><div class="handle" title="Drag down for the palette"></div></div>
+    <div class="build-head"><div class="title">Build</div><div class="sub">Pick a category, then a building. ★ marks what the campus needs right now; greyed cards say what unlocks them.</div><div class="text-field"><svg class="icon"><use href="#i-search"/></svg><input placeholder="Search buildings" aria-label="Search buildings"></div><button class="icon-btn sl" title="Close (Esc)"><svg class="icon"><use href="#i-close"/></svg></button></div>
+    <div class="build">
+      <nav class="rail">
+        <button class="list-item selected sl"><span class="t">Essentials</span><span class="star"><svg class="icon sm"><use href="#i-star"/></svg></span><span class="cnt">7 / 7</span></button>
+        <button class="list-item sl"><span class="t">Paths</span><span class="cnt">4 / 4</span></button>
+        <button class="list-item sl"><span class="t">Utilities</span><span class="star"><svg class="icon sm"><use href="#i-star"/></svg></span><span class="cnt">4 / 4</span></button>
+        <button class="list-item sl"><span class="t">Academic</span><span class="cnt">4 / 4</span></button>
+        <button class="list-item sl"><span class="t">Housing</span><span class="cnt">5 / 5</span></button>
+        <button class="list-item sl"><span class="t">Dining</span><span class="cnt">2 / 2</span></button>
+        <button class="list-item sl"><span class="t">Sports</span><span class="cnt">2 / 2</span></button>
+        <button class="list-item sl"><span class="t">Life</span><span class="cnt">5 / 5</span></button>
+        <button class="list-item sl"><span class="t">Swamp</span><span class="cnt">9 / 14</span></button>
+        <button class="list-item sl"><span class="t">Grounds</span><span class="cnt">6 / 7</span></button>
+      </nav>
+      <div class="cards">
+        <button class="grid-card sl"><img src="thumbs/path.png" alt=""><span class="name">Gravel Path</span><span class="price">$2,000 / tile · no upkeep</span><span class="reqs"><span>Drag</span></span></button>
+        <button class="grid-card sl"><img src="thumbs/dorm.png" alt=""><span class="name">Freshman Dorm</span><span class="price">$700k · $9,000 / mo</span><span class="reqs"><span>Path</span><span>Power</span><span>Water</span><span>3×2</span></span></button>
+        <button class="grid-card sl"><img src="thumbs/dining_hall.png" alt=""><span class="name">Dining Hall</span><span class="price">$500k · $8,000 / mo</span><span class="reqs"><span>Path</span><span>Power</span><span>Water</span><span>3×2</span></span></button>
+        <button class="grid-card sl"><img src="thumbs/lecture_hall.png" alt=""><span class="name">Lecture Hall</span><span class="price">$600k · $10k / mo</span><span class="reqs"><span>Path</span><span>Power</span><span>Water</span><span>3×2</span></span></button>
+        <button class="grid-card sl"><img src="thumbs/poboy.png" alt=""><span class="name">Po'boy Shack</span><span class="price">$60k · $800 / mo</span><span class="reqs"><span>Path</span><span>1×1</span></span></button>
+        <button class="grid-card sl"><img src="thumbs/quad.png" alt=""><span class="name">Quad Lawn</span><span class="price">$30k · $300 / mo</span><span class="reqs"><span>2×2</span></span></button>
+        <button class="grid-card selected sl"><span class="star"><svg class="icon"><use href="#i-star"/></svg></span><img src="thumbs/live_oak.png" alt=""><span class="name">Live Oak</span><span class="price">$12k · no upkeep</span><span class="reqs"><span>1×1</span></span></button>
+        <button class="grid-card locked sl"><img src="thumbs/library.png" alt=""><span class="name">Library</span><span class="price">$1.8M · $14k / mo</span><span class="reqs"><span>Unlocks at 400 students</span></span></button>
+      </div>
+      <aside class="detail">
+        <div class="dhead"><img src="thumbs/live_oak.png" alt=""><div><div class="name">Live Oak</div><div class="meta">$12k · no upkeep · 1×1 tiles</div></div></div>
+        <div class="goal-banner"><svg class="icon sm"><use href="#i-star"/></svg>Goal · your current objective</div>
+        <p style="margin:0">+1 happiness within 4; shade cuts heat −30 %; wind damage −30 % within 2.</p>
+        <p class="quote">“The cheapest happiness in the game, on purpose.”</p>
+        <div class="kicker">Effects</div>
+        <ul><li>+1 happiness within 4 tiles</li><li>Heat −30 % within 3 tiles</li><li>Wind damage −30 % within 2 tiles</li><li>Wind rating 5 · stands through a Cat 3</li></ul>
+        <div class="foot"><button class="btn filled sl">Place <span class="key">Enter</span></button><button class="btn text sl">Show on map</button></div>
+      </aside>
+    </div>
+  </section>
+
+  <!-- ============================================================ side sheet: Menu ============================================================ -->
+  <aside class="side-sheet" id="sidesheet" data-surface data-layer="transient">
+    <div id="ss-list" style="display:contents">
+      <div class="sheet-head"><div class="title">Menu</div><button class="icon-btn sl" title="Close (Esc)"><svg class="icon"><use href="#i-close"/></svg></button></div>
+      <div class="sheet-body menu">
+        <button class="list-item sl"><span class="t">Budget<small>Income, expenses, tuition and faculty</small></span><span class="hk">B</span></button>
+        <button class="list-item sl"><span class="t">Season<small>Schedule, roster, the coach</small></span><span class="hk">N</span></button>
+        <button class="list-item sl"><span class="t">Storm<small>Board up, sandbags, pumps, shelters</small></span><span class="hk">T</span></button>
+        <button class="list-item sl"><span class="t">Land Office<small>Buy the next section of state land</small></span><span class="hk">O</span></button>
+        <button class="list-item sl"><span class="t">Almanac<small>The year so far, by month</small></span></button>
+        <button class="list-item sl"><span class="t">Milestones<small>Every goal, done and to come</small></span><span class="hk">L</span></button>
+        <button class="list-item sl"><span class="t">Log<small>The last 30 news lines</small></span></button>
+        <div class="divider"></div>
+        <button class="list-item sl"><span class="t">Settings</span><svg class="icon"><use href="#i-chevron_right"/></svg></button>
+        <button class="list-item sl"><span class="t">How to play</span><svg class="icon"><use href="#i-chevron_right"/></svg></button>
+        <button class="list-item sl"><span class="t">About this build</span><svg class="icon"><use href="#i-chevron_right"/></svg></button>
+      </div>
+    </div>
+    <div id="ss-budget" style="display:contents">
+      <div class="sheet-head back"><button class="icon-btn sl" title="Back to the menu"><svg class="icon"><use href="#i-arrow_back"/></svg></button><div class="title">Budget</div><button class="icon-btn sl" title="Close (Esc)"><svg class="icon"><use href="#i-close"/></svg></button></div>
+      <div class="sheet-body">
+        <div class="budget">
+          <div class="kicker">Income</div>
+          <div class="row"><span>Tuition</span><span class="v">$1.29M</span></div>
+          <div class="row"><span>Room fees</span><span class="v">$86k</span></div>
+          <div class="row total"><span>Total</span><span class="v">$1.38M</span></div>
+          <div class="kicker">Expenses</div>
+          <div class="row"><span>Salaries</span><span class="v">$54k</span></div>
+          <div class="row"><span>Upkeep</span><span class="v">$234k</span></div>
+          <div class="row"><span>Utilities</span><span class="v">$6,660</span></div>
+          <div class="row"><span>Construction</span><span class="v">$998k</span></div>
+          <div class="row total"><span>Total</span><span class="v">$1.29M</span></div>
+          <div class="kicker">Runway</div>
+          <div class="row"><span>Runway</span><span class="v">Covered to Aug 5, Y1 payday</span></div>
+          <div class="row total"><span>NET</span><span class="v good">+$88k</span></div>
+          <div class="kicker">Policy</div>
+          <div class="policy"><span class="k">Tuition</span><div class="slider" style="max-width:18rem"><div class="track"></div><div class="fill" style="width:62%"></div><div class="thumb" style="left:62%"></div></div></div>
+          <div class="hint" style="text-align:right">Applicants next lock ≈ 1,137</div>
+          <div class="policy"><span class="k">Faculty</span><div class="segmented"><button class="sl" aria-pressed="true">Basic</button><button class="sl" aria-pressed="false">Good</button><button class="sl" aria-pressed="false">Elite</button></div></div>
+          <div class="policy"><span class="k">Selectivity</span><div class="segmented"><button class="sl" aria-pressed="true">Open</button><button class="sl" aria-pressed="false">Selective</button><button class="sl" aria-pressed="false">Elite</button></div></div>
+          <div class="policy"><span class="k">Auto-repair<br><span class="hint" style="margin:0">Repairs damage as cash allows</span></span><button class="switch" role="switch" aria-checked="true" title="On"></button></div>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ============================================================ dialog + scrim ============================================================ -->
+  <div class="scrim" id="scrim" data-surface data-layer="overlay"></div>
+  <section class="dialog" id="dialog" data-surface data-layer="transient" role="dialog" aria-labelledby="dlg-title">
+    <div class="kicker">Board of Supervisors · Y1</div>
+    <div class="title" id="dlg-title">The Board has concerns</div>
+    <p class="body" style="margin:0">Three months in the red. The Board wants a balanced budget before the Aug 5 payday: raise tuition, trim upkeep, or pause construction. Miss it and new buildings are frozen for a semester.</p>
+    <div class="actions"><button class="btn text sl">Later</button><button class="btn filled sl">Open Budget</button></div>
+  </section>
+
+  <!-- ============================================================ snackbars ============================================================ -->
+  <div class="snack-lane" id="snacks">
+    <div class="snackbar surface-float" id="snack-news" data-surface data-layer="base"><span class="msg">Marie spotted on the bank by the Dining Hall.</span><div class="acts"><button class="btn text sl">Log</button><button class="icon-btn sl" title="Dismiss"><svg class="icon"><use href="#i-close"/></svg></button></div></div>
+    <div class="snackbar decision surface-float" id="snack-decision" data-surface data-layer="base"><span class="msg"><b>Cove levee at 72 %</b> — emergency sandbag crew, $120k? (+1 ft crest through the peak)</span><div class="acts"><button class="btn text sl">Hold</button><button class="btn tonal sl">Send the crew</button></div><div class="countdown" style="width:58%"></div></div>
+  </div>
+
+  <!-- ============================================================ inspect card / pill ============================================================ -->
+  <section class="inspect-card surface-float" id="inspect" data-surface data-layer="base">
+    <div class="head"><img src="thumbs/dorm.png" alt=""><div class="t"><div class="title">Freshman Dorm 2</div><div class="sub">Housing · 3×2 · Standard</div></div><button class="icon-btn sl" title="Collapse"><svg class="icon"><use href="#i-expand_more"/></svg></button><button class="icon-btn sl" title="Close (Esc)"><svg class="icon"><use href="#i-close"/></svg></button></div>
+    <div class="rows">
+      <div class="row"><span>Beds</span><span class="v">300</span></div>
+      <div class="row"><span>Residents</span><span class="v">286</span></div>
+      <div class="row"><span>Condition</span><span class="v">100 %</span></div>
+      <div class="row"><span>Upkeep</span><span class="v">$9,000 / mo</span></div>
+      <div class="row"><span>Power · Water</span><span class="v ok">On · On</span></div>
+      <div class="row"><span>Room fee</span><span class="v">$900 a bed each semester</span></div>
+    </div>
+    <div class="actions"><button class="btn tonal sl">Pilings</button><button class="btn text sl">Repair</button><button class="btn text danger sl" style="margin-left:auto">Demolish</button></div>
+  </section>
+  <div class="inspect-pill surface-float" id="inspect-pill" data-surface data-layer="base"><img src="thumbs/dorm.png" alt=""><b>Freshman Dorm 2</b><span class="m">286 / 300 beds</span><button class="icon-btn sl" title="Expand"><svg class="icon"><use href="#i-expand_less"/></svg></button><button class="icon-btn sl" title="Close (Esc)"><svg class="icon"><use href="#i-close"/></svg></button></div>
+
+  <!-- ============================================================ coach ============================================================ -->
+  <div class="coach-ring" id="coach-ring" data-surface data-layer="overlay" data-anchor="#fab" data-place="ring"></div>
+  <section class="coach-box" id="coach-box" data-surface data-layer="transient" data-anchor="#fab" data-place="above-end">
+    <div class="kicker">Step 3 of 6</div>
+    <div class="title">The build menu</div>
+    <p class="body" style="margin:0">Press G, or the gold Build button, any time. Pick a category on the left, then a building. Gold ★ marks what the campus needs right now; greyed cards tell you what unlocks them.</p>
+    <div class="actions"><button class="btn text sl">Back</button><span class="grow"></span><button class="btn text sl">Skip tour</button><button class="btn filled sl">Next</button></div>
+  </section>
+
+  <!-- ============================================================ title ============================================================ -->
+  <div class="title-scrim" id="title-scrim" data-surface data-layer="overlay"></div>
+  <section class="title-card" id="title-card" data-surface data-layer="transient">
+    <div class="kicker">A campus builder in the swamp</div>
+    <div class="wordmark">BAYOU STATE</div>
+    <div class="tag">Build a university in the swamp. Keep it above water.</div>
+    <button class="btn gold charter sl">Charter the university</button>
+    <div class="links"><button class="btn text sl">Continue · Apr 9, Y1</button><button class="btn text sl">How to play</button><button class="btn text sl">About this build</button><button class="btn text sl">Settings</button></div>
+    <div class="seed"><div class="text-field"><label>Seed</label><input placeholder="random" aria-label="Seed"></div><button class="icon-btn sl" title="Sound on (M)"><svg class="icon"><use href="#i-volume_up"/></svg></button></div>
+    <div class="size"><div class="kicker">Display size</div><div class="segmented"><button class="sl" aria-pressed="true">Compact <small>100 %</small></button><button class="sl" aria-pressed="false">Comfortable <small>115 %</small></button><button class="sl" aria-pressed="false">Large <small>130 %</small></button><button class="sl" aria-pressed="false">Auto</button></div><div class="hint">Auto picks 100 % for this window.</div></div>
+    <div class="kicker motto">Louisiana. One ridge. Mind the water.</div>
+  </section>
+
+</div>
+</div>
+
+<!-- ============================================================ mock toolbar (not part of the design; ` toggles) ============================================================ -->
+<div id="mocktb">
+  <div class="grp"><b>screen</b><button data-step="-1">←</button><span id="screens"></span><button data-step="1">→</button></div>
+  <div class="grp"><b>size</b><span id="sizes"></span></div>
+  <div class="grp"><b>viewport</b><span id="views"></span></div>
+  <div class="grp name" id="scr-name"></div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  const SCREENS = [
+    { id: '1', name: 'At rest', on: ['appbar', 'goal-pill', 'fab'] },
+    { id: '2', name: 'Goal card (new goal)', on: ['appbar', 'goal-card', 'fab'] },
+    { id: '3', name: 'Needs popover', on: ['appbar', 'goal-pill', 'fab', 'pop-needs'], sel: ['chip-students'] },
+    { id: '4', name: 'Mini budget popover', on: ['appbar', 'goal-pill', 'fab', 'pop-budget'], sel: ['chip-cash'] },
+    { id: '5', name: 'Alerts popover', on: ['appbar', 'goal-pill', 'fab', 'pop-alerts'], sel: ['btn-alerts'] },
+    { id: '6', name: 'Layers popover', on: ['appbar', 'goal-pill', 'fab', 'pop-layers', 'ov-lit'], sel: ['btn-layers'] },
+    { id: '7', name: 'Map popover (pinned)', on: ['appbar', 'goal-pill', 'fab', 'pop-map'], sel: ['btn-map'] },
+    { id: '8', name: 'Build sheet (palette)', on: ['appbar', 'goal-pill', 'bsheet'] },
+    { id: '9', name: 'Build sheet expanded', on: ['appbar', 'goal-pill', 'bsheet-x'] },
+    { id: '10', name: 'Menu side sheet', on: ['appbar', 'goal-pill', 'sidesheet'], sel: ['btn-menu'], sheet: 'list' },
+    { id: '11', name: 'Menu · Budget', on: ['appbar', 'goal-pill', 'sidesheet'], sel: ['btn-menu'], sheet: 'budget' },
+    { id: '12', name: 'Dialog (Board card)', on: ['appbar', 'goal-pill', 'fab', 'scrim', 'dialog'] },
+    { id: '13', name: 'Snackbars (news + decision)', on: ['appbar', 'goal-pill', 'fab', 'snack-news', 'snack-decision'] },
+    { id: '14', name: 'Inspect card', on: ['appbar', 'goal-pill', 'fab', 'inspect'] },
+    { id: '14b', name: 'Inspect pill (collapsed)', on: ['appbar', 'goal-pill', 'fab', 'inspect-pill'] },
+    { id: '15', name: 'Title card', on: ['title-scrim', 'title-card'] },
+    { id: '16', name: 'Coach (step 3 of 6)', on: ['appbar', 'goal-pill', 'fab', 'coach-ring', 'coach-box'] },
+  ];
+  const SIZES = [100, 115, 130], VIEWS = ['1280x800', '1440x900', '1920x1080'];
+  const Q = (s, r) => (r || document).querySelector(s);
+  const frame = Q('#frame'), stage = Q('#stage'), tb = Q('#mocktb');
+  const st = { s: '1', v: '1440x900', z: 100, bare: false };
+  let scale = 1;
+
+  function parseHash() {
+    const h = new URLSearchParams(location.hash.replace(/^#/, ''));
+    if (h.get('s') && SCREENS.some((x) => x.id === h.get('s'))) st.s = h.get('s');
+    if (h.get('v') && VIEWS.includes(h.get('v'))) st.v = h.get('v');
+    if (h.get('z') && SIZES.includes(Number(h.get('z')))) st.z = Number(h.get('z'));
+    st.bare = h.get('bare') === '1';
+  }
+  function writeHash() {
+    const h = '#s=' + st.s + '&v=' + st.v + '&z=' + st.z + (st.bare ? '&bare=1' : '');
+    if (location.hash !== h) history.replaceState(null, '', h);
+  }
+  function dims() { const p = st.v.split('x').map(Number); return { W: p[0], H: p[1] }; }
+
+  function fit() {
+    const d = dims();
+    const tbH = (st.bare || document.body.classList.contains('notb')) ? 0 : tb.offsetHeight + 12;
+    const availW = st.bare ? innerWidth : innerWidth - 32, availH = st.bare ? innerHeight : innerHeight - 32 - tbH;
+    scale = Math.min(1, availW / d.W, availH / d.H);
+    stage.style.transform = 'scale(' + scale + ')';
+    stage.style.width = d.W * scale + 'px'; stage.style.height = d.H * scale + 'px';
+  }
+  /** anchored surfaces (popovers under their chip / icon, the coach ring and box around the FAB) */
+  function place() {
+    const d = dims(), g = 16, fr = frame.getBoundingClientRect();
+    frame.querySelectorAll('[data-anchor]').forEach((p) => {
+      if (p.classList.contains('hidden')) return;
+      const a = Q(p.dataset.anchor); if (!a) return;
+      const ar = a.getBoundingClientRect();
+      const ax = (ar.left - fr.left) / scale, ay = (ar.top - fr.top) / scale, aw = ar.width / scale, ah = ar.height / scale;
+      const pw = p.offsetWidth, ph = p.offsetHeight;
+      if (p.dataset.place === 'ring') { p.style.left = (ax - 8) + 'px'; p.style.top = (ay - 8) + 'px'; p.style.width = (aw + 16) + 'px'; p.style.height = (ah + 16) + 'px'; return; }
+      if (p.dataset.place === 'above-end') { p.style.left = Math.max(g, ax + aw - pw) + 'px'; p.style.top = (ay - ph - 20) + 'px'; return; }
+      let left = p.dataset.align === 'end' ? ax + aw - pw : p.dataset.align === 'gutter' ? g : ax;   // stat-chip popovers sit on the gutter and cover the goal pill whole
+      left = Math.max(g, Math.min(d.W - g - pw, left));
+      p.style.left = left + 'px'; p.style.top = (ay + ah + 8) + 'px';
+    });
+  }
+  function apply() {
+    const d = dims();
+    document.documentElement.style.setProperty('--ui-scale', String(st.z / 100));
+    frame.style.width = d.W + 'px'; frame.style.height = d.H + 'px';
+    document.body.classList.toggle('bare', st.bare);
+    const scr = SCREENS.find((x) => x.id === st.s) || SCREENS[0];
+    frame.dataset.screen = scr.id;
+    frame.querySelectorAll('[data-surface]').forEach((e) => e.classList.toggle('hidden', !scr.on.includes(e.id)));
+    frame.querySelectorAll('.selected').forEach((e) => { if (e.closest('.app-bar')) e.classList.remove('selected'); });
+    (scr.sel || []).forEach((id) => { const e = Q('#' + id); if (e) e.classList.add('selected'); });
+    Q('#ss-list').classList.toggle('hidden', scr.sheet !== 'list'); Q('#ss-budget').classList.toggle('hidden', scr.sheet !== 'budget');
+    fit(); place();
+    tb.querySelectorAll('button[data-s]').forEach((b) => b.classList.toggle('on', b.dataset.s === st.s));
+    tb.querySelectorAll('button[data-z]').forEach((b) => b.classList.toggle('on', Number(b.dataset.z) === st.z));
+    tb.querySelectorAll('button[data-v]').forEach((b) => b.classList.toggle('on', b.dataset.v === st.v));
+    Q('#scr-name').textContent = scr.id + ' · ' + scr.name;
+    writeHash();
+  }
+  function step(n) { const i = SCREENS.findIndex((x) => x.id === st.s); st.s = SCREENS[(i + n + SCREENS.length) % SCREENS.length].id; apply(); }
+
+  // toolbar
+  for (const s of SCREENS) { const b = document.createElement('button'); b.dataset.s = s.id; b.textContent = s.id; b.title = s.name; b.addEventListener('click', () => { st.s = s.id; apply(); }); Q('#screens').appendChild(b); }
+  for (const z of SIZES) { const b = document.createElement('button'); b.dataset.z = String(z); b.textContent = z + '%'; b.addEventListener('click', () => { st.z = z; apply(); }); Q('#sizes').appendChild(b); }
+  for (const v of VIEWS) { const b = document.createElement('button'); b.dataset.v = v; b.textContent = v.replace('x', '×'); b.addEventListener('click', () => { st.v = v; apply(); }); Q('#views').appendChild(b); }
+  tb.querySelectorAll('button[data-step]').forEach((b) => b.addEventListener('click', () => step(Number(b.dataset.step))));
+  window.addEventListener('keydown', (ev) => {
+    if (ev.target && /INPUT|TEXTAREA/.test(ev.target.tagName)) return;
+    if (ev.key === 'ArrowRight') { step(1); ev.preventDefault(); }
+    else if (ev.key === 'ArrowLeft') { step(-1); ev.preventDefault(); }
+    else if (ev.key === '`') { document.body.classList.toggle('notb'); fit(); ev.preventDefault(); }
+  });
+  window.addEventListener('resize', () => { fit(); place(); });
+  window.addEventListener('hashchange', () => { parseHash(); apply(); });
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(place);
+
+  /** every visible top-level surface's rect in frame px; pairs that intersect (minus the intended ones) and anything outside the frame */
+  window.mockCheck = function () {
+    const d = dims(), fr = frame.getBoundingClientRect();
+    const vis = Array.from(frame.querySelectorAll('[data-surface]')).filter((e) => !e.classList.contains('hidden') && e.getClientRects().length);
+    const rects = vis.map((e) => { const r = e.getBoundingClientRect(); return { id: e.id, layer: e.dataset.layer || 'base', anchor: e.dataset.anchor || '', x: Math.round((r.left - fr.left) / scale), y: Math.round((r.top - fr.top) / scale), w: Math.round(r.width / scale), h: Math.round(r.height / scale) }; });
+    const hit = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+    const allowed = (a, b) => {
+      if (a.layer === 'overlay' || b.layer === 'overlay') return true;              // scrims, the coach ring
+      if (a.layer === 'inbar' || b.layer === 'inbar') return true;                  // the lit overlay chip lives inside the bar
+      if (a.anchor === '#' + b.id || b.anchor === '#' + a.id) return true;          // a popover over the control it anchors to
+      if (a.layer === 'transient' && b.layer === 'base') return true;               // a popover / sheet / dialog may cover the goal pill, FAB, inspect card
+      if (b.layer === 'transient' && a.layer === 'base') return true;
+      return false;
+    };
+    const overlaps = [], outside = [];
+    for (let i = 0; i < rects.length; i++) {
+      const a = rects[i];
+      if (a.x < 0 || a.y < 0 || a.x + a.w > d.W + 0.5 || a.y + a.h > d.H + 0.5) outside.push(a.id);
+      for (let j = i + 1; j < rects.length; j++) { const b = rects[j]; if (hit(a, b) && !allowed(a, b)) overlaps.push(a.id + ' x ' + b.id); }
+    }
+    return { screen: st.s, viewport: st.v, size: st.z, surfaces: rects, overlaps: overlaps, outside: outside, clean: !overlaps.length && !outside.length };
+  };
+  window.mockState = function (next) { if (next) { Object.assign(st, next); apply(); } return Object.assign({}, st); };
+
+  parseHash(); apply();
+})();
+</script>
+</body>
+</html>
