@@ -7,21 +7,27 @@
 //   night-lights.png  night-game.png                                (scripted night; a Stadium II night game with masts and fireworks)
 //   fog.png  rain.png  hurricane.png                                (dawn mist; a map-wide downpour; a Cat 3 landfall)
 //
-//   node tools/qa/shots.mjs [--size 96|64] [--dpr 1] [--only title,day,hud,zoom,night,weather,hurricane] [--out dir] [--index path] [--prefix x-] [--buildings 36]
+//   node tools/qa/shots.mjs [--size 96|64] [--dpr 1] [--scale 1|1.15|1.3] [--only title,day,hud,zoom,night,weather,hurricane] [--out dir] [--index path] [--prefix x-] [--buildings 36]
+// --scale calls BSU.ui.setUiScale(x) after the page loads (the three Display sizes of the UI refresh; 1.3 is capped by the window, 1.28 at 1440x900).
 // Headless Chrome is software raster at deviceScaleFactor 1: --dpr 2 emulates it (the PNG stays CSS-pixel sized).
 import { openGame, parseArgs, DEFAULT_OUT, resolveIndex, killStrays, sleep } from './lib.mjs';
 
 const args = parseArgs(process.argv.slice(2), {
   size: { type: 'num', def: 96 }, dpr: { type: 'num', def: 1 }, only: { type: 'list', def: [] }, out: { type: 'str', def: DEFAULT_OUT },
-  index: { type: 'str', def: '' }, prefix: { type: 'str', def: '' }, buildings: { type: 'num', def: 40 },
+  index: { type: 'str', def: '' }, prefix: { type: 'str', def: '' }, buildings: { type: 'num', def: 40 }, scale: { type: 'num', def: 0 },
 });
+if (args.scale && ![1, 1.15, 1.3].includes(args.scale)) { console.error('--scale must be 1, 1.15 or 1.3'); process.exit(2); }
 if (args.size !== 64 && args.size !== 96) { console.error('--size must be 64 or 96'); process.exit(2); }
 const GROUPS = ['title', 'day', 'hud', 'zoom', 'night', 'weather', 'hurricane'];
 for (const o of args.only) if (!GROUPS.includes(o)) { console.error(`unknown group "${o}" (known: ${GROUPS.join(', ')})`); process.exit(2); }
 const want = (grp) => !args.only.length || args.only.includes(grp);
 const index = resolveIndex(args.index);
 const written = []; let problems = 0;
-const open = (width, height, extra = {}) => openGame(Object.assign({ index, width, height, size: args.size, dpr: args.dpr, outDir: args.out, noGuard: true }, extra));
+const open = async (width, height, extra = {}) => {
+  const g = await openGame(Object.assign({ index, width, height, size: args.size, dpr: args.dpr, outDir: args.out, noGuard: true }, extra));
+  if (args.scale) { await g.eval(`(BSU.ui.setUiScale(${args.scale}), true)`); await sleep(150); }
+  return g;
+};
 const shot = async (g, name) => { const p = await g.shot(args.prefix + name); written.push(p); return p; };
 /** pause the sim so a still frame is a still frame, and hold the sky at (phase, t) */
 const still = (g, phase, t) => g.eval(`(function () { BSU.session.setSpeed(BSU.state, 0, 'user'); ${phase === undefined ? '' : `BSU.weather.scriptSky(BSU.state, ${phase}, ${t});`} return true; })()`);

@@ -2249,7 +2249,6 @@
   function issueRow(s, it, sel, opts) {
     opts = opts || {};
     const row = el('div', 'issue-row' + (sel ? ' sel' : '') + (opts.lead ? ' lead' : '') + (opts.sub ? ' sub' : '') + (opts.progress ? ' progress' : '')); row.dataset.id = it.id; row.dataset.kind = it.kind;
-    try { row.style.borderLeftColor = it.color || '#FDD023'; if (sel) row.style.boxShadow = '0 0 0 .2rem ' + (it.color || '#FDD023'); } catch (e) { /* stub */ }
     row.title = (opts.progress && it.progress) ? ('In progress: ' + it.progress.text + '\n' + rowTitle(it)) : rowTitle(it);
     const ic = el('canvas'); ic.width = 18; ic.height = 18; try { const g = ic.getContext('2d'); if (g && has('render', 'drawIssueGlyph')) call('render', 'drawIssueGlyph', g, it.glyph, 9, 9, 7, it.color || '#FDD023'); } catch (e) { /* stub */ }
     const col = el('div', 't', (opts.progress && it.progress) ? it.progress.text : it.title); const age = el('span', 'a', ' · ' + (issuesApi() ? issuesApi().ageText(s, it) : '')); col.appendChild(age);

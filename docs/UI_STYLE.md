@@ -87,14 +87,20 @@ height 40 px, hit target 44 px (a `::after` extension of 2 px above and below; t
 (32 px `primary` rounded 8, white leaf) · stat chips · spacer · date chip · speed segmented · spacer · Alerts (badge) · [lit overlay chip] ·
 Layers · Map · Menu. Nothing else may overlap it. Esc from the map with nothing open = Menu.
 
+*Implemented in U1:* 48 px opaque `surface` with the 1 px bottom edge; the brand mark is the old ▣ glyph on a 32 px `primary` square (the leaf arrives with U5); Alerts / Layers / Map icon buttons and the lit chip do not exist yet (U2), so the Budget / Season / Storm / Land / Almanac / Menu / Mute text buttons stay, as plain text buttons (labels fold away through the existing `tight`/`cap` shed steps, not the container query).
+
 **Stat chip** · 40 px pill, `surface-container`, padding 0 12 0 8; 24 px `primary` icon (paid / group / star / mood / eco), then two lines:
 value title-lg tabular + label uppercase in `on-surface-variant`. Students carries "cap 1,500" as a label-size suffix after the value.
 Selected (its popover open) = `secondary-container`. **Badge variant**: a 9 px `error` dot with a 2 px `surface` ring at the icon's top-right
 when a need is binding (Students) or cash runway is red (Cash). Click opens the chip's popover; Prestige / Happiness / Ecology open the
 Almanac row for that stat (U2 may give them a popover later).
 
+*Implemented in U1:* the chip is a 40 px pill with the value over the label (CSS grid, no DOM change); no icon glyphs and no badge dot yet (U2 / U5); "Apps 980 / Cap 1,500" still replaces the label row when the capacity chip shows, instead of the "cap 1,500" suffix; the needs popover is U2.
+
 **Date / weather chip** · same chip, not selectable; sunny / cloud / rain / moon glyph, value "Apr 9, Y1" at title size, label "SPRING · CLEAR"
 ("HEAT ADVISORY" in `warn`, "RIVER WINDOW" in `water`). Click opens the Almanac in the Menu sheet.
+
+*Implemented in U1:* date and weather text share one chip (weather label in the small uppercase role, hidden by the existing shed steps).
 
 **Speed segmented button** · 40 px, 1 px `outline` border, pill, five segments (pause icon, 1×, 2×, 4×, 8×) min 36 px wide, padding 0 10,
 1 px dividers; selected segment `secondary-container`. Space / 1 2 3 4 as today.
@@ -110,6 +116,8 @@ Click expands to the goal card; a goal change expands it on its own and the card
 "NEW GOAL · 6 OF 22" · title (title role) · close icon; why line in `on-surface-variant`; 8 px progress bar + "2 / 5"; actions
 **Build it: Live Oak** (gold) + **Show me** (tonal); 1 px divider; "NEXT UP · title". Esc or outside click collapses to the pill.
 
+*Implemented in U1:* the card keeps today's position, the needs strip and the Build it / Show me buttons; the portrait is the 48 px circle; Build it is the gold button; the "collapsed" and `hudMode` pill forms are plain pills (no progress ring until U2). A kind accent (`interrupt` / `background`) stays as a 4 px left stripe.
+
 **Build extended FAB** · bottom-right at the gutter, 56 px pill, `tertiary` / `on-tertiary`, elevation 3, padding 0 20 0 16; construction
 icon · "Build" (title) · key cap "G" (1.5 px border, 20 px). Hidden while the bottom sheet, the side sheet or a dialog is open. G toggles.
 
@@ -117,6 +125,8 @@ icon · "Build" (title) · key cap "G" (1.5 px border, 20 px). Hidden while the 
 at most two stacked 8 px apart (news above decisions), 6 s for news. Plain: message · text button "Log" · close icon. **Decision**: bold
 lead ("Cove levee at 72 %") · two actions (text "Hold", tonal "Send the crew") · a 3 px `primary` countdown line along the bottom edge that
 shrinks with the deadline. When the inspect card is open and the lane would touch it, the lane shifts right of the card (U3).
+
+*Implemented in U1:* the notification stack (`.notif`) and the decision toast are re-skinned in place (`surface-float`, elevation 3, 12 px radius, kind stripe on the left); the countdown line is the 4 px `primary` bar under the options. Snackbar lane and Log panel are U2.
 
 **Popover** · 360 wide (Alerts and Layers 400, Map fits its canvas), radius 16, padding 16, elevation 2, `surface-float`, head = title +
 close icon. Anchored 8 px under the bar: stat-chip popovers sit on the left gutter (so they cover the goal pill whole instead of peeking),
@@ -129,12 +139,16 @@ Spotlight (tonal) + Clear N · $ (filled); **layers** six filter chips, the lege
 200 px minimap canvas (radius 8), pin icon (selected when pinned, remembered in settings), click-to-pan line. Hotkeys: I alerts,
 F W K P C E overlays, M map.
 
+*Implemented in U1:* only today's `#popover` (breakdown card) exists; it carries the spec surface (360 → 340 wide, unchanged), title role and `success` / `error` signs.
+
 **Side sheet (Menu)** · right gutter, top bar + 8, bottom gutter, 360 wide, opaque `surface`, radius 16, elevation 3, 1 px edge; head 56 px
 (headline + close), body scrolls inside. **List state**: list items 48 px with a label-size second line and the hotkey cap at right
 (Budget B · Season N · Storm T · Land Office O · Almanac · Milestones L · Log), divider, Settings / How to play / About with chevrons.
 **Panel state**: head = arrow_back · panel title · close; the `registerPanel` body in `.budget` styling (kicker sections, rows with 1 px
 `surface-container-high` dividers, totals 600, policy rows 48 px with a slider / segmented / switch at right). Esc closes the sheet, back
 returns to the list; B N T O L open the sheet straight to the panel.
+
+*Implemented in U1:* panels still open centred over the map (`#panels .panel`: opaque `surface`, radius 16, elevation 3, 1 px edge, 20 px padding, headline title); the side-sheet host and list state are U3. Panel content uses `.row` / `.set-row` with 1 px `surface-container-high` dividers, `.seg` segmented buttons, `.toggle` (outlined off, `secondary-container` on) and primary-accent sliders / checkboxes.
 
 **Bottom sheet (Build)** · full width, docked, top corners 28, opaque, elevation 3, 1 px top edge; 24 px handle row (32 × 4 `outline-variant`
 pill; ⤢ and close icons at the right), 40 px category tabs (selected `primary` with a 3 px bar; `warn` pip for new items), 1 px divider, the
@@ -144,17 +158,25 @@ palette: item cards 112 wide (64 px icon, name 600, price label) in a horizontal
 detail (80 px icon, name headline, meta, ★ goal banner in `tertiary-container`, text, quote, EFFECTS list, sticky foot Place · Enter + Show
 on map). G toggles, Esc closes, arrows move, Enter arms.
 
+*Implemented in U1:* the palette stays a full-width docked bar (opaque `surface`, 1 px top edge, elevation 3, no rounded corners, no handle row) with a 40 px tab row (primary underline, `warn` pip), item cards (`surface-container-low`, 1 px `outline-variant`, selected `secondary-container`, locked 62 % with the unlock condition at full strength on hover), and the gold Build toggle (the future FAB). The build menu (G) is a re-skinned centred panel: rail list items, cards in the grid-card look, `tertiary-container` goal banner and Goal badge, primary Build this. Bottom / expanded sheet is U4.
+
 **Inspect card** · bottom-left at the gutter, 320 wide, radius 16, padding 12 16 16, elevation 2, `surface-float`: 56 px sprite, title +
 label-size sub, collapse (expand_more) and close icons; rows label / value 500 tabular with `surface-container-high` dividers (`success`
 for On · On); actions Pilings (tonal) · Repair (text) · Demolish (text, `error`, right). **Pill**: 40 px, 32 px sprite circle, name 600,
 "286 / 300 beds", expand_less + close (32 px). Esc or right-click closes; the kitchen menu editor stays a dialog.
 
+*Implemented in U1:* the inspect side panel keeps its full-height right dock (`--inspect-w`, 4 px kind stripe on the left, 64 px sprite tile); the card / pill pair is U3.
+
 **Dialog + scrim** · centred, 420 wide, `surface-container-high`, radius 28, padding 24, elevation 3, over a 32 % scrim (the bar too);
 kicker · headline · body in `on-surface-variant` · actions right-aligned (text, then filled). Esc = the dismiss action. Board, failure,
 storm and voice cards use it; the voice card's two choices are tonal + filled.
 
+*Implemented in U1:* `.card` (the card host) is the dialog: `surface-container-high`, radius 28, 24 px padding, elevation 3, no edge, over the 32 % scrim; the title is the headline role, the body `on-surface-variant`. Actions follow the new button rules (`.primary` = filled, default = tonal).
+
 **Filter chip** · 32 px, radius 8, 1 px `outline`, key cap 20 px `surface-container-high`; selected `secondary-container` with the cap in
 `secondary` / white. The lit chip in the bar is the 24 px pill form (`secondary-container`, 1 px `secondary`).
+
+*Implemented in U1:* the six overlay keys (`.ov-btn`) are 36 px key buttons with a 1 px `outline` border on `surface-float` (selected `secondary-container` + `secondary` edge); they float on the map until the Layers popover (U2). The legend chip is `surface-float` with an `outline-variant` edge.
 
 **List item** · 48 px (40 in the rail), radius 12, padding 0 12 0 16, body text with an optional label-size line, trailing hotkey cap /
 count / chevron; selected `secondary-container`.
@@ -170,10 +192,14 @@ danger = text in `error`. Key caps inside buttons: 18 px, 1 px border of the tex
 (text) · spacer · Skip tour (text) · Next (filled). Placed above and right-aligned to its target. The ring: the target's rect + 8 px, pill,
 3 px `primary` ring, the 32 % scrim everywhere else (one element, a spread box-shadow; no blur).
 
+*Implemented in U1:* the box is 340 wide, opaque, radius 16, elevation 3; the ring is the target's rect with a 3 px `primary` border at 12 px radius (not a pill, not a spread shadow: the four scrim panes still tile the rest at 32 %). The pane / ring / box keep their 240 ms position transitions (an overlay, no layout cost): the one place that moves left / top / width / height.
+
 **Title card** · centred, 560 wide, radius 28, padding 24, opaque, over the 48 % scrim: kicker · wordmark (display serif, `primary`, 4 px
 `tertiary` underline) · italic serif tagline · **Charter the university** (gold, 48 px) · text buttons Continue / How to play / About /
 Settings · Seed outlined field (180) + mute icon · DISPLAY SIZE segmented (Compact 100 % · Comfortable 115 % · Large 130 % · Auto) + hint ·
 motto kicker.
+
+*Implemented in U1:* as specified, except the tagline is the sans italic (the serif is the wordmark's alone, plan §8); Continue / How to play / About / Settings are text buttons; Display size is the outlined segmented button; opening a panel from the title fades the card out instead of blurring it.
 
 ## 4. Layout rules (what `window.mockCheck()` enforces)
 
@@ -280,3 +306,11 @@ Still to draw in U5 (not in the mock): cloud / rain / moon for the date chip, a 
 - The HD icon tiles keep their baked purple plate and gold rim inside white cards (zero art work; see the questions in the hand-back).
 - The compact density rule (§1) is a container query, not a display-size special case: it fires on width, so a narrow window at 100 % gets it too.
 - Inspect pill is the collapsed state of the inspect card (expand_more on the card, expand_less on the pill), 40 px like the goal pill.
+
+## 8. Implemented in U1 (what the live sheet does differently from §1–§3, and why)
+
+- Buttons: default `.btn` is tonal, `.btn.primary` filled, `.btn.small` 32 px (44 px hit area through `::after`), `.btn.icon` a 40 px circle (32 px in cards and panel heads), `.btn.danger` text in `error`; selection controls (`.seg-btn`, `.speed-btn`, `.ov-btn`, `.toggle`, `.fb-tab`) are outlined / transparent when off and `secondary-container` when on; a plain `.btn.active` (bulldoze, issue spotlight) is filled `primary`. Gold is `#btn-charter`, `#btn-obj-build`, `#btn-build-menu` (and `.btn.gold`).
+- State layers are `::before` in `currentColor` (hover 8 %, press 12 %), transitions 160 ms on opacity / background-color; every other motion is transform / opacity at 240 ms decelerate, zeroed by `prefers-reduced-motion`.
+- Type: `--fs-small`, `--fs-lead`, `--fs-num` survive as aliases of body, title and title-lg; body is now 12 px, so dense panels (Season, Storm) are 1 px smaller than before.
+- Colours that stay hard-coded are not CSS: the minimap, the Land Office section map and the issue glyphs are canvases drawn by render.js / ui_panels.js (dark minimap field, kind-coloured glyphs on a purple plate); U2 / U3 move them into popovers and sheets where their backgrounds can follow.
+- Issue rows keep a `primary` stripe and selection ring in CSS (ui.js no longer writes the kind colour inline); the kind colour lives on the glyph.

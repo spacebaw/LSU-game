@@ -27,7 +27,23 @@ const css = readFileSync(join(root, 'src', 'style.css'), 'utf8');
 ok(Buffer.byteLength(css) <= 96 * 1024, `style.css ≤ 96 KB (${(Buffer.byteLength(css) / 1024).toFixed(1)} KB)`);   // H6: 76 → 96 KB (every font-size is now a var(--fs-*) token, longer than the literal it replaced, plus the H6 block)
    // hud + zoom pass: the hud modes block (70 → 76 KB);   // gator pass: the chip ✕, the relocated strip beside an open inspect, Dismiss all, why-lines (68 → 70 KB);   // P6 dining menus: the inspect Menu section (64 → 68 KB); UX pass: build menu + tracker + coach marks (was 25 KB); football pass D: Season panel, game HUD, summary card (was 40 KB); UI scale pass: every length in rem + scale tokens (was 48 KB)
 const cssNoComments = css.replace(/\/\*[\s\S]*?\*\//g, '');
-ok(!/@import|url\(/.test(cssNoComments) && /--purple:\s*#461D7C/.test(css) && /--gold:\s*#FDD023/.test(css), 'css tokens present, no @import/url()');
+ok(!/@import|url\(/.test(cssNoComments), 'css: no @import / url()');
+// UI refresh U1: the :root token block of docs/UI_STYLE.md §1 (M3 colour roles, type scale, shape, elevation, spacing, motion, state layers)
+const rootBlock = (css.match(/:root\s*\{[\s\S]*?\n\}/) || [''])[0];
+const roles = { surface: '#FBFAFD', 'surface-container-low': '#F5F3F8', 'surface-container': '#EFEDF3', 'surface-container-high': '#E9E6EF', 'on-surface': '#1C1B1F', 'on-surface-variant': '#49454F', outline: '#79757F', 'outline-variant': '#CAC4D0', primary: '#461D7C', 'on-primary': '#FFFFFF', 'primary-container': '#E9DDFF', secondary: '#5E2CA5', 'secondary-container': '#F0E7FF', 'on-secondary-container': '#1F0A47', tertiary: '#F5B700', 'on-tertiary': '#2B1246', 'tertiary-container': '#FFE680', error: '#B3261E', 'error-container': '#F9DEDC', success: '#1F6B3F', 'success-container': '#DDF3E4', warn: '#B26A00', water: '#2E86BE', moss: '#5E8232' };
+ok(Object.keys(roles).every((k) => new RegExp('--' + k + ':\\s*' + roles[k] + '\\b', 'i').test(rootBlock)), 'U1 :root carries the M3 colour roles of UI_STYLE §1 (surface, containers, primary / secondary / tertiary, error, success, warn, water, moss)');
+ok(/--surface-float:\s*rgba\(251, 250, 253, \.94\)/.test(rootBlock) && /--scrim:\s*rgba\(28, 27, 31, \.32\)/.test(rootBlock) && /--scrim-title:\s*rgba\(28, 27, 31, \.48\)/.test(rootBlock), 'U1 :root: surface-float is surface at 94 %, scrims 32 % / 48 %');
+ok(/--fs-display:\s*4\.4rem/.test(rootBlock) && /--fs-headline:\s*1\.7rem/.test(rootBlock) && /--fs-title-lg:\s*1\.5rem/.test(rootBlock) && /--fs-title:\s*1\.3rem/.test(rootBlock) && /--fs-body:\s*1\.2rem/.test(rootBlock) && /--fs-label:\s*1\.05rem/.test(rootBlock) && /--font:\s*system-ui/.test(rootBlock), 'U1 :root: type scale display 44 / headline 17 / title-lg 15 / title 13 / body 12 / label 10.5 px at 100 % on the system sans stack');
+ok(/--shape-pill:\s*999px/.test(rootBlock) && /--shape-sm:\s*1\.2rem/.test(rootBlock) && /--shape-md:\s*1\.6rem/.test(rootBlock) && /--shape-lg:\s*2\.8rem/.test(rootBlock) && /--elev-1:/.test(rootBlock) && /--elev-2:/.test(rootBlock) && /--elev-3:/.test(rootBlock) && /--dur-std:\s*160ms/.test(rootBlock) && /--state-hover:\s*\.08/.test(rootBlock) && /--state-press:\s*\.12/.test(rootBlock) && /--disabled:\s*\.38/.test(rootBlock) && /--gutter:\s*16px/.test(rootBlock), 'U1 :root: shape radii, elevation shadows, motion, state-layer 8 / 12 % and disabled 38 %, 16 px gutter');
+ok(!/linear-gradient/.test(cssNoComments.replace(/mask-image:linear-gradient[^;}]*;?/g, '').replace(/-webkit-mask-image:linear-gradient[^;}]*;?/g, '')), 'U1: no linear-gradient anywhere in the sheet (the palette edge fade is a mask, not a surface)');
+ok(!/radial-gradient|backdrop-filter|filter:\s*blur/.test(cssNoComments) && !/text-shadow/.test(cssNoComments), 'U1: no backdrop-filter, no blur, no text-shadow');
+{ const serifRules = cssNoComments.replace(/:root\s*\{[\s\S]*?\n\}/, '').split('}').filter((r) => /serif|Georgia/.test(r)); ok(serifRules.length === 1 && /#title-name/.test(serifRules[0]), 'U1: the serif is used by exactly one rule, the title wordmark (#title-name)'); }
+ok(!/(#panels \.panel|#build-menu|\.card|#inspect|#popover|#topbar)[^{}]*\{[^}]*(gradient|backdrop)/.test(cssNoComments) && /\.panel,#inspect,#objective-card[^{]*\{\s*background:var\(--surface-float\);border:1px solid var\(--outline-variant\)[^}]*box-shadow:var\(--elev-2\)/.test(cssNoComments) && /#panels \.panel,#build-menu\{background:var\(--surface\);box-shadow:var\(--elev-3\)\}/.test(cssNoComments), 'U1: floating surfaces are surface-float + 1 px outline-variant + elevation 2; panels and the build menu are opaque surface at elevation 3, no gradient');
+ok(/#topbar\{[^}]*background:var\(--surface\);border-bottom:1px solid var\(--outline-variant\)\}/.test(cssNoComments) && !/#topbar\{[^}]*box-shadow/.test(cssNoComments), 'U1: the top bar is solid surface, elevation 0, 1 px bottom border');
+ok(/\.btn::before\{[^}]*background:currentColor[^}]*opacity:0/.test(cssNoComments) && /\.btn:hover::before\{opacity:var\(--state-hover\)\}/.test(cssNoComments) && /\.btn:active::before\{opacity:var\(--state-press\)\}/.test(cssNoComments) && /:focus-visible\{outline:2px solid var\(--primary\)/.test(cssNoComments) && /\.btn:disabled\{opacity:var\(--disabled\)/.test(cssNoComments), 'U1: state layers (hover 8 % / press 12 % in currentColor), 2 px primary focus ring, disabled 38 %');
+ok(/@media \(prefers-reduced-motion: reduce\)/.test(cssNoComments) && /--dur-open: 0ms/.test(cssNoComments), 'U1: prefers-reduced-motion zeroes the motion durations');
+{ const goldUse = cssNoComments.split('}').filter((r) => /var\(--tertiary\)/.test(r) && /background/.test(r)).map((r) => r.split('{')[0].trim()).join(' | '); ok(/#btn-charter/.test(goldUse) && /#btn-obj-build/.test(goldUse) && /#btn-build-menu/.test(goldUse) && !/(\.sum-|\.fb-|\.issue|\.chip|\.tab|\.bm-)/.test(goldUse), 'U1: gold fills only on the charter button, the objective card Build it and the palette Build toggle (plus the title underline border): ' + goldUse); }
+ok(!/#(FDD023|FFE680|F5B700|FF8A84|0E1230|1A1230)\b/i.test(cssNoComments.replace(/--[a-z-]+:\s*#[0-9A-F]{6}/gi, '')), 'U1: no stray dark / gold hex colours outside the token block');
 
 // --- load every existing module in manifest order ----------------------------
 const win = makeWindow();
@@ -68,8 +84,8 @@ ok(U.setUiScale(130) === 1.3 && U.setUiScale(0.9) === 0.9 && U.setUiScale('junk'
 ok(U.el.minimap.width === 200, 'back at 100 % the minimap canvas is 200 px');
 const cssScale = css.replace(/\/\*[\s\S]*?\*\//g, '');
 ok(/#topbar\.tightest \.tb,#topbar\.bare \.tb\{min-width:3\.2rem;padding:0 \.8rem\}/.test(cssScale) && /#topbar\.tightest \.speed-btn,#topbar\.bare \.speed-btn\{min-width:2\.8rem\}/.test(cssScale) && /#topbar\.bare #date-chip\{display:none\}/.test(cssScale), 'H7: the top bar squeezes its buttons from the tightest step (the compact HUD, whose capacity chip is folded away, keeps the date chip at 1440 px); only `bare` drops the date');
-ok(/html\{font-size:calc\(1rem \* var\(--ui-scale|html\{font-size:calc\(10px \* var\(--ui-scale/.test(cssScale), 'html font-size follows --ui-scale (all lengths are rem)');
-ok(!/--topbar-h:\s*\d+px/.test(cssScale) && /--topbar-h:\s*5\.6rem/.test(cssScale) && /--palette-h:\s*18rem/.test(cssScale), 'layout tokens are rem: topbar 56 px, palette 180 px at 100 % (palette pass)');
+ok(/html\s*\{\s*font-size:\s*calc\(10px \* var\(--ui-scale/.test(cssScale), 'html font-size follows --ui-scale (all lengths are rem)');
+ok(!/--topbar-h:\s*\d+px/.test(cssScale) && /--topbar-h:\s*4\.8rem/.test(cssScale) && /--palette-h:\s*18rem/.test(cssScale), 'layout tokens are rem: top bar 48 px (U1: the Material app bar), palette 180 px at 100 % (palette pass)');
 // --- P5 centred UI: smart default scale by window width, the title-screen Display size choice, layout rules ---
 {
   const W0 = win.innerWidth, H0 = win.innerHeight;
@@ -95,7 +111,7 @@ ok(!/--topbar-h:\s*\d+px/.test(cssScale) && /--topbar-h:\s*5\.6rem/.test(cssScal
   ok(/#panels #panel-season\{width:110rem\}/.test(cssP5) && /#panels #panel-storm,#panels #panel-budget\{width:72rem\}/.test(cssP5) && /#panels \.panel\{[^}]*width:72rem/.test(cssP5) && /#build-menu\{[^}]*width:min\(130rem/.test(cssP5), 'panels centre with wider maxima: Season 1100, Storm / Budget 720, default 720, Build menu up to 1300 px');
   ok(/#panels\{[^}]*display:flex[^}]*align-items:center[^}]*justify-content:center/.test(cssP5), 'the panel host centres its panel in the map area');
   ok(/--inspect-w:\s*38rem/.test(cssP5) && /#inspect\{[^}]*right:var\(--side\)/.test(cssP5) && /--side:max\(var\(--gutter\)/.test(cssP5), 'inspect panel 380 px docked right with a gutter; --side centres the docked cards on very wide windows');
-  ok(/\.stat \.odometer\{font:700 var\(--fs-num\)/.test(cssP5) && /--fs-num:1\.8rem/.test(cssP5), 'stat numbers are the 18-px --fs-num token at 100 % (20.7 px at Comfortable; was 22 / 25)');
+  ok(/\.stat \.odometer\{[^}]*font:600 var\(--fs-title-lg\)/.test(cssP5) && /--fs-title-lg:\s*1\.5rem/.test(cssP5), 'stat numbers are the 15-px --fs-title-lg token at 100 % (17.3 px at Comfortable; U1 type scale)');
   ok(/#hud\.short #objective-card #obj-why/.test(cssP5), 'a short window trims the tracker so it never runs under the ticker');
 }
 ok(U.el['title-name'].textContent === 'BAYOU STATE', '#title-name text');
@@ -797,7 +813,7 @@ try {
 
 // --- H6 type + spacing pass: numbers never wrap; the type scale is five tokens ---------------------------------------------
 try {
-  const minus = '−', h6 = css.slice(css.indexOf('/* H6 type + spacing')), h6c = h6.replace(/\/\*[\s\S]*?\*\//g, '');
+  const minus = '−', h6 = css.slice(css.indexOf('/* numbers never wrap')), h6c = h6.replace(/\/\*[\s\S]*?\*\//g, '');
   // the formatter attaches the sign: a true minus (U+2212) glued to the "$" or the digits, never a hyphen on its own line
   ok(U.fmt.money(-1690000) === minus + '$1.69M' && U.fmt.money(-1690000).charCodeAt(0) === 0x2212 && U.fmt.money(123400000) === '$123.4M' && U.fmt.money(-12300) === minus + '$12k' && U.fmt.money(2000) === '$2,000', 'money: −$1.69M (U+2212), $123.4M, −$12k, $2,000');
   ok(U.fmt.compact(-12300) === minus + '12k' && U.fmt.compact(-1234) === minus + '1.2k' && U.fmt.compact(1500) === '1.5k' && U.fmt.compact(980) === '980' && U.fmt.compact(20000) === '20k' && U.fmt.compact(-5) === minus + '5', 'compact gauge numbers keep a negative sign attached (−12k, −1.2k, 1.5k, 20k)');
@@ -824,10 +840,10 @@ try {
   ok(/\.stat \.odometer\{[^}]*white-space:nowrap[^}]*font-variant-numeric:tabular-nums|\.stat \.odometer\{[^}]*font-variant-numeric:tabular-nums[^}]*white-space:nowrap/.test(css) && /\.stat-label\{[^}]*white-space:nowrap/.test(css) && /#chip-capacity\{[^}]*white-space:nowrap/.test(css) && /\.stat\{[^}]*white-space:nowrap/.test(css), 'the stat tile, its label, its number and the capacity chip are each nowrap');
   ok(/#stat-cash \.odometer\{min-width:7ch\}/.test(css) && /#stat-students \.odometer\{min-width:5\.5ch\}/.test(css), 'tile numbers have a min-width sized for −$123.4M and 20,000');
   // the type scale: five tokens + the stat number; the smallest text anywhere is 10.5 px at 100 %
-  ok(/--fs-label:1\.05rem;--fs-small:1\.2rem;--fs-body:1\.3rem;--fs-lead:1\.5rem;--fs-title:1\.7rem;--fs-num:1\.8rem/.test(css), 'type tokens: caption 10.5 / small 12 / body 13 / lead 15 / title 17 / number 18 px at 100 %');
+  ok(/--fs-small:var\(--fs-body\);--fs-lead:var\(--fs-title\);--fs-num:var\(--fs-title-lg\)/.test(css) && /--fs-label:\s*1\.05rem/.test(css) && /--fs-body:\s*1\.2rem/.test(css), 'type tokens: label 10.5 / body 12 / title 13 / title-lg 15 / headline 17 px at 100 %; the pre-refresh names stay as aliases');
   const fsLit = (cssNoComments.match(/font-size:\s*\d*\.?\d+rem|font:[^;}]*?\s\d*\.?\d+rem\//g) || []).map((x) => parseFloat(x.match(/(\d*\.?\d+)rem/)[1]));
   ok(fsLit.length > 0 && fsLit.every((v) => v >= 1.1 || v === 1.05), 'no literal font-size under 1.1 rem is left (they all read a token): ' + fsLit.filter((v) => v < 1.1).join(','));
-  ok(/--gutter:1\.6rem/.test(css) && /--panel-bg:linear-gradient/.test(css) && /--shadow:[^;]*inset 0 1px 0 rgba\(255,255,255,\.09\)/.test(css), 'Style C surfaces: 16-px gutter, panel gradient, one shadow with the 1-px inner highlight');
+  ok(/--gutter:\s*16px/.test(css) && !/--panel-bg|--g-gold|--g-purple/.test(css) && Buffer.byteLength(css) < 96 * 1024, 'U1 surfaces: 16-px gutter, the old gradient tokens (--panel-bg, --g-gold, --g-purple) are gone');
 } catch (e) { ok(false, 'H6 type + spacing: ' + (e.stack || e)); }
 
 console.log(`\n${passes} passed, ${failures} failed`);
