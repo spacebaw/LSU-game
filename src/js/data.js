@@ -1273,7 +1273,7 @@
     { key: 'h', action: 'hud' }, { key: 'h', action: 'hudFull', shift: true },   // hud + zoom pass / U2: H hides the HUD, Shift+H (or H again) restores it (Home now pans to Founders' Hall)
     { key: 'Escape', action: 'escape' },
     { key: 's', action: 'save', ctrl: true }, { key: 'z', action: 'undo', ctrl: true }, { key: 'p', action: 'postcard', ctrl: true },
-    { key: 'm', action: 'mute' },
+    { key: 'm', action: 'menu' }, { key: 'm', action: 'mute', shift: true },   // UI refresh U6: M toggles the Menu sheet; Shift+M mutes (M was mute)
     { key: 'y', action: 'toastYes' },
     { key: '`', action: 'debug' },
     { key: 'a', action: 'panLeft' }, { key: 's', action: 'panDown' }, { key: 'd', action: 'panRight' },

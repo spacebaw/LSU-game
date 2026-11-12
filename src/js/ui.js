@@ -81,7 +81,7 @@
     notifMs: fin(PR.snackMs, 6000), notifMax: fin(PR.snackMax, 2), notifQueueMax: 6, notifTicks: 120, bubbleIdleMs: fin(PR.bubbleIdleMs, 8000),   // U2: snackbars (6 s, two visible, the rest queue)
     bubbleMs: fin(PR.bubbleMs, 6000), hintMs: 6000, hintTicks: 60, nTapMs: 350, panPx: fin(PR.panPxPerFrame, 12), refreshMs: fin(PU.panelRefreshMs, 500),
     deltaMs: 600, odoMs: 150, holdTicks: 600, logMax: fin(PU.tickerMax, 30), popLines: 7, minimapPx: fin(PR.minimapPx, 160),
-    compactWidth: fin(PU.compactWidth, 1180), hudStaggerMs: fin(PT.hudStaggerMs, 100), ringThrottleMs: 50, skipAfterTick: fin(PT.skipAfterTick, 150),
+    hudStaggerMs: fin(PT.hudStaggerMs, 100), ringThrottleMs: 50, skipAfterTick: fin(PT.skipAfterTick, 150),
     autoCardTicksPerSec: 10, toastTicks: fin(PT.toastTicks, 80), cardWords: fin(PU.cardWordsMax, 12)
   };
   const M0 = { ctrl: false, shift: false, meta: false, alt: false };
@@ -89,7 +89,7 @@
   const SKY_GLYPH = ['sunrise', 'sunny', 'sunset', 'sunset', 'moon'];   // U5: registry names (Dawn, Day, Golden, Dusk, Night)
   const SKY_NAME = ['Dawn', 'Day', 'Golden', 'Dusk', 'Night'];
   const MOOD_FACES = ['mood_bad', 'mood_bad', 'mood_neutral', 'mood', 'mood'];   // U5: registry names
-  const HINT_TEXT = { dredgeFill: 'Dredge spoil from the bayou raises marsh to dry land in ten days. Ecology pays for it.', saveUnavailable: 'Saves unavailable in this browser mode', perfMode: 'Performance mode', mute: 'Sound on · M to mute', pauseToPlan: 'Pause to plan', desireLine: 'Students want a path here' };
+  const HINT_TEXT = { dredgeFill: 'Dredge spoil from the bayou raises marsh to dry land in ten days. Ecology pays for it.', saveUnavailable: 'Saves unavailable in this browser mode', perfMode: 'Performance mode', mute: 'Sound on · Shift+M to mute', pauseToPlan: 'Pause to plan', desireLine: 'Students want a path here' };
   const PANEL_KEYS = { budget: 'Budget', season: 'Season', storm: 'Storm', land: 'Land Office', almanac: 'Almanac', milestones: 'Milestones', log: 'Log', settings: 'Settings', howto: 'How to play', about: 'About', debug: 'Debug' };   // L2: land; U2: log
   // UI refresh U5: every icon comes from the one registry, BSU.icons (src/js/icons.js); `icon(name, cls)` below is the short local name for icons.get
   const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -255,8 +255,8 @@
     const lit = btn('ov-lit', '', 'lit-chip hidden', function () { togglePopover('layers'); }); E['ov-lit'] = lit; acts.appendChild(lit);
     acts.appendChild(iconBtn('btn-layers', 'layers', 'Layers (F W K P C E)', function () { togglePopover('layers'); }));
     acts.appendChild(iconBtn('btn-map', 'map', 'Map', function () { togglePopover('map'); }));
-    acts.appendChild(iconBtn('btn-menu', 'menu', 'Menu', function () { M.toggleMenu(); }));
-    const mute = btn('btn-mute', null, 'icon', function () { toggleMute(); }); mute.title = 'Mute (M)'; const mOn = icon('volume_up'), mOff = icon('volume_off', 'hidden'); mute.appendChild(mOn); mute.appendChild(mOff); E['btn-mute'] = mute; E['btn-mute-on'] = mOn; E['btn-mute-off'] = mOff; acts.appendChild(mute);
+    acts.appendChild(iconBtn('btn-menu', 'menu', 'Menu (M)', function () { M.toggleMenu(); }));
+    const mute = btn('btn-mute', null, 'icon', function () { toggleMute(); }); mute.title = 'Mute (Shift+M)'; const mOn = icon('volume_up'), mOff = icon('volume_off', 'hidden'); mute.appendChild(mOn); mute.appendChild(mOff); E['btn-mute'] = mute; E['btn-mute-on'] = mOn; E['btn-mute-off'] = mOff; acts.appendChild(mute);
     const endowed = el('span', 'chip gold hidden', 'Endowed'); endowed.id = 'chip-endowed'; E['chip-endowed'] = endowed; acts.appendChild(endowed);
     return tb;
   }
@@ -326,12 +326,14 @@
     o.legend.forEach(function (label, k) { const sw = el('span', 'sw'); const i = el('i'); i.style.background = cols[k] || 'transparent'; sw.appendChild(i); sw.appendChild(el('span', null, label)); lg.appendChild(sw); });
     lg.appendChild(el('span', 'note', o.name + ' · ' + o.key + ' again turns it off · Settings can keep this popover open'));
   }
+  /** U6: the glyph that leads each needs gauge (registry names; power and water share the requirement icons) */
+  const NEED_ICON = { beds: 'bed', seats: 'school', dining: 'restaurant', power: 'bolt', water: 'drop', wastewater: 'sewage' };
   /** U2: the needs strip (six gauges as rows, the binding line, Locate, the applicants line) now lives in the Students chip's popover; the ids are the UX pass's */
   function buildNeedsStrip() {
     const strip = el('div', 'hidden'); strip.id = 'needs-strip'; E.needEls = {};
     const gauges = el('div', 'needs-gauges');
     for (const k of ['beds', 'seats', 'dining', 'power', 'water', 'wastewater']) {
-      const g = el('div', 'need sl'); g.dataset.key = k; const lab = el('div', 'need-label', (BSU.data && BSU.data.needs && BSU.data.needs[k] ? BSU.data.needs[k].label : k)); const bar = el('div', 'bar'); const f = el('div', 'fill'); bar.appendChild(f); const val = el('div', 'need-val', '—');
+      const g = el('div', 'need sl'); g.dataset.key = k; const lab = el('div', 'need-label', (BSU.data && BSU.data.needs && BSU.data.needs[k] ? BSU.data.needs[k].label : k)); lab.prepend(icon(NEED_ICON[k] || 'info', 'sm')); const bar = el('div', 'bar'); const f = el('div', 'fill'); bar.appendChild(f); const val = el('div', 'need-val', '—');   // U6: each gauge leads with its glyph (the Sewage drain was the one the spec left undrawn)
       g.appendChild(lab); g.appendChild(bar); g.appendChild(val); gauges.appendChild(g); E.needEls[k] = { el: g, fill: f, val: val };
       g.addEventListener('click', function () { const s = stateOf(); const b = (BSU.data.needs[k] || {}).build; if (s && b) { closePopover(); M.openBuildMenu(s, { focus: b, pulse: true }); } });
       if (k === 'power' || k === 'water') { g.addEventListener('mouseenter', function () { const I = issuesApi(); if (I) I.pulse(k); }); g.addEventListener('mouseleave', function () { const I = issuesApi(); if (I) I.pulse(null); }); }   // issue spotlight pass: hovering the gauge pulses every unpowered / unwatered beacon
@@ -475,7 +477,7 @@
     seedLab.appendChild(seed);
     const ts = btn('btn-title-settings', 'Settings', '', function () { M.openPanel('settings'); });
     help.appendChild(cont); help.appendChild(howBtn); help.appendChild(aboutBtn); help.appendChild(ts);
-    const tm = btn('btn-title-mute', null, 'icon', function () { toggleMute(); }); tm.title = 'Mute (M)'; const tmOn = icon('volume_up'), tmOff = icon('volume_off', 'hidden'); tm.appendChild(tmOn); tm.appendChild(tmOff); E['btn-title-mute-on'] = tmOn; E['btn-title-mute-off'] = tmOff;
+    const tm = btn('btn-title-mute', null, 'icon', function () { toggleMute(); }); tm.title = 'Mute (Shift+M)'; const tmOn = icon('volume_up'), tmOff = icon('volume_off', 'hidden'); tm.appendChild(tmOn); tm.appendChild(tmOff); E['btn-title-mute-on'] = tmOn; E['btn-title-mute-off'] = tmOff;
     row.appendChild(seedLab); row.appendChild(tm);
     const sz = el('div', 'title-size'); sz.appendChild(el('span', 'title-size-label', 'Display size')); const szs = el('div', 'seg'); const szn = el('div', 'seg-note hidden', '');   // P5: Compact 100 / Comfortable 115 / Large 130 / Auto
     SIZE_CHOICES.forEach(function (c) { const b = btn('btn-size-' + c[0], c[1], 'seg-btn', function () { M.setUiScale(c[2]); refreshTitleSize(); }); b.dataset.scale = String(c[2]); if (c[3]) b.appendChild(el('span', 'pct', c[3])); b.title = c[2] === 'auto' ? 'Pick the size from this window (1366 px and up: 115 %, 1680 px and up: 130 %)' : c[1] + ' (' + c[3] + ')'; szs.appendChild(b); });
@@ -576,7 +578,6 @@
     attachInput(world);
     subscribe();
     registerBuiltins();
-    try { const w = fin(window.innerWidth, 1280); cls(E.palette, 'compact', w < L.compactWidth); } catch (e) { /* stub */ }
     try { const raw = window.localStorage.getItem('bsu.settings'); const o = raw ? JSON.parse(raw) : null; applyScale(o && o.uiScale != null ? o.uiScale : 'auto'); } catch (e) { try { applyScale('auto'); } catch (e2) { /* stub */ } }   // the title screen is scaled too; nothing stored (first run) = the smart default for this window
     fitTopbar();
   };
@@ -659,8 +660,9 @@
   /** U2 settings migration, once per settings object (boot, newGame, load): the old hudMode ('hidden' → the HUD starts hidden, else nothing) and hudCollapsed keys leave; keepMinimap / keepOverlays default off */
   /** U5: the OS-level reduced-motion preference (the default of settings.reduceMotion) */
   function prefersReducedMotion() { try { return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches); } catch (e) { return false; } }
-  /** U5: settings.reduceMotion → the `reduce-motion` class on <body>, which the CSS keys off (every animation and transition goes to 0) */
-  function applyReduceMotion() { if (!dom()) return; const on = !!M.settings().reduceMotion; if (on !== rmApplied) { rmApplied = on; cls(document.body, 'reduce-motion', on); } }
+  /** U5 / U6: settings.reduceMotion → one of two classes on <body>: `reduce-motion` (true: every animation and transition ends at once) or `motion-on` (false: the
+   *  token-driven motion runs even when the OS asks for reduced motion; the body class wins, the media query only sets the default). Unset (no state yet) → neither. */
+  function applyReduceMotion() { if (!dom()) return; const v = M.settings().reduceMotion; const key = v === true ? 'on' : v === false ? 'off' : 'unset'; if (key !== rmApplied) { rmApplied = key; cls(document.body, 'reduce-motion', v === true); cls(document.body, 'motion-on', v === false); } }
   M.reduceMotion = function (on) { const set = M.settings(); if (on !== undefined) { set.reduceMotion = !!on; M.saveSettings(); } applyReduceMotion(); return !!set.reduceMotion; };
   function migrateSettings() {
     const set = M.settings(); let changed = false;
@@ -867,7 +869,7 @@
         window.addEventListener('keyup', function (e) { try { keyup(e.key); } catch (err) { uerr('keyup', err); } });
         window.addEventListener('blur', function () { try { for (const k in held) held[k] = false; heldAlt = false; heldN = false; if (live.down || live.state === 'DRAGGING') M.pointer('cancel', lastPx, lastPy, 0, M0); } catch (err) { uerr('blur', err); } });
         window.addEventListener('pointerup', function (e) { try { if (live.down && e.target !== world) M.pointer('up', lastPx, lastPy, fin(e.button, 0), modsOf(e)); } catch (err) { uerr('pointerup:window', err); } });
-        window.addEventListener('resize', function () { try { const w = fin(window.innerWidth, 1280); cls(E.palette, 'compact', w < L.compactWidth); } catch (err) { /* stub */ } try { applyScale(uiMode); } catch (err) { /* stub */ } fitTopbar(); paletteFade(); try { for (const name in POP_ANCHOR) if (popVisible(name)) placePopover(name); } catch (err) { /* stub */ } });
+        window.addEventListener('resize', function () { try { applyScale(uiMode); } catch (err) { /* stub */ } fitTopbar(); paletteFade(); try { for (const name in POP_ANCHOR) if (popVisible(name)) placePopover(name); } catch (err) { /* stub */ } });
       }
     } catch (e) { /* stub window */ }
   }
@@ -1282,7 +1284,8 @@
       case 'save': call('session', 'save', 'manual.0'); return true;
       case 'undo': doUndo(s); return true;
       case 'postcard': postcard(s); return true;
-      case 'mute': toggleMute(); return true;
+      case 'mute': toggleMute(); return true;   // U6: Shift+M (M is the Menu sheet)
+      case 'menu': M.toggleMenu(); return true;   // U6: M toggles the Menu sheet (the title screen never reaches here: keydown returns before the map keys while it is on)
       case 'toastYes': return false;
       case 'debug': toggleDebug(s); return true;
       default: {
@@ -1300,7 +1303,7 @@
   /** U5: swap the date chip's weather icon (a registry name) */
   function setSkyIcon(name) { const g = E['sky-glyph']; if (!g || g.dataset.icon === name) return; g.dataset.icon = name; while (g.firstChild) g.removeChild(g.firstChild); g.appendChild(icon(name)); }
   function toggleMute() { const s = stateOf(); if (!s) return; const set = M.settings(); const on = !set.muted; set.muted = on; call('audio', 'mute', on); M.saveSettings(); refreshMuteButtons(); }
-  function refreshMuteButtons() { const set = M.settings(); const m = !!(set && set.muted); show(E['btn-mute-on'], !m); show(E['btn-mute-off'], m); if (E['btn-mute']) E['btn-mute'].title = m ? 'Unmute (M)' : 'Mute (M)'; show(E['btn-title-mute-on'], !m); show(E['btn-title-mute-off'], m); }
+  function refreshMuteButtons() { const set = M.settings(); const m = !!(set && set.muted); show(E['btn-mute-on'], !m); show(E['btn-mute-off'], m); if (E['btn-mute']) E['btn-mute'].title = m ? 'Unmute (Shift+M)' : 'Mute (Shift+M)'; show(E['btn-title-mute-on'], !m); show(E['btn-title-mute-off'], m); }
   function toggleDebug(s) { const open = !M.debug.open; M.debug.open = open; if (dom()) M.openPanel(open ? 'debug' : (s.ui.panel === 'debug' ? null : s.ui.panel)); call('progress', 'debugOpen', s, open); }
   function postcard(s) {
     const r = call('render', 'postcard', s, undefined); let url = typeof r === 'string' ? r : (r && typeof r.toDataURL === 'function' ? r.toDataURL('image/png') : '');
@@ -2640,7 +2643,7 @@
     const I = issuesApi(), sd = fin(P.issues && P.issues.snoozeDays, 3);
     if (opts.count > 1) { const bd = btn(null, '×' + opts.count, 'small badge', function () { const o = opts.suggest ? tray.sopen : tray.open; o[it.kind] = !o[it.kind]; tray.key = ''; }); bd.title = opts.count + ' ' + (I ? I.labelOf(it.kind).toLowerCase() : it.kind) + ' issues: click to ' + (opts.expanded ? 'fold them' : 'list them all'); row.appendChild(bd); }
     let fix = null;
-    if (!opts.progress) { fix = btn(null, it.kind === 'unlinkedPath' ? 'Link it' : 'Fix', 'small fix', function () { const st = stateOf(); if (st) fixIssue(st, issuesApi().byId(st, it.id) || it); }); fix.title = it.fix || 'Fix it'; row.appendChild(fix); }   // paths pass: the Not linked suggestion's button reads Link it
+    if (!opts.progress) { const link = it.kind === 'unlinkedPath'; fix = btn(null, link ? 'Link it' : 'Fix', 'small fix', function () { const st = stateOf(); if (st) fixIssue(st, issuesApi().byId(st, it.id) || it); }); fix.prepend(icon(link ? 'link' : 'construction', 'sm')); fix.title = it.fix || 'Fix it'; row.appendChild(fix); }   // paths pass: the Not linked suggestion's button reads Link it; U6: a tonal icon + label chip (the label stays the button's own text: issues.test and play.mjs read it)
     const loc = btn(null, null, 'small icon-sm locate', function () { const st = stateOf(); if (st) locateIssue(st, issuesApi().byId(st, it.id) || it); }); loc.appendChild(icon('my_location', 'sm')); loc.title = 'Locate: ease the camera there (I cycles)'; loc.dataset.act = 'locate'; row.appendChild(loc);
     if (!opts.progress) {
       const zz = btn(null, null, 'small icon-sm', function () { const st = stateOf(); const I2 = issuesApi(); if (st && I2 && I2.snooze(st, it.id)) { tray.key = ''; M.notify(st, { kind: 'info', text: 'Snoozed ' + sd + ' days: ' + it.title, ttl: 2500 }); } }); zz.appendChild(icon('snooze', 'sm')); zz.title = 'Snooze ' + sd + ' days: hides this row until ' + BSU.formatDate(dayOf(s) + sd) + '; it comes back sooner if it gets worse'; zz.dataset.act = 'snooze'; row.appendChild(zz);
@@ -3202,7 +3205,7 @@
       { k: 'L', t: 'Milestones', b: [['l', 0, 0, 'milestones']] },
       { k: 'N', t: 'Season (hold: network view)', b: [['n', 0, 0, 'season']] },
       { k: 'I', t: 'Next issue (hold: spotlight)', b: [] },
-      { k: 'M', t: 'Mute', b: [['m', 0, 0, 'mute']] },
+      { k: 'M', t: 'Menu (Shift+M: mute)', b: [['m', 0, 0, 'menu'], ['m', 0, 1, 'mute']] },
       { k: 'Ctrl+S', t: 'Save', b: [['s', 1, 0, 'save']] },
       { k: 'Ctrl+P', t: 'Postcard', b: [['p', 1, 0, 'postcard']] }] },
     { h: 'Time and view', rows: [

@@ -77,6 +77,34 @@ hd.chromeAtlasMB = saveChrome[0]; hd.chromeChunkMB = saveChrome[1];
   const i5 = R.hdInfo();
   ok(i5.chunkMaster === 2 && i5.fallback === false && i5.hdChunks >= 1, 'zooming back in is HD again without waiting for an idle eviction');
 }
+
+// --- UI refresh U6: the CSS closing transitions use `display … allow-discrete` (Chrome 117+, Safari 17.4+). A browser without it ignores the display transition and must still hide
+// the element at once: every selector in such a rule needs `.hidden{display:none !important}` (global) plus its own `.hidden` look (opacity 0, pointer-events none) so the two paths end the same way.
+{
+  const css = readFileSync(join(root, 'src', 'style.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+  const rules = []; let depth = 0, buf = '', sel = '';
+  for (const ch of css) { if (ch === '{') { if (depth === 0) sel = buf.trim(); buf = ''; depth++; } else if (ch === '}') { depth--; if (depth === 0 && sel && !sel.startsWith('@')) rules.push({ sel, body: buf.trim() }); buf = ''; sel = ''; } else buf += ch; }
+  const discrete = rules.filter((r) => /allow-discrete/.test(r.body));
+  ok(discrete.length >= 1, 'style.css has ' + discrete.length + ' rule(s) with allow-discrete (the closing transitions)');
+  ok(/(^|[^\w-])\.hidden\{display:none !important\}/.test(css), '.hidden{display:none !important} is the global fallback (no transition-behavior support → hidden at once)');
+  ok(!/transition-behavior/.test(css) && !/@starting-style/.test(css), 'no transition-behavior longhand and no @starting-style: the discrete transition lives only inside the transition shorthand, so an older Safari drops just the display entry');
+  const bad = [];
+  for (const r of discrete) {
+    const tr = (r.body.match(/transition:([^;]*)/) || ['', ''])[1];
+    const props = tr.split(',').map((x) => x.trim().split(/\s+/)[0]);
+    if (!/display [^,]*allow-discrete/.test(tr)) bad.push(r.sel + ': allow-discrete is not on the display entry');
+    if (!props.every((p) => p === 'opacity' || p === 'transform' || p === 'display')) bad.push(r.sel + ': transitions ' + props.join(' ') + ' (only opacity / transform / display may close)');
+    for (const one of r.sel.split(',').map((x) => x.trim())) {
+      const look = rules.find((q) => q.sel.split(',').map((x) => x.trim()).includes(one + '.hidden') && /opacity:0/.test(q.body) && /pointer-events:none/.test(q.body));
+      if (!look) bad.push(one + ': no `' + one + '.hidden` rule with opacity:0 and pointer-events:none');
+      const over = rules.find((q) => q.sel.split(',').map((x) => x.trim()).includes(one + '.hidden') && /display:(?!none)/.test(q.body));
+      if (over) bad.push(one + ': its .hidden rule overrides display:none (' + over.body.slice(0, 60) + ')');
+    }
+  }
+  ok(bad.length === 0, 'every allow-discrete surface (' + discrete.map((r) => r.sel).join(' | ') + ') hides without the transition: display:none from .hidden, its own opacity 0 / pointer-events none look' + (bad.length ? '; BAD: ' + bad.join('; ') : ''));
+  const insp = rules.find((r) => r.sel === '#inspect.hidden');
+  ok(!!insp && /visibility:hidden/.test(insp.body) && /pointer-events:none/.test(insp.body) && !/allow-discrete/.test(css.slice(css.indexOf('#inspect{'), css.indexOf('#inspect{') + 1200)), '#inspect.hidden keeps display:flex for its own fold (visibility:hidden + pointer-events:none, no discrete transition), so it needs no allow-discrete fallback');
+}
 ok(BSU.errors.size === errs0, 'no BSU.error across the Safari checks');
 console.log(failures ? `\n${failures} FAILED, ${passes} passed` : `\n${passes} passed, 0 failed`);
 process.exit(failures ? 1 : 0);

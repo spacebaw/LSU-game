@@ -40,6 +40,8 @@ const PAIRS = [
   ['on-tertiary', 'tertiary', 'text', 'Build FAB, Build it, Charter (gold)'],
   ['on-tertiary-container', 'tertiary-container', 'text', 'goal banner, ★ badge'],
   ['warn', 'tertiary-container', 'icon', 'warn issue glyph'],
+  ['warn-text', 'surface-container', 'text', 'U6: the heat-advisory weather line (warn is a fill / icon colour only)'],
+  ['warn-text', 'surface', 'text', 'U6: an interrupt goal kicker, the detail lock line, the Land Office why line'],
   ['error', 'surface', 'text', 'Demolish text button, bad gauge value'],
   ['on-error', 'error', 'text', 'alerts badge'],
   ['on-error-container', 'error-container', 'text', 'alert row'],

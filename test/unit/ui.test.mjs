@@ -1039,7 +1039,7 @@ try {
   U.keydown('n', M0); U.keydown('n', { ctrl: false, shift: false, meta: false, alt: false, repeat: true }); U.update(s, 16); U.keyup('n'); ok(s.ui.panel === null, 'a key repeat marks the hold: no panel'); U.openPanel(null);
   U.selectTool(s, 'path'); ok(U.networkView() === true, 'the path tool armed: network view'); U.selectTool(s, 'dorm'); ok(U.networkView() === false, 'a footprint tool: not'); U.selectTool(s, null);
   // the tray's Not linked suggestion reads Link it
-  ok(/unlinkedPath' \? 'Link it' : 'Fix'/.test(src), "the tray's unlinkedPath row button reads Link it");
+  ok(/const link = it\.kind === 'unlinkedPath'; fix = btn\(null, link \? 'Link it' : 'Fix'/.test(src), "the tray's unlinkedPath row button reads Link it");
   // a path drag ending short of the network: the tie preview during the drag, laid with the run on one undo record
   // (a straight lane of nine free tiles off a connected path tile, cleared to dry ground at that tile's height so the run and its tie are legal)
   let drag = null;
@@ -1175,7 +1175,7 @@ try {
     ok(/\.coach-box\{[^}]*border-radius:var\(--shape-lg\)/.test(cssN) && /\.snackbar,\.coach-box\{box-shadow:var\(--elev-3\)\}/.test(cssN) && /\.coach-pane\{[^}]*background:var\(--scrim\)/.test(cssN) && /\.coach-ring\{[^}]*border:3px solid var\(--primary\)/.test(cssN), 'U5 CSS: the coach is a card (28 px corners, elevation 3), the panes use the scrim, the ring is 3 px primary');
     const kf = (cssN.match(/@keyframes ring-pulse\{[\s\S]*?\}\}/) || [''])[0];
     ok(/transform:scale/.test(kf) && /opacity/.test(kf) && !/(left|top|width|height|margin|padding)\s*:/.test(kf) && /\.coach-ring::after\{[^}]*animation:ring-pulse/.test(cssN), 'U5 CSS: the ring pulse animates transform and opacity only');
-    ok(/body\.reduce-motion \.coach-ring::after\{animation:none/.test(cssN) && /@media \(prefers-reduced-motion: reduce\)\{\.coach-ring::after\{animation:none/.test(cssN), 'U5 CSS: the pulse stops under reduce motion and the media query');
+    ok(/body\.reduce-motion \.coach-ring::after\{animation:none/.test(cssN) && /@media \(prefers-reduced-motion: reduce\)\{body:not\(\.motion-on\) \.coach-ring::after\{animation:none/.test(cssN), 'U5 CSS: the pulse stops under reduce motion and the media query (U6: unless the switch is explicitly off)');
   }
   // 3. where the card goes: never over its own target
   { const P = U._coachPlace, vw = 1440, vh = 900, bw = 340, bh = 190; let seed = 7; const rnd = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
@@ -1252,6 +1252,47 @@ try {
     ok(BSU.data && JSON.stringify(Object.keys(BSU.newState(1).ui.settings)).indexOf('reduceMotion') > 0 && BSU.newState(1).ui.settings.reduceMotion === null, 'U5 contract: the default settings carry reduceMotion: null (unset → follows the media query)');
   }
 } catch (e) { ok(false, 'U5 block: ' + (e.stack || e)); }
+
+// --- UI refresh U6 (QA and docs): the Fix chip, the gauge glyphs, the reduce-motion switch beating the media query both ways, M = Menu, dead CSS gone ---
+try {
+  const dom = win.document; const cssN = css.replace(/\/\*[\s\S]*?\*\//g, '');
+  const vis = (id) => !!U.el[id] && !U.el[id].classList.contains('hidden');
+  BSU.session.newGame({ seed: 42, skipTutorial: true, size: 64 }); const s6 = BSU.state; U.showTitle(false); U.settings().coachSeen = true; U.openPanel(null); U.closePopover(); U.openPalette(false); U.dismissNotifs(); U.closeInspect(); U.update(s6, 50);
+  // 1. the Alerts rows' Fix / Link it is a tonal icon + label chip (the label is the button's own text: issues.test and play.mjs read it; data-act stays on Locate / Snooze / Dismiss / the bell only)
+  { const I = BSU.issues; const sub = s6.buildings.filter((b) => b && b.type === 'substation'); sub.forEach((b) => BSU.buildings.remove(s6, b.id, 'demolish')); I.invalidate(); U.openPopover('alerts'); U.update(s6, 600);
+    const rows = U.el['issues-list'].children; const fix = rows.length ? Array.from(rows[0].children).find((c) => /\bfix\b/.test(String(c.className))) : null;
+    ok(!!fix && fix.textContent === 'Fix' && fix.children.length === 1 && fix.children[0].dataset.icon === 'construction' && fix.children[0].classList.contains('sm') && !fix.dataset.act, 'U6 Alerts: the Fix button is a chip with the construction icon before its label and no data-act (' + rows.length + ' rows)');
+    ok(/\.issue-row \.btn\.fix\{[^}]*background:var\(--secondary-container\);color:var\(--on-secondary-container\);border-radius:var\(--shape-pill\)/.test(cssN) && /\.issue-row \.btn\.fix svg\.ic\{width:1\.8rem;height:1\.8rem/.test(cssN), 'U6 CSS: the Fix chip is tonal (secondary-container), pill, with an 18 px icon');
+    ok(/link \? 'link' : 'construction'/.test(src), 'U6: the Link it chip carries the link icon');
+    U.closePopover(); }
+  // 2. the needs gauges lead with a glyph; the Sewage one is the new drain icon
+  { const want = { beds: 'bed', seats: 'school', dining: 'restaurant', power: 'bolt', water: 'drop', wastewater: 'sewage' }; const bad = [];
+    for (const k in want) { const g = U.el.needEls[k]; const lab = g && g.el.children[0]; const ic = lab && lab.children[0]; if (!ic || ic.dataset.icon !== want[k] || !ic.classList.contains('sm') || lab.textContent !== (BSU.data.needs[k].label)) bad.push(k + ':' + (ic && ic.dataset.icon)); }
+    ok(bad.length === 0 && ['bed', 'school', 'restaurant', 'sewage'].every((n) => BSU.icons.has(n)), 'U6 needs: every gauge label leads with its registry glyph (bed school restaurant bolt drop sewage)' + (bad.length ? ' bad: ' + bad.join(' ') : ''));
+    ok(/\.need\{display:grid;grid-template-columns:8\.8rem 1fr 9rem/.test(cssN) && /\.need-label\{display:flex;align-items:center;gap:\.6rem/.test(cssN) && /\.need-label svg\.ic\{flex:none;color:var\(--on-surface-variant\)\}/.test(cssN), 'U6 CSS: the gauge label column holds the glyph (8.8 rem, flex, on-surface-variant icon)'); }
+  // 3. reduce motion: explicitly off → body.motion-on restores the tokens under the media query; on → reduce-motion; unset → neither
+  { U.reduceMotion(false); ok(dom.body.classList.contains('motion-on') && !dom.body.classList.contains('reduce-motion'), 'U6 reduce motion: off → body.motion-on (and no reduce-motion)');
+    U.reduceMotion(true); ok(dom.body.classList.contains('reduce-motion') && !dom.body.classList.contains('motion-on'), 'U6 reduce motion: on → body.reduce-motion (and no motion-on)');
+    U.reduceMotion(false);
+    ok(/body\.motion-on\{--dur-std:160ms;--dur-open:240ms;--dur-close:160ms\}/.test(cssN), 'U6 CSS: body.motion-on restores the three duration tokens (the body class wins over the :root media query for everything inside body)');
+    ok(/@media \(prefers-reduced-motion: reduce\)\{body:not\(\.motion-on\) \.coach-ring::after\{animation:none/.test(cssN) && /body\.reduce-motion \.coach-ring::after\{animation:none !important/.test(cssN), 'U6 CSS: the ring pulse follows the switch, not the media query alone');
+    const i = cssN.indexOf('@media (prefers-reduced-motion: reduce) { :root'), j = cssN.indexOf('body.motion-on{'); ok(i >= 0 && j > i, 'U6 CSS: the media-query default comes before the body override (source order is irrelevant for inheritance but keeps the intent readable)'); }
+  // 4. M toggles the Menu sheet, Shift+M mutes; How to play says so; the hint and the titles follow
+  { U.openPanel(null); const muted0 = !!U.settings().muted;
+    ok(U.keydown('m', M0) === true && U.sheetState() === 'list' && vis('menu-sheet'), 'U6 hotkey: M opens the Menu sheet (list state)');
+    ok(U.keydown('m', M0) === true && U.sheetState() === 'closed' && !vis('menu-sheet'), 'U6 hotkey: M again closes it');
+    U.openPanel('budget'); ok(U.keydown('m', M0) === true && U.sheetState() === 'closed' && s6.ui.panel === null, 'U6 hotkey: M closes the sheet from a panel too');
+    ok(U.keydown('M', Object.assign({}, M0, { shift: true })) === true && !!U.settings().muted === !muted0 && U.sheetState() === 'closed', 'U6 hotkey: Shift+M mutes (the sheet stays closed)');
+    U.keydown('M', Object.assign({}, M0, { shift: true })); ok(!!U.settings().muted === muted0, 'U6 hotkey: Shift+M again unmutes');
+    const keys = BSU.data.keys; ok(keys.some((k) => k.key === 'm' && k.action === 'menu' && !k.shift && !k.ctrl) && keys.some((k) => k.key === 'm' && k.action === 'mute' && k.shift === true) && keys.filter((k) => k.action === 'mute').length === 1, 'U6 data.keys: m = menu, Shift+m = mute, nothing else on M');
+    const row = U._ux.howKeys.flatMap((g) => g.rows).find((r) => r.k === 'M'); ok(!!row && /Menu/.test(row.t) && /Shift\+M/.test(row.t) && row.b.some((b) => b[3] === 'menu') && row.b.some((b) => b[3] === 'mute' && b[2] === 1), 'U6 How to play: the M row names Menu and Shift+M mute');
+    ok(U.el['btn-menu'].title === 'Menu (M)' && /Shift\+M/.test(U.el['btn-mute'].title) && /Shift\+M/.test(U.el['btn-title-mute'].title) && /Shift\+M to mute/.test(src) && !/'Mute \(M\)'/.test(src), 'U6 titles: the Menu icon says (M), the mute buttons and the sound hint say Shift+M');
+    ok(!/Esc from the map with nothing open = Menu/.test(src), 'U6: Esc on an empty map does not open the Menu (the M key does; Esc only tidies up)'); }
+  // 5. dead CSS and JS: the compact palette, the Settings legend / keys tables, the build menu blurb / why, .fb-cols are gone; the Safari fallback of allow-discrete is tested in safari.test
+  ok(!/#palette\.compact/.test(cssN) && !/\.legend-table|\.keys-table|\.legend-row/.test(cssN) && !/\.bm-blurb|\.bm-why/.test(cssN) && !/\.fb-cols\b/.test(cssN), 'U6 CSS: no rule for the compact palette, the legend / keys tables, .bm-blurb / .bm-why or .fb-cols');
+  ok(!/compactWidth/.test(src) && !/'compact', w </.test(src) && /L\.compactWidth/.test(src) === false, 'U6 ui.js: the palette compact toggle and L.compactWidth are gone (the sheet never shrank to icons)');
+  ok(!/function styleOfCoach/.test(readFileSync(join(root, 'src', 'js', 'ui_panels.js'), 'utf8')), 'U6 ui_panels.js: styleOfCoach (unreferenced) is gone');
+} catch (e) { ok(false, 'U6 block: ' + (e.stack || e)); }
 
 console.log(`\n${passes} passed, ${failures} failed`);
 process.exit(failures ? 1 : 0);

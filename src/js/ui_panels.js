@@ -518,7 +518,6 @@
   function positions() { const f = BSU.data && BSU.data.football; return (f && f.positions) || PEN.positions || POS_FALLBACK; }
   function oppAbbr(key) { return String(key || 'OPP').slice(0, 3).toUpperCase(); }
   function oppOf(key) { return (BSU.data && BSU.data.opponents && BSU.data.opponents[key]) || { name: key || 'Opponent', nick: '', rating: 50, style: 'balanced' }; }
-  function styleOfCoach(name) { const cs = (BSU.data && BSU.data.coaches) || []; for (let i = 0; i < cs.length; i++) if (cs[i] && cs[i].name === name) return cs[i].style || 'balanced'; return null; }
 
   // PLAN_V2 P1: staff helpers (data.staff text / styles; the Season panel's Staff tab reads sports.staff(state))
   const PF = PSP.staff || {};

@@ -145,6 +145,8 @@ Layers and Map popovers; the build sheet collapsed and expanded; the Menu sheet 
 card. Josh opens it in a browser and approves or redirects before any game code changes. Gate: the mock renders at
 1280 × 800, 1440 × 900 and 1920 × 1080 at the three display sizes without overlap; every text passes AA on its surface.
 
+*Status: shipped in `78d1df9` (https://spacebaw.github.io/LSU-game/).*
+
 **U1 — Tokens and restyle in place [Sonnet].** `style.css` rewritten on `docs/UI_STYLE.md`: the token block, the type
 scale, shape and elevation utilities, then every existing component re-skinned where it stands (buttons, chips, panels,
 cards, tabs, sliders, segmented buttons, tooltips, popover, coach, title). No layout moves, no DOM changes beyond class
@@ -152,29 +154,41 @@ names. The dark gradients, glass alphas and gold text go. The `hudMode` compact/
 matrix (`tools/qa/shots.mjs`) at 1440 × 900 and the three display sizes; `ui.test` CSS assertions updated; style.css
 ≤ 96 KB (the glass gradients leave; it should shrink).
 
+*Status: shipped in `fb95e8d` (https://spacebaw.github.io/LSU-game/).*
+
 **U2 — The at-rest screen [Fable].** App bar chips and popovers (needs, mini budget), goal pill ↔ card with the auto
 expand/collapse, Alerts badge + popover, Layers popover, Map popover, snackbars replacing the ticker and `#notifications`,
 the Build FAB (opening today's palette as an interim sheet), HUD modes folded (settings migration: `hudMode` read once
 and dropped). `ui.js` input state machine untouched. Gate: play.mjs, ui.test rewritten for the new skeleton, screenshots
 of every popover; Josh playtests.
 
+*Status: shipped in `f83d6f5` (https://spacebaw.github.io/LSU-game/).*
+
 **U3 — Nested surfaces [Sonnet, Fable reviews].** The Menu side sheet hosting every `registerPanel` panel with back
 navigation and hotkeys that deep-link; Settings consolidated (Display size, Alerts, Audio, Keep minimap / overlays,
 Particles, Shake, Colour-blind); inspect card; cards as dialogs; decision snackbar. Gate: ui_panels.test rewritten,
 every panel screenshot at 1280 × 800 (the sheet must scroll, not overflow).
 
+*Status: shipped in `dc8c0fb` (https://spacebaw.github.io/LSU-game/).*
+
 **U4 — Build sheet [Sonnet].** Palette → bottom sheet; build menu → the expanded sheet (category rail, cards, detail
 column) with a search field; keyboard: G toggles, Esc closes, arrows move between cards, Enter arms. Gate: menu.test,
 the tutorial's Build it flow (coach step "menu" rings the card in the open sheet), play.mjs.
+
+*Status: shipped in `462e211` (https://spacebaw.github.io/LSU-game/).*
 
 **U5 — Title, coach, icons, motion [Sonnet].** Title card, How to play / About inside the Menu sheet, coach restyle,
 inline SVG icons replacing the emoji glyphs, M3 motion with reduced-motion off switch. Gate: title screenshots, the
 tour (`tools/qa/play.mjs` tutorial scenario), contract test for the icon registry.
 
+*Status: shipped in `d8d3a0f` (https://spacebaw.github.io/LSU-game/).*
+
 **U6 — QA and docs [Fable].** Screenshot matrix 1280 / 1440 / 1920 × three display sizes × at rest, goal open, build
 sheet, Menu sheet, dialog, night, storm; AA contrast audit (script over the token sheet and a DOM walk); Safari; fps
 compare (DOM only, should be flat); `docs/ARCHITECTURE.md` §7 skeleton, `docs/INTEGRATION_NOTES.md`, `README.md`
 screenshots. Josh's playtest notes folded in.
+
+*Status: shipped 2026-11-11 in the commit "UI refresh U6, QA and docs" (https://spacebaw.github.io/LSU-game/). Audit, matrix, fps and the leftovers are in `docs/INTEGRATION_NOTES.md` "UI refresh U6".*
 
 Each pass ends with the full battery (`node build.mjs --check` last, smoke at both sizes, modules, contract, every unit
 file, `tools/qa/play.mjs`), a commit, a subtree push and the link.

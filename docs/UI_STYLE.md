@@ -1,7 +1,7 @@
 # UI style sheet (U0 of docs/PLAN_UI_REFRESH.md)
 
 The single source for the refresh: U1 copies §1 into `style.css` verbatim, U2–U5 build the surfaces of §3 to the sizes here,
-U6 re-runs §5. The mock that renders every surface below is `tools/ui_mock/index.html` (open it; `` ` `` toggles the toolbar,
+U6 re-ran §5 on the live DOM (`tools/qa/contrast_audit.mjs`) and §8 records what was built. The mock that renders every surface below is `tools/ui_mock/index.html` (open it; `` ` `` toggles the toolbar,
 ← → step screens, the hash records screen · size · viewport). All sizes are at display size 100 % (1 rem = 10 px);
 Comfortable and Large multiply every rem value by 1.15 / 1.3. The map gutter and the 1 px edges stay in px.
 
@@ -21,7 +21,7 @@ Paste as-is (this is the `:root` block of the mock; `tools/ui_mock/contrast.mjs`
   --tertiary: #F5B700; --on-tertiary: #2B1246; --tertiary-container: #FFE680; --on-tertiary-container: #2B1246;
   --error: #B3261E; --on-error: #FFFFFF; --error-container: #F9DEDC; --on-error-container: #410E0B;
   --success: #1F6B3F; --success-container: #DDF3E4; --on-success-container: #07331B;
-  --warn: #B26A00;
+  --warn: #B26A00; --warn-text: #8A5200;
   --water: #2E86BE; --moss: #5E8232;
   --scrim: rgba(28, 27, 31, .32); --scrim-title: rgba(28, 27, 31, .48);
   /* type */
@@ -49,7 +49,7 @@ html { font-size: calc(10px * var(--ui-scale)); }
 **Tuned against the plan's §3 hexes (why):**
 - `success` #2E7D4F → **#1F6B3F**: the plan's green was 4.3:1 on `success-container` and 4.0:1 on `surface-container-high`; text ("+$88k", "On · On") needs 4.5.
 - `water` #4FA3D6 → **#2E86BE** and `moss` #6A8F3C → **#5E8232**: gauge fills must read 3:1 against their track (`surface-container-high`); the originals were 2.2 and 2.9. The map overlays keep their own colours in render.js (canvas, not CSS).
-- `warn` **#B26A00** added: the "warn" gauge level and the amber issue glyph; gold (`tertiary`) is 1.4:1 on a track and is never used for that.
+- `warn` **#B26A00** added: the "warn" gauge level and the amber issue glyph; gold (`tertiary`) is 1.4:1 on a track and is never used for that. **U6:** `warn` is 3.7–4.1:1 on the light surfaces, so it is a fill / icon / border colour only; text in the warn hue (the heat-advisory weather line, an interrupt goal's kicker, the detail's lock line, the Land Office's why line, the warn chip) uses **`warn-text` #8A5200** (5.5 on `surface-container`, 6.1 on `surface`).
 - `on-secondary-container` #1F0A47, `on-error-container` #410E0B, `on-success-container` #07331B, `on-tertiary-container` #2B1246 added (the plan named the containers without their text roles).
 - `surface-float` = `surface` at 94 % (plan §3): every floating surface over the map; sheets, the app bar and dialogs are opaque.
 - `display` 2.6 rem → **4.4 rem**: only the title wordmark uses it and 26 px read as a subtitle on a 56 rem card.
@@ -87,34 +87,20 @@ height 40 px, hit target 44 px (a `::after` extension of 2 px above and below; t
 (32 px `primary` rounded 8, white leaf) · stat chips · spacer · date chip · speed segmented · spacer · Alerts (badge) · [lit overlay chip] ·
 Layers · Map · Menu. Nothing else may overlap it. Esc from the map with nothing open = Menu.
 
-*Implemented in U1:* 48 px opaque `surface` with the 1 px bottom edge; the brand mark is the old ▣ glyph on a 32 px `primary` square (the leaf arrives with U5); Alerts / Layers / Map icon buttons and the lit chip do not exist yet (U2), so the Budget / Season / Storm / Land / Almanac / Menu / Mute text buttons stay, as plain text buttons (labels fold away through the existing `tight`/`cap` shed steps, not the container query).
-
-*Implemented in U2:* as specified: brand mark (still ▣) with the wordmark beside it (the `tight` step hides the wordmark) · the five stat chips · a spacer · the date chip · the speed segmented · a spacer · Alerts (badge) · [lit chip] · Layers · Map · Menu · mute (an icon button, not in the spec list) · the Endowed chip. The bar is the size container: under 118 rem the stat labels, the cap suffix and the weather line hide; a two-step JS backstop (`tight`, then `bare`) covers the rest. The Menu icon opens an interim Menu popover (the list of §3 "Side sheet", with hotkey caps) until U3; "Esc from the map with nothing open = Menu" is U3's.
-
 **Stat chip** · 40 px pill, `surface-container`, padding 0 12 0 8; 24 px `primary` icon (paid / group / star / mood / eco), then two lines:
 value title-lg tabular + label uppercase in `on-surface-variant`. Students carries "cap 1,500" as a label-size suffix after the value.
 Selected (its popover open) = `secondary-container`. **Badge variant**: a 9 px `error` dot with a 2 px `surface` ring at the icon's top-right
 when a need is binding (Students) or cash runway is red (Cash). Click opens the chip's popover; Prestige / Happiness / Ecology open the
 Almanac row for that stat (U2 may give them a popover later).
 
-*Implemented in U1:* the chip is a 40 px pill with the value over the label (CSS grid, no DOM change); no icon glyphs and no badge dot yet (U2 / U5); "Apps 980 / Cap 1,500" still replaces the label row when the capacity chip shows, instead of the "cap 1,500" suffix; the needs popover is U2.
-
-*Implemented in U2:* as specified: the 24 px `primary` SVG icon (paid / group / star / mood / eco), value over label, "cap 1,500" as the suffix on the Students value, the 9 px `error` dot with its 2 px ring (Students: a need is binding; Cash: the runway is red or cash is negative), `secondary-container` while its popover is open. Cash → the mini budget, Students → the needs popover; Prestige / Happiness / Ecology keep today's breakdown popover (not the Almanac row). The applicants count moved to the needs popover's last line.
-
 **Date / weather chip** · same chip, not selectable; sunny / cloud / rain / moon glyph, value "Apr 9, Y1" at title size, label "SPRING · CLEAR"
 ("HEAT ADVISORY" in `warn`, "RIVER WINDOW" in `water`). Click opens the Almanac in the Menu sheet.
-
-*Implemented in U1:* date and weather text share one chip (weather label in the small uppercase role, hidden by the existing shed steps).
-
-*Implemented in U2:* the chip is a button that opens the Almanac; the glyph is still the emoji sky / storm glyph (U5 draws sunny / cloud / rain / moon); the value reads "Apr 9, Y1 · Spring" and the label "83° · Rain tmrw" (heat advisory in `warn`, river window in `water`), hidden under 118 rem.
 
 **Speed segmented button** · 40 px, 1 px `outline` border, pill, five segments (pause icon, 1×, 2×, 4×, 8×) min 36 px wide, padding 0 10,
 1 px dividers; selected segment `secondary-container`. Space / 1 2 3 4 as today.
 
 **Icon button** · 40 px circle, `on-surface-variant` 24 px glyph, 44 px target; selected (its popover open) `secondary-container`. **Badge**:
 16 px `error` pill, white 10 px / 600 count, top-right; "all clear" = a 8 px `success` dot. Sizes 32 px inside dense rows (alerts, inspect pill).
-
-*Implemented in U2:* as specified for the bar's Alerts / Layers / Map / Menu / mute (`.btn.icon` + `svg.ic`), the popover heads (32 px) and the Map pin; the badge count is the open issues (`issues.main`), the dot the all-clear state. The Alerts rows keep today's text buttons (Fix · ⌖ · zz · ✕ · 🔔), not 32 px icon buttons.
 
 **Goal pill** · top-left at (gutter, bar + 8), 40 px pill, `surface-float`, elevation 1; 24 px progress ring (`primary` on
 `surface-container-high`, 3 px) · kicker "GOAL 6" in `primary` · title 500 · "2 / 5" tabular `on-surface-variant` · expand_more.
@@ -124,23 +110,13 @@ Click expands to the goal card; a goal change expands it on its own and the card
 "NEW GOAL · 6 OF 22" · title (title role) · close icon; why line in `on-surface-variant`; 8 px progress bar + "2 / 5"; actions
 **Build it: Live Oak** (gold) + **Show me** (tonal); 1 px divider; "NEXT UP · title". Esc or outside click collapses to the pill.
 
-*Implemented in U1:* the card keeps today's position, the needs strip and the Build it / Show me buttons; the portrait is the 48 px circle; Build it is the gold button; the "collapsed" and `hudMode` pill forms are plain pills (no progress ring until U2). A kind accent (`interrupt` / `background`) stays as a 4 px left stripe.
-
-*Implemented in U2:* the pill and the card as specified (ring, kicker "GOAL 6" / "MILESTONE", title, "2 / 5", expand_more; the card with the portrait, kicker "GOAL · 6 OF 22" — "NEW GOAL · …" on the change that opened it — title, the objective text when it adds to the title, why, the 8 px bar, Build it (gold) + Show me (tonal), a fold chevron and the dismiss ✕ in the head, the NEXT UP line over a divider). The 10 s fold, hover hold, Esc and outside click are in; the needs strip left the card. The kind stripe stays on the card and colours the pill's kicker `warn` for an interrupt. A short window (`#hud.short`) still drops the why and next-up lines.
-
 **Build extended FAB** · bottom-right at the gutter, 56 px pill, `tertiary` / `on-tertiary`, elevation 3, padding 0 20 0 16; construction
 icon · "Build" (title) · key cap "G" (1.5 px border, 20 px). Hidden while the bottom sheet, the side sheet or a dialog is open. G toggles.
-
-*Implemented in U2:* as specified (`#fab-build`); it toggles today's palette as the interim sheet (G does the same; Shift+G opens the full build menu) and hides while the sheet, a panel, a card or the build menu is open; beside an open inspect panel it shifts left of it. The palette's own gold Build toggle became the filled "All buildings · ⇧G" button, so gold stays on three things.
 
 **Snackbar** · bottom-centre lane, bottom gutter, 340–640 wide, radius 12, `surface-float`, elevation 3, padding 8 8 8 16, body text,
 at most two stacked 8 px apart (news above decisions), 6 s for news. Plain: message · text button "Log" · close icon. **Decision**: bold
 lead ("Cove levee at 72 %") · two actions (text "Hold", tonal "Send the crew") · a 3 px `primary` countdown line along the bottom edge that
 shrinks with the deadline. When the inspect card is open and the lane would touch it, the lane shifts right of the card (U3).
-
-*Implemented in U1:* the notification stack (`.notif`) and the decision toast are re-skinned in place (`surface-float`, elevation 3, 12 px radius, kind stripe on the left); the countdown line is the 4 px `primary` bar under the options. Snackbar lane and Log panel are U2.
-
-*Implemented in U2:* the lane (`#snack-lane`, bottom centre, up to 640 wide), two visible, 6 s, news above the decision; news lines carry a Log text button and pan on click; notifications keep their action / Show me / Locate buttons and never wait (they replace the oldest visible news line), news lines queue. The kind stripe on the left stays (the mock had none). The decision snackbar: bold lead, "Hold" as text, "Send the crew" tonal, the 3 px `primary` line along the bottom edge; the football option buttons stay as a column (a row during the set piece). The Log is Menu → Log. The inspect-card shift of the lane is U3's.
 
 **Popover** · 360 wide (Alerts and Layers 400, Map fits its canvas), radius 16, padding 16, elevation 2, `surface-float`, head = title +
 close icon. Anchored 8 px under the bar: stat-chip popovers sit on the left gutter (so they cover the goal pill whole instead of peeking),
@@ -153,22 +129,12 @@ Spotlight (tonal) + Clear N · $ (filled); **layers** six filter chips, the lege
 200 px minimap canvas (radius 8), pin icon (selected when pinned, remembered in settings), click-to-pan line. Hotkeys: I alerts,
 F W K P C E overlays, M map.
 
-*Implemented in U1:* only today's `#popover` (breakdown card) exists; it carries the spec surface (360 → 340 wide, unchanged), title role and `success` / `error` signs.
-
-*Implemented in U2:* needs, mini budget, Alerts, Layers, Map and (interim) Menu as specified: 360 wide (Alerts / Layers 400, Map its canvas, Menu 320), 8 px under the bar, the stat-chip ones on the left gutter, the icon ones right-aligned to their icon, one at a time, Esc / outside press / the same control closes, the control shows selected. Needs: six gauge rows (Sewage is the sixth), the binding line in its level colour (the sewage alert is that line in `error-container`), Locate, the applicants line. Mini budget: last month's Income / Expenses / Net / Runway + "Open Budget · B". Alerts: today's tray rows (Fix / ⌖ / zz / ✕ / 🔔, In progress, Suggestions, the hidden line) with the foot Spotlight (tonal) + Clear N · $ (filled); titles may wrap to two lines. Layers: the six filter chips, the legend as swatches that echo the canvas colours, the note. Map: the pin (`settings.keepMinimap`, selected while pinned; a pinned popover survives Esc and other popovers; its icon unpins it); Settings also pins the Layers popover (`keepOverlays`), stacked under a pinned Map. Hotkeys: I still cycles the issues (it does not open the popover), M stays mute.
-
 **Side sheet (Menu)** · right gutter, top bar + 8, bottom gutter, 360 wide, opaque `surface`, radius 16, elevation 3, 1 px edge; head 56 px
 (headline + close), body scrolls inside. **List state**: list items 48 px with a label-size second line and the hotkey cap at right
 (Budget B · Season N · Storm T · Land Office O · Almanac · Milestones L · Log), divider, Settings / How to play / About with chevrons.
 **Panel state**: head = arrow_back · panel title · close; the `registerPanel` body in `.budget` styling (kicker sections, rows with 1 px
 `surface-container-high` dividers, totals 600, policy rows 48 px with a slider / segmented / switch at right). Esc closes the sheet, back
 returns to the list; B N T O L open the sheet straight to the panel.
-
-*Implemented in U1:* panels still open centred over the map (`#panels .panel`: opaque `surface`, radius 16, elevation 3, 1 px edge, 20 px padding, headline title); the side-sheet host and list state are U3.
-
-*Implemented in U2:* the list state exists as the interim Menu popover (`#pop-menu`, 320 wide, 48 px list items with the second line and the hotkey caps, a divider, Settings / How to play / About); each item opens today's centred panel. Log is a panel now (`registerPanel('log')`). Settings gained "Keep the minimap open" and "Keep overlays visible" and lost the HUD mode row (H hides, Shift+H restores; not a setting). Panel content uses `.row` / `.set-row` with 1 px `surface-container-high` dividers, `.seg` segmented buttons, `.toggle` (outlined off, `secondary-container` on) and primary-accent sliders / checkboxes.
-
-*Implemented in U3:* the side sheet is `#menu-sheet` (360 wide at 100 %, full height from the bar + 8 to the bottom gutter, **28 px top-left** corner and 16 px elsewhere per the task, elevation 3, no scrim, 1 px edge); head 56 px (back arrow only in the panel state, headline title, close); list items 48 px with a leading 24 px icon, a label-size second line and the hotkey cap (chevron where there is none); panels render in `.sheet-body` with 8 px padding. Settings is one list (label left, control right; Display size, Alerts and the audio row stack or share the row by width): Display size, Alerts, Audio, Keep the minimap open, Keep overlays visible, Particles, Screen shake, Colour-blind overlays, then Tour and Save / Load / New game. The Budget keeps the mock's stacked kicker sections; the football tables shrink their columns rather than scroll sideways. Esc closes the sheet from either state; B N T O L deep-link and the same key closes. Opened from the title screen the sheet sits at the top gutter with no back arrow.
 
 **Bottom sheet (Build)** · full width, docked, top corners 28, opaque, elevation 3, 1 px top edge; 24 px handle row (32 × 4 `outline-variant`
 pill; ⤢ and close icons at the right), 40 px category tabs (selected `primary` with a 3 px bar; `warn` pip for new items), 1 px divider, the
@@ -178,35 +144,17 @@ palette: item cards 112 wide (64 px icon, name 600, price label) in a horizontal
 detail (80 px icon, name headline, meta, ★ goal banner in `tertiary-container`, text, quote, EFFECTS list, sticky foot Place · Enter + Show
 on map). G toggles, Esc closes, arrows move, Enter arms.
 
-*Implemented in U4:* as specified, in two elements that swap: the collapsed sheet is `#palette` (handle row with ⤢ and ✕ at the right, tabs row with the `warn` pip, cards 112 wide at 64 px icons, a ★ disc in `tertiary-container` on the goal / needed building, greyed cards at 38 % with their "Unlocks: …" line kept at full strength, bulldoze and info icons at the right, 240 px tall), the expanded sheet is `#build-menu` at 80 % height (head with hint + search field 240 + ⤢ + ✕, rail 200, grid cards min 210 with icon / name / price · upkeep / requirement chips, detail 300 with the Place · Enter foot pinned under a scrolling body). The sheet is edge to edge (the mock), not inset by the gutter. Focus: a 2 px `primary` ring (`:focus-visible` and the `.kbf` class). Esc closes outright from either state; ⤢, the handle and Shift+G switch.
-
-*Implemented in U1:* the palette stays a full-width docked bar (opaque `surface`, 1 px top edge, elevation 3, no rounded corners, no handle row) with a 40 px tab row (primary underline, `warn` pip), item cards (`surface-container-low`, 1 px `outline-variant`, selected `secondary-container`, locked 62 % with the unlock condition at full strength on hover), and the gold Build toggle (the future FAB). The build menu (G) is a re-skinned centred panel: rail list items, cards in the grid-card look, `tertiary-container` goal banner and Goal badge, primary Build this. Bottom / expanded sheet is U4.
-
-*Implemented in U2:* the same bar, hidden at rest and shown by the FAB / G (Esc or its ✕ closes it; the FAB hides while it is open); nothing docks on it any more (`--bot` is the gutter while it is closed). The real bottom sheet (handle row, 28 px corners, ⤢ expand) and the expanded build sheet are U4; Shift+G opens today's build menu in the meantime.
-
 **Inspect card** · bottom-left at the gutter, 320 wide, radius 16, padding 12 16 16, elevation 2, `surface-float`: 56 px sprite, title +
 label-size sub, collapse (expand_more) and close icons; rows label / value 500 tabular with `surface-container-high` dividers (`success`
 for On · On); actions Pilings (tonal) · Repair (text) · Demolish (text, `error`, right). **Pill**: 40 px, 32 px sprite circle, name 600,
 "286 / 300 beds", expand_less + close (32 px). Esc or right-click closes; the kitchen menu editor stays a dialog.
 
-*Implemented in U1:* the inspect side panel keeps its full-height right dock (`--inspect-w`, 4 px kind stripe on the left, 64 px sprite tile); the card / pill pair is U3.
-
-*Implemented in U3:* `#inspect` is the card (320 wide, bottom-left at the gutter above the Build sheet, 56 px sprite tile, title + label-size sub, a collapse chevron and a close icon, rows, the action row under a 1 px rule). It is capped in height (`max-height: max(24rem, 100vh − bar − sheet − 28rem)`) so it never reaches the goal pill; the body scrolls. Collapsed it is the 40 px pill with the 32 px round sprite, the name and the chevron up + close, **without** the "286 / 300 beds" meta line of the mock (the card has no single headline number for every kind it inspects: tile, levee, gator, student). The 4 px kind stripe left with the dock. Differences from the mock: the card's rows are today's `.row`s (kind-specific, many); the kitchen Menu summary and the network pill stay inside the body.
-
 **Dialog + scrim** · centred, 420 wide, `surface-container-high`, radius 28, padding 24, elevation 3, over a 32 % scrim (the bar too);
 kicker · headline · body in `on-surface-variant` · actions right-aligned (text, then filled). Esc = the dismiss action. Board, failure,
 storm and voice cards use it; the voice card's two choices are tonal + filled.
 
-*Implemented in U3:* the same dialog for every card (420 px, 28 px corners) and the student voice (`#voice-card` is its scrim host, `#voice-dialog` the card: Decline text, Accept filled). Actions are right-aligned with the filled one last; long action labels (the failure card's options) wrap inside full-height buttons. Esc runs the action flagged `dismiss: true`, else closes; focus goes in and comes back (see INTEGRATION_NOTES "UI refresh U3"). The kicker line sits above the headline as in the mock.
-
-*Implemented in U1:* `.card` (the card host) is the dialog: `surface-container-high`, radius 28, 24 px padding, elevation 3, no edge, over the 32 % scrim; the title is the headline role, the body `on-surface-variant`. Actions follow the new button rules (`.primary` = filled, default = tonal).
-
 **Filter chip** · 32 px, radius 8, 1 px `outline`, key cap 20 px `surface-container-high`; selected `secondary-container` with the cap in
 `secondary` / white. The lit chip in the bar is the 24 px pill form (`secondary-container`, 1 px `secondary`).
-
-*Implemented in U1:* the six overlay keys (`.ov-btn`) are 36 px key buttons with a 1 px `outline` border on `surface-float` (selected `secondary-container` + `secondary` edge); they float on the map until the Layers popover (U2). The legend chip is `surface-float` with an `outline-variant` edge.
-
-*Implemented in U2:* as specified: 32 px filter chips (key cap + name) in the Layers popover, the lit 24 px chip beside the Layers icon while an overlay is on (`#ov-lit`, click = the popover).
 
 **List item** · 48 px (40 in the rail), radius 12, padding 0 12 0 16, body text with an optional label-size line, trailing hotkey cap /
 count / chevron; selected `secondary-container`.
@@ -222,14 +170,10 @@ danger = text in `error`. Key caps inside buttons: 18 px, 1 px border of the tex
 (text) · spacer · Skip tour (text) · Next (filled). Placed above and right-aligned to its target. The ring: the target's rect + 8 px, pill,
 3 px `primary` ring, the 32 % scrim everywhere else (one element, a spread box-shadow; no blur).
 
-*Implemented in U1:* the box is 340 wide, opaque, radius 16, elevation 3; the ring is the target's rect with a 3 px `primary` border at 12 px radius (not a pill, not a spread shadow: the four scrim panes still tile the rest at 32 %). The pane / ring / box keep their 240 ms position transitions (an overlay, no layout cost): the one place that moves left / top / width / height.
-
 **Title card** · centred, 560 wide, radius 28, padding 24, opaque, over the 48 % scrim: kicker · wordmark (display serif, `primary`, 4 px
 `tertiary` underline) · italic serif tagline · **Charter the university** (gold, 48 px) · text buttons Continue / How to play / About /
 Settings · Seed outlined field (180) + mute icon · DISPLAY SIZE segmented (Compact 100 % · Comfortable 115 % · Large 130 % · Auto) + hint ·
 motto kicker.
-
-*Implemented in U1:* as specified, except the tagline is the sans italic (the serif is the wordmark's alone, plan §8); Continue / How to play / About / Settings are text buttons; Display size is the outlined segmented button; opening a panel from the title fades the card out instead of blurring it.
 
 ## 4. Layout rules (what `window.mockCheck()` enforces)
 
@@ -265,6 +209,8 @@ on-secondary-container #1F0A47  secondary-container #F0E7FF  text   14.74   pass
 on-tertiary #2B1246     tertiary #F5B700          text   9.12    pass   Build FAB, Build it, Charter (gold)
 on-tertiary-container #2B1246  tertiary-container #FFE680  text   13.21   pass   goal banner, ★ badge
 warn #B26A00            tertiary-container #FFE680  icon   3.41    pass   warn issue glyph
+warn-text #8A5200       surface-container #EFEDF3  text   5.50    pass   U6: the heat-advisory weather line (warn is a fill / icon colour only)
+warn-text #8A5200       surface #FBFAFD           text   6.14    pass   U6: an interrupt goal kicker, the detail lock line, the Land Office why line
 error #B3261E           surface #FBFAFD           text   6.29    pass   Demolish text button, bad gauge value
 on-error #FFFFFF        error #B3261E             text   6.54    pass   alerts badge
 on-error-container #410E0B  error-container #F9DEDC   text   12.77   pass   alert row
@@ -286,8 +232,40 @@ tertiary #F5B700        surface #FBFAFD           info   1.73    info   gold und
 outline-variant #CAC4D0  surface #FBFAFD           info   1.64    info   dividers and the 1 px edge of floating surfaces (decorative)
 surface-container-high #E9E6EF  surface #FBFAFD           info   1.19    info   gauge / progress tracks (decorative)
 
-41 pairs, 0 failing (text ≥ 4.5, icons / borders ≥ 3.0; info rows are decorative)
+43 pairs, 0 failing (text ≥ 4.5, icons / borders ≥ 3.0; info rows are decorative)
+
+**U6 live-DOM audit** (`node tools/qa/contrast_audit.mjs`, 1440 × 900, 96-map, 100 %; every visible text node, `svg.ic` icon and control border against its effective background: ancestors up to the first opaque / ≥ 94 % surface, translucent layers and the dialog scrim composited, a floating surface composited over the world-canvas pixel under it; text ≥ 4.5, ≥ 24 px or bold ≥ 19 px and icons / borders ≥ 3.0; inactive content is "info", not gated):
+
 ```
+state                         checked   failing   info
+----------------------------  --------  --------  ----------
+title                         20        0         0
+title-dimmed-under-sheet      55        0         20
+at-rest                       44        0         1
+goal-card                     49        0         1
+popover-needs                 66        0         1
+popover-budget                57        0         1
+popover-alerts                77        0         1
+popover-layers                70        0         1
+popover-map                   48        0         1
+popover-breakdown             59        0         1
+menu-list                     79        0         1
+menu-budget                   88        0         1
+menu-settings                 76        0         1
+build-collapsed               70        0         2
+build-expanded                125       0         11
+dialog                        49        0         1
+coach                         49        0         1
+inspect-card                  78        0         6
+inspect-pill                  48        0         1
+snackbars                     56        0         1
+night                         50        0         1
+storm                         43        0         12
+hud-hidden                    2         0         0
+total                         1358      0         67
+```
+
+The first run found 39 failures of two kinds and both were fixed in `style.css`: text in `warn` (3.65 on `surface-container`: the weather line's heat advisory, the interrupt goal kicker) → the `warn-text` role; the gold `star` icon in the Build rail (1.5–1.7 on white) → the card's `tertiary-container` disc with `on-tertiary-container`. The 67 info rows are inactive content by design: the dimmed title card under the sheet (14 %, `pointer-events: none`), the 38 % greyed Build cards (their "Unlocks: …" line stays at full strength and passes), the HUD dimmed under the expanded Build sheet, the speed buttons disabled during a set piece, the cash delta at opacity 0 between flashes, and the inspect card's empty meter dots at 30 %.
 
 `surface-float` is `surface` at 94 %: over the brightest map green the effective background darkens by about 1 %, which moves the ratios
 above by less than 0.1. Gold is a fill only (`on-tertiary` text on it); `outline-variant` is decorative (M3's own rule) and every control
@@ -326,7 +304,7 @@ U5 registered every path in `BSU.icons` (`src/js/icons.js`; `icons.get(name, cls
 | volume_up | `M4 10v4h4l5 4V6L8 10z` `M16 9a4 4 0 0 1 0 6` `M18.5 6.5a7.5 7.5 0 0 1 0 11` |
 | settings | the gear path in the mock (long; copy from the sprite) |
 
-**Added in U5** (all the same grid, stroke 2, `currentColor`; `star`, `play_arrow`, `play_arrow_left` and `dot` are filled): `notifications_off` (bell + slash, the muted kind) · `more_horiz` (the ⋯ more glyph; no DOM button asks for it yet) · `chevron_left` · `play_arrow_left` · `skip_next` (Skip) · `swap_horiz` (the Drag requirement) · `undo` · `my_location` (Locate) · `dot` · `error` · `check_circle` · `star_border` · `hourglass` · `crowd` · `mood_neutral` / `mood_bad` · sky: `sunrise` `sunset` `moon` `cloud` `rainy` `storm` `thermostat` (with `sunny`, `cyclone`) · alert and issue kinds: `bolt` `drop` `no_water` `wave` `crack` `link` `sandbag` `bug` `mosquito` `gator` `pets` · requirements: `walk` `road` `pilings` (with `bolt`, `drop`, `swap_horiz`). `volume_off` (the mute variant) was added in U2. Still not drawn: a sewage glyph for the Sewage gauge (the gauges are bars with a label).
+**Added in U5** (all the same grid, stroke 2, `currentColor`; `star`, `play_arrow`, `play_arrow_left` and `dot` are filled): `notifications_off` (bell + slash, the muted kind) · `more_horiz` (the ⋯ more glyph; no DOM button asks for it yet) · `chevron_left` · `play_arrow_left` · `skip_next` (Skip) · `swap_horiz` (the Drag requirement) · `undo` · `my_location` (Locate) · `dot` · `error` · `check_circle` · `star_border` · `hourglass` · `crowd` · `mood_neutral` / `mood_bad` · sky: `sunrise` `sunset` `moon` `cloud` `rainy` `storm` `thermostat` (with `sunny`, `cyclone`) · alert and issue kinds: `bolt` `drop` `no_water` `wave` `crack` `link` `sandbag` `bug` `mosquito` `gator` `pets` · requirements: `walk` `road` `pilings` (with `bolt`, `drop`, `swap_horiz`). `volume_off` (the mute variant) was added in U2. **Added in U6:** the needs gauges lead with a glyph: `bed` (`M3 20v-9` `M3 16h18` `M21 20v-6a2 2 0 0 0-2-2h-8v4` `M5 12h3`), `school` (a mortarboard: `M12 4 2 9l10 5 10-5-10-5z` `M6 11.5v4.5c0 1.5 2.7 3 6 3s6-1.5 6-3v-4.5` `M22 9v5`), `restaurant` (fork and knife: `M7 3v18` `M4 3v4a3 3 0 0 0 6 0V3` `M17 3c-2 2.5-3 5-3 8h3v10` `M17 3v18`) and **`sewage`** (a drain grate: `M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z` `M8.5 9v6` `M12 9v6` `M15.5 9v6`); power and water reuse `bolt` and `drop`. The Alerts rows' Fix chip uses `construction`, Link it uses `link`. 78 names.
 
 ## 7. Decisions U0 took where the plan left room
 
@@ -337,27 +315,22 @@ U5 registered every path in `BSU.icons` (`src/js/icons.js`; `icons.get(name, cls
 - The compact density rule (§1) is a container query, not a display-size special case: it fires on width, so a narrow window at 100 % gets it too.
 - Inspect pill is the collapsed state of the inspect card (expand_more on the card, expand_less on the pill), 40 px like the goal pill.
 
-## 8b. Implemented in U5 (title, coach, icons, motion)
+## 8. Implemented (as built, U1–U6; one entry per surface of §3, what differs from the spec and why)
 
-- **Title card** as §3 "Title card" (the U1 build plus): "Charter the university" gold; **Continue · How to play · About this build · Settings** are one row of text buttons (Continue reads "Continue · Apr 9, Y1" when a save exists); the Seed is an outlined field with its label in the border (`.of` / `.of-l`) and the mute icon button beside it; Display size is the segmented control (labels "100 %" with a no-break space) and the hint "Auto picks N % for this window."; the footer line. **Over the Menu sheet**: while How to play / About / Settings is open (`#app.title-on.sheet-open`) the card dims to 14 % opacity, slides 12 rem left and ignores the pointer (opacity + transform, 240 ms), and comes back when the sheet closes, so the two never fight at 1280 × 800.
-- **Coach card** as §3 "Coach card" with 28 px corners (`shape-lg`, not 16: the task's call), elevation 3, the counter as a `primary` label ("QUICK TOUR · 3 OF 6"), title role, body `on-surface-variant`, Back / Skip tour as text buttons and a filled Next ("Geaux build" on the last step); the ring is the target + 8 px with a 3 px `primary` border at 12 px radius and a pulse on its `::after` (scale 1 → 1.1 and fade, 1.8 s, transform and opacity only); the four panes tile the rest in `--scrim`. **Placement** (`ui._coachPlace`): below the target (above for a target in the lower half), right-aligned to a target on the right half; else right, else left; else the window corner with the least overlap; always inside the window and above the Build sheet unless the sheet is the target; never over its own target (a test sweeps 400 random targets).
-- **Icons**: every emoji and text glyph of the DOM chrome is a registry icon: brand leaf, mute / unmute (bar and title), the sky glyph (sunrise, sunny, sunset, moon, rainy, storm, cyclone), ✕ → `close`, ⤢ `open_in_full`, chevrons, the back arrow, the ten Menu glyphs, the alert strip (`cyclone mosquito thermostat bolt wave no_water gator`), the Alerts rows (a 32 px severity tile: `primary-container` / `error-container` for severity 3 / neutral for 1, holding the kind's icon; Locate `my_location`, Snooze `snooze`, Dismiss `close`, the mute bell `notifications` / `notifications_off`), the overlay chips (key letter · glyph · name: F wave, W drop, K mosquito, P bolt, C crowd, E leaf), the detail NEEDS rows and the card chips (`walk bolt drop road pilings swap_horiz`), the snackbar kind icon (`info warning drop pets paid football calendar star check_circle`, leading the line), the inspect rows (mood face, quality stars, wind-rating dots, a check / cross after Power / Water), the panels' ✓ ✗ ⏳ ● (`check close hourglass dot`), the possession arrows, the staff stars, the Land Office deed. **Kept as text**: the glyph keys inside `data.js` (requirement glyphs, mapped by `icons.fromGlyph`), emoji inside news / voice / almanac strings, prose arrows ("→ build a Dorm"), `×` and `·`, the key table's arrows in How to play (key caps), the `★` inside sentences ("up to 3★", "Gold ★ marks …"), and the map canvases (labels, minimap, beacons).
-- **Motion**: state layers 160 ms standard (U1); every surface that opens (popovers, both Build sheets, the Menu sheet, dialogs, snackbars, the goal card) 240 ms emphasized-decelerate (keyframes `rise`, `sheet-in`, `sheet-up`: transform + opacity); **closing 160 ms accelerate** by a transition into the `.hidden` look with `display` allowed to wait (`transition-behavior: allow-discrete`; a browser without it hides at once); the goal pill ↔ card cross-fades the same way. The only animated layout properties are the coach panes' and ring's `left / top / width / height` moves (an overlay, no layout cost). **Reduce motion**: Settings → "Reduce motion" (`settings.reduceMotion`, unset until the player flips it, then it follows `prefers-reduced-motion`) puts `reduce-motion` on `<body>`: every duration token goes to 0 ms, every animation and transition ends at once and the ring does not pulse; the media query still zeroes the tokens on its own.
-- **Inspect pill** gets the one-line meta after the title ("300 beds", "No power", "Under construction 40%"; other kinds show their sub line). `#insp-body` is `flex: 0 1 auto` (it was `1 1 0`, which collapsed the card's rows to nothing inside an auto-height card).
+The tokens of §1 are `style.css`'s `:root` verbatim (plus `--warn-text`, U6, and the layout line `--topbar-h --palette-h --bot --side --inspect-w` with the old type names `--fs-small lead num` as aliases). State layers are `::before` in `currentColor` (hover 8 %, press 12 %); the 44 px hit area is `::after`; `.btn` is tonal, `.btn.primary` filled, `.btn.icon` a 40 px circle (32 px in dense rows), `.btn.small` 32 px, `.btn.danger` text in `error`, `.btn.gold` the three gold fills (`#btn-charter`, `#btn-obj-build`, `#fab-build`); selection controls (`.seg-btn .speed-btn .ov-btn .toggle .fb-tab .list-item .tab`) are outlined / transparent off and `secondary-container` on. Colours that are not CSS stay drawn: the minimap field, the Land Office section map, the map labels and beacons (canvases).
 
-## 8a. Implemented in U2 (what the live sheet does differently from §3–§4, and why)
-
-- The at-rest screen is the bar, the goal pill, the FAB and the lane (§4), plus the pre-existing alert strip (top centre, U3 / U5) and the undo chip / hint when they fire; a pinned Map or Layers popover is a base surface by choice.
-- G toggles the Build sheet (the FAB's action) and Shift+G the full build menu, so the key and the FAB agree; U4 may make Shift+G the sheet's expand.
-- Notifications never queue behind news (a click's feedback must be immediate): the oldest visible news line makes room; only news lines wait. Snackbars size to their content (340–640).
-- The Alerts rows keep today's text action buttons and the purple glyph plate (the issue tests read them); the severity-coloured tiles and 32 px icon buttons of the mock are U5's.
-- `svg.ic` is the icon class (not `.icon`: the palette and build-menu canvases already use `.icon`); `.sl` is the state layer of the non-button controls.
-- The HUD's hidden state is session-only (`ui.hudMode()`), read once from the old `settings.hudMode` on load and then dropped.
-
-## 8. Implemented in U1 (what the live sheet does differently from §1–§3, and why)
-
-- Buttons: default `.btn` is tonal, `.btn.primary` filled, `.btn.small` 32 px (44 px hit area through `::after`), `.btn.icon` a 40 px circle (32 px in cards and panel heads), `.btn.danger` text in `error`; selection controls (`.seg-btn`, `.speed-btn`, `.ov-btn`, `.toggle`, `.fb-tab`) are outlined / transparent when off and `secondary-container` when on; a plain `.btn.active` (bulldoze, issue spotlight) is filled `primary`. Gold is `#btn-charter`, `#btn-obj-build`, `#btn-build-menu` (and `.btn.gold`).
-- State layers are `::before` in `currentColor` (hover 8 %, press 12 %), transitions 160 ms on opacity / background-color; every other motion is transform / opacity at 240 ms decelerate, zeroed by `prefers-reduced-motion`.
-- Type: `--fs-small`, `--fs-lead`, `--fs-num` survive as aliases of body, title and title-lg; body is now 12 px, so dense panels (Season, Storm) are 1 px smaller than before.
-- Colours that stay hard-coded are not CSS: the minimap, the Land Office section map and the issue glyphs are canvases drawn by render.js / ui_panels.js (dark minimap field, kind-coloured glyphs on a purple plate); U2 / U3 move them into popovers and sheets where their backgrounds can follow.
-- Issue rows keep a `primary` stripe and selection ring in CSS (ui.js no longer writes the kind colour inline); the kind colour lives on the glyph.
+- **App bar.** As specified: brand mark (the eco leaf on a 32 px `primary` square) with the wordmark · five stat chips · spacer · date chip · speed segmented · spacer · Alerts (badge) · lit overlay chip · Layers · Map · Menu · a mute icon button (not in the spec list) · the Endowed chip. A size container: under 118 rem the stat labels, the cap suffix and the weather line hide; `fitTopbar` keeps a two-step JS backstop (`tight` hides the wordmark, `bare` the same labels). "Esc from the map with nothing open = Menu" was **not** built: `M` toggles the Menu sheet (U6) and Esc only ever closes things, so one more Esc always leaves a clear screen (every QA helper relies on it).
+- **Stat chip.** As specified: 24 px `primary` icon (paid / group / star / mood / eco), value over an uppercase label, "cap 1,500" as the suffix on the Students value, the 9 px `error` dot with its 2 px ring (Students: a need is binding; Cash: the runway is red or cash negative), `secondary-container` while its popover is open. Cash → the mini budget, Students → the needs popover; Prestige / Happiness / Ecology open the breakdown popover (not the Almanac row). The applicants count sits on the needs popover's last line.
+- **Date / weather chip.** A button that opens the Almanac; the sky glyph is a registry icon swapped by phase (`sunrise sunny sunset moon`, `rainy` while it rains, `storm` in the outer bands, `cyclone` at landfall); value "Aug 6, Y1 · Summer", label "105° · Rain tmrw" (heat advisory in `warn-text`, river window in `water`), hidden under 118 rem.
+- **Speed segmented · Icon button · Filter chip · List item · Text field · Buttons.** As specified. The bar's icon buttons are `.btn.icon` + `svg.ic`; the popover heads use the 32 px size; the badge count is the open issues, the dot the all-clear. Filter chips are the Layers popover's six (key cap · glyph · name) and the lit 24 px chip beside the Layers icon. List items are the Menu list (48 px, icon, second line, hotkey cap or chevron) and the Build rail (40 px, ★ disc + count). The text field is the Build sheet's search (`.text-field`, leading search icon) and the title's Seed (`.of`, the label in the border).
+- **Goal pill ↔ card.** As specified (ring, kicker "GOAL 6" / "MILESTONE" — `warn-text` for an interrupt, title, "1 / 5", expand_more; the card with the portrait, kicker "GOAL · 6 OF 22" / "NEW GOAL · …", title, the objective text when it adds to the title, why, the 8 px bar, Build it (gold) + Show me (tonal), a fold chevron and the dismiss ✕, the NEXT UP line over a divider). The 10 s fold, hover hold, Esc and outside click; the kind stripe stays on the card; a short window drops the why and next-up lines. The student speech bubble (`#speech-bubble`) hangs under the card as before.
+- **Build extended FAB.** As specified; toggles the Build sheet (G does the same, Shift+G expands) and hides while either sheet, the Menu sheet or a dialog is open; beside an open inspect card it keeps its corner (the card is bottom-left).
+- **Snackbar.** The lane (`#snack-lane`, bottom centre, up to 640 wide), two visible, 6 s, news above the decision; news lines carry a Log text button and pan on click; notifications keep their action / Show me / Locate buttons and never wait (they replace the oldest visible news line), news lines queue; the 4 px kind stripe on the left and a leading kind icon (the mock had neither). The decision snackbar: bold lead, "Hold" text, "Send the crew" tonal, the 3 px `primary` line along the bottom edge; the football options stay a column (a row during the set piece). The lane shifts right of an open inspect card. Snackbars have no exit animation (they leave the DOM).
+- **Popover.** needs · mini budget · Alerts · Layers · Map · breakdown, 360 wide (Alerts / Layers 400, Map its canvas), 8 px under the bar, the stat-chip ones on the left gutter, the icon ones right-aligned to their icon, one at a time, Esc / outside press / the same control closes, the control shows selected. Needs: six gauge rows, each leading with its glyph (U6: `bed school restaurant bolt drop sewage`), the binding line in its level colour, Locate, the applicants line. Alerts: rows with a 32 px severity tile (`error-container` for 3, `primary-container` for 2, neutral for 1) holding the kind's icon, the title + age, the ×N badge, a **tonal icon + label chip** for Fix / Link it (U6: `construction` / `link`; the label stays the button's text), Locate / Snooze / Dismiss / the mute bell as 28 px icon buttons (`data-act`), In progress, Suggestions, the hidden line, and the foot Spotlight (tonal) + Clear N · $ (filled). Map: the pin (`settings.keepMinimap`, selected while pinned; a pinned popover survives Esc and other popovers); Settings also pins Layers (`keepOverlays`), stacked under a pinned Map. Hotkeys: I cycles the issues (it does not open the popover).
+- **Side sheet (Menu).** `#menu-sheet`: right gutter, bar + 8 → bottom gutter, 360 wide, opaque, **28 px top-left** corner and 16 px elsewhere, elevation 3, no scrim, 1 px edge; head 56 px (back arrow in the panel state, headline title, close); list items 48 px with a leading icon, a label-size second line and the hotkey cap (chevron where there is none); panels render in the body with 8 px padding and scroll inside it (checked at 1280 × 800 / 130 %). Settings is one list: Display size, Alerts, Audio, Keep the minimap open, Keep overlays visible, Particles, Screen shake, Reduce motion, Colour-blind overlays, then Tour and Save / Load / New game. B N T O L deep-link and the same key closes; **M toggles the sheet** (U6; mute moved to Shift+M); Esc closes it from either state. Opened from the title screen the sheet sits at the top gutter with no back arrow and the title card dims aside.
+- **Bottom sheet (Build).** Two elements that swap: the collapsed sheet `#palette` (handle row with ⤢ and ✕, tabs with the `warn` pip, cards 112 wide at 64 px icons, a ★ disc in `tertiary-container` on the goal / needed building, greyed cards at 38 % with their "Unlocks: …" line at full strength, bulldoze and info icons, 240 px tall) and the expanded `#build-menu` at 80 % height (head with hint + search field 240 + ⤢ + ✕, rail 200 with the ★ disc (U6: the rail star was a bare gold glyph on white, 1.7:1), grid cards min 210 with icon / name / price · upkeep / requirement chips, detail 300 with the Place · Enter foot pinned under a scrolling body). Edge to edge, not inset by the gutter. Esc closes outright from either state; ⤢, the handle, Shift+G switch; arrows move, Enter arms, `/` searches. The compact (icons-only) palette of the old HUD is gone (U6 removed its last toggle).
+- **Inspect card.** `#inspect`: 320 wide, bottom-left at the gutter above the Build sheet, 56 px sprite tile, title + label-size sub, a collapse chevron and a close icon, rows, the action row under a 1 px rule; capped in height so it never reaches the goal pill (the body scrolls). Collapsed: the 40 px pill with the 32 px round sprite, the name, a one-line meta ("300 beds", "No power", "Under construction 40 %"), chevron up + close. The kitchen Menu summary and the network pill stay inside the body; the Edit menu stays a dialog.
+- **Dialog + scrim.** `#cards` and the student voice (`#voice-dialog`): 420 px, 28 px corners, `surface-container-high`, 24 px padding, over the 32 % scrim (the bar too); kicker · headline · body · actions right-aligned with the filled one last (long labels wrap inside full-height buttons). Esc runs the action flagged `dismiss`, a modal card ignores it; focus moves in and comes back.
+- **Coach card.** 340 wide with **28 px corners** (not 16), elevation 3, the counter as a `primary` label ("QUICK TOUR · 3 OF 6"), Back / Skip tour text buttons, a filled Next ("Geaux build" last); the ring is the target + 8 px, 3 px `primary` at 12 px radius (not a pill) with a transform / opacity pulse; the four panes tile the scrim (not one spread shadow). Placement: below the target (above for the lower half), right-aligned on the right half, else right / left / the corner with the least overlap; always inside the window and never over its own target. The panes and ring are the one place that animates position (an overlay).
+- **Title card.** As specified: kicker · wordmark (serif, gold underline) · sans italic tagline · Charter the university (gold) · Continue ("Continue · <date>" when a save exists) / How to play / About this build / Settings as text buttons · the Seed outlined field + mute icon · Display size segmented + hint · motto. How to play / About / Settings open the Menu sheet; while it is open the card dims to 14 %, slides 12 rem left and ignores the pointer (inactive by design: the audit reports it as info).
+- **Motion.** 160 / 240 / 160 ms; opening keyframes `rise` / `sheet-in` / `sheet-up`; closing is one `--dur-close` transition of opacity, transform and `display … allow-discrete` into each surface's `.hidden` look (`.hidden{display:none !important}` is the fallback for a browser without discrete transitions: it hides at once; `safari.test` asserts every such surface has the pair). Reduce motion (Settings; default = the OS preference until the player flips it): on → `body.reduce-motion` (durations 0, every animation and transition ends at once, no ring pulse); **off → `body.motion-on`** (U6: the tokens run even when the OS asks for reduced motion; the media query only sets the default).

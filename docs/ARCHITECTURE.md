@@ -366,10 +366,10 @@ state.ui = {
   speed: 0|1|2|4,                   // the SETTING (0 = paused); the effective rate is computed by session (§9.3)
   speedBefore: 0|1|2|4,             // restored after a set piece / hold / first-warning drop
   tool: null | {id: string, rot: 0|1, shift: boolean},   // NOT saved
-  panel: null | 'budget'|'storm'|'season'|'almanac'|'milestones'|'settings'|'debug',   // NOT saved
+  panel: null | 'budget'|'storm'|'season'|'land'|'almanac'|'milestones'|'log'|'settings'|'howto'|'about'|'debug',   // NOT saved (the panel showing in the Menu sheet; the sheet's list state is ui module state)
   paletteTab: string,               // last open tab; saved
   tabsSeen: Object<string, boolean>, newPips: Object<string, boolean>, tabsIntroduced: Object<string, boolean>,   // saved
-  settings: {volume: number, muted: boolean, particles: 'low'|'high', shake: boolean, colorblind: boolean, autoSimHint: boolean},   // mirrored to localStorage 'bsu.settings'
+  settings: {volume: number, muted: boolean, particles: 'low'|'high', shake: boolean, colorblind: boolean, autoSimHint: boolean, coachSeen: boolean, keepMinimap: boolean, keepOverlays: boolean, reduceMotion: null|boolean, alerts: 'normal'|'quiet'|'off', mutedIssues: {kind: true}, tieCardSeen: boolean, uiScale?: 1|1.15|1.3|'auto'},   // mirrored to localStorage 'bsu.settings'; UI refresh: keepMinimap / keepOverlays pin the Map / Layers popovers, reduceMotion null = follow prefers-reduced-motion until the player flips the switch; the old hudMode / hudCollapsed keys are migrated away on load
   perfMode: boolean                 // NOT saved
 };
 ```
@@ -1133,74 +1133,77 @@ Pool of 2,500 (`settings.particles === 'low'` → 800) `{x, y, z, vx, vy, vz, li
 
 Consequences: every element that is later read, diffed, listened to or updated is created with `document.createElement` and stored in `BSU.ui.el` (`innerHTML` only for leaf content that is never referenced again); cosmetic wall-clock timers carry a tick fallback; `ui.selfTest` verifies after `init` on the stub that every `#id` of §7.1 resolves through `BSU.ui.el`, not the DOM.
 
-### 7.1 DOM skeleton (ids are unique; classes are reusable)
+### 7.1 DOM skeleton (ids are unique; classes are reusable; the UI refresh U2–U6 skeleton, `tools/ui_mock/index.html` is the mock it follows)
+
+The at-rest screen is the app bar, the goal pill, the Build FAB and the snackbar lane; everything else nests in a popover (one at a time), a sheet or a dialog. `ui.selfTest` resolves every id below through `BSU.ui.el`.
 
 ```
 #app
-├─ canvas#world.world                      (render.js; pointer/wheel/key target; tabindex=0)
-├─ #hud (pointer-events: none; children re-enable)
-│  ├─ #topbar
-│  │  ├─ #brand "▣ BAYOU STATE"
-│  │  ├─ .stat#stat-cash .odometer  ▸ .delta (green/red flash)         data-stat="cash"   (click → #popover)
-│  │  ├─ .stat#stat-students ▸ #chip-capacity "Apps 880 / Cap 690"    data-stat="students"
-│  │  ├─ .stat#stat-prestige · .stat#stat-happiness · .stat#stat-ecology
-│  │  ├─ #stat-date "Sep 3, Y1 · Fall" ▸ #sky-glyph
-│  │  ├─ #chip-weather (orange on advisory; "River +2 ft" in the window)
-│  │  ├─ #speed  .speed-btn[data-speed="0|1|2|4"] (aria-pressed)
-│  │  ├─ .btn#btn-budget · #btn-season · #btn-storm (.dot when a cone exists) · #btn-almanac · #btn-menu · #btn-mute
-│  │  └─ #chip-endowed (gold, Year 5+)
-│  ├─ #alert-strip.hidden  ▸ #alert-icon #alert-text #alert-action(.btn) #alert-gator(.chip, click-to-pan)
-│  ├─ #minimap-wrap ▸ canvas#minimap(160×160) ▸ #minimap-viewport(div)
-│  ├─ #overlay-buttons ▸ .ov-btn[data-ov="1..6"] (F W K P C E)  ▸ #legend.chip (bottom-right)
-│  ├─ #objective-card ▸ canvas#obj-portrait(48×48) #obj-title #obj-text #obj-progress(.bar ▸ .fill) #obj-count #btn-showme #btn-obj-dismiss(✕) #obj-background(.row) #speech-bubble
-│  ├─ #voice-card.hidden ▸ #voice-text #voice-payoff #btn-voice-accept #btn-voice-decline
-│  ├─ #milestones-card.hidden ▸ .ms-row×3 (.bar)
-│  ├─ #notifications ▸ .notif[data-kind="water|wildlife|money|event|danger|sports|info"] ▸ .notif-text .notif-action .notif-close
-│  ├─ #decision-toast.hidden ▸ #dt-text #dt-countdown(.bar) #btn-dt-yes(Y) #btn-dt-no(N)
-│  ├─ #inspect.panel.side.hidden ▸ #insp-title #insp-sub #btn-insp-close canvas#insp-sprite #insp-body(.rows) #insp-actions(.btn*)  [data-kind="building|tile|levee|agent|gator|storm|coach|veg"]
-│  ├─ #ghost-label.hidden (follows the cursor: cost line, second line reason/ring/ridge/sink)
-│  ├─ #tooltip.hidden
-│  ├─ #popover.hidden (stat breakdown: #pop-title, .pop-line×N, #pop-next)
-│  ├─ #ticker ▸ #ticker-track (translateX animation at 60 px/s) ▸ #btn-ticker-log ▸ #ticker-log.hidden (last 30)
-│  ├─ #palette ▸ #palette-tabs ▸ .tab[data-tab] (.pip when new) ; #palette-items ▸ .item[data-id] (canvas.icon 64×64, .name, .cost; .locked with .cond) ; #btn-bulldoze(🔨, .active) #btn-palette-info
-│  ├─ #cards (modal stack) ▸ .card#card-charter · #card-wetfeet · #card-board · #card-failure · #card-damage · #card-recap · #card-obj8 · #card-shelter … each with .card-title .card-body .card-actions(.btn*) and an optional canvas
-│  └─ #perf-chip.hidden · #perfmode-chip.hidden · #hint.hidden (one-time hints, e.g. "🔊 on · M to mute")
-├─ #panels (modal-ish, one open at a time)
-│  ├─ #panel-budget.panel ▸ #bud-income(.table) #bud-expense #bud-runway #sl-tuition(input[type=range]) #bud-apps #seg-quality(.seg ▸ .seg-btn×3) #seg-selectivity #sl-coaching #seg-ticket #chk-autorepair #bud-loan #bud-insurance #btn-endow #btn-west
-│  ├─ #panel-storm.panel ▸ #storm-title #seg-testcat(.seg) canvas#storm-cone(200×200) #storm-ring(.line) #storm-reached(.list) #storm-wind(.pick-list ▸ .row ▸ input[type=checkbox]) #storm-shelter #storm-actions ▸ #btn-boardall #btn-sandbags #btn-repairall #btn-evacuate #btn-predrain #btn-playthrough #btn-spillway
-│  ├─ #panel-season.panel ▸ #sea-schedule(.table) #sea-next #sea-rating(.table) #sea-coach ▸ #btn-hire #btn-fire ; #sea-starters ; #chk-night #chk-autosim #seg-permits #seg-homecoming #btn-upgrade #score-bug
-│  ├─ #panel-almanac.panel ▸ #alm-achievements(.grid) canvas#alm-sparks(600×160) #alm-storms #alm-gators #alm-recaps #btn-postcard
-│  ├─ #panel-milestones.panel ▸ .ms-row×N
-│  ├─ #panel-settings.panel ▸ #chk-audio #sl-volume #seg-particles #chk-shake #chk-colorblind #keys(.table) #btn-save-manual[data-slot] #btn-load[data-slot] #btn-newgame #txt-seed
-│  └─ #panel-debug.panel.hidden ▸ #dbg-params(.tree ▸ .param ▸ label input[type=range] input[type=number]) #dbg-cheats(.btn*: skipdate, cash, spawncat, rain, seteco, setprestige, sethappy, spawngator, filldorms, homegame, nearmiss, testring, firetoasts, timelapse, hydronumbers, perfhud)
-└─ #title (full-screen overlay; the live world renders beneath at Night)
-   ├─ #title-name "BAYOU STATE" (Georgia serif, gold) #title-tag
-   ├─ #btn-charter "Click to charter the university." · #btn-continue (if a save exists) · input#title-seed · #btn-title-settings · #btn-title-mute
-   └─ #title-campus (canvas thumbnail after Flagship)
+├─ canvas#world.world                       (render.js; pointer/wheel/key target; tabindex=0)
+├─ #hud (pointer-events:none; interactive children auto; data-hud="full|hidden"; .no-palette while the Build sheet is closed; .inspect-open, .bm-open, .setpiece)
+│  ├─ #topbar (the app bar: 48 px opaque surface, 1 px bottom edge; a size container `appbar`: under 118 rem the stat labels, the cap suffix and the weather line hide; .tight / .bare are the JS backstop)
+│  │  ├─ #brand (32 px primary square with the eco leaf) ▸ .brand-name "BAYOU STATE"
+│  │  ├─ .stats ▸ .btn.stat#stat-cash (svg.ic paid · #stat-cash-dot · .txt(.line(.odometer) .stat-label) · .delta) · #stat-students (… #chip-capacity "cap 1,500" · #stat-students-dot) · #stat-prestige · #stat-happiness · #stat-ecology   (click → the chip's popover)
+│  │  ├─ #date-chip (button: #sky-glyph svg · #stat-date · #chip-weather[.warn|.water]; click → Almanac)
+│  │  ├─ #speed ▸ .speed-btn[data-speed="0|1|2|4|8"] (aria-pressed)
+│  │  └─ .actions ▸ #btn-alerts(#alerts-badge) · #ov-lit (the lit overlay chip) · #btn-layers · #btn-map · #btn-menu · #btn-mute(#btn-mute-on / #btn-mute-off) · #chip-endowed (Year 5+)
+│  ├─ #alert-strip.hidden ▸ #alert-icon #alert-text #alert-action #alert-close #alert-gator
+│  ├─ #goal-pill (ring · #gp-kicker · #gp-title · #gp-count · expand_more) ↔ #objective-card.goal-card (canvas#obj-portrait #obj-kicker #obj-title #btn-goal-collapse #btn-obj-dismiss #obj-text #obj-why #obj-progress(.fill) #obj-count #btn-obj-build (gold) #btn-showme #obj-next #obj-background #speech-bubble)
+│  ├─ popovers (.popover.hidden, 8 px under the bar; stat-chip ones on the left gutter, icon ones right-aligned to their icon; ui.openPopover / closePopover):
+│  │   #pop-needs ▸ #needs-strip(.needs-gauges ▸ .need[data-key][data-level=ok|warn|bad]×6 (svg.ic · .need-label · .bar(.fill) · .need-val) · .needs-row(#needs-text #needs-locate) · #needs-apps) · #needs-empty
+│  │   #pop-budget ▸ #mb-income #mb-expense #mb-net #mb-runway #btn-mb-open
+│  │   #pop-alerts ▸ #issues-head(#issues-count #issues-sub) · #issues-tray(#issues-list(.issue-row[data-id][data-kind] ▸ span.ig[data-sev] · .t(.a) · .btn.badge? · .btn.fix (icon + Fix / Link it) · .btn.locate[data-act=locate] · [data-act=snooze] · [data-act=dismiss] · .btn.bell[data-act=mute]? · .why?) · #issues-progress(#issues-progress-list) · #issues-more · #issues-suggest(#issues-suggest-head #issues-suggest-list) · #issues-hidden) · foot(#issues-spot #issues-clear)
+│  │   #pop-layers ▸ #overlay-buttons(.ov-btn[data-ov=1..6]: key cap · glyph · name) · #legend
+│  │   #pop-map ▸ #btn-map-pin · #minimap-wrap(canvas#minimap #minimap-viewport)
+│  │   #popover (the Prestige / Happiness / Ecology breakdown: #pop-title .pop-line×7 #pop-next)
+│  ├─ #snack-lane (bottom centre; two visible, news above the decision) ▸ #notif-dismiss · #notifications(.snackbar.notif[data-kind] ▸ svg.kind · .notif-text · .btn.notif-action? · .notif-close · .notif-why?) · #decision-toast.snackbar.decision(#dt-text #dt-options #btn-dt-no #btn-dt-yes #dt-foot #dt-countdown)
+│  ├─ #inspect.inspect-card.hidden[.collapsed = the pill][data-kind] ▸ .insp-head(canvas#insp-sprite · .insp-col(#insp-title #insp-meta #insp-sub) · #btn-insp-collapse(#insp-fold-more / #insp-fold-less) · #btn-insp-close) · #insp-body(.row×N; a kitchen's #insp-menu + #btn-edit-menu) · #insp-actions
+│  ├─ #ghost-label.hidden · #tooltip.hidden
+│  ├─ #palette.bottom-sheet.hidden (the collapsed Build sheet, 240 px) ▸ .handle-row(#pal-handle · .corner(#btn-build-menu ⤢ · #btn-palette-close)) · #palette-tabs(.tab[data-tab][role=tab] .pip) · .pal-row(#palette-items(.item[data-id][.locked] canvas.icon .name .cost|.cond .star) · .palette-side(#btn-bulldoze #btn-palette-info))
+│  ├─ #build-menu.bottom-sheet.expanded.hidden (80 % height) ▸ .handle-row(#bm-handle) · .bm-head(.bm-title .bm-sub .text-field(#bm-search) #btn-bm-collapse #btn-bm-close) · .bm-body(#bm-cats(.bm-cat.list-item[data-tab] .bm-cat-star .pip) · #bm-cards(.bm-card.grid-card[data-id][.locked][.kbf] .icon .bm-name .bm-price .bm-reqs .bm-star) · #bm-detail(#bm-dbody · #bm-dfoot(#btn-bm-place #btn-bm-show)))
+│  ├─ #fab-build (the gold extended FAB: construction · "Build" · key cap G; hidden while a sheet, the Menu sheet or a dialog is open)
+│  ├─ #coach.hidden ▸ .coach-pane×4 (the scrim) · .coach-ring (target + 8 px, 3 px primary, ::after pulse) · #coach-box.coach-box[data-pos](#coach-step #coach-title #coach-text #btn-coach-back #btn-coach-skip #btn-coach-next)
+│  ├─ #voice-card.hidden (scrim host) ▸ #voice-dialog.card(#voice-student #voice-text #voice-payoff #btn-voice-decline #btn-voice-accept)
+│  ├─ #milestones-card.hidden ▸ .ms-row×3
+│  ├─ #cards.hidden (the dialog stack over the 32 % scrim) ▸ .card#card-<id>[role=dialog][tabindex=-1] .card-kicker? .card-title .card-body .card-actions(text buttons, .btn.primary last)
+│  └─ #perf-chip.hidden · #perfmode-chip.hidden · #hint.hidden(#hint-text #btn-hint-action) · #btn-skip.hidden · #undo-chip · #hud-chip ("HUD hidden · H")
+├─ #panels (a layer over the map, z 4, pointer-events:none; lifted over #title while .title-on)
+│  ├─ #menu-sheet.side-sheet.hidden[.panel-state] (right gutter, bar + 8 → bottom gutter, 360 px) ▸ #sheet-head(#btn-sheet-back #sheet-title #btn-sheet-close) · #sheet-body(#sheet-list.menu-list(.list-item#btn-budget #btn-season #btn-storm(.dot) #btn-land #btn-almanac #btn-milestones #btn-log · #btn-settings #btn-howto #btn-about) · #panel-<name>.panel ×11 (budget season storm land almanac milestones log settings howto about debug; built once by registerPanel's build(host, state), refreshed by refresh))
+│  └─ #menu-overlay (the kitchen's Edit menu dialog, centred in the layer)
+└─ #title (full-screen scrim host over the live world) ▸ .title-box(.title-kicker #title-name #title-tag .title-hint #btn-charter (gold) .title-help(#btn-continue #btn-title-howto #btn-title-about #btn-title-settings) .title-seedrow(label.of(.of-l input#title-seed) #btn-title-mute) #title-size(#btn-size-compact | comfortable | large | auto #title-size-note) #title-campus .title-foot)
 ```
-Panels open with `ui.openPanel(name)` (closes any other; `Esc` closes). Cards are queued (`ui.card(state, idOrSpec, payload?)`, §7.2) and shown one at a time; a card never opens during another card; each card id has exactly ONE opener (§7.7). Notifications: max 3, newest at the bottom, 12 s, each with ≤ 1 action; a `showMe` payload adds the Show-me button (camera pan + `render.flashTiles`).
+Panels open with `ui.openPanel(name)` inside the Menu sheet (closes the popover and the Build sheet; `Esc` closes the sheet; `ui.openSheet(true)` is the list state, `M` toggles it). Popovers: one transient at a time (`ui.openPopover(name)`; the Map and Layers ones can be pinned through Settings → `keepMinimap` / `keepOverlays`). Cards are queued (`ui.card(state, idOrSpec, payload?)`, §7.2) and shown one at a time as dialogs; each card id has exactly ONE opener (§7.7). Snackbars: at most `params.render.snackMax` (2) visible, news lines queue, notifications never wait, `params.render.snackMs` (6 s) default ttl; the Log panel is the history. Settings keys (`state.ui.settings`, §2.10): `volume muted particles shake colorblind autoSimHint coachSeen keepMinimap keepOverlays reduceMotion alerts mutedIssues tieCardSeen uiScale`; the old `hudMode` / `hudCollapsed` are read once by `migrateSettings` (U2) and deleted — the hidden HUD (`H`) is session state (`ui.hudMode()` = `'full' | 'hidden'`).
 
 ### 7.2 `ui.js` API
 
 ```js
 BSU.ui.init(state); BSU.ui.reset(state); BSU.ui.update(state, dtMs)
-BSU.ui.notify(state, {text, kind, action?: {label, fn}, showMe?: number|{tx,ty,tiles?}, ttl?, onClose?: () => void}) → void   // also emitted as ui:notify (without onClose); onClose is called exactly once when the notification closes for ANY reason (the ✕, its action, ttl expiry, or replacement by a newer one beyond notifMax) — progress uses it for the first-warning speed restore
-BSU.ui.ticker(state) → void                      // re-reads state.ticker (progress owns the lines)
-BSU.ui.openPanel(name | null) → void; BSU.ui.panel() → name | null
-BSU.ui.inspect(state, target: {kind, id?: number, i?: number}) → void; BSU.ui.closeInspect()
-BSU.ui.card(state, idOrSpec: string | CardSpec, payload?: Object) → void   // THE one card entry point. A string id resolves through BSU.ui.cards[id](state, payload) → CardSpec (builders registered by ui_panels via registerCard); an object is the spec itself. CardSpec = {id, title, body: string|HTMLElement, actions: {label, fn, primary?}[], canvas?: (ctx)=>void, autoMs?, modal?: boolean}. Queued; one card at a time. Call forms: ui.card(state, 'charter'), ui.card(state, 'versionMismatch', {seed}), ui.card(state, 'damage', {report}), ui.card(state, {id:'x', title, body, actions})
-BSU.ui.decision(state, {id, text, yes, no, ticks = 80, onAnswer?: (answer)=>void}) → void   // the decision toast; default 'default' on timeout (tick-based); emits decision:open then, on resolution, decision:closed{id, answer} EXACTLY ONCE per id. **decision:closed is the only delivery owners act on** (weather, sports, progress subscribe to it); onAnswer is optional, meant for ui's own tests, and no sim module passes it. ui.answerDecision(id, answer) is idempotent (a resolved id ignores further answers)
+BSU.ui.notify(state, {text, kind, action?: {label, fn}, showMe?: number|{tx,ty,tiles?}, ttl?, onClose?: () => void}) → void   // a snackbar; also emitted as ui:notify (without onClose); onClose is called exactly once when it closes for ANY reason (the ✕, its action, ttl expiry, or replacement by a newer one) — progress uses it for the first-warning speed restore
+BSU.ui.ticker(state) → void                      // re-reads state.ticker (progress owns the lines); new lines become news snackbars, the Log panel lists them all
+BSU.ui.openPanel(name | null) → void; BSU.ui.panel() → name | null   // the Menu sheet straight to that panel / closed
+BSU.ui.openSheet(on?) → boolean; BSU.ui.toggleMenu(); BSU.ui.panelBack(); BSU.ui.closePanel(); BSU.ui.panelOpen(name?) → boolean; BSU.ui.sheetState() → 'closed' | 'list' | 'panel'   // U3
+BSU.ui.openPopover(name) / closePopover() / togglePopover(name); BSU.ui.popover() → name | null; BSU.ui.popoverVisible(name)   // U2: needs budget alerts layers map breakdown
+BSU.ui.pinMinimap(on) / keepOverlays(on)         // the Settings switches (settings.keepMinimap / keepOverlays)
+BSU.ui.goalOpen(on) / goalExpanded()             // the goal pill ↔ card; a goal change opens the card, it folds after ui._goalCollapseMs without hover
+BSU.ui.openPalette(on, {focus}) / paletteOpen(); openBuildMenu(state, {tab, focus, pulse, kbd}) / closeBuildMenu() / buildMenuOpen(); buildSheetState() → 'closed' | 'collapsed' | 'expanded'; collapseBuildSheet() / expandBuildSheet(); focusedCard() / focusCard(id); searchBuildings(text) / buildQuery()   // U4: the Build sheet
+BSU.ui.inspect(state, target: {kind, id?: number, i?: number}) → void; BSU.ui.closeInspect(); BSU.ui.collapseInspect(on) / inspectCollapsed()   // the inspect card / pill
+BSU.ui.card(state, idOrSpec: string | CardSpec, payload?: Object) → void   // THE one card entry point. A string id resolves through BSU.ui.cards[id](state, payload) → CardSpec (builders registered by ui_panels via registerCard); an object is the spec itself. CardSpec = {id, title, kicker?, body: string|HTMLElement, actions: {label, fn, primary?, dismiss?}[], canvas?: (ctx)=>void, autoMs?, modal?: boolean}. Queued; one card at a time; Esc runs the action flagged dismiss (none → close; modal → ignored), Enter the primary. BSU.ui.cardOpen() → id | null; BSU.ui.closeCard()
+BSU.ui.decision(state, {id, text, yes, no, ticks = 80, onAnswer?: (answer)=>void}) → void   // the decision snackbar; default 'default' on timeout (tick-based); emits decision:open then, on resolution, decision:closed{id, answer} EXACTLY ONCE per id. **decision:closed is the only delivery owners act on**; ui.answerDecision(id, answer) is idempotent
 BSU.ui.selectTool(state, id | null) → void; BSU.ui.tool() → state.ui.tool
 BSU.ui.setOverlay(state, ov) → void
 BSU.ui.setSpeed(state, speed) → void             // user intent → session.setSpeed(state, speed, 'user')
-BSU.ui.showTitle(state, on) → void
-BSU.ui.hint(state, id, text, opts?: {action?: {label, fn}}) → void   // one-time: shows only if !state.progress.hints[id], then progress.markHint(state, id) (the flag lives in state.progress.hints — never on the progress module object)
-BSU.ui.pointer(type: 'down'|'move'|'up'|'cancel', px: number, py: number, button: 0|1|2, mods: {ctrl: boolean, shift: boolean, meta: boolean, alt: boolean}) → void   // the input state machine entry (also used by headless.click); px/py are canvas CSS px (offsetX/Y on #world); button 0 left, 1 middle, 2 right; 'cancel' = pointercancel / pointer leaving the window (drops any drag/pan without placing)
-BSU.ui.keydown(key: string /*KeyboardEvent.key*/, mods: {ctrl: boolean, shift: boolean, meta: boolean, alt: boolean, code?: string /*KeyboardEvent.code*/}) → boolean   // returns true if handled (also used by headless.key). The debug panel binding is matched as `mods.code === 'Backquote' || key === '`'`; every other binding is matched on `key` (+ ctrl/meta/shift per data.keys)
+BSU.ui.showTitle(on) → void
+BSU.ui.hint(state, id, text, opts?: {action?: {label, fn}}) → void   // one-time: shows only if !state.progress.hints[id], then progress.markHint(state, id)
+BSU.ui.pointer(type: 'down'|'move'|'up'|'cancel', px: number, py: number, button: 0|1|2, mods: {ctrl, shift, meta, alt}) → void   // the input state machine entry (also used by headless.click)
+BSU.ui.keydown(key: string /*KeyboardEvent.key*/, mods: {ctrl, shift, meta, alt, code?, repeat?}) → boolean   // returns true if handled (also used by headless.key); the debug binding matches `mods.code === 'Backquote' || key === '`'`; everything else matches on `key` (+ ctrl/meta/shift per data.keys; a shifted key falls back to its unshifted binding)
 BSU.ui.wheel(px, py, dx, dy, ctrl) → void
-BSU.ui.breakdown(state, stat) → void             // popover
+BSU.ui.breakdown(state, stat) → void             // the breakdown popover (Prestige / Happiness / Ecology)
 BSU.ui.refreshPalette(state) → void              // on unlock:changed / tab change
 BSU.ui.settings() → state.ui.settings; BSU.ui.saveSettings() → void   // localStorage 'bsu.settings' under try/catch
+BSU.ui.hudMode() → 'full' | 'hidden'; BSU.ui.setHudMode(m); BSU.ui.cycleHud(1); BSU.ui.hudState()   // H / Shift+H (session state, not a setting)
+BSU.ui.reduceMotion(on?) → boolean               // U5 / U6: settings.reduceMotion; <body class="reduce-motion"> (on) or <body class="motion-on"> (off: the tokens run even under prefers-reduced-motion); unset → neither (the media query's default)
+BSU.ui.setUiScale(x) / uiScale() / uiScaleMode() / uiScaleEffective()   // Display size 1 / 1.15 / 1.3 / 'auto' (capped by the window)
+BSU.ui.startCoach(state, {now}) / coachStep(); BSU.ui.icon(name, cls) = BSU.icons.get   // the coach tour; the icon registry alias
 ```
 
 ### 7.3 Input state machine (the only translator of pointer events)
@@ -1232,9 +1235,9 @@ Every user pan/zoom/click during a set piece calls `render.captureCameraTouch(st
 
 ### 7.4 Keyboard map and precedence
 
-Precedence (first match wins): (1) an open decision toast captures `Y`/`N`/`Enter`/`Esc`; (2) a focused text field (`#title-seed`, rename input) takes every key; (3) an open modal card takes `Enter`/`Esc`; (4) the world/HUD map below. `preventDefault` on `Tab`, `Space`, arrows, `Ctrl/Cmd+S/P/Z` whenever the canvas or a palette item has focus.
+Precedence (first match wins): (1) an open decision snackbar captures `Y`/`N`/`Enter`/`Esc` (and `1`–`9` for its options); (2) a focused text field (`#title-seed`, `#bm-search`, rename input) takes every key; (3) the voice dialog and an open card take `Enter`/`Esc`; (3b) the coach tour owns the keyboard while it is up (Enter / → / Space next, ← back, Esc skips); (4) the map / HUD below. `preventDefault` on `Tab`, `Space`, arrows, `Ctrl/Cmd+S/P/Z` whenever the canvas or a sheet card has focus.
 
-`Space` pause/resume · `1` `2` `3` = 1×/2×/4× · `B` Budget · `N` Season · `T` Storm (only when a cone exists) · `L` Milestones/Almanac · `F` `W` `K` `P` `C` `E` overlays (toggle; same key again = off) · `-` `=` zoom out/in · `Tab` next palette tab (`Shift+Tab` previous) · `Shift+1…9` nth item in the open tab · `X` bulldoze · `R` rotate · `H` home (pan to Founders') · `.` follow a random student (again = release) · `Esc` cancel tool → close inspect → close panel → close card (one per press) · `Ctrl/Cmd+S` manual save (slot `manual.0`) · `Ctrl/Cmd+Z` undo · `Ctrl/Cmd+P` postcard · `M` mute · `Y`/`N` answer toast · `~` (Backquote) debug panel · `W A S D` and arrows pan (held; 12 px/frame at zoom 1). `Q` unbound. No key is bound twice; `data.keys` is the table the settings sheet prints.
+`Space` pause/resume · `1` `2` `3` `4` = 1×/2×/4×/8× · `G` Build sheet (toggle; `Shift+G` expand / collapse) · `/` search in the Build sheet · `← → ↑ ↓` move between cards while the keyboard is in the sheet · `Enter` arm the focused card · `Tab` next palette tab (`Shift+Tab` previous) · `Shift+1…9` nth item in the open tab · `X` bulldoze · `R` rotate · `M` **Menu sheet** (toggle; U6) · `Shift+M` mute (U6: it was `M`) · `B` Budget · `N` Season (held: the network view) · `T` Storm · `O` Land Office · `L` Milestones (each straight into the Menu sheet; the same key again closes it) · `I` next issue (held: spotlight; `Shift+I` toggles it) · `F` `W` `K` `P` `C` `E` overlays (toggle; same key again = off) · `-` `=` zoom out/in · `H` hide the HUD (`Shift+H` or `H` restores) · `Home` pan to Founders' Hall · `.` follow a random student (again = release) · `Esc` one layer per press: the open popover → the Edit menu dialog → the expanded Build sheet → the pending drag / tool → inspect → the collapsed Build sheet → the Menu sheet (whatever it shows) → the card → the issue selection / spotlight → the snackbar lane → the goal card; **Esc on an empty map does nothing** (U6: the plan's "Esc = Menu" was dropped so that one more Esc always leaves a clear screen; `M` opens the Menu) · `Ctrl/Cmd+S` manual save (slot `manual.0`) · `Ctrl/Cmd+Z` undo · `Ctrl/Cmd+P` postcard · `Y`/`N` answer the decision · `~` (Backquote) debug panel · `W A S D` and arrows pan (held; 12 px/frame at zoom 1). `Q` `U` `V` `J` unbound. No key is bound twice (`ui.selfTest` checks `data.keys`, one entry per {key, ctrl, shift}); How to play prints the table from the same bindings (`ui._ux.howKeys`, checked against `data.keys` by `ui.test`).
 
 ### 7.5 Ghost preview, tabs, pips, undo
 
@@ -1242,15 +1245,16 @@ Ghost colors: green ok; yellow needs grading or pilings (the label shows the opt
 
 ### 7.6 CSS conventions (`src/style.css`)
 
-- Tokens on `:root`: `--purple:#461D7C; --purple-2:#5E2CA5; --purple-hi:#7F5BC5; --purple-shadow:#2B1246; --panel:#1A1230; --gold:#FDD023; --gold-2:#F5B700; --gold-hi:#FFE680; --gold-shadow:#B58500; --glow:#FFF1A8; --text:#F4EEE2; --danger:#E0443E; --good:#3FBF7F; --water:#4FA3D6; --panel-alpha:.92; --radius:6px; --topbar-h:44px; --ticker-h:24px; --palette-h:112px; --font-ui:system-ui,-apple-system,"Segoe UI",sans-serif; --font-title:Georgia,"Times New Roman",serif`.
-- Panels: `background: rgba(26,18,48,var(--panel-alpha)); border: 1px solid var(--gold); color: var(--text)`. Buttons `.btn` gold on purple; `.btn.primary` purple text on gold; `.btn.danger`.
-- `#app` is `position:fixed; inset:0; overflow:hidden; background:#0E1230`; `#world` fills it; `#hud` is absolutely positioned with `pointer-events:none` and each interactive child sets `pointer-events:auto`.
-- Layout at ≥ 1024 px wide; below 1180 px the palette shows icons only (`.compact`). Notification colors by `data-kind`. `.hidden { display:none !important }`. No external fonts, images or `@import`.
-- Transitions: overlays fade 150 ms (canvas side), notifications slide 200 ms, panel slide 200 ms, cash delta flash 600 ms, toast countdown bar linear.
+- The `:root` block is `docs/UI_STYLE.md` §1 verbatim: the M3 colour roles (`--surface`, `--surface-container[-low|-high]`, `--surface-float` = surface at 94 %, `--on-surface[-variant]`, `--outline[-variant]`, `--primary` #461D7C / `--on-primary` / `--primary-container`, `--secondary` #5E2CA5 (+ container: the selected look), `--tertiary` #F5B700 gold (+ `--on-tertiary` #2B1246, container), `--error`, `--success`, `--warn` #B26A00 (fills, borders, icons) and `--warn-text` #8A5200 (U6: the same hue at ≥ 4.5 for text), `--water`, `--moss`, `--scrim[-title]`), the type scale (`--fs-display headline title-lg title body label`, `--font` system sans, `--font-serif` for the wordmark only), shape (`--shape-pill sm md lg`), elevation (`--elev-1..3`), spacing (`--sp-1..6`, `--gutter` 16 px), sizes (`--bar-h` 4.8 rem, `--control-h` 4 rem, `--target` 4.4 rem, `--fab-h`, `--icon`), motion (`--dur-std` 160 / `--dur-open` 240 / `--dur-close` 160 ms, `--ease-std decel accel`) and states (`--state-hover` .08, `--state-press` .12, `--disabled` .38). Layout tokens on a second `:root` line: `--topbar-h`, `--palette-h` (0 while the Build sheet is closed, `#hud.no-palette`), `--bot` (= palette + gutter), `--side`, `--inspect-w`; the old type names `--fs-small lead num` are aliases.
+- `--ui-scale` 1 / 1.15 / 1.3 drives `html{font-size:calc(10px * var(--ui-scale))}`: every length is rem, the gutter, the 1 px edges and the scrims are px.
+- Surfaces: floating ones are `--surface-float` + 1 px `--outline-variant` edge + elevation (1 chips / pills, 2 popovers / goal card / inspect, 3 sheets / dialogs / FAB / coach); the app bar, the sheets and the dialogs are opaque `--surface` (the dialog `--surface-container-high`). No gradients, blur, backdrop-filter, text-shadow or web fonts (`ui.test` asserts it). Gold is a fill on exactly three controls (`#fab-build`, `#btn-obj-build`, `#btn-charter`) and never text or a glyph on white.
+- Controls: `.btn` tonal (`--secondary-container`), `.btn.primary` filled, `.btn.icon` a 40 px circle (32 px in dense rows), `.btn.small` 32 px, `.btn.danger` text in `--error`, `.btn.gold`; selection controls (`.seg-btn .speed-btn .ov-btn .toggle .fb-tab .list-item .tab`) outlined / transparent off and `--secondary-container` on; state layers are `::before` in `currentColor` (hover 8 %, press 12 %), the 44 px hit area is `::after`, the focus ring 2 px `--primary` on `:focus-visible` (and `.kbf` in the Build sheet). Icons are `svg.ic` (`--icon` 24 px; `.s20` 20, `.sm` 18) in `currentColor`.
+- Motion: opening surfaces play `rise` / `sheet-in` / `sheet-up` (transform + opacity, `--dur-open`); closing is one rule, a `--dur-close` transition of `opacity`, `transform` and `display … allow-discrete` into each surface's `.hidden` look (`.hidden{display:none !important}` is the fallback: a browser without discrete transitions hides at once; `safari.test` asserts the pairing). `body.reduce-motion` zeroes the duration tokens and ends every animation / transition at once; `body.motion-on` restores them under `prefers-reduced-motion` (the media query only sets the default). The only animated layout properties are the coach panes' and ring's position (an overlay).
+- `#app` is `position:fixed; inset:0; overflow:hidden`; `#world` fills it; `#hud` is absolutely positioned with `pointer-events:none` and each interactive child sets `pointer-events:auto`. Layout at ≥ 1024 px wide (`params.ui.minWidth`); the app bar is a size container (`@container appbar (max-width:118rem)`); sheets scroll inside themselves. Snackbar colours by `data-kind` (a 4 px kind stripe and a kind icon). `.hidden { display:none !important }`. No external fonts, images or `@import`.
 
 ### 7.7 `ui_panels.js`
 
-Owns the Budget, Storm, Season, Milestones, Almanac and Settings panels, the debug panel, the breakdown popover, the damage report card, the Founders' Day recap card, the Board/failure/Wet Feet/Objective-8 cards. **One opener per card** (D44): ui_panels opens `damage` on `storm:report`, `newsflash` on `storm:named`, `board` on `board:offered`, `failure` on `econ:card` (its buttons call `progress.answerFailure(state, kind, optionId)`), `wetfeet` on `milestone:earned{id:'wetFeet'}`, `obj8` on `objective:progress{id:'8', capped:true}`, `recap` on `calendar:year` when `progress.recap()` is non-null, `hire` on the rivalry-streak newsflash or the offseason button; progress opens `charter` (stage 1) and session opens `versionMismatch`. Nobody else calls `ui.card` for those ids. Each panel has `build()` (once) and `refresh(state)` (on open and every 500 ms while open, plus on the events it lists). The Storm panel reads `buildings.gaps(H)`, `buildings.protection(H)`, `buildings.shelter`, `storm.boardQueue`, and calls `weather.prepAction`. The debug panel walks `BSU.params` (sliders write the leaf live) and its cheats call: `session.skipToDate`, `economy.post('misc', 1e6)`, `weather.spawnStorm(state, {cat, coneNowTick: T, landfallTick: T+600, compressed: true})`, `hydro.forceRain` at the cursor, `wildlife.forceMosquito/spawnGator`, `economy.bump`, `economy.addStudents(state, n, 'debug')` (Fill dorms: the visible agents follow at the next daily reconcile), `sports.playHome`, `weather.scheduleNearMiss(today+1)`, `buildings.gaps(H)` paint, `progress.fireAllToasts`, `session.setSpeed(20,'user')` (time-lapse; capped by maxTicksPerFrame), render debug flags.
+Owns the Budget, Storm, Season, Land Office, Almanac, Milestones, Log, Settings, How to play, About and Debug panels (each `registerPanel(name, {build(host, state), refresh(state), events})`: `build` runs once into its `#panel-<name>` host inside the Menu sheet's body, `refresh` on open and every 500 ms while open plus on the events it lists; the sheet head carries the title, the back arrow and the ✕, so panels build no head of their own), the breakdown popover, the damage report card, the Founders' Day recap card, the Board / failure / Wet Feet / Objective-8 cards and the live score bug. **One opener per card** (D44): ui_panels opens `damage` on `storm:report`, `newsflash` on `storm:named`, `board` on `board:offered`, `failure` on `econ:card` (its buttons call `progress.answerFailure(state, kind, optionId)`), `wetfeet` on `milestone:earned{id:'wetFeet'}`, `obj8` on `objective:progress{id:'8', capped:true}`, `recap` on `calendar:year` when `progress.recap()` is non-null, `hire` on the rivalry-streak newsflash or the offseason button; progress opens `charter` (stage 1) and session opens `versionMismatch`. Nobody else calls `ui.card` for those ids. Settings is one list of label + control rows (Display size, Alerts, Audio, Keep the minimap open, Keep overlays visible, Particles, Screen shake, Reduce motion, Colour-blind overlays, then Tour and Save / Load / New game). The Storm panel reads `buildings.gaps(H)`, `buildings.protection(H)`, `buildings.shelter`, `storm.boardQueue`, and calls `weather.prepAction`. The debug panel walks `BSU.params` (sliders write the leaf live) and its cheats call: `session.skipToDate`, `economy.post('misc', 1e6)`, `weather.spawnStorm(state, {cat, coneNowTick: T, landfallTick: T+600, compressed: true})`, `hydro.forceRain` at the cursor, `wildlife.forceMosquito/spawnGator`, `economy.bump`, `economy.addStudents(state, n, 'debug')`, `sports.playHome`, `weather.scheduleNearMiss(today+1)`, `buildings.gaps(H)` paint, `progress.fireAllToasts`, `session.setSpeed(20,'user')` (time-lapse; capped by maxTicksPerFrame), render debug flags. Panel content glyphs (✓ ✗ ⏳ ●, stars, possession arrows) are registry icons through `lead(text, icon, cls)` / `fillStars`.
 
 ---
 

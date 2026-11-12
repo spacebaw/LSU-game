@@ -17,7 +17,7 @@
   --tertiary: #F5B700; --on-tertiary: #2B1246; --tertiary-container: #FFE680; --on-tertiary-container: #2B1246;
   --error: #B3261E; --on-error: #FFFFFF; --error-container: #F9DEDC; --on-error-container: #410E0B;
   --success: #1F6B3F; --success-container: #DDF3E4; --on-success-container: #07331B;
-  --warn: #B26A00;
+  --warn: #B26A00; --warn-text: #8A5200;
   --water: #2E86BE; --moss: #5E8232;
   --scrim: rgba(28, 27, 31, .32); --scrim-title: rgba(28, 27, 31, .48);
   /* type */
@@ -96,7 +96,7 @@ svg.ic{width:var(--icon);height:var(--icon);flex:none;fill:none;stroke:currentCo
 /* chips */
 .chip{display:inline-flex;align-items:center;gap:.6rem;min-height:2.4rem;padding:.2rem 1.2rem;border-radius:var(--shape-pill);font:500 var(--fs-body)/1.2 var(--font);background:var(--surface-container);color:var(--on-surface);white-space:nowrap}
 .chip.gold{background:var(--secondary-container);color:var(--on-secondary-container);box-shadow:inset 0 0 0 1px var(--secondary)}
-.chip.warn{background:var(--surface);color:var(--warn);box-shadow:inset 0 0 0 1px var(--warn)}
+.chip.warn{background:var(--surface);color:var(--warn-text);box-shadow:inset 0 0 0 1px var(--warn)}
 .chip.water{background:var(--surface);color:var(--water);box-shadow:inset 0 0 0 1px var(--water)}
 /* bars: progress / gauge tracks on surface-container-high */
 .bar{position:relative;height:.8rem;border-radius:var(--shape-pill);background:var(--surface-container-high);overflow:hidden}
@@ -140,7 +140,7 @@ svg.ic{width:var(--icon);height:var(--icon);flex:none;fill:none;stroke:currentCo
 #stat-date{font:600 var(--fs-title)/1.6rem var(--font);white-space:nowrap;color:var(--on-surface)}
 #sky-glyph{display:inline-flex;width:2.4rem;color:var(--primary)}
 #chip-weather{font:500 var(--fs-label)/1.2rem var(--font);letter-spacing:var(--track-label);text-transform:uppercase;color:var(--on-surface-variant)}
-#chip-weather.warn{color:var(--warn)} #chip-weather.water{color:var(--water)}
+#chip-weather.warn{color:var(--warn-text)} #chip-weather.water{color:var(--water)}
 #speed{display:flex;flex:0 0 auto;height:var(--control-h);border:1px solid var(--outline);border-radius:var(--shape-pill);overflow:hidden;background:var(--surface)}
 .speed-btn{position:relative;min-width:3.6rem;height:100%;min-height:0;padding:0 1rem;border-radius:0;border-left:1px solid var(--outline);background:transparent;color:var(--on-surface);font:500 var(--fs-body)/1 var(--font);text-align:center;box-shadow:none}
 .speed-btn:first-child{border-left:0} .speed-btn::after{display:none} .speed-btn svg.ic{width:2rem;height:2rem}
@@ -186,7 +186,7 @@ svg.ic{width:var(--icon);height:var(--icon);flex:none;fill:none;stroke:currentCo
 #goal-pill .ring{width:2.4rem;height:2.4rem;flex:none;transform:rotate(-90deg)} #goal-pill .ring .track{fill:none;stroke:var(--surface-container-high);stroke-width:3} #goal-pill .ring .fill{fill:none;stroke:var(--primary);stroke-width:3;stroke-linecap:round}
 #goal-pill .kicker{font:500 var(--fs-label)/1 var(--font);letter-spacing:var(--track-label);text-transform:uppercase;color:var(--primary)}
 #goal-pill .ttl{font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis} #goal-pill .count{color:var(--on-surface-variant);font-variant-numeric:tabular-nums} #goal-pill svg.ic{color:var(--on-surface-variant)}
-#goal-pill[data-kind="interrupt"] .kicker{color:var(--warn)}
+#goal-pill[data-kind="interrupt"] .kicker{color:var(--warn-text)}
 #objective-card,#milestones-card{position:absolute;left:var(--gutter);width:36rem;padding:1.6rem}
 #objective-card{top:calc(var(--bar-h) + 8px);z-index:2}
 #objective-card[data-kind="background"]{border-left:.4rem solid var(--water)}
@@ -208,8 +208,8 @@ svg.ic{width:var(--icon);height:var(--icon);flex:none;fill:none;stroke:currentCo
 #hud.scorebug #goal-pill,#hud.scorebug #objective-card{top:calc(var(--bar-h) + 11.2rem)}
 /* needs (the Students chip's popover): six gauge rows (label · bar · value), the binding line (ok success, warn warn, bad error), Locate, the applicants line */
 .needs-gauges{display:flex;flex-direction:column;gap:.4rem}
-.need{display:grid;grid-template-columns:6.4rem 1fr 9rem;align-items:center;gap:var(--sp-3);min-height:2.8rem;padding:0 .4rem;border-radius:.8rem;cursor:pointer}
-.need-label{font:500 var(--fs-body)/1 var(--font);color:var(--on-surface)}
+.need{display:grid;grid-template-columns:8.8rem 1fr 9rem;align-items:center;gap:var(--sp-3);min-height:2.8rem;padding:0 .4rem;border-radius:.8rem;cursor:pointer}
+.need-label{display:flex;align-items:center;gap:.6rem;min-width:0;font:500 var(--fs-body)/1 var(--font);color:var(--on-surface)} .need-label svg.ic{flex:none;color:var(--on-surface-variant)}   /* U6: each gauge leads with its glyph (bed / school / restaurant / bolt / drop / sewage) */
 .need .bar{height:.8rem;margin:0} .need .fill{background:var(--success)} .need-val{text-align:right;font:500 var(--fs-body)/1 var(--font);color:var(--on-surface-variant);font-variant-numeric:tabular-nums;white-space:nowrap}
 .need[data-level="warn"] .fill{background:var(--warn)} .need[data-level="bad"] .fill{background:var(--error)} .need[data-level="bad"] .need-val{color:var(--error)}
 .needs-row{display:flex;align-items:center;gap:.6rem;margin-top:var(--sp-3)} .needs-row #needs-text{flex:1 1 auto;min-width:0}
@@ -355,7 +355,6 @@ input.rename:focus{border-color:var(--primary);box-shadow:inset 0 0 0 1px var(--
 .item .star .ic,.bm-star .ic{width:1.4rem;height:1.4rem}
 .palette-side{flex:none;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:.4rem;padding-left:var(--sp-3);border-left:1px solid var(--outline-variant)}
 #btn-bulldoze.active{background:var(--secondary-container);color:var(--on-secondary-container)}
-#palette.compact .tab .tab-name{font-size:var(--fs-body)}
 /* cards (dialogs) over a scrim, panels */
 #cards{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:var(--topbar-h) 2rem var(--bot);background:var(--scrim);z-index:8}   /* centred on the map area, not the whole window */
 .card{width:42rem;max-width:calc(100vw - 4rem);max-height:calc(100vh - var(--topbar-h) - var(--bot) - 3.2rem);overflow:auto;padding:2.4rem;animation:rise var(--dur-open) var(--ease-decel)}
@@ -394,11 +393,6 @@ input.rename:focus{border-color:var(--primary);box-shadow:inset 0 0 0 1px var(--
 .seg-btn .pct{margin-left:.4rem;font-weight:400;color:var(--on-surface-variant)} .seg-btn.active .pct{color:inherit}
 input[type="range"]{width:20rem;accent-color:var(--primary)}
 input[type="checkbox"]{accent-color:var(--primary)}
-.legend-table,.keys-table{display:flex;flex-direction:column;gap:.6rem;flex:1 1 auto}
-.legend-row{display:grid;grid-template-columns:6.4rem 13rem 1fr;gap:.8rem;font-size:var(--fs-body);line-height:1.4;align-items:baseline}
-.legend-row .key{display:inline-block;padding:2px .6rem;border-radius:.4rem;font-size:var(--fs-label);background:var(--surface-container-high);color:var(--on-surface);text-align:center}
-.legend-row .k{color:var(--on-surface)} .legend-row .v{color:var(--on-surface-variant)}
-.keys-table{max-height:22rem;overflow-y:auto}
 .dbg-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:.8rem}
 .dbg-info{margin-top:1.2rem;font:var(--fs-body)/1.45 ui-monospace,Menlo,monospace;color:var(--on-surface-variant)}
 .ms-list{display:flex;flex-direction:column}
@@ -441,7 +435,7 @@ input[type="checkbox"]{accent-color:var(--primary)}
 .bm-cat{position:relative;display:flex;align-items:center;gap:.8rem;flex:none;text-align:left;font:400 var(--fs-body)/1.2 var(--font);color:var(--on-surface);background:transparent;border:0;border-radius:var(--shape-sm);padding:.6rem var(--sp-3);min-height:4rem;cursor:pointer;transition:background-color var(--dur-std) var(--ease-std)}
 .bm-cat:hover{background:var(--surface-container)} .bm-cat.active{background:var(--secondary-container);color:var(--on-secondary-container)}
 .bm-cat-name{flex:1 1 auto} .bm-cat-count{font-size:var(--fs-label);color:var(--on-surface-variant);font-variant-numeric:tabular-nums;min-width:3.2rem;text-align:right} .bm-cat.active .bm-cat-count{color:inherit}
-.bm-cat-star{display:inline-flex;color:var(--tertiary)} .bm-cat-star .ic{width:1.6rem;height:1.6rem}
+.bm-cat-star{display:inline-flex;align-items:center;justify-content:center;flex:none;width:1.8rem;height:1.8rem;border-radius:50%;background:var(--tertiary-container);color:var(--on-tertiary-container)} .bm-cat-star .ic{width:1.2rem;height:1.2rem}   /* U6: the rail's goal star is the card's disc (gold is never a glyph on white: 1.7:1) */
 .bm-cat .pip{flex:0 0 .8rem;width:.8rem;height:.8rem;border-radius:50%;background:var(--warn)}
 #bm-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(21rem,1fr));gap:var(--sp-2);padding:var(--sp-3);overflow-y:auto;align-content:start;scrollbar-width:thin}
 .bm-empty{grid-column:1 / -1;padding:var(--sp-6);text-align:center;color:var(--on-surface-variant)}
@@ -455,13 +449,12 @@ input[type="checkbox"]{accent-color:var(--primary)}
 .bm-req svg.ic{width:1.6rem;height:1.6rem} .bm-reqs{display:flex;gap:.3rem;flex-wrap:wrap;align-content:flex-start} .bm-req{display:inline-flex;align-items:center;gap:.3rem;font:500 var(--fs-label)/1.2 var(--font);padding:.2rem .6rem;border-radius:var(--shape-pill);background:var(--surface-container-high);color:var(--on-surface-variant);cursor:help} .bm-card.active .bm-req{background:var(--surface)}
 .bm-lock{font:500 var(--fs-label)/1.3 var(--font);color:var(--on-surface)} .bm-lock span{display:inline-block;padding:.2rem .8rem;border-radius:var(--shape-pill);background:var(--surface-container-high)}
 .bm-card .bm-star{top:.6rem;right:.6rem}
-.bm-blurb{font-size:var(--fs-body);line-height:1.45;color:var(--on-surface)} .bm-why{font:italic var(--fs-body)/1.4 var(--font);color:var(--on-surface-variant)}
 #bm-detail{display:flex;flex-direction:column;min-height:0;border-left:1px solid var(--outline-variant);font-size:var(--fs-body);line-height:1.45}
 #bm-dbody{flex:1 1 0;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:var(--sp-4) var(--sp-4) var(--sp-2);display:flex;flex-direction:column;gap:var(--sp-3)}
 .bm-dfoot{flex:none;display:flex;align-items:center;gap:var(--sp-3);padding:var(--sp-3) var(--sp-4);border-top:1px solid var(--outline-variant);background:var(--surface)} .bm-dfoot:empty{display:none}
 .bm-dhead{display:flex;gap:var(--sp-3);align-items:center} .bm-dhead .icon{width:8rem;height:8rem;flex:0 0 8rem;image-rendering:pixelated;border-radius:1rem;background:var(--surface-container-high)}
 .bm-dname{font:600 var(--fs-headline)/1.2 var(--font);color:var(--on-surface)} .bm-dsub{margin-top:.4rem;color:var(--on-surface-variant)}
-.bm-dblurb{font-size:var(--fs-body)} .bm-dwhy{font:italic var(--fs-body)/1.4 var(--font);color:var(--on-surface-variant)} .bm-ddesc{color:var(--on-surface-variant)} .bm-dlock{font:500 var(--fs-body)/1.4 var(--font);color:var(--warn)}
+.bm-dblurb{font-size:var(--fs-body)} .bm-dwhy{font:italic var(--fs-body)/1.4 var(--font);color:var(--on-surface-variant)} .bm-ddesc{color:var(--on-surface-variant)} .bm-dlock{font:500 var(--fs-body)/1.4 var(--font);color:var(--warn-text)}
 .bm-badge{display:inline-flex;align-items:center;gap:.8rem;font:600 var(--fs-body)/1.3 var(--font);color:var(--on-tertiary-container);background:var(--tertiary-container);border-radius:var(--shape-sm);padding:.8rem 1.2rem} .bm-badge .ic{flex:none;width:1.6rem;height:1.6rem}
 #bm-detail .card-kicker{margin:0}
 .bm-list{display:flex;flex-direction:column} .bm-li{display:flex;align-items:center;gap:.8rem;padding:.6rem 0;border-bottom:1px solid var(--surface-container-high)} .bm-li svg.ic{color:var(--primary)} .bm-li:last-child{border-bottom:0}
@@ -526,7 +519,7 @@ input[type="checkbox"]{accent-color:var(--primary)}
 .pb-line.empty{opacity:.25} .pb-line.opp{border-left-color:var(--outline)} .pb-line.key{border-left-color:var(--primary)}
 .pb-line.new{color:var(--on-surface);font-weight:600;background:var(--secondary-container)}
 .fb-record{font:600 var(--fs-body)/1.3 var(--font);color:var(--primary);margin:-.4rem 0 1.2rem}
-.fb-cols{display:grid;grid-template-columns:1fr 1fr;gap:1.2rem 2.4rem} .fb-col{min-width:0} .fb-col>.card-kicker{margin-top:1.6rem} .fb-col>.card-kicker:first-child{margin-top:0}
+.fb-col{min-width:0} .fb-col>.card-kicker{margin-top:1.6rem} .fb-col>.card-kicker:first-child{margin-top:0}
 .fb-ctl{padding:.6rem 0 .8rem;border-bottom:1px solid var(--surface-container-high)} .fb-ctl .row{border-bottom:0;align-items:center;padding:.4rem 0}
 .fb-fx{font-size:var(--fs-body);line-height:1.4;color:var(--on-surface-variant);min-height:1.8rem}
 .fb-next{padding:1rem 1.4rem;border-radius:var(--shape-sm);background:var(--surface-container-low);border:1px solid var(--outline-variant)} .fb-next-line{font:600 var(--fs-body)/1.35 var(--font);margin-bottom:.8rem} .fb-next .bar{height:.8rem;margin-bottom:.8rem}
@@ -616,7 +609,7 @@ input[type="checkbox"]{accent-color:var(--primary)}
 .issue-row .t{min-width:0;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;font:600 var(--fs-body)/1.25 var(--font);color:var(--on-surface)} .issue-row .a{font-size:var(--fs-label);color:var(--on-surface-variant);font-weight:400;white-space:nowrap}
 .issue-row .btn{padding:0 .8rem;min-height:2.8rem;height:2.8rem;font-size:var(--fs-label);min-width:0;background:transparent;color:var(--primary)}
 .issue-row .btn::after{top:-.4rem;bottom:-.4rem}
-.issue-row .btn.fix{font-weight:600}
+.issue-row .btn.fix{display:inline-flex;align-items:center;gap:.4rem;padding:0 1rem 0 .7rem;font-weight:600;background:var(--secondary-container);color:var(--on-secondary-container);border-radius:var(--shape-pill)} .issue-row .btn.fix svg.ic{width:1.8rem;height:1.8rem;flex:none}   /* U6: a tonal icon + label chip beside the row's icon buttons */
 #issues-more{font-size:var(--fs-label);color:var(--on-surface-variant);text-align:center;padding:.2rem 0}
 .notif .locate{background:transparent;color:var(--primary);box-shadow:inset 0 0 0 1px var(--outline)}
 
@@ -698,7 +691,7 @@ input[type="checkbox"]{accent-color:var(--primary)}
 #panel-land .land-detail .row.land-price .v{color:var(--primary);font-weight:700}
 #panel-land .land-actions{display:flex;gap:.8rem;flex-wrap:wrap;margin-top:1.2rem}
 #panel-land .btn.confirm{background:var(--secondary);color:var(--on-secondary)}
-#panel-land .land-why{color:var(--warn);margin-top:.6rem}
+#panel-land .land-why{color:var(--warn-text);margin-top:.6rem}
 #panel-land .land-legend{display:flex;gap:1.2rem;flex-wrap:wrap;font-size:var(--fs-label);opacity:.85;margin-top:.6rem}
 #panel-land .land-chip{display:inline-flex;align-items:center;gap:.5rem}
 #panel-land .land-swatch{display:inline-block;width:1.2rem;height:1.2rem;border-radius:.2rem;border:1px solid}
@@ -736,7 +729,7 @@ input[type="checkbox"]{accent-color:var(--primary)}
 #menu-sheet input[type="range"],#menu-sheet .fb-slider{width:100%;max-width:100%;min-width:0}
 #menu-sheet .seg{max-width:100%;flex-wrap:nowrap} #menu-sheet .seg-btn{padding:0 1rem}
 #menu-sheet canvas{max-width:100%;height:auto}
-#menu-sheet .fb-ov,#menu-sheet .fb-sched,#menu-sheet .fb-rec,#menu-sheet .fb-roster-cols,#menu-sheet .fb-cols,#menu-sheet .fb-bud-grid,#menu-sheet .fb-cand-groups,#menu-sheet .fb-staff{grid-template-columns:minmax(0,1fr)}
+#menu-sheet .fb-ov,#menu-sheet .fb-sched,#menu-sheet .fb-rec,#menu-sheet .fb-roster-cols,#menu-sheet .fb-bud-grid,#menu-sheet .fb-cand-groups,#menu-sheet .fb-staff{grid-template-columns:minmax(0,1fr)}
 #menu-sheet .fb-tr{grid-template-columns:3rem minmax(0,1fr) 7rem 2.8rem 3rem 4.4rem;gap:.4rem;font-size:var(--fs-label)} #menu-sheet .fb-th{letter-spacing:.02em} #menu-sheet .fb-pr{grid-template-columns:3rem minmax(0,1fr) 3rem 5rem auto}
 #menu-sheet .fb-sc,#menu-sheet .fb-tr.sched-head{grid-template-columns:5.6rem minmax(0,1fr) 4.8rem 1.6rem 5.2rem} #menu-sheet .fb-rh{grid-template-columns:3.6rem 3rem minmax(0,1fr) 3rem 5.2rem}
 #menu-sheet .fb-tabs{flex-wrap:wrap} #menu-sheet .fb-tab{padding:0 1.2rem}
@@ -747,7 +740,6 @@ input[type="checkbox"]{accent-color:var(--primary)}
 #menu-sheet .how-groups,#menu-sheet .how-keys{grid-template-columns:minmax(0,1fr);gap:var(--sp-3)}
 #menu-sheet .how-goal{max-width:none}
 #menu-sheet .about-row{grid-template-columns:6.4rem minmax(0,1fr)}
-#menu-sheet .legend-row{grid-template-columns:5rem minmax(0,1fr)} #menu-sheet .legend-row .v{grid-column:2}
 #menu-sheet .dbg-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
 #menu-sheet .log-list,#menu-sheet .ms-list{min-width:0}
 #menu-sheet #panel-milestones .row:has(+ .row .bar){border-bottom:0;padding-bottom:0} #menu-sheet #panel-milestones .row .bar{margin-top:0 !important}
@@ -768,9 +760,10 @@ input[type="checkbox"]{accent-color:var(--primary)}
 #objective-card,#goal-pill{animation:rise var(--dur-open) var(--ease-decel)}
 /* reduce motion: the player's switch (Settings, default = the system setting) puts `reduce-motion` on <body>: every animation and transition ends at once, the coach ring does not pulse */
 body.reduce-motion{--dur-std:0ms;--dur-open:0ms;--dur-close:0ms}
+body.motion-on{--dur-std:160ms;--dur-open:240ms;--dur-close:160ms}   /* U6: the switch explicitly off restores the tokens under prefers-reduced-motion (the body class wins; the media query only sets the default) */
 body.reduce-motion *,body.reduce-motion *::before,body.reduce-motion *::after{animation-duration:.01ms !important;animation-delay:0s !important;animation-iteration-count:1 !important;transition-duration:.01ms !important;transition-delay:0s !important;scroll-behavior:auto !important}
 body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
-@media (prefers-reduced-motion: reduce){.coach-ring::after{animation:none;opacity:0}}
+@media (prefers-reduced-motion: reduce){body:not(.motion-on) .coach-ring::after{animation:none;opacity:0}}
 
 </style>
 </head>
@@ -3594,7 +3587,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
     { key: 'h', action: 'hud' }, { key: 'h', action: 'hudFull', shift: true },   // hud + zoom pass / U2: H hides the HUD, Shift+H (or H again) restores it (Home now pans to Founders' Hall)
     { key: 'Escape', action: 'escape' },
     { key: 's', action: 'save', ctrl: true }, { key: 'z', action: 'undo', ctrl: true }, { key: 'p', action: 'postcard', ctrl: true },
-    { key: 'm', action: 'mute' },
+    { key: 'm', action: 'menu' }, { key: 'm', action: 'mute', shift: true },   // UI refresh U6: M toggles the Menu sheet; Shift+M mutes (M was mute)
     { key: 'y', action: 'toastYes' },
     { key: '`', action: 'debug' },
     { key: 'a', action: 'panLeft' }, { key: 's', action: 'panDown' }, { key: 'd', action: 'panRight' },
@@ -39820,7 +39813,12 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
     // build requirements (the detail NEEDS list and the card chips)
     walk: ['M13 5a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3z', 'M12 8l-2 5 3 2v6', 'M10 13l-3 3', 'M12 8l3 2.5 2.5.5'],
     road: ['M8 3 5 21', 'M16 3l3 18', 'M12 5v2', 'M12 11v2', 'M12 17v2'],
-    pilings: ['M6 4v13', 'M12 4v13', 'M18 4v13', 'M3 20c2-1.5 4-1.5 6 0s4 1.5 6 0 4-1.5 6 0']
+    pilings: ['M6 4v13', 'M12 4v13', 'M18 4v13', 'M3 20c2-1.5 4-1.5 6 0s4 1.5 6 0 4-1.5 6 0'],
+    // U6: the needs gauges (the Students popover): beds, seats, dining, sewage (power and water reuse bolt and drop)
+    bed: ['M3 20v-9', 'M3 16h18', 'M21 20v-6a2 2 0 0 0-2-2h-8v4', 'M5 12h3'],
+    school: ['M12 4 2 9l10 5 10-5-10-5z', 'M6 11.5v4.5c0 1.5 2.7 3 6 3s6-1.5 6-3v-4.5', 'M22 9v5'],
+    restaurant: ['M7 3v18', 'M4 3v4a3 3 0 0 0 6 0V3', 'M17 3c-2 2.5-3 5-3 8h3v10', 'M17 3v18'],
+    sewage: ['M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z', 'M8.5 9v6', 'M12 9v6', 'M15.5 9v6']
   };
   const FILLED = { star: true, play_arrow: true, play_arrow_left: true, dot: true };
   /** the emoji / text glyphs data.js and other modules still carry in content → their registry names */
@@ -39965,7 +39963,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
     notifMs: fin(PR.snackMs, 6000), notifMax: fin(PR.snackMax, 2), notifQueueMax: 6, notifTicks: 120, bubbleIdleMs: fin(PR.bubbleIdleMs, 8000),   // U2: snackbars (6 s, two visible, the rest queue)
     bubbleMs: fin(PR.bubbleMs, 6000), hintMs: 6000, hintTicks: 60, nTapMs: 350, panPx: fin(PR.panPxPerFrame, 12), refreshMs: fin(PU.panelRefreshMs, 500),
     deltaMs: 600, odoMs: 150, holdTicks: 600, logMax: fin(PU.tickerMax, 30), popLines: 7, minimapPx: fin(PR.minimapPx, 160),
-    compactWidth: fin(PU.compactWidth, 1180), hudStaggerMs: fin(PT.hudStaggerMs, 100), ringThrottleMs: 50, skipAfterTick: fin(PT.skipAfterTick, 150),
+    hudStaggerMs: fin(PT.hudStaggerMs, 100), ringThrottleMs: 50, skipAfterTick: fin(PT.skipAfterTick, 150),
     autoCardTicksPerSec: 10, toastTicks: fin(PT.toastTicks, 80), cardWords: fin(PU.cardWordsMax, 12)
   };
   const M0 = { ctrl: false, shift: false, meta: false, alt: false };
@@ -39973,7 +39971,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
   const SKY_GLYPH = ['sunrise', 'sunny', 'sunset', 'sunset', 'moon'];   // U5: registry names (Dawn, Day, Golden, Dusk, Night)
   const SKY_NAME = ['Dawn', 'Day', 'Golden', 'Dusk', 'Night'];
   const MOOD_FACES = ['mood_bad', 'mood_bad', 'mood_neutral', 'mood', 'mood'];   // U5: registry names
-  const HINT_TEXT = { dredgeFill: 'Dredge spoil from the bayou raises marsh to dry land in ten days. Ecology pays for it.', saveUnavailable: 'Saves unavailable in this browser mode', perfMode: 'Performance mode', mute: 'Sound on · M to mute', pauseToPlan: 'Pause to plan', desireLine: 'Students want a path here' };
+  const HINT_TEXT = { dredgeFill: 'Dredge spoil from the bayou raises marsh to dry land in ten days. Ecology pays for it.', saveUnavailable: 'Saves unavailable in this browser mode', perfMode: 'Performance mode', mute: 'Sound on · Shift+M to mute', pauseToPlan: 'Pause to plan', desireLine: 'Students want a path here' };
   const PANEL_KEYS = { budget: 'Budget', season: 'Season', storm: 'Storm', land: 'Land Office', almanac: 'Almanac', milestones: 'Milestones', log: 'Log', settings: 'Settings', howto: 'How to play', about: 'About', debug: 'Debug' };   // L2: land; U2: log
   // UI refresh U5: every icon comes from the one registry, BSU.icons (src/js/icons.js); `icon(name, cls)` below is the short local name for icons.get
   const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -40139,8 +40137,8 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
     const lit = btn('ov-lit', '', 'lit-chip hidden', function () { togglePopover('layers'); }); E['ov-lit'] = lit; acts.appendChild(lit);
     acts.appendChild(iconBtn('btn-layers', 'layers', 'Layers (F W K P C E)', function () { togglePopover('layers'); }));
     acts.appendChild(iconBtn('btn-map', 'map', 'Map', function () { togglePopover('map'); }));
-    acts.appendChild(iconBtn('btn-menu', 'menu', 'Menu', function () { M.toggleMenu(); }));
-    const mute = btn('btn-mute', null, 'icon', function () { toggleMute(); }); mute.title = 'Mute (M)'; const mOn = icon('volume_up'), mOff = icon('volume_off', 'hidden'); mute.appendChild(mOn); mute.appendChild(mOff); E['btn-mute'] = mute; E['btn-mute-on'] = mOn; E['btn-mute-off'] = mOff; acts.appendChild(mute);
+    acts.appendChild(iconBtn('btn-menu', 'menu', 'Menu (M)', function () { M.toggleMenu(); }));
+    const mute = btn('btn-mute', null, 'icon', function () { toggleMute(); }); mute.title = 'Mute (Shift+M)'; const mOn = icon('volume_up'), mOff = icon('volume_off', 'hidden'); mute.appendChild(mOn); mute.appendChild(mOff); E['btn-mute'] = mute; E['btn-mute-on'] = mOn; E['btn-mute-off'] = mOff; acts.appendChild(mute);
     const endowed = el('span', 'chip gold hidden', 'Endowed'); endowed.id = 'chip-endowed'; E['chip-endowed'] = endowed; acts.appendChild(endowed);
     return tb;
   }
@@ -40210,12 +40208,14 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
     o.legend.forEach(function (label, k) { const sw = el('span', 'sw'); const i = el('i'); i.style.background = cols[k] || 'transparent'; sw.appendChild(i); sw.appendChild(el('span', null, label)); lg.appendChild(sw); });
     lg.appendChild(el('span', 'note', o.name + ' · ' + o.key + ' again turns it off · Settings can keep this popover open'));
   }
+  /** U6: the glyph that leads each needs gauge (registry names; power and water share the requirement icons) */
+  const NEED_ICON = { beds: 'bed', seats: 'school', dining: 'restaurant', power: 'bolt', water: 'drop', wastewater: 'sewage' };
   /** U2: the needs strip (six gauges as rows, the binding line, Locate, the applicants line) now lives in the Students chip's popover; the ids are the UX pass's */
   function buildNeedsStrip() {
     const strip = el('div', 'hidden'); strip.id = 'needs-strip'; E.needEls = {};
     const gauges = el('div', 'needs-gauges');
     for (const k of ['beds', 'seats', 'dining', 'power', 'water', 'wastewater']) {
-      const g = el('div', 'need sl'); g.dataset.key = k; const lab = el('div', 'need-label', (BSU.data && BSU.data.needs && BSU.data.needs[k] ? BSU.data.needs[k].label : k)); const bar = el('div', 'bar'); const f = el('div', 'fill'); bar.appendChild(f); const val = el('div', 'need-val', '—');
+      const g = el('div', 'need sl'); g.dataset.key = k; const lab = el('div', 'need-label', (BSU.data && BSU.data.needs && BSU.data.needs[k] ? BSU.data.needs[k].label : k)); lab.prepend(icon(NEED_ICON[k] || 'info', 'sm')); const bar = el('div', 'bar'); const f = el('div', 'fill'); bar.appendChild(f); const val = el('div', 'need-val', '—');   // U6: each gauge leads with its glyph (the Sewage drain was the one the spec left undrawn)
       g.appendChild(lab); g.appendChild(bar); g.appendChild(val); gauges.appendChild(g); E.needEls[k] = { el: g, fill: f, val: val };
       g.addEventListener('click', function () { const s = stateOf(); const b = (BSU.data.needs[k] || {}).build; if (s && b) { closePopover(); M.openBuildMenu(s, { focus: b, pulse: true }); } });
       if (k === 'power' || k === 'water') { g.addEventListener('mouseenter', function () { const I = issuesApi(); if (I) I.pulse(k); }); g.addEventListener('mouseleave', function () { const I = issuesApi(); if (I) I.pulse(null); }); }   // issue spotlight pass: hovering the gauge pulses every unpowered / unwatered beacon
@@ -40359,7 +40359,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
     seedLab.appendChild(seed);
     const ts = btn('btn-title-settings', 'Settings', '', function () { M.openPanel('settings'); });
     help.appendChild(cont); help.appendChild(howBtn); help.appendChild(aboutBtn); help.appendChild(ts);
-    const tm = btn('btn-title-mute', null, 'icon', function () { toggleMute(); }); tm.title = 'Mute (M)'; const tmOn = icon('volume_up'), tmOff = icon('volume_off', 'hidden'); tm.appendChild(tmOn); tm.appendChild(tmOff); E['btn-title-mute-on'] = tmOn; E['btn-title-mute-off'] = tmOff;
+    const tm = btn('btn-title-mute', null, 'icon', function () { toggleMute(); }); tm.title = 'Mute (Shift+M)'; const tmOn = icon('volume_up'), tmOff = icon('volume_off', 'hidden'); tm.appendChild(tmOn); tm.appendChild(tmOff); E['btn-title-mute-on'] = tmOn; E['btn-title-mute-off'] = tmOff;
     row.appendChild(seedLab); row.appendChild(tm);
     const sz = el('div', 'title-size'); sz.appendChild(el('span', 'title-size-label', 'Display size')); const szs = el('div', 'seg'); const szn = el('div', 'seg-note hidden', '');   // P5: Compact 100 / Comfortable 115 / Large 130 / Auto
     SIZE_CHOICES.forEach(function (c) { const b = btn('btn-size-' + c[0], c[1], 'seg-btn', function () { M.setUiScale(c[2]); refreshTitleSize(); }); b.dataset.scale = String(c[2]); if (c[3]) b.appendChild(el('span', 'pct', c[3])); b.title = c[2] === 'auto' ? 'Pick the size from this window (1366 px and up: 115 %, 1680 px and up: 130 %)' : c[1] + ' (' + c[3] + ')'; szs.appendChild(b); });
@@ -40460,7 +40460,6 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
     attachInput(world);
     subscribe();
     registerBuiltins();
-    try { const w = fin(window.innerWidth, 1280); cls(E.palette, 'compact', w < L.compactWidth); } catch (e) { /* stub */ }
     try { const raw = window.localStorage.getItem('bsu.settings'); const o = raw ? JSON.parse(raw) : null; applyScale(o && o.uiScale != null ? o.uiScale : 'auto'); } catch (e) { try { applyScale('auto'); } catch (e2) { /* stub */ } }   // the title screen is scaled too; nothing stored (first run) = the smart default for this window
     fitTopbar();
   };
@@ -40543,8 +40542,9 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
   /** U2 settings migration, once per settings object (boot, newGame, load): the old hudMode ('hidden' → the HUD starts hidden, else nothing) and hudCollapsed keys leave; keepMinimap / keepOverlays default off */
   /** U5: the OS-level reduced-motion preference (the default of settings.reduceMotion) */
   function prefersReducedMotion() { try { return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches); } catch (e) { return false; } }
-  /** U5: settings.reduceMotion → the `reduce-motion` class on <body>, which the CSS keys off (every animation and transition goes to 0) */
-  function applyReduceMotion() { if (!dom()) return; const on = !!M.settings().reduceMotion; if (on !== rmApplied) { rmApplied = on; cls(document.body, 'reduce-motion', on); } }
+  /** U5 / U6: settings.reduceMotion → one of two classes on <body>: `reduce-motion` (true: every animation and transition ends at once) or `motion-on` (false: the
+   *  token-driven motion runs even when the OS asks for reduced motion; the body class wins, the media query only sets the default). Unset (no state yet) → neither. */
+  function applyReduceMotion() { if (!dom()) return; const v = M.settings().reduceMotion; const key = v === true ? 'on' : v === false ? 'off' : 'unset'; if (key !== rmApplied) { rmApplied = key; cls(document.body, 'reduce-motion', v === true); cls(document.body, 'motion-on', v === false); } }
   M.reduceMotion = function (on) { const set = M.settings(); if (on !== undefined) { set.reduceMotion = !!on; M.saveSettings(); } applyReduceMotion(); return !!set.reduceMotion; };
   function migrateSettings() {
     const set = M.settings(); let changed = false;
@@ -40751,7 +40751,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
         window.addEventListener('keyup', function (e) { try { keyup(e.key); } catch (err) { uerr('keyup', err); } });
         window.addEventListener('blur', function () { try { for (const k in held) held[k] = false; heldAlt = false; heldN = false; if (live.down || live.state === 'DRAGGING') M.pointer('cancel', lastPx, lastPy, 0, M0); } catch (err) { uerr('blur', err); } });
         window.addEventListener('pointerup', function (e) { try { if (live.down && e.target !== world) M.pointer('up', lastPx, lastPy, fin(e.button, 0), modsOf(e)); } catch (err) { uerr('pointerup:window', err); } });
-        window.addEventListener('resize', function () { try { const w = fin(window.innerWidth, 1280); cls(E.palette, 'compact', w < L.compactWidth); } catch (err) { /* stub */ } try { applyScale(uiMode); } catch (err) { /* stub */ } fitTopbar(); paletteFade(); try { for (const name in POP_ANCHOR) if (popVisible(name)) placePopover(name); } catch (err) { /* stub */ } });
+        window.addEventListener('resize', function () { try { applyScale(uiMode); } catch (err) { /* stub */ } fitTopbar(); paletteFade(); try { for (const name in POP_ANCHOR) if (popVisible(name)) placePopover(name); } catch (err) { /* stub */ } });
       }
     } catch (e) { /* stub window */ }
   }
@@ -41166,7 +41166,8 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
       case 'save': call('session', 'save', 'manual.0'); return true;
       case 'undo': doUndo(s); return true;
       case 'postcard': postcard(s); return true;
-      case 'mute': toggleMute(); return true;
+      case 'mute': toggleMute(); return true;   // U6: Shift+M (M is the Menu sheet)
+      case 'menu': M.toggleMenu(); return true;   // U6: M toggles the Menu sheet (the title screen never reaches here: keydown returns before the map keys while it is on)
       case 'toastYes': return false;
       case 'debug': toggleDebug(s); return true;
       default: {
@@ -41184,7 +41185,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
   /** U5: swap the date chip's weather icon (a registry name) */
   function setSkyIcon(name) { const g = E['sky-glyph']; if (!g || g.dataset.icon === name) return; g.dataset.icon = name; while (g.firstChild) g.removeChild(g.firstChild); g.appendChild(icon(name)); }
   function toggleMute() { const s = stateOf(); if (!s) return; const set = M.settings(); const on = !set.muted; set.muted = on; call('audio', 'mute', on); M.saveSettings(); refreshMuteButtons(); }
-  function refreshMuteButtons() { const set = M.settings(); const m = !!(set && set.muted); show(E['btn-mute-on'], !m); show(E['btn-mute-off'], m); if (E['btn-mute']) E['btn-mute'].title = m ? 'Unmute (M)' : 'Mute (M)'; show(E['btn-title-mute-on'], !m); show(E['btn-title-mute-off'], m); }
+  function refreshMuteButtons() { const set = M.settings(); const m = !!(set && set.muted); show(E['btn-mute-on'], !m); show(E['btn-mute-off'], m); if (E['btn-mute']) E['btn-mute'].title = m ? 'Unmute (Shift+M)' : 'Mute (Shift+M)'; show(E['btn-title-mute-on'], !m); show(E['btn-title-mute-off'], m); }
   function toggleDebug(s) { const open = !M.debug.open; M.debug.open = open; if (dom()) M.openPanel(open ? 'debug' : (s.ui.panel === 'debug' ? null : s.ui.panel)); call('progress', 'debugOpen', s, open); }
   function postcard(s) {
     const r = call('render', 'postcard', s, undefined); let url = typeof r === 'string' ? r : (r && typeof r.toDataURL === 'function' ? r.toDataURL('image/png') : '');
@@ -42524,7 +42525,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
     const I = issuesApi(), sd = fin(P.issues && P.issues.snoozeDays, 3);
     if (opts.count > 1) { const bd = btn(null, '×' + opts.count, 'small badge', function () { const o = opts.suggest ? tray.sopen : tray.open; o[it.kind] = !o[it.kind]; tray.key = ''; }); bd.title = opts.count + ' ' + (I ? I.labelOf(it.kind).toLowerCase() : it.kind) + ' issues: click to ' + (opts.expanded ? 'fold them' : 'list them all'); row.appendChild(bd); }
     let fix = null;
-    if (!opts.progress) { fix = btn(null, it.kind === 'unlinkedPath' ? 'Link it' : 'Fix', 'small fix', function () { const st = stateOf(); if (st) fixIssue(st, issuesApi().byId(st, it.id) || it); }); fix.title = it.fix || 'Fix it'; row.appendChild(fix); }   // paths pass: the Not linked suggestion's button reads Link it
+    if (!opts.progress) { const link = it.kind === 'unlinkedPath'; fix = btn(null, link ? 'Link it' : 'Fix', 'small fix', function () { const st = stateOf(); if (st) fixIssue(st, issuesApi().byId(st, it.id) || it); }); fix.prepend(icon(link ? 'link' : 'construction', 'sm')); fix.title = it.fix || 'Fix it'; row.appendChild(fix); }   // paths pass: the Not linked suggestion's button reads Link it; U6: a tonal icon + label chip (the label stays the button's own text: issues.test and play.mjs read it)
     const loc = btn(null, null, 'small icon-sm locate', function () { const st = stateOf(); if (st) locateIssue(st, issuesApi().byId(st, it.id) || it); }); loc.appendChild(icon('my_location', 'sm')); loc.title = 'Locate: ease the camera there (I cycles)'; loc.dataset.act = 'locate'; row.appendChild(loc);
     if (!opts.progress) {
       const zz = btn(null, null, 'small icon-sm', function () { const st = stateOf(); const I2 = issuesApi(); if (st && I2 && I2.snooze(st, it.id)) { tray.key = ''; M.notify(st, { kind: 'info', text: 'Snoozed ' + sd + ' days: ' + it.title, ttl: 2500 }); } }); zz.appendChild(icon('snooze', 'sm')); zz.title = 'Snooze ' + sd + ' days: hides this row until ' + BSU.formatDate(dayOf(s) + sd) + '; it comes back sooner if it gets worse'; zz.dataset.act = 'snooze'; row.appendChild(zz);
@@ -43086,7 +43087,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
       { k: 'L', t: 'Milestones', b: [['l', 0, 0, 'milestones']] },
       { k: 'N', t: 'Season (hold: network view)', b: [['n', 0, 0, 'season']] },
       { k: 'I', t: 'Next issue (hold: spotlight)', b: [] },
-      { k: 'M', t: 'Mute', b: [['m', 0, 0, 'mute']] },
+      { k: 'M', t: 'Menu (Shift+M: mute)', b: [['m', 0, 0, 'menu'], ['m', 0, 1, 'mute']] },
       { k: 'Ctrl+S', t: 'Save', b: [['s', 1, 0, 'save']] },
       { k: 'Ctrl+P', t: 'Postcard', b: [['p', 1, 0, 'postcard']] }] },
     { h: 'Time and view', rows: [
@@ -44126,7 +44127,6 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
   function positions() { const f = BSU.data && BSU.data.football; return (f && f.positions) || PEN.positions || POS_FALLBACK; }
   function oppAbbr(key) { return String(key || 'OPP').slice(0, 3).toUpperCase(); }
   function oppOf(key) { return (BSU.data && BSU.data.opponents && BSU.data.opponents[key]) || { name: key || 'Opponent', nick: '', rating: 50, style: 'balanced' }; }
-  function styleOfCoach(name) { const cs = (BSU.data && BSU.data.coaches) || []; for (let i = 0; i < cs.length; i++) if (cs[i] && cs[i].name === name) return cs[i].style || 'balanced'; return null; }
 
   // PLAN_V2 P1: staff helpers (data.staff text / styles; the Season panel's Staff tab reads sports.staff(state))
   const PF = PSP.staff || {};
@@ -47507,7 +47507,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
     if (rest > 0) call('economy', 'addStudents', state, rest, 'founding');
     M.achieve(state, 'welcome');
     M.ticker(state, 'First 120 students arrive at Bayou State. One asks where the parking is.', null, 'event', fin(state.plot && state.plot.landing, NONE));
-    if (!p.hints.mute) { p.hints.mute = true; ui(state, 'hint', 'mute', 'Sound on · M to mute'); }
+    if (!p.hints.mute) { p.hints.mute = true; ui(state, 'hint', 'mute', 'Sound on · Shift+M to mute'); }
   }
   /** session (skipTutorial): stage 6, Objectives 1–5 done without grants, every tab introduced, hints set, first-warning drops off; queues NO cell (D57) */
   M.applySkipTutorial = function (state) {

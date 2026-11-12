@@ -98,7 +98,12 @@
     // build requirements (the detail NEEDS list and the card chips)
     walk: ['M13 5a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3z', 'M12 8l-2 5 3 2v6', 'M10 13l-3 3', 'M12 8l3 2.5 2.5.5'],
     road: ['M8 3 5 21', 'M16 3l3 18', 'M12 5v2', 'M12 11v2', 'M12 17v2'],
-    pilings: ['M6 4v13', 'M12 4v13', 'M18 4v13', 'M3 20c2-1.5 4-1.5 6 0s4 1.5 6 0 4-1.5 6 0']
+    pilings: ['M6 4v13', 'M12 4v13', 'M18 4v13', 'M3 20c2-1.5 4-1.5 6 0s4 1.5 6 0 4-1.5 6 0'],
+    // U6: the needs gauges (the Students popover): beds, seats, dining, sewage (power and water reuse bolt and drop)
+    bed: ['M3 20v-9', 'M3 16h18', 'M21 20v-6a2 2 0 0 0-2-2h-8v4', 'M5 12h3'],
+    school: ['M12 4 2 9l10 5 10-5-10-5z', 'M6 11.5v4.5c0 1.5 2.7 3 6 3s6-1.5 6-3v-4.5', 'M22 9v5'],
+    restaurant: ['M7 3v18', 'M4 3v4a3 3 0 0 0 6 0V3', 'M17 3c-2 2.5-3 5-3 8h3v10', 'M17 3v18'],
+    sewage: ['M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z', 'M8.5 9v6', 'M12 9v6', 'M15.5 9v6']
   };
   const FILLED = { star: true, play_arrow: true, play_arrow_left: true, dot: true };
   /** the emoji / text glyphs data.js and other modules still carry in content → their registry names */

@@ -417,7 +417,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 
 ## BSU.icons   // U5: the one inline-SVG registry (src/js/icons.js, before ui.js); 24 × 24, stroke 2 in currentColor, a few filled
 - icons.get(name, cls?)   // a fresh <svg class="ic cls" viewBox="0 0 24 24" data-icon=name>; cls: 'sm' 18 px, 's20' 20 px, 'hidden', …; an unknown name → an empty svg, recorded in missing()
-- icons.names()   // every name, sorted (74)
+- icons.names()   // every name, sorted (78: U6 added bed, school, restaurant, sewage for the needs gauges)
 - icons.has(name) / icons.paths(name) / icons.isFilled(name)
 - icons.fromGlyph(ch)   // the registry name for an emoji / text glyph data.js or an old caller still carries (⚡ 💧 🚶 🛣 🪵 ↔ 🌀 🦟 🌡 🌊 🚱 🐊 …), else null
 - icons.requested() / icons.missing()   // names asked for / asked for but absent (tests)
@@ -1047,7 +1047,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - ui.focusedCard() / ui.focusCard(id)   // U4: the card with the keyboard focus in the open sheet (null when none) / move it
 - ui.searchBuildings(text) / ui.buildQuery()   // U4: the expanded sheet's search
 - ui.icon(name, cls)   // U5: = BSU.icons.get (kept for ui_panels and the tests)
-- ui.reduceMotion(on?)   // U5: settings.reduceMotion (default = the media query, unset until the player flips it); sets / clears <body class="reduce-motion"> and saves; returns the state
+- ui.reduceMotion(on?)   // U5 / U6: settings.reduceMotion (default = the media query, unset until the player flips it); true → <body class="reduce-motion">, false → <body class="motion-on"> (the tokens run even under prefers-reduced-motion), unset → neither; saves; returns the state
 - ui._coachPlace(rect, boxW, boxH, vw, vh, limitY)   // U5: pure placement of the coach card ({x, y, pos}): never over `rect`, inside the window, above limitY
 - ui._snacks()
 - ui._machine(cb)
@@ -1094,7 +1094,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - ui.panelBack()
 - ui.closePanel()
 - ui.openSheet(on)
-- ui.toggleMenu()
+- ui.toggleMenu()   // the Menu icon and the M key (U6; mute is Shift+M)
 - ui.sheetState()
 - ui.setOverlay(state, ov)
 - ui.setSpeed(state, speed)
