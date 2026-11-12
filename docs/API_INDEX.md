@@ -585,6 +585,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - progress.complete(state, id)
 - progress.dismiss(state, id)
 - progress.reopen(state, id)
+- progress.goalProgress(state, id) → {progress, goal} | null   (goal pass: an objective evaluated now; objective() carries the last tick's numbers)
 - progress.objective(state)
 - progress.showMe(state, id)
 - progress.tutorialStage(state)

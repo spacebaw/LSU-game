@@ -576,12 +576,8 @@
     if (st && ((st.boardQueue && st.boardQueue.length > 0) || fin(st.boardedCount, 0) > 0)) n++;
     return { progress: n, goal: 5 };
   }
-  function preserveSouth(state) {
-    const rect = state.plot && state.plot.rect; const y1 = rect ? rect.y1 : (HGT >> 1);
-    let n = 0; const fl = state.tiles.flags;
-    for (let i = 0; i < N; i++) if ((fl[i] & FLAG.PRESERVE) && ((i / W) | 0) > y1) n++;
-    return n;
-  }
+  /** goal pass: every preserved tile counts toward "Preserve it" (it used to count only the rows south of the founders' plot, a rule nothing on the map showed) */
+  function preserveTiles(state) { let n = 0; const fl = state.tiles.flags; for (let i = 0; i < N; i++) if (fl[i] & FLAG.PRESERVE) n++; return n; }
   // Triggers: id → (state, c) → boolean (locked objectives only)
   const TRIGGERS = {
     '6': function (s) { return done(s, '5'); },
@@ -627,7 +623,7 @@
     '13': function () { return { progress: 0, goal: 1 }; },
     '14': function (s) { const st = call('buildings', 'stats', s) || {}; return { progress: fin(st.unrepaired, 0) === 0 ? 1 : 0, goal: 1 }; },
     '15': function (s) { let n = 0; if (bcount(s, 'practice_field')) n++; if (M.setPieceSeen(s, 'spring') || (s.sports && s.sports.lastSpring)) n++; if (bhas(s, 'practice_field', 1)) n++; if (fin(s.sports && s.sports.firstHomeGameDay, NONE) >= 0) n++; return { progress: n, goal: 4 }; },   // PLAN_FOOTBALL §2.4 (pass C): field → Spring Game → Bayou Field → first home game
-    '16': function (s) { return { progress: Math.min(preserveSouth(s), fin(G.preserve16, 20)), goal: fin(G.preserve16, 20) }; },
+    '16': function (s) { return { progress: Math.min(preserveTiles(s), fin(G.preserve16, 20)), goal: fin(G.preserve16, 20) }; },
     '17': function (s) { return { progress: (students(s) >= fin(G.target17, 1500) ? 1 : 0) + (bhas(s, 'wastewater') ? 1 : 0), goal: 2 }; },
     '18a': function (s) { const r = s.sports && s.sports.record; return { progress: Math.min(fin(r && r.wins, 0), fin(G.wins18a, 4)), goal: fin(G.wins18a, 4) }; },
     '18b': function (s) { const r = s.sports && s.sports.record, ls = s.sports && s.sports.lastSeason; const w = Math.max(fin(r && r.wins, 0), fin(ls && ls.wins, 0)); return { progress: Math.min(w, fin(G.wins18b, 5)), goal: fin(G.wins18b, 5) }; },
@@ -692,7 +688,7 @@
     healthShade: function (s) { return bhas(s, 'health_center'); },
     greekPorch: function (s) { return M.unlocked(s, 'greek_house') && bhas(s, 'practice_field', 1); },
     cypressLine: function (s) { let n = 0; const crest = s.tiles.crest; for (let i = 0; i < N; i++) if (crest[i] > 0) n++; return ecology(s) < 60 && n >= 10; },
-    lookout: function (s) { return bcount(s, 'preserve') > 0 || preserveSouth(s) > 0 || anyPreserve(s); },
+    lookout: function (s) { return bcount(s, 'preserve') > 0 || preserveTiles(s) > 0 || anyPreserve(s); },
     bellSelfie: function (s) { return bhas(s, 'bell_tower'); }
   };
   function anyPreserve(s) { const fl = s.tiles.flags; for (let i = 0; i < N; i++) if (fl[i] & FLAG.PRESERVE) return true; return false; }
@@ -896,6 +892,11 @@
     }
   }
   /** what the card shows (interrupt first, else the background); null → ui shows the Milestones card */
+  /** goal pass: an objective's {progress, goal} evaluated now (objective() carries the last tick's numbers); null for an id without a goal function */
+  M.goalProgress = function (state, id) {
+    try { const f = GOALS[id]; if (!state || typeof f !== 'function') return null; const r = f(state, ctx(state)); return r ? { progress: fin(r.progress, 0), goal: fin(r.goal, 0) } : null; }
+    catch (e) { BSU.error('progress', 'goalProgress', e); return null; }
+  };
   M.objective = function (state) {
     try {
       if (!state || !state.progress) return null;
@@ -932,7 +933,17 @@
       if (id === '10') { let best = c.worstMosqTile; if (best < 0) { best = 0; const mq = state.tiles.mosq; for (let i = 1; i < N; i++) if (mq[i] > mq[best]) best = i; } return { tx: best % W, ty: (best / W) | 0, tiles: [best] }; }
       if (id === '14') { const b = blist(state).find(function (x) { return fin(x.hp, 1) < 1 || x.flooded; }); if (b) return { tx: b.tx, ty: b.ty }; }
       if (id === '15' || id === '18a' || id === '18b' || id === '18' || id === '20') { const v = blist(state, 'stadium')[0] || blist(state, 'practice_field')[0]; if (v) return { tx: v.tx, ty: v.ty }; }
-      if (id === '16') { const r = state.plot && state.plot.rect; if (r) return { tx: (r.x0 + r.x1) >> 1, ty: Math.min(HGT - 1, r.y1 + 4) }; }
+      if (id === '16') {   // goal pass: the nearest marsh tile the Preserve can be painted on (any marsh counts now), else the old spot south of the plot
+        const r = state.plot && state.plot.rect;
+        if (r) {
+          const cx = (r.x0 + r.x1) >> 1, cy = (r.y0 + r.y1) >> 1, ty2 = state.tiles.type, fl = state.tiles.flags, cand = [];
+          for (let i = 0; i < N; i++) if (ty2[i] === T.MARSH && !(fl[i] & FLAG.PRESERVE)) cand.push(i);
+          const dist = function (i) { return Math.abs((i % W) - cx) + Math.abs(((i / W) | 0) - cy); };
+          cand.sort(function (p, q) { return dist(p) - dist(q); });
+          for (let k = 0; k < cand.length && k < 120; k++) { const i = cand[k], ok = call('buildings', 'canPlace', state, 'preserve', i % W, (i / W) | 0, { ignoreCash: true }); if (ok && ok.ok) return { tx: i % W, ty: (i / W) | 0, tiles: [i] }; }
+          return { tx: cx, ty: Math.min(HGT - 1, r.y1 + 4) };
+        }
+      }
       return { tx: fb.tx, ty: fb.ty };
     } catch (e) { BSU.error('progress', 'showMe', e); return { tx: W >> 1, ty: HGT >> 1 }; }
   };

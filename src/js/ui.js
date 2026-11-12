@@ -956,6 +956,17 @@
     if (yFirst) { goY(c); goX(bx); goY(by); } else { goX(c); goY(by); goX(bx); }
     return out;
   }
+  // goal pass: a 'paint' row (Wetland Preserve) drags a filled rectangle from the anchor to the cursor, row by row from the anchor's corner; each side is capped at AREA_SIDE tiles
+  const AREA_SIDE = 12;
+  function rectRun(a, b) {
+    const ax = a % W, ay = (a / W) | 0;
+    const bx = ax + clamp((b % W) - ax, 1 - AREA_SIDE, AREA_SIDE - 1), by = ay + clamp(((b / W) | 0) - ay, 1 - AREA_SIDE, AREA_SIDE - 1);
+    const sx = bx >= ax ? 1 : -1, sy = by >= ay ? 1 : -1, out = [];
+    for (let y = ay; y !== by + sy; y += sy) for (let x = ax; x !== bx + sx; x += sx) out.push(y * W + x);
+    return out;
+  }
+  /** a row laid as a run of tiles by a drag: the 'drag' rows (paths, roads, levees…) and the 'paint' rows (Wetland Preserve) */
+  function isRunRow(r) { return !!(r && (r.kind === 'drag' || r.kind === 'paint')); }
   const Z_TRIES = 12;   // cross-leg positions tried per family (nearest the middle first) before the better L is kept with its red tiles
   function quoteOf(mc, run) { const q = mc.cb.quote; return typeof q === 'function' ? (q(run) || null) : null; }
   /** which of two quotes wins: < 0 → x; fewest refused tiles, then the run that touches the network / needs the shorter tie (tieRank), then fewer wet tiles */
@@ -990,7 +1001,9 @@
    *  Shift = the axis-locked straight line from the anchor; backing toward the anchor shortens the run; the anchor alone is a 1-tile run. */
   function extendRun(mc, ev, force) {
     const j = mc.cb.tileAt(ev.px, ev.py); if (j < 0 || (j === mc.runTile && !force)) return false;
+    const tl = mc.cb.getTool(), area = !!(tl && typeof mc.cb.isArea === 'function' && mc.cb.isArea(tl.id));
     if (ev.mods && ev.mods.shift) { mc.run = lineRun(mc.runStart, j); mc.plan = quoteOf(mc, mc.run); }
+    else if (area) { mc.run = rectRun(mc.runStart, j); mc.plan = quoteOf(mc, mc.run); }   // goal pass: a paint row fills the rectangle (Shift = a straight line)
     else planRun(mc, j);
     mc.runTile = j;
     return true;
@@ -1033,7 +1046,7 @@
         if (d.moved) return true;
         if (mc.state === 'PLACING') {
           const ok = cb.place(ev.px, ev.py, ev.mods || M0);
-          if (ok && !(ev.mods && ev.mods.shift) && !cb.locked()) { cb.setTool(null); mcSet(mc, cb.inspecting() ? 'INSPECTING' : 'IDLE'); cb.ghost(null); }
+          if (ok && !(ev.mods && ev.mods.shift) && !cb.locked() && !(typeof cb.keepArmed === 'function' && cb.keepArmed())) { cb.setTool(null); mcSet(mc, cb.inspecting() ? 'INSPECTING' : 'IDLE'); cb.ghost(null); }
           else if (ok) { const t = cb.getTool(); if (t && ev.mods && ev.mods.shift) t.shift = true; cb.ghost(ev.px, ev.py); }
           return true;
         }
@@ -1058,7 +1071,7 @@
   M._machine = function (cb) {
     const defaults = { tool: null, insp: false };
     const c = {
-      getTool: function () { return defaults.tool; }, setTool: function (t) { defaults.tool = t; }, isDrag: function (id) { const r = rowOf(id); return !!(r && r.kind === 'drag'); },
+      getTool: function () { return defaults.tool; }, setTool: function (t) { defaults.tool = t; }, isDrag: function (id) { return isRunRow(rowOf(id)); }, isArea: function (id) { const r = rowOf(id); return !!(r && r.kind === 'paint'); },
       rotatable: function (id) { const r = rowOf(id); return !!(r && r.rotatable); }, locked: function () { return false; }, inspecting: function () { return defaults.insp; },
       tileAt: function (px, py) { const tx = Math.floor(px / 20), ty = Math.floor(py / 11); return BSU.inBounds(tx, ty) ? ty * W + tx : -1; },
       pan: function () {}, hover: function () {}, ghost: function () {}, place: function () { return true; }, placeRun: function () {},
@@ -1072,7 +1085,7 @@
   /** roads pass: the live machine's quote of a candidate run — buildings.runQuote plus tieRank (0 touching the network, else the tie's length, 99 none within reach) */
   function quoteRun(s, run) {
     if (!s || !s.ui || !s.ui.tool) return null;
-    const tool = s.ui.tool, row = rowOf(tool.id); if (!row || row.kind !== 'drag') return null;
+    const tool = s.ui.tool, row = rowOf(tool.id); if (!isRunRow(row)) return null;
     const q = call('buildings', 'runQuote', s, tool.id, run, { rot: tool.rot }); if (!q) return null;
     const access = [PLACE.PATH, PLACE.ROAD, PLACE.BOARDWALK].indexOf(row.placeRule) >= 0;
     q.tieRank = q.touches ? 0 : (q.tie ? q.tie.tiles.length : (access ? 99 : 0));
@@ -1088,7 +1101,7 @@
   const live = makeMachine({
     getTool: function () { const s = stateOf(); return s && s.ui ? s.ui.tool : null; },
     setTool: function (t) { if (!t || !ghostPin || ghostPin.id !== t.id) ghostPin = null; const s = stateOf(); if (s && s.ui) { s.ui.tool = t; } markToolDom(s); if (t && bm.open && !bm.keepOpen) M.collapseBuildSheet(); try { emit('ui:tool', { tool: t ? t.id : null }); } catch (e) { uerr('emit:tool', e); } },
-    isDrag: function (id) { const r = rowOf(id); return !!(r && r.kind === 'drag'); },
+    isDrag: function (id) { return isRunRow(rowOf(id)); }, isArea: function (id) { const r = rowOf(id); return !!(r && r.kind === 'paint'); },
     rotatable: function (id) { const r = rowOf(id); return !!(r && r.rotatable); },
     locked: function () { return toolLocked; },
     inspecting: function () { return !!insp; },
@@ -1097,6 +1110,7 @@
     hover: function (px, py) { hoverEntity(stateOf(), px, py); },
     ghost: function (px, py) { if (px == null) { call('render', 'ghost', null); call('render', 'tiePreview', null); show(E['ghost-label'], false); lastGhost = null; } else updateGhost(stateOf(), px, py); },
     place: function (px, py, mods) { return clickPlace(stateOf(), px, py, mods); },
+    keepArmed: function () { return goalKeepsTool(stateOf()); },   // goal pass
     placeRun: function (run) { finishRun(stateOf(), run); },
     inspectAt: function (px, py) { return clickInspect(stateOf(), px, py); },
     closeInspect: function () { closeInspectDom(); },
@@ -1439,11 +1453,12 @@
     else if (g.cove) { l1 = 'Not here'; l2 = 'The cove floods every rain. Build on the ridge.'; }
     else if (!r.ok) { l1 = r.reason || 'Cannot build here'; l2 = r.charter ? 'State land · click to open the Land Office (O)' : (r.reason === tieReason() ? 'Hold N to see the campus network' : (ridgeText(r.ridgeFull) || sinkText(r.sink) || '')); }   // L2: the charter line
     else {
-      l1 = money(r.cost); if (row.kind === 'drag') l1 += ' / tile';
+      l1 = money(r.cost); if (isRunRow(row)) l1 += ' / tile';
       if (conn) l1 += ' + ' + money(conn.cost) + ' tie';   // "$600k + $8k tie"
       if (r.needsGrading) l1 += ' · Grade the site +' + money(r.gradingCost || 0); else if (r.needsPilings) l1 += ' · Pilings +' + money(r.pilingsCost || 0);
       if (ridgeText(r.ridgeFull)) l2 = ridgeText(r.ridgeFull); else if (sinkText(r.sink)) l2 = sinkText(r.sink); else if (r.ring && r.ring.text) l2 = r.ring.text; else if (!r.affordable) l2 = 'Not enough cash';
       else { const uw = utilityWarning(s, row, r); if (uw) l2 = uw; }
+      if (!l2 && row.kind === 'paint') l2 = 'Drag to paint an area';   // goal pass
       if (netRow) { const st = netStatus(r, conn); l2 = st + (l2 ? ' · ' + l2 : ''); }   // paths pass: Connected / Ties in (+$8k, 4 tiles) / Can't reach a path…
       if (g.setback) l2 = (l2 ? l2 + ' · ' : '') + 'Setback · hold Shift to place flush';
       if (tool.rot) l1 += ' · rotated (R)';
@@ -1997,7 +2012,7 @@
         // palette pass: a vertical stack, nothing overlaps: framed icon -> name (two lines reserved, centred) -> price (U4: or the "Unlocks at …" line of a greyed card); the ★ rides the icon's corner
         const ic = el('canvas', 'icon'); ic.width = 64; ic.height = 64; it.appendChild(ic); call('render', 'drawIcon', ic, id);
         const nm = el('div', 'name'); nm.appendChild(el('span', '', PAL_SHORT[r.name] || r.name)); it.appendChild(nm);
-        if (u.ok) { const cost = el('div', 'cost', money(r.cost)); if (r.kind === 'drag') cost.appendChild(el('span', 'per', '/tile')); it.appendChild(cost); }
+        if (u.ok) { const cost = el('div', 'cost', money(r.cost)); if (isRunRow(r)) cost.appendChild(el('span', 'per', '/tile')); it.appendChild(cost); }
         else { const cd = el('div', 'cost cond'); cd.appendChild(el('span', 'why', unlockText(u.reason))); it.appendChild(cd); }
         if (reco[id]) { const st = el('span', 'star'); st.title = badgeText(reco[id]); st.appendChild(icon('star', 'sm')); it.appendChild(st); }
         it.addEventListener('click', function () { armCard(stateOf(), id, false); });
@@ -2027,7 +2042,7 @@
   function refreshPips(s) { const pk = JSON.stringify(s.ui.newPips || {}) + '|' + s.ui.paletteTab; if (pk === pipKey) return; pipKey = pk; for (const id in E.tabEls) { show(E.tabEls[id].pip, !!s.ui.newPips[id]); cls(E.tabEls[id].el, 'active', id === s.ui.paletteTab); } }
   function itemTooltip(s, id) {
     const r = rowOf(id); if (!r) return ''; const u = unlockOf(s, id);
-    const parts = [r.name + ' · ' + money(r.cost) + (r.kind === 'drag' ? ' per tile' : '') + (r.w > 1 || r.h > 1 ? ' · ' + r.w + '×' + r.h : '')];
+    const parts = [r.name + ' · ' + money(r.cost) + (isRunRow(r) ? ' per tile' : '') + (r.w > 1 || r.h > 1 ? ' · ' + r.w + '×' + r.h : '')];
     if (r.upkeep) parts.push('Upkeep ' + money(r.upkeep) + '/mo');
     if (r.desc) parts.push(r.desc);
     if (!u.ok && u.reason) parts.push('Unlock: ' + u.reason);
@@ -2054,6 +2069,17 @@
       if (fin(call('buildings', 'count', s, id), 0) === 0) return id;
     }
     return first;
+  }
+  /** goal pass: after a click-placement the tool stays armed while the active goal still counts placements of exactly this row
+   *  (data.guide[id].repeat: 5 Live Oaks, 20 Preserve tiles), so a counted goal is one trip to the Build sheet, not one per placement */
+  function goalKeepsTool(s) {
+    try {
+      if (!s || !s.ui || !s.ui.tool) return false;
+      const o = call('progress', 'objective', s); if (!o) return false;
+      const g = guideOf(o.id); if (!g || !g.repeat || objTarget(s, o) !== s.ui.tool.id) return false;
+      const p = call('progress', 'goalProgress', s, o.id) || { progress: fin(o.progress, 0), goal: fin(o.goal, 0) };
+      return fin(p.goal, 0) > 1 && fin(p.progress, 0) < fin(p.goal, 0);
+    } catch (e) { uerr('goalKeepsTool', e); return false; }
   }
   function objBuildIt() {
     const s = stateOf(); if (!s) return;
@@ -2480,7 +2506,7 @@
   /** Settings → replay: forget the flag and let the next frame start the tour (Settings closes) */
   M.startCoach = function (state, opts) { try { const s = state || stateOf(); M.settings().coachSeen = false; M.saveSettings(); coach.step = -1; coach.armedAt = clock - 1e5; if (s && s.ui && s.ui.panel) M.openPanel(null); if (opts && opts.now === true && s && dom()) coachStart(s); } catch (e) { uerr('startCoach', e); } };   // hud + zoom pass: {now: true} starts the tour at once (tests; headless has no eligibility)
   M.coachStep = function () { return coach.step; };
-  M._ux = { needsOf: needsOf, recommend: recommend, objTarget: objTarget, effectLines: effectLines, requirementsOf: requirementsOf, utilityWarning: utilityWarning, coachTarget: coachTarget };
+  M._ux = { needsOf: needsOf, recommend: recommend, objTarget: objTarget, effectLines: effectLines, requirementsOf: requirementsOf, utilityWarning: utilityWarning, coachTarget: coachTarget, goalKeepsTool: goalKeepsTool };
 
   // ---------------------------------------------------------------------------
   // Issue spotlight pass: the Issues tray (docked under the minimap / overlay keys), Fix / Locate, keys

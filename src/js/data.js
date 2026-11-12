@@ -1099,7 +1099,7 @@
     '13': obj(I, 'Landfall', 'Watch. Célestine makes landfall. Answer the toasts.', 'Consequence: the cove floods unless leveed; the shoulder floods at 5 ft; the crown holds', 'target', PRESTIGE2),
     '14': obj(I, 'Repair all storm damage', 'Repair all storm damage.', 'Repair UI, tarps, Disaster Grant, Boil-Water Advisory if the tower went under', 'target', PRESTIGE2),
     '15': obj(BG, 'Geaux Bayou', 'Build a Practice Field, watch the Spring Game, add Bayou Field.', 'Football in Year 1: the field at 200 students, the Purple & Gold Spring Game three days later on the tier-0 field, then Bayou Field (400) for the first home game; the Season panel, Coach Cheramie and the eight starters. The Aug 8 opener needs Bayou Field complete by Aug 8, otherwise the first home date is the next one', 'target', PRESTIGE2),
-    '16': obj(I, 'Preserve it', 'Paint 20 tiles of Wetland Preserve south of campus.', 'Ecology as flood defense; fireflies that Night', 'target', PRESTIGE2),
+    '16': obj(I, 'Preserve it', 'Paint 20 tiles of Wetland Preserve. Drag across marsh to paint.', 'Ecology as flood defense; fireflies that Night', 'target', PRESTIGE2),
     '17': obj(BG, 'Reach 1,500 students; build a Wastewater Plant', 'Reach 1,500 students and build a Wastewater Plant.', 'The wastewater brake', 'target', PRESTIGE2),
     '18a': obj(BG, 'Win four games in a season', 'Win four games in a season.', 'The rating breakdown; coaching budget; "Underdog 12%" is a number, not a bug', 'target', PRESTIGE2),
     '18b': obj(BG, 'Make the Sugar Cane Bowl', 'Win five games and make the Sugar Cane Bowl.', 'The bowl; hire a better coach in the offseason', 'target', PRESTIGE2),
@@ -1302,7 +1302,7 @@
     '3': { why: 'Beds and meals are the enrollment ceiling, and 120 founders are already on the water.', build: ['dorm', 'dining_hall'] },
     '4': { why: 'The low spot floods every rain. A canal drains it to the bayou.', build: ['canal'] },
     '5': { why: 'Buildings without power and water run at half capacity.', build: ['substation', 'water_tower'] },
-    '6': { why: 'Shade cuts the August heat penalty, and oaks are the cheapest happiness in the game.', build: ['live_oak'] },
+    '6': { why: 'Shade cuts the August heat penalty, and oaks are the cheapest happiness in the game.', build: ['live_oak'], repeat: true },   // goal pass: repeat = the goal counts placements of its row; the tool stays armed until the count is met
     '7': { why: 'Roads carry buses and the Mardi Gras parade, and the Stadium will need one.', build: ['road'] },
     '8': { why: 'Tuition pays the bills. Beds, seats and dining set the cap on how many pay it.', build: ['dorm', 'lecture_hall', 'dining_hall'] },
     '9': { why: 'A gator at the dumpster closes the Dining Hall until it leaves.', build: ['gator_fence', 'wildlife_post'] },
@@ -1313,7 +1313,7 @@
     '13': { why: 'The storm is here. Answer the toasts; the prep you did decides the rest.', build: [] },
     '14': { why: 'Damaged buildings do nothing until they are repaired.', build: [] },
     '15': { why: 'Football brings applicants, ticket money and buzz. The Spring Game three days after the field is the first look.', build: ['practice_field'] },
-    '16': { why: 'Preserved wetland soaks up surge and lifts ecology.', build: ['preserve'] },
+    '16': { why: 'Preserved wetland soaks up surge and lifts ecology.', build: ['preserve'], repeat: true },
     '17': { why: 'Past 1,500 students the campus needs real sewage or enrollment stalls.', build: ['wastewater'] },
     '18a': { why: 'Wins fill the stands and the application pool.', build: ['stadium'] },
     '18b': { why: 'A bowl berth is prestige you cannot buy.', build: [] },
@@ -1396,7 +1396,7 @@
   requirements.place[PLACE.LEVEE] = { glyph: '↔', text: 'Drag a run along the ground; close the ring' };
   requirements.place[PLACE.CANAL] = { glyph: '↔', text: 'Drag a run downhill to the bayou or open water' };
   requirements.place[PLACE.FENCE] = { glyph: '↔', text: 'Drag a run along a water edge' };
-  requirements.place[PLACE.PRESERVE] = { glyph: '🖌', text: 'Paint marsh tiles' };
+  requirements.place[PLACE.PRESERVE] = { glyph: '🖌', text: 'Drag to paint marsh tiles' };
   requirements.place[PLACE.NEAR_WATER] = { glyph: '🌊', text: 'Within 3 tiles of water' };
   requirements.place[PLACE.TOUCH_MARSH_BAYOU] = { glyph: '🌊', text: 'Must touch marsh or the bayou' };
   requirements.place[PLACE.TOUCH_CANAL_WATER] = { glyph: '🌊', text: 'Must touch a canal or water' };
