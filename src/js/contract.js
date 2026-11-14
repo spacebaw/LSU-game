@@ -722,6 +722,8 @@
       accessSurfaces: [1, 2, 3],             // §3.6 access
       autoTieMax: 12,                        // §3.6 access, paths pass (was connectorMax 4): a placement — a path-adjacency building or the end of a path / road / boardwalk drag — up to this many tiles from the network lays its own gravel tie (a boardwalk over water), charged and undone with it
       tieSnap: 2,                            // paths pass: a drag whose last tile is within this many tiles of the network snaps onto it in the drag's own material
+      crossTieMax: 6,                        // crossings pass: a water crossing (road bridge, Pedestrian Bridge, boardwalk) ties BOTH banks; the bank that does not carry the campus tie reaches this many tiles to the nearest path / road / boardwalk / bridge, connected to campus or not
+      bridgeBankMax: 2,                      // crossings pass: a road bridge's deck also carries over up to this many marsh tiles on each bank (bridge price); bridgeMaxSpan counts the water between them
       tieRefuseUntil: 5,                     // paths pass: until this many buildings are complete (Founders' excluded) a footprint that cannot be tied to the network is refused; afterwards it is allowed and becomes the tray's "Not linked" suggestion
       pilingsMult: 0.4, pilingsUpkeep: 0.05, // §0.3 row 30
       demolishRefund: 0.4, ruinRebuild: 0.6, // §4.11, §6.1.6

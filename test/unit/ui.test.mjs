@@ -1064,7 +1064,7 @@ try {
     U.selectTool(s, 'path');
     const a = R.tileToScreen(drag.from.x, drag.from.y), b = R.tileToScreen(drag.to.x, drag.to.y);
     U.pointer('move', a.x, a.y, 0, M0); U.pointer('down', a.x, a.y, 0, M0); U.pointer('move', b.x, b.y, 0, M0);
-    ok(U.state === 'DRAGGING' && U.el['ghost-l1'] && / tiles · \$[\d,.]+k? \+ \$[\d,.]+k? tie$/.test(l1()) && /^Ties in \(\+\$[\d,.]+k?, 3 tiles\)/.test(l2()), 'dragging: "' + l1() + '" / "' + l2() + '"');
+    ok(U.state === 'DRAGGING' && U.el['ghost-l1'] && / tiles · \$[\d,.]+k? \+ \$[\d,.]+k? tie( · clears \d+ trees?)?$/.test(l1()) && /^Ties in \(\+\$[\d,.]+k?, 3 tiles\)/.test(l2()), 'dragging: "' + l1() + '" / "' + l2() + '"');
     const tp = R.tiePreviewSpec(); ok(tp && tp.tiles.length === 3 && tp.snap === false, 'a 3-tile tie preview during the drag');
     const cashD = s.economy.cash;
     U.pointer('up', b.x, b.y, 0, M0);
@@ -1079,7 +1079,7 @@ try {
     ok(rtS === null || (rtS.snap === true && rtS.tiles.length <= 2), 'a run starting 2 short: a snap (' + JSON.stringify(rtS && rtS.tiles) + ')');
     const sa = R.tileToScreen(s0 & 63, s0 >> 6);
     U.pointer('move', sa.x, sa.y, 0, M0); U.pointer('down', sa.x, sa.y, 0, M0); U.pointer('move', b.x, b.y, 0, M0);
-    ok(U.state === 'DRAGGING' && (/snap$/.test(l1()) || /^Connected/.test(l2())) && (/^Snaps onto the network/.test(l2()) || /^Connected/.test(l2())), 'dragging from 2 short: "' + l1() + '" / "' + l2() + '"');
+    ok(U.state === 'DRAGGING' && (/snap( · clears \d+ trees?)?$/.test(l1()) || /^Connected/.test(l2())) && (/^Snaps onto the network/.test(l2()) || /^Connected/.test(l2())), 'dragging from 2 short: "' + l1() + '" / "' + l2() + '"');
     U.pointer('up', b.x, b.y, 0, M0);
     ok(B.connectedMask(s)[drag.to.y * 64 + drag.to.x] === 1, 'released: the run is connected');
     U.keydown('z', { ctrl: true, shift: false, meta: false, alt: false });

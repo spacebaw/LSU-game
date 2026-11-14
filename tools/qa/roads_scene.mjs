@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 // Roads and paths pass: one scripted scene on seed 42 at 96 for before / after screenshots — a road L-turn, a road 4-way cross, a road T,
 // a path T into a road, a path crossing a road, a 1-step staircase of each kind, a road over a 3-tile bayou with marsh banks (refused as a
-// whole since the pass; a lone bridge before it) and, when the map has one, a 1-tile bayou with a 1-tile marsh bank (a bank deck since the
-// pass). Shot at zoom 1 (the whole scene) and zoom 2 (the junction cluster, the staircases, the bayou), plus a mid-drag ghost over the bayou.
+// whole by the roads pass, a lone bridge before it; since the crossings pass one deck over the reach and both banks) and, when the map has
+// one, a 1-tile bayou with a 1-tile marsh bank (a bank deck since the roads pass). Shot at zoom 1 (the whole scene) and zoom 2 (the junction
+// cluster, the staircases, the bayou), plus a mid-drag ghost over the bayou.
 //
 //   node tools/qa/roads_scene.mjs [--index path] [--tag after] [--out dir] [--dpr 1] [--pen]
 //

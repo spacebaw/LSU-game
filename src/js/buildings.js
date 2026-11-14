@@ -463,10 +463,11 @@
   function charterMask(state) { const m = call('land', 'mask', [state], null); return (m && m.length === N) ? m : null; }
   function charterRefusal(state, tiles) { return call('land', 'refusal', [state, tiles], null); }
   function tieMax() { return Math.max(0, Math.floor(fin(PB.autoTieMax, 12))); }
-  function tieSearch(state, starts, blocked, goal, max) {
+  function crossMax() { return Math.max(0, Math.floor(fin(PB.crossTieMax, 6))); }   // crossings pass: the reach of a crossing's far-bank tie
+  function tieSearch(state, starts, blocked, goal, max, landOnly) {   // landOnly (crossings pass): never over open water, so a crossing's tie stays on its own bank
     const pathRow = rowOf('path'), walkRow = rowOf('boardwalk');
     if (!pathRow || !(max > 0)) return null;
-    const waterOk = !!walkRow && M.unlocked(state, 'boardwalk').ok === true;
+    const waterOk = !landOnly && !!walkRow && M.unlocked(state, 'boardwalk').ok === true;
     const res = reservedTiles(state), scratch = {};
     const cmask = charterMask(state);   // L2: a tie never routes through unchartered land
     const legal = function (i) {
@@ -531,9 +532,14 @@
     for (let k = tiles.length - 1; k >= 0; k--) for (const n of BSU.nbr4(tiles[k])) if (!inRun.has(n) && starts.indexOf(n) < 0) starts.push(n);
     const tie = tieSearch(state, starts, function (i) { return inRun.has(i); }, touches, tieMax());
     if (!tie) return null;
+    return tieFinish(state, row, tiles, tie);
+  }
+  /** a found tie gets its run (the context layTie places it in) and `snap` (≤ params.build.tieSnap tiles); a road or boardwalk snap closes in the drag's
+   *  own material at its own price when its rule allows every tile (never the Pedestrian Bridge: its deck goes over water only), else as gravel / planks */
+  function tieFinish(state, row, tiles, tie) {
     tie.run = tiles;
     tie.snap = tie.tiles.length <= Math.max(0, fin(PB.tieSnap, 2) | 0);
-    if (tie.snap && row.id !== 'path') {
+    if (tie.snap && row.id !== 'path' && row.placeRule !== PLACE.BRIDGE) {
       const scratch = {}, o = { tiles: tiles.concat(tie.tiles) };
       if (tie.tiles.every(function (i) { return dragTileRule(state, row, i, o, scratch) === ''; })) {
         const p = M.canPlace(state, row.id, (tie.tiles[0] % W), ((tie.tiles[0] / W) | 0), { ignoreCash: true, tiles: o.tiles });
@@ -596,31 +602,218 @@
     try { const row = rowOf(rowId); if (!state || !state.tiles || !row) return null; return runTieInner(state, row, tiles); }
     catch (e) { if (BSU.SELFTEST) throw e; BSU.error('buildings', 'runTie', e); return null; }
   };
-  /** roads pass: what placeRun would do with a drag run, without placing — the same per-tile checks (canPlace with the run as context, a road's
-   *  water + marsh-bank spans validated whole): {n, skipped: [{i, reason}] (refused tiles, in run order), refused (their count), same: [i…] (tiles
-   *  already carrying this surface: passed over silently, not refused), placed (tiles that would be laid), cost (their price, bridges at bridge
-   *  price), wet (water + marsh tiles in the run), bridge (deck tiles), tie (runTie's quote for an access row unless opts.tie === false), touches
-   *  (the run reaches the network by itself)}. opts.rot is passed through. */
+  // ---------------------------------------------------------------------------
+  // Crossings pass (Josh: "smoother snap-to connections for bridges or anything that goes over bodies of water with nearby paths or
+  // roads"). runPlan is the ONE per-tile decision the ghost (runQuote) and the release (placeRun) both follow:
+  //  · acts[k] = {i, act, reason, cost, bridge, wet}: 'lay'; 'landing' (a bare land tile of a Pedestrian Bridge run: gravel at the path
+  //    price, so agents can step off the deck); 'same' (already carries this surface — under the Pedestrian Bridge any access surface —
+  //    passed over); 'skip' (refused, with the reason)
+  //  · a crossing segment — a road's water + marsh-bank span, a Pedestrian Bridge's water span — is one structure: one refused tile, or
+  //    a landing that cannot take a path, refuses the whole segment, and nothing is laid past it (`cut`: no orphan stub on the far
+  //    bank); a boardwalk is laid up to the first wet tile that takes no surface at all
+  //  · pre / post = the land tile a Pedestrian Bridge run that starts / ends on the water steps off onto (gravel, laid with the run)
+  // crossTies gives a crossing (a run that lays a tile over water or marsh) one tie PER BANK: the bank nearer the campus network carries
+  // the network tie within autoTieMax as every drag end does; the other bank — both, far from campus — reaches the nearest path / road /
+  // boardwalk / bridge of any kind, connected to campus or not, within crossTieMax. Each tie starts beside its own bank's tiles (the
+  // run's end first), never from the span, and never runs over open water.
+  // ---------------------------------------------------------------------------
+  const PAST_REASON = 'Not laid: the crossing before it is refused';
+  function landingReason(why) { const w = String(why || 'blocked'); return 'The bridge landing cannot take a path (' + w.charAt(0).toLowerCase() + w.slice(1) + ')'; }
+  /** the land a Pedestrian Bridge run that starts / ends on the water (run[endK]) steps off onto: {touch} beside an existing surface, {i, cost}
+   *  the bare tile that gets the gravel (straight ahead first), {blocked: reason} when no land beside it can take a path, {} with no land at all */
+  function pedOffLanding(state, run, endK, inRun) {
+    const surf = state.tiles.surface, e = run[endK], prev = run.length > 1 ? run[endK === 0 ? 1 : run.length - 2] : -1, ahead = prev >= 0 ? 2 * e - prev : -1;
+    const nb = BSU.nbr4(e).filter(function (n) { return !inRun.has(n); }).sort(function (p, q) { return (p === ahead ? 0 : 1) - (q === ahead ? 0 : 1); });
+    let land = false, why = '';
+    for (const n of nb) { if (isAccessSurface(surf[n])) return { touch: true }; if (isLand(state, n)) land = true; }
+    for (const n of nb) {
+      if (!isLand(state, n)) continue;
+      const p = M.canPlace(state, 'path', (n % W), ((n / W) | 0), { ignoreCash: true });
+      if (p.ok) return { i: n, cost: fin(p.cost, 0) };
+      if (!why) why = p.charter ? p.reason : landingReason(p.reason);
+    }
+    return land ? { blocked: why } : {};
+  }
+  function runPlan(state, row, run, opts) {
+    const id = row.id, rule = row.placeRule, isRoad = rule === PLACE.ROAD, isPed = rule === PLACE.BRIDGE, isWalk = rule === PLACE.BOARDWALK;
+    const surf = state.tiles.surface, o = { rot: opts.rot, tiles: run, ignoreCash: true, noTie: true }, acts = [];
+    for (let k = 0; k < run.length; k++) {
+      const i = run[k], x = (i % W), y = ((i / W) | 0), a = { i: i, act: 'skip', reason: '', cost: 0, bridge: false, wet: false, land: false };
+      acts.push(a);
+      if (isPed && isLand(state, i)) {   // an approach / landing tile: gravel when it is bare, passed over when it already carries a surface
+        a.land = true;
+        if (isAccessSurface(surf[i])) { a.act = 'same'; a.reason = 'Already a path'; continue; }
+        const p = M.canPlace(state, 'path', x, y, { ignoreCash: true });
+        if (p.ok) { a.act = 'landing'; a.cost = fin(p.cost, 0); } else { a.reason = p.reason || 'Cannot place here'; a.charter = !!p.charter; }
+        continue;
+      }
+      a.wet = isPed || ((isRoad || isWalk) && spanTile(state, i));
+      let reason = '';
+      if (isRoad && a.wet) { const chk = bridgeSpanOk(state, i, run); if (!chk.ok) reason = chk.reason; }
+      if (!reason) { const r = M.canPlace(state, id, x, y, o); if (!r.ok) reason = r.reason || 'Cannot place here'; else { a.act = 'lay'; a.cost = fin(r.cost, 0); a.bridge = !!r.bridge; } }
+      if (reason) { a.reason = reason; if (reason.indexOf('Already ') === 0) a.act = 'same'; }
+    }
+    let cut = -1, pre = null, post = null, cutWhy = '';
+    if (isPed && !acts.some(function (a) { return a.wet; })) { for (const a of acts) if (a.act !== 'same') { a.act = 'skip'; a.reason = 'Bridges go over water'; } }
+    else if (isRoad || isPed || isWalk) {
+      const inRun = new Set(run), last = acts.length - 1;
+      for (let k = 0; k <= last && cut < 0; k++) {
+        if (!acts[k].wet) continue;
+        let b = k; while (b < last && acts[b + 1].wet) b++;
+        let why = '', at = k;
+        for (let q = k; q <= b && !why; q++) if (acts[q].act === 'skip' && !(isWalk && isAccessSurface(surf[acts[q].i]))) { why = acts[q].reason; at = q; }
+        if (isPed && !why) {   // the landings: the land tile at each end of the span, in the run or (a run that starts / ends on the water) just off it
+          for (let e = 0; e < 2 && !why; e++) {
+            const q = e === 0 ? k - 1 : b + 1;
+            if (q >= 0 && q <= last) { if (acts[q].act === 'skip') { why = acts[q].charter ? acts[q].reason : landingReason(acts[q].reason); acts[q].reason = why; } continue; }   // one reason on the landing and the span
+            const off = pedOffLanding(state, run, e === 0 ? 0 : last, inRun);
+            if (off.blocked) why = off.blocked; else if (off.i >= 0) { if (e === 0) pre = off; else post = off; }
+          }
+        }
+        if (why) {
+          if (k === 0) pre = null;
+          cutWhy = why;
+          if (isWalk) cut = at + 1;   // a boardwalk is laid up to the blocked tile; the rest is "past it"
+          else { for (let q = k; q <= b; q++) if (acts[q].act !== 'same') { acts[q].act = 'skip'; acts[q].reason = why; } cut = b + 1; }
+        }
+        k = b;
+      }
+      if (cut >= 0) { post = null; for (let q = cut; q <= last; q++) if (acts[q].act === 'lay' || acts[q].act === 'landing') { acts[q].act = 'skip'; acts[q].reason = PAST_REASON; acts[q].past = true; } }
+      if (pre && post && pre.i === post.i) post = null;   // a one-tile bridge: one landing
+      if (isPed && !acts.some(function (a) { return a.act === 'lay' || (a.wet && a.act === 'same'); })) {   // no deck at all (its only span is refused): the bridge tool lays no stray gravel on the approach either
+        pre = null; post = null;
+        for (const a of acts) if (a.act === 'landing') { a.act = 'skip'; a.reason = cutWhy || 'Bridges go over water'; }
+      }
+    }
+    let crossing = false; for (const a of acts) if (a.wet && a.act === 'lay') { crossing = true; break; }
+    return { acts: acts, cut: cut, pre: pre, post: post, crossing: crossing };
+  }
+  /** the tiles a planned run will carry, in order, up to the cut (laid, landings, passed-over tiles): [[i, wet], …] */
+  function planCarried(plan) {
+    const eff = []; if (plan.pre) eff.push([plan.pre.i, false]);
+    const end = plan.cut >= 0 ? plan.cut : plan.acts.length;
+    for (let k = 0; k < end; k++) { const a = plan.acts[k]; if (a.act !== 'skip') eff.push([a.i, a.wet]); }
+    if (plan.post) eff.push([plan.post.i, false]);
+    return eff;
+  }
+  /** {shores: [{end (0 the drag's first bank, 1 its last), touch (beside / on an access surface), net (reaches the campus network), tie, reach (the
+   *  reach searched when nothing was found)}, ×2], ties: [tie…] (the network tie first; each {tiles, surfaces, cost, water, snap, end, net}), cost, n} or null */
+  function crossTies(state, row, run, plan) {
+    const surf = state.tiles.surface, conn = connectedMask(state), ring = cache(state).founderRing, eff = planCarried(plan);
+    let w0 = -1, w1 = -1; for (let k = 0; k < eff.length; k++) if (eff[k][1]) { if (w0 < 0) w0 = k; w1 = k; }
+    if (w0 < 0) return null;
+    const inRun = new Set(run); if (plan.pre) inRun.add(plan.pre.i); if (plan.post) inRun.add(plan.post.i);
+    const mk = function (e) {   // a bank: its tiles from the run's end inward (the wet end tile itself when the run starts / ends on the span)
+      const tiles = [];
+      if (e === 0) { for (let k = 0; k < w0; k++) tiles.push(eff[k][0]); if (!tiles.length) tiles.push(eff[w0][0]); }
+      else { for (let k = eff.length - 1; k > w1; k--) tiles.push(eff[k][0]); if (!tiles.length) tiles.push(eff[w1][0]); }
+      const s = { end: e, starts: [], touch: false, net: false, tie: null, reach: 0 };
+      const inner = eff.length > 1 ? eff[e === 0 ? 1 : eff.length - 2][0] : -1, ahead = inner >= 0 ? 2 * tiles[0] - inner : -1;   // straight on past the run's end: the first start, so an equal tie carries the run's line on
+      for (const t of tiles) {
+        if (ring[t] || (isAccessSurface(surf[t]) && conn[t])) s.net = true;
+        if (ring[t] || isAccessSurface(surf[t])) s.touch = true;
+        let nb = BSU.nbr4(t); if (t === tiles[0] && ahead >= 0) nb = nb.slice().sort(function (p, q) { return (p === ahead ? 0 : 1) - (q === ahead ? 0 : 1); });
+        for (const n of nb) { if (inRun.has(n)) continue; if (conn[n]) s.net = true; if (isAccessSurface(surf[n])) s.touch = true; if (s.starts.indexOf(n) < 0) s.starts.push(n); }
+      }
+      return s;
+    };
+    const sh = [mk(0), mk(1)], blocked = function (i) { return inRun.has(i); };
+    const goalNet = function (i) { if (ring[i]) return true; for (const n of BSU.nbr4(i)) if (conn[n] && !inRun.has(n)) return true; return false; };
+    const goalAny = function (i) { if (ring[i]) return true; for (const n of BSU.nbr4(i)) if (isAccessSurface(surf[n]) && !inRun.has(n)) return true; return false; };
+    if (!sh[0].net && !sh[1].net) {   // the campus tie: the bank nearer the network carries it (the drag's first bank on a draw)
+      const n0 = tieSearch(state, sh[0].starts, blocked, goalNet, tieMax(), true), n1 = tieSearch(state, sh[1].starts, blocked, goalNet, tieMax(), true);
+      const pick = (n0 && (!n1 || n0.tiles.length <= n1.tiles.length)) ? 0 : (n1 ? 1 : -1);
+      if (pick >= 0) { sh[pick].tie = pick ? n1 : n0; sh[pick].net = true; }
+    }
+    for (const s of sh) {   // the other bank (both, far from campus): the nearest access surface of any kind
+      if (s.tie || s.net || s.touch) continue;
+      const other = sh[1 - s.end].tie, ex = other ? new Set(other.tiles) : null;
+      const t = tieSearch(state, s.starts, ex ? function (i) { return inRun.has(i) || ex.has(i); } : blocked, goalAny, crossMax(), true);
+      if (t) s.tie = t; else s.reach = crossMax();
+    }
+    const carried = eff.map(function (e) { return e[0]; }), ties = [];
+    for (const s of sh) if (s.tie) { tieFinish(state, row, carried, s.tie); s.tie.end = s.end; s.tie.net = !!s.net; if (s.net) ties.unshift(s.tie); else ties.push(s.tie); }
+    let cost = 0, n = 0; for (const t of ties) { cost += t.cost; n += t.tiles.length; }
+    return { shores: sh.map(function (s) { return { end: s.end, touch: s.touch || s.net, net: s.net, tie: s.tie, reach: s.reach }; }), ties: ties, cost: cost, n: n };
+  }
+  /** rule 8: how many plants (state.veg entries) stand on a set of tiles */
+  function vegCount(state, set) { let n = 0; const veg = state.veg; if (Array.isArray(veg) && set.size) for (let k = 0; k < veg.length; k++) { const v = veg[k]; if (v && set.has(v.ty * W + v.tx)) n++; } return n; }
+  function clearsVeg(row) { const r = row && row.placeRule; return r === PLACE.PATH || r === PLACE.ROAD || r === PLACE.BOARDWALK || r === PLACE.BRIDGE; }
+  /** roads pass: what placeRun would do with a drag run, without placing — the same plan (runPlan): {n, skipped: [{i, reason}] (refused tiles, in run
+   *  order), refused (their count), same: [i…] (tiles already carrying this surface: passed over silently, not refused), placed (tiles that would be laid),
+   *  cost (their price, bridges at bridge price), wet (water + marsh tiles in the run), bridge (deck tiles), tie (runTie's quote for a path / road /
+   *  boardwalk run that is no crossing, unless opts.tie === false), touches (the run reaches the network by itself)}. Crossings pass adds: cross (a
+   *  crossing's per-bank ties, see crossTies; null otherwise), landings / landingCost (the gravel tiles a Pedestrian Bridge run lays on land, counted in
+   *  placed / cost), extra: [i…] (landings just off a run that starts / ends on the water), cut (tiles not laid past a refused crossing, counted in
+   *  refused), clears (plants standing on the tiles the run and its ties will lay: a surface clears its tile; clearsRun = the run's own tiles only). opts.rot is passed through. */
   M.runQuote = function (state, id, tiles, opts) {
-    const out = { n: 0, skipped: [], refused: 0, same: [], placed: 0, cost: 0, wet: 0, bridge: 0, tie: null, touches: false };
+    const out = { n: 0, skipped: [], refused: 0, same: [], placed: 0, cost: 0, wet: 0, bridge: 0, tie: null, touches: false, cross: null, landings: 0, landingCost: 0, extra: [], cut: 0, clears: 0, clearsRun: 0 };
     try {
       const row = rowOf(id); if (!row || !state || !state.tiles || !Array.isArray(tiles)) return out;
       opts = opts || {};
       const run = []; for (const i of tiles) if (Number.isInteger(i) && i >= 0 && i < N && run.indexOf(i) < 0) run.push(i);
       out.n = run.length; if (!run.length) return out;
-      const o = { rot: opts.rot, tiles: run, ignoreCash: true, noTie: true }, spanRow = row.placeRule === PLACE.ROAD, access = row.placeRule === PLACE.PATH || spanRow || row.placeRule === PLACE.BOARDWALK;
-      for (const i of run) {
-        if (!isLand(state, i) || isMarsh(state, i)) out.wet++;
-        if (row.placeRule === PLACE.BRIDGE && isLand(state, i)) continue;   // a landing: nothing placed there
-        let reason = '';
-        if (spanRow && spanTile(state, i)) { const chk = bridgeSpanOk(state, i, run); if (!chk.ok) reason = chk.reason; }
-        if (!reason) { const r = M.canPlace(state, id, (i % W), ((i / W) | 0), o); if (!r.ok) reason = r.reason || 'Cannot place here'; else { out.placed++; out.cost += fin(r.cost, 0); if (r.bridge) out.bridge++; } }
-        if (!reason) continue;
-        if (reason.indexOf('Already ') === 0) out.same.push(i); else { out.skipped.push({ i: i, reason: reason }); out.refused++; }
+      const access = row.placeRule === PLACE.PATH || row.placeRule === PLACE.ROAD || row.placeRule === PLACE.BOARDWALK;
+      const plan = runPlan(state, row, run, opts), laid = new Set();
+      for (const a of plan.acts) {
+        if (!isLand(state, a.i) || isMarsh(state, a.i)) out.wet++;
+        if (a.act === 'lay') { out.placed++; out.cost += a.cost; if (a.bridge) out.bridge++; laid.add(a.i); }
+        else if (a.act === 'landing') { out.placed++; out.cost += a.cost; out.landings++; out.landingCost += a.cost; laid.add(a.i); }
+        else if (a.act === 'same') { if (!a.land) out.same.push(a.i); }
+        else { out.skipped.push({ i: a.i, reason: a.reason }); out.refused++; if (a.past) out.cut++; }
       }
-      if (access && opts.tie !== false) { out.tie = runTieInner(state, row, run); out.touches = !out.tie && M.runTouches(state, run); }
+      for (const L of [plan.pre, plan.post]) if (L) { out.placed++; out.cost += L.cost; out.landings++; out.landingCost += L.cost; out.extra.push(L.i); laid.add(L.i); }
+      if (opts.tie !== false) {
+        if (plan.crossing) { out.cross = crossTies(state, row, run, plan); out.touches = !!(out.cross && out.cross.shores.some(function (s) { return s.net && !s.tie; })); }
+        else if (access) { const eff = plan.cut >= 0 ? planCarried(plan).map(function (e) { return e[0]; }) : run; out.tie = eff.length ? runTieInner(state, row, eff) : null; out.touches = !out.tie && M.runTouches(state, eff); }
+      }
+      if (clearsVeg(row)) {
+        out.clearsRun = vegCount(state, laid);
+        if (out.tie) for (const i of out.tie.tiles) laid.add(i);
+        if (out.cross) for (const t of out.cross.ties) for (const i of t.tiles) laid.add(i);
+        out.clears = vegCount(state, laid);
+      }
       return out;
     } catch (e) { if (BSU.SELFTEST) throw e; BSU.error('buildings', 'runQuote', e); return out; }
+  };
+  /** crossings pass: where a road / boardwalk / Pedestrian Bridge drag from tile `from` should END when the cursor is on tile `to` — the free land
+   *  tile beside an access surface's dead end within params.build.tieSnap tiles of the cursor, so the crossing lines up with the path that is already
+   *  there: the tile straight ahead of that end first, then the nearest; `prev` (the previous answer) is kept while it is as good, so the preview does
+   *  not flip-flop as the cursor slides. A cursor on a surface the row cannot build over steps back to the free tile beside it. `to` itself when the
+   *  cursor is over water, already beside a surface, or nothing is in reach. */
+  M.crossSnap = function (state, rowId, from, to, prev) {
+    try {
+      const row = rowOf(rowId); if (!state || !state.tiles || !row || !Number.isInteger(to) || to < 0 || to >= N) return to;
+      const rule = row.placeRule; if (rule !== PLACE.ROAD && rule !== PLACE.BOARDWALK && rule !== PLACE.BRIDGE) return to;
+      const reach = Math.max(0, fin(PB.tieSnap, 2) | 0); if (!reach || !isLand(state, to)) return to;
+      const surf = state.tiles.surface, own = state.tiles.owner, tx = (to % W), ty = ((to / W) | 0), cmask = charterMask(state);
+      const free = function (i) { return isLand(state, i) && surf[i] === SURF.NONE && own[i] < 0 && !isMound(state, i) && !(cmask && cmask[i] !== 1) && state.tiles.crest[i] <= 0 && !isCanal(state, i); };
+      const md = function (i, j) { return Math.abs((i % W) - (j % W)) + Math.abs(((i / W) | 0) - ((j / W) | 0)); };
+      if (isAccessSurface(surf[to])) {   // the cursor is on a surface: fine when the row passes over / replaces it, else step back to the free tile beside it (nearest the anchor)
+        if (rule === PLACE.BRIDGE || surf[to] === row.effects.surfaceId || (rule === PLACE.ROAD && surf[to] === SURF.PATH)) return to;
+        let best = -1, bd = Infinity;
+        for (const n of BSU.nbr4(to)) { if (!free(n)) continue; const d = Number.isInteger(from) ? md(n, from) : 0; if (d < bd || (d === bd && n === prev)) { bd = d; best = n; } }
+        return best >= 0 ? best : to;
+      }
+      for (const n of BSU.nbr4(to)) if (isAccessSurface(surf[n])) return to;   // already beside one
+      let best = -1, br = 9, bd = Infinity, prevKey = -1;
+      for (let y = Math.max(0, ty - reach); y <= Math.min(H - 1, ty + reach); y++) for (let x = Math.max(0, tx - reach); x <= Math.min(W - 1, tx + reach); x++) {
+        const t = y * W + x, d = Math.abs(x - tx) + Math.abs(y - ty); if (d > reach || d === 0 || !free(t)) continue;
+        let rank = 9;
+        for (const e of BSU.nbr4(t)) {   // e: a dead end (at most one access neighbour) of an existing surface
+          if (!isAccessSurface(surf[e])) continue;
+          let deg = 0, back = -1; for (const q of BSU.nbr4(e)) if (isAccessSurface(surf[q])) { deg++; back = q; }
+          if (deg > 1) continue;
+          rank = Math.min(rank, (deg === 1 && t === 2 * e - back) ? 0 : 1);
+        }
+        if (rank > 1) continue;
+        const key = rank * 100 + d;
+        if (t === prev) prevKey = key;
+        if (key < br * 100 + bd) { best = t; br = rank; bd = d; }
+      }
+      if (best < 0) return to;
+      return (prevKey >= 0 && prevKey === br * 100 + bd) ? prev : best;
+    } catch (e) { if (BSU.SELFTEST) throw e; BSU.error('buildings', 'crossSnap', e); return to; }
   };
   /** the tie a footprint placement at (tx, ty) would lay to reach the access network: {tiles, surfaces, cost, water} or null (already touching, or none within params.build.autoTieMax) */
   M.connectorFor = function (state, rowId, tx, ty, rot) {
@@ -631,12 +824,16 @@
   };
   function fail(r, reason) { r.ok = false; r.color = 'red'; r.reason = reason; return r; }
   // roads pass: a road run's bridge span is its water tiles PLUS the marsh tiles contiguous with them along the run (the deck carries over the
-  // bank), capped at bridgeMaxSpan all told and priced as bridge; the span must land on dry ground (land that is not marsh) at both ends. A marsh
-  // band with no water in it is still "Use a Boardwalk or a bridge". The whole span is refused with one reason, never a lone bridge between banks.
-  const SPAN_LONG = 'Bridges span ' + PB.bridgeMaxSpan + ' tiles at most', SPAN_LONG_MARSH = SPAN_LONG + ' (marsh banks count)', SPAN_DRY = 'Bridges start from dry ground';
+  // bank), priced as bridge; the span must land on dry ground (land that is not marsh) at both ends. A marsh band with no water in it is still
+  // "Use a Boardwalk or a bridge". The whole span is refused with one reason, never a lone bridge between banks.
+  // crossings pass: bridgeMaxSpan caps the REACH (the first to the last water tile of the span); the deck also carries over up to bridgeBankMax
+  // marsh tiles on each bank. (Marsh banks used to count toward the cap: on the generated maps every bayou reach has 1–2 marsh tiles on each
+  // bank, so no reach in the start charter took a road bridge on six of seven seeds sampled.) The refusal names the reach: "(this reach is 4)".
+  const SPAN_LONG = 'Bridges span ' + PB.bridgeMaxSpan + ' tiles at most', SPAN_WATER = 'Bridges span ' + PB.bridgeMaxSpan + ' water tiles at most', SPAN_DRY = 'Bridges start from dry ground';
+  function spanBankReason() { const n = Math.max(0, fin(PB.bridgeBankMax, 2) | 0); return 'Marsh bank too wide for a bridge (' + n + (n === 1 ? ' tile' : ' tiles') + ' at most): use a Boardwalk'; }
   function spanTile(state, i) { return hasWaterFlag(state, i) || isMarsh(state, i); }
   function dryLand(state, i) { return isLand(state, i) && !isMarsh(state, i); }
-  /** true when the run (opts.tiles) contains a legal ≤3-tile water (+ marsh bank) span through tile i (road bridges) */
+  /** true when the run (opts.tiles) contains a legal span through tile i (road bridges): a reach of ≤ bridgeMaxSpan water tiles with ≤ bridgeBankMax marsh tiles on each bank */
   function bridgeSpanOk(state, i, run) {
     const surf = state.tiles.surface;
     if (Array.isArray(run) && run.length) {
@@ -645,9 +842,11 @@
       let a = k, b = k;
       while (a - 1 >= 0 && spanTile(state, run[a - 1])) a--;
       while (b + 1 < run.length && spanTile(state, run[b + 1])) b++;
-      let water = 0; for (let q = a; q <= b; q++) if (hasWaterFlag(state, run[q])) water++;
-      if (!water) return { ok: false, reason: 'Use a Boardwalk or a bridge' };
-      if (b - a + 1 > PB.bridgeMaxSpan) return { ok: false, reason: water < b - a + 1 ? SPAN_LONG_MARSH : SPAN_LONG };
+      let w0 = -1, w1 = -1; for (let q = a; q <= b; q++) if (hasWaterFlag(state, run[q])) { if (w0 < 0) w0 = q; w1 = q; }
+      if (w0 < 0) return { ok: false, reason: 'Use a Boardwalk or a bridge' };
+      const reach = w1 - w0 + 1, bankMax = Math.max(0, fin(PB.bridgeBankMax, 2) | 0);   // the reach: first to last water tile (a marsh island between them counts)
+      if (reach > PB.bridgeMaxSpan) return { ok: false, reason: SPAN_WATER + ' (this reach is ' + reach + ')' };
+      if (w0 - a > bankMax || b - w1 > bankMax) return { ok: false, reason: spanBankReason() };
       const before = a - 1 >= 0 ? run[a - 1] : -1, after = b + 1 < run.length ? run[b + 1] : -1;
       const landBefore = before >= 0 && dryLand(state, before), landAfter = after >= 0 && dryLand(state, after);
       // an end may also be an existing bridge tile continuing off the run, or an existing road on land
@@ -1210,6 +1409,20 @@
     rec.connector = fin(rec.connector, 0);
     cache(state).undo = rec;
   }
+  /** crossings pass, rule 8 — a surface clears its tile: every plant (state.veg entry, natural or planted) on tile i goes when a path, road, boardwalk
+   *  or Pedestrian Bridge tile is laid there (a run tile, a bridge landing, an auto-tie tile: all come through applyDragTile). The entries ride on
+   *  the tile's undo entry with their array index (ent.veg = [{k, v}], descending k), so undo puts each back exactly where it stood. */
+  function clearVegAt(state, i, ent) {
+    const veg = state.veg; if (!Array.isArray(veg) || !veg.length) return 0;
+    const tx = (i % W), ty = ((i / W) | 0); let gone = null;
+    for (let k = veg.length - 1; k >= 0; k--) { const v = veg[k]; if (v && v.tx === tx && v.ty === ty) (gone || (gone = [])).push({ k: k, v: v }); }
+    if (!gone) return 0;
+    const tr = dep.terrain();
+    if (tr && typeof tr.removeVeg === 'function') tr.removeVeg(state, tx, ty);
+    for (const g of gone) { const at = veg.indexOf(g.v); if (at >= 0) veg.splice(at, 1); }   // (a terrain without removeVeg)
+    ent.veg = gone;
+    return gone.length;
+  }
   /** apply one legal drag tile (validation already done); records undo entries; returns the tiles written */
   function applyDragTile(state, row, i, undoRec, day) {
     const tl = state.tiles;
@@ -1218,6 +1431,7 @@
     undoRec.entries.push(ent);
     switch (row.placeRule) {
       case PLACE.PATH: case PLACE.ROAD: case PLACE.BOARDWALK: case PLACE.BRIDGE:
+        clearVegAt(state, i, ent);   // rule 8: no tree left standing in the road
         setSurface(state, i, row.effects.surfaceId); rewalk(state, i); break;
       case PLACE.FENCE:
         setSurface(state, i, SURF.FENCE); rewalk(state, i); break;
@@ -1335,7 +1549,9 @@
     const charged = opts.ignoreCash ? total : (total - (connTiles.length ? Math.round(connCost * (connTiles.length - laid.length) / connTiles.length) : 0));
     return { ok: true, id: b.id, tiles: r.tiles, cost: charged, connector: laid.length ? { tiles: laid, cost: charged - r.cost } : null };
   }
-  /** drag release: places every legal tile of the run in order (best effort), one undo record */
+  /** drag release: places every legal tile of the run in order (best effort), one undo record. → {ok, placed, cost (ties included), skipped: [{i, reason}],
+   *  tie (the first tie laid: {tiles, surfaces, cost, water, snap}), ties (crossings pass: every tie laid, one per bank of a crossing, each with end 0 | 1
+   *  and net), tieSkipped} */
   M.placeRun = function (state, id, tiles, opts) {
     opts = opts || {};
     const out = { ok: false, placed: 0, cost: 0, skipped: [] };
@@ -1357,43 +1573,50 @@
         if (r.ok) { out.ok = true; out.placed = 1; out.cost = r.cost; } else out.skipped.push({ i: run[0], reason: r.reason });
         return out;
       }
-      // bridges: validate every water (+ marsh bank) segment of a road run as a whole before placing any tile of it
-      const bad = new Map();
-      if (row.placeRule === PLACE.ROAD) {
-        for (let k = 0; k < run.length; k++) {
-          if (!spanTile(state, run[k])) continue;
-          const chk = bridgeSpanOk(state, run[k], run);
-          if (!chk.ok) bad.set(run[k], chk.reason);
-        }
-      }
-      // bridge pass: a Pedestrian Bridge run is its water tiles; land tiles are the landings (nothing placed, nothing charged)
-      let landings = null;
-      if (row.placeRule === PLACE.BRIDGE) {
-        landings = new Set();
-        for (let k = 0; k < run.length; k++) {
-          if (isLand(state, run[k])) { landings.add(run[k]); continue; }
-          const chk = pedBridgeOk(state, run[k], run);
-          if (!chk.ok) bad.set(run[k], chk.reason);
-        }
-        if (landings.size === run.length) { out.skipped.push({ i: run[0], reason: 'Bridges go over water' }); return out; }
-      }
-      // paths pass: the end of a path / road / boardwalk run ties itself to the network (quoted before the run is laid; opts.noTie = Alt held)
-      const tie = opts.noTie ? null : runTieInner(state, row, run);
       const undoRec = { tick: fin(state.tick, 0), entries: [], cost: 0 };
       const o = Object.assign({}, opts, { tiles: run });
-      for (const i of run) {
-        if (landings && landings.has(i)) {   // a bare landing gets a gravel path (its own price) so the bridge meets the land properly
-          if (state.tiles.surface[i] === SURF.NONE && state.tiles.owner[i] === -1) { const lr = placeInner(state, 'path', (i % W), ((i / W) | 0), opts, undoRec); if (lr.ok) { out.placed++; out.cost += lr.cost; } }
-          continue;
+      let ties = [];
+      if (row.placeRule === PLACE.ROAD || row.placeRule === PLACE.BRIDGE || row.placeRule === PLACE.BOARDWALK) {
+        // crossings pass: the three rows that cross water follow runPlan (exactly what runQuote showed): a refused span is refused whole and nothing is
+        // laid past it, a Pedestrian Bridge's land tiles (and the land a run ending on the water steps off onto) get their gravel, each bank its tie
+        const plan = runPlan(state, row, run, opts);
+        if (!opts.noTie) {
+          if (plan.crossing) { const c = crossTies(state, row, run, plan); if (c) ties = c.ties; }
+          else if (row.placeRule !== PLACE.BRIDGE) { const eff = plan.cut >= 0 ? planCarried(plan).map(function (e) { return e[0]; }) : run; const t = eff.length ? runTieInner(state, row, eff) : null; if (t) ties = [t]; }
         }
-        if (bad.has(i)) { out.skipped.push({ i: i, reason: bad.get(i) }); continue; }
-        const r = placeInner(state, id, (i % W), ((i / W) | 0), o, undoRec);
-        if (r.ok) { out.placed++; out.cost += r.cost; } else out.skipped.push({ i: i, reason: r.reason });
+        if (plan.crossing && !opts.ignoreCash) {   // a crossing is bought whole: never half a bridge for want of cash
+          let need = 0; for (const a of plan.acts) if (a.act === 'lay' || a.act === 'landing') need += a.cost;
+          for (const L of [plan.pre, plan.post]) if (L) need += L.cost;
+          if (!canAfford(state, need)) { out.skipped.push({ i: run[0], reason: 'Not enough cash' }); return out; }
+        }
+        const po = { ignoreCash: opts.ignoreCash === true };
+        const gravel = function (i) { const lr = placeInner(state, 'path', (i % W), ((i / W) | 0), po, undoRec); if (lr.ok) { out.placed++; out.cost += lr.cost; } };
+        if (plan.pre) gravel(plan.pre.i);
+        for (const a of plan.acts) {
+          if (a.act === 'landing') { gravel(a.i); continue; }
+          if (a.act === 'skip') { out.skipped.push({ i: a.i, reason: a.reason }); continue; }
+          if (a.act === 'same') { if (!a.land) out.skipped.push({ i: a.i, reason: a.reason }); continue; }
+          const r = placeInner(state, id, (a.i % W), ((a.i / W) | 0), o, undoRec);
+          if (r.ok) { out.placed++; out.cost += r.cost; } else out.skipped.push({ i: a.i, reason: r.reason });
+        }
+        if (plan.post) gravel(plan.post.i);
+      } else {
+        // paths pass: the end of a path run ties itself to the network (quoted before the run is laid; opts.noTie = Alt held)
+        const tie = opts.noTie ? null : runTieInner(state, row, run); if (tie) ties = [tie];
+        for (const i of run) {
+          const r = placeInner(state, id, (i % W), ((i / W) | 0), o, undoRec);
+          if (r.ok) { out.placed++; out.cost += r.cost; } else out.skipped.push({ i: i, reason: r.reason });
+        }
       }
       if (out.placed > 0) {
-        if (tie) { const t = layTie(state, tie, undoRec, opts); if (t) { out.tie = t; out.cost += t.cost; } else out.tieSkipped = 'Not enough cash for the tie'; }
+        let tied = 0;
+        for (const tie of ties) {   // each tie is its own charge on the same undo record; one that cannot be paid for is skipped
+          const t = layTie(state, tie, undoRec, opts);
+          if (t) { t.end = fin(tie.end, 1); t.net = tie.net !== false; (out.ties || (out.ties = [])).push(t); out.cost += t.cost; tied += t.tiles.length; } else out.tieSkipped = 'Not enough cash for the tie';
+        }
+        if (out.ties) out.tie = out.ties[0];
         pushUndo(state, undoRec, id);
-        if (out.tie) undoRec.n = Math.max(1, undoRec.n - out.tie.tiles.length);   // the chip says "12 × Gravel Path + 4 path tiles"
+        if (tied) undoRec.n = Math.max(1, undoRec.n - tied);   // the chip says "12 × Gravel Path + 4 path tiles"
         out.ok = true; dirtyAll(cache(state));
       }
       return out;
@@ -1526,6 +1749,7 @@
           if (Math.abs(tl.elev[i] - p.elev) > 1e-6) setElev(state, i, p.elev);
           if (e.eco) call('wildlife', 'applyEcologyOnce', [state, -e.eco], null);
           if (e.fill) cancelFillTile(state, e.fill, i);   // L3: the tile leaves its run; an empty run disappears
+          if (e.veg) for (let q = e.veg.length - 1; q >= 0; q--) { const g = e.veg[q]; state.veg.splice(Math.min(Math.max(0, g.k), state.veg.length), 0, g.v); }   // rule 8: the cleared plants return, each at its old index
           rewalk(state, i); touch(state, i, 'decor');
         } else if (e.kind === 'eco') {
           call('wildlife', 'applyEcologyOnce', [state, -e.amount], null);
@@ -2883,7 +3107,7 @@
       setFlag: function (s, i, b, on) { if (on) s.tiles.flags[i] |= b; else s.tiles.flags[i] &= ~b; },
       touch: function () {}, rewalk: function () {}, classify: function () {}, ridgeFull: function () { return null; },
       plantVeg: function (s, t, x, y) { s.veg.push({ type: t, tx: x, ty: y, stage: 0, plantedDay: s.calendar.day, planted: true }); },
-      removeVeg: function (s, k) { s.veg.splice(k, 1); }, bank: function (ty) { return BSU.bankAt(ty); }
+      removeVeg: function (s, a, b) { if (b === undefined) { s.veg.splice(a, 1); return; } for (let k = s.veg.length - 1; k >= 0; k--) if (s.veg[k] && s.veg[k].tx === a && s.veg[k].ty === b) s.veg.splice(k, 1); }, bank: function (ty) { return BSU.bankAt(ty); }
     };
     const hydro = {
       footprintDepth: function () { return 0; }, depthAt: function () { return 0; }, riskAt: function () { return 0; },

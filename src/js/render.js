@@ -1047,6 +1047,22 @@
   }
   /** the surface pieces that touch tile i, drawn at its elevation (called for every non-fence tile; cheap when none);
    *  a deck tile (bridge pass) passes skipKind = its own surface: that kind, and its steps, are drawDeckAt's at deck elevation */
+  /** crossings pass: a surface of another kind that spills into tile i (its dead end run on to the shared edge, and the round cap past it) is drawn
+   *  there only when it lies at this tile's level. Hidden on a deck tile (the piece would sit on the bed, under the water: the gravel blob below a
+   *  bridge's end), and where every tile of that kind around i is a deck (a bridge's or a boardwalk's cap would lie on the bank, feet under its own
+   *  deck: the "floating round cap"; the steps drawStep draws are what meets the ground there). Ground-level joins (a path into a road) are untouched. */
+  function spillHidden(cv, tx, ty, kind, onDeck) {
+    if (onDeck) return true;
+    const deck = cv.deck, surf = cv.state && cv.state.tiles ? cv.state.tiles.surface : null; if (!deck || !surf) return false;
+    let any = false;
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+      if (!dx && !dy) continue; const x = tx + dx, y = ty + dy; if (x < 0 || y < 0 || x >= W || y >= HGT) continue;
+      const j = y * W + x; if (surf[j] !== kind) continue;
+      if (deck[j] !== deck[j]) return false;   // a ground-level tile of that kind beside us: a flush join
+      any = true;
+    }
+    return any;
+  }
   function drawCurvesAt(g, ch, cv, i, tx, ty, ep, wx, wy, sf, wet, canal, skipKind) {
     const list = cv.buckets.get(i), steps = skipKind ? null : cv.steps.get(i);
     if (!list && !steps) return;
@@ -1057,7 +1073,8 @@
       clipTile(g, ch, tx, ty, ep, 0, down);
       if (sf === SURF.BOARDWALK && !wet) boardwalkPosts(g, C, ch, cv, list, ep);
       groundTransform(g, ch, ep);
-      for (let pass = 0; pass < 2; pass++) for (let q = 0; q < CURVE_KINDS.length; q++) { const kind = CURVE_KINDS[q]; if (kind === skipKind) continue; strokeKind(g, C, cv, list, kind, pass === 0, hash(tx, ty)); }
+      let hide = 0; for (let q = 0; q < CURVE_KINDS.length; q++) { const kind = CURVE_KINDS[q]; if (kind !== sf && kind !== skipKind && spillHidden(cv, tx, ty, kind, !!skipKind)) hide |= 1 << q; }
+      for (let pass = 0; pass < 2; pass++) for (let q = 0; q < CURVE_KINDS.length; q++) { const kind = CURVE_KINDS[q]; if (kind === skipKind || (hide & (1 << q))) continue; strokeKind(g, C, cv, list, kind, pass === 0, hash(tx, ty)); }
       if (canal) culvertPipes(g, C, wx, wy);
       g.restore();
     }
@@ -1128,7 +1145,7 @@
       const sx = Math.round(px(x, y)), sy = Math.round(py(x, y, e)); g.fillStyle = C.post; g.fillRect(sx, sy - 6, 1, 6); g.fillRect(sx - 1, sy - 7, 3, 1); drawCalls += 2;
     }
   }
-  M.curves = { trace: traceNets, smooth: smoothPoly, runs: elevRuns, build: buildCurves, current: () => curves, invalidate: () => { curvesDirty = true; },
+  M.curves = { trace: traceNets, smooth: smoothPoly, runs: elevRuns, build: buildCurves, current: () => curves, invalidate: () => { curvesDirty = true; }, spillHidden: spillHidden,
     straighten: straightenStairs, trim: dashTrim, path: buildPath, widths: CURVE_W, stairDev: STAIR_DEV, dashTrim: DASH_TRIM,   // roads pass (tests)
     deckOf: (i) => (curves && curves.deck && i >= 0 && i < N) ? curves.deck[i] : NaN, decksDrawn: () => decksDrawn, deckChunks: deckChunks, clearance: DECK_KIND_FT, overtopped: (i) => overtoppedNow.has(i),
     deckStats: () => Object.assign({ chunks: chunks.filter((c) => c && c.deck).map((c) => [c.cx, c.cy, c.deckTiles ? c.deckTiles.length : -1, c.dirty]) }, deckStats) };
@@ -1185,7 +1202,7 @@
           if (wm) { const sandy = cv8[i] || (wm & 1 && cv8[i - W]) || (wm & 2 && cv8[i + 1]) || (wm & 4 && cv8[i + W]) || (wm & 8 && cv8[i - 1]); ref = tref(sandy ? 'shore:sand' : 'shore:mud', wm, 0, 1); if (ref) blit1(g, ref, wx, wy); }
         }
         // (d) decorations
-        if (ty8 === T.MARSH && (hash(tx, ty) % 100) < C.reedPct) { ref = tref('reeds', 0, hash(ty, tx) & 1, 1); if (ref) blit1(g, ref, wx + (hash(tx, ty + 9) % 24) - 12, wy + (hash(tx + 3, ty) % 8) - 4); }
+        if (ty8 === T.MARSH && surf[i] !== SURF.PATH && surf[i] !== SURF.ROAD && (hash(tx, ty) % 100) < C.reedPct) { ref = tref('reeds', 0, hash(ty, tx) & 1, 1); if (ref) blit1(g, ref, wx + (hash(tx, ty + 9) % 24) - 12, wy + (hash(tx + 3, ty) % 8) - 4); }
         if (ty8 === T.MARSH && surf[i] === 0 && t.owner[i] < 0 && (hash(tx + 5, ty + 2) % 100) < C.shrubPct && marshEdge(t, i, tx, ty)) { const hs = hash(tx + 11, ty + 7); ref = tref('shrub', hs & 3, 0, 1); if (ref) blit1(g, ref, wx + ((hs >> 2) % 28) - 14, wy + ((hs >> 7) % 10) - 2); }   // art pass B2: understory shrubs on the marsh edge
         if ((ty8 === T.DRY || ty8 === T.HIGH) && surf[i] === 0 && t.owner[i] < 0) {   // art pass B1: tufts, patches, wear beside paths
           const hv = hash(tx * 3 + 1, ty * 5 + 2);
@@ -1193,7 +1210,7 @@
           if ((hv % 100) >= 100 - C.patchPct) { const dx = ((hv >> 6) % 21) - 10, dy = ((hv >> 12) % 7) - 3; ref = tref(ty8 === T.HIGH ? (((hv >> 3) & 1) ? 'patch:lime' : 'patch:dirt') : (((hv >> 3) & 1) ? 'patch:clover' : 'patch:dirt'), (hv >> 5) & 3, 0, 1); if (ref) blit1(g, ref, wx + dx, wy + dy); }
           if (nbrMask(t, i, tx, ty, surfAt)) { ref = tref('worn', 4 | (hv & 3), 0, 1); if (ref) { g.globalAlpha = 0.35; blit1(g, ref, wx, wy); g.globalAlpha = 1; } }
         }
-        if (ty8 >= T.MARSH && ty8 !== T.POND && (nearCypress(i, tx, ty) || cypStamp[i] === cypGen) && (fin(depth[i], 0) > 0.05 || ty8 === T.MARSH)) { ref = tref('knees', (tx & 7) | ((ty & 7) << 3), 0, 1); if (ref) blit1(g, ref, wx, wy); }   // art pass B2: a tile overlay keyed by position, knees on the pool rims
+        if (ty8 >= T.MARSH && ty8 !== T.POND && surf[i] !== SURF.PATH && surf[i] !== SURF.ROAD && (nearCypress(i, tx, ty) || cypStamp[i] === cypGen) && (fin(depth[i], 0) > 0.05 || ty8 === T.MARSH)) { ref = tref('knees', (tx & 7) | ((ty & 7) << 3), 0, 1); if (ref) blit1(g, ref, wx, wy); }   // art pass B2: a tile overlay keyed by position, knees on the pool rims
         if (f & FLAG.DESIRE_WORN) { ref = tref('worn', 0, 0, 1); if (ref) blit1(g, ref, wx, wy); }
         // (f) canal cut (open gate variant baked; pass 3 overlays the live gate frame)
         if (f & FLAG.CANAL) { let v = flagMask(fl, i, tx, ty, FLAG.CANAL, false); if (surf[i] > 0) v |= 16; ref = tref('canal', v, 0, 1); if (ref) blit1(g, ref, wx, wy); }

@@ -119,23 +119,33 @@ const liveState = BSU.state;
   marsh(31, 24); water(32, 24);
   const q3 = B.runQuote(s, 'road', row(24, 30, 33), {});
   ok(q3.refused === 0 && q3.bridge === 2 && q3.placed === 4 && q3.cost === 2 * ROAD + 2 * ROAD * MULT, 'road: dry, marsh, water, dry → a 2-tile span over the bank at bridge price (' + q3.cost + ')');
-  const pr3 = B.placeRun(s, 'road', row(24, 30, 33), { ignoreCash: true });
+  const pr3 = B.placeRun(s, 'road', row(24, 30, 33), { ignoreCash: true, noTie: true });   // crossings pass: a crossing ties both banks (crossings.test.mjs); this block is about the span, so no ties
   ok(pr3.ok && pr3.placed === 4 && s.tiles.surface[at(31, 24)] === SURF.ROAD && s.tiles.surface[at(32, 24)] === SURF.ROAD && pr3.cost === q3.cost, 'laid: the marsh bank carries the road as deck, priced like the water tile');
   ok(B.canPlace(s, 'road', 31, 25, {}).reason === 'Use a Boardwalk or a bridge' || B.canPlace(s, 'road', 31, 25, {}).ok, 'a single click on open marsh still refuses (or the tile is dry): ' + B.canPlace(s, 'road', 31, 25, {}).reason);
   { const rm = B.remove(s, { tile: at(31, 24) }, 'demolish'), rw = B.remove(s, { tile: at(32, 24) }, 'demolish'); ok(rm.ok && rw.ok && rm.refund === rw.refund && rm.refund > 0, 'demolishing the bank deck refunds like the water deck (' + rm.refund + ')'); }
   for (const x of [30, 33]) B.remove(s, { tile: at(x, 24) }, 'demolish');
-  // (c) the brief's case: a 3-tile bayou with 1-tile marsh banks (span 5) → the WHOLE span refused with one reason; the dry parts lay; no lone bridge
+  // (c) the roads pass's scene: a 3-tile bayou with 1-tile marsh banks. Crossings pass: bridgeMaxSpan caps the REACH (the water), the deck carries
+  //     over up to bridgeBankMax marsh tiles on each bank, so this is one 5-tile deck at bridge price (it used to be refused whole: on the generated
+  //     maps every reach has marsh banks, so nothing took a road bridge). A bank wider than bridgeBankMax, or 4 water tiles, is still refused whole —
+  //     and nothing is laid past the refused span (no orphan stub on the far bank)
   marsh(31, 28); water(32, 28); water(33, 28); water(34, 28); marsh(35, 28);
   const q4 = B.runQuote(s, 'road', row(28, 29, 37), {});
-  const LONG = 'Bridges span 3 tiles at most (marsh banks count)';
-  ok(q4.refused === 5 && q4.skipped.every((k) => k.reason === LONG) && q4.skipped.map((k) => k.i).join() === [31, 32, 33, 34, 35].map((x) => at(x, 28)).join() && q4.placed === 4, 'marsh + 3 water + marsh: all five span tiles refused with one reason: ' + (q4.skipped[0] && q4.skipped[0].reason));
-  const pr4 = B.placeRun(s, 'road', row(28, 29, 37), { ignoreCash: true });
-  ok(pr4.placed === 4 && [32, 33, 34].every((x) => s.tiles.surface[at(x, 28)] === SURF.NONE) && [29, 30, 36, 37].every((x) => s.tiles.surface[at(x, 28)] === SURF.ROAD), 'released: the road stops at the dry banks, no bridge stands alone in the bayou');
-  for (const x of [29, 30, 36, 37]) B.remove(s, { tile: at(x, 28) }, 'demolish');
+  ok(q4.refused === 0 && q4.bridge === 5 && q4.placed === 9 && q4.cost === 4 * ROAD + 5 * ROAD * MULT, 'marsh + 3 water + marsh: one 5-tile deck over the reach and both banks at bridge price (' + q4.cost + ')');
+  const pr4 = B.placeRun(s, 'road', row(28, 29, 37), { ignoreCash: true, noTie: true });
+  ok(pr4.placed === 9 && pr4.cost === q4.cost && [29, 30, 31, 32, 33, 34, 35, 36, 37].every((x) => s.tiles.surface[at(x, 28)] === SURF.ROAD), 'released: the road crosses, bank to bank');
+  for (const x of [29, 30, 31, 32, 33, 34, 35, 36, 37]) B.remove(s, { tile: at(x, 28) }, 'demolish');
+  { const BANK = BSU.params.build.bridgeBankMax; ok(BANK === 2, 'params.build.bridgeBankMax is 2');
+    marsh(30, 28); marsh(29, 28);   // the west bank is now 3 marsh tiles wide
+    const qb = B.runQuote(s, 'road', row(28, 27, 37), {}), WIDE = 'Marsh bank too wide for a bridge (2 tiles at most): use a Boardwalk';
+    ok(qb.refused === 9 && qb.skipped.slice(0, 7).every((k) => k.reason === WIDE) && qb.skipped.slice(7).every((k) => /^Not laid: /.test(k.reason)) && qb.cut === 2 && qb.placed === 2, 'a 3-tile marsh bank: the whole span refused with the bank reason, the two tiles past it not laid (' + (qb.skipped[0] && qb.skipped[0].reason) + ', cut ' + qb.cut + ')');
+    const prb = B.placeRun(s, 'road', row(28, 27, 37), { ignoreCash: true, noTie: true });
+    ok(prb.placed === 2 && s.tiles.surface[at(27, 28)] === SURF.ROAD && s.tiles.surface[at(28, 28)] === SURF.ROAD && [36, 37].every((x) => s.tiles.surface[at(x, 28)] === SURF.NONE), 'released: the near side is laid up to the bank, nothing on the far bank (no orphan stub)');
+    for (const x of [27, 28]) B.remove(s, { tile: at(x, 28) }, 'demolish');
+  }
   // (d) a marsh band with no water is still a boardwalk job; a span that never reaches dry ground is refused as such
   marsh(31, 32); marsh(32, 32);
   const q5 = B.runQuote(s, 'road', row(32, 30, 33), {});
-  ok(q5.refused === 2 && q5.skipped.every((k) => k.reason === 'Use a Boardwalk or a bridge'), 'a marsh band without water: "Use a Boardwalk or a bridge" on both tiles');
+  ok(q5.refused === 3 && q5.skipped.slice(0, 2).every((k) => k.reason === 'Use a Boardwalk or a bridge') && /^Not laid: /.test(q5.skipped[2].reason) && q5.cut === 1 && q5.placed === 1, 'a marsh band without water: "Use a Boardwalk or a bridge" on both tiles (crossings pass: and the tile past it is not laid)');
   water(31, 36); water(32, 36);
   const q6 = B.runQuote(s, 'road', row(36, 31, 32), {});
   ok(q6.refused === 2 && q6.skipped.every((k) => k.reason === 'Bridges start from dry ground'), 'a water-only run with no bank: "Bridges start from dry ground"');
@@ -143,7 +153,8 @@ const liveState = BSU.state;
   water(41, 40); water(42, 40); water(43, 40);
   const q7 = B.runQuote(s, 'road', row(40, 40, 44), {}); ok(q7.refused === 0 && q7.bridge === 3, '3 water tiles between dry banks: a bridge');
   water(44, 40);
-  const q8 = B.runQuote(s, 'road', row(40, 40, 45), {}); ok(q8.refused === 4 && q8.skipped[0].reason === 'Bridges span 3 tiles at most', '4 water tiles: refused with the plain reason');
+  const q8 = B.runQuote(s, 'road', row(40, 40, 45), {}); ok(q8.refused === 5 && q8.skipped.slice(0, 4).every((k) => k.reason === 'Bridges span 3 water tiles at most (this reach is 4)') && q8.cut === 1 && q8.placed === 1, '4 water tiles: refused with the cap and the reach (crossings pass: "(this reach is 4)"; the far bank tile is not laid): ' + q8.skipped[0].reason);
+  { const c1 = B.canPlace(s, 'road', 41, 40, {}); ok(c1.ok && c1.cost === ROAD * MULT, 'a single click on a water tile beside dry ground: the single-tile rule is unchanged (a bridge tile at ×' + MULT + ')'); }
   // (f) a quote is cheap enough for every mouse move: a 40-tile road run through the flat world
   { const run = row(50, 2, 41); const t0 = performance.now(); let n = 0; for (let k = 0; k < 20; k++) { B.runQuote(s, 'road', run, {}); n++; } const ms = (performance.now() - t0) / n; ok(ms < 3 || true, `runQuote of a 40-tile run: ${ms.toFixed(2)} ms (advisory < 3 ms)`); }
   BSU.state = liveState; B.reset(liveState, true);

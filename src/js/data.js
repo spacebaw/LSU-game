@@ -175,7 +175,7 @@
       effects: { surfaceId: SURF.ROAD, noise: { value: 1, radius: 1 } },
       paint: flat(['#3A3A40', '#2E2E34'], ['lights']),
       why: 'Roads carry buses, parades and the Stadium. Dorms next door hear them.',
-      desc: 'Walkable + vehicles; bridges water up to 3 tiles at ×4; −1 happiness to adjacent dorms.' }),
+      desc: 'Walkable + vehicles; bridges water up to 3 tiles (and its marsh banks) at ×4; −1 happiness to adjacent dorms.' }),
     row({ n: 3, name: 'Boardwalk', kind: 'drag', cost: 14000, upkeep: 150, wr: 2, placeRule: PLACE.BOARDWALK,
       effects: { surfaceId: SURF.BOARDWALK },
       paint: flat(['#8B7355', '#6F5A42'], ['stilts']),
@@ -1390,9 +1390,9 @@
     place: {}
   };
   requirements.place[PLACE.PATH] = { glyph: '↔', text: 'Drag a run across land' };
-  requirements.place[PLACE.ROAD] = { glyph: '↔', text: 'Drag a run; bridges up to 3 tiles of water (marsh banks count); not on open marsh' };
-  requirements.place[PLACE.BOARDWALK] = { glyph: '↔', text: 'Drag a run over marsh, preserve or water' };
-  requirements.place[PLACE.BRIDGE] = { glyph: '↔', text: 'Drag a run across water from land to land' };
+  requirements.place[PLACE.ROAD] = { glyph: '↔', text: 'Drag a run; bridges up to 3 tiles of water, bank to bank (both ends connect themselves); not on open marsh' };
+  requirements.place[PLACE.BOARDWALK] = { glyph: '↔', text: 'Drag a run over marsh, preserve or water: both ends connect themselves' };
+  requirements.place[PLACE.BRIDGE] = { glyph: '↔', text: 'Drag bank to bank across water: both ends connect themselves' };
   requirements.place[PLACE.LEVEE] = { glyph: '↔', text: 'Drag a run along the ground; close the ring' };
   requirements.place[PLACE.CANAL] = { glyph: '↔', text: 'Drag a run downhill to the bayou or open water' };
   requirements.place[PLACE.FENCE] = { glyph: '↔', text: 'Drag a run along a water edge' };

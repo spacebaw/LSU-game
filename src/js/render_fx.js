@@ -1656,13 +1656,23 @@
   // built-in overlays pass, which draws the ghost; before the spotlight). While BSU.ui.networkView() is true (N held, or
   // any drag tool armed) every access surface that reaches Founders' Hall gets a faint green sheen, every run that does
   // not an amber dash, and Founders' Hall wears a "Campus hub" badge. R.tiePreview(spec) — {tiles, surfaces, snap, water}
-  // from the ui's ghost — draws the tie a placement or a drag end would lay as a dashed gold path (planks over water get a
-  // second, bark-coloured dash); null clears it. Nothing here writes state.
+  // from the ui's ghost, or a list of them (crossings pass: one per bank) — draws the tie a placement or a drag end would lay
+  // as a dashed gold path (planks over water get a second, bark-coloured dash); null clears it. Nothing here writes state.
   // ---------------------------------------------------------------------------
   let tieSpec = null;
   const netStats = { sheen: 0, dashed: 0, badge: false, tie: 0, ms: 0, frames: 0 };
   const NET_GREEN = 'rgba(63,191,127,', NET_AMBER = 'rgba(255,176,46,', NET_GOLD = 'rgba(253,208,35,';
-  R.tiePreview = function (spec) { tieSpec = (spec && Array.isArray(spec.tiles) && spec.tiles.length) ? spec : null; };
+  // crossings pass: a crossing ties both banks, so the spec may be a list — an array, or {ties: [{tiles, surfaces, snap, water}, …]}; it is kept as
+  // {ties, tiles (all of them), surfaces, snap (every tie snaps), water}, so a reader of a single tie's fields still finds them
+  R.tiePreview = function (spec) {
+    const list = Array.isArray(spec) ? spec : (spec && Array.isArray(spec.ties) ? spec.ties : null);
+    if (!list) { tieSpec = (spec && Array.isArray(spec.tiles) && spec.tiles.length) ? spec : null; return; }
+    const ties = list.filter(function (t) { return t && Array.isArray(t.tiles) && t.tiles.length; });
+    if (!ties.length) { tieSpec = null; return; }
+    let tiles = [], surfaces = [], water = 0, snap = true;
+    for (const t of ties) { tiles = tiles.concat(t.tiles); for (let k = 0; k < t.tiles.length; k++) surfaces.push((Array.isArray(t.surfaces) && t.surfaces[k]) || 'path'); water += fin(t.water, 0); if (!t.snap) snap = false; }
+    tieSpec = { ties: ties, tiles: tiles, surfaces: surfaces, snap: snap, water: water };
+  };
   R.tiePreviewSpec = function () { return tieSpec; };
   R.networkStats = function () { return { sheen: netStats.sheen, dashed: netStats.dashed, badge: netStats.badge, tie: netStats.tie, ms: netStats.ms, frames: netStats.frames }; };
   function networkOn() { const U = BSU.ui; if (!U || typeof U.networkView !== 'function') return false; try { return !!U.networkView(); } catch (e) { return false; } }
@@ -1691,7 +1701,7 @@
         if (hall) netStats.badge = drawHubBadge(g, hall, z, view);
       }
     }
-    if (tieSpec) netStats.tie = drawTiePreview(g, tieSpec, z);
+    if (tieSpec) { if (Array.isArray(tieSpec.ties)) { let n = 0; for (const t of tieSpec.ties) n += drawTiePreview(g, t, z); netStats.tie = n; } else netStats.tie = drawTiePreview(g, tieSpec, z); }   // crossings pass: one dashed path per bank
     netStats.ms = nowMs() - t0;
   }
   /** a small gold "Campus hub" pill above the hall's roof with a stem down to its top corner; false when off screen */

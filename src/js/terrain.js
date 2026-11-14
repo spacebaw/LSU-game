@@ -219,6 +219,7 @@
       const th = PH.thresholds;
       if (surf === SURF.PATH || surf === SURF.ROAD || surf === SURF.BOARDWALK || surf === SURF.BRIDGE) {
         if (surf === SURF.BOARDWALK || surf === SURF.BRIDGE || water) {
+          if (!water && depth < th.wading) return PA.walkClass.path;   // crossings pass: a boardwalk on ground that is not under water is a plank path (the test below read the GROUND as the water surface, so planks on any ground more than 2 ft above the normal stage — the dry bank at each end of a crossing — were impassable)
           // boardwalk / road bridge: passable unless the local surface is more than 2 ft above normal stage;
           // the Pedestrian Bridge deck (bridge pass) is 6 ft up, so it takes a 6-ft head to overtop it
           const hy = hydro();

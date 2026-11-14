@@ -250,14 +250,15 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - buildings.connectedMask(state)
 - buildings.runTouches(state, tiles)
 - buildings.runTie(state, rowId, tiles)
-- buildings.runQuote(state, id, tiles, opts)
+- buildings.runQuote(state, id, tiles, opts)   // crossings pass: also → cross ({shores: [{end, touch, net, tie, reach} ×2], ties, cost, n} for a run that lays a tile over water or marsh, else null), landings / landingCost, extra, cut, clears / clearsRun
+- buildings.crossSnap(state, rowId, from, to, prev) → tile   (crossings pass: the tile a road / boardwalk / Pedestrian Bridge drag from `from` should end on with the cursor on `to`: the free land tile in line with an access surface's dead end within params.build.tieSnap, else `to`; `prev` is kept while it is as good)
 - buildings.connectorFor(state, rowId, tx, ty, rot)
 - buildings.canPlace(state, id, tx, ty, opts)
 - buildings.fillMask(state)
 - buildings.fillQuote(state, tiles)
 - buildings.fillStats(state)
 - buildings.place(state, id, tx, ty, opts)
-- buildings.placeRun(state, id, tiles, opts)
+- buildings.placeRun(state, id, tiles, opts)   // crossings pass: → also ties ([{tiles, surfaces, cost, water, snap, end, net}], one per bank of a crossing; tie = ties[0]); a surface tile clears the plants on it (state.veg), restored by undo
 - buildings.remove(state, idOrTile, reason)
 - buildings.undoInfo(state)
 - buildings.undo(state)
@@ -707,7 +708,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - render.addShell(wx, wy, z0, z1, scale)
 - render.drawIssueGlyph(g, kind, cx, cy, r, color)
 - render.issueStats()
-- render.tiePreview(spec)
+- render.tiePreview(spec)   // crossings pass: spec may be a list — an array or {ties: [{tiles, surfaces, snap, water}, …]} — one dashed path per tie; tiePreviewSpec() then returns {ties, tiles (all), surfaces, snap, water}
 - render.tiePreviewSpec()
 - render.networkStats()
 - render.charterStats()

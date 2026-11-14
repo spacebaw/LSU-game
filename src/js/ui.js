@@ -931,7 +931,7 @@
   // ---------------------------------------------------------------------------
   // The input state machine — a pure step over a context with injected callbacks (testable without the DOM)
   // ---------------------------------------------------------------------------
-  function makeMachine(cb) { return { state: 'IDLE', prev: 'IDLE', down: null, run: [], runStart: -1, runTile: -1, elbow: 0, plan: null, cb: cb }; }
+  function makeMachine(cb) { return { state: 'IDLE', prev: 'IDLE', down: null, run: [], runStart: -1, runTile: -1, elbow: 0, plan: null, snapEnd: -1, cb: cb }; }
   function mcSet(mc, s) { mc.state = s; if (mc === live) M.state = s; }
   function lineRun(a, b) {
     const ax = a % W, ay = (a / W) | 0, bx = b % W, by = (b / W) | 0, out = [];
@@ -982,6 +982,28 @@
    *  never flip-flops as the cursor slides along a diagonal. Neither L fully legal but a Z (two elbows) is → the Z (elbow kept). Without a quote
    *  callback (tests, non-drag rows) the previous elbow decides. */
   function planRun(mc, j) {
+    planTo(mc, j);
+    // crossings pass: cb.snapEnd(anchor, cursor tile, previous answer, the plan) may move the run's END off the cursor's tile (a crossing ends on the
+    // tile that lines up with the path already on the far bank). The run keeps its line: it is cut after its tile nearest the snap tile and steps
+    // on to it (a diagonal step is tried both ways, the better quote wins); kept unless it refuses more tiles than the plain run.
+    // mc.snapEnd is the tile in use (−1 none) and goes back in as `previous`, so the choice holds while candidates tie.
+    const snap = mc.cb.snapEnd; let to = j;
+    if (typeof snap === 'function' && mc.plan) { const t = snap(mc.runStart, j, mc.snapEnd, mc.plan); if (Number.isInteger(t) && t >= 0 && t !== j) to = t; }
+    if (to !== j) {
+      const run0 = mc.run, plan0 = mc.plan, tx = to % W, ty = (to / W) | 0; let u = run0.length - 1, ud = Infinity;
+      for (let k = run0.length - 1; k >= 0; k--) { const d = Math.abs((run0[k] % W) - tx) + Math.abs(((run0[k] / W) | 0) - ty); if (d < ud) { ud = d; u = k; } }
+      const head = run0.slice(0, u + 1), from = run0[u], straight = (from % W) === tx || ((from / W) | 0) === ty;
+      let best = null, bq = null;
+      for (let yf = 0; yf < (straight ? 1 : 2); yf++) {
+        const ext = elbowRun(from, to, yf === 1).slice(1); if (ext.some(function (i) { return head.indexOf(i) >= 0; })) continue;
+        const run = head.concat(ext), q = quoteOf(mc, run); if (!q) continue;
+        if (!bq || quoteCmp(q, bq) < 0) { best = run; bq = q; }
+      }
+      if (best && fin(bq.refused, 0) <= fin(plan0.refused, 0)) { mc.run = best; mc.plan = bq; } else to = j;
+    }
+    mc.snapEnd = to !== j ? to : -1;
+  }
+  function planTo(mc, j) {
     const a = mc.runStart, ax = a % W, ay = (a / W) | 0, bx = j % W, by = (j / W) | 0;
     if (ax === bx || ay === by || typeof mc.cb.quote !== 'function') { mc.run = elbowRun(a, j, mc.elbow === 1); mc.plan = quoteOf(mc, mc.run); return; }
     const cand = [elbowRun(a, j, false), elbowRun(a, j, true)], sc = [quoteOf(mc, cand[0]), quoteOf(mc, cand[1])];
@@ -1004,14 +1026,14 @@
   function extendRun(mc, ev, force) {
     const j = mc.cb.tileAt(ev.px, ev.py); if (j < 0 || (j === mc.runTile && !force)) return false;
     const tl = mc.cb.getTool(), area = !!(tl && typeof mc.cb.isArea === 'function' && mc.cb.isArea(tl.id));
-    if (ev.mods && ev.mods.shift) { mc.run = lineRun(mc.runStart, j); mc.plan = quoteOf(mc, mc.run); }
-    else if (area) { mc.run = rectRun(mc.runStart, j); mc.plan = quoteOf(mc, mc.run); }   // goal pass: a paint row fills the rectangle (Shift = a straight line)
+    if (ev.mods && ev.mods.shift) { mc.run = lineRun(mc.runStart, j); mc.plan = quoteOf(mc, mc.run); mc.snapEnd = -1; }
+    else if (area) { mc.run = rectRun(mc.runStart, j); mc.plan = quoteOf(mc, mc.run); mc.snapEnd = -1; }   // goal pass: a paint row fills the rectangle (Shift = a straight line)
     else planRun(mc, j);
     mc.runTile = j;
     return true;
   }
   /** drop the pending run: nothing was placed while dragging, so everything that already exists stays; the tool stays selected */
-  function cancelRun(mc, px, py) { mc.run = []; mc.runTile = -1; mc.runStart = -1; mc.plan = null; mc.down = null; mcSet(mc, 'PLACING'); if (px == null) mc.cb.ghost(null); else mc.cb.ghost(px, py); }
+  function cancelRun(mc, px, py) { mc.run = []; mc.runTile = -1; mc.runStart = -1; mc.plan = null; mc.snapEnd = -1; mc.down = null; mcSet(mc, 'PLACING'); if (px == null) mc.cb.ghost(null); else mc.cb.ghost(px, py); }
   function mcRightClick(mc) { const cb = mc.cb; if (cb.getTool() && !cb.locked()) { mcStep(mc, { type: 'tool', id: null }); return; } if (cb.inspecting()) { cb.closeInspect(); mcSet(mc, 'IDLE'); } }
   /** one transition; ev = {type:'down'|'move'|'up'|'cancel'|'tool'|'key', px, py, button, mods, id, key} */
   function mcStep(mc, ev) {
@@ -1026,7 +1048,7 @@
         if (mc.state === 'DRAGGING' && ev.button !== 0) { if (ev.button === 2) cancelRun(mc, ev.px, ev.py); return true; }   // right-click mid-drag = cancel the whole run (kept tool); the stray release does nothing
         if (ev.button === 1 || ev.button === 2) { mc.down = { px: ev.px, py: ev.py, lx: ev.px, ly: ev.py, button: ev.button, moved: false, pan: true, prev: mc.state }; return true; }
         if (ev.button !== 0) return false;
-        if (mc.state === 'PLACING' && isDrag) { const i = cb.tileAt(ev.px, ev.py); if (i < 0) return false; mc.run = [i]; mc.runStart = i; mc.runTile = i; mc.elbow = 0; mc.plan = quoteOf(mc, mc.run); mcSet(mc, 'DRAGGING'); cb.ghost(ev.px, ev.py); return true; }
+        if (mc.state === 'PLACING' && isDrag) { const i = cb.tileAt(ev.px, ev.py); if (i < 0) return false; mc.run = [i]; mc.runStart = i; mc.runTile = i; mc.elbow = 0; mc.snapEnd = -1; mc.plan = quoteOf(mc, mc.run); mcSet(mc, 'DRAGGING'); cb.ghost(ev.px, ev.py); return true; }
         mc.down = { px: ev.px, py: ev.py, lx: ev.px, ly: ev.py, button: 0, moved: false, pan: false, prev: mc.state }; return true;
       }
       case 'move': {
@@ -1041,7 +1063,7 @@
         cb.hover(ev.px, ev.py); return true;
       }
       case 'up': {
-        if (mc.state === 'DRAGGING') { if (ev.button != null && ev.button !== 0) return true; const r = mc.run; mc.run = []; mc.runTile = -1; mc.plan = null; mcSet(mc, 'PLACING'); const res = cb.placeRun(r); if (res === 'drop' && !cb.locked()) { cb.setTool(null); mcSet(mc, cb.inspecting() ? 'INSPECTING' : 'IDLE'); cb.ghost(null); } else cb.ghost(ev.px, ev.py); return true; }   // release pass: placeRun → 'drop' = nothing laid for want of cash
+        if (mc.state === 'DRAGGING') { if (ev.button != null && ev.button !== 0) return true; const r = mc.run; mc.run = []; mc.runTile = -1; mc.plan = null; mc.snapEnd = -1; mcSet(mc, 'PLACING'); const res = cb.placeRun(r); if (res === 'drop' && !cb.locked()) { cb.setTool(null); mcSet(mc, cb.inspecting() ? 'INSPECTING' : 'IDLE'); cb.ghost(null); } else cb.ghost(ev.px, ev.py); return true; }   // release pass: placeRun → 'drop' = nothing laid for want of cash
         const d = mc.down; if (!d) return false; mc.down = null;
         if (mc.state === 'PANNING') mcSet(mc, d.prev === 'PANNING' ? 'IDLE' : d.prev);
         if (d.pan) { if (d.button === 2 && !d.moved) mcRightClick(mc); return true; }
@@ -1081,20 +1103,29 @@
       tileAt: function (px, py) { const tx = Math.floor(px / 20), ty = Math.floor(py / 11); return BSU.inBounds(tx, ty) ? ty * W + tx : -1; },
       pan: function () {}, hover: function () {}, ghost: function () {}, place: function () { return true; }, placeRun: function () {},
       inspectAt: function () { defaults.insp = true; return true; }, closeInspect: function () { defaults.insp = false; },
-      quote: null   // roads pass: (run) → {refused, tieRank, wet, …} scores the L candidates; null = the previous elbow (x-first at first) decides
+      quote: null,   // roads pass: (run) → {refused, tieRank, wet, …} scores the L candidates; null = the previous elbow (x-first at first) decides
+      snapEnd: null   // crossings pass: (anchor, cursorTile, previous, plan) → the tile the run should end on (the cursor's own = no snap)
     };
     if (cb) for (const k in cb) c[k] = cb[k];
     const mc = makeMachine(c);
-    return { mc: mc, step: function (ev) { return mcStep(mc, ev); }, get state() { return mc.state; }, get run() { return mc.run; }, get tool() { return c.getTool(); }, get plan() { return mc.plan; }, get elbow() { return mc.elbow; } };
+    return { mc: mc, step: function (ev) { return mcStep(mc, ev); }, get state() { return mc.state; }, get run() { return mc.run; }, get tool() { return c.getTool(); }, get plan() { return mc.plan; }, get elbow() { return mc.elbow; }, get snapEnd() { return mc.snapEnd; } };
   };
-  /** roads pass: the live machine's quote of a candidate run — buildings.runQuote plus tieRank (0 touching the network, else the tie's length, 99 none within reach) */
+  /** roads pass: the live machine's quote of a candidate run — buildings.runQuote plus tieRank (0 touching the network, else the tie's length, 99 none within reach).
+   *  crossings pass: a crossing is scored on BOTH banks (the sum: 0 for a bank that touches a surface, its tie's length, 99 for a bank with nothing in reach) */
   function quoteRun(s, run) {
     if (!s || !s.ui || !s.ui.tool) return null;
     const tool = s.ui.tool, row = rowOf(tool.id); if (!isRunRow(row)) return null;
     const q = call('buildings', 'runQuote', s, tool.id, run, { rot: tool.rot }); if (!q) return null;
     const access = [PLACE.PATH, PLACE.ROAD, PLACE.BOARDWALK].indexOf(row.placeRule) >= 0;
-    q.tieRank = q.touches ? 0 : (q.tie ? q.tie.tiles.length : (access ? 99 : 0));
+    if (q.cross && Array.isArray(q.cross.shores)) { let rank = 0; for (const sh of q.cross.shores) rank += sh.tie ? sh.tie.tiles.length : (sh.touch ? 0 : 99); q.tieRank = rank; }
+    else q.tieRank = q.touches ? 0 : (q.tie ? q.tie.tiles.length : (access ? 99 : 0));
     return q;
+  }
+  /** crossings pass: the live machine's end snap — only a run that is a crossing (its quote carries `cross`), never with Alt held (Alt = no ties, no snapping) */
+  function crossSnapOf(s, a, j, prev, plan) {
+    if (!s || !s.ui || !s.ui.tool || heldAlt || !plan || !plan.cross) return j;
+    const t = call('buildings', 'crossSnap', s, s.ui.tool.id, a, j, prev);
+    return Number.isInteger(t) ? t : j;
   }
   /** roads pass: re-plan the live drag at the last pointer position (Shift pressed / released mid-drag) */
   function replanLive() {
@@ -1120,7 +1151,8 @@
     placeRun: function (run) { return finishRun(stateOf(), run); },
     inspectAt: function (px, py) { return clickInspect(stateOf(), px, py); },
     closeInspect: function () { closeInspectDom(); },
-    quote: function (run) { return quoteRun(stateOf(), run); }
+    quote: function (run) { return quoteRun(stateOf(), run); },
+    snapEnd: function (a, j, prev, plan) { return crossSnapOf(stateOf(), a, j, prev, plan); }
   });
 
   function tileIndexAt(px, py) { const t = call('render', 'screenToTile', px, py); if (!t) return -1; const tx = Math.floor(fin(t.tx, -1)), ty = Math.floor(fin(t.ty, -1)); return BSU.inBounds(tx, ty) ? ty * W + tx : -1; }
@@ -1184,7 +1216,7 @@
   function keyup(key) {
     const d = panDirOf(key); if (d) held[d] = false;
     if (key === 'Shift') { heldShift = false; if (live.state === 'PLACING') updateGhostQuiet(); else if (live.state === 'DRAGGING') replanLive(); }   // roads pass: the line becomes the L again at once
-    if (key === 'Alt') { heldAlt = false; if (live.state === 'PLACING' || live.state === 'DRAGGING') updateGhostQuiet(); }   // paths pass: the tie comes back
+    if (key === 'Alt') { heldAlt = false; if (live.state === 'DRAGGING') replanLive(); else if (live.state === 'PLACING') updateGhostQuiet(); }   // paths pass: the tie comes back (crossings pass: and the end snap, at once)
     if (key === 'i' || key === 'I') { if (heldI) { heldI = false; applySpotlight(); } }   // issue spotlight pass: releasing I restores the map
     if ((key === 'n' || key === 'N') && heldN) {   // paths pass: a TAP opens the Season panel on release; a hold was the network view
       heldN = false; const tap = !nHeldLong && clock - nDownAt < L.nTapMs; nHeldLong = false;
@@ -1200,7 +1232,7 @@
     try {
       mods = mods || M0; const s = stateOf(); if (!s || !s.ui) return false;
       if (key === 'Shift') { if (!heldShift) { heldShift = true; if (live.state === 'PLACING') updateGhostQuiet(); else if (live.state === 'DRAGGING') replanLive(); } return false; }   // design pass: flush placement while held; roads pass: a straight line at once mid-drag
-      if (key === 'Alt') { if (!heldAlt) { heldAlt = true; if (live.state === 'PLACING' || live.state === 'DRAGGING') updateGhostQuiet(); } return false; }   // paths pass: "no tie" while held
+      if (key === 'Alt') { if (!heldAlt) { heldAlt = true; if (live.state === 'DRAGGING') replanLive(); else if (live.state === 'PLACING') updateGhostQuiet(); } return false; }   // paths pass: "no tie" while held (crossings pass: no end snap either: the run is re-planned at once)
       const isBackquote = mods.code === 'Backquote' || key === '`';
       // (1) decision toast
       if (toast) {
@@ -1418,6 +1450,7 @@
       const pl = live.plan && live.plan.n === live.run.length ? live.plan : null; r.plan = pl;
       r.tie = heldAlt ? null : (pl ? (pl.tie || null) : (call('buildings', 'runTie', s, tool.id, live.run) || null));
       r.tieTouching = !r.tie && !heldAlt && (pl ? pl.touches : runTouches(s, live.run));
+      r.cross = (pl && pl.cross) ? pl.cross : null;   // crossings pass: a crossing's banks ({shores, ties, cost, n}); the ties are not laid while Alt is held
     }
     if (dragging && isRing) lastRingMs = clock;
     lastGhost = { r: r, tx: g.tx, ty: g.ty };
@@ -1437,26 +1470,35 @@
     if (g.cove && s.plot && s.plot.cove) tiles = s.plot.cove;
     // roads pass: every drag tool previews the tiles placeRun will skip (red, the first reason in the label); nothing is placed differently
     const pl = (dragging && !fq && r.plan) ? r.plan : null;
+    const crossRow = row.kind === 'drag' && [PLACE.ROAD, PLACE.BOARDWALK, PLACE.BRIDGE].indexOf(row.placeRule) >= 0;
+    if (pl && crossRow) color = pl.placed === 0 ? 'red' : 'green';   // crossings pass: the run's colour is the plan's (the cursor may sit off a run whose end snapped onto a path's line)
     if (pl && pl.skipped.length) { color = pl.placed === 0 ? 'red' : 'yellow'; const sk = new Set(pl.skipped.map(function (x) { return x.i; })); tiles = live.run.filter(function (i) { return !sk.has(i); }); }   // the skipped tiles are red only, never under the run's own fill
+    if (pl && pl.extra && pl.extra.length) tiles = tiles.concat(pl.extra);   // crossings pass: the landing a bridge that starts / ends on the water steps off onto
     const conn = (!dragging && !g.cove && r.connector && Array.isArray(r.connector.tiles) && r.connector.tiles.length) ? r.connector : (dragging && r.tie && r.tie.tiles.length ? r.tie : null);   // paths pass: the tie this placement (or this drag's end) would lay
+    const cross = (dragging && r.cross && !heldAlt) ? r.cross : null, xties = cross && cross.ties.length ? cross.ties : null;   // crossings pass: one tie per bank
     const spec = { tiles: tiles, skipTiles: fq ? fq.skipped.map(function (x) { return x.i; }) : (pl && pl.skipped.length ? pl.skipped.map(function (x) { return x.i; }) : null), color: color, connectorTiles: null, ringTiles: r.ring && Array.isArray(r.ring.tiles) ? r.ring.tiles : null, label: '', radius: fin(r.radius, 0), radiusCenter: { tx: g.tx, ty: g.ty } };
     if (row.kind === 'footprint' || row.kind === 'upgrade') spec.sprite = { id: tool.id, variant: r.needsPilings ? SPR.PILINGS : 0, tx: g.tx, ty: g.ty, rot: tool.rot };
     if (dragging && live.run.length > 1 && row.kind === 'drag' && [PLACE.PATH, PLACE.ROAD, PLACE.BOARDWALK, PLACE.BRIDGE].indexOf(row.placeRule) >= 0) { spec.line = live.run; spec.lineKind = fin(row.effects && row.effects.surfaceId, 0); }   // roads pass: the run as a stroked centreline (its L and elbow)
     call('render', 'ghost', spec);
-    call('render', 'tiePreview', conn ? { tiles: conn.tiles, surfaces: conn.surfaces || null, snap: !!conn.snap, water: fin(conn.water, 0) } : null);   // render_fx draws it as a dashed gold path (planks over water)
+    const tieSpecOf = function (t) { return { tiles: t.tiles, surfaces: t.surfaces || null, snap: !!t.snap, water: fin(t.water, 0), end: fin(t.end, 1) }; };
+    call('render', 'tiePreview', xties ? (xties.length > 1 ? { ties: xties.map(tieSpecOf) } : tieSpecOf(xties[0])) : (conn ? { tiles: conn.tiles, surfaces: conn.surfaces || null, snap: !!conn.snap, water: fin(conn.water, 0) } : null));   // render_fx draws each as a dashed gold path (planks over water); a crossing shows one per bank
     if (!dom()) return;
     let l1, l2 = '';
     const netRow = !!(row.kind === 'footprint' && row.pathAdjacency && row.id !== 'founders_hall');
     if (fq) { const t2 = fillLines(s, fq, r); l1 = t2[0]; l2 = t2[1]; }
     else if (dragging) {
       const n = pl ? pl.placed : live.run.length; const per = fin(r.cost, row.cost) || row.cost; l1 = n + (n === 1 ? ' tile' : ' tiles') + ' · ' + money(pl ? pl.cost : per * n);   // the tiles that will be laid, at their own prices (bridge tiles ×4)
-      if (conn) l1 += ' + ' + money(conn.cost) + (conn.snap ? ' snap' : ' tie');   // "12 tiles · $24k + $8k tie"
+      if (pl && row.placeRule === PLACE.BRIDGE && pl.placed > 0) { const nb = pl.placed - fin(pl.landings, 0); l1 = 'Bridge ' + nb + (nb === 1 ? ' tile' : ' tiles') + (pl.landings ? ' + ' + pl.landings + ' path' : '') + ' · ' + money(pl.cost); }   // crossings pass: the deck and the gravel it lays on land, both priced
+      if (xties) l1 += ' + ' + money(cross.cost) + (xties.length > 1 ? ' ties (both banks)' : ((xties[0].snap ? ' snap (' : ' tie (') + bankName(xties[0].end).toLowerCase() + ')'));   // "Bridge 3 tiles · $135k + $6k ties (both banks)"
+      else if (conn) l1 += ' + ' + money(conn.cost) + (conn.snap ? ' snap' : ' tie');   // "12 tiles · $24k + $8k tie"
+      { const nc = pl ? fin(heldAlt ? pl.clearsRun : pl.clears, 0) : 0; if (nc > 0) l1 += ' · clears ' + nc + (nc === 1 ? ' tree' : ' trees'); }   // rule 8: a surface clears its tile
       if (r.ring && r.ring.text) l2 = r.ring.text; else if (r.ring && typeof r.ring.closed === 'boolean') l2 = r.ring.closed ? 'closes the ring' : (r.ring.shortText || ('still ' + fin(r.ring.short, 0) + ' tiles short'));
       const st = dragStatus(s, row, r, conn); if (st) l2 = st + (l2 ? ' · ' + l2 : '');
-      const sk = skipText(pl); if (sk) l2 = sk + (l2 ? ' · ' + l2 : '');   // roads pass: "3 marsh tiles skipped: use a Boardwalk or a bridge" first
+      const sk = skipText(pl); if (sk) l2 = sk + (pl.cut > 0 ? ' · nothing is laid past it' : '') + (l2 ? ' · ' + l2 : '');   // roads pass: "3 marsh tiles skipped: use a Boardwalk or a bridge" first
       if (!l2 && live.run.length > 1) l2 = 'Drag back to shorten · Esc cancels'; else if (st && !sk && live.run.length > 1) l2 += ' · Drag back to shorten';
     }
     else if (g.cove) { l1 = 'Not here'; l2 = 'The cove floods every rain. Build on the ridge.'; }
+    else if (!r.ok && row.placeRule === PLACE.BRIDGE && isRunRow(row) && r.reason === 'Bridges go over water') { color = 'yellow'; l1 = money(row.cost) + ' / tile'; l2 = 'Press on the bank and drag across the water: both ends connect themselves'; }   // crossings pass: the bank is where the drag starts, not a refusal
     else if (!r.ok) { l1 = r.reason || 'Cannot build here'; l2 = r.charter ? 'State land · click to open the Land Office (O)' : (r.reason === tieReason() ? 'Hold N to see the campus network' : (ridgeText(r.ridgeFull) || sinkText(r.sink) || '')); }   // L2: the charter line
     else {
       l1 = money(r.cost); if (isRunRow(row)) l1 += ' / tile';
@@ -1496,12 +1538,24 @@
   /** roads pass: the first refusal of a drag plan with its count — "3 marsh tiles skipped: use a Boardwalk or a bridge"; '' when nothing is skipped */
   function skipText(pl) {
     if (!pl || !pl.skipped || !pl.skipped.length) return '';
-    const first = String(pl.skipped[0].reason || 'cannot build here'); let n = 0;
+    let first = String(pl.skipped[0].reason || 'cannot build here'), n = 0;
+    if (/^Not laid: /.test(first)) { for (let k = 0; k < pl.skipped.length; k++) if (!/^Not laid: /.test(String(pl.skipped[k].reason))) { first = String(pl.skipped[k].reason); break; } }   // crossings pass: the refused crossing's own reason, not "past it"
     for (let k = 0; k < pl.skipped.length; k++) if (pl.skipped[k].reason === first) n++;
     const noun = first === 'Use a Boardwalk or a bridge' ? 'marsh ' : first === 'Not on water' ? 'water ' : '';
     return n + ' ' + noun + (n === 1 ? 'tile' : 'tiles') + ' skipped: ' + first.charAt(0).toLowerCase() + first.slice(1);
   }
+  // crossings pass: a crossing names both banks — "Near bank: connected · Far bank: ties in (3 tiles)" (near = where the drag started)
+  function bankName(end) { return end === 0 ? 'Near bank' : 'Far bank'; }
+  function bankWords(sh) {
+    if (sh.tie) { const n = sh.tie.tiles.length; return (sh.tie.snap ? 'snaps on (' : 'ties in (') + n + (n === 1 ? ' tile)' : ' tiles)'); }
+    if (sh.touch) return 'connected';
+    return 'no path within ' + fin(sh.reach, 0) + ' tiles';
+  }
   function dragStatus(s, row, r, conn) {
+    if (row && row.kind === 'drag' && r && r.cross && Array.isArray(r.cross.shores)) {
+      if (heldAlt) return 'No tie (Alt held)';
+      return r.cross.shores.map(function (sh) { return bankName(sh.end) + ': ' + bankWords(sh); }).join(' · ');
+    }
     if (!row || row.kind !== 'drag' || [PLACE.PATH, PLACE.ROAD, PLACE.BOARDWALK].indexOf(row.placeRule) < 0) return '';
     if (conn) return (conn.snap ? 'Snaps onto the network (' : 'Ties in (') + tieWords(conn) + ')';
     if (heldAlt) return 'No tie (Alt held)';
@@ -1617,9 +1671,10 @@
     if (placed > 0) {
       undoAtMs = clock;
       const tie = r.tie && r.tie.tiles && r.tie.tiles.length ? r.tie : null;
+      const ties = Array.isArray(r.ties) && r.ties.length > 1 ? r.ties : null; let tiesCost = 0; if (ties) for (const t of ties) tiesCost += fin(t.cost, 0);   // crossings pass: one per bank
       if (dom()) {
         const fillRun = tool.id === 'dredge_fill';   // L3
-        ghostLabel(lastPx, lastPy, fillRun ? 'Filling ' + placed + ' marsh ' + (placed === 1 ? 'tile' : 'tiles') + ' · ' + money(r.cost) + ' · ready in ' + fin(BSU.params.terrain.fill.days, 10) + ' days' : placed + (placed === 1 ? ' tile' : ' tiles') + ' · ' + money(r.cost) + (tie ? ' (incl. ' + money(tie.cost) + (tie.snap ? ' snap)' : ' tie)') : ''), 'Ctrl+Z to undo', 'green');
+        ghostLabel(lastPx, lastPy, fillRun ? 'Filling ' + placed + ' marsh ' + (placed === 1 ? 'tile' : 'tiles') + ' · ' + money(r.cost) + ' · ready in ' + fin(BSU.params.terrain.fill.days, 10) + ' days' : placed + (placed === 1 ? ' tile' : ' tiles') + ' · ' + money(r.cost) + (ties ? ' (incl. ' + money(tiesCost) + ' ties, both banks)' : (tie ? ' (incl. ' + money(tie.cost) + (tie.snap ? ' snap)' : ' tie)') : '')), 'Ctrl+Z to undo', 'green');
       }
       if (tie) firstTieCard(s, tie);
     }
@@ -2514,7 +2569,7 @@
   /** Settings → replay: forget the flag and let the next frame start the tour (Settings closes) */
   M.startCoach = function (state, opts) { try { const s = state || stateOf(); M.settings().coachSeen = false; M.saveSettings(); coach.step = -1; coach.armedAt = clock - 1e5; if (s && s.ui && s.ui.panel) M.openPanel(null); if (opts && opts.now === true && s && dom()) coachStart(s); } catch (e) { uerr('startCoach', e); } };   // hud + zoom pass: {now: true} starts the tour at once (tests; headless has no eligibility)
   M.coachStep = function () { return coach.step; };
-  M._ux = { needsOf: needsOf, recommend: recommend, objTarget: objTarget, effectLines: effectLines, requirementsOf: requirementsOf, utilityWarning: utilityWarning, coachTarget: coachTarget, goalKeepsTool: goalKeepsTool };
+  M._ux = { needsOf: needsOf, recommend: recommend, objTarget: objTarget, effectLines: effectLines, requirementsOf: requirementsOf, utilityWarning: utilityWarning, coachTarget: coachTarget, goalKeepsTool: goalKeepsTool, quoteRun: quoteRun };
 
   // ---------------------------------------------------------------------------
   // Issue spotlight pass: the Issues tray (docked under the minimap / overlay keys), Fix / Locate, keys
@@ -3214,7 +3269,7 @@
   // ---------------------------------------------------------------------------
   const HOW_GOAL = "Charter a university on the one dry ridge in a Louisiana swamp, and grow it into a flagship with 10,000 students and prestige 60. The swamp pushes back with floods, hurricanes and mosquitoes, so build for the water as much as for the students.";
   const HOW_GROUPS = [
-    { h: 'Build', p: ['Pick a building (G) and click to place it. Drag to lay paths, roads and canals.', "Everything must link to the Founders' Hall path. Build near a path and the game lays the tie for you."] },
+    { h: 'Build', p: ['Pick a building (G) and click to place it. Drag to lay paths, roads and canals. A path or road clears the trees in its way.', "Everything must link to the Founders' Hall path. Build near a path and the game lays the tie for you. To cross water, drag a road, boardwalk or bridge bank to bank: both ends connect themselves."] },
     { h: 'Survive the swamp', p: ['Rain floods low ground. Dig canals, add pumps, and use Dredge & Fill to raise marsh into dry land.', 'Close a levee ring before a hurricane lands, and keep mosquitoes down with ponds and bat houses.'] },
     { h: 'Grow', p: ['Beds, seats and dining set how many students can enroll, and tuition pays the bills.', 'Prestige comes from landmarks and winning football seasons. Buy more land at the Land Office (O).'] }
   ];

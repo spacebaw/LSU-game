@@ -266,6 +266,15 @@ try {
   ok(ns.tie === 3 && ns.sheen === 0 && fills >= 1 && strokes >= 3 && dashes >= 3, 'a 3-tile tie preview: diamonds, the plank dash and the dashed centre line (' + strokes + ' strokes)');
   R.tiePreview(null); ok(R.tiePreviewSpec() === null, 'tiePreview(null) clears it');
   R.tiePreview({ tiles: [] }); ok(R.tiePreviewSpec() === null, 'an empty tie clears it');
+  // crossings pass: a crossing ties both banks, so the preview takes a list ({ties: […]} or an array) and draws one dashed path per tie
+  { const tA = { tiles: [f.ty * 64 + f.tx + 4], surfaces: ['path'], snap: true, water: 0, end: 0 }, tB = { tiles: [(f.ty + 2) * 64 + f.tx + 4, (f.ty + 2) * 64 + f.tx + 5, (f.ty + 2) * 64 + f.tx + 6], surfaces: ['path', 'path', 'path'], snap: false, water: 0, end: 1 };
+    R.tiePreview({ ties: [tA, tB] }); const sp = R.tiePreviewSpec();
+    ok(sp && Array.isArray(sp.ties) && sp.ties.length === 2 && sp.tiles.length === 4 && sp.surfaces.length === 4 && sp.snap === false && sp.water === 0, 'tiePreview({ties: [a, b]}): both ties kept, `tiles` is all four');
+    fills = 0; strokes = 0; dashes = 0; R._network.pass(sn, gs, view); ns = R.networkStats();
+    ok(ns.tie === 4 && fills >= 2 && strokes >= 4 && dashes >= 4, 'two tie previews drawn: diamonds and a centre line each (' + ns.tie + ' tiles, ' + strokes + ' strokes)');
+    R.tiePreview([tA, tB]); ok(R.tiePreviewSpec().ties.length === 2, 'an array works too');
+    R.tiePreview({ ties: [tA, { tiles: [] }] }); ok(R.tiePreviewSpec().ties.length === 1 && R.tiePreviewSpec().snap === true, 'an empty tie in the list is dropped');
+    R.tiePreview({ ties: [] }); ok(R.tiePreviewSpec() === null, 'an empty list clears it'); }
   // a whole frame through render with N held and a tie preview never throws or BSU.error
   const errs0 = (BSU.errors || []).length; U.keydown('n', { ctrl: false, shift: false, meta: false, alt: false }); R.tiePreview({ tiles: [f.ty * 64 + f.tx + 4], surfaces: ['path'], snap: true, water: 0 });
   BSU.headless.render(); BSU.headless.render(); U.keyup('n'); R.tiePreview(null); U.openPanel(null);
