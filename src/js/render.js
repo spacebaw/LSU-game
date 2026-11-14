@@ -134,7 +134,7 @@
   let keys = new Float64Array(2048), order = new Int32Array(2048);
   const list = [];
   M.drawList = list;
-  M.alpha = 0; M.frameNo = 0; M.hoverTile = -1; M.squash = {}; M.titleDrift = false; M._tests = M._tests || []; M.teesEnabled = true;   // tee pass switch (perf A/B)
+  M.alpha = 0; M.frameNo = 0; M.hoverTile = -1; M.squash = {}; M.titleDrift = false; M.autoCamera = !!(BSU.params && BSU.params.render && BSU.params.render.autoCamera); M._tests = M._tests || []; M.teesEnabled = true;   // tee pass switch (perf A/B)
   M.particleColors = [GOLD, '#FFFFFF', WATER_SHALLOW, '#C9B47C', PAL.danger || '#E0443E', PAL.azalea || '#E75480', PAL.moss || '#9BAA8A', '#9A8A7A', PAL.purpleHi || '#7F5BC5', '#FFB347', '#7FD4FF', PAL.good || '#3FBF7F', '#444444', PAL.cypressAutumn || '#C7692B', GOLD_HI, PAL.waterBlue || '#4FA3D6'];
   if (!M.particles) M.particles = { emit() {}, count() { return 0; }, clear() {}, forEachWorld() {} };   // replaced by render_fx.js
   Object.defineProperty(M, 'hitStopUntil', { get: function () { return hitStopUntilMs; }, enumerable: true, configurable: true });
@@ -170,6 +170,8 @@
   }
   M.hdMasterOf = function (z, d) { const az = masterOf(z); return (az >= 2 || fin(z, 1) * fin(d, 1) >= ((S() && S().hdCaps) ? S().hdCaps().masterAt : 1.5)) ? 2 : 1; };
   /** clamp x,y into the world extents ± cameraMargin/zoom; repairs non-finite numbers */
+  /** camera pass: are the scripted camera moves on? (params.render.autoCamera, false since Josh's playtest: "kill all auto camera movement"); M.autoCamera is the live switch */
+  function autoCam() { return M.autoCamera === true; }
   function clampCam(cam) {
     const z = STEPS.indexOf(cam.zoom) >= 0 ? cam.zoom : snapZoom(cam.zoom);
     cam.zoom = z;
@@ -1351,8 +1353,8 @@
   M.follow = function (agentId) { if (camera) camera.follow = Number.isFinite(agentId) ? agentId | 0 : -1; };
   /** follow the first state.vehicles entry matching pred(v, state) each frame (null releases; a user pan releases too; releases itself when nothing matches) */
   M.followVehicle = function (pred) { followVehicle = typeof pred === 'function' ? pred : null; };
-  /** screen shake for ms (ignored when settings.shake is off) */
-  M.shake = function (ms, px) { if (!Number.isFinite(ms)) { rerr('shake', new Error('non-finite ms')); return; } if (root && root.ui && root.ui.settings && root.ui.settings.shake === false) return; shakeUntil = nowMs() + Math.max(0, ms); shakePx = fin(px, PR.shakePx || 6); };
+  /** screen shake for ms (camera pass: only when settings.screenShake is on; it is off unless the player switches it on) */
+  M.shake = function (ms, px) { if (!Number.isFinite(ms)) { rerr('shake', new Error('non-finite ms')); return; } if (!(root && root.ui && root.ui.settings && root.ui.settings.screenShake === true)) return; shakeUntil = nowMs() + Math.max(0, ms); shakePx = fin(px, PR.shakePx || 6); };
   /** pause ticks for ms (presentation juice; never in headless) */
   M.hitStop = function (ms) { if (!Number.isFinite(ms)) { rerr('hitStop', new Error('non-finite ms')); return; } if (BSU.headlessMode) return; hitStopUntilMs = nowMs() + Math.max(0, ms); };
   /** gold pulse on tiles for ms (any large finite ms; 1e9 = until cleared) */
@@ -2183,6 +2185,7 @@
     const on = !!(spc && (kind === 'game' || kind === 'spring' || kind === 'montage') && FB.live && FB.venue);
     const C = FB.cam;
     FB.camU = NaN; FB.camV = NaN; FB.cut = false;
+    if (!autoCam()) return;   // camera pass: the game plays where it is; the player frames it (the score bug, the montage bands and the crowd are unchanged)
     if (!on) {
       if (C.active) { C.active = false; C.cutN = -1; C.wide = false; if (!C.touched && cam.zoom !== C.zoomBefore) setZoomCam(cam, C.zoomBefore, vw / 2, vh / 2, vw, vh); cam.hasTarget = false; markMoved(false); }
       if (kind === 'montage' && C.montage !== spc && !spc.cameraTouched) {   // qa pass 3: a montage without a live view (no venue) still eases the camera onto the field once (no zoom change; a user pan wins)
@@ -3248,7 +3251,7 @@
       cam.x += (cam.tx - cam.x) * LERP; cam.y += (cam.ty - cam.y) * LERP;
       if (Math.abs(cam.tx - cam.x) < 0.5 && Math.abs(cam.ty - cam.y) < 0.5) { cam.x = cam.tx; cam.y = cam.ty; cam.hasTarget = false; markMoved(false); }
       clampCam(cam);
-    } else if (M.titleDrift) {
+    } else if (M.titleDrift && autoCam()) {
       cam.x += Math.sin(frameNo / 300) * C.titleDriftX; cam.y += Math.cos(frameNo / 420) * C.titleDriftY; clampCam(cam);
     }
     setZoomNow(cam.zoom);
@@ -3276,7 +3279,7 @@
     let sx = 0, sy = 0;
     try {
       const now = nowMs();
-      if (now < shakeUntil && shakePx > 0 && !(state.ui.settings && state.ui.settings.shake === false)) { sx = Math.round((BSU.rng.fx.float() * 2 - 1) * shakePx); sy = Math.round((BSU.rng.fx.float() * 2 - 1) * shakePx); }
+      if (now < shakeUntil && shakePx > 0 && (state.ui.settings && state.ui.settings.screenShake === true)) { sx = Math.round((BSU.rng.fx.float() * 2 - 1) * shakePx); sy = Math.round((BSU.rng.fx.float() * 2 - 1) * shakePx); }
       else if (now >= shakeUntil) shakePx = 0;
       g.setTransform(dpr, 0, 0, dpr, 0, 0);
       g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; g.imageSmoothingEnabled = frameSmooth;

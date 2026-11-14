@@ -1543,7 +1543,8 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
       squashMs: 200, hitStopMs: 60,          // §12.7
       minimapPx: 160, minimapEveryFrames: 6, // §11.1, ARCH §6.3
       buildPopMs: 600, godRayTicks: 100, gateDropMs: 2000,   // §10.1, §6.2, §4.10b
-      agentPx: [12, 20], gatorPx: [40, 12], leGrandPx: 56   // §12.3
+      agentPx: [12, 20], gatorPx: [40, 12], leGrandPx: 56,   // §12.3
+      autoCamera: false                      // camera pass: the camera moves only when the player moves it (drag, keys, wheel, minimap) or clicks a control that says so (Show me, Locate, Fix, Pan to, Follow); true restores the scripted moves (charter swoop, founding follow, landfall cue, football game camera, title drift). render.autoCamera mirrors it (tests flip that)
     },
     ui: {                                    // GDD §11
       undoSeconds: 10, undoTicks: 50,        // §11.2, ARCH D16 (50 ticks at baseTps 5 = 10 s wall-clock at 1×; chip drain matches; tick-based, so independent of ticksPerDay)
@@ -2122,7 +2123,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
         camera: { x: (founders.tx - founders.ty) * 32, y: (founders.tx + founders.ty) * 16, zoom: 1, tx: 0, ty: 0, follow: -1 },
         overlay: BSU.OV.NONE, speed: 1, speedBefore: 1, tool: null, panel: null, paletteTab: 'essentials',
         tabsSeen: {}, newPips: {}, tabsIntroduced: {},
-        settings: { volume: P.audio.defaultVolume, muted: false, particles: 'high', shake: true, colorblind: false, autoSimHint: false, coachSeen: false, keepMinimap: false, keepOverlays: false, reduceMotion: null, alerts: 'normal', mutedIssues: {}, tieCardSeen: false },   // paths pass: tieCardSeen = the one-time "Tied in" card has shown. UI refresh U2: keepMinimap / keepOverlays pin the Map / Layers popovers open (the old hudMode / hudCollapsed keys are read once by ui.js on load and dropped). calm alerts pass: alerts normal | quiet | off, mutedIssues {kind: true}
+        settings: { volume: P.audio.defaultVolume, muted: false, particles: 'high', screenShake: false, colorblind: false, autoSimHint: false, coachSeen: false, keepMinimap: false, keepOverlays: false, reduceMotion: null, alerts: 'normal', mutedIssues: {}, tieCardSeen: false },   // paths pass: tieCardSeen = the one-time "Tied in" card has shown. UI refresh U2: keepMinimap / keepOverlays pin the Map / Layers popovers open (the old hudMode / hudCollapsed keys are read once by ui.js on load and dropped). calm alerts pass: alerts normal | quiet | off, mutedIssues {kind: true}
         issues: { snoozed: {}, dismissed: {} },   // calm alerts pass: the Issues tray's snoozes {id: {until (tick), severity, days}} and dismissals {id: sig}, saved with the game
         perfMode: false
       },
@@ -8267,6 +8268,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
   }
   function cameraCue(state, st, which) {
     const sp = state.setPiece;
+    if (!(BSU.render && BSU.render.autoCamera === true)) return;   // camera pass: no storm camera cue unless the scripted camera is switched on
     if (!sp || sp.cameraTouched) return;
     let tx, ty;
     if (which === 'entry') { const c = st.entry[Math.floor(st.entry.length / 2)]; tx = BSU.tx(c); ty = BSU.ty(c); }
@@ -34485,7 +34487,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
   let keys = new Float64Array(2048), order = new Int32Array(2048);
   const list = [];
   M.drawList = list;
-  M.alpha = 0; M.frameNo = 0; M.hoverTile = -1; M.squash = {}; M.titleDrift = false; M._tests = M._tests || []; M.teesEnabled = true;   // tee pass switch (perf A/B)
+  M.alpha = 0; M.frameNo = 0; M.hoverTile = -1; M.squash = {}; M.titleDrift = false; M.autoCamera = !!(BSU.params && BSU.params.render && BSU.params.render.autoCamera); M._tests = M._tests || []; M.teesEnabled = true;   // tee pass switch (perf A/B)
   M.particleColors = [GOLD, '#FFFFFF', WATER_SHALLOW, '#C9B47C', PAL.danger || '#E0443E', PAL.azalea || '#E75480', PAL.moss || '#9BAA8A', '#9A8A7A', PAL.purpleHi || '#7F5BC5', '#FFB347', '#7FD4FF', PAL.good || '#3FBF7F', '#444444', PAL.cypressAutumn || '#C7692B', GOLD_HI, PAL.waterBlue || '#4FA3D6'];
   if (!M.particles) M.particles = { emit() {}, count() { return 0; }, clear() {}, forEachWorld() {} };   // replaced by render_fx.js
   Object.defineProperty(M, 'hitStopUntil', { get: function () { return hitStopUntilMs; }, enumerable: true, configurable: true });
@@ -34521,6 +34523,8 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
   }
   M.hdMasterOf = function (z, d) { const az = masterOf(z); return (az >= 2 || fin(z, 1) * fin(d, 1) >= ((S() && S().hdCaps) ? S().hdCaps().masterAt : 1.5)) ? 2 : 1; };
   /** clamp x,y into the world extents ± cameraMargin/zoom; repairs non-finite numbers */
+  /** camera pass: are the scripted camera moves on? (params.render.autoCamera, false since Josh's playtest: "kill all auto camera movement"); M.autoCamera is the live switch */
+  function autoCam() { return M.autoCamera === true; }
   function clampCam(cam) {
     const z = STEPS.indexOf(cam.zoom) >= 0 ? cam.zoom : snapZoom(cam.zoom);
     cam.zoom = z;
@@ -35702,8 +35706,8 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
   M.follow = function (agentId) { if (camera) camera.follow = Number.isFinite(agentId) ? agentId | 0 : -1; };
   /** follow the first state.vehicles entry matching pred(v, state) each frame (null releases; a user pan releases too; releases itself when nothing matches) */
   M.followVehicle = function (pred) { followVehicle = typeof pred === 'function' ? pred : null; };
-  /** screen shake for ms (ignored when settings.shake is off) */
-  M.shake = function (ms, px) { if (!Number.isFinite(ms)) { rerr('shake', new Error('non-finite ms')); return; } if (root && root.ui && root.ui.settings && root.ui.settings.shake === false) return; shakeUntil = nowMs() + Math.max(0, ms); shakePx = fin(px, PR.shakePx || 6); };
+  /** screen shake for ms (camera pass: only when settings.screenShake is on; it is off unless the player switches it on) */
+  M.shake = function (ms, px) { if (!Number.isFinite(ms)) { rerr('shake', new Error('non-finite ms')); return; } if (!(root && root.ui && root.ui.settings && root.ui.settings.screenShake === true)) return; shakeUntil = nowMs() + Math.max(0, ms); shakePx = fin(px, PR.shakePx || 6); };
   /** pause ticks for ms (presentation juice; never in headless) */
   M.hitStop = function (ms) { if (!Number.isFinite(ms)) { rerr('hitStop', new Error('non-finite ms')); return; } if (BSU.headlessMode) return; hitStopUntilMs = nowMs() + Math.max(0, ms); };
   /** gold pulse on tiles for ms (any large finite ms; 1e9 = until cleared) */
@@ -36534,6 +36538,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
     const on = !!(spc && (kind === 'game' || kind === 'spring' || kind === 'montage') && FB.live && FB.venue);
     const C = FB.cam;
     FB.camU = NaN; FB.camV = NaN; FB.cut = false;
+    if (!autoCam()) return;   // camera pass: the game plays where it is; the player frames it (the score bug, the montage bands and the crowd are unchanged)
     if (!on) {
       if (C.active) { C.active = false; C.cutN = -1; C.wide = false; if (!C.touched && cam.zoom !== C.zoomBefore) setZoomCam(cam, C.zoomBefore, vw / 2, vh / 2, vw, vh); cam.hasTarget = false; markMoved(false); }
       if (kind === 'montage' && C.montage !== spc && !spc.cameraTouched) {   // qa pass 3: a montage without a live view (no venue) still eases the camera onto the field once (no zoom change; a user pan wins)
@@ -37599,7 +37604,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
       cam.x += (cam.tx - cam.x) * LERP; cam.y += (cam.ty - cam.y) * LERP;
       if (Math.abs(cam.tx - cam.x) < 0.5 && Math.abs(cam.ty - cam.y) < 0.5) { cam.x = cam.tx; cam.y = cam.ty; cam.hasTarget = false; markMoved(false); }
       clampCam(cam);
-    } else if (M.titleDrift) {
+    } else if (M.titleDrift && autoCam()) {
       cam.x += Math.sin(frameNo / 300) * C.titleDriftX; cam.y += Math.cos(frameNo / 420) * C.titleDriftY; clampCam(cam);
     }
     setZoomNow(cam.zoom);
@@ -37627,7 +37632,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
     let sx = 0, sy = 0;
     try {
       const now = nowMs();
-      if (now < shakeUntil && shakePx > 0 && !(state.ui.settings && state.ui.settings.shake === false)) { sx = Math.round((BSU.rng.fx.float() * 2 - 1) * shakePx); sy = Math.round((BSU.rng.fx.float() * 2 - 1) * shakePx); }
+      if (now < shakeUntil && shakePx > 0 && (state.ui.settings && state.ui.settings.screenShake === true)) { sx = Math.round((BSU.rng.fx.float() * 2 - 1) * shakePx); sy = Math.round((BSU.rng.fx.float() * 2 - 1) * shakePx); }
       else if (now >= shakeUntil) shakePx = 0;
       g.setTransform(dpr, 0, 0, dpr, 0, 0);
       g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; g.imageSmoothingEnabled = frameSmooth;
@@ -40550,6 +40555,8 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
     const set = M.settings(); let changed = false;
     if ('hudMode' in set) { if (set.hudMode === 'hidden') hudModeNow = 'hidden'; delete set.hudMode; changed = true; }
     if ('hudCollapsed' in set) { delete set.hudCollapsed; changed = true; }
+    if ('shake' in set) { delete set.shake; changed = true; }   // camera pass: the old opt-out key goes; screenShake is opt-in (off until the player switches it on)
+    if (typeof set.screenShake !== 'boolean') { set.screenShake = false; changed = true; }
     if (typeof set.keepMinimap !== 'boolean') { set.keepMinimap = false; changed = true; }
     if (typeof set.keepOverlays !== 'boolean') { set.keepOverlays = false; changed = true; }
     if (typeof set.reduceMotion !== 'boolean') set.reduceMotion = prefersReducedMotion();   // U5: unset → follows the media query (not written back: the key is saved when the player flips the switch, and migration runs on the contract's default object before the stored settings are read)
@@ -43053,7 +43060,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
     call('session', 'newGame', seed === undefined ? {} : { seed: seed });
     void s;
   }
-  M.settings = function () { const s = stateOf(); if (s && s.ui && s.ui.settings) return s.ui.settings; return { volume: 0.5, muted: false, particles: 'high', shake: true, colorblind: false, autoSimHint: false, keepMinimap: false, keepOverlays: false, reduceMotion: false, alerts: 'normal', mutedIssues: {}, tieCardSeen: false }; };
+  M.settings = function () { const s = stateOf(); if (s && s.ui && s.ui.settings) return s.ui.settings; return { volume: 0.5, muted: false, particles: 'high', screenShake: false, colorblind: false, autoSimHint: false, keepMinimap: false, keepOverlays: false, reduceMotion: false, alerts: 'normal', mutedIssues: {}, tieCardSeen: false }; };
   /** mirror state.ui.settings to localStorage['bsu.settings'] (a failure → one 'saveUnavailable' hint) */
   M.saveSettings = function () { try { window.localStorage.setItem('bsu.settings', JSON.stringify(M.settings())); } catch (e) { const s = stateOf(); if (s) M.hint(s, 'saveUnavailable'); } };
   /** stat popover from economy.breakdown */
@@ -43174,7 +43181,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
     host._keepMap = chk('chk-keep-minimap', 'Keep the minimap open', function () { return !!M.settings().keepMinimap; }, function (v) { M.settings().keepMinimap = v; syncPopovers(); });
     host._keepOv = chk('chk-keep-overlays', 'Keep overlays visible', function () { return !!M.settings().keepOverlays; }, function (v) { M.settings().keepOverlays = v; syncPopovers(); });
     host._particles = chk('seg-particles', 'Particles', function () { return M.settings().particles !== 'low'; }, function (v) { M.settings().particles = v ? 'high' : 'low'; });
-    host._shake = chk('chk-shake', 'Screen shake', function () { return M.settings().shake !== false; }, function (v) { M.settings().shake = v; });
+    host._shake = chk('chk-shake', 'Screen shake', function () { return M.settings().screenShake === true; }, function (v) { M.settings().screenShake = !!v; });
     host._rm = chk('chk-reduce-motion', 'Reduce motion', function () { return !!M.settings().reduceMotion; }, function (v) { M.reduceMotion(v); }); host._rm.title = 'Turns off the sheet, popover and dialog animations (follows your system setting until you change it)';
     host._cb = chk('chk-colorblind', 'Colour-blind overlays', function () { return !!M.settings().colorblind; }, function (v) { M.settings().colorblind = v; });
     rowEl('Tour', btn('btn-coach-replay', 'Replay the 60-second tour', 'small', function () { M.startCoach(stateOf()); }));
@@ -46570,6 +46577,8 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
     };
   }
   function ctx(state) { if (!C || C.root !== state) C = freshCtx(state); return C; }
+  /** camera pass: the scripted camera moves (charter swoop, the founding follow) run only when render.autoCamera is on (off by default) */
+  function autoCam() { const R = BSU.render; return !!(R && R.autoCamera === true); }
   function pr(state) { return state.progress; }
   function lazyKeys(state) {
     const p = pr(state);
@@ -47426,8 +47435,8 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
     switch (stage) {
       case 1: {
         const f = state.plot && state.plot.founders;
-        const swoopTicks = BSU.headlessMode ? 0 : Math.round(fin(PT.charterSwoopMs, 4000) / 1000 * fin(PT.baseTps, 5));   // sim ticks at 1× (was ms/100: 8 s once the base clock halved)
-        if (f) { call('render', 'panToTile', f.tx, HGT - 1, false); call('render', 'panToTile', f.tx, f.ty, true); }
+        const swoopTicks = (BSU.headlessMode || !autoCam()) ? 0 : Math.round(fin(PT.charterSwoopMs, 4000) / 1000 * fin(PT.baseTps, 5));   // sim ticks at 1× (was ms/100: 8 s once the base clock halved)
+        if (f && autoCam()) { call('render', 'panToTile', f.tx, HGT - 1, false); call('render', 'panToTile', f.tx, f.ty, true); }
         c.swoop = { until: fin(state.tick, 0) + swoopTicks };
         c.charterShown = false;
         break;
@@ -47450,7 +47459,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
   M.skipSwoop = function (state) { try { const c = ctx(state); if (c.swoop) c.swoop.until = fin(state.tick, 0); } catch (e) { BSU.error('progress', 'skipSwoop', e); } };
   function showCharter(state, c) {
     c.charterShown = true; c.swoop = null;
-    const f = state.plot && state.plot.founders; if (f) call('render', 'panToTile', f.tx, f.ty, false);
+    const f = state.plot && state.plot.founders; if (f && autoCam()) call('render', 'panToTile', f.tx, f.ty, false);
     const delivered = ui(state, 'card', 'charter', { autoMs: fin(PT.charterCardMs, 3000) });
     if (!delivered) enterStage(state, 2);   // no ui: nothing will close the card → stage 2 now
   }
@@ -47510,8 +47519,8 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
     c.foundingIds = (state.agents || []).filter(function (a) { return a && a.aboard && a.arrival; }).map(function (a) { return a.id; });
     c.foundingAdded = 0;
     const L = fin(state.plot && state.plot.landing, NONE);
-    if (L >= 0) call('render', 'panToTile', L % W, (L / W) | 0, true);
-    call('render', 'followVehicle', function (v) { return !!(v && v.kind === 'pirogue' && v.arrival && v.state === 'GO'); });
+    if (L >= 0 && autoCam()) call('render', 'panToTile', L % W, (L / W) | 0, true);
+    if (autoCam()) call('render', 'followVehicle', function (v) { return !!(v && v.kind === 'pirogue' && v.arrival && v.state === 'GO'); });
   }
   /** ≤ 4 students per tick toward the share of the cohort already ashore (the rest lands with agent:arrive) */
   function foundingCountUp(state, c) {

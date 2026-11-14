@@ -108,6 +108,8 @@
     };
   }
   function ctx(state) { if (!C || C.root !== state) C = freshCtx(state); return C; }
+  /** camera pass: the scripted camera moves (charter swoop, the founding follow) run only when render.autoCamera is on (off by default) */
+  function autoCam() { const R = BSU.render; return !!(R && R.autoCamera === true); }
   function pr(state) { return state.progress; }
   function lazyKeys(state) {
     const p = pr(state);
@@ -964,8 +966,8 @@
     switch (stage) {
       case 1: {
         const f = state.plot && state.plot.founders;
-        const swoopTicks = BSU.headlessMode ? 0 : Math.round(fin(PT.charterSwoopMs, 4000) / 1000 * fin(PT.baseTps, 5));   // sim ticks at 1× (was ms/100: 8 s once the base clock halved)
-        if (f) { call('render', 'panToTile', f.tx, HGT - 1, false); call('render', 'panToTile', f.tx, f.ty, true); }
+        const swoopTicks = (BSU.headlessMode || !autoCam()) ? 0 : Math.round(fin(PT.charterSwoopMs, 4000) / 1000 * fin(PT.baseTps, 5));   // sim ticks at 1× (was ms/100: 8 s once the base clock halved)
+        if (f && autoCam()) { call('render', 'panToTile', f.tx, HGT - 1, false); call('render', 'panToTile', f.tx, f.ty, true); }
         c.swoop = { until: fin(state.tick, 0) + swoopTicks };
         c.charterShown = false;
         break;
@@ -988,7 +990,7 @@
   M.skipSwoop = function (state) { try { const c = ctx(state); if (c.swoop) c.swoop.until = fin(state.tick, 0); } catch (e) { BSU.error('progress', 'skipSwoop', e); } };
   function showCharter(state, c) {
     c.charterShown = true; c.swoop = null;
-    const f = state.plot && state.plot.founders; if (f) call('render', 'panToTile', f.tx, f.ty, false);
+    const f = state.plot && state.plot.founders; if (f && autoCam()) call('render', 'panToTile', f.tx, f.ty, false);
     const delivered = ui(state, 'card', 'charter', { autoMs: fin(PT.charterCardMs, 3000) });
     if (!delivered) enterStage(state, 2);   // no ui: nothing will close the card → stage 2 now
   }
@@ -1048,8 +1050,8 @@
     c.foundingIds = (state.agents || []).filter(function (a) { return a && a.aboard && a.arrival; }).map(function (a) { return a.id; });
     c.foundingAdded = 0;
     const L = fin(state.plot && state.plot.landing, NONE);
-    if (L >= 0) call('render', 'panToTile', L % W, (L / W) | 0, true);
-    call('render', 'followVehicle', function (v) { return !!(v && v.kind === 'pirogue' && v.arrival && v.state === 'GO'); });
+    if (L >= 0 && autoCam()) call('render', 'panToTile', L % W, (L / W) | 0, true);
+    if (autoCam()) call('render', 'followVehicle', function (v) { return !!(v && v.kind === 'pirogue' && v.arrival && v.state === 'GO'); });
   }
   /** ≤ 4 students per tick toward the share of the cohort already ashore (the rest lands with agent:arrive) */
   function foundingCountUp(state, c) {

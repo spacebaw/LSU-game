@@ -769,7 +769,8 @@
       squashMs: 200, hitStopMs: 60,          // §12.7
       minimapPx: 160, minimapEveryFrames: 6, // §11.1, ARCH §6.3
       buildPopMs: 600, godRayTicks: 100, gateDropMs: 2000,   // §10.1, §6.2, §4.10b
-      agentPx: [12, 20], gatorPx: [40, 12], leGrandPx: 56   // §12.3
+      agentPx: [12, 20], gatorPx: [40, 12], leGrandPx: 56,   // §12.3
+      autoCamera: false                      // camera pass: the camera moves only when the player moves it (drag, keys, wheel, minimap) or clicks a control that says so (Show me, Locate, Fix, Pan to, Follow); true restores the scripted moves (charter swoop, founding follow, landfall cue, football game camera, title drift). render.autoCamera mirrors it (tests flip that)
     },
     ui: {                                    // GDD §11
       undoSeconds: 10, undoTicks: 50,        // §11.2, ARCH D16 (50 ticks at baseTps 5 = 10 s wall-clock at 1×; chip drain matches; tick-based, so independent of ticksPerDay)
@@ -1348,7 +1349,7 @@
         camera: { x: (founders.tx - founders.ty) * 32, y: (founders.tx + founders.ty) * 16, zoom: 1, tx: 0, ty: 0, follow: -1 },
         overlay: BSU.OV.NONE, speed: 1, speedBefore: 1, tool: null, panel: null, paletteTab: 'essentials',
         tabsSeen: {}, newPips: {}, tabsIntroduced: {},
-        settings: { volume: P.audio.defaultVolume, muted: false, particles: 'high', shake: true, colorblind: false, autoSimHint: false, coachSeen: false, keepMinimap: false, keepOverlays: false, reduceMotion: null, alerts: 'normal', mutedIssues: {}, tieCardSeen: false },   // paths pass: tieCardSeen = the one-time "Tied in" card has shown. UI refresh U2: keepMinimap / keepOverlays pin the Map / Layers popovers open (the old hudMode / hudCollapsed keys are read once by ui.js on load and dropped). calm alerts pass: alerts normal | quiet | off, mutedIssues {kind: true}
+        settings: { volume: P.audio.defaultVolume, muted: false, particles: 'high', screenShake: false, colorblind: false, autoSimHint: false, coachSeen: false, keepMinimap: false, keepOverlays: false, reduceMotion: null, alerts: 'normal', mutedIssues: {}, tieCardSeen: false },   // paths pass: tieCardSeen = the one-time "Tied in" card has shown. UI refresh U2: keepMinimap / keepOverlays pin the Map / Layers popovers open (the old hudMode / hudCollapsed keys are read once by ui.js on load and dropped). calm alerts pass: alerts normal | quiet | off, mutedIssues {kind: true}
         issues: { snoozed: {}, dismissed: {} },   // calm alerts pass: the Issues tray's snoozes {id: {until (tick), severity, days}} and dismissals {id: sig}, saved with the game
         perfMode: false
       },

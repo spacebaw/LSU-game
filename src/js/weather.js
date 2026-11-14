@@ -842,6 +842,7 @@
   }
   function cameraCue(state, st, which) {
     const sp = state.setPiece;
+    if (!(BSU.render && BSU.render.autoCamera === true)) return;   // camera pass: no storm camera cue unless the scripted camera is switched on
     if (!sp || sp.cameraTouched) return;
     let tx, ty;
     if (which === 'entry') { const c = st.entry[Math.floor(st.entry.length / 2)]; tx = BSU.tx(c); ty = BSU.ty(c); }

@@ -369,7 +369,7 @@ state.ui = {
   panel: null | 'budget'|'storm'|'season'|'land'|'almanac'|'milestones'|'log'|'settings'|'howto'|'about'|'debug',   // NOT saved (the panel showing in the Menu sheet; the sheet's list state is ui module state)
   paletteTab: string,               // last open tab; saved
   tabsSeen: Object<string, boolean>, newPips: Object<string, boolean>, tabsIntroduced: Object<string, boolean>,   // saved
-  settings: {volume: number, muted: boolean, particles: 'low'|'high', shake: boolean, colorblind: boolean, autoSimHint: boolean, coachSeen: boolean, keepMinimap: boolean, keepOverlays: boolean, reduceMotion: null|boolean, alerts: 'normal'|'quiet'|'off', mutedIssues: {kind: true}, tieCardSeen: boolean, uiScale?: 1|1.15|1.3|'auto'},   // mirrored to localStorage 'bsu.settings'; UI refresh: keepMinimap / keepOverlays pin the Map / Layers popovers, reduceMotion null = follow prefers-reduced-motion until the player flips the switch; the old hudMode / hudCollapsed keys are migrated away on load
+  settings: {volume: number, muted: boolean, particles: 'low'|'high', screenShake: boolean, colorblind: boolean, autoSimHint: boolean, coachSeen: boolean, keepMinimap: boolean, keepOverlays: boolean, reduceMotion: null|boolean, alerts: 'normal'|'quiet'|'off', mutedIssues: {kind: true}, tieCardSeen: boolean, uiScale?: 1|1.15|1.3|'auto'},   // mirrored to localStorage 'bsu.settings'; UI refresh: keepMinimap / keepOverlays pin the Map / Layers popovers, reduceMotion null = follow prefers-reduced-motion until the player flips the switch; the old hudMode / hudCollapsed keys are migrated away on load
   perfMode: boolean                 // NOT saved
 };
 ```
@@ -1077,7 +1077,8 @@ BSU.render.follow(agentId | -1) → void
 BSU.render.screenToTile(px, py) → {tx, ty} | null   // BSU.screenToWorld with the live camera and terrain elev
 BSU.render.tileToScreen(tx, ty, elevOverride?) → {x, y}
 BSU.render.visibleTiles() → {x0, y0, x1, y1}    // tile rect conservatively covering the viewport (agents use +4 margin)
-BSU.render.shake(ms, px = 6) → void             // ignored when settings.shake is false
+BSU.render.shake(ms, px = 6) → void             // camera pass: only when settings.screenShake is true (opt-in, off by default)
+BSU.render.autoCamera: boolean                  // camera pass: false (params.render.autoCamera); true restores the scripted camera moves
 BSU.render.hitStop(ms) → void                   // session pauses ticks for ms (UI juice; never in headless)
 BSU.render.flashTiles(tiles: number[], ms) → void   // Show-me highlight
 BSU.render.ghost(spec | null) → void            // {tiles, color, ringTiles?, label, radius, radiusCenter, sprite?: {id, variant, tx, ty}} drawn in the overlays pass

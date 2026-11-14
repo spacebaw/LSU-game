@@ -224,15 +224,15 @@ ok(S.ICON_FRAME && S.ICON_FRAME.size === 64 && S.ICON_FRAME.radius === 8 && Obje
 }
 // --- H7b: the heat shimmer copies one small device-aligned region per source (not the whole span between them) ----------------------------------------
 try {
-  const doc = win.document, ce = doc.createElement; let shimRec = null;
-  doc.createElement = function (tag) { const el = ce.apply(this, arguments); if (tag === 'canvas' && !shimRec) { shimRec = rec(); el.getContext = () => shimRec.g; } return el; };   // the shimmer's scratch canvas gets a recording context
+  const doc = win.document, ce = doc.createElement; let shimRec = null, shimEl = null;
+  doc.createElement = function (tag) { const el = ce.apply(this, arguments); if (tag === 'canvas' && !shimRec) { shimRec = rec(); shimEl = el; el.getContext = () => shimRec.g; } return el; };   // the shimmer's scratch canvas gets a recording context
   const hm0 = BSU.headlessMode, fr0 = R.frameNo, cam0 = { x: R.camera.x, y: R.camera.y, z: R.camera.zoom };
   try {
     R.setZoom(1); BSU.headlessMode = false; R.frameNo = 5000;
     const vv = R.view, ents = [0, 1, 2].map((i) => ({ kind: 'building', b: { type: 'wastewater', built: 1, ruin: false, w: 3, h: 3 }, sx: 200 + i * 330, sy: 250 + (i & 1) * 150, variant: 0 }));
     R.drawList.length = 0; for (const e of ents) R.drawList.push(e);
     const r = rec(); pf('weather')(s, r.g, vv, 1, 16);
-    const copies = shimRec ? shimRec.log.filter((c) => c.k === 'drawImage') : [], slices = r.log.filter((c) => c.k === 'drawImage');
+    const copies = shimRec ? shimRec.log.filter((c) => c.k === 'drawImage') : [], slices = r.log.filter((c) => c.k === 'drawImage' && c.a[0] === shimEl);   // camera pass: only the shimmer's own slices (the landfall cue no longer pans the camera away, so other weather sprites can share the view)
     ok(copies.length === 3 && slices.length === 21, 'three sources: three small self-copies into the scratch strip and 7 slices each (' + copies.length + ' copies, ' + slices.length + ' slices)');
     ok(copies.every((c) => c.a[0] === R.canvas && c.a[1] === Math.floor(c.a[1]) && c.a[2] === Math.floor(c.a[2]) && c.a[3] === Math.floor(c.a[3]) && c.a[4] === Math.floor(c.a[4]) && c.a[3] <= 60 && c.a[4] <= 70), 'each copy is a device-aligned region of the frame, a source-sized box plus a 2-px margin (' + copies.map((c) => c.a[3] + 'x' + c.a[4]).join(', ') + ')');
     const area = copies.reduce((q, c) => q + c.a[3] * c.a[4], 0), span = (200 + 2 * 330 + 22) * (400 - 250 + 30);

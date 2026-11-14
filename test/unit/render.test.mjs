@@ -405,6 +405,10 @@ s.setPiece = { kind: 'x', cameraTouched: false }; R.panBy(1, 0, true); ok(s.setP
   ok(fi.letterbox === false && fi.cut === false && fi.wide === false, 'montage pass: no HIGHLIGHTS letterbox, cut or wide shot during a watched game');
   const qf = R.fieldQuad(fld);
   ok(fi.minX >= qf.x0 - 0.01 && fi.maxX <= qf.x1 + 0.01 && fi.minY >= qf.y0 - 0.01 && fi.maxY <= qf.y1 + 0.01, 'every drawn player maps inside the painted field quad: X ' + fi.minX.toFixed(2) + '-' + fi.maxX.toFixed(2) + ' in [' + qf.x0 + ',' + qf.x1 + '], Y ' + fi.minY.toFixed(2) + '-' + fi.maxY.toFixed(2) + ' in [' + qf.y0 + ',' + qf.y1 + ']');
+  // camera pass: the scripted game camera is off by default; a watched game leaves the player's view where it was
+  ok(R.autoCamera === false && BSU.params.render.autoCamera === false, 'camera pass: render.autoCamera is off by default (params.render.autoCamera)');
+  ok(s.setPiece && s.setPiece.kind === 'game' && fi.camera === false && s.ui.camera.zoom === zoomBefore && s.setPiece.cameraTouched === false, 'camera pass: a watched game neither moves nor zooms the camera (zoom ' + s.ui.camera.zoom + ', game camera ' + fi.camera + ')');
+  R.autoCamera = true; H.render(); H.render(); fi = R.fbInfo();   // the opt-in path: the rest of this block and the montage block exercise the scripted game camera
   ok(s.setPiece && s.setPiece.kind === 'game' && fi.camera && s.ui.camera.zoom === 2 && s.setPiece.cameraTouched === false, 'the game camera took over at 2x for Bayou Field without touching cameraTouched (zoom ' + s.ui.camera.zoom + ')');
   const fbEntries = R.drawList.filter((e) => e && (e.kind === 'fbplayer' || e.kind === 'fbball' || e.kind === 'fbcrowd' || e.kind === 'fbcheer'));
   const venueEntry = R.drawList.find((e) => e && e.kind === 'building' && e.b === fld);
@@ -477,6 +481,7 @@ s.setPiece = { kind: 'x', cameraTouched: false }; R.panBy(1, 0, true); ok(s.setP
   ok(crowd >= 90 && s.setPiece === null && !s.sports.game && s.sports.schedule.some((e) => e.played && e.home), 'the crowd entry is drawn on every montage frame (' + crowd + ') and the game is recorded');
   BSU.sports.setAutoSim(s, false);
 }
+R.autoCamera = false;   // camera pass: back to the shipped default
 
 // --- selfTest under the harness flag ---------------------------------------------------
 BSU.SELFTEST = true; let r; try { r = R.selfTest(); } catch (e) { r = { ok: false, notes: e.stack }; } finally { BSU.SELFTEST = false; }
@@ -669,6 +674,7 @@ try {
     const bz = R.terrainCacheInfo().builds; R.setZoom(1.25); for (let k = 0; k < 6; k++) H.render(); R.setZoom(1); for (let k = 0; k < 8; k++) H.render();
     ok(R.terrainCacheInfo().builds >= bz + 2 && R.terrainCacheInfo().ok, 'a zoom step invalidates it (rebuilt at the new zoom and again when it comes back)');
     // a shake never uses it (the translate would leave an uncovered edge) and keeps the BG fill
+    BSU.state.ui.settings.screenShake = true;   // camera pass: shake is opt-in
     R.shake(400, 6); reset(); H.render();
     ok(calls.first === 'chunk' && calls.bg >= 1, 'a shaking frame draws the chunks directly after a BG fill (no cache blit)');
     // the minimap / postcard path (renderInto) never reads or writes it

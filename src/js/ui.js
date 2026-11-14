@@ -668,6 +668,8 @@
     const set = M.settings(); let changed = false;
     if ('hudMode' in set) { if (set.hudMode === 'hidden') hudModeNow = 'hidden'; delete set.hudMode; changed = true; }
     if ('hudCollapsed' in set) { delete set.hudCollapsed; changed = true; }
+    if ('shake' in set) { delete set.shake; changed = true; }   // camera pass: the old opt-out key goes; screenShake is opt-in (off until the player switches it on)
+    if (typeof set.screenShake !== 'boolean') { set.screenShake = false; changed = true; }
     if (typeof set.keepMinimap !== 'boolean') { set.keepMinimap = false; changed = true; }
     if (typeof set.keepOverlays !== 'boolean') { set.keepOverlays = false; changed = true; }
     if (typeof set.reduceMotion !== 'boolean') set.reduceMotion = prefersReducedMotion();   // U5: unset → follows the media query (not written back: the key is saved when the player flips the switch, and migration runs on the contract's default object before the stored settings are read)
@@ -3171,7 +3173,7 @@
     call('session', 'newGame', seed === undefined ? {} : { seed: seed });
     void s;
   }
-  M.settings = function () { const s = stateOf(); if (s && s.ui && s.ui.settings) return s.ui.settings; return { volume: 0.5, muted: false, particles: 'high', shake: true, colorblind: false, autoSimHint: false, keepMinimap: false, keepOverlays: false, reduceMotion: false, alerts: 'normal', mutedIssues: {}, tieCardSeen: false }; };
+  M.settings = function () { const s = stateOf(); if (s && s.ui && s.ui.settings) return s.ui.settings; return { volume: 0.5, muted: false, particles: 'high', screenShake: false, colorblind: false, autoSimHint: false, keepMinimap: false, keepOverlays: false, reduceMotion: false, alerts: 'normal', mutedIssues: {}, tieCardSeen: false }; };
   /** mirror state.ui.settings to localStorage['bsu.settings'] (a failure → one 'saveUnavailable' hint) */
   M.saveSettings = function () { try { window.localStorage.setItem('bsu.settings', JSON.stringify(M.settings())); } catch (e) { const s = stateOf(); if (s) M.hint(s, 'saveUnavailable'); } };
   /** stat popover from economy.breakdown */
@@ -3292,7 +3294,7 @@
     host._keepMap = chk('chk-keep-minimap', 'Keep the minimap open', function () { return !!M.settings().keepMinimap; }, function (v) { M.settings().keepMinimap = v; syncPopovers(); });
     host._keepOv = chk('chk-keep-overlays', 'Keep overlays visible', function () { return !!M.settings().keepOverlays; }, function (v) { M.settings().keepOverlays = v; syncPopovers(); });
     host._particles = chk('seg-particles', 'Particles', function () { return M.settings().particles !== 'low'; }, function (v) { M.settings().particles = v ? 'high' : 'low'; });
-    host._shake = chk('chk-shake', 'Screen shake', function () { return M.settings().shake !== false; }, function (v) { M.settings().shake = v; });
+    host._shake = chk('chk-shake', 'Screen shake', function () { return M.settings().screenShake === true; }, function (v) { M.settings().screenShake = !!v; });
     host._rm = chk('chk-reduce-motion', 'Reduce motion', function () { return !!M.settings().reduceMotion; }, function (v) { M.reduceMotion(v); }); host._rm.title = 'Turns off the sheet, popover and dialog animations (follows your system setting until you change it)';
     host._cb = chk('chk-colorblind', 'Colour-blind overlays', function () { return !!M.settings().colorblind; }, function (v) { M.settings().colorblind = v; });
     rowEl('Tour', btn('btn-coach-replay', 'Replay the 60-second tour', 'small', function () { M.startCoach(stateOf()); }));
