@@ -40928,14 +40928,17 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
         cb.hover(ev.px, ev.py); return true;
       }
       case 'up': {
-        if (mc.state === 'DRAGGING') { if (ev.button != null && ev.button !== 0) return true; const r = mc.run; mc.run = []; mc.runTile = -1; mc.plan = null; mcSet(mc, 'PLACING'); cb.placeRun(r); cb.ghost(ev.px, ev.py); return true; }
+        if (mc.state === 'DRAGGING') { if (ev.button != null && ev.button !== 0) return true; const r = mc.run; mc.run = []; mc.runTile = -1; mc.plan = null; mcSet(mc, 'PLACING'); const res = cb.placeRun(r); if (res === 'drop' && !cb.locked()) { cb.setTool(null); mcSet(mc, cb.inspecting() ? 'INSPECTING' : 'IDLE'); cb.ghost(null); } else cb.ghost(ev.px, ev.py); return true; }   // release pass: placeRun → 'drop' = nothing laid for want of cash
         const d = mc.down; if (!d) return false; mc.down = null;
         if (mc.state === 'PANNING') mcSet(mc, d.prev === 'PANNING' ? 'IDLE' : d.prev);
         if (d.pan) { if (d.button === 2 && !d.moved) mcRightClick(mc); return true; }
         if (d.moved) return true;
         if (mc.state === 'PLACING') {
           const ok = cb.place(ev.px, ev.py, ev.mods || M0);
-          if (ok && !(ev.mods && ev.mods.shift) && !cb.locked() && !(typeof cb.keepArmed === 'function' && cb.keepArmed())) { cb.setTool(null); mcSet(mc, cb.inspecting() ? 'INSPECTING' : 'IDLE'); cb.ghost(null); }
+          // release pass: one click ends a click-placement, built or refused. The tool is kept only by Shift, by a locked (tutorial) tool, after a success
+          // while a counted goal still wants more of it (keepArmed), or after a miss by a mode tool that never "places" (stayOnMiss: the bulldozer)
+          const keep = !!(ev.mods && ev.mods.shift) || cb.locked() || (ok ? (typeof cb.keepArmed === 'function' && cb.keepArmed()) : (typeof cb.stayOnMiss === 'function' && cb.stayOnMiss()));
+          if (!keep) { cb.setTool(null); mcSet(mc, cb.inspecting() ? 'INSPECTING' : 'IDLE'); cb.ghost(null); }
           else if (ok) { const t = cb.getTool(); if (t && ev.mods && ev.mods.shift) t.shift = true; cb.ghost(ev.px, ev.py); }
           return true;
         }
@@ -41000,7 +41003,8 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
     ghost: function (px, py) { if (px == null) { call('render', 'ghost', null); call('render', 'tiePreview', null); show(E['ghost-label'], false); lastGhost = null; } else updateGhost(stateOf(), px, py); },
     place: function (px, py, mods) { return clickPlace(stateOf(), px, py, mods); },
     keepArmed: function () { return goalKeepsTool(stateOf()); },   // goal pass
-    placeRun: function (run) { finishRun(stateOf(), run); },
+    stayOnMiss: function () { const s = stateOf(); return !!(s && s.ui && s.ui.tool && s.ui.tool.id === 'bulldoze'); },   // release pass: the bulldozer is a mode (its click never "places")
+    placeRun: function (run) { return finishRun(stateOf(), run); },
     inspectAt: function (px, py) { return clickInspect(stateOf(), px, py); },
     closeInspect: function () { closeInspectDom(); },
     quote: function (run) { return quoteRun(stateOf(), run); }
@@ -41466,7 +41470,8 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
     call('audio', 'play', 'invalid');
     if (dom()) { ghostLabel(px, py, r && r.reason ? r.reason : 'Cannot build here', r && r.charter ? 'State land · click to open the Land Office (O)' : ((r && r.reason === tieReason()) ? 'Hold N to see the campus network' : ''), 'red'); shakeLabel(); }
     if (r && r.charter) charterRefusal(s, r.charter);   // L2: the Land Office reason with a button that opens the panel on that section
-    else if (r && r.reason === tieReason()) tieRefusal(s, pre, g);   // paths pass: the P2 reason with a Show me that pans to the nearest network tile
+    else if (r && r.reason === tieReason()) tieRefusal(s, pre, g);
+    else if (!heldShift && !toolLocked) M.notify(s, { kind: 'info', text: row.name + ': ' + (r && r.reason ? r.reason : 'cannot build here'), ttl: 4000, stamp: 'placeRefused' });   // release pass: the click drops the tool, so the reason is a snackbar   // paths pass: the P2 reason with a Show me that pans to the nearest network tile
     return false;
   }
   // L2: a tool refused on unchartered land. The first refusal is noted (the "Charter your first section" goal's trigger); the toast carries
@@ -41510,6 +41515,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
       const ch = sk && typeof sk.reason === 'string' && sk.reason.indexOf(charterReason()) === 0 ? (call('land', 'refusal', s, [sk.i]) || null) : null;   // L2: a drag onto state land
       if (dom()) { ghostLabel(lastPx, lastPy, sk && sk.reason ? sk.reason : 'Nothing placed', ch ? 'State land · open the Land Office (O)' : '', 'red'); shakeLabel(); }
       if (ch) charterRefusal(s, ch);
+      if (!ch && sk && /cash/i.test(String(sk.reason || ''))) { M.notify(s, { kind: 'info', text: (rowOf(tool.id) || { name: 'That' }).name + ': ' + sk.reason, ttl: 4000, stamp: 'placeRefused' }); return 'drop'; }   // release pass
     }
   }
 
