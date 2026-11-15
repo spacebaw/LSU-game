@@ -272,7 +272,7 @@
       tiers: [{ tier: 1, name: 'Bayou Field', cost: 600000, upkeep: 4000, seats: 6000, landmark: 1, shelter: 0, wr: 1, night: false, unlock: { students: 400 }, buildDays: 6 }],
       paint: flat(['#6E8F3C', '#5A7A2E'], ['goalposts', 'bleachers', 'banner'], 'practice_field'),
       why: 'A team needs a field. A home game needs the bleachers.',
-      desc: 'Team rating +5; enables a team; Bayou Field tier adds 6,000 seats and home games.' }),
+      desc: 'Team rating +5; enables a team; the Bayou Field upgrade adds 6,000 seats and home games.' }),
     row({ n: 19, name: 'Stadium', w: 6, h: 5, cost: 2000000, upkeep: 30000, wr: 3, roadWithin: 4,
       unlock: { students: 600, building: 'practice_field', tier: 1 },
       effects: { landmark: 4, shelter: 5000, attendanceSeats: 15000, tickets: 0 },
@@ -284,7 +284,7 @@
       paint: P({ wall: ['#B8B0A0', '#8A8A8E'], roof: 'bowl', roofColor: PURPLE, floors: 3, decals: ['masts', 'letters', 'jumbotron'], special: 'stadium' }),
       namePool: 'stadium',
       why: 'Fifteen thousand seats, then forty-five, then eighty. Fill them.',
-      desc: 'I: 15,000 seats, landmark +4, shelter 5,000. II: 45,000, night games. III: 80,000, fireworks, opponent −5.' }),
+      desc: 'Red Stick Stadium: 15,000 seats, landmark +4, shelter 5,000. Upgrades: The Cauldron (45,000, night games), Cauldron Grand (80,000, fireworks, opponent −5).' }),
     row({ n: 20, name: 'Student Union', w: 4, h: 3, cost: 1600000, upkeep: 15000, wr: 3,
       unlock: { students: 600 },
       effects: { happiness: { value: 8, radius: 12 }, feeds: 400, shelter: 2000, special: ['festivalHost', 'idleHub'] },
@@ -1105,7 +1105,7 @@
     '18b': obj(BG, 'Make the Sugar Cane Bowl', 'Win five games and make the Sugar Cane Bowl.', 'The bowl; hire a better coach in the offseason', 'target', PRESTIGE2),
     '18': obj(BG, 'Beat Magnolia State', 'Beat Magnolia State for the Golden Pirogue.', 'Rivalry; the recruiting card; a five-year chase that is legible all the way', 'target', PRESTIGE2),
     '19': obj(BG, 'Reach prestige 30; build the Bell Tower', 'Reach prestige 30 and build the Bell Tower.', 'Landmarks', 'target', PRESTIGE2),
-    '20': obj(BG, 'Night Falls on the Cauldron', 'Upgrade to Stadium II and play the first night game.', 'The screenshot moment, scripted clear', 'target', PRESTIGE2),
+    '20': obj(BG, 'Night Falls on the Cauldron', 'Upgrade the Stadium to The Cauldron and play a night game.', 'The screenshot moment, scripted clear', 'target', PRESTIGE2),
     '21': obj(BG, 'Choose your bayou', 'Build the Surge Barrier or the Marsh Restoration Program.', 'Fortress vs Living With Water, each with a capstone that changes the surge', 'target', PRESTIGE2),
     '22': obj(BG, 'Flagship', 'Reach 10,000 students and prestige 60.', "Hands off to the Milestones panel with the ticker's blessing", 'target', PRESTIGE2)
   };
@@ -1127,7 +1127,7 @@
     ['Sunbather', 'A gator on the 50-yard line on game day', { effect: 'sunbather' }],
     ['Skeeter Beater', 'Campus mosquito index < 0.1 through August', { prestige: 2 }],
     ['Bayou Field', 'First home game', {}],
-    ['Night Falls on the Cauldron', 'First Stadium II night game', { effect: 'goldRing' }],
+    ['Night Falls on the Cauldron', 'First Cauldron night game', { effect: 'goldRing' }],
     ['Geaux Beat Magnolia', 'Beat the rival', { prestige: 3 }],
     ['Undefeated', '7–0 regular season', { prestige: 5, effect: 'undefeatedDonations' }],
     ['The Big Boil', 'A Crawfish Boil with ≥ 3,000 attendance, where attendance = (students × 0.6 + alumni × 0.1) × (Union ? 1.5 : 1)', { effect: 'bigBoil' }],
@@ -1319,7 +1319,7 @@
     '18b': { why: 'A bowl berth is prestige you cannot buy.', build: [] },
     '18': { why: 'The Golden Pirogue: a rivalry worth a five-year chase.', build: [] },
     '19': { why: 'Landmarks lift prestige, and the Bell Tower is the biggest one.', build: ['bell_tower'] },
-    '20': { why: 'Night games under the lights: the Cauldron.', build: ['stadium'] },
+    '20': { why: 'Night games under the lights: the Cauldron.', build: ['practice_field', 'stadium'] },
     '21': { why: 'Fortress or living with water: pick the future of the bayou.', build: ['surge_barrier', 'marsh_restoration'] },
     '22': { why: 'The flagship: 10,000 students and prestige 60.', build: ['res_tower', 'library'] },
     'p1': { why: 'Accreditation wants a Library.', build: ['library'] },
@@ -1409,7 +1409,7 @@
   /** the 60-second coach-mark tour (ui.js; first game only, replayable from Settings); target = a BSU.ui.el key, '' = none */
   const coach = [
     { id: 'stats', target: 'stats', title: 'Your money and your campus', text: 'Cash pays for buildings and upkeep; students pay tuition. Prestige, Happiness and Ecology grow next year’s applicant pool. Click any number for the breakdown.' },
-    { id: 'goals', target: 'objective-card', title: 'Your current goal', text: 'Ms. Thibodeaux keeps the goal here, with why it matters. “Build it” opens the right building; “Show me” pans the camera there. Click the card to see every milestone.' },
+    { id: 'goals', target: 'objective-card', title: 'Your current goal', text: 'Ms. Thibodeaux keeps the goal here, with its steps. The lit step’s button takes you to the right tool or building. Click the card for every milestone.' },
     { id: 'menu', target: 'build-menu', title: 'The Build sheet', text: 'The gold Build button (or G) opens the quick bar; Shift+G or the ⤢ button grows it into this full sheet. Pick a category on the left, then a building: click it or press Enter to place it, / to search. Gold ★ marks what the campus needs right now; greyed cards tell you what unlocks them.' },
     { id: 'place', target: '', title: 'Placing things', text: 'Click a tile to place a building. Paths, roads, levees and canals are dragged. Esc or right-click cancels. The label beside the cursor says why a spot will not work.' },
     { id: 'needs', target: 'needs-strip', title: 'What the campus needs', text: 'Beds, seats, dining, power and water: used against capacity. Whichever is full is the brake on enrollment; click the line under the gauges to build the fix.' },

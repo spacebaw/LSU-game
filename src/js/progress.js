@@ -282,6 +282,9 @@
     return M.unlockOk(state, row.unlock);
   };
   function lowerFirst(s) { return s ? s.charAt(0).toLowerCase() + s.slice(1) : s; }
+  function upperFirst(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : s; }
+  /** "a Practice Field", "an Earthen Levee", "The Bell Tower" (a name that carries its own article keeps it) */
+  function aName(name) { name = String(name || ''); return /^the /i.test(name) ? name : (/^[aeiou]/i.test(name) ? 'an ' : 'a ') + name; }
   function reasonParts(state, u) {
     const out = [];
     if (!u) return out;
@@ -290,9 +293,11 @@
     if (Number.isFinite(u.ecology) && ecology(state) < u.ecology) out.push('Ecology ' + num(u.ecology));
     if (u.milestone && !M.earned(state, u.milestone)) { const m = (data().milestones || []).find(function (x) { return x.id === u.milestone; }); out.push('Earn ' + (m ? m.name : u.milestone)); }
     if (u.building && !bhas(state, u.building, fin(u.tier, 0))) {
-      const row = catalog()[u.building]; let name = row ? row.name : u.building;
-      if (fin(u.tier, 0) > 0 && row && Array.isArray(row.tiers)) { const tr = row.tiers.find(function (t) { return t.tier === u.tier; }); if (tr) name = tr.name; }
-      out.push('Build the ' + name);
+      const row = catalog()[u.building], name = row ? row.name : u.building;
+      // goal steps pass: a tier is an UPGRADE of a building, not something in the Build sheet ("Build the Bayou Field" named nothing a player could find)
+      const tr = (fin(u.tier, 0) > 0 && row && Array.isArray(row.tiers)) ? row.tiers.find(function (t) { return t.tier === u.tier; }) : null;
+      if (tr) out.push(bcount(state, u.building) > 0 ? 'Upgrade the ' + name + ' to ' + tr.name : 'Build ' + aName(name) + ', then upgrade it to ' + tr.name);
+      else out.push('Build the ' + name);
     }
     if (Array.isArray(u.any) && !u.any.some(function (alt) { return M.unlockOk(state, alt); })) {
       const alts = [];
@@ -310,6 +315,43 @@
       const ps = reasonParts(state, row.unlock);
       return ps.length ? ps.map(function (s, i) { return i ? lowerFirst(s) : s; }).join(' and ') : 'Locked';
     } catch (e) { BSU.error('progress', 'unlockReason', e); return 'Locked'; }
+  };
+  /**
+   * goal steps pass: the unmet parts of an Unlock as live "what it takes (what you have)" strings, [] when it is met:
+   * "1,500 students (you have 1,240)", "Prestige 30 (you have 22)", "Bayou Field (upgrade the Practice Field)", "the Fortress Bayou milestone".
+   * Used by buildings.upgradeQuote and by goalSteps; unlockReason stays the one-line imperative for the Build sheet.
+   */
+  M.unlockNeeds = function (state, u) {
+    const out = [];
+    try {
+      if (!u || typeof u !== 'object' || !state) return out;
+      if (Number.isFinite(u.students) && students(state) < u.students) out.push(num(u.students) + ' students (you have ' + num(Math.floor(students(state))) + ')');
+      if (Number.isFinite(u.prestige) && prestige(state) < u.prestige) out.push('Prestige ' + num(u.prestige) + ' (you have ' + num(Math.floor(prestige(state))) + ')');
+      if (Number.isFinite(u.ecology) && ecology(state) < u.ecology) out.push('Ecology ' + num(u.ecology) + ' (you have ' + num(Math.floor(ecology(state))) + ')');
+      if (typeof u.milestone === 'string' && u.milestone && !M.earned(state, u.milestone)) { const m = (data().milestones || []).find(function (x) { return x.id === u.milestone; }); out.push('the ' + (m ? m.name : u.milestone) + ' milestone'); }
+      if (typeof u.building === 'string' && u.building && !bhas(state, u.building, fin(u.tier, 0))) {
+        const row = catalog()[u.building], name = row ? row.name : u.building;
+        const tr = (fin(u.tier, 0) > 0 && row && Array.isArray(row.tiers)) ? row.tiers.find(function (t) { return t.tier === u.tier; }) : null;
+        if (tr) out.push(tr.name + ' (' + (bcount(state, u.building) > 0 ? 'upgrade the ' + name : 'build ' + aName(name) + ' and upgrade it') + ')');
+        else out.push(bcount(state, u.building) > 0 ? 'the ' + name + ', finished' : aName(name));
+      }
+      if (Array.isArray(u.any) && u.any.length && !u.any.some(function (alt) { return M.unlockOk(state, alt); })) {
+        const alts = [];
+        for (const alt of u.any) { const ps = M.unlockNeeds(state, alt); if (ps.length) alts.push(ps.join(' and ')); }
+        if (alts.length) out.push(alts.join(', or '));
+      }
+    } catch (e) { BSU.error('progress', 'unlockNeeds', e); }
+    return out;
+  };
+  /** goal steps pass: '' when `cost` can be paid (cash plus what is left of the loan line), else "$8M (you have $3.2M + $2M loan line)" */
+  M.cashNeed = function (state, cost) {
+    try {
+      const e = (state && state.economy) || {}, cash = fin(e.cash, 0), line = Math.max(0, fin(e.loanLimit, fin(PE.loanLimit, 0)));
+      cost = fin(cost, 0);
+      if (!(cost > 0) || cash - cost >= -line) return '';
+      const left = Math.max(0, line + Math.min(0, cash));
+      return money(cost) + ' (you have ' + money(Math.max(0, cash)) + (left > 0 ? ' + ' + money(left) + ' loan line' : '') + ')';
+    } catch (e) { BSU.error('progress', 'cashNeed', e); return ''; }
   };
   function unlockedIds(state) {
     const ids = [];
@@ -559,24 +601,23 @@
     }
     return false;
   }
-  function stormChecklist(state) {
+  /** Objective 12's five checks, named (goal steps pass: the card lists them as steps) */
+  function stormChecks(state) {
     const st = state.storms && state.storms.current;
-    let n = 0;
     const subs = blist(state, 'substation').filter(complete), gens = blist(state, 'generator').filter(complete);
     let subsOk = subs.length > 0;
     for (const s of subs) if (!s.pilings && !gens.some(function (g) { return cheb(g.tx, g.ty, s.tx, s.ty) <= 6; })) { subsOk = false; break; }
-    if (subsOk) n++;
     const H = fin(call('weather', 'forecastSurge', state), fin(PS.ringDefaultH, 5));
     const gaps = call('buildings', 'gaps', state, H) || { gaps: [], weak: [], gates: [] };
     const ring = !!call('buildings', 'ringClosed', state, H) && !(gaps.weak && gaps.weak.length);
-    if (ring) n++;
     let gatesOk = true;
     for (const g of (gaps.gaps || [])) for (const i of (g.tiles || [])) if (state.tiles.flags[i] & FLAG.CANAL) { gatesOk = false; break; }
-    if (gatesOk) n++;
     const sh = call('buildings', 'shelter', state) || { ok: false };
-    if (sh.ok || (st && st.evacuated)) n++;
-    if (st && ((st.boardQueue && st.boardQueue.length > 0) || fin(st.boardedCount, 0) > 0)) n++;
-    return { progress: n, goal: 5 };
+    return { subs: subsOk, ring: ring, gates: gatesOk, shelter: !!(sh.ok || (st && st.evacuated)), board: !!(st && ((st.boardQueue && st.boardQueue.length > 0) || fin(st.boardedCount, 0) > 0)), H: H, gaps: gaps };
+  }
+  function stormChecklist(state) {
+    const k = stormChecks(state);
+    return { progress: (k.subs ? 1 : 0) + (k.ring ? 1 : 0) + (k.gates ? 1 : 0) + (k.shelter ? 1 : 0) + (k.board ? 1 : 0), goal: 5 };
   }
   /** goal pass: every preserved tile counts toward "Preserve it" (it used to count only the rows south of the founders' plot, a rule nothing on the map showed) */
   function preserveTiles(state) { let n = 0; const fl = state.tiles.flags; for (let i = 0; i < N; i++) if (fl[i] & FLAG.PRESERVE) n++; return n; }
@@ -948,6 +989,260 @@
       }
       return { tx: fb.tx, ty: fb.ty };
     } catch (e) { BSU.error('progress', 'showMe', e); return { tx: W >> 1, ty: HGT >> 1 }; }
+  };
+
+  // ---------------------------------------------------------------------------
+  // Goal steps (goal steps pass): what to do for a goal, in order, with what is missing and where the button is
+  // ---------------------------------------------------------------------------
+  // Josh was stuck on Objective 20 ("Upgrade to Stadium II and play the first night game") with a card that offered only Show me: the route
+  // (Practice Field → its upgrade → Stadium → its upgrade → a night game) was nowhere on screen. goalSteps(state, id) is that route for every
+  // goal the card can show. A step is {id, text, done, more}: `more` (the current step only) → {needs, note, action, actionLabel}. Steps mirror the
+  // real rules (the same helpers the GOALS functions use); nothing here changes a rule.
+  const STEP_TEXT_MAX = 72;
+  M.STEP_TEXT_MAX = STEP_TEXT_MAX;
+  const ACTION_LABEL = { build: 'Build it', inspect: 'Take me there', show: 'Show me' };
+  const PANEL_NAME = { season: 'Season', land: 'the Land Office', storm: 'the Storm panel', milestones: 'Milestones', budget: 'Budget' };
+  function rowOfId(id) { return catalog()[id] || null; }
+  function nameOfRow(id) { const r = rowOfId(id); return r ? r.name : id; }
+  function step(id, text, isDone, more) { return { id: id, text: text, done: !!isDone, more: more || null }; }
+  function countText(n, goal) { return ' · ' + num(Math.min(n, goal)) + ' of ' + num(goal); }
+  function inDays(state, day) { const d = fin(day, NONE) - today(state); return d <= 0 ? 'today' : d === 1 ? 'in 1 day' : 'in ' + d + ' days'; }
+  function oppNameOf(e) { const o = (data().opponents || {})[e && e.opp]; return o ? o.name : String((e && e.opp) || 'the visitors'); }
+  function goalNow(state, id) { const g = goalFor(id); if (!g) return { progress: 0, goal: 1 }; try { const r = g(state, ctx(state)) || {}; const o = pr(state).objectives[id]; return { progress: r.daily ? fin(o && o.progress, 0) : fin(r.progress, 0), goal: Math.max(1, fin(r.goal, 1)), text: r.text || '' }; } catch (e) { BSU.error('progress', 'goalNow:' + id, e); return { progress: 0, goal: 1 }; } }
+  /**
+   * what a "Build X" step still needs and what its button does: the unlock (live numbers), the price, and, for a big or road-bound
+   * footprint while the card is open (opts.sites), whether any site is left on the campus's own land (buildings.siteScan: cached, budgeted).
+   */
+  function buildMore(state, tool, opts) {
+    const row = rowOfId(tool); if (!row) return { needs: [], action: null };
+    const act = { kind: 'build', tool: tool };
+    const locked = !M.unlockOk(state, row.unlock);
+    if (locked) { const needs = M.unlockNeeds(state, row.unlock); return { needs: needs.length ? needs : [M.unlockReason(state, tool) || 'Locked'], action: null }; }
+    const cash = row.kind === 'footprint' ? M.cashNeed(state, fin(row.cost, 0)) : '';
+    if (cash) return { needs: [cash], action: null };
+    if (opts && opts.sites && row.kind === 'footprint' && (fin(row.roadWithin, 0) > 0 || fin(row.w, 1) * fin(row.h, 1) >= 6)) {
+      const sc = call('buildings', 'siteScan', state, tool);
+      if (sc && !sc.ok) {
+        const size = sc.w + ' × ' + sc.h, R = fin(row.roadWithin, 0);
+        const tiles = sc.at ? BSU.footprintTiles(sc.at.tx, sc.at.ty, sc.at.rot ? sc.h : sc.w, sc.at.rot ? sc.w : sc.h) : null;
+        const show = sc.at ? { kind: 'show', tx: sc.at.tx + ((sc.at.rot ? sc.h : sc.w) >> 1), ty: sc.at.ty + ((sc.at.rot ? sc.w : sc.h) >> 1), tiles: tiles || [] } : null;
+        const turn = sc.at && sc.at.rot ? ' (it is turned: press R while placing)' : '';
+        if (sc.need === 'road') return { needs: ['a Campus Road within ' + R + ' tiles of a free ' + size + ' site'], note: 'Your land has room for it, but no road beside the room. Lay a Campus Road next to the site shown' + turn, action: show, actionLabel: 'Show me the site' };
+        if (sc.need === 'link') return { needs: ['a path within reach of a free ' + size + ' site'], note: 'Your land has room for it, but no path near the room. Draw a Gravel Path to the site shown' + turn, action: show, actionLabel: 'Show me the site' };
+        return { needs: ['a free ' + size + ' site' + (R > 0 ? ' with a Campus Road within ' + R + ' tiles' : '')], note: 'No ' + size + ' site is left on your land: buy a section at the Land Office', action: landAction(state), actionLabel: 'Open the Land Office' };
+      }
+      if (sc && sc.ok && sc.rot) return { needs: [], note: 'The one free site on your land is turned: press R while placing', action: act };
+    }
+    return { needs: [], action: act };
+  }
+  function landAction(state) { const sec = (call('land', 'sections', state) || []).find(function (x) { return x.forSale && !x.owned; }); return { kind: 'panel', panel: 'land', section: sec ? sec.id : NONE }; }
+  function buildStep(state, tool, text, isDone) {
+    return step('build:' + tool, text || ('Build ' + aName(nameOfRow(tool))), isDone !== undefined ? isDone : bcount(state, tool) > 0, function (opts) { return buildMore(state, tool, opts); });
+  }
+  /** the upgrade of building `b` to its next tier: the inspect card with the priced button lit; the needs are upgradeQuote's */
+  function upgradeMore(state, b) {
+    if (!b) return { needs: [], action: null };
+    const act = { kind: 'inspect', buildingId: b.id, highlight: 'upgrade' };
+    const q = call('buildings', 'upgradeQuote', state, b.id) || { needs: [] };
+    if (q.inProgress) return { needs: [], note: 'Under way: done ' + inDays(state, q.doneDay), action: act, actionLabel: 'Show me' };
+    if (!complete(b)) return { needs: [], note: (b.name || nameOfRow(b.type)) + ' is still under construction', action: act, actionLabel: 'Show me' };
+    return { needs: Array.isArray(q.needs) ? q.needs.slice() : [], action: act };
+  }
+  /** one "X for N students" step per capacity term short of `target` (the terms economy.capacity caps enrollment with), then the head count itself */
+  function studentSteps(state, target, sewage) {
+    const c = call('economy', 'capacity', state) || (state.economy && state.economy.capacityTerms) || {};
+    const out = [], n = students(state);
+    const cap = function (key, label, tool) {
+      const have = fin(c[key], 0);
+      out.push(step('cap:' + key, label + ' for ' + num(target) + ' students', have >= target || n >= target, function (opts) { const m = buildMore(state, tool, opts); return { needs: m.needs, note: m.note || (label + ' for ' + num(have) + ' students now'), action: m.action, actionLabel: m.action && m.action.kind === 'build' ? 'Build ' + aName(nameOfRow(tool)) : m.actionLabel }; }));
+    };
+    cap('beds', 'Beds', 'dorm'); cap('seats', 'Seats', 'lecture_hall'); cap('dining', 'Dining', 'dining_hall');
+    if (sewage) cap('wastewater', 'Sewage', 'wastewater');
+    out.push(step('students', 'Reach ' + num(target) + ' students' + countText(Math.floor(n), target), n >= target, function () { const room = fin(c.capacity, 0) - n; return { needs: [], note: room > 0 ? 'Room for ' + num(room) + ' more: they enrol at each admissions round' : 'The campus is full: add capacity first', action: null }; }));
+    return out;
+  }
+  function prestigeStep(state, target) {
+    const p = prestige(state);
+    return step('prestige', 'Reach prestige ' + num(target) + countText(Math.floor(p), target), p >= target, function () { return { needs: [], note: 'Landmarks, football wins, research and happy students raise it, month by month', action: null }; });
+  }
+  /** the first row of `list` that is unlocked and not yet built (a drag / paint row always counts as unbuilt), else the first unlocked one, else list[0] */
+  function firstToBuild(state, list) {
+    let first = null;
+    for (const id of list) { const r = rowOfId(id); if (!r || !M.unlockOk(state, r.unlock)) continue; if (!first) first = id; if (r.kind !== 'footprint' || bcount(state, id) === 0) return id; }
+    return first || list[0] || null;
+  }
+  function nextHome(state) { const day = today(state); let best = null; for (const e of ((state.sports && state.sports.schedule) || [])) if (homeAhead(state, e, day) && (!best || e.day < best.day)) best = e; return best; }
+  function nextGame(state) { const e = call('sports', 'upcoming', state); return e || null; }
+  function seasonNote(state) {
+    const e = nextGame(state);
+    if (e) return 'Next game: ' + BSU.formatDate(e.day) + (e.home ? ' vs ' : ' at ') + oppNameOf(e);
+    return 'No game on the calendar: the season opens ' + ((PS_SCHED && PS_SCHED.opener) || 'Aug 8');
+  }
+  const PS_SCHED = (P.sports && P.sports.schedule) || null;
+  const SEASON = { kind: 'panel', panel: 'season' };
+  const STEPS = {
+    '1': function (s) { return [step('place', "Place Founders' Hall on the ridge", bcount(s, 'founders_hall') > 0, function () { return { needs: [], action: { kind: 'show', id: '1' } }; })]; },
+    '2': function (s) { return [buildStep(s, 'path', "Drag a Gravel Path from Founders' Hall to the Pirogue Landing", goalNow(s, '2').progress >= 1)]; },
+    '4': function (s) { return [buildStep(s, 'canal', 'Dig a Drainage Canal from the low spot to the bayou', canalReachesBayou(s))]; },
+    '6': function (s) { const g = goalNow(s, '6'); return [buildStep(s, 'live_oak', 'Plant Live Oaks beside a path' + countText(g.progress, g.goal), g.progress >= g.goal)]; },
+    '7': function (s) { const g = goalNow(s, '7'); return [buildStep(s, 'road', 'Lay one Campus Road ' + g.goal + ' tiles long' + countText(g.progress, g.goal), g.progress >= g.goal)]; },
+    '8': function (s) { return studentSteps(s, fin(G.students8, 500), false); },
+    '9': function (s) { return [buildStep(s, firstToBuild(s, ['wildlife_post', 'gator_fence']), 'Build a Wildlife Officer Post, or fence the Dining Hall', fenceGuardsDining(s))]; },
+    '10': function (s) {
+      const idx = fin(call('wildlife', 'mosqIndex', s), fin(s.wildlife && s.wildlife.mosqIndex, 0)), lim = fin(G.mosq10, 0.3), tool = firstToBuild(s, ['pond', 'bat_house', 'abatement']);
+      return [step('mosq', 'Get the mosquito index below ' + lim, idx < lim, function (opts) { const m = buildMore(s, tool, opts); return { needs: m.needs, note: m.note || ('Index now ' + idx.toFixed(2) + ': drain standing water, or add ' + aName(nameOfRow(tool))), action: m.action, actionLabel: m.action && m.action.kind === 'build' ? 'Build ' + aName(nameOfRow(tool)) : m.actionLabel }; })];
+    },
+    '11': function (s) {
+      const H = fin(G.ringH11, 5), closedRing = !!call('buildings', 'coveTilesUnreached', s, H), all = coveLeveed(s);
+      return [
+        step('levee', 'Close the cove mouth with an Earthen Levee', closedRing || all, function (opts) { const g = call('buildings', 'gaps', s, H), first = g && g.gaps && g.gaps[0]; const m = buildMore(s, 'levee', opts); return { needs: m.needs, note: m.note || (first ? 'Still ' + first.len + ' tile' + (first.len === 1 ? '' : 's') + ' short at ' + first.name : ''), action: m.action }; }),
+        step('pump', 'Build a Pump Station inside the ring, touching a canal', all, function (opts) { return buildMore(s, 'pump', opts); })
+      ];
+    },
+    '11a': function () { return [step('watch', 'Watch Tropical Storm Amélie fill the ring', false, function () { return { needs: [], note: 'Nothing to build: the pump drains what the storm leaves', action: { kind: 'show', id: '11a' } }; })]; },
+    '12': function (s) {
+      const k = stormChecks(s), storm = { kind: 'panel', panel: 'storm' };
+      const gap = k.gaps && k.gaps.gaps && k.gaps.gaps[0];
+      return [
+        step('subs', 'Substations on Pilings, or a Backup Generator within 6', k.subs, function (opts) { return buildMore(s, 'generator', opts); }),
+        step('ring', 'Close the levee ring at ' + Math.round(k.H) + ' ft', k.ring, function (opts) { const m = buildMore(s, 'levee', opts); return { needs: m.needs, note: m.note || (gap ? 'Still ' + gap.len + ' tile' + (gap.len === 1 ? '' : 's') + ' short at ' + gap.name : (k.gaps && k.gaps.weak && k.gaps.weak.length ? 'A levee run is weak: repair it' : '')), action: m.action }; }),
+        step('gates', 'Run the levee over every canal that crosses it', k.gates, function (opts) { const m = buildMore(s, 'levee', opts); return { needs: m.needs, note: m.note || 'A levee tile on a canal becomes a floodgate', action: m.action }; }),
+        step('shelter', 'Shelter every student, or Evacuate', k.shelter, function () { return { needs: [], action: Object.assign({ highlight: 'btn-evacuate' }, storm) }; }),
+        step('board', 'Board Up the campus', k.board, function () { return { needs: [], action: Object.assign({ highlight: 'btn-boardall' }, storm) }; })
+      ];
+    },
+    '13': function () { return [step('watch', 'Watch the landfall and answer the toasts', false, function () { return { needs: [], note: 'The prep you did decides the rest', action: null }; })]; },
+    '14': function (s) {
+      const st = call('buildings', 'stats', s) || {}, n = fin(st.unrepaired, 0);
+      return [step('repair', 'Repair every damaged building' + (n > 0 ? ' · ' + n + ' left' : ''), n === 0, function () { return { needs: [], action: { kind: 'panel', panel: 'storm', highlight: 'btn-repairall' } }; })];
+    },
+    '15': function (s) {
+      const pf = blist(s, 'practice_field')[0] || null, sp = s.sports || {};
+      const tier1 = bhas(s, 'practice_field', 1), spring = !!(M.setPieceSeen(s, 'spring') || sp.lastSpring), home = fin(sp.firstHomeGameDay, NONE) >= 0;
+      return [
+        buildStep(s, 'practice_field', 'Build a Practice Field', !!pf || tier1 || home),
+        step('spring', 'Watch the Purple & Gold Spring Game', spring, function () { return { needs: [], note: fin(sp.springDay, NONE) >= today(s) ? 'It kicks off ' + inDays(s, sp.springDay) : 'It plays three days after the field is finished', action: null }; }),
+        step('upgrade:practice_field', 'Upgrade the Practice Field to ' + tierName('practice_field', 1), tier1 || home, function () { return upgradeMore(s, pf); }),
+        step('home', 'Play the first home game', home, function () { const e = nextHome(s); return { needs: [], note: e ? 'Next home game: ' + BSU.formatDate(e.day) + ' vs ' + oppNameOf(e) : 'No home game on the calendar: the season opens ' + ((PS_SCHED && PS_SCHED.opener) || 'Aug 8'), action: SEASON }; })
+      ];
+    },
+    '16': function (s) { const g = goalNow(s, '16'); return [buildStep(s, 'preserve', 'Paint Wetland Preserve across marsh' + countText(g.progress, g.goal), g.progress >= g.goal)]; },
+    '17': function (s) { return studentSteps(s, fin(G.target17, 1500), false).concat([buildStep(s, 'wastewater', 'Build a Wastewater Plant', bhas(s, 'wastewater'))]); },
+    '18a': function (s) { const g = goalNow(s, '18a'); return [step('wins', 'Win ' + g.goal + ' games in one season' + countText(g.progress, g.goal), g.progress >= g.goal, function () { return { needs: [], note: seasonNote(s), action: SEASON }; })]; },
+    '18b': function (s) { const g = goalNow(s, '18b'); return [step('wins', 'Win ' + g.goal + ' games in one season' + countText(g.progress, g.goal), g.progress >= g.goal, function () { return { needs: [], note: seasonNote(s) + '. Five wins make the Sugar Cane Bowl', action: SEASON }; })]; },
+    '18': function (s) {
+      return [step('rival', 'Beat Magnolia State', M.earned(s, 'geauxBeatMagnolia'), function () {
+        const day = today(s); let e = null; for (const x of ((s.sports && s.sports.schedule) || [])) if (x && !x.played && !x.cancelled && fin(x.day, NONE) >= day && String(x.opp).toLowerCase().indexOf('magnolia') === 0 && (!e || x.day < e.day)) e = x;
+        return { needs: [], note: e ? 'The Golden Pirogue: ' + BSU.formatDate(e.day) + (e.home ? ', at home' : ', away') : 'The Golden Pirogue is played every ' + ((PS_SCHED && PS_SCHED.rivalry) || 'Nov 8'), action: SEASON };
+      })];
+    },
+    '19': function (s) { return [prestigeStep(s, fin(G.prestige19, 30)), buildStep(s, 'bell_tower', 'Build The Bell Tower', bhas(s, 'bell_tower'))]; },
+    '20': function (s) {
+      const pf = blist(s, 'practice_field')[0] || null, st = blist(s, 'stadium')[0] || null;
+      const cauldron = bhas(s, 'stadium', 2), night = M.earned(s, 'nightFalls');
+      return [
+        buildStep(s, 'practice_field', 'Build a Practice Field', !!pf || !!st),
+        step('upgrade:practice_field', 'Upgrade the Practice Field to ' + tierName('practice_field', 1), bhas(s, 'practice_field', 1) || !!st, function () { return upgradeMore(s, pf); }),
+        buildStep(s, 'stadium', 'Build a Stadium', !!st),
+        step('upgrade:stadium', 'Upgrade the Stadium to ' + tierName('stadium', 2), cauldron || night, function () { return upgradeMore(s, st); }),
+        step('night', 'Play a night game', night, function () {
+          const n = nightPlan(s), e = n.night || n.entry;
+          if (!n.capable) return { needs: [], note: 'The Cauldron is closed until its work is done', action: null };
+          if (n.playing) return { needs: [], note: 'The night game is being played', action: null };
+          if (e) return { needs: [], note: 'The lights come on ' + BSU.formatDate(e.day) + ' vs ' + oppNameOf(e) + ': nothing else to do', action: null };
+          return { needs: [], note: 'No home game is on the calendar: the season opens ' + ((PS_SCHED && PS_SCHED.opener) || 'Aug 8') + '. Night games On makes every home game a night game', action: { kind: 'panel', panel: 'season', tab: 'overview', highlight: 'chk-night' }, actionLabel: 'Night games switch' };
+        })
+      ];
+    },
+    '21': function (s) {
+      const fort = M.earned(s, 'fortressBayou'), lww = M.earned(s, 'livingWithWater'), built = bhas(s, 'surge_barrier') || bhas(s, 'marsh_restoration') || bcount(s, 'surge_barrier') + bcount(s, 'marsh_restoration') > 0;
+      const tool = fort && !lww ? 'surge_barrier' : (lww ? 'marsh_restoration' : 'surge_barrier');
+      const g = MG.fortressBayou || {}, w = MG.livingWithWater || {};
+      return [
+        step('milestone', 'Earn Fortress Bayou or Living With Water', fort || lww || built, function () {
+          const walls = floodwallTiles(s, false);
+          return { needs: ['the Fortress Bayou or the Living With Water milestone'], note: 'Fortress Bayou: a closed ' + fin(g.H, 12) + ' ft ring with ' + fin(g.floodwalls, 40) + ' Concrete Floodwall tiles (you have ' + walls + '). Living With Water: ecology ' + fin(w.ecology, 75) + ' (you have ' + Math.floor(ecology(s)) + '), ' + num(fin(w.students, 2000)) + ' students, at most ' + fin(w.floodwallMax, 10) + ' floodwall tiles', action: { kind: 'panel', panel: 'milestones' } };
+        }),
+        step('build:capstone', 'Build the ' + (fort || lww ? nameOfRow(tool) : 'Bayou Surge Barrier or the Marsh Restoration Program'), bhas(s, 'surge_barrier') || bhas(s, 'marsh_restoration'), function (opts) { return buildMore(s, tool, opts); })
+      ];
+    },
+    '22': function (s) { return studentSteps(s, fin(G.students22, 10000), true).concat([prestigeStep(s, fin(G.prestige22, 60))]); },
+    land1: function (s) {
+      return [step('land', 'Buy a section of state land at the Land Office', fin(call('land', 'count', s), 0) >= 1, function () {
+        const L = call('land', 'stats', s) || {}, needs = [];
+        let note = '';
+        if (!fin(L.forSale, 0)) note = 'No section is for sale next to your land yet';
+        else { const c = M.cashNeed(s, fin(L.cheapest, 0)); if (c) needs.push(c); if (fin(L.nextGate, 0) > prestige(s)) needs.push('Prestige ' + num(L.nextGate) + ' (you have ' + num(Math.floor(prestige(s))) + ')'); note = 'The cheapest section for sale is ' + money(fin(L.cheapest, 0)); }
+        return { needs: needs, note: note, action: landAction(s) };
+      })];
+    },
+    p2: function (s) {
+      const st = call('buildings', 'stats', s) || {}, want = Math.ceil(students(s) / 1.2), have = fin(st.seats, 0);
+      return [step('seats', 'Lecture seats for 5 of every 6 students' + countText(have, Math.max(1, want)), have >= students(s) / 1.2, function (opts) { const m = buildMore(s, 'lecture_hall', opts); return { needs: m.needs, note: m.note, action: m.action, actionLabel: m.action && m.action.kind === 'build' ? 'Build a Lecture Hall' : m.actionLabel }; })];
+    },
+    p3: function (s) {
+      const g = goalNow(s, 'p3'), wet = blist(s).find(function (b) { return b.flooded; });
+      return [step('dry', 'Keep every building dry for ' + g.goal + ' days' + countText(g.progress, g.goal), g.progress >= g.goal, function () { return wet ? { needs: [], note: (wet.name || nameOfRow(wet.type)) + ' is flooded: the count starts over', action: { kind: 'inspect', buildingId: wet.id, highlight: '' }, actionLabel: 'Show me' } : { needs: [], note: 'Nothing is flooded: keep the ring closed and the pumps on', action: null }; })];
+    },
+    sink1: function (s) {
+      const halls = sunkHalls(s), b = halls[0] || null;
+      return [step('pilings', 'Put Pilings under every sunk hall' + (halls.length ? ' · ' + halls.length + ' left' : ''), halls.length === 0, function () { return b ? { needs: [], note: (b.name || nameOfRow(b.type)) + ' has dropped ' + fin(b.sunk, 0).toFixed(1) + ' ft. Pilings stop it; Re-grade lifts it a foot', action: { kind: 'inspect', buildingId: b.id, highlight: 'pilings' } } : { needs: [], action: null }; })];
+    }
+  };
+  /** Student Voice goals: [step text, the tool its button arms] (the count comes from the voice goal itself) */
+  const VOICE_STEPS = {
+    boardwalk: ['Lay a Boardwalk over marsh', 'boardwalk'],
+    recPool: ['Build a Rec Center within 10 tiles of the Practice Field', 'rec_center'],
+    zydeco: ['Plant Live Oaks within 3 tiles of the Student Union', 'live_oak'],
+    poboyRoute: ["Build a Po'boy Shack on the path from dorms to the Lecture Hall", 'poboy'],
+    quadOak: ["Build a Quad Lawn within 6 tiles of Founders' Hall", 'quad'],
+    batHouse: ['Build Bat Houses within 4 tiles of water or marsh', 'bat_house'],
+    parking: ['Build a Parking Lot', 'parking'],
+    healthShade: ['Plant a Live Oak by every path tile near the Health Center', 'live_oak'],
+    greekPorch: ['Build a Greek Row House within 8 tiles of the Practice Field', 'greek_house'],
+    cypressLine: ['Plant Bald Cypress beside the levee', 'cypress'],
+    lookout: ['Lay a Boardwalk beside the Wetland Preserve', 'boardwalk'],
+    bellSelfie: ['Build a Quad Lawn within 2 tiles of The Bell Tower', 'quad']
+  };
+  function tierName(type, tier) { const r = rowOfId(type), t = r && Array.isArray(r.tiers) ? r.tiers.find(function (x) { return x.tier === tier; }) : null; return t ? t.name : ('tier ' + tier); }
+  /** the steps before ordering: authored where the route is a chain or runs through an upgrade, a panel or the Land Office; else one "Build X" per guide building */
+  function rawSteps(state, id) {
+    if (STEPS[id]) return STEPS[id](state);
+    if (id.indexOf('v:') === 0) {
+      const v = VOICE_STEPS[id.slice(2)], g = goalNow(state, id);
+      if (v) return [buildStep(state, v[1], v[0] + (g.goal > 1 ? countText(g.progress, g.goal) : ''), g.progress >= g.goal)];
+    }
+    const guide = (data().guide || {})[id], def = objDef(id);
+    const list = guide && Array.isArray(guide.build) ? guide.build.filter(function (t) { return !!rowOfId(t); }) : [];
+    if (list.length) return list.map(function (t) { return buildStep(state, t); });
+    const g = goalNow(state, id), text = String((def && def.text) || (def && def.title) || 'Finish this goal').replace(/\.\s*$/, '');
+    return [step('goal', text.length > STEP_TEXT_MAX ? text.slice(0, STEP_TEXT_MAX - 1) + '…' : text, g.progress >= g.goal, function () { return { needs: [], action: { kind: 'show', id: id } }; })];
+  }
+  /**
+   * goal steps pass: the ordered steps of objective `id` (any id the goal card can show: '1'…'22', '11a', '18a', '18b', 'land1', 'p1'…'p3',
+   * 'sink1', 'v:<voice id>') → [{ id, text, done, current, needs: [strings], note, action, actionLabel }]. Done steps come first; at most one
+   * step is current (the first not done); only the current step carries needs (what is missing, with live numbers: "600 students (you have
+   * 420)", "$2M (you have $1.2M + $800k loan line)", "a Campus Road within 4 tiles of a free 6 × 5 site"), a note (one line of when or how:
+   * "The lights come on Sep 8, Y3 vs Delta A&M") and an action:
+   *   {kind: 'build', tool}                                     arm that tool (the card's old "Build it")
+   *   {kind: 'inspect', buildingId, highlight: 'upgrade' | …}   pan to the building, open its card, light that control
+   *   {kind: 'panel', panel, highlight?, tab?, section?}        open the Menu sheet on that panel, light that control
+   *   {kind: 'show', id? | tx, ty, tiles?}                      Show me (the goal's own target, or a tile)
+   *   null                                                      nothing to click: wait, or meet the needs first
+   * Pure over state and cheap: call it when the card renders or goes dirty, never per frame. opts.sites (the card is open) adds the
+   * "is any site left on my land" scan for big / road-bound footprints.
+   */
+  M.goalSteps = function (state, id, opts) {
+    try {
+      if (!state || !state.progress || !state.tiles || typeof id !== 'string' || !objDef(id)) return [];
+      const raw = rawSteps(state, id) || [], doneList = raw.filter(function (x) { return x.done; }), todo = raw.filter(function (x) { return !x.done; });
+      return doneList.concat(todo).map(function (st, k) {
+        const cur = !st.done && k === doneList.length;
+        let m = null; if (cur && typeof st.more === 'function') { try { m = st.more(opts || {}); } catch (e) { BSU.error('progress', 'goalSteps:' + id + ':' + st.id, e); } }
+        const action = (m && m.action) || null;
+        return { id: st.id, text: st.text, done: st.done, current: cur, needs: m && Array.isArray(m.needs) ? m.needs.filter(Boolean) : [], note: (m && typeof m.note === 'string') ? m.note : '', action: action, actionLabel: action ? ((m && m.actionLabel) || (action.kind === 'panel' ? 'Open ' + (PANEL_NAME[action.panel] || action.panel) : ACTION_LABEL[action.kind]) || 'Go') : '' };
+      });
+    } catch (e) { BSU.error('progress', 'goalSteps', e); return []; }
   };
 
   // ---------------------------------------------------------------------------
@@ -1473,13 +1768,46 @@
     if (day < start || day > latest) return;
     if (day === latest || closed(state, '11')) scheduleAmelie(state);
   }
+  /** a home game still to be played, dated today or later (a game already on the field today is not "ahead": its day / night was fixed at kickoff) */
+  function homeAhead(state, e, day) {
+    if (!e || !e.home || e.played || e.cancelled || !(fin(e.day, NONE) >= day) || (e.postponed && fin(e.postponedTo, NONE) < 0)) return false;
+    const g = state.sports && state.sports.game;
+    return !(g && e.day === day && fin(g.day, NONE) === day);
+  }
+  /**
+   * goal steps pass (pure): where the scripted first night game stands →
+   * { capable (a complete Stadium of tier ≥ 2), earned (Night Falls), day (the scripted day while its home game is still ahead, else NONE),
+   *   entry (that schedule entry), pick (the entry a re-script would choose: the first Sep / Oct home game ahead, else the next home game
+   *   of any month, else null), night (the first home game ahead that will be played at night, scripted or not), playing (a night home
+   *   game is on the field today) }
+   */
+  function nightPlan(state) {
+    const sp = state.sports || {}, day = today(state), sched = Array.isArray(sp.schedule) ? sp.schedule : [];
+    const out = { capable: bhas(state, 'stadium', 2), earned: M.earned(state, 'nightFalls'), day: NONE, entry: null, pick: null, night: null, playing: false };
+    const sd = fin(sp.scriptedNightDay, NONE), g = sp.game;
+    out.playing = !!(g && g.home && g.night && fin(g.day, NONE) === day);   // a night home game is on the field right now
+    let win = null, any = null;
+    for (const e of sched) {
+      if (!homeAhead(state, e, day)) continue;
+      if (e.day === sd) { out.day = sd; out.entry = e; }
+      const m = parts(e.day).month;
+      if ((m === 9 || m === 10) && (!win || e.day < win.day)) win = e;
+      if (!any || e.day < any.day) any = e;
+      if ((e.night || e.day === sd) && (!out.night || e.day < out.night.day)) out.night = e;
+    }
+    out.pick = win || any;
+    return out;
+  }
+  /**
+   * The scripted clear night (GDD §10.4). goal steps pass: it can no longer be missed. It used to be scripted once, on the upgrade's own
+   * event, and only when a Sep / Oct home game was still ahead (an upgrade finishing after Oct 8, or between seasons, scripted nothing,
+   * ever). Now: while a night-capable Stadium stands, Night Falls is not earned and no scripted game is still ahead, script one; the daily
+   * step calls this, so a cancelled, postponed or passed game is replaced and a new season's schedule is picked up the day it arrives.
+   */
   function nightGameScript(state) {
-    if (fin(state.sports && state.sports.scriptedNightDay, NONE) >= 0 || M.earned(state, 'nightFalls')) return;
-    const day = today(state);
-    const sched = (state.sports && state.sports.schedule) || [];
-    let pick = null;
-    for (const e of sched) { if (!e || !e.home || e.played || e.cancelled || e.day < day) continue; const m = parts(e.day).month; if (m === 9 || m === 10) { if (!pick || e.day < pick.day) pick = e; } }
-    if (pick) call('sports', 'startNightGameScript', state, pick.day);
+    const n = nightPlan(state);
+    if (!n.capable || n.earned || n.playing || n.day >= 0 || !n.pick) return;
+    call('sports', 'startNightGameScript', state, n.pick.day);
   }
 
   // ---------------------------------------------------------------------------
@@ -1633,6 +1961,7 @@
         break;
       case EV.GAME_FINAL:
         if (!e) break;
+        if (e.home && e.night && (e.venue === 'stadium2' || e.venue === 'stadium3') && !M.earned(state, 'nightFalls')) { M.achieve(state, 'nightFalls'); p.forceFirefliesDay = day; }   // goal steps pass: a night game resolved off-screen sends no kickoff; it was still played
         if (e.home && !M.earned(state, 'bayouField')) M.achieve(state, 'bayouField');
         if (e.won && String(e.opp).toLowerCase().indexOf('magnolia') === 0) M.achieve(state, 'geauxBeatMagnolia');
         break;
@@ -1742,6 +2071,7 @@
       pollMilestones(state);
       checkDeadlines(state, c);
       failureDaily(state, c);
+      nightGameScript(state);   // goal steps pass: the daily re-script (a no-op while a scripted game is ahead or Night Falls is earned)
       if (fin(state.sports && state.sports.scriptedNightDay, NONE) === day) M.ticker(state, 34);
       if (fin(state.economy && state.economy.blackoutDays, 0) === 3) M.ticker(state, 54);
       { const stocked = blist(state, 'pond').filter(function (b) { return b.data && fin(b.data.stockedDay, NONE) >= 0 && b.data.stockedDay <= day; }).length; if (stocked > c.stockedSeen && c.stockedSeen >= 0 && day > 0) M.ticker(state, 35); c.stockedSeen = stocked; }
@@ -1818,6 +2148,11 @@
       for (const id of allIds) if (TUTORIAL_IDS.indexOf(id) < 0) A(typeof TRIGGERS[id] === 'function', 'objective ' + id + ' has a trigger');
       for (const id of allIds) A(typeof GOALS[id] === 'function', 'objective ' + id + ' has a goal');
       for (const id of allIds) A(kindOf(id) === od(id).kind, 'kind matches data for ' + id);
+      // goal steps pass: every goal the card can show has steps: at most one current, the first not done, text within the cap
+      for (const id of allIds.concat(Object.keys(EXTRA_OBJ)).concat((data().voiceCards || []).map(function (v) { return 'v:' + v.id; }))) {
+        const st = M.goalSteps(s, id, { sites: true }), k = st.findIndex(function (x) { return !x.done; });
+        A(st.length >= 1 && st.filter(function (x) { return x.current; }).length <= 1 && (k < 0 || st[k].current) && st.every(function (x) { return x.text && x.text.length <= STEP_TEXT_MAX; }), 'goal ' + id + ' has well-formed steps');
+      }
       for (const id of allIds) A(GRANT_IDS.has(id) === !!(od(id).reward && od(id).reward.grant), 'grant reward set matches data for ' + id);
 
       // 2. scheduler: three interrupts in one tick → one offer per tick, FIFO; background waits; promotes after completion

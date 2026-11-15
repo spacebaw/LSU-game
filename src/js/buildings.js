@@ -124,6 +124,7 @@
         heat: new Float32Array(N), mosq: new Float32Array(N), noise: new Float32Array(N)
       },
       undo: null,
+      tileVer: 0, site: {},          // goal steps pass: bumped on every tile:changed / building change; siteScan's per-row cache
       fillMask: null, fillRev: -1,   // L3: Uint8Array (stage + 1 per tile of a run in progress), rebuilt when state.fill.rev changes
       pendingPulses: [],
       pendingRolls: false, rollsApplied: false, toppled: [],
@@ -142,7 +143,7 @@
     if (!C || C.root !== state) C = newCache(state);
     return C;
   }
-  function dirtyAll(c) { c.coverageDirty = true; c.aurasDirty = true; c.ringDirty = true; c.ringEmitPending = true; c.ringCache.clear(); c.gapCache.clear(); c.runCache = null; c.statsCache = null; c.connectedDirty = true; }
+  function dirtyAll(c) { c.tileVer++; c.coverageDirty = true; c.aurasDirty = true; c.ringDirty = true; c.ringEmitPending = true; c.ringCache.clear(); c.gapCache.clear(); c.runCache = null; c.statsCache = null; c.connectedDirty = true; }
 
   // ---------------------------------------------------------------------------
   // Terrain / hydro / economy write-throughs (guarded: the module must work with a
@@ -1827,23 +1828,62 @@
     if (Array.isArray(u.any) && u.any.length && !u.any.some(function (x) { return unlockOkLocal(state, x); })) return false;
     return true;
   }
-  /** stadium tiers / Bayou Field: charges, closes the building until the tier completes */
+  /** goal steps pass: the unmet parts of a tier's unlock / the cash line, phrased by progress (the single owner of the condition wording); a terse
+   *  local fallback when progress is absent (isolated tests) */
+  function unlockNeeds(state, u) {
+    const pr = dep.progress();
+    if (pr && typeof pr.unlockNeeds === 'function') { const r = pr.unlockNeeds(state, u); if (Array.isArray(r)) return r; }
+    const out = [], ec = state.economy || {};
+    if (!u) return out;
+    if (u.students != null && fin(ec.students, 0) < u.students) out.push(BSU.formatInt(u.students) + ' students (you have ' + BSU.formatInt(Math.floor(fin(ec.students, 0))) + ')');
+    if (u.prestige != null && fin(ec.prestige, 0) < u.prestige) out.push('Prestige ' + u.prestige + ' (you have ' + Math.floor(fin(ec.prestige, 0)) + ')');
+    if (u.ecology != null && fin(ec.ecology, 0) < u.ecology) out.push('Ecology ' + u.ecology + ' (you have ' + Math.floor(fin(ec.ecology, 0)) + ')');
+    if (!out.length) out.push('Locked');
+    return out;
+  }
+  function cashNeed(state, cost) {
+    if (canAfford(state, cost)) return '';
+    const pr = dep.progress();
+    if (pr && typeof pr.cashNeed === 'function') { const r = pr.cashNeed(state, cost); if (typeof r === 'string' && r) return r; }
+    return BSU.formatMoney(cost) + ' (you have ' + BSU.formatMoney(Math.max(0, fin(state.economy && state.economy.cash, 0))) + ')';
+  }
+  /**
+   * goal steps pass: what the next tier of building `id` is and whether it can be bought right now. Pure: nothing is charged or changed.
+   * → { ok, next: {tier, name, cost, upkeep, seats, night, buildDays} | null, reason, needs: [strings], inProgress, doneDay }.
+   * `needs` are concrete and live ("1,500 students (you have 1,240)", "$8M (you have $3.2M + $2M loan line)"); `reason` is the one-line
+   * refusal M.upgrade returns ("Needs 1,500 students (you have 1,240)"). next is null at the top tier and for a row without tiers.
+   */
+  M.upgradeQuote = function (state, id) {
+    const out = { ok: false, next: null, reason: '', needs: [], inProgress: false, doneDay: -1 };
+    try {
+      const b = M.get(state, id);
+      if (!b) { out.reason = 'Pick a building'; return out; }
+      const row = rowOf(b.type);
+      if (!row || !Array.isArray(row.tiers) || !row.tiers.length) { out.reason = 'Nothing to upgrade'; return out; }
+      const next = row.tiers.find(function (t) { return t.tier === fin(b.tier, 0) + 1; });
+      if (next) out.next = { tier: next.tier, name: next.name || ('Tier ' + next.tier), cost: fin(next.cost, 0), upkeep: fin(next.upkeep, 0), seats: fin(next.seats, 0), night: !!next.night, buildDays: fin(next.buildDays, PB.tierUpgradeDays) };
+      if (b.upgradeDoneDay >= 0) { out.inProgress = true; out.doneDay = b.upgradeDoneDay; out.reason = 'Upgrade in progress'; return out; }
+      if (!isComplete(b)) { out.reason = b.ruin ? 'A ruin cannot be upgraded' : 'Still under construction'; return out; }
+      if (!next) { out.reason = 'Top tier'; return out; }
+      const pr = dep.progress();
+      const okUnlock = (pr && typeof pr.unlockOk === 'function') ? pr.unlockOk(state, next.unlock) !== false : unlockOkLocal(state, next.unlock);
+      if (!okUnlock) for (const n of unlockNeeds(state, next.unlock)) out.needs.push(n);
+      const cash = cashNeed(state, next.cost); if (cash) out.needs.push(cash);
+      out.ok = out.needs.length === 0;
+      if (!out.ok) out.reason = 'Needs ' + out.needs.join(' and ');
+      return out;
+    } catch (e) { if (BSU.SELFTEST) throw e; BSU.error('buildings', 'upgradeQuote', e); out.ok = false; out.reason = 'Cannot upgrade'; return out; }
+  };
+  /** stadium tiers / Bayou Field: charges, closes the building until the tier completes (goal steps pass: the refusal is upgradeQuote's reason, never a bare "Locked") */
   M.upgrade = function (state, id) {
     try {
       const b = M.get(state, id);
       if (!b) return { ok: false, cost: 0, tier: 0, reason: 'Pick a building' };
-      const row = rowOf(b.type);
-      if (!row || !row.tiers.length) return { ok: false, cost: 0, tier: b.tier, reason: 'Nothing to upgrade' };
-      if (!isComplete(b)) return { ok: false, cost: 0, tier: b.tier, reason: 'Still under construction' };
-      if (b.upgradeDoneDay >= 0) return { ok: false, cost: 0, tier: b.tier, reason: 'Upgrade in progress' };
-      const next = row.tiers.find(function (t) { return t.tier === b.tier + 1; });
-      if (!next) return { ok: false, cost: 0, tier: b.tier, reason: 'Top tier' };
-      const pr = dep.progress();
-      const okUnlock = (pr && typeof pr.unlockOk === 'function') ? pr.unlockOk(state, next.unlock) !== false : unlockOkLocal(state, next.unlock);
-      if (!okUnlock) return { ok: false, cost: next.cost, tier: b.tier, reason: 'Locked' };
+      const q = M.upgradeQuote(state, id), next = q.next;
+      if (!q.ok) return { ok: false, cost: (next && !q.inProgress && isComplete(b)) ? next.cost : 0, tier: b.tier, reason: q.reason || 'Cannot upgrade' };
       if (!charge(state, next.cost, 'construction', { i: BSU.idx(b.tx, b.ty) })) return { ok: false, cost: next.cost, tier: b.tier, reason: 'Not enough cash' };
       const day = dayOf(state);
-      b.upgradeDoneDay = day + fin(next.buildDays, PB.tierUpgradeDays);
+      b.upgradeDoneDay = day + next.buildDays;
       b.closedUntil = Math.max(b.closedUntil, b.upgradeDoneDay);
       dirtyAll(cache(state));
       return { ok: true, cost: next.cost, tier: next.tier };
@@ -2794,6 +2834,69 @@
       return null;
     } catch (e) { if (BSU.SELFTEST) throw e; BSU.error('buildings', 'spotNear', e); return null; }
   };
+  /**
+   * goal steps pass: is there a site for footprint row `id` on chartered land right now (cash ignored)?
+   * → { ok, tx, ty, rot, w, h, need, at } | null (not a footprint row). ok: (tx, ty, rot) is the legal anchor nearest the founders' plot
+   * (rot 1 = a turned footprint, h × w, only when no unturned site exists).
+   * Not ok: need = 'road' (free ground exists, but none within the row's roadWithin of a Campus Road; `at` is the nearest such anchor),
+   * 'link' (free ground exists but no path reaches it while the tie rule is enforced; `at`), or 'land' (no free ground of that size is left).
+   * Budgeted: anchors off the charter, on water or on anything built are dropped by array tests before canPlace is asked; canPlace runs
+   * at most SITE_BUDGET times (when the budget runs out with nothing proven the answer is ok with unknown: true: never a false "no site");
+   * the result is cached per row until the in-game day, a tile, a building or the charter changes.
+   */
+  const SITE_BUDGET = 160;
+  M.siteScan = function (state, id) {
+    try {
+      const row = rowOf(id); if (!row || row.kind !== 'footprint' || !state || !state.tiles) return null;
+      const c = cache(state), key = dayOf(state) + '|' + c.tileVer + '|' + (Array.isArray(state.buildings) ? state.buildings.length : 0) + '|' + fin(call('land', 'count', [state], 0), 0);
+      const hit = c.site[id]; if (hit && hit.key === key) return hit.res;
+      const t = state.tiles, mask = call('land', 'mask', [state], null), R = fin(row.roadWithin, 0) | 0;
+      const f = (state.plot && state.plot.founders) || { tx: W >> 1, ty: H >> 1 };
+      // road tiles as a summed-area table: "a Campus Road within R of the footprint" in O(1) per anchor
+      let roads = null;
+      if (R > 0) { roads = new Int32Array((W + 1) * (H + 1)); for (let y = 0; y < H; y++) { let run = 0; for (let x = 0; x < W; x++) { if (t.surface[y * W + x] === SURF.ROAD) run++; roads[(y + 1) * (W + 1) + x + 1] = roads[y * (W + 1) + x + 1] + run; } } }
+      const roadIn = function (x0, y0, x1, y1) { x0 = Math.max(0, x0); y0 = Math.max(0, y0); x1 = Math.min(W - 1, x1); y1 = Math.min(H - 1, y1); if (x1 < x0 || y1 < y0) return false; const S1 = W + 1; return roads[(y1 + 1) * S1 + x1 + 1] - roads[y0 * S1 + x1 + 1] - roads[(y1 + 1) * S1 + x0] + roads[y0 * S1 + x0] > 0; };
+      const wetOk = !!row.allowMarsh || row.placeRule === PLACE.MARSH_OR_PRESERVE || row.placeRule === PLACE.CYPRESS || row.placeRule === PLACE.RESTORE || row.id === 'rookery';
+      const free = function (i) { return (!mask || mask[i] === 1) && t.owner[i] === -1 && t.crest[i] === 0 && t.surface[i] === SURF.NONE && isLand(state, i) && !isCanal(state, i) && !isMound(state, i) && (wetOk || (!isMarsh(state, i) && !isPreserve(state, i))); };
+      const withRoad = [], noRoad = [], rots = (row.rotatable && row.w !== row.h) ? [0, 1] : [0];
+      for (const rot of rots) {
+        const d = dims(row, rot);
+        for (let y = 0; y + d.h <= H; y++) for (let x = 0; x + d.w <= W; x++) {
+          let ok = true;
+          for (let dy = 0; dy < d.h && ok; dy++) for (let dx = 0; dx < d.w; dx++) if (!free((y + dy) * W + x + dx)) { ok = false; break; }
+          if (!ok) continue;
+          const a = { tx: x, ty: y, rot: rot, d: Math.abs(x + (d.w >> 1) - f.tx) + Math.abs(y + (d.h >> 1) - f.ty) };
+          if (R > 0 && !roadIn(x - R, y - R, x + d.w - 1 + R, y + d.h - 1 + R)) noRoad.push(a); else withRoad.push(a);
+        }
+      }
+      const byDist = function (p, q) { return (p.rot - q.rot) || (p.d - q.d); };   // as drawn first (rot 0); a turned site (R while placing) only when nothing else is left
+      withRoad.sort(byDist); noRoad.sort(byDist);
+      const d0 = dims(row, 0), res = { ok: false, tx: -1, ty: -1, rot: 0, w: d0.w, h: d0.h, need: 'land', at: null, unknown: false };
+      let budget = SITE_BUDGET, link = null;
+      if (!M.unlocked(state, id).ok) res.unknown = true;   // a locked row is refused everywhere: the scan cannot say anything about the ground
+      for (const a of withRoad) {
+        if (res.unknown) break;
+        if (budget-- <= 0) { res.unknown = true; break; }
+        const q = M.canPlace(state, id, a.tx, a.ty, { rot: a.rot, ignoreCash: true });
+        if (q && q.ok) { res.ok = true; res.tx = a.tx; res.ty = a.ty; res.rot = a.rot; res.need = ''; break; }
+        if (q && !q.tiles.length) { res.unknown = true; break; }   // refused before the footprint was even looked at (locked, receivership, austerity): nothing about the ground is known
+        if (q && q.reason === TIE_REASON && !link) link = a;
+      }
+      if (!res.ok && res.unknown) { res.ok = true; res.need = ''; }   // not proven either way: never claim there is no site
+      if (!res.ok) {
+        let n = Math.max(24, budget);
+        for (const a of noRoad) {
+          if (n-- <= 0) break;
+          const q = M.canPlace(state, id, a.tx, a.ty, { rot: a.rot, ignoreCash: true });
+          if (q && !q.ok && /^Needs a Road/.test(q.reason || '')) { res.need = 'road'; res.at = { tx: a.tx, ty: a.ty, rot: a.rot }; break; }
+          if (q && q.reason === TIE_REASON && !link) link = a;
+        }
+        if (res.need === 'land' && link) { res.need = 'link'; res.at = { tx: link.tx, ty: link.ty, rot: link.rot }; }
+      }
+      c.site[id] = { key: key, res: res };
+      return res;
+    } catch (e) { if (BSU.SELFTEST) throw e; BSU.error('buildings', 'siteScan', e); return null; }
+  };
   function oakWithin(state, b, r) {
     for (const v of (state.veg || [])) if (v && v.type === 'oak' && v.stage >= LOCAL.oakStageForEffect && tileDist(v.tx, v.ty, b) <= r) return true;
     for (const q of M.list(state, 'quad')) if (isComplete(q) && rectDist(b.tx, b.ty, b.w, b.h, q.tx, q.ty, q.w, q.h) <= r) return true;
@@ -3061,6 +3164,7 @@
       listen(EV.LEVEE_BREACH, function (p, c) { c.ringDirty = true; c.ringEmitPending = true; c.ringCache.clear(); c.gapCache.clear(); c.runCache = null; });
       listen(EV.LEVEE_BURROW, function (p, c) { c.ringDirty = true; c.ringEmitPending = true; c.ringCache.clear(); c.gapCache.clear(); c.runCache = null; });
       listen(EV.TILE_CHANGED, function (p, c) {
+        c.tileVer++;
         if (p.what === 'surface') c.connectedDirty = true;
         if (p.what === 'crest' || p.what === 'flags' || p.what === 'elev') { c.ringDirty = true; c.ringEmitPending = true; c.ringCache.clear(); c.gapCache.clear(); if (p.what === 'crest') c.runCache = null; }
         c.statsCache = null;

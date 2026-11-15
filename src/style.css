@@ -196,8 +196,23 @@ svg.ic{width:var(--icon);height:var(--icon);flex:none;fill:none;stroke:currentCo
 .obj-prog-row{display:flex;align-items:center;gap:1.2rem;margin-top:1.2rem} .obj-prog-row .bar{flex:1 1 auto}
 .obj-actions{display:flex;align-items:center;gap:.8rem;margin-top:1.2rem;flex-wrap:wrap}
 #obj-count{font:500 var(--fs-body)/1 var(--font);color:var(--on-surface-variant);font-variant-numeric:tabular-nums;white-space:nowrap}
-.obj-next{margin-top:1.2rem;padding-top:1.2rem;border-top:1px solid var(--outline-variant);font-size:var(--fs-body);color:var(--on-surface-variant);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.obj-next{margin-top:1.2rem;padding-top:1.2rem;border-top:1px solid var(--outline-variant);font-size:var(--fs-body);color:var(--on-surface-variant);overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2}
 #hud.short #objective-card #obj-why,#hud.short #objective-card .obj-next{display:none}
+/* goal steps pass: the goal card's steps (ol#obj-steps): done = ticked and dimmed, current = a tonal row with what it needs and the one button, later = plain */
+.obj-steps{list-style:none;margin:1.2rem 0 0;padding:0;display:flex;flex-direction:column;gap:.2rem}
+.obj-steps .st{display:flex;align-items:flex-start;gap:.8rem;padding:.3rem .8rem;border-radius:var(--shape-sm);color:var(--on-surface)}
+.st-n{flex:none;display:inline-flex;align-items:center;justify-content:center;width:2rem;height:2rem;border-radius:50%;font:600 var(--fs-label)/1 var(--font);color:var(--on-surface-variant);box-shadow:inset 0 0 0 1px var(--outline)}
+.st-b{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;align-items:flex-start;gap:.6rem;padding-top:.1rem}
+.st.done{color:var(--on-surface-variant)} .st.done .st-n{background:var(--success-container);color:var(--on-success-container);box-shadow:none}
+.obj-steps .st.cur{margin:.2rem 0;padding:.8rem;background:var(--primary-container);color:var(--on-primary-container)} .st.cur .st-t,.st-k{font-weight:600} .st.cur .st-n{background:var(--primary);color:var(--on-primary);box-shadow:none}
+.st-need{line-height:1.35}
+#goal-pill.has-step{display:inline-grid;grid-template-columns:auto auto minmax(0,1fr) auto auto;align-items:center;row-gap:.2rem;height:auto;min-height:var(--control-h);padding:.5rem .8rem;border-radius:var(--shape-md)}
+#goal-pill.has-step .ring{grid-row:1 / 3}
+#goal-pill .step{grid-column:2 / 5;grid-row:2;width:0;min-width:100%;overflow:hidden;text-overflow:ellipsis;text-align:left;font:400 var(--fs-label)/1.2 var(--font);color:var(--on-surface-variant)}
+/* a control a step button lit: a ring that pulses three times (a steady ring under Reduce motion: the animation rule there ends it at once) */
+@keyframes step-lit{50%{box-shadow:0 0 0 .2rem var(--surface),0 0 0 .9rem var(--primary)}}
+.step-lit{box-shadow:0 0 0 .2rem var(--surface),0 0 0 .5rem var(--primary) !important;animation:step-lit 1.3s ease-in-out 3}
+@media (prefers-reduced-motion: reduce){body:not(.motion-on) .step-lit{animation:none}}
 #hud.scorebug #goal-pill,#hud.scorebug #objective-card{top:calc(var(--bar-h) + 11.2rem)}
 /* needs (the Students chip's popover): six gauge rows (label · bar · value), the binding line (ok success, warn warn, bad error), Locate, the applicants line */
 .needs-gauges{display:flex;flex-direction:column;gap:.4rem}
@@ -676,6 +691,10 @@ input[type="checkbox"]{accent-color:var(--primary)}
 .insp-pill{display:inline-block;padding:.2rem .9rem;border-radius:1.2rem;font-size:var(--fs-label);font-weight:700;line-height:1.5;margin:0 0 .6rem;border:1px solid transparent}
 .insp-pill.grey{background:var(--surface-container-high);color:var(--on-surface-variant);border-color:var(--outline-variant)}
 #insp-actions .btn.link{background:transparent;color:var(--primary);box-shadow:inset 0 0 0 1px var(--outline)}
+/* goal steps pass: the upgrade block leads the inspect card's actions: the priced button, what it buys, and (disabled) why not */
+.insp-up{flex:1 1 100%;order:-1;display:flex;flex-direction:column;align-items:flex-start;gap:.4rem;margin-bottom:.4rem}
+.insp-up .btn{max-width:100%;height:auto;padding:.4rem 1.2rem;white-space:normal;text-align:left}
+.up-gain{color:var(--on-surface-variant)} .up-now{font-weight:600} .up-why{color:var(--warn-text)}
 #card-firstTie .card-kicker{color:var(--primary)}
 /* land office (L2): the sections map, the detail block, the Grounds-tab card */
 #panel-land .land-wrap{display:flex;gap:2rem;align-items:flex-start;flex-wrap:wrap;margin:1.2rem 0}

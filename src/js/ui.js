@@ -174,6 +174,12 @@
   let tk = { seen: 0, lastLen: -1 };       // U2: the news lines of state.ticker already shown as snackbars (the Log panel lists them all)
   const snackQueue = [];                   // U2: notifications / news waiting for one of the two snackbar slots ({spec, kind, …} like `notifs`)
   const goal = { open: false, until: 0, hover: false, id: '' };   // U2: the goal pill ↔ goal card (open = the card; until = the clock the card folds at)
+  // goal steps pass: the card's steps (progress.goalSteps). Recomputed when the goal's key changes, an event marks them dirty, a day turns, or
+  // (card open) once a second; the list's DOM is rebuilt only when its signature changes. Never per frame.
+  const gsteps = { id: '', list: [], cur: null, sig: null, at: -1e9, day: -1, dirty: true, open: false, tool: '' };
+  const STEPS_MS = 1000, STEPS_FOLD = 4;   // a chain longer than STEPS_FOLD steps shows its finished steps as one "n done" row
+  let lit = null;                           // the control a step button lit: {id, at, until, el} (inspect card: rebuilt every refresh, so the class is re-applied; a panel control: the element itself)
+  const LIT_MS = 9000;
   M._goalCollapseMs = 10000;               // the card folds this long after it opened (hover restarts it; tests shorten it)
   const pops = { open: null };             // U2: the one transient popover (needs | budget | alerts | layers | map | menu | breakdown) or null
   const pal = { open: false };             // U2: the Build sheet (today's palette) shown by the FAB / G
@@ -353,7 +359,8 @@
     const fl = document.createElementNS(SVG_NS, 'circle'); fl.setAttribute('class', 'fill'); fl.setAttribute('cx', '12'); fl.setAttribute('cy', '12'); fl.setAttribute('r', '9'); fl.setAttribute('stroke-dasharray', '56.5'); fl.setAttribute('stroke-dashoffset', '56.5');
     ring.appendChild(tr); ring.appendChild(fl); p.appendChild(ring);
     const k = el('span', 'kicker', 'Goal'); k.id = 'gp-kicker'; const t = el('span', 'ttl', ''); t.id = 'gp-title'; const n = el('span', 'count', ''); n.id = 'gp-count';
-    p.appendChild(k); p.appendChild(t); p.appendChild(n); p.appendChild(icon('expand_more'));
+    const st = el('span', 'step hidden', ''); st.id = 'gp-step';   // goal steps pass: the current step, as the pill's second line
+    p.appendChild(k); p.appendChild(t); p.appendChild(n); p.appendChild(icon('expand_more')); p.appendChild(st); E['gp-step'] = st;
     E['goal-pill'] = p; E['gp-kicker'] = k; E['gp-title'] = t; E['gp-count'] = n; E['gp-ring'] = fl; return p;
   }
   function buildObjective() {
@@ -369,14 +376,17 @@
     head.appendChild(portrait); head.appendChild(col); head.appendChild(fold); head.appendChild(dis);
     const progRow = el('div', 'obj-prog-row'); const prog = el('div', 'bar'); prog.id = 'obj-progress'; const fill = el('div', 'fill'); prog.appendChild(fill); const count = el('span', null, ''); count.id = 'obj-count'; progRow.appendChild(prog); progRow.appendChild(count);
     const acts = el('div', 'obj-actions');
-    const build = btn('btn-obj-build', 'Build it', 'gold', function () { objBuildIt(); }); build.title = 'Select the right tool and open the build menu on it';
+    // goal steps pass: the steps of the goal (an ordered list under the goal text); #btn-obj-build is the current step's one button (it sits in that step's row; in .obj-actions, hidden, while no step has a button)
+    const steps = el('ol', 'obj-steps hidden'); steps.id = 'obj-steps'; steps.setAttribute('aria-label', 'Steps'); steps.setAttribute('role', 'list');   // role: a list without markers keeps its list semantics in Safari
+    const build = btn('btn-obj-build', 'Build it', 'gold small', function () { stepClick(); }); build.title = 'Take me to the next step';
     const showme = btn('btn-showme', 'Show me', '', function () { objShowMe(); });
     const post = btn('btn-postcard-obj', 'Postcard', 'hidden', function () { postcard(stateOf()); });
     acts.appendChild(build); acts.appendChild(showme); acts.appendChild(post);
     const next = el('div', 'obj-next hidden', ''); next.id = 'obj-next';
     const bg = el('div', 'row hidden', ''); bg.id = 'obj-background'; const bub = el('div', 'hidden', ''); bub.id = 'speech-bubble';
     c.addEventListener('mouseenter', function () { goal.hover = true; }); c.addEventListener('mouseleave', function () { goal.hover = false; goal.until = clock + M._goalCollapseMs; });   // hover holds the card; leaving restarts its 10 s
-    c.appendChild(bub); c.appendChild(head); c.appendChild(progRow); c.appendChild(acts); c.appendChild(next); c.appendChild(bg);
+    c.appendChild(bub); c.appendChild(head); c.appendChild(steps); c.appendChild(progRow); c.appendChild(acts); c.appendChild(next); c.appendChild(bg);
+    E['obj-steps'] = steps;
     E['objective-card'] = c; E['obj-portrait'] = portrait; E['obj-kicker'] = kick; E['obj-title'] = title; E['obj-text'] = text; E['obj-why'] = why; E['obj-progress'] = prog; E['obj-prog-row'] = progRow; E['obj-fill'] = fill; E['obj-count'] = count; E['obj-actions'] = acts;
     E['btn-obj-build'] = build; E['btn-showme'] = showme; E['btn-postcard-obj'] = post; E['btn-obj-dismiss'] = dis; E['btn-goal-collapse'] = fold; E['obj-next'] = next; E['obj-background'] = bg; E['speech-bubble'] = bub;
     // U3: the student voice is a dialog like the cards: #voice-card is its scrim host, #voice-dialog the card (Decline = the dismiss action, Esc)
@@ -756,7 +766,13 @@
 
   // ---- the goal pill ↔ goal card (U2) ---------------------------------------------------------------------------------------------
   /** open the card (from the pill, a goal change or the coach); the 10 s fold timer restarts on every open and on every hover leave */
-  function goalOpen(auto) { void auto; if (!goal.open) { goal.open = true; goal.hover = false; } goal.until = clock + M._goalCollapseMs; if (dom()) { show(E['objective-card'], objKey !== ''); show(E['goal-pill'], false); } }
+  /** goal steps pass: the goal card (taller, with its steps) and the expanded inspect card share the left edge, so one is open at a time: a goal change
+   *  does not pop the card open over an inspect card the player is reading (the pill carries the news); the player's own click on the pill folds the
+   *  inspect card to its pill; opening an inspect card folds the goal card (M.inspect) */
+  function goalOpen(auto) {
+    if (insp && !inspCollapsed) { if (auto) return; M.collapseInspect(true); }
+    if (!goal.open) { goal.open = true; goal.hover = false; } goal.until = clock + M._goalCollapseMs; if (dom()) { show(E['objective-card'], objKey !== ''); show(E['goal-pill'], false); }
+  }
   function goalCollapse() { if (!goal.open) return; goal.open = false; if (dom()) { show(E['objective-card'], false); show(E['goal-pill'], objKey !== '' && !setPieceOn()); show(E['speech-bubble'], false); } }
   function setPieceOn() { const s = stateOf(); return !!(s && s.setPiece); }
   /** goalOpen(false) folds the card to the pill; anything else opens it; returns the card state */
@@ -894,6 +910,8 @@
     on('objective:complete', function (p) { objKey = ''; if (p.id === '1') { hudFade = true; hudFadeAt = clock; } });
     on('objective:dismissed', function () { objKey = ''; }); on('objective:progress', function () { objKey = ''; });
     on('ring:changed', function () { objKey = ''; });
+    for (const ev of ['objective:offered', 'objective:progress', 'objective:complete', 'objective:dismissed', 'building:placed', 'building:complete', 'building:upgraded', 'building:removed', 'unlock:changed', 'land:chartered', 'game:scheduled', 'game:final', 'milestone:earned', 'ring:changed', 'enroll:round', 'enroll:lock', 'econ:month'])
+      on(ev, function () { gsteps.dirty = true; });   // goal steps pass
     on('milestone:earned', function () { msAt = -1e9; paletteDirty = true; });   // progress posts the paw-stamped notify itself
     on('game:decision', function (p) { if (!p || !p.id) return; if (p.closed) { delete gameDecs[p.id]; return; } gameDecs[p.id] = { id: p.id, kind: p.kind, options: Array.isArray(p.options) ? p.options : null, def: p.def, deadlineTicks: fin(p.deadlineTicks, 0) }; });   // football pass D: the engine emits this just before ui.decision, so openToast finds the options
     on('storm:toast', function (p) { const s = stateOf(); if (s) M.decision(s, { id: p.id, text: p.text, yes: p.yes, no: p.no, untilTick: p.untilTick, ticks: L.toastTicks }); });
@@ -1710,6 +1728,7 @@
     try {
       const s = state || stateOf(); if (!s || !target || !target.kind) return;
       insp = { kind: target.kind, id: fin(target.id, -1), i: fin(target.i, -1), legend: !!target.legend }; inspAt = -1e9; renaming = null;
+      if (goal.open && coach.step < 0) goalCollapse();   // goal steps pass: one card on the left edge at a time
       if (dom()) { E.inspect.dataset.kind = insp.kind; inspCollapsed = false; syncInspectFold(); show(E.inspect, true); cls(E.hud, 'inspect-open', true); refreshInspect(s); }
       if (live.state === 'IDLE') mcSet(live, 'INSPECTING');
     } catch (e) { uerr('inspect', e); }
@@ -1872,8 +1891,8 @@
       const res = (s.agents || []).find(function (a) { return a && a.home === b.id && a.state !== 'GONE'; });
       if (res) { const q = call('agents', 'inspect', s, res.id); if (q && q.quote) body.appendChild(row('A resident', '“' + q.quote + '”', 'quote')); }
       acts.appendChild(action('Rename', function () { startRename(b); return null; }));
-      if (!b.pilings && r.kind === 'footprint' && b.built >= 1 && !b.ruin) acts.appendChild(action('Pilings', function (st) { return call('buildings', 'retrofitPilings', st, b.id, {}); }));
-      if (b.hp < 1 && !b.ruin) acts.appendChild(action('Repair', function (st) { return call('buildings', 'repair', st, b.id); }));
+      if (!b.pilings && r.kind === 'footprint' && b.built >= 1 && !b.ruin) { const pq = call('buildings', 'canPlace', s, 'pilings', b.tx, b.ty, { target: b.id, ignoreCash: true }); const pb = action('Pilings' + (pq && fin(pq.cost, 0) > 0 ? ' · ' + money(pq.cost) : ''), function (st) { return call('buildings', 'retrofitPilings', st, b.id, {}); }); pb.id = 'btn-insp-pilings'; litClass(pb, 'insp:pilings'); acts.appendChild(pb); }   // goal steps pass: priced, and lit by the sinking goal's step
+      if (b.hp < 1 && !b.ruin) { const rb = action('Repair', function (st) { return call('buildings', 'repair', st, b.id); }); rb.id = 'btn-insp-repair'; litClass(rb, 'insp:repair'); acts.appendChild(rb); }
       // paths pass: a grey "Not connected" pill on a building off the network, with the tray's Link it (the tie from linkQuote: gravel, planks over water)
       if (r.pathAdjacency && b.type !== 'founders_hall') {
         const lq = call('buildings', 'linkQuote', s, b.id) || null;
@@ -1883,7 +1902,22 @@
           acts.appendChild(action(lq.ok ? 'Link it · ' + money(lq.cost) : 'Link it', function (st) { const r2 = call('buildings', 'linkBuilding', st, b.id); if (r2 && r2.ok) { if (issuesApi()) issuesApi().invalidate(); inspDirty = true; M.notify(st, { kind: 'info', text: 'Linked to campus: ' + r2.placed + (r2.placed === 1 ? ' tile' : ' tiles') + ' of path · ' + money(r2.cost), ttl: 3500 }); } return r2; }, 'link'));
         }
       }
-      if (r.tiers && r.tiers.length > fin(b.tier, 0)) acts.appendChild(action('Upgrade', function (st) { return call('buildings', 'upgrade', st, b.id); }));
+      // goal steps pass: the upgrade says what it buys ("Upgrade to The Cauldron · $8M" + "45,000 seats · night games · 6 days"); when it cannot be
+      // bought the button is disabled and the reason is text on the card; while it is under way the card says so and when it ends; the top tier shows nothing
+      if (r.tiers && r.tiers.length) {
+        const q = call('buildings', 'upgradeQuote', s, b.id) || null, nx = q && q.next;
+        if (q && q.inProgress) { const left = fin(q.doneDay, 0) - dayOf(s); const up = el('div', 'insp-up'); up.id = 'insp-upgrade'; up.appendChild(el('div', 'up-now', 'Upgrading' + (nx ? ' to ' + nx.name : '') + ' · done ' + (left <= 0 ? 'today' : left === 1 ? 'in 1 day' : 'in ' + left + ' days'))); acts.appendChild(up); }
+        else if (nx) {
+          const up = el('div', 'insp-up'); up.id = 'insp-upgrade';
+          const ub = action('Upgrade to ' + nx.name + ' · ' + money(nx.cost), function (st) { const rr = call('buildings', 'upgrade', st, b.id); if (rr && rr.ok) lightControl(null); return rr; }, 'primary'); ub.id = 'btn-insp-upgrade';
+          if (!q.ok) { ub.disabled = true; ub.setAttribute('aria-disabled', 'true'); ub.setAttribute('aria-describedby', 'insp-up-why'); }
+          litClass(ub, 'insp:upgrade'); up.appendChild(ub);
+          const gain = []; if (nx.seats) gain.push(fmtInt(nx.seats) + ' seats'); if (nx.night) gain.push('night games'); if (nx.upkeep) gain.push(money(nx.upkeep) + '/mo upkeep'); gain.push(nx.buildDays + (nx.buildDays === 1 ? ' day' : ' days') + ' to build');
+          up.appendChild(el('div', 'up-gain', gain.join(' · ')));
+          if (!q.ok) { const why = el('div', 'up-why', q.needs && q.needs.length ? 'Needs ' + q.needs.join(' · ') : (q.reason || 'Not available yet')); why.id = 'insp-up-why'; up.appendChild(why); }
+          acts.appendChild(up);
+        }
+      }
       if (b.type === 'generator') acts.appendChild(action('Refuel +3 days $5k', function (st) { return call('buildings', 'refuel', st, b.id); }));
       if (b.type === 'wildlife_post') acts.appendChild(action((b.data && b.data.nutriaBounty ? 'On · ' : '') + 'Nutria bounty', function (st) { return call('buildings', 'setPolicy', st, b.id, 'nutriaBounty', !(b.data && b.data.nutriaBounty)); }));
       if (b.type === 'abatement') acts.appendChild(action(b.data && b.data.active === false ? 'Abatement off → on' : 'Abatement on → off', function (st) { return call('buildings', 'setPolicy', st, b.id, 'active', !(b.data && b.data.active !== false)); }));
@@ -2144,12 +2178,114 @@
       return fin(p.goal, 0) > 1 && fin(p.progress, 0) < fin(p.goal, 0);
     } catch (e) { uerr('goalKeepsTool', e); return false; }
   }
-  function objBuildIt() {
+  /** "Build it": arm the tool and open the Build sheet on its card (tool: a step's own; default: the goal's target) */
+  function objBuildIt(tool) {
     const s = stateOf(); if (!s) return;
-    const o = call('progress', 'objective', s); const id = o ? objTarget(s, o) : null;
+    let id = (typeof tool === 'string' && rowOf(tool)) ? tool : null;
+    if (!id) { const o = call('progress', 'objective', s); id = o ? objTarget(s, o) : null; }
     if (!id) { M.openBuildMenu(s, {}); return; }
     if (!toolLocked && !s.setPiece) { bm.keepOpen = true; try { M.selectTool(s, id); } finally { bm.keepOpen = false; } }
     M.openBuildMenu(s, { focus: id, pulse: true });
+  }
+  /** goal steps pass: light a control for LIT_MS (a ring that pulses three times; a steady ring under Reduce motion). The inspect card is rebuilt
+   *  every refresh, so its buttons are lit by id as they are built (litClass); a panel control keeps the class on its own element */
+  function lightControl(id, elem, bid) {
+    if (lit && lit.el) cls(lit.el, 'step-lit', false);
+    lit = id ? { id: id, at: clock, until: clock + LIT_MS, el: elem || null, b: Number.isFinite(bid) ? bid : -1 } : null;
+    if (lit && lit.el) {
+      cls(lit.el, 'step-lit', true);
+      // bring it into the Menu sheet's own scroll (never scrollIntoView: that would shift the fixed #app)
+      try { const body = E['sheet-body'], r = lit.el.getBoundingClientRect(), q = body ? body.getBoundingClientRect() : null; if (q && r.height > 0 && q.height > 0 && (r.top < q.top || r.bottom > q.bottom)) body.scrollTop = Math.max(0, fin(body.scrollTop, 0) + r.top - q.top - (q.height - r.height) / 2); } catch (e) { /* stub */ }
+    }
+  }
+  function litClass(elem, id) { if (!elem || !lit || lit.id !== id || clock >= lit.until || !insp || lit.b !== insp.id) return; elem.classList.add('step-lit'); try { elem.style.animationDelay = '-' + Math.round(clock - lit.at) + 'ms'; } catch (e) { /* stub */ } }
+  function litTick() { if (lit && clock >= lit.until) lightControl(null); }
+  /**
+   * goal steps pass: run a step's action ("take me there"; the player still clicks to build or pay). Every pan here is the direct result of
+   * the player's click on the step's button.
+   *   build → objBuildIt(tool) · inspect → pan to the building, open its card, light a control · panel → open the Menu sheet on it, light a
+   *   control (land: the Land Office on a section for sale) · show → Show me (the goal's own target, or a tile)
+   */
+  function runStepAction(s, a) {
+    if (!s || !a || !a.kind) return false;
+    if (a.kind === 'build') { objBuildIt(a.tool); return true; }
+    if (a.kind === 'show') {
+      const r = Number.isFinite(a.tx) ? { tx: a.tx, ty: a.ty, tiles: a.tiles } : call('progress', 'showMe', s, a.id || goal.id);
+      if (bm.open) M.closeBuildMenu();
+      if (r) { showMe(s, r); if (Number.isFinite(a.tx) && Array.isArray(a.tiles) && a.tiles.length) call('render', 'flashTiles', a.tiles, 6000); }   // a site the step points at stays lit long enough to act on
+      return !!r;
+    }
+    if (a.kind === 'inspect') {
+      const b = call('buildings', 'get', s, a.buildingId); if (!b) return false;
+      if (s.setPiece) return false;
+      if (pal.open) M.openPalette(false);
+      if (sheet.open || M.panel()) M.openPanel(null);
+      if (s.ui.tool && !toolLocked) M.selectTool(s, null);
+      call('render', 'panToTile', b.tx + fin(b.w, 1) / 2, b.ty + fin(b.h, 1) / 2);
+      M.inspect(s, { kind: 'building', id: b.id });
+      lightControl(a.highlight ? 'insp:' + a.highlight : null, null, b.id); inspAt = -1e9; if (dom()) refreshInspect(s);
+      return true;
+    }
+    if (a.kind === 'panel') {
+      if (a.tab) { const pd = M.panels && M.panels[a.panel]; if (pd) pd.tab = a.tab; }   // the panel's refresh shows this tab (Season: Overview holds the Night games switch)
+      if (a.panel === 'land') M.openLandOffice(Number.isFinite(a.section) && a.section >= 0 ? a.section : undefined); else M.openPanel(a.panel);
+      if (a.highlight) { const e = E[a.highlight] || (typeof document !== 'undefined' && document.getElementById ? document.getElementById(a.highlight) : null); lightControl('panel:' + a.highlight, e); }
+      return M.panel() === a.panel;
+    }
+    return false;
+  }
+  function stepClick() { const s = stateOf(); if (!s || !gsteps.cur || !gsteps.cur.action) return; goal.until = clock + M._goalCollapseMs; runStepAction(s, gsteps.cur.action); gsteps.dirty = true; }
+  /** the steps of the goal on the card, refreshed on a key change, a dirty mark, a new day or (card open) once a second */
+  function refreshSteps(s, view, force) {
+    const isGoal = !!view && view.kind !== 'milestone';
+    const day = dayOf(s), tool = s.ui.tool ? s.ui.tool.id : '';
+    const due = force || gsteps.dirty || gsteps.id !== (isGoal ? view.id : '') || gsteps.day !== day || gsteps.open !== goal.open || gsteps.tool !== tool || (goal.open && clock - gsteps.at >= STEPS_MS);
+    if (!due) return;
+    gsteps.at = clock; gsteps.dirty = false; gsteps.day = day; gsteps.open = goal.open; gsteps.tool = tool; gsteps.id = isGoal ? view.id : '';
+    const list = isGoal ? (call('progress', 'goalSteps', s, view.id, { sites: goal.open }) || []) : [];
+    gsteps.list = list; gsteps.cur = list.find(function (x) { return x.current; }) || null;
+    // while an interrupt goal holds the card, the background goal waits on the "Next up" line: it carries that goal's current step
+    { const bl = (isGoal && view.bg) ? (call('progress', 'goalSteps', s, view.bg, {}) || []) : [], bc = bl.find(function (x) { return x.current; }); gsteps.bgStep = bc ? bc.text : ''; }
+    const sp = !!s.setPiece, cur = gsteps.cur, armed = !!(cur && cur.action && cur.action.kind === 'build' && tool === cur.action.tool);
+    const sig = gsteps.id + '|' + (sp ? 'sp' : '') + '|' + (armed ? 'armed' : '') + '|' + (gsteps.bgStep || '') + '|' + list.map(function (x) { return x.id + (x.done ? '+' : x.current ? '>' : '-') + x.text + '~' + x.needs.join('~') + '~' + (x.note || '') + '~' + x.actionLabel; }).join('|');
+    if (sig === gsteps.sig) return;
+    gsteps.sig = sig;
+    renderSteps(s, list, sp, armed);
+  }
+  function renderSteps(s, list, sp, armed) {
+    const ol = E['obj-steps'], b = E['btn-obj-build'], acts = E['obj-actions']; if (!ol || !b) return;
+    if (b.parentNode !== acts) { if (b.parentNode) b.parentNode.removeChild(b); acts.insertBefore(b, acts.firstChild); }   // home, before the list is cleared
+    clear(ol); show(ol, list.length > 0);
+    const cur = list.find(function (x) { return x.current; }) || null;
+    const nDone = list.filter(function (x) { return x.done; }).length, fold = list.length > STEPS_FOLD && nDone >= 2;
+    const mark = function (li, n, done) { const m = el('span', 'st-n'); m.setAttribute('aria-hidden', 'true'); if (done) m.appendChild(icon('check', 'sm')); else m.textContent = String(n); li.appendChild(m); };
+    if (fold) { const li = el('li', 'st done sum'); mark(li, 0, true); li.appendChild(el('span', 'st-t', nDone + ' done')); li.title = list.filter(function (x) { return x.done; }).map(function (x) { return x.text; }).join(' · '); li.setAttribute('aria-label', 'Steps 1 to ' + nDone + ' are done'); ol.appendChild(li); }
+    list.forEach(function (x, k) {
+      if (x.done && fold) return;
+      const li = el('li', 'st' + (x.done ? ' done' : x.current ? ' cur' : '')); li.dataset.step = x.id;
+      mark(li, k + 1, x.done);
+      const body = el('div', 'st-b'); body.appendChild(el('span', 'st-t', x.text));
+      if (x.done) li.setAttribute('aria-label', x.text + ' (done)');
+      if (x.current) {
+        li.setAttribute('aria-current', 'step');
+        if (x.needs.length) { const nd = el('div', 'st-need'); nd.id = 'obj-step-needs'; nd.appendChild(el('span', 'st-k', 'Needs ')); nd.appendChild(el('span', null, x.needs.join(' · '))); body.appendChild(nd); }
+        if (x.note) { const nt = el('div', 'st-need st-note', x.note); nt.id = 'obj-step-note'; body.appendChild(nt); }
+        if (x.action && !sp) { setText(b, armed ? 'Placing…' : x.actionLabel); b.setAttribute('aria-label', x.actionLabel + ': ' + x.text); b.dataset.kind = x.action.kind; b.dataset.id = x.action.tool || ''; b.title = armed ? 'Click the map to place it (Esc cancels)' : x.actionLabel; body.appendChild(b); }
+      }
+      li.appendChild(body); ol.appendChild(li);
+    });
+    show(b, !!(cur && cur.action) && !sp);
+    syncStepChrome(s);
+  }
+  /** what hangs off the current step outside the list: Show me (kept only where the step's own button does not already take the player there),
+   *  and the pill's second line + tooltip (CSS keeps the line inside the pill's own width) */
+  function syncStepChrome(s) {
+    const cur = gsteps.cur, ca = cur && cur.action, sp = !!(s && s.setPiece);
+    show(E['btn-showme'], !!gsteps.showme && !sp && !(ca && (ca.kind === 'show' || ca.kind === 'inspect')));
+    const line = (cur && gsteps.list.length > 1) ? cur.text : '';   // a one-step goal's step only repeats its title: the pill stays one line
+    setText(E['gp-step'], line ? 'Next: ' + line : ''); show(E['gp-step'], !!line); cls(E['goal-pill'], 'has-step', !!line);
+    if (E['goal-pill']) E['goal-pill'].title = (gsteps.pillBase || '') + (line ? ' · next: ' + line : '') + ' · click for the goal card';
+    setText(E['obj-next'], (gsteps.nextBase || '') + (gsteps.nextBase && gsteps.bgStep ? ' · ' + gsteps.bgStep : ''));
   }
   /** the five gauges + the binding constraint, from the same numbers the Students popover uses (economy.capacity) plus live coverage */
   function needsOf(s) {
@@ -2285,7 +2421,12 @@
     if (e.subsidenceRadius) add(e.subsidenceMult === 0 ? 'Stops the ground sinking' + within(e.subsidenceRadius) : 'Sinking −' + pct(e.subsidenceMult) + within(e.subsidenceRadius));
     if (e.coneDays) add('Storm cone ' + e.coneDays + ' days out' + (e.coneNarrow ? ', ' + Math.round(e.coneNarrow * 100) + '% narrower' : ''));
     if (Array.isArray(e.special)) for (const k of e.special) add(SPECIAL_TEXT[k] || '');
-    if (Array.isArray(row.tiers)) for (const t of row.tiers) add('Tier ' + t.tier + ' · ' + t.name + ': ' + (t.seats ? t.seats.toLocaleString('en-US') + ' seats, ' : '') + money(t.cost) + (t.night ? ', night games' : ''));
+    // goal steps pass: tiers by name, and said to be upgrades ("Tier 2" named nothing on screen); a Stadium is placed at its tier 1
+    if (Array.isArray(row.tiers) && row.tiers.length) {
+      const base = row.id === 'stadium' ? 1 : 0;
+      for (const t of row.tiers) add((t.tier > base ? 'Upgrade to ' + t.name : 'Opens as ' + t.name) + ': ' + (t.seats ? t.seats.toLocaleString('en-US') + ' seats, ' : '') + money(t.cost) + (t.night ? ', night games' : ''));
+      add('Upgrades are bought on the building’s own card: click it on the map');
+    }
     return out;
   }
   /** requirement glyphs for a row → [{glyph, text}] */
@@ -2569,7 +2710,7 @@
   /** Settings → replay: forget the flag and let the next frame start the tour (Settings closes) */
   M.startCoach = function (state, opts) { try { const s = state || stateOf(); M.settings().coachSeen = false; M.saveSettings(); coach.step = -1; coach.armedAt = clock - 1e5; if (s && s.ui && s.ui.panel) M.openPanel(null); if (opts && opts.now === true && s && dom()) coachStart(s); } catch (e) { uerr('startCoach', e); } };   // hud + zoom pass: {now: true} starts the tour at once (tests; headless has no eligibility)
   M.coachStep = function () { return coach.step; };
-  M._ux = { needsOf: needsOf, recommend: recommend, objTarget: objTarget, effectLines: effectLines, requirementsOf: requirementsOf, utilityWarning: utilityWarning, coachTarget: coachTarget, goalKeepsTool: goalKeepsTool, quoteRun: quoteRun };
+  M._ux = { stepAction: runStepAction, needsOf: needsOf, recommend: recommend, objTarget: objTarget, effectLines: effectLines, requirementsOf: requirementsOf, utilityWarning: utilityWarning, coachTarget: coachTarget, goalKeepsTool: goalKeepsTool, quoteRun: quoteRun };
 
   // ---------------------------------------------------------------------------
   // Issue spotlight pass: the Issues tray (docked under the minimap / overlay keys), Fix / Locate, keys
@@ -3516,7 +3657,7 @@
       let next = '';
       if (o.background && o.background.id !== o.id) next = 'Next up: ' + (o.background.title || o.background.text || '');
       else { const ms = call('progress', 'nearestMilestones', s, 1) || []; if (ms[0]) next = 'Next milestone: ' + ms[0].name + (ms[0].goal > 1 ? ' · ' + Math.round(fin(ms[0].progress, 0)) + ' / ' + ms[0].goal : ''); }
-      return { id: o.id, kind: o.kind === BSU.OBJ.BACKGROUND ? 'background' : 'interrupt', kicker: o.kind === BSU.OBJ.BACKGROUND ? 'Goal · in the background' : 'Goal', title: o.title || '', text: o.text || '', why: g ? g.why : '', progress: fin(o.progress, 0), goal: fin(o.goal, 0), deadline: o.deadline, target: target, next: next, showme: true, dismiss: true, postcard: o.id === '7' && /parade|postcard/i.test(o.text || ''), capped: o.id === '8' && /capped/i.test(o.text || '') };
+      return { id: o.id, kind: o.kind === BSU.OBJ.BACKGROUND ? 'background' : 'interrupt', kicker: o.kind === BSU.OBJ.BACKGROUND ? 'Goal · in the background' : 'Goal', title: o.title || '', text: o.text || '', why: g ? g.why : '', progress: fin(o.progress, 0), goal: fin(o.goal, 0), deadline: o.deadline, target: target, next: next, bg: (o.background && o.background.id !== o.id) ? o.background.id : '', showme: true, dismiss: true, postcard: o.id === '7' && /parade|postcard/i.test(o.text || ''), capped: o.id === '8' && /capped/i.test(o.text || '') };
     }
     if (stage < 6) return null;
     const ms = call('progress', 'nearestMilestones', s, 2) || []; const m = ms[0]; if (!m) return null;
@@ -3529,7 +3670,7 @@
     const stage = fin(call('progress', 'tutorialStage', s), 6);
     const view = trackerView(s, o, stage);
     show(E['milestones-card'], false);   // the tracker carries the nearest milestone now
-    if (!view) { if (objKey !== '') { objKey = ''; goal.id = ''; goal.open = false; show(E['objective-card'], false); show(E['goal-pill'], false); show(E['speech-bubble'], false); } return; }
+    if (!view) { if (objKey !== '') { objKey = ''; goal.id = ''; goal.open = false; show(E['objective-card'], false); show(E['goal-pill'], false); show(E['speech-bubble'], false); } litTick(); return; }
     const sp = !!s.setPiece;
     const key = view.id + '|' + view.title + '|' + view.text + '|' + view.progress + '/' + view.goal + '|' + (view.deadline >= 0 ? view.deadline : '') + '|' + (view.target || '') + '|' + view.next + '|' + (sp ? 'sp' : '') + '|' + (s.ui.tool ? s.ui.tool.id : '');
     if (key !== objKey) {
@@ -3544,22 +3685,23 @@
       show(E['obj-progress'], view.goal > 1); if (view.goal > 1) { const w = Math.round(frac * 100) + '%'; if (E['obj-fill'].style.width !== w) E['obj-fill'].style.width = w; }
       const countText = view.goal > 1 ? Math.round(view.progress) + ' / ' + view.goal : (view.deadline >= 0 ? 'by ' + BSU.formatDate(view.deadline) : '');
       setText(E['obj-count'], countText);
-      const tRow = view.target ? rowOf(view.target) : null; const selected = !!(s.ui.tool && tRow && s.ui.tool.id === view.target);
-      show(E['btn-obj-build'], !!tRow && !sp); if (tRow) { setText(E['btn-obj-build'], selected ? 'Placing ' + tRow.name + '…' : 'Build it: ' + tRow.name); E['btn-obj-build'].dataset.id = view.target; E['btn-obj-build'].title = (tRow.blurb || '') + ' ' + money(tRow.cost); }
-      show(E['btn-showme'], view.showme && !sp); show(E['btn-obj-dismiss'], view.dismiss && !sp);
+      gsteps.showme = !!view.showme; gsteps.pillBase = view.title + (countText ? ' · ' + countText : ''); gsteps.nextBase = view.next || '';
+      refreshSteps(s, view, true); syncStepChrome(s);   // goal steps pass: the steps and the current step's one button (#btn-obj-build: "Build it" and "Show me" are folded into it where they say the same thing)
+      show(E['btn-obj-dismiss'], view.dismiss && !sp);
       show(E['btn-postcard-obj'], view.postcard);
       E['obj-title'].title = view.capped ? 'Pilings lift a building 3 ft above the flood line' : '';
-      setText(E['obj-next'], view.next); show(E['obj-next'], !!view.next);
+      show(E['obj-next'], !!view.next);
       show(E['obj-background'], false);
       E['objective-card'].dataset.kind = view.kind; E['goal-pill'].dataset.kind = view.kind;
       // the pill: "GOAL n" (or the milestone kicker) · title · count · the ring
       setText(E['gp-kicker'], num ? 'Goal ' + num : (view.kind === 'milestone' ? 'Milestone' : 'Goal')); setText(E['gp-title'], view.title); setText(E['gp-count'], countText); show(E['gp-count'], !!countText);
       try { E['gp-ring'].setAttribute('stroke-dashoffset', String(Math.round(56.5 * (1 - frac) * 10) / 10)); } catch (e) { /* stub */ }
-      E['goal-pill'].title = view.title + (countText ? ' · ' + countText : '') + ' · click for the goal card';
       call('render', 'drawPortrait', E['obj-portrait'], 0);
       if (changed && !sp && !titleOn) goalOpen(true);   // a goal change opens the card on its own (it folds after 10 s without hover)
       show(E['objective-card'], goal.open); show(E['goal-pill'], !goal.open && !sp);
     }
+    else refreshSteps(s, view, false);
+    litTick();
     if (sp && goal.open) goalCollapse();
     if (goal.open && coach.step < 0 && !goal.hover && clock >= goal.until) goalCollapse();
     // the needs gauges (in the Students popover) once the Essentials tab exists (tutorial stage 4+)
@@ -3678,6 +3820,7 @@
       odo.cash = NaN; odo.students = NaN; odo.lastStudents = NaN; odo.holdUntil = -1; odo.deltaUntil = 0;
       tk = { seen: Math.max(0, ((state && state.ticker) || []).length - 1), lastLen: -1 };   // the latest line shows once after a load
       alertClosedKey = ''; tray.suggestOpen = false; tray.sopen = {};
+      gsteps.id = ''; gsteps.list = []; gsteps.cur = null; gsteps.sig = null; gsteps.dirty = true; gsteps.day = -1; if (lit && lit.el) cls(lit.el, 'step-lit', false); lit = null;   // goal steps pass
       pops.open = null; goal.open = false; goal.id = ''; goal.hover = false; pal.open = false; kb.in = false; kb.id = null; bm.query = ''; fabShown = null; legendKey = ''; mbAt = -1e9;   // U2
       bubble = { since: clock, until: 0, key: '' }; objKey = ''; alertKey = ''; alertAt = -1e9; msAt = -1e9; speedKey = ''; paletteKey = ''; palShownTab = ''; pipKey = ''; paletteDirty = true; capacityShown = false; skipShown = false; paletteHidden = null; hudFade = false;   // null: the first updateSetPiece re-syncs #palette and #hud.no-palette (a stale no-palette from the title / tutorial left a 0-height palette after newGame/load)
       M.debug.open = false; M.hoverTile = -1; lastGhost = null;

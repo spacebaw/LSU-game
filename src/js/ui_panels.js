@@ -72,6 +72,7 @@
 
   UI.panels = UI.panels || {};
   UI.panels.storm = UI.panels.storm || { testCat: 0 };
+  UI.panels.season = UI.panels.season || { tab: null };   // goal steps pass: tab = the Season tab the next refresh shows (set by a goal step's button)
 
   // ===========================================================================
   // BUDGET panel
@@ -583,7 +584,7 @@
   function autoSimFx(on) { return on ? 'Home games resolve in about 5 s with your coach and aggression defaults (no toasts)' : 'Home games play out as a set piece you can watch and steer'; }
   function nightFx(avail, on, tier) {
     const hf = PEN.homeField || {}, day = fin((hf.day || [])[tier], 6), night = fin((hf.night || [])[tier], day);
-    if (!avail) return 'Needs Stadium II (the Cauldron) for night games';
+    if (!avail) return 'Night games need The Cauldron: upgrade the Stadium';
     return on ? 'Night: home field +' + night + ' (day +' + day + '), bigger crowds, under the lights' : 'Day games: home field +' + day + '. Night adds +' + (night - day) + ' and a bigger crowd';
   }
   function permitsFx(v) { return v === 'free' ? 'Free: no tailgate income, but students remember the goodwill' : 'Paid: $' + fin(PSP.tailgatePer, 3) + ' of tailgate income per fan on game day'; }
@@ -830,6 +831,7 @@
   }
   function refreshSeason(s, host) {
     if (!host || !host._keys) return;
+    if (UI.panels.season.tab) { setTab(host, UI.panels.season.tab, false); UI.panels.season.tab = null; }   // goal steps pass: a step button opened the panel on a tab (Overview holds the Night games switch)
     const sp = call('sports', 'season', s) || { hasTeam: false, schedule: [], record: { wins: 0, losses: 0 }, coach: {}, starters: [] };
     const hasTeam = !!sp.hasTeam, up = call('sports', 'upcoming', s);
     const rec = sp.record || { wins: 0, losses: 0 };

@@ -264,7 +264,8 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - buildings.undo(state)
 - buildings.retrofitPilings(state, id, opts)
 - buildings.regrade(state, id)
-- buildings.upgrade(state, id)
+- buildings.upgradeQuote(state, id) → { ok, next: {tier, name, cost, upkeep, seats, night, buildDays} | null, reason, needs: [strings], inProgress, doneDay }   // goal steps pass: pure (nothing charged or changed); needs are live ("1,500 students (you have 1,240)", "$8M (you have $3.2M + $2M loan line)"); next is null at the top tier and for a row without tiers
+- buildings.upgrade(state, id)   // goal steps pass: a refusal carries upgradeQuote's reason ("Needs 400 students (you have 300)"), never a bare "Locked"
 - buildings.setPolicy(state, id, key, value)
 - buildings.refuel(state, id)
 - buildings.placeWestHall(state)
@@ -301,6 +302,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - buildings.linkQuote(state, id)
 - buildings.linkBuilding(state, id)
 - buildings.spotNear(state, id, tx, ty, opts)
+- buildings.siteScan(state, id) → { ok, tx, ty, rot, w, h, need: '' | 'road' | 'link' | 'land', at: {tx, ty, rot} | null, unknown } | null   // goal steps pass: is any site left for footprint row `id` on chartered land (cash ignored)? ok: the legal anchor nearest the founders' plot (rot 1 only when nothing unturned is left). Not ok: 'road' = free ground exists but none within roadWithin of a Campus Road (at = the nearest such site), 'link' = none within reach of a path while the tie rule is enforced, 'land' = no free ground of that size. Array prefilter, then at most 160 canPlace calls (budget spent or a locked row → ok with unknown: true); cached per row until the day, a tile, a building or the charter changes
 - buildings.applyWindPulse(state, n, share)
 - buildings.boardOrder(state)
 - buildings.boardInfo(state)
@@ -577,7 +579,9 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - progress.timers(state)
 - progress.unlockOk(state, u)
 - progress.unlocked(state, id)
-- progress.unlockReason(state, id)
+- progress.unlockReason(state, id)   // goal steps pass: a tier requirement reads as an upgrade ("Upgrade the Practice Field to Bayou Field"; with no field: "Build a Practice Field, then upgrade it to Bayou Field")
+- progress.unlockNeeds(state, unlock) → [strings]   // goal steps pass: the unmet parts with live numbers ("600 students (you have 420)", "Prestige 30 (you have 22)", "Bayou Field (upgrade the Practice Field)", "the Fortress Bayou milestone"); [] when met
+- progress.cashNeed(state, cost) → ''   | "$8M (you have $3.2M + $2M loan line)"   // goal steps pass: '' when cash plus what is left of the loan line covers it
 - progress.milestoneProgress(state, id)
 - progress.earned(state, id)
 - progress.achieve(state, id, meta)
@@ -589,6 +593,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - progress.goalProgress(state, id) → {progress, goal} | null   (goal pass: an objective evaluated now; objective() carries the last tick's numbers)
 - progress.objective(state)
 - progress.showMe(state, id)
+- progress.goalSteps(state, id, opts?) → [{ id, text, done, current, needs: [strings], note, action, actionLabel }]   // goal steps pass: the ordered steps of any goal the card can show ('1'…'22', '11a', '18a', '18b', 'land1', 'p1'…'p3', 'sink1', 'v:<voice id>'); done steps first, at most one current (the first not done); only the current step carries needs (what is missing, live numbers), note (one line of when / how) and action: {kind: 'build', tool} | {kind: 'inspect', buildingId, highlight: 'upgrade' | 'pilings' | 'repair' | ''} | {kind: 'panel', panel, highlight?, tab?, section?} | {kind: 'show', id? | tx, ty, tiles?} | null (wait, or meet the needs first). opts.sites (the card is open) adds buildings.siteScan for big / road-bound footprints. Pure and cheap: called when the card renders or goes dirty, never per frame. progress.STEP_TEXT_MAX (72) caps step text
 - progress.tutorialStage(state)
 - progress.advanceTutorial(state, stage)
 - progress.skipSwoop(state)
@@ -1040,6 +1045,8 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - ui.keepOverlays(on)
 - ui.goalOpen(on)
 - ui.goalExpanded()
+- (goal steps pass) the goal card: ol#obj-steps (li.st[.done | .cur | .sum], aria-current="step" on the current one, #obj-step-needs, #obj-step-note); #btn-obj-build is the current step's one button (it sits in that step; "Build it" / "Take me there" / "Open …" / "Show me"); #btn-showme stays only beside a build / panel / wait step; #gp-step is the pill's second line (goals with more than one step). The goal card and the expanded inspect card are open one at a time (goalOpen folds the inspect card to its pill; ui.inspect folds the goal card; a goal change does not pop the card open over an inspect card). ui._ux.stepAction(state, action) runs a step's action; BSU.ui.panels.season.tab = the Season tab the next refresh shows
+- (goal steps pass) the inspect card: #insp-upgrade (#btn-insp-upgrade "Upgrade to The Cauldron · $8M", .up-gain, #insp-up-why when disabled, .up-now "Upgrading to … · done in N days"), #btn-insp-pilings (priced), #btn-insp-repair; a control a step lit carries .step-lit for 9 s
 - ui.openPalette(on, opts?)   // U4: opens / closes the Build sheet (collapsed); opts.focus puts the keyboard in it; openPalette(true) from the expanded sheet collapses it
 - ui.togglePalette()
 - ui.paletteOpen()   // the Build sheet is up in either state
