@@ -823,6 +823,59 @@
   };
 
   // ---------------------------------------------------------------------------
+  // The average month (unstick pass): what the campus earns and spends a month at today's settings
+  // ---------------------------------------------------------------------------
+  /** Pure. {income, costs, net, lines: {income: {key: $}, costs: {key: $}}}: yearly lumps (tuition's four installments, state funding, room fees,
+   *  festivals, the last season's gate) spread over 12 months, the monthly lines as the 1st would post them (no Homecoming bump), and the
+   *  monthly charges (upkeep with pumps and generators, salaries, utilities with the summer months averaged in, food, coaching spend + the
+   *  staff's salaries + the roster's yearly scholarships, loan interest on today's balance, the insurance premium). The ledger's last month is lumpy (tuition lands four times a year), so this
+   *  is the number the Board's dialogs quote and the levers move at once (demolish, tuition, faculty, coaching). No grants, no one-off cards. */
+  M.budget = function (state) {
+    const out = { income: 0, costs: 0, net: 0, lines: { income: {}, costs: {} } };
+    try {
+      const e = state.economy, st = stats(state), students = int(e.students, 0), MY = P.time.monthsPerYear;
+      const inc = out.lines.income, cost = out.lines.costs;
+      const prestigeF = PE.donationBase + clamp100(e.prestige) / 100, sn = seasonNow(state), eco = ecologyNow(state);
+      inc.tuition = e.cancelledSemester ? 0 : students * num(e.tuition, PE.tuition.default) * PE.installmentShare * PE.installments.length / MY;
+      inc.state = students * PE.statePerStudent * (PE.stateBase + PE.statePrestige * clamp100(e.prestige) / 100) * (eco < PE.stateEcoMin ? PE.stateEcoMult : 1) / MY;
+      inc.roomFees = e.cancelledSemester ? 0 : num(M.roomFees(state).total, 0) * 2 / MY;
+      inc.donations = int(e.alumni, 0) * PE.donationPerAlumnus * prestigeF * Math.min(PE.footballMultCap, 1 + PE.footballMultPerWin * sn.lastWins) * (tv(state, 'undefeatedDonations') || 1) * (tv(state, 'rivalryDonations') || 1);
+      let research = 0;
+      if (!st.brownout) {
+        for (const b of completeList(state, 'engineering')) { const eff = effective(state, b); if (eff > 0 && !b.blackout) research += PE.research.engineering * prestigeF * eff; }
+        const restoration = hasComplete(state, 'marsh_restoration') ? PE.research.restorationMult : 1;
+        for (const b of completeList(state, 'coastal_institute')) { const eff = effective(state, b); if (eff > 0 && !b.blackout) research += PE.research.coastal * (eco / PE.research.coastalEcoDiv) * prestigeF * eff * restoration; }
+        research *= (1 + tv(state, 'researchBonus')) * (tv(state, 'researchPush') || 1);
+      }
+      inc.research = research;
+      const lots = num(st.lots) > 0 ? num(st.lots) : completeList(state, 'parking').length;
+      inc.parking = Math.min(lots, lotsNeeded(students, st)) * PE.parkingPay + tv(state, 'voiceParking');
+      let poboy = 0; { const row = catalogRow('poboy'); for (const b of completeList(state, 'poboy')) poboy += num(row && row.effects.revenueMonthly, 2000) * effective(state, b); }
+      inc.misc = poboy;
+      let posts = 0; for (const b of completeList(state, 'wildlife_post')) if (b.data && b.data.policies && b.data.policies.nutriaBounty) posts++;
+      inc.pelts = PE.peltPay * posts;
+      inc.endowment = parts(state).year >= PE.endowmentFromYear ? int(e.endowment, 0) * PE.endowmentYield : 0;
+      const union = hasComplete(state, 'union'), F = PE.festivals;
+      inc.festivals = ((F.mardiGrasBase + F.mardiGrasPer * students) * (union ? F.unionMult : 1) + F.crawfish + (union ? F.crawfishUnion : 0) + F.homecoming) / MY;
+      const ab = call('sports', 'budget', [state], null);
+      inc.athletics = ab ? Math.max(num(ab.lastRevenue, 0), num(ab.revenueYear, 0)) / MY : 0;
+      const U = PE.utilities, summerShare = (U.summerMonths[1] - U.summerMonths[0] + 1) / MY;
+      cost.upkeep = num(call('buildings', 'upkeepTotal', [state], 0), 0) * (1 - clamp(tv(state, 'austerityUpkeep'), 0, 1)) + (num(st.pumpsRunning) * L.pumpRunPerDay + num(st.generatorsRunning) * L.generatorRunPerDay) * DAYS_PER_MONTH;
+      cost.salaries = students * PE.salaryPerStudent * num(PE.qualityMult[e.quality], 1);
+      cost.utilities = (U.perBuilding * completeList(state).length + U.perStudent * students) * (1 + (U.summerMult - 1) * summerShare);
+      cost.food = num(M.foodCost(state).total, 0);
+      let scholarships = 0; if (ab && Array.isArray(ab.lines)) for (const l of ab.lines) if (l && l.key === 'players') scholarships = Math.max(0, num(l.amount, 0));   // the roster's scholarships: one charge every Aug 5, on the coaching line
+      cost.coaching = num(e.coaching, 0) / MY + Math.max(0, num(call('sports', 'staffSalaryMonthly', [state], 0), 0)) + scholarships / MY;
+      cost.interest = e.cash < 0 ? -e.cash * PE.interest : 0;
+      cost.insurance = timerActive(timerRow(state, 'insurance'), today(state)) ? M.buildingValue(state) * PE.boardCards.insurance.premium / MY : 0;
+      for (const k of Object.keys(inc)) { inc[k] = Math.max(0, Math.round(num(inc[k], 0))); out.income += inc[k]; }
+      for (const k of Object.keys(cost)) { cost[k] = Math.max(0, Math.round(num(cost[k], 0))); out.costs += cost[k]; }
+      out.net = out.income - out.costs;
+    } catch (err) { BSU.error('economy', 'budget', err); }
+    return out;
+  };
+
+  // ---------------------------------------------------------------------------
   // Monthly money (§5.2, §5.3)
   // ---------------------------------------------------------------------------
   function monthlyCharges(state, month) {
@@ -927,7 +980,7 @@
   function cardPending(state) { const f = failure(state); return !!f.pendingKind; }
   function receiverActive(state) {
     const f = failure(state);
-    if (num(f.receiverUntilDay, -1) > today(state)) return true;
+    if (num(f.receiverUntilDay, -1) >= today(state)) return true;   // unstick pass: >= (was >): on the deadline day itself progress decides (receivership, or the notice is lifted), so the Board's card never comes back in the same tick
     return !!call('progress', 'receiverActive', [state], false);
   }
   function checkBankruptcy(state) {
@@ -1145,7 +1198,7 @@
           if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
           const tx = int(f.tx, 0) + dx, ty = int(f.ty, 0) + dy;
           if (!BSU.inBounds(tx, ty)) continue;
-          const can = call('buildings', 'canPlace', [state, 'pump', tx, ty, { rot: 0, ignoreCash: true }], null);
+          const can = call('buildings', 'canPlace', [state, 'pump', tx, ty, { rot: 0, ignoreCash: true, instant: true }], null);   // (unstick pass: instant marks a free delivery, which receivership does not freeze)
           if (!can || !can.ok) continue;
           const res = call('buildings', 'place', [state, 'pump', tx, ty, { rot: 0, ignoreCash: true, instant: true }], null);
           if (res && res.ok) return true;
@@ -1178,11 +1231,11 @@
           if (halls.length) { const pick = halls[BSU.rng.sim.int(halls.length)]; call('buildings', 'rename', [state, pick.id, L.namingHall], undefined); }
           break;
         }
-        case 'receiver': {
-          const delta = -int(e.cash, 0);
-          e.cash = 0;
-          emitStat(state, 'cash', 0, delta);
-          M.bump(state, 'prestige', -FL.receiverPrestige, 'receiver');
+        case 'receiver': case 'receiverExit': {   // unstick pass: 'receiver' (the day it starts) writes the debt off and takes the prestige; 'receiverExit' (the day it ends) covers what ran up while the Board was in charge. A positive balance is the player's (it used to be zeroed too)
+          if (int(e.cash, 0) < 0) { const delta = -int(e.cash, 0); e.cash = 0; emitStat(state, 'cash', 0, delta); }
+          if (cardId === 'receiver') M.bump(state, 'prestige', -FL.receiverPrestige, 'receiver');
+          e.negMonths = 0; e.bankruptcyCardDay = -1;   // the Board starts counting again: three more months past the loan line before its next card
+          M.runway(state);
           break;
         }
         case 'underwater': {

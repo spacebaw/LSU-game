@@ -236,6 +236,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - buildings.setbackSpot(state, id, tx, ty, opts)
 - buildings.dumpsterTile(state, id)
 - buildings.unlocked(state, id)
+- (unstick pass) canPlace / upgradeQuote / upgrade / retrofitPilings / regrade refuse with progress.receiverRefusal's text ("Receivership: 23 days left", never the bare word); path and boardwalk rows are not refused, nor is a free delivery (opts.ignoreCash + opts.instant: the Coastal Resilience Grant's pump); land.quote refuses the same way. Founders' Hall leaves no undo record (Ctrl+Z used to remove it for good)
 - buildings.constructionMult(state)
 - buildings.rename(state, id, name)
 - buildings.dishActive(state, dishId)
@@ -362,6 +363,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - economy.modifiers(state)
 - economy.bump(state, stat, delta, why)
 - economy.runway(state)
+- economy.budget(state) → {income, costs, net, lines: {income: {tuition, state, roomFees, donations, research, parking, misc, pelts, endowment, festivals, athletics}, costs: {upkeep, salaries, utilities, food, coaching, interest, insurance}}}   // unstick pass: the AVERAGE MONTH at today's settings, pure. Yearly lumps (tuition's four installments, state funding, room fees, festivals, the last season's gate) ÷ 12; the monthly lines as the 1st posts them; coaching = the spend + the staff's salaries + the roster's scholarships; interest on today's balance. The ledger's last month is lumpy (tuition lands four times a year), so this is what the Board's chip and dialogs quote and what the levers move at once. No grants, no one-off cards
 - economy.setTuition(state, v)
 - economy.setQuality(state, q)
 - economy.setSelectivity(state, s)
@@ -372,7 +374,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - economy.setSuppressCoverage(state, on)
 - economy.endow(state, amount)
 - economy.charterWest(state)
-- economy.applyCard(state, cardId, option)
+- economy.applyCard(state, cardId, option)   // unstick pass: 'receiver' (the day receivership starts) writes the debt off (cash → $0 only when negative: a positive balance is kept) and takes receiverPrestige; 'receiverExit' (the day it ends) covers what ran up under the Board; both zero negMonths and bankruptcyCardDay. The Board's card is not emitted on the deadline day itself (receiverUntilDay >= today)
 - economy.breakdown(state, stat)
 - economy.init(state)
 - economy.reset(state, fresh)
@@ -588,10 +590,12 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - progress.nearestMilestones(state, n)
 - progress.offered(state, id)
 - progress.complete(state, id)
-- progress.dismiss(state, id)
+- progress.dismiss(state, id)   // unstick pass: refused for a tutorial goal (1–5) while the tutorial runs (dismissable); a save with one dismissed is healed by the tutorial tick
+- progress.dismissable(state, id) → bool   // unstick pass: false for goals 1–5 while tutorialStage < 6 (the card then has no X)
 - progress.reopen(state, id)
 - progress.goalProgress(state, id) → {progress, goal} | null   (goal pass: an objective evaluated now; objective() carries the last tick's numbers)
 - progress.objective(state)
+- progress.countsSteps(state, id) → bool   // unstick pass: true for the goals whose {progress, goal} counts steps, not things (3, 5, 12, 15, 17, 19, 20, 22): the card and the pill read "Step 2 of 4" from goalSteps instead of "1 / 4"; counted goals (6, 7, 8, 16, 18a, 18b, the voice goals) keep "3 / 5"
 - progress.showMe(state, id)
 - progress.goalSteps(state, id, opts?) → [{ id, text, done, current, needs: [strings], note, action, actionLabel }]   // goal steps pass: the ordered steps of any goal the card can show ('1'…'22', '11a', '18a', '18b', 'land1', 'p1'…'p3', 'sink1', 'v:<voice id>'); done steps first, at most one current (the first not done); only the current step carries needs (what is missing, live numbers), note (one line of when / how) and action: {kind: 'build', tool} | {kind: 'inspect', buildingId, highlight: 'upgrade' | 'pilings' | 'repair' | ''} | {kind: 'panel', panel, highlight?, tab?, section?} | {kind: 'show', id? | tx, ty, tiles?} | null (wait, or meet the needs first). opts.sites (the card is open) adds buildings.siteScan for big / road-bound footprints. Pure and cheap: called when the card renders or goes dirty, never per frame. progress.STEP_TEXT_MAX (72) caps step text
 - progress.tutorialStage(state)
@@ -607,6 +611,11 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - progress.failureCard(state, kind)
 - progress.answerFailure(state, kind, optionId)
 - progress.receiverActive(state)
+- progress.receivership(state) → {phase: 'none' | 'deficit' | 'notice' | 'receiver', daysLeft, untilDay, cash, income, costs, net, chip, tone: 'warn' | 'danger' | 'ok'}   // unstick pass: where the university stands with the Board. deficit = cash < $0 and economy.budget().net < 0 (or failure.watch: it left receivership still short); notice = the Board's card answered "Not now" (failure.receiverUntilDay, receiver false): 60 days; receiver = receivership (params.econ.failure.receiverTermDays 30). chip = "Losing $215k a month" / "Board deadline · 53 days" / "Board check in 12 days · on track" / "Receivership · 23 days left". Pure; ui reads it twice a second
+- progress.receiverBrief(state, which?) → {phase, kicker, title, lead, facts: [{k, v, bad}], sections: [{title, lines}], buttons: ['budget'?, 'offers'?]} | null   // unstick pass: the explanation behind the chip with today's numbers (which 'exit' = the day the Board leaves; else the phase receivership() reports). receiver: what it is, the cash and the average month it found (failure.brief), what the Board did (the debt written off, prestige, each cut with its saving, 4×, auto-repair, default answers), what is frozen, what still works, when it ends and whether the gap is closed. The levers are today's: Faculty to Basic, Coaching spend, the bulldozer on the costliest building it takes (the last field carries the football staff and scholarships; for the deadline: the biggest refund), a tuition step, the insurance. Pure
+- progress.receiverRefusal(state, rowId?) → '' | "Receivership: 23 days left"   // unstick pass: every construction refusal while the Board is in charge (buildings.canPlace / upgradeQuote / retrofitPilings / regrade, land.quote); '' for the params.econ.failure.receiverAllow rows (path, boardwalk)
+- progress.boardOffers(state) → bool   // unstick pass: during the notice, the Board's card again (pending at once, so its buttons work while paused); taking an offer drops the deadline, "Keep my deadline" changes nothing
+- (unstick pass) state.progress.failure gains `watch` (bool: left receivership still short every month) and `brief` ({day, cash, income, costs, wrote, cuts: [{id, text, saving}], speedBefore, autoRepairBefore} | null: what the Board found and did on day one); both lazy, older saves load unchanged
 - progress.reportUnderwater(state, share)
 - progress.parade(state)
 - progress.paradeClick(state, px, py)
@@ -1045,6 +1054,8 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - ui.keepOverlays(on)
 - ui.goalOpen(on)
 - ui.goalExpanded()
+- (unstick pass) #board-chip (button, top-right under the app bar; data-tone warn | danger | ok, data-phase; hidden when progress.receivership().phase is 'none'): #board-chip-text is the chip text; a click opens the 'receiver' card (ui.card(state, 'receiver', {phase?: 'exit'})): #card-receiver, body .brief (p.lead, .facts > .row, .card-kicker + ul per section), one "Got it" (+ "Open Budget", "The Board's offers" on the deficit / deadline versions); its action row is sticky. A notify action may be {label, card, payload?} (opens that card). The refusal snackbar of a click placement carries "Why?" during receivership
+- (unstick pass) the goal card: #obj-paused (role status; #obj-paused-text, #btn-obj-resume "Resume" = speed 1) shows while the game is paused and the goal only waits on the clock (every step done, or the between-goals card); the pill's second line then reads "Paused: press Play to go on". #obj-count / #gp-count read "Step 2 of 4" for progress.countsSteps goals (the bar and the ring follow the steps done). #btn-obj-dismiss is hidden for a tutorial goal; elsewhere it puts the goal away with a snackbar ("Bring it back" = progress.reopen). Between tutorial goals 3 and 4 the card shows "The next goal is on its way" (view kind 'wait', no steps) instead of the finished goal
 - (goal steps pass) the goal card: ol#obj-steps (li.st[.done | .cur | .sum], aria-current="step" on the current one, #obj-step-needs, #obj-step-note); #btn-obj-build is the current step's one button (it sits in that step; "Build it" / "Take me there" / "Open …" / "Show me"); #btn-showme stays only beside a build / panel / wait step; #gp-step is the pill's second line (goals with more than one step). The goal card and the expanded inspect card are open one at a time (goalOpen folds the inspect card to its pill; ui.inspect folds the goal card; a goal change does not pop the card open over an inspect card). ui._ux.stepAction(state, action) runs a step's action; BSU.ui.panels.season.tab = the Season tab the next refresh shows
 - (goal steps pass) the inspect card: #insp-upgrade (#btn-insp-upgrade "Upgrade to The Cauldron · $8M", .up-gain, #insp-up-why when disabled, .up-now "Upgrading to … · done in N days"), #btn-insp-pilings (priced), #btn-insp-repair; a control a step lit carries .step-lit for 9 s
 - ui.openPalette(on, opts?)   // U4: opens / closes the Build sheet (collapsed); opts.focus puts the keyboard in it; openPalette(true) from the expanded sheet collapses it

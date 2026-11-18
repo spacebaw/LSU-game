@@ -1643,11 +1643,22 @@
     const def = (BSU.data && BSU.data.failureCards && BSU.data.failureCards[p.kind]) || { title: 'The Board has concerns', options: [] };
     const opts = Array.isArray(p.options) && p.options.length ? def.options.filter(function (o) { return p.options.indexOf(o.id) >= 0; }) : def.options;
     let answered = false;
+    // unstick pass: a button carries the option's name (the body has the whole line; the old labels were that line cut off at 57 characters)
+    const short = function (text) { const k = text.indexOf(':'); return k > 0 && k <= 40 ? text.slice(0, k) : (text.length > 60 ? text.slice(0, 57) + '…' : text); };
     const actions = opts.map(function (o) {
-      return { label: o.text.length > 60 ? o.text.slice(0, 57) + '…' : o.text, fn: function (st) { if (answered) return true; answered = true; call('progress', 'answerFailure', st, p.kind, o.id); } };
+      return { label: short(o.text), fn: function (st) { if (answered) return true; answered = true; call('progress', 'answerFailure', st, p.kind, o.id); } };
     });
-    if (p.kind === 'bankruptcy') actions.push({ label: 'Not now', dismiss: true, fn: function (st) { if (answered) return true; answered = true; call('progress', 'answerFailure', st, p.kind, null); } });
-    return { id: 'failure', kicker: 'Failure', title: def.title, body: opts.map(function (o) { return o.text; }), actions: actions, modal: true };
+    let body = opts.map(function (o) { return o.text; }), kicker = 'Failure';
+    if (p.kind === 'bankruptcy') {
+      // unstick pass: the Board's card says why it came (cash against the loan line, the average month) and what "Not now" starts; reopened from the
+      // deadline dialog (progress.boardOffers) the last button keeps the deadline that is already running
+      const rs = call('progress', 'receivership', s) || {}, again = rs.phase === 'notice', FL = PE.failure || {}, line = fin(s.economy && s.economy.loanLimit, fin(PE.loanLimit, 2000000));
+      kicker = 'Board of Regents';
+      body = [(again ? 'The Board\'s deadline is ' + BSU.formatDate(fin(rs.untilDay, 0)) + ' (' + int(rs.daysLeft, 0) + ' days). ' : 'Cash has been past the ' + money(line) + ' loan line for ' + fin(PE.bankruptMonths, 3) + ' months. ') + 'Cash is ' + money(fin(rs.cash, fin(s.economy && s.economy.cash, 0))) + '; an average month brings in ' + money(fin(rs.income, 0)) + ' and costs ' + money(fin(rs.costs, 0)) + '. ' + (again ? 'Taking an offer drops the deadline.' : 'Take one of the Board\'s offers, or fix it yourself.')].concat(body);
+      if (!again) body.push('Not now: the Board checks your cash in ' + fin(FL.receiverDays, 60) + ' days. Below $0 then, it runs the budget for ' + fin(FL.receiverTermDays, 30) + ' days (receivership: no new buildings, prestige −' + fin(FL.receiverPrestige, 20) + ').');
+      actions.push({ label: again ? 'Keep my deadline' : 'Not now: ' + fin(FL.receiverDays, 60) + ' days to fix it', dismiss: true, fn: function (st) { if (answered) return true; answered = true; call('progress', 'answerFailure', st, p.kind, null); } });
+    }
+    return { id: 'failure', kicker: kicker, title: def.title, body: body, actions: actions, modal: true };
   });
   UI.registerCard('damage', function (s, p) {
     const report = (p && p.report) || { bill: 0, tarps: 0, held: [], overtopped: [], breached: [], flooded: [], choices: {}, name: '', cat: 0 };

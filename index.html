@@ -221,6 +221,16 @@ svg.ic{width:var(--icon);height:var(--icon);flex:none;fill:none;stroke:currentCo
 .step-lit{box-shadow:0 0 0 .2rem var(--surface),0 0 0 .5rem var(--primary) !important;animation:step-lit 1.3s ease-in-out 3}
 @media (prefers-reduced-motion: reduce){body:not(.motion-on) .step-lit{animation:none}}
 #hud.scorebug #goal-pill,#hud.scorebug #objective-card{top:calc(var(--bar-h) + 11.2rem)}
+/* unstick pass: the Board's standing chip (top-right under the bar: a deficit, the Board's deadline, receivership); its dialog (#card-receiver); the goal card's paused row */
+#board-chip{position:absolute;right:var(--gutter);top:calc(var(--bar-h) + 8px);display:inline-flex;align-items:center;gap:.8rem;height:var(--control-h);padding:0 .8rem 0 1.2rem;border:0;border-radius:var(--shape-pill);background:var(--surface);color:var(--warn-text);box-shadow:var(--elev-1),inset 0 0 0 1px var(--warn);font:600 var(--fs-body)/1 var(--font);white-space:nowrap;cursor:pointer;z-index:2}
+#board-chip[data-tone="danger"]{background:var(--error-container);color:var(--on-error-container);box-shadow:var(--elev-1),inset 0 0 0 1px var(--error)}
+#board-chip[data-tone="ok"]{color:var(--on-surface);box-shadow:var(--elev-1),inset 0 0 0 1px var(--outline)}
+#board-chip .ic-w{display:inline-flex} #board-chip .t{font-variant-numeric:tabular-nums}
+#card-receiver{width:60rem;padding-bottom:0} #card-receiver .card-actions{position:sticky;bottom:0;margin-top:.8rem;padding:.8rem 0 2rem;background:var(--surface-container-high)}   /* Got it stays in view when a short window scrolls the text */
+.brief .lead{color:var(--on-surface)} .brief .facts{margin-bottom:1.2rem} .brief .facts .row{padding:.4rem 0} .brief .facts .row .v{font-variant-numeric:tabular-nums;white-space:nowrap}
+.brief .card-kicker{margin:1rem 0 .3rem;color:var(--primary)} .brief ul{margin:0;padding-left:1.8rem} .brief li{margin:.2rem 0;line-height:1.4}
+.obj-paused{display:flex;align-items:center;gap:.8rem;margin-top:1.2rem;padding:.8rem;border-radius:var(--shape-sm);background:var(--secondary-container);color:var(--on-secondary-container);font-weight:500;line-height:1.35}
+.obj-paused>span{flex:1 1 auto;min-width:0} .obj-paused .ic,.obj-paused .btn{flex:none}
 /* needs (the Students chip's popover): six gauge rows (label · bar · value), the binding line (ok success, warn warn, bad error), Locate, the applicants line */
 .needs-gauges{display:flex;flex-direction:column;gap:.4rem}
 .need{display:grid;grid-template-columns:8.8rem 1fr 9rem;align-items:center;gap:var(--sp-3);min-height:2.8rem;padding:0 .4rem;border-radius:.8rem;cursor:pointer}
@@ -1285,7 +1295,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
         austerityUpkeep: 0.3, austerityHappiness: 10, austerityDays: 120, austerityNoBuildDays: 10,
         hikeTuition: 3000, hikeApplicants: 0.4, hikeDays: 120,
         namingRights: 1000000, namingPrestige: 3,
-        receiverDays: 60, receiverYearDays: 120, receiverPrestige: 20, receiverSpeed: 4,
+        receiverDays: 60, receiverTermDays: 30, receiverPrestige: 20, receiverSpeed: 4, receiverAllow: ['path', 'boardwalk'],   // unstick pass: the Board's notice (60 days), then 30 days of receivership (was a 120-day year: 20 minutes at 4× with nothing to do); receiverAllow = the rows it never freezes
         underwaterShare: 0.5, underwaterDays: 15, cancelledPrestige: 15, cancelledAttritionMult: 2, resilienceGrant: 3000000,
         probationPrestige: 5, probationDays: 120, probationSeatShare: 0.5, probationSemesters: 2, probationApplicants: 0.5, probationExit: 15
       },
@@ -11228,6 +11238,13 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
     } catch (e) { BSU.error('buildings', 'unlocked', e); return { ok: false, reason: 'Locked' }; }
   };
   /** summer (May 6–Aug 4) −15% (GDD §5.3) */
+  /** unstick pass: '' or the Board's refusal while it runs the budget ("Receivership: 23 days left"); rowId = a catalog row (progress.receiverRefusal knows
+   *  which rows stay open), none for an upgrade / pilings / a regrade. A progress without receiverRefusal (a stub) falls back to receiverActive */
+  function receiverWhy(state, rowId) {
+    const rv = call('progress', 'receiverRefusal', [state, rowId || ''], null);
+    if (typeof rv === 'string') return rv;
+    return call('progress', 'receiverActive', [state], false) === true ? 'Receivership' : '';
+  }
   M.constructionMult = function (state) { return semesterOf(state) === 'summer' ? 1 + PE.terrainCost.summer : 1; };
 
   // ---------------------------------------------------------------------------
@@ -11983,7 +12000,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
     // 1. unlock / receivership / austerity
     const u = M.unlocked(state, id);
     if (!u.ok) return fail(r, u.reason || 'Locked');
-    if (call('progress', 'receiverActive', [state], false) === true) return fail(r, 'Receivership');
+    if (!(opts.ignoreCash && opts.instant)) { const rv = receiverWhy(state, id); if (rv) return fail(r, rv); }   // unstick pass: "Receivership: 23 days left" (never the bare word); the rows the Board does not freeze (Gravel Path, Boardwalk) pass, and so does a free delivery (the Coastal Resilience Grant's pump: ignoreCash + instant)
     if (timer(state, 'noConstruction')) return fail(r, 'Austerity: no construction this month');
     const day = dayOf(state);
     r.summer = semesterOf(state) === 'summer';
@@ -12480,7 +12497,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
       }
       undoRec.connector = fin(undoRec.connector, 0) + laid.length;
     }
-    if (!sharedUndo) pushUndo(state, undoRec, id);
+    if (!sharedUndo) { if (id === 'founders_hall') c.undo = null; else pushUndo(state, undoRec, id); }   // unstick pass: Founders' Hall is not undone (Ctrl+Z in its 10 s window took the hall away for good: it is in no Build tab)
     dirtyAll(c);
     emit(EV.BUILDING_PLACED, { id: b.id, type: b.type, tx: b.tx, ty: b.ty, w: b.w, h: b.h, cost: r.cost, pilings: b.pilings, connector: laid.length });
     if (b.built >= 1) onComplete(state, b);
@@ -12726,6 +12743,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
       const b = M.get(state, id);
       if (!b) return { ok: false, cost: 0, reason: 'Pick a building' };
       if (b.pilings) return { ok: false, cost: 0, reason: 'Already on pilings' };
+      { const rv = receiverWhy(state); if (rv) return { ok: false, cost: 0, reason: rv }; }
       const cost = retrofitCost(state, b);
       if (!opts.ignoreCash && !charge(state, cost, 'construction', { i: BSU.idx(b.tx, b.ty) })) return { ok: false, cost: cost, reason: 'Not enough cash' };
       const day = dayOf(state);
@@ -12743,6 +12761,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
       const b = M.get(state, id);
       if (!b) return { ok: false, cost: 0, reason: 'Pick a building' };
       const tiles = footprintOf(b), cost = PSUB.regradeCost * tiles.length;
+      { const rv = receiverWhy(state); if (rv) return { ok: false, cost: cost, reason: rv }; }
       if (!charge(state, cost, 'construction', { i: BSU.idx(b.tx, b.ty) })) return { ok: false, cost: cost, reason: 'Not enough cash' };
       const day = dayOf(state);
       for (const i of tiles) setElev(state, i, state.tiles.elev[i] + PSUB.regradeFt);
@@ -12802,6 +12821,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
       if (b.upgradeDoneDay >= 0) { out.inProgress = true; out.doneDay = b.upgradeDoneDay; out.reason = 'Upgrade in progress'; return out; }
       if (!isComplete(b)) { out.reason = b.ruin ? 'A ruin cannot be upgraded' : 'Still under construction'; return out; }
       if (!next) { out.reason = 'Top tier'; return out; }
+      { const rv = receiverWhy(state); if (rv) { out.reason = rv; return out; } }   // unstick pass: the Board freezes upgrades too
       const pr = dep.progress();
       const okUnlock = (pr && typeof pr.unlockOk === 'function') ? pr.unlockOk(state, next.unlock) !== false : unlockOkLocal(state, next.unlock);
       if (!okUnlock) for (const n of unlockNeeds(state, next.unlock)) out.needs.push(n);
@@ -15285,6 +15305,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
       out.section = s; out.price = s.price; out.gate = s.gate;
       if (s.owned) { out.reason = 'Already chartered'; return out; }
       if (!s.forSale) { out.reason = 'Not next to your land yet'; return out; }
+      { const rv = call('progress', 'receiverRefusal', [state, ''], ''); if (rv) { out.reason = rv; return out; } }   // unstick pass: the Board buys no land while it runs the budget ("Receivership: 23 days left")
       if (s.locked) { out.reason = 'Needs prestige ' + s.gate + ' (you have ' + Math.floor(out.prestige) + ')'; return out; }
       if (cash(state) < s.price) { out.reason = 'Needs ' + money(s.price) + ' in cash'; return out; }
       out.ok = true; return out;
@@ -16225,6 +16246,59 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
   };
 
   // ---------------------------------------------------------------------------
+  // The average month (unstick pass): what the campus earns and spends a month at today's settings
+  // ---------------------------------------------------------------------------
+  /** Pure. {income, costs, net, lines: {income: {key: $}, costs: {key: $}}}: yearly lumps (tuition's four installments, state funding, room fees,
+   *  festivals, the last season's gate) spread over 12 months, the monthly lines as the 1st would post them (no Homecoming bump), and the
+   *  monthly charges (upkeep with pumps and generators, salaries, utilities with the summer months averaged in, food, coaching spend + the
+   *  staff's salaries + the roster's yearly scholarships, loan interest on today's balance, the insurance premium). The ledger's last month is lumpy (tuition lands four times a year), so this
+   *  is the number the Board's dialogs quote and the levers move at once (demolish, tuition, faculty, coaching). No grants, no one-off cards. */
+  M.budget = function (state) {
+    const out = { income: 0, costs: 0, net: 0, lines: { income: {}, costs: {} } };
+    try {
+      const e = state.economy, st = stats(state), students = int(e.students, 0), MY = P.time.monthsPerYear;
+      const inc = out.lines.income, cost = out.lines.costs;
+      const prestigeF = PE.donationBase + clamp100(e.prestige) / 100, sn = seasonNow(state), eco = ecologyNow(state);
+      inc.tuition = e.cancelledSemester ? 0 : students * num(e.tuition, PE.tuition.default) * PE.installmentShare * PE.installments.length / MY;
+      inc.state = students * PE.statePerStudent * (PE.stateBase + PE.statePrestige * clamp100(e.prestige) / 100) * (eco < PE.stateEcoMin ? PE.stateEcoMult : 1) / MY;
+      inc.roomFees = e.cancelledSemester ? 0 : num(M.roomFees(state).total, 0) * 2 / MY;
+      inc.donations = int(e.alumni, 0) * PE.donationPerAlumnus * prestigeF * Math.min(PE.footballMultCap, 1 + PE.footballMultPerWin * sn.lastWins) * (tv(state, 'undefeatedDonations') || 1) * (tv(state, 'rivalryDonations') || 1);
+      let research = 0;
+      if (!st.brownout) {
+        for (const b of completeList(state, 'engineering')) { const eff = effective(state, b); if (eff > 0 && !b.blackout) research += PE.research.engineering * prestigeF * eff; }
+        const restoration = hasComplete(state, 'marsh_restoration') ? PE.research.restorationMult : 1;
+        for (const b of completeList(state, 'coastal_institute')) { const eff = effective(state, b); if (eff > 0 && !b.blackout) research += PE.research.coastal * (eco / PE.research.coastalEcoDiv) * prestigeF * eff * restoration; }
+        research *= (1 + tv(state, 'researchBonus')) * (tv(state, 'researchPush') || 1);
+      }
+      inc.research = research;
+      const lots = num(st.lots) > 0 ? num(st.lots) : completeList(state, 'parking').length;
+      inc.parking = Math.min(lots, lotsNeeded(students, st)) * PE.parkingPay + tv(state, 'voiceParking');
+      let poboy = 0; { const row = catalogRow('poboy'); for (const b of completeList(state, 'poboy')) poboy += num(row && row.effects.revenueMonthly, 2000) * effective(state, b); }
+      inc.misc = poboy;
+      let posts = 0; for (const b of completeList(state, 'wildlife_post')) if (b.data && b.data.policies && b.data.policies.nutriaBounty) posts++;
+      inc.pelts = PE.peltPay * posts;
+      inc.endowment = parts(state).year >= PE.endowmentFromYear ? int(e.endowment, 0) * PE.endowmentYield : 0;
+      const union = hasComplete(state, 'union'), F = PE.festivals;
+      inc.festivals = ((F.mardiGrasBase + F.mardiGrasPer * students) * (union ? F.unionMult : 1) + F.crawfish + (union ? F.crawfishUnion : 0) + F.homecoming) / MY;
+      const ab = call('sports', 'budget', [state], null);
+      inc.athletics = ab ? Math.max(num(ab.lastRevenue, 0), num(ab.revenueYear, 0)) / MY : 0;
+      const U = PE.utilities, summerShare = (U.summerMonths[1] - U.summerMonths[0] + 1) / MY;
+      cost.upkeep = num(call('buildings', 'upkeepTotal', [state], 0), 0) * (1 - clamp(tv(state, 'austerityUpkeep'), 0, 1)) + (num(st.pumpsRunning) * L.pumpRunPerDay + num(st.generatorsRunning) * L.generatorRunPerDay) * DAYS_PER_MONTH;
+      cost.salaries = students * PE.salaryPerStudent * num(PE.qualityMult[e.quality], 1);
+      cost.utilities = (U.perBuilding * completeList(state).length + U.perStudent * students) * (1 + (U.summerMult - 1) * summerShare);
+      cost.food = num(M.foodCost(state).total, 0);
+      let scholarships = 0; if (ab && Array.isArray(ab.lines)) for (const l of ab.lines) if (l && l.key === 'players') scholarships = Math.max(0, num(l.amount, 0));   // the roster's scholarships: one charge every Aug 5, on the coaching line
+      cost.coaching = num(e.coaching, 0) / MY + Math.max(0, num(call('sports', 'staffSalaryMonthly', [state], 0), 0)) + scholarships / MY;
+      cost.interest = e.cash < 0 ? -e.cash * PE.interest : 0;
+      cost.insurance = timerActive(timerRow(state, 'insurance'), today(state)) ? M.buildingValue(state) * PE.boardCards.insurance.premium / MY : 0;
+      for (const k of Object.keys(inc)) { inc[k] = Math.max(0, Math.round(num(inc[k], 0))); out.income += inc[k]; }
+      for (const k of Object.keys(cost)) { cost[k] = Math.max(0, Math.round(num(cost[k], 0))); out.costs += cost[k]; }
+      out.net = out.income - out.costs;
+    } catch (err) { BSU.error('economy', 'budget', err); }
+    return out;
+  };
+
+  // ---------------------------------------------------------------------------
   // Monthly money (§5.2, §5.3)
   // ---------------------------------------------------------------------------
   function monthlyCharges(state, month) {
@@ -16329,7 +16403,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
   function cardPending(state) { const f = failure(state); return !!f.pendingKind; }
   function receiverActive(state) {
     const f = failure(state);
-    if (num(f.receiverUntilDay, -1) > today(state)) return true;
+    if (num(f.receiverUntilDay, -1) >= today(state)) return true;   // unstick pass: >= (was >): on the deadline day itself progress decides (receivership, or the notice is lifted), so the Board's card never comes back in the same tick
     return !!call('progress', 'receiverActive', [state], false);
   }
   function checkBankruptcy(state) {
@@ -16547,7 +16621,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
           if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
           const tx = int(f.tx, 0) + dx, ty = int(f.ty, 0) + dy;
           if (!BSU.inBounds(tx, ty)) continue;
-          const can = call('buildings', 'canPlace', [state, 'pump', tx, ty, { rot: 0, ignoreCash: true }], null);
+          const can = call('buildings', 'canPlace', [state, 'pump', tx, ty, { rot: 0, ignoreCash: true, instant: true }], null);   // (unstick pass: instant marks a free delivery, which receivership does not freeze)
           if (!can || !can.ok) continue;
           const res = call('buildings', 'place', [state, 'pump', tx, ty, { rot: 0, ignoreCash: true, instant: true }], null);
           if (res && res.ok) return true;
@@ -16580,11 +16654,11 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
           if (halls.length) { const pick = halls[BSU.rng.sim.int(halls.length)]; call('buildings', 'rename', [state, pick.id, L.namingHall], undefined); }
           break;
         }
-        case 'receiver': {
-          const delta = -int(e.cash, 0);
-          e.cash = 0;
-          emitStat(state, 'cash', 0, delta);
-          M.bump(state, 'prestige', -FL.receiverPrestige, 'receiver');
+        case 'receiver': case 'receiverExit': {   // unstick pass: 'receiver' (the day it starts) writes the debt off and takes the prestige; 'receiverExit' (the day it ends) covers what ran up while the Board was in charge. A positive balance is the player's (it used to be zeroed too)
+          if (int(e.cash, 0) < 0) { const delta = -int(e.cash, 0); e.cash = 0; emitStat(state, 'cash', 0, delta); }
+          if (cardId === 'receiver') M.bump(state, 'prestige', -FL.receiverPrestige, 'receiver');
+          e.negMonths = 0; e.bankruptcyCardDay = -1;   // the Board starts counting again: three more months past the loan line before its next card
+          M.runway(state);
           break;
         }
         case 'underwater': {
@@ -40288,6 +40362,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
 //   │  │   #stat-prestige · #stat-happiness · #stat-ecology) · #date-chip(#sky-glyph #stat-date(.date-text) #chip-weather) · #speed(.speed-btn[data-speed]) ·
 //   │  │   .actions(#btn-alerts(#alerts-badge) · #ov-lit (the lit overlay chip) · #btn-layers · #btn-map · #btn-menu · #btn-mute · #chip-endowed)
 //   │  ├─ #alert-strip.hidden  #alert-icon #alert-text #alert-action #alert-gator
+//   │  ├─ #board-chip.hidden[data-tone]  (unstick pass: the Board's standing chip, top-right under the bar: "Losing $240k a month" / "Board deadline · 42 days" / "Receivership · 23 days left"; a click opens the 'receiver' dialog)
 //   │  ├─ #goal-pill (at rest: ring + #gp-kicker #gp-title #gp-count) ↔ #objective-card (the goal card: canvas#obj-portrait #obj-kicker #obj-title #obj-text #obj-why
 //   │  │     #btn-goal-collapse #btn-obj-dismiss #obj-progress(.fill) #obj-count #btn-obj-build #btn-showme #obj-next #obj-background #speech-bubble)
 //   │  ├─ #voice-card.hidden (the scrim host)  #voice-dialog.card  #voice-student #voice-text #voice-payoff #btn-voice-decline #btn-voice-accept
@@ -40437,7 +40512,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
   let menuEdit = null, menuReason = { text: '', until: 0 }, menuSig = '';   // menu layout pass: the Edit menu overlay ({id} while open, never saved), its inline refusal line, the dish-grid signature (cells are rebuilt only when the set changes)
   let tk = { seen: 0, lastLen: -1 };       // U2: the news lines of state.ticker already shown as snackbars (the Log panel lists them all)
   const snackQueue = [];                   // U2: notifications / news waiting for one of the two snackbar slots ({spec, kind, …} like `notifs`)
-  const goal = { open: false, until: 0, hover: false, id: '' };   // U2: the goal pill ↔ goal card (open = the card; until = the clock the card folds at)
+  const goal = { open: false, until: 0, hover: false, id: '', paused: '' };   // U2: the goal pill ↔ goal card (open = the card; until = the clock the card folds at)
   // goal steps pass: the card's steps (progress.goalSteps). Recomputed when the goal's key changes, an event marks them dirty, a day turns, or
   // (card open) once a second; the list's DOM is rebuilt only when its signature changes. Never per frame.
   const gsteps = { id: '', list: [], cur: null, sig: null, at: -1e9, day: -1, dirty: true, open: false, tool: '' };
@@ -40627,6 +40702,12 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
     p.appendChild(k); p.appendChild(t); p.appendChild(n); p.appendChild(icon('expand_more')); p.appendChild(st); E['gp-step'] = st;
     E['goal-pill'] = p; E['gp-kicker'] = k; E['gp-title'] = t; E['gp-count'] = n; E['gp-ring'] = fl; return p;
   }
+  /** unstick pass: the Board's standing chip (progress.receivership): a deficit, the Board's deadline, receivership; a click opens the explanation */
+  function buildBoardChip() {
+    const b = plainBtn('board-chip', 'sl hidden', function () { const s = stateOf(); if (s) M.card(s, 'receiver', {}); });
+    const ic = el('span', 'ic-w'); ic.appendChild(icon('hourglass')); const t = el('span', 't', ''); b.appendChild(ic); b.appendChild(t); b.appendChild(icon('chevron_right', 'go'));
+    E['board-chip'] = b; E['board-chip-text'] = t; E['board-chip-icon'] = ic; return b;
+  }
   function buildObjective() {
     // the goal card (U2; the UX pass's GOALS TRACKER ids are kept so progress / tests keep working): top-left under the bar, opened from the pill or by a goal change
     const c = el('div', 'goal-card hidden'); c.id = 'objective-card';
@@ -40636,7 +40717,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
     const openMs = function () { const s = stateOf(); if (!s || coach.step >= 0) return; M.openPanel(s.ui.panel === 'milestones' ? null : 'milestones'); };
     col.addEventListener('click', openMs); col.title = 'All milestones'; portrait.addEventListener('click', openMs);
     const fold = btn('btn-goal-collapse', null, 'icon', function () { goalCollapse(); }); fold.title = 'Fold to the pill'; fold.appendChild(icon('expand_less'));
-    const dis = btn('btn-obj-dismiss', null, 'icon', function () { const s = stateOf(); const o = s ? call('progress', 'objective', s) : null; if (o) call('progress', 'dismiss', s, o.id); }); dis.title = 'Dismiss this goal'; dis.appendChild(icon('close'));
+    const dis = btn('btn-obj-dismiss', null, 'icon', function () { dismissGoal(); }); dis.title = 'Put this goal away (Menu → Milestones brings it back)'; dis.appendChild(icon('close'));
     head.appendChild(portrait); head.appendChild(col); head.appendChild(fold); head.appendChild(dis);
     const progRow = el('div', 'obj-prog-row'); const prog = el('div', 'bar'); prog.id = 'obj-progress'; const fill = el('div', 'fill'); prog.appendChild(fill); const count = el('span', null, ''); count.id = 'obj-count'; progRow.appendChild(prog); progRow.appendChild(count);
     const acts = el('div', 'obj-actions');
@@ -40647,9 +40728,13 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
     const post = btn('btn-postcard-obj', 'Postcard', 'hidden', function () { postcard(stateOf()); });
     acts.appendChild(build); acts.appendChild(showme); acts.appendChild(post);
     const next = el('div', 'obj-next hidden', ''); next.id = 'obj-next';
+    // unstick pass: the game is paused and this goal is waiting on the clock (its steps are done, or the next goal is on its way): say so, with the one button that goes on
+    const paused = el('div', 'obj-paused hidden'); paused.id = 'obj-paused'; paused.setAttribute('role', 'status'); const pausedT = el('span', null, ''); paused.appendChild(icon('pause')); paused.appendChild(pausedT);
+    const resume = btn('btn-obj-resume', 'Resume', 'gold small', function () { const s = stateOf(); if (s) M.setSpeed(s, 1); }); resume.title = 'Run the clock (Space)'; paused.appendChild(resume);
+    E['obj-paused'] = paused; E['obj-paused-text'] = pausedT; E['btn-obj-resume'] = resume;
     const bg = el('div', 'row hidden', ''); bg.id = 'obj-background'; const bub = el('div', 'hidden', ''); bub.id = 'speech-bubble';
     c.addEventListener('mouseenter', function () { goal.hover = true; }); c.addEventListener('mouseleave', function () { goal.hover = false; goal.until = clock + M._goalCollapseMs; });   // hover holds the card; leaving restarts its 10 s
-    c.appendChild(bub); c.appendChild(head); c.appendChild(steps); c.appendChild(progRow); c.appendChild(acts); c.appendChild(next); c.appendChild(bg);
+    c.appendChild(bub); c.appendChild(head); c.appendChild(steps); c.appendChild(paused); c.appendChild(progRow); c.appendChild(acts); c.appendChild(next); c.appendChild(bg);
     E['obj-steps'] = steps;
     E['objective-card'] = c; E['obj-portrait'] = portrait; E['obj-kicker'] = kick; E['obj-title'] = title; E['obj-text'] = text; E['obj-why'] = why; E['obj-progress'] = prog; E['obj-prog-row'] = progRow; E['obj-fill'] = fill; E['obj-count'] = count; E['obj-actions'] = acts;
     E['btn-obj-build'] = build; E['btn-showme'] = showme; E['btn-postcard-obj'] = post; E['btn-obj-dismiss'] = dis; E['btn-goal-collapse'] = fold; E['obj-next'] = next; E['obj-background'] = bg; E['speech-bubble'] = bub;
@@ -40833,7 +40918,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
     if (!world) { world = el('canvas', 'world'); world.id = 'world'; world.setAttribute('tabindex', '0'); app.appendChild(world); }
     E.world = world;
     const hud = el('div'); hud.id = 'hud'; E.hud = hud;
-    hud.appendChild(buildTopbar()); hud.appendChild(buildAlert()); hud.appendChild(buildGoalPill());
+    hud.appendChild(buildTopbar()); hud.appendChild(buildAlert()); hud.appendChild(buildGoalPill()); hud.appendChild(buildBoardChip());
     buildObjective().forEach(function (x) { hud.appendChild(x); });
     buildPopovers().forEach(function (x) { hud.appendChild(x); });
     // U2: the snackbar lane (bottom centre): the Dismiss-all button, the news / notification stack (at most two), the decision snackbar
@@ -41920,7 +42005,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
     if (dom()) { ghostLabel(px, py, r && r.reason ? r.reason : 'Cannot build here', r && r.charter ? 'State land · click to open the Land Office (O)' : ((r && r.reason === tieReason()) ? 'Hold N to see the campus network' : ''), 'red'); shakeLabel(); }
     if (r && r.charter) charterRefusal(s, r.charter);   // L2: the Land Office reason with a button that opens the panel on that section
     else if (r && r.reason === tieReason()) tieRefusal(s, pre, g);
-    else if (!heldShift && !toolLocked) M.notify(s, { kind: 'info', text: row.name + ': ' + (r && r.reason ? r.reason : 'cannot build here'), ttl: 4000, stamp: 'placeRefused' });   // release pass: the click drops the tool, so the reason is a snackbar   // paths pass: the P2 reason with a Show me that pans to the nearest network tile
+    else if (!heldShift && !toolLocked) M.notify(s, { kind: 'info', text: row.name + ': ' + (r && r.reason ? r.reason : 'cannot build here'), ttl: 4000, stamp: 'placeRefused', action: (r && /^Receivership/.test(r.reason || '')) ? { label: 'Why?', card: 'receiver' } : null });   // release pass: the click drops the tool, so the reason is a snackbar   // paths pass: the P2 reason with a Show me that pans to the nearest network tile
     return false;
   }
   // L2: a tool refused on unchartered land. The first refusal is noted (the "Charter your first section" goal's trigger); the toast carries
@@ -42501,7 +42586,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
   function stepClick() { const s = stateOf(); if (!s || !gsteps.cur || !gsteps.cur.action) return; goal.until = clock + M._goalCollapseMs; runStepAction(s, gsteps.cur.action); gsteps.dirty = true; }
   /** the steps of the goal on the card, refreshed on a key change, a dirty mark, a new day or (card open) once a second */
   function refreshSteps(s, view, force) {
-    const isGoal = !!view && view.kind !== 'milestone';
+    const isGoal = !!view && view.kind !== 'milestone' && view.kind !== 'wait';
     const day = dayOf(s), tool = s.ui.tool ? s.ui.tool.id : '';
     const due = force || gsteps.dirty || gsteps.id !== (isGoal ? view.id : '') || gsteps.day !== day || gsteps.open !== goal.open || gsteps.tool !== tool || (goal.open && clock - gsteps.at >= STEPS_MS);
     if (!due) return;
@@ -42546,9 +42631,18 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
   function syncStepChrome(s) {
     const cur = gsteps.cur, ca = cur && cur.action, sp = !!(s && s.setPiece);
     show(E['btn-showme'], !!gsteps.showme && !sp && !(ca && (ca.kind === 'show' || ca.kind === 'inspect')));
-    const line = (cur && gsteps.list.length > 1) ? cur.text : '';   // a one-step goal's step only repeats its title: the pill stays one line
-    setText(E['gp-step'], line ? 'Next: ' + line : ''); show(E['gp-step'], !!line); cls(E['goal-pill'], 'has-step', !!line);
-    if (E['goal-pill']) E['goal-pill'].title = (gsteps.pillBase || '') + (line ? ' · next: ' + line : '') + ' · click for the goal card';
+    const line = goal.paused ? 'Paused: press Play to go on' : (cur && gsteps.list.length > 1) ? 'Next: ' + cur.text : '';   // a one-step goal's step only repeats its title: the pill stays one line
+    setText(E['gp-step'], line); show(E['gp-step'], !!line); cls(E['goal-pill'], 'has-step', !!line);
+    // unstick pass: "Step 2 of 4" where the old counter counted steps (the bar and the ring follow the steps done)
+    const n = gsteps.list.length, stepped = !!gsteps.stepCounted && n > 1;
+    const count = stepped ? 'Step ' + Math.min(n, gsteps.list.filter(function (x) { return x.done; }).length + 1) + ' of ' + n : (gsteps.countBase || '');
+    const frac = stepped ? gsteps.list.filter(function (x) { return x.done; }).length / n : fin(gsteps.fracBase, 0);
+    if (gsteps.title !== undefined) {
+      setText(E['obj-count'], count); setText(E['gp-count'], count); show(E['gp-count'], !!count); gsteps.pillBase = (gsteps.title || '') + (count ? ' · ' + count : '');
+      if (stepped) { const w = Math.round(frac * 100) + '%'; if (E['obj-fill'] && E['obj-fill'].style.width !== w) E['obj-fill'].style.width = w; }
+      try { if (E['gp-ring']) E['gp-ring'].setAttribute('stroke-dashoffset', String(Math.round(56.5 * (1 - frac) * 10) / 10)); } catch (e) { /* stub */ }
+    }
+    if (E['goal-pill']) E['goal-pill'].title = (gsteps.pillBase || '') + (line ? ' · ' + line.replace(/^Next: /, 'next: ') : '') + ' · click for the goal card';
     setText(E['obj-next'], (gsteps.nextBase || '') + (gsteps.nextBase && gsteps.bgStep ? ' · ' + gsteps.bgStep : ''));
   }
   /** the five gauges + the binding constraint, from the same numbers the Students popover uses (economy.capacity) plus live coverage */
@@ -43240,6 +43334,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
     else if (Number.isFinite(a.overlay)) out.fn = function (st) { M.setOverlay(st, a.overlay); };
     else if (a.event) out.fn = function () { emit(a.event, a.payload || {}); };
     else if (a.panel) out.fn = function () { M.openPanel(a.panel); };
+    else if (a.card) out.fn = function (st) { M.card(st, a.card, a.payload || {}); };   // unstick pass: "What is this?" on the Board's snackbars
     else return null;
     return out;
   }
@@ -43598,7 +43693,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
   M.panel = function () { const s = stateOf(); return s && s.ui ? s.ui.panel : null; };
   function refreshPanel(s, name) { const p = panels[name]; if (!p || !p.el) return; p.lastRefresh = clock; try { if (typeof p.refresh === 'function') p.refresh(s, p.el); } catch (e) { uerr('panel:refresh:' + name, e); } }
   /** UI scale pass: a panel wide enough to reach the docked cards (goals tracker, minimap, overlay keys, notifications, voice card) fades just the ones it overlaps, so no half-hidden text peeks out around it */
-  const FADE_IDS = ['objective-card', 'goal-pill', 'snack-lane', 'alert-strip', 'undo-chip', 'inspect', 'fab-build'];   // 'inspect' fades only under the Edit menu overlay (menu layout pass); U2: the popovers close when a panel opens
+  const FADE_IDS = ['objective-card', 'goal-pill', 'snack-lane', 'alert-strip', 'undo-chip', 'inspect', 'fab-build', 'board-chip'];   // 'inspect' fades only under the Edit menu overlay (menu layout pass); U2: the popovers close when a panel opens
   let fadeAt = -1e9;
   function syncPanelFade(s) {
     if (!dom() || clock - fadeAt < 250) return; fadeAt = clock;
@@ -43853,6 +43948,47 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
   }
 
   // ---------------------------------------------------------------------------
+  // The Board's chip and dialog (unstick pass): a deficit, the Board's deadline, receivership
+  // ---------------------------------------------------------------------------
+  const board = { key: '', at: -1e9 };
+  const BOARD_ICON = { receiver: 'hourglass', notice: 'hourglass', deficit: 'warning' };
+  /** twice a second: the chip follows progress.receivership (hidden when there is nothing to say); its text, title and accessible name are the countdown */
+  function updateBoard(s) {
+    if (clock - board.at < L.refreshMs) return; board.at = clock;
+    const r = call('progress', 'receivership', s) || { phase: 'none', chip: '' };
+    const on = r.phase !== 'none' && !!r.chip, key = on ? r.phase + '|' + r.tone + '|' + r.chip : '';
+    if (key === board.key) return; board.key = key;
+    const b = E['board-chip']; if (!b) return;
+    show(b, on); if (!on) return;
+    setText(E['board-chip-text'], r.chip); b.dataset.tone = r.tone || 'warn'; b.dataset.phase = r.phase;
+    const ic = E['board-chip-icon'], name = BOARD_ICON[r.phase] || 'warning'; if (ic && ic.dataset.icon !== name) { ic.dataset.icon = name; clear(ic); ic.appendChild(icon(name)); }
+    b.title = r.chip + ' · click for what it means and what fixes it'; b.setAttribute('aria-label', r.chip + ': what it means and what fixes it');
+  }
+  /** the 'receiver' dialog: progress.receiverBrief as a card (payload.phase 'exit' = the day the Board leaves; otherwise today's phase). One "Got it";
+   *  the deadline and deficit versions add Open Budget, the deadline version also "The Board's offers" */
+  M.registerCard('receiver', function (s, p) {
+    const br = call('progress', 'receiverBrief', s, p && p.phase === 'exit' ? 'exit' : undefined); if (!br) return null;
+    board.at = -1e9;   // the chip is re-read on the next frame (the dialog opens the day the phase changes)
+    let body = null;
+    if (dom()) {
+      body = el('div', 'brief'); body.appendChild(el('p', 'lead', br.lead));
+      const facts = el('div', 'facts'); br.facts.forEach(function (f) { const r = el('div', 'row' + (f.bad ? ' bad' : '')); r.appendChild(el('span', 'k', f.k)); r.appendChild(el('span', 'v', f.v)); facts.appendChild(r); }); body.appendChild(facts);
+      br.sections.forEach(function (sc) { body.appendChild(el('div', 'card-kicker', sc.title)); const ul = el('ul'); sc.lines.forEach(function (ln) { ul.appendChild(el('li', null, ln)); }); body.appendChild(ul); });
+    }
+    const actions = [{ label: 'Got it', primary: true }];
+    if (br.buttons.indexOf('budget') >= 0) actions.push({ label: 'Open Budget', fn: function () { M.openPanel('budget'); } });
+    if (br.buttons.indexOf('offers') >= 0) actions.push({ label: 'The Board\'s offers', fn: function (st) { call('progress', 'boardOffers', st); } });
+    return { id: 'receiver', kicker: br.kicker, title: br.title, body: body || [br.lead], actions: actions, brief: br };
+  });
+  /** the goal card's X: a goal that can be put away goes to Menu → Milestones, and a snackbar says so with the way back (a tutorial goal has no X) */
+  function dismissGoal() {
+    const s = stateOf(); const o = s ? call('progress', 'objective', s) : null; if (!o || call('progress', 'dismissable', s, o.id) === false) return;
+    call('progress', 'dismiss', s, o.id);
+    const st = s.progress && s.progress.objectives && s.progress.objectives[o.id];
+    if (st && st.state === 'dismissed') M.notify(s, { kind: 'info', text: 'Goal put away: ' + (o.title || 'this goal') + '. Menu → Milestones brings it back.', ttl: 9000, confirm: true, action: { label: 'Bring it back', fn: function (s2) { call('progress', 'reopen', s2, o.id); } } });
+  }
+
+  // ---------------------------------------------------------------------------
   // Top bar (GDD §11.1): odometers, delta flash, chips, speed, storm dot, mute
   // ---------------------------------------------------------------------------
   function flashDelta(delta) { if (!dom()) return; const d = E['stat-cash-delta']; setText(d, (delta > 0 ? '+' : '−') + money(Math.abs(delta))); d.dataset.sign = delta > 0 ? 'pos' : 'neg'; cls(d, 'on', true); odo.deltaUntil = clock + L.deltaMs; }
@@ -43921,8 +44057,10 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
       let next = '';
       if (o.background && o.background.id !== o.id) next = 'Next up: ' + (o.background.title || o.background.text || '');
       else { const ms = call('progress', 'nearestMilestones', s, 1) || []; if (ms[0]) next = 'Next milestone: ' + ms[0].name + (ms[0].goal > 1 ? ' · ' + Math.round(fin(ms[0].progress, 0)) + ' / ' + ms[0].goal : ''); }
-      return { id: o.id, kind: o.kind === BSU.OBJ.BACKGROUND ? 'background' : 'interrupt', kicker: o.kind === BSU.OBJ.BACKGROUND ? 'Goal · in the background' : 'Goal', title: o.title || '', text: o.text || '', why: g ? g.why : '', progress: fin(o.progress, 0), goal: fin(o.goal, 0), deadline: o.deadline, target: target, next: next, bg: (o.background && o.background.id !== o.id) ? o.background.id : '', showme: true, dismiss: true, postcard: o.id === '7' && /parade|postcard/i.test(o.text || ''), capped: o.id === '8' && /capped/i.test(o.text || '') };
+      return { id: o.id, kind: o.kind === BSU.OBJ.BACKGROUND ? 'background' : 'interrupt', kicker: o.kind === BSU.OBJ.BACKGROUND ? 'Goal · in the background' : 'Goal', title: o.title || '', text: o.text || '', why: g ? g.why : '', progress: fin(o.progress, 0), goal: fin(o.goal, 0), deadline: o.deadline, target: target, next: next, bg: (o.background && o.background.id !== o.id) ? o.background.id : '', showme: true, dismiss: call('progress', 'dismissable', s, o.id) !== false, postcard: o.id === '7' && /parade|postcard/i.test(o.text || ''), capped: o.id === '8' && /capped/i.test(o.text || '') };
     }
+    // unstick pass: the gap between tutorial goals 3 and 4 (the next goal comes with the first rain, about half a minute at 1×): the card says so instead of going blank
+    if (stage === 5) return { id: 'next', kind: 'wait', kicker: 'Goal', title: 'The next goal is on its way', text: 'The founders are settling in. Keep building: the next goal arrives with the first rain.', why: '', progress: 0, goal: 0, deadline: -1, target: null, next: '', bg: '', showme: false, dismiss: false, postcard: false, capped: false };
     if (stage < 6) return null;
     const ms = call('progress', 'nearestMilestones', s, 2) || []; const m = ms[0]; if (!m) return null;
     const def = ((BSU.data && BSU.data.milestones) || []).find(function (x) { return x.id === m.id; }) || {};
@@ -43934,7 +44072,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
     const stage = fin(call('progress', 'tutorialStage', s), 6);
     const view = trackerView(s, o, stage);
     show(E['milestones-card'], false);   // the tracker carries the nearest milestone now
-    if (!view) { if (objKey !== '') { objKey = ''; goal.id = ''; goal.open = false; show(E['objective-card'], false); show(E['goal-pill'], false); show(E['speech-bubble'], false); } litTick(); return; }
+    if (!view) { if (objKey !== '' || goal.id !== '') { objKey = ''; goal.id = ''; goal.open = false; goal.paused = ''; show(E['objective-card'], false); show(E['goal-pill'], false); show(E['speech-bubble'], false); } litTick(); return; }   // unstick pass: goal.id too (the objective:complete / :dismissed handlers clear objKey to force a redraw, so with no next goal the finished goal's card stayed up)
     const sp = !!s.setPiece;
     const key = view.id + '|' + view.title + '|' + view.text + '|' + view.progress + '/' + view.goal + '|' + (view.deadline >= 0 ? view.deadline : '') + '|' + (view.target || '') + '|' + view.next + '|' + (sp ? 'sp' : '') + '|' + (s.ui.tool ? s.ui.tool.id : '');
     if (key !== objKey) {
@@ -43949,6 +44087,8 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
       show(E['obj-progress'], view.goal > 1); if (view.goal > 1) { const w = Math.round(frac * 100) + '%'; if (E['obj-fill'].style.width !== w) E['obj-fill'].style.width = w; }
       const countText = view.goal > 1 ? Math.round(view.progress) + ' / ' + view.goal : (view.deadline >= 0 ? 'by ' + BSU.formatDate(view.deadline) : '');
       setText(E['obj-count'], countText);
+      // unstick pass: a goal whose counter counts steps ("0 / 4" on Game Day read as "build 4 fields") says "Step 1 of 4" from the steps list (syncStepChrome); counted goals keep "3 / 5"
+      gsteps.countBase = countText; gsteps.fracBase = frac; gsteps.title = view.title; gsteps.stepCounted = view.kind !== 'milestone' && view.kind !== 'wait' && call('progress', 'countsSteps', s, view.id) === true;
       gsteps.showme = !!view.showme; gsteps.pillBase = view.title + (countText ? ' · ' + countText : ''); gsteps.nextBase = view.next || '';
       refreshSteps(s, view, true); syncStepChrome(s);   // goal steps pass: the steps and the current step's one button (#btn-obj-build: "Build it" and "Show me" are folded into it where they say the same thing)
       show(E['btn-obj-dismiss'], view.dismiss && !sp);
@@ -43958,14 +44098,19 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
       show(E['obj-background'], false);
       E['objective-card'].dataset.kind = view.kind; E['goal-pill'].dataset.kind = view.kind;
       // the pill: "GOAL n" (or the milestone kicker) · title · count · the ring
-      setText(E['gp-kicker'], num ? 'Goal ' + num : (view.kind === 'milestone' ? 'Milestone' : 'Goal')); setText(E['gp-title'], view.title); setText(E['gp-count'], countText); show(E['gp-count'], !!countText);
-      try { E['gp-ring'].setAttribute('stroke-dashoffset', String(Math.round(56.5 * (1 - frac) * 10) / 10)); } catch (e) { /* stub */ }
+      setText(E['gp-kicker'], num ? 'Goal ' + num : (view.kind === 'milestone' ? 'Milestone' : 'Goal')); setText(E['gp-title'], view.title);   // the count and the ring are syncStepChrome's (a step-counted goal reads "Step 2 of 4")
+      syncStepChrome(s);
       call('render', 'drawPortrait', E['obj-portrait'], 0);
       if (changed && !sp && !titleOn) goalOpen(true);   // a goal change opens the card on its own (it folds after 10 s without hover)
       show(E['objective-card'], goal.open); show(E['goal-pill'], !goal.open && !sp);
     }
     else refreshSteps(s, view, false);
     litTick();
+    // unstick pass: paused with nothing left to do but wait (every step done, or the next goal on its way): the card and the pill say so, with Resume
+    { const isGoal = view.kind !== 'milestone' && view.kind !== 'wait';
+      const pz = (fin(s.ui.speed, 1) === 0 && !sp) ? (view.kind === 'wait' ? 'The game is paused. Press Play and the next goal arrives.' : (isGoal && gsteps.list.length && !gsteps.cur) ? 'Done. The game is paused: press Play to go on.' : '') : '';
+      if (fin(s.ui.speed, 1) === 0 && isGoal && clock - gsteps.at > 500) gsteps.dirty = true;   // paused: nothing ticks, so the steps are re-read here (a path drawn while paused ticks its step)
+      if (pz !== goal.paused) { goal.paused = pz; setText(E['obj-paused-text'], pz); show(E['obj-paused'], !!pz); syncStepChrome(s); } }
     if (sp && goal.open) goalCollapse();
     if (goal.open && coach.step < 0 && !goal.hover && clock >= goal.until) goalCollapse();
     // the needs gauges (in the Students popover) once the Essentials tab exists (tutorial stage 4+)
@@ -44044,13 +44189,14 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
     if (!inited || !state || !state.ui) return;
     root = state; dtMs = fin(dtMs, 16.67); clock += dtMs;
     if (dom()) { try { const raw = M.settings().uiScale; const want = wantScale(raw); if (want !== appliedScale || (isAuto(raw) ? 'auto' : want) !== uiMode) applyScale(raw); if (clock - fitAt > 1000) { fitAt = clock; const tb = E.topbar; if (tb && fitLevel < 2 && tb.scrollWidth > tb.clientWidth + 1) fitTopbar(); } } catch (e) { /* stub */ } }
-    if (titleOn) { sec('title', function (s) { refreshMuteButtons(); if (s.ui.panel) updatePanels(s); }, state, dtMs); return; }
+    if (titleOn) { sec('title', function (s) { refreshMuteButtons(); if (s.ui.panel) updatePanels(s); if (board.key) { board.key = ''; board.at = -1e9; show(E['board-chip'], false); } }, state, dtMs); return; }   // (unstick pass: the Board's chip belongs to the game, not the title)
     sec('queue', drainQueue, state, dtMs);
     sec('pan', heldPan, state, dtMs);
     sec('topbar', updateTopbar, state, dtMs);
     sec('hud', updateHud, state, dtMs);   // hud + zoom pass: mode + pills
     sec('scorebug', function (s) { if (typeof M.scoreBug === 'function') M.scoreBug(s); }, state, dtMs);   // ui_panels' live score bug (hidden when no game)
     sec('alert', updateAlert, state, dtMs);
+    sec('board', updateBoard, state, dtMs);
     sec('objective', updateObjective, state, dtMs);
     sec('notifs', updateNotifs, state, dtMs);
     sec('toast', updateToast, state, dtMs);
@@ -44085,7 +44231,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
       tk = { seen: Math.max(0, ((state && state.ticker) || []).length - 1), lastLen: -1 };   // the latest line shows once after a load
       alertClosedKey = ''; tray.suggestOpen = false; tray.sopen = {};
       gsteps.id = ''; gsteps.list = []; gsteps.cur = null; gsteps.sig = null; gsteps.dirty = true; gsteps.day = -1; if (lit && lit.el) cls(lit.el, 'step-lit', false); lit = null;   // goal steps pass
-      pops.open = null; goal.open = false; goal.id = ''; goal.hover = false; pal.open = false; kb.in = false; kb.id = null; bm.query = ''; fabShown = null; legendKey = ''; mbAt = -1e9;   // U2
+      pops.open = null; goal.open = false; goal.id = ''; goal.paused = ''; goal.hover = false; board.key = ''; board.at = -1e9; show(E['board-chip'], false); pal.open = false; kb.in = false; kb.id = null; bm.query = ''; fabShown = null; legendKey = ''; mbAt = -1e9;   // U2
       bubble = { since: clock, until: 0, key: '' }; objKey = ''; alertKey = ''; alertAt = -1e9; msAt = -1e9; speedKey = ''; paletteKey = ''; palShownTab = ''; pipKey = ''; paletteDirty = true; capacityShown = false; skipShown = false; paletteHidden = null; hudFade = false;   // null: the first updateSetPiece re-syncs #palette and #hud.no-palette (a stale no-palette from the title / tutorial left a 0-height palette after newGame/load)
       M.debug.open = false; M.hoverTile = -1; lastGhost = null;
       tray.key = ''; tray.rows = []; tray.hadIssues = false; tray.clearAt = -1e9; heldI = false; spotToggled = false; try { if (BSU.issues) { BSU.issues.select(null); BSU.issues.spotlight(false); BSU.issues.pulse(null); } } catch (e) { /* */ }
@@ -45866,11 +46012,22 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
     const def = (BSU.data && BSU.data.failureCards && BSU.data.failureCards[p.kind]) || { title: 'The Board has concerns', options: [] };
     const opts = Array.isArray(p.options) && p.options.length ? def.options.filter(function (o) { return p.options.indexOf(o.id) >= 0; }) : def.options;
     let answered = false;
+    // unstick pass: a button carries the option's name (the body has the whole line; the old labels were that line cut off at 57 characters)
+    const short = function (text) { const k = text.indexOf(':'); return k > 0 && k <= 40 ? text.slice(0, k) : (text.length > 60 ? text.slice(0, 57) + '…' : text); };
     const actions = opts.map(function (o) {
-      return { label: o.text.length > 60 ? o.text.slice(0, 57) + '…' : o.text, fn: function (st) { if (answered) return true; answered = true; call('progress', 'answerFailure', st, p.kind, o.id); } };
+      return { label: short(o.text), fn: function (st) { if (answered) return true; answered = true; call('progress', 'answerFailure', st, p.kind, o.id); } };
     });
-    if (p.kind === 'bankruptcy') actions.push({ label: 'Not now', dismiss: true, fn: function (st) { if (answered) return true; answered = true; call('progress', 'answerFailure', st, p.kind, null); } });
-    return { id: 'failure', kicker: 'Failure', title: def.title, body: opts.map(function (o) { return o.text; }), actions: actions, modal: true };
+    let body = opts.map(function (o) { return o.text; }), kicker = 'Failure';
+    if (p.kind === 'bankruptcy') {
+      // unstick pass: the Board's card says why it came (cash against the loan line, the average month) and what "Not now" starts; reopened from the
+      // deadline dialog (progress.boardOffers) the last button keeps the deadline that is already running
+      const rs = call('progress', 'receivership', s) || {}, again = rs.phase === 'notice', FL = PE.failure || {}, line = fin(s.economy && s.economy.loanLimit, fin(PE.loanLimit, 2000000));
+      kicker = 'Board of Regents';
+      body = [(again ? 'The Board\'s deadline is ' + BSU.formatDate(fin(rs.untilDay, 0)) + ' (' + int(rs.daysLeft, 0) + ' days). ' : 'Cash has been past the ' + money(line) + ' loan line for ' + fin(PE.bankruptMonths, 3) + ' months. ') + 'Cash is ' + money(fin(rs.cash, fin(s.economy && s.economy.cash, 0))) + '; an average month brings in ' + money(fin(rs.income, 0)) + ' and costs ' + money(fin(rs.costs, 0)) + '. ' + (again ? 'Taking an offer drops the deadline.' : 'Take one of the Board\'s offers, or fix it yourself.')].concat(body);
+      if (!again) body.push('Not now: the Board checks your cash in ' + fin(FL.receiverDays, 60) + ' days. Below $0 then, it runs the budget for ' + fin(FL.receiverTermDays, 30) + ' days (receivership: no new buildings, prestige −' + fin(FL.receiverPrestige, 20) + ').');
+      actions.push({ label: again ? 'Keep my deadline' : 'Not now: ' + fin(FL.receiverDays, 60) + ' days to fix it', dismiss: true, fn: function (st) { if (answered) return true; answered = true; call('progress', 'answerFailure', st, p.kind, null); } });
+    }
+    return { id: 'failure', kicker: kicker, title: def.title, body: body, actions: actions, modal: true };
   });
   UI.registerCard('damage', function (s, p) {
     const report = (p && p.report) || { bill: 0, tarps: 0, held: [], overtopped: [], breached: [], flooded: [], choices: {}, name: '', cat: 0 };
@@ -47177,6 +47334,8 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
     if (!p.failure || typeof p.failure !== 'object') p.failure = { bankruptcy: 0, receiverUntilDay: NONE, probation: false, underwaterDays: 0 };
     if (p.failure.pendingKind === undefined) p.failure.pendingKind = null;
     if (typeof p.failure.receiver !== 'boolean') p.failure.receiver = false;
+    if (typeof p.failure.watch !== 'boolean') p.failure.watch = false;   // unstick pass: left receivership still short every month (the standing warning)
+    if (p.failure.brief === undefined) p.failure.brief = null;   // unstick pass: what the Board found and did on the day it took over ({day, cash, income, costs, wrote, cuts, speedBefore, autoRepairBefore})
     if (!p.setPiecesSeen) p.setPiecesSeen = { landfall: false, game: false, parade: false, graduation: false, spring: false };
     if (typeof p.setPiecesSeen.spring !== 'boolean') p.setPiecesSeen.spring = false;   // PLAN_FOOTBALL pass C: the Spring Game set piece (older saves)
     if (!p.firsts) p.firsts = { gatorDay: NONE, mosquitoDay: NONE, floodDay: NONE, cellDay: NONE };
@@ -47915,6 +48074,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
     try {
       const o = ost(state, id);
       if (o.state === 'done' || o.state === 'dismissed') return;
+      if (!M.dismissable(state, id)) return;   // unstick pass: the next tab and the next goal hang on a tutorial goal
       o.state = 'dismissed';
       clearActive(state, id);
       if (id.indexOf('v:') === 0) { const vc = pr(state).voiceCards.find(function (v) { return v.id === id.slice(2); }); if (vc) vc.state = 'declined'; emit(EV.VOICE_RESOLVED, { id: id.slice(2), state: 'declined' }); }
@@ -47922,6 +48082,9 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
       ctx(state).dirty = true;
     } catch (e) { BSU.error('progress', 'dismiss', e); }
   };
+  /** unstick pass: a tutorial goal (1–5) cannot be dismissed while the tutorial runs. Dismissing one used to stop the tutorial for good: no next
+   *  goal, and the Build tabs it hands out (Essentials at goal 3, the rest when goal 5 is done) never came */
+  M.dismissable = function (state, id) { try { return !(TUTORIAL_IDS.indexOf(String(id)) >= 0 && fin(state && state.progress && state.progress.tutorialStage, 6) < 6); } catch (e) { return true; } };
   M.reopen = function (state, id) {
     try {
       const o = ost(state, id);
@@ -47992,6 +48155,10 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
     try { const f = GOALS[id]; if (!state || typeof f !== 'function') return null; const r = f(state, ctx(state)); return r ? { progress: fin(r.progress, 0), goal: fin(r.goal, 0) } : null; }
     catch (e) { BSU.error('progress', 'goalProgress', e); return null; }
   };
+  /** unstick pass: the goals whose {progress, goal} counts steps, not things (Game Day's "0 / 4" was read as "build four fields"): the card and the
+   *  pill say "Step 1 of 4" from goalSteps instead. Counted goals (5 oaks, 20 Preserve tiles, 500 students, 4 wins) keep "3 / 5" */
+  const STEP_COUNTED = { '3': 1, '5': 1, '12': 1, '15': 1, '17': 1, '19': 1, '20': 1, '22': 1 };
+  M.countsSteps = function (state, id) { return STEP_COUNTED[String(id)] === 1; };
   M.objective = function (state) {
     try {
       if (!state || !state.progress) return null;
@@ -48346,6 +48513,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
     const stage = p.tutorialStage;
     if (stage <= 0 || stage >= 6) return;
     if (c.stageEntered !== stage) enterStage(state, stage);
+    for (const id of TUTORIAL_IDS) { const o = p.objectives[id]; if (o && o.state === 'dismissed') { o.state = 'locked'; offerObjective(state, id); } }   // unstick pass: a save where a tutorial goal was dismissed (the old X) picks the tutorial up again
     if (stage === 1 && c.swoop && fin(state.tick, 0) >= c.swoop.until && !c.charterShown) showCharter(state, c);
     if (stage === 3 && c.tileDirty) { /* polled by evalGoals via GOALS['2'] */ }
     if (stage === 5) {
@@ -48552,7 +48720,9 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
       if (f.pendingKind !== kind) return;
       f.pendingKind = null;
       if (kind === 'bankruptcy') {
-        f.bankruptcy = fin(f.bankruptcy, 0) + 1;
+        const again = noticeOn(state);   // unstick pass: the Board's offers reopened from the deadline dialog (boardOffers)
+        if (!again) f.bankruptcy = fin(f.bankruptcy, 0) + 1;
+        if (again && (optionId === 'austerity' || optionId === 'hike' || optionId === 'naming')) { f.receiverUntilDay = NONE; notify(state, { kind: 'money', text: 'The Board takes your offer and drops its deadline.' }); }   // as if it had been picked on the first card
         if (optionId === 'austerity') {
           M.addTimer(state, 'austerity', -fin(FL.austerityHappiness, 10), fin(FL.austerityDays, 120));
           M.addTimer(state, 'austerityUpkeep', fin(FL.austerityUpkeep, 0.3), fin(FL.austerityDays, 120));
@@ -48567,9 +48737,9 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
           const hall = blist(state).find(function (b) { return before[b.id] !== undefined && before[b.id] !== b.name; });
           const oldName = hall ? before[hall.id] : 'A hall';
           M.ticker(state, 52, { hall: oldName, family: String(oldName).split(' ')[0] }, null, hall ? BSU.idx(hall.tx, hall.ty) : NONE);
-        } else {
+        } else if (!again) {   // "Not now": the Board's deadline. The chip counts it down (receivership(): phase 'notice'); the snackbar's button opens the explanation
           f.receiverUntilDay = day + fin(FL.receiverDays, 60); f.receiver = false;
-          notify(state, { kind: 'danger', text: 'The Board gives you ' + fin(FL.receiverDays, 60) + ' days to get above the line.' });
+          notify(state, { kind: 'danger', text: 'The Board checks your cash on ' + BSU.formatDate(f.receiverUntilDay) + ' (' + fin(FL.receiverDays, 60) + ' days). Below $0 then means receivership.', ttl: 12000, action: { label: 'What is this?', card: 'receiver' } });
         }
       } else if (kind === 'underwater') {
         call('economy', 'applyCard', state, 'underwater', optionId);
@@ -48588,30 +48758,191 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
       if (f.underwaterDays >= fin(FL.underwaterDays, 15) && !f.pendingKind && !(state.economy && state.economy.cancelledSemester)) M.failureCard(state, 'underwater');
     } catch (e) { BSU.error('progress', 'reportUnderwater', e); }
   };
+  // ---------------------------------------------------------------------------
+  // Receivership (§10.7; unstick pass). A playtester met it as one red line ("Receivership. The Board runs the university for a year.") and
+  // then could build nothing, for 120 days, with nothing saying why or for how long; the Board's card came back the same tick, and a campus
+  // that spends more than it earns went straight back in after it ended. Now:
+  //   deficit  cash below $0 and the average month loses money (or the campus left receivership still short): a standing chip with the gap.
+  //   notice   the Board's card answered "Not now": 60 days, counted down on the chip, with what gets cash back to $0. On the deadline, cash
+  //            at $0 or more lifts it; below $0 starts receivership.
+  //   receiver receiverTermDays (30): the Board writes the debt off and takes the prestige on day one, cuts what a click can undo (Faculty to
+  //            Basic, Coaching spend to $0) and freezes construction. Never frozen: the bulldozer, receiverAllow rows (Gravel Path, Boardwalk),
+  //            repairs, storm prep, every Budget control. Refusals read "Receivership: N days left".
+  //   exit     every tool back, cash at $0 or better, the bankruptcy counter restarted; still short → the standing chip.
+  // The Board cannot come back sooner than 3 months past the loan line plus its 60-day notice, and never without both having been shown.
+  // ---------------------------------------------------------------------------
+  const RECV_TERM = Math.max(1, fin(FL.receiverTermDays, 30) | 0), RECV_SPEED = fin(FL.receiverSpeed, 4);
+  function days(n) { return n + (n === 1 ? ' day' : ' days'); }
+  function months(n) { return n + (n === 1 ? ' month' : ' months'); }
+  function loanLine(state) { return Math.max(0, fin(state.economy && state.economy.loanLimit, fin(PE.loanLimit, 0))); }
+  function budgetNow(state) { const b = call('economy', 'budget', state); return (b && typeof b === 'object') ? b : { income: 0, costs: 0, net: 0, lines: { income: {}, costs: {} } }; }
+  /** the Board's 60-day notice is running (its card was answered "Not now") */
+  function noticeOn(state) { const f = pr(state).failure; return !f.receiver && fin(f.receiverUntilDay, NONE) >= 0; }
   function enterReceivership(state) {
-    const f = pr(state).failure, day = today(state);
-    f.receiver = true; f.receiverUntilDay = day + fin(FL.receiverYearDays, 120);
-    call('session', 'setSpeed', state, fin(FL.receiverSpeed, 4), 'receiver');
+    const f = pr(state).failure, day = today(state), e = state.economy || {};
+    const b0 = budgetNow(state), cash0 = fin(e.cash, 0), cuts = [];
+    f.receiver = true; f.receiverUntilDay = day + RECV_TERM; f.watch = false;
+    // what the Board cuts: the two Budget settings a click puts back
+    const q = e.quality, qm = fin(PE.qualityMult && PE.qualityMult[q], 1);
+    if (q && q !== 'basic' && qm > 1) { cuts.push({ id: 'faculty', text: 'Faculty set to Basic', saving: Math.round(students(state) * fin(PE.salaryPerStudent, 0) * (qm - 1)) }); call('economy', 'setQuality', state, 'basic'); }
+    if (fin(e.coaching, 0) > 0) { cuts.push({ id: 'coaching', text: 'Coaching spend cut to $0', saving: Math.round(fin(e.coaching, 0) / fin(PT.monthsPerYear, 12)) }); call('economy', 'setCoaching', state, 0); }
+    f.brief = { day: day, cash: Math.round(cash0), income: b0.income, costs: b0.costs, wrote: Math.max(0, Math.round(-cash0)), cuts: cuts, speedBefore: fin(state.ui && state.ui.speed, 1), autoRepairBefore: !!e.autoRepair };
+    call('economy', 'applyCard', state, 'receiver', null);   // the debt is written off, prestige −receiverPrestige, the bankruptcy counter restarts
+    call('session', 'setSpeed', state, RECV_SPEED, 'receiver');
     call('economy', 'setAutoRepair', state, true);
-    ui(state, 'closeCard');
-    notify(state, { kind: 'danger', text: 'Receivership. The Board runs the university for a year.' });
+    if (f.pendingKind === 'bankruptcy') f.pendingKind = null;   // a Board card left open is moot now
+    call('ui', 'closeCard', 'failure');   // (ui.closeCard takes an id, not the state: the old call closed nothing, so the Board's card sat on top of the receivership it had just started)
+    ui(state, 'card', 'receiver', { phase: 'receiver' });
     M.ticker(state, 'The Board of Regents appoints a receiver. The receiver asks where the parking is.', null, 'money');
   }
   function exitReceivership(state) {
-    const f = pr(state).failure;
+    const f = pr(state).failure, br = f.brief || {};
     f.receiver = false; f.receiverUntilDay = NONE;
-    call('economy', 'applyCard', state, 'receiver', null);
-    call('economy', 'setAutoRepair', state, false);
-    call('session', 'restoreSpeed', state, 'receiver');
-    M.ticker(state, 'The receiver departs. Cash: zero. Prestige: less. The swamp: unchanged.', null, 'money');
+    if (f.pendingKind === 'bankruptcy') { f.pendingKind = null; call('ui', 'closeCard', 'failure'); }   // a save from before the pass carries the Board's card as pending for ever (it was never closed): economy would offer no card again
+    call('economy', 'applyCard', state, 'receiverExit', null);   // what ran up while the Board was in charge is covered: cash is $0 or better
+    call('economy', 'setAutoRepair', state, br.autoRepairBefore !== false);
+    const cur = fin(state.ui && state.ui.speed, 1);
+    call('session', 'restoreSpeed', state, 'receiver');   // releases session's remember (a set piece may have overwritten what it remembered)
+    const want = cur === RECV_SPEED ? fin(br.speedBefore, 1) : cur;   // the player's own speed is left alone
+    if (fin(state.ui && state.ui.speed, 1) !== want) call('session', 'setSpeed', state, want, 'restore');
+    f.watch = budgetNow(state).net < 0;
+    ui(state, 'card', 'receiver', { phase: 'exit' });
+    M.ticker(state, 'The receiver departs. The debt: gone. Prestige: less. The swamp: unchanged.', null, 'money');
   }
+  /** '' or "Receivership: 23 days left": every construction refusal while the Board is in charge (buildings.canPlace / upgrade / pilings, land.quote).
+   *  rowId names a catalog row: the receiverAllow rows (Gravel Path, Boardwalk) are never refused */
+  M.receiverRefusal = function (state, rowId) {
+    try {
+      if (!M.receiverActive(state)) return '';
+      if (rowId && Array.isArray(FL.receiverAllow) && FL.receiverAllow.indexOf(String(rowId)) >= 0) return '';
+      return 'Receivership: ' + days(Math.max(1, pr(state).failure.receiverUntilDay - today(state))) + ' left';
+    } catch (e) { BSU.error('progress', 'receiverRefusal', e); return ''; }
+  };
+  /** the levers that really move the budget, with today's numbers: [{id, text, monthly, now}] (at most `max`). `quick` (the Board's deadline) leads
+   *  with what raises cash at once. Pure */
+  function budgetLevers(state, quick, max) {
+    const e = state.economy || {}, out = [], n = students(state), MY = fin(PT.monthsPerYear, 12);
+    const qm = fin(PE.qualityMult && PE.qualityMult[e.quality], 1);
+    const faculty = (e.quality && e.quality !== 'basic' && qm > 1) ? { id: 'faculty', monthly: Math.round(n * fin(PE.salaryPerStudent, 0) * (qm - 1)), now: 0 } : null;
+    if (faculty) faculty.text = 'Budget: set Faculty to Basic. Saves ' + money(faculty.monthly) + ' a month.';
+    const coaching = fin(e.coaching, 0) > 0 ? { id: 'coaching', monthly: Math.round(fin(e.coaching, 0) / MY), now: 0 } : null;
+    if (coaching) coaching.text = 'Budget: cut Coaching spend. Up to ' + money(coaching.monthly) + ' a month.';
+    // the building the bulldozer will take (landmarks stay) that saves the most a month; for the Board's deadline, the one that pays the most back.
+    // The last field carries the football program: its coaching staff and the roster's scholarships go with it
+    let best = null; const cat = catalog(), refund = fin(PE.demolishRefund, 0.4);
+    const fields = blist(state, 'practice_field').length + blist(state, 'stadium').length;
+    let program = 0; if (fields === 1) { const sb = call('sports', 'budget', state), pl = sb && Array.isArray(sb.lines) ? sb.lines.find(function (x) { return x && x.key === 'players'; }) : null; program = Math.max(0, fin(call('sports', 'staffSalaryMonthly', state), 0)) + Math.max(0, fin(pl && pl.amount, 0)) / MY; }
+    for (const b of blist(state)) {
+      const row = cat[b.type]; if (!row || !row.demolishable || !complete(b)) continue;
+      const tr = (Array.isArray(row.tiers) && fin(b.tier, 0) > 0) ? row.tiers.find(function (x) { return x.tier === b.tier; }) : null;
+      const prog = (b.type === 'practice_field' && program > 0) ? program : 0;
+      const up = (tr ? (b.type === 'practice_field' ? fin(row.upkeep, 0) + fin(tr.upkeep, 0) : fin(tr.upkeep, 0)) : fin(row.upkeep, 0)) + prog, back = Math.round(fin(row.cost, 0) * refund);
+      if (up > 0 && (!best || (quick ? back > best.now : up > best.monthly))) best = { id: 'demolish', monthly: Math.round(up), now: back, name: row.name + (prog ? ' (its football program goes too)' : ''), buildingId: b.id };
+    }
+    if (best) best.text = 'Bulldozer: sell what you can spare. ' + Math.round(refund * 100) + '% of the price comes back at once and the upkeep ends. ' + (quick ? 'The most cash: ' + best.name + ', ' + money(best.now) + ' back, ' + money(best.monthly) + ' a month saved.' : 'Your costliest: ' + best.name + ', ' + money(best.monthly) + ' a month, ' + money(best.now) + ' back.');
+    const T = PE.tuition || {}, locked = !!M.timer(state, 'tuitionLock');
+    const tuition = (!locked && fin(e.tuition, 0) < fin(T.max, 15000) && n > 0) ? { id: 'tuition', monthly: Math.round(n * fin(T.step, 250) * fin(PE.installmentShare, 0.5) * (Array.isArray(PE.installments) ? PE.installments.length : 4) / MY), now: 0 } : null;
+    if (tuition) tuition.text = 'Budget: raise tuition. Each +' + money(fin(T.step, 250)) + ' brings about ' + money(tuition.monthly) + ' a month (and fewer applicants).';
+    const insured = M.timer(state, 'insurance') ? { id: 'insurance', monthly: Math.round(fin(call('economy', 'buildingValue', state), 0) * fin(PE.boardCards && PE.boardCards.insurance && PE.boardCards.insurance.premium, 0.02) / MY), now: 0 } : null;
+    if (insured) insured.text = 'Budget: cancel the insurance. Saves ' + money(insured.monthly) + ' a month (no payout after a storm).';
+    for (const l of (quick ? [best, faculty, coaching, tuition, insured] : [faculty, coaching, best, tuition, insured])) if (l && out.length < (max || 3)) out.push(l);
+    return out;
+  }
+  /** where the university stands with the Board, for the chip and every refusal:
+   *  {phase: 'none' | 'deficit' | 'notice' | 'receiver', daysLeft, untilDay, cash, income, costs, net, chip: '' | text, tone: 'warn' | 'danger' | 'ok'}.
+   *  income / costs / net are economy.budget's average month. Pure; the UI reads it twice a second */
+  M.receivership = function (state) {
+    const out = { phase: 'none', daysLeft: 0, untilDay: NONE, cash: 0, income: 0, costs: 0, net: 0, chip: '', tone: 'warn' };
+    try {
+      if (!state || !state.progress || !state.economy) return out;
+      lazyKeys(state);
+      const f = pr(state).failure, day = today(state), b = budgetNow(state);
+      out.cash = Math.round(fin(state.economy.cash, 0)); out.income = b.income; out.costs = b.costs; out.net = b.net;
+      if (f.receiver && f.receiverUntilDay > day) {
+        out.phase = 'receiver'; out.untilDay = f.receiverUntilDay; out.daysLeft = f.receiverUntilDay - day; out.tone = 'danger';
+        out.chip = 'Receivership · ' + days(out.daysLeft) + ' left';
+      } else if (noticeOn(state)) {
+        out.phase = 'notice'; out.untilDay = f.receiverUntilDay; out.daysLeft = Math.max(0, f.receiverUntilDay - day);
+        if (out.cash < 0) { out.tone = 'danger'; out.chip = 'Board deadline · ' + days(out.daysLeft); } else { out.tone = 'ok'; out.chip = 'Board check in ' + days(out.daysLeft) + ' · on track'; }
+      } else if (b.net < 0 && (out.cash < 0 || f.watch)) {
+        out.phase = 'deficit'; out.chip = 'Losing ' + money(-b.net) + ' a month';
+      }
+    } catch (e) { BSU.error('progress', 'receivership', e); }
+    return out;
+  };
+  /** the explanation behind the chip, in plain words with today's numbers: {phase, kicker, title, lead, facts: [{k, v, bad}], sections: [{title, lines}],
+   *  buttons: ['budget'?, 'offers'?]} or null when there is nothing to explain. `which` 'exit' = the day the Board leaves; otherwise the phase
+   *  receivership() reports. Pure: ui renders it (the 'receiver' card), the tests read it */
+  M.receiverBrief = function (state, which) {
+    try {
+      const r = M.receivership(state), phase = which === 'exit' ? 'exit' : r.phase;
+      if (phase === 'none') return null;
+      const f = pr(state).failure, e = state.economy || {}, line = loanLine(state), short = Math.max(0, -r.net);
+      const out = { phase: phase, kicker: 'Board of Regents', title: '', lead: '', facts: [], sections: [], buttons: [] };
+      const fact = function (k, v, bad) { out.facts.push({ k: k, v: v, bad: !!bad }); };
+      const sec = function (title, lines) { if (lines.length) out.sections.push({ title: title, lines: lines }); };
+      const texts = function (ls) { return ls.map(function (l) { return l.text; }); };
+      const lineLasts = short > 0 ? Math.floor((line + Math.max(0, r.cash)) / short) : 0;
+      const liveFacts = function () { fact('Cash today', money(r.cash), r.cash < 0); fact('Income, an average month', money(r.income)); fact('Costs, an average month', money(r.costs), r.net < 0); if (r.net < 0) fact('Short every month', money(short), true); };
+      if (phase === 'receiver') {
+        const br = f.brief || { day: today(state), cash: r.cash, income: r.income, costs: r.costs, wrote: 0, cuts: [] };
+        const mins = Math.max(1, Math.round(RECV_TERM * fin(PT.ticksPerDay, 200) / (Math.max(1, fin(PT.baseTps, 5)) * Math.max(1, RECV_SPEED)) / 60));
+        out.title = 'Receivership: ' + days(r.daysLeft) + ' left';
+        out.lead = 'The university ran out of money: on ' + BSU.formatDate(br.day) + ', the Board\'s deadline, cash was still below $0. The Board of Regents runs the budget for ' + days(RECV_TERM) + '.';
+        fact('Cash on ' + BSU.formatDate(br.day), money(br.cash), br.cash < 0); fact('Income, an average month', money(br.income)); fact('Costs, an average month', money(br.costs), br.costs > br.income); fact('The Board leaves', BSU.formatDate(r.untilDay) + ' · ' + days(r.daysLeft));
+        const did = [];
+        did.push((br.wrote > 0 ? 'Paid off the debt: cash went from ' + money(br.cash) + ' to $0. ' : '') + 'Prestige −' + fin(FL.receiverPrestige, 20) + '.');
+        for (const c of (br.cuts || [])) did.push(c.text + ': saves ' + money(c.saving) + ' a month. Budget puts it back.');
+        did.push('Time set to ' + RECV_SPEED + '×: the ' + days(RECV_TERM) + ' pass in about ' + mins + ' minutes. The speed buttons still work.');
+        did.push('Auto-repair on. Storm, game-day and Board choices get their default answers.');
+        sec('What the Board did', did);
+        sec('Frozen until it leaves', ['New buildings, upgrades, pilings and land.']);
+        sec('Still yours', ['The bulldozer (' + Math.round(fin(PE.demolishRefund, 0.4) * 100) + '% of the price back, and the upkeep ends), Gravel Path and Boardwalk.', 'Repairs, storm prep and Budget: tuition, faculty, coaching, insurance.']);
+        const end = ['Every tool comes back, with cash at $0 or better and the full ' + money(line) + ' loan line.'];
+        if (r.net < 0) { end.push('Today the campus is still short ' + money(short) + ' a month. Close that gap or the debt returns, and the Board with it.'); for (const l of texts(budgetLevers(state, false, 1))) end.push(l); }
+        else end.push('Today the books balance: about ' + money(r.net) + ' a month to the good.');
+        sec('When it ends', end);
+      } else if (phase === 'notice') {
+        out.title = r.cash < 0 ? days(r.daysLeft) + ' to get cash back to $0' : 'On track: the Board checks in ' + days(r.daysLeft);
+        out.lead = 'Cash stayed past the ' + money(line) + ' loan line for ' + months(fin(PE.bankruptMonths, 3)) + ', so the Board of Regents set a deadline. On ' + BSU.formatDate(r.untilDay) + ' it checks your cash. At $0 or more it backs off. Below $0 it takes over for ' + days(RECV_TERM) + ': that is receivership (no new buildings, prestige −' + fin(FL.receiverPrestige, 20) + ').';
+        liveFacts();
+        const ls = texts(budgetLevers(state, true, 2)); ls.splice(Math.min(1, ls.length), 0, 'The Board\'s offers still stand: Austerity, a Tuition Hike, or Naming Rights (' + money(fin(FL.namingRights, 1000000)) + ' at once). Taking one drops the deadline.');
+        sec('What gets you there', ls);
+        out.buttons = ['budget', 'offers'];
+      } else if (phase === 'deficit') {
+        out.title = 'Costs exceed income by ' + money(short) + ' a month';
+        out.lead = (-r.cash > line ? 'You are ' + money(-r.cash) + ' in debt, past the ' + money(line) + ' loan line, and it grows every month.' : r.cash < 0 ? 'You are ' + money(-r.cash) + ' into the ' + money(line) + ' loan line and it grows every month.' : 'Cash covers about ' + months(Math.floor(r.cash / Math.max(1, short))) + ' at this rate, then the ' + money(line) + ' loan line.') + ' ' + months(fin(PE.bankruptMonths, 3)).replace(/^./, function (c) { return c.toUpperCase(); }) + ' past the line and the Board of Regents steps in. Nothing is frozen now: this is the time to fix it.';
+        liveFacts();
+        sec('What closes the gap', texts(budgetLevers(state, false, 3)));
+        out.buttons = ['budget'];
+      } else {   // exit
+        out.title = 'The Board has left';
+        out.lead = 'Receivership is over. Every tool is back, the old debt is gone and the ' + money(line) + ' loan line is open again.';
+        liveFacts();
+        if (r.net < 0) sec('Still losing money', ['Costs still exceed income by ' + money(short) + ' a month. At that rate the loan line lasts ' + months(lineLasts) + '; ' + months(fin(PE.bankruptMonths, 3)) + ' past it, the Board is back. The warning stays up until the gap is closed.'].concat(texts(budgetLevers(state, false, 3))));
+        else sec('The books balance', ['An average month now leaves about ' + money(r.net) + '.']);
+      }
+      return out;
+    } catch (e) { BSU.error('progress', 'receiverBrief', e); return null; }
+  };
+  /** the deadline dialog's "The Board's offers": the three remedies again while the notice runs (taking one drops the deadline; "Keep my deadline" changes nothing) */
+  M.boardOffers = function (state) {
+    try {
+      lazyKeys(state); const f = pr(state).failure; if (!noticeOn(state) || f.pendingKind) return false;
+      M.failureCard(state, 'bankruptcy');   // pending at once (events reach progress on the next tick; the card's buttons must work while paused)
+      ui(state, 'card', 'failure', { kind: 'bankruptcy', options: ['austerity', 'hike', 'naming'] });
+      return true;
+    }
+    catch (e) { BSU.error('progress', 'boardOffers', e); return false; }
+  };
   function failureDaily(state, c) {
     const f = pr(state).failure, day = today(state);
     if (f.receiverUntilDay >= 0 && day >= f.receiverUntilDay) {
       if (f.receiver) exitReceivership(state);
       else if (fin(state.economy && state.economy.cash, 0) < 0) enterReceivership(state);
-      else { f.receiverUntilDay = NONE; }
+      else { f.receiverUntilDay = NONE; if (f.pendingKind === 'bankruptcy') { f.pendingKind = null; call('ui', 'closeCard', 'failure'); } notify(state, { kind: 'good', text: 'Cash is at $0 or better on the Board\'s deadline: the Board backs off.' }); }
     }
+    if (f.watch && budgetNow(state).net >= 0) f.watch = false;   // the standing warning goes when the average month stops losing money
     if (f.probation && prestige(state) > fin(FL.probationExit, 15)) {
       f.probation = false; M.removeTimer(state, 'probation');
       M.ticker(state, 'Accreditation restored. The catfish in the library has been asked to leave.', null, 'event');

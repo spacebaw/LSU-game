@@ -408,5 +408,116 @@ s = fresh();
   ok(U.el['obj-steps'].getAttribute('role') === 'list', 'the steps list keeps its list role');
 }
 
+// --- (7) unstick pass: step counters, and a fresh game that cannot stick ------------------------------------------------------------------
+// The playtester: "When asked to build practice field asks to build 4!" (Game Day's counter read "0 / 4": four steps, not four fields);
+// "When trying to place path to start game, problem not letting continue with rest of game"; "Building tab not showing at the very start of
+// game so you are stuck trying to complete the first goal". Found on the build before the pass: the X in the goal card's corner dismissed a
+// tutorial goal for good (no next goal, no Build tab, ever); a goal met while the game is paused waits without a word; the finished goal's
+// card stayed up between goals 3 and 4 still asking for the Dining Hall; Ctrl+Z took Founders' Hall away.
+console.log('--- (7) unstick pass: counters, the tutorial\'s X, pause, the gap, the hall ---');
+{
+  const E = U.el;
+  const vis = (e) => { for (let p = e; p; p = p.parentNode) if (p.classList && p.classList.contains('hidden')) return false; return true; };
+  const upd = (ms = 1200) => U.update(BSU.state, ms);
+  const lis = () => E['obj-steps'].children;
+  // ---- the counter: steps, not things ----
+  eq(['3', '5', '12', '15', '17', '19', '20', '22'].filter((id) => PR.countsSteps(null, id)).length, 8, 'countsSteps: the eight goals whose {progress, goal} counts steps (3, 5, 12, 15, 17, 19, 20, 22)');
+  ok(['1', '2', '4', '6', '7', '8', '16', '18a', '18b', 'land1', 'p3', 'v:zydeco'].every((id) => PR.countsSteps(null, id) === false), 'counted and one-step goals are not among them (6: oaks, 7: road tiles, 8: students, 16: Preserve tiles, 18a: wins)');
+  for (const id of BSU.OBJECTIVE_IDS) { const g = PR.goalProgress(fresh(), id); if (g && g.goal > 1 && !PR.countsSteps(null, id)) ok(['6', '7', '8', '16', '18a', '18b'].indexOf(id) >= 0, 'goal ' + id + ' counts things (' + g.goal + '), so it keeps "n / ' + g.goal + '"'); }
+  // Game Day on the card: "Step 1 of 4", never "0 / 4"
+  s = fresh(); setStudents(s, 450); H.tick(5);
+  for (let k = 0; k < 8; k++) { const o = PR.objective(s); if (!o || o.id === '15') break; PR.complete(s, o.id); H.tick(3); }
+  U.goalOpen(true); upd();
+  let o = PR.objective(s);
+  ok(o && o.id === '15' && o.goal === 4 && o.progress === 0, 'Objective 15 (Game Day) is on the card; its goal function still counts 0 / 4');
+  eq(E['obj-count'].textContent, 'Step 1 of 4', 'the card\'s counter');
+  ok(lis().length === 4 && /Practice Field/.test(deepText(lis()[0])), 'beside the four steps it counts');
+  U.goalOpen(false); upd();
+  eq(E['gp-count'].textContent, 'Step 1 of 4', 'the pill\'s counter'); ok(vis(E['gp-count']) && /Next: Build a Practice Field/.test(E['gp-step'].textContent), 'with the current step on its second line');
+  ok(/Step 1 of 4/.test(E['goal-pill'].title) && !/0 \/ 4/.test(E['goal-pill'].title + deepText(E['goal-pill']) + deepText(E['objective-card'])), 'no "0 / 4" anywhere on the pill or the card');
+  eq(E['gp-ring'].getAttribute('stroke-dashoffset'), '56.5', 'the ring is empty at step 1');
+  const pf = place(s, 'practice_field'); finish(pf); H.tick(5); U.goalOpen(true); upd();
+  eq(E['obj-count'].textContent, 'Step 2 of 4', 'the field built: "Step 2 of 4"');
+  eq(E['obj-fill'].style.width, '25%', 'the bar follows the steps done (1 of 4)');
+  eq(E['gp-ring'].getAttribute('stroke-dashoffset'), String(Math.round(56.5 * 0.75 * 10) / 10), 'so does the pill\'s ring');
+  // Objective 20: five steps listed, a goal function that counts two
+  PR.complete(s, '15'); H.tick(3); setStudents(s, 1700); H.tick(5);
+  for (let k = 0; k < 8; k++) { const o2 = PR.objective(s); if (!o2 || o2.id === '20') break; PR.dismiss(s, o2.id); H.tick(3); }
+  U.goalOpen(true); upd(); o = PR.objective(s);
+  ok(o && o.id === '20' && o.goal === 2 && /^Step \d of 5$/.test(E['obj-count'].textContent), 'Objective 20 counts the five steps the card lists, not its two conditions: "' + E['obj-count'].textContent + '"');
+  // a counted goal keeps "0 / 5"
+  s = fresh(); H.tick(5); U.goalOpen(true); upd();
+  ok(PR.objective(s).id === '6' && E['obj-count'].textContent === '0 / 5', 'Plant 5 Live Oaks keeps "0 / 5"'); U.goalOpen(false); upd(); eq(E['gp-count'].textContent, '0 / 5', 'on the pill too');
+
+  // ---- a fresh game, the tutorial on ----
+  const newTutorial = () => { BSU.session.newGame({ seed: 42, size: 96 }); U.showTitle(false); const st = BSU.state; for (let k = 0; k < 40 && PR.tutorialStage(st) < 2; k++) { H.tick(1); U.update(st, 50); if (U.cardOpen()) U.closeCard(); } H.tick(3); U.update(st, 50); return st; };
+  const step = (st, n = 6) => { for (let k = 0; k < n; k++) { H.tick(1); U.update(st, 200); } };
+  const drawPath = (st) => { const W = BSU.MAP.W, N = W * BSU.MAP.H, b = B.list(st, 'founders_hall')[0], sh = st.plot.landingShoulder, seen = new Int32Array(N).fill(-2), q = [];
+    const can = (i) => { const c = B.canPlace(st, 'path', i % W, (i / W) | 0, { noTie: true, ignoreCash: true }); return !!(c && c.ok); };
+    BSU.edgeTiles(b.tx, b.ty, b.w, b.h).forEach((i) => { if (i >= 0 && i < N && can(i)) { seen[i] = -1; q.push(i); } });
+    for (let h = 0; h < q.length; h++) { const i = q[h]; if (i === sh) { const out = []; for (let k = i; k >= 0; k = seen[k]) out.push(k); return B.placeRun(st, 'path', out.reverse(), {}); } BSU.nbr4(i).forEach((n) => { if (seen[n] === -2 && can(n)) { seen[n] = i; q.push(n); } }); }
+    return null; };
+  // the X: a tutorial goal cannot be dismissed, by the button or by the call
+  s = newTutorial(); U.goalOpen(true); upd();
+  ok(PR.tutorialStage(s) === 2 && PR.objective(s).id === '1' && s.ui.tool && s.ui.tool.id === 'founders_hall', 'goal 1 is on the card with Founders\' Hall armed');
+  ok(PR.dismissable(s, '1') === false && PR.dismissable(s, '5') === false && PR.dismissable(s, '6') === true, 'dismissable: goals 1–5 are not, while the tutorial runs');
+  ok(!vis(E['btn-obj-dismiss']), 'goal 1 has no dismiss X');
+  click(E['btn-obj-dismiss']); PR.dismiss(s, '1'); step(s);
+  ok(s.progress.objectives['1'].state === 'active' && PR.objective(s).id === '1', 'neither a click on it nor progress.dismiss puts goal 1 away');
+  // Founders' Hall: placed by any map click, and not undone
+  U.pointer('move', 600, 400, 0, {}); U.pointer('down', 600, 400, 0, {}); U.pointer('up', 600, 400, 0, {}); step(s);
+  ok(B.count(s, 'founders_hall') === 1 && PR.tutorialStage(s) === 3, 'one map click places the hall (its ghost is pinned to the founders\' site)');
+  ok(B.undoInfo(s) === null, 'the hall is not offered for undo');
+  U.keydown('z', { ctrl: true }); step(s);
+  ok(B.count(s, 'founders_hall') === 1, 'Ctrl+Z leaves it standing');
+  ok(PR.objective(s).id === '2' && !vis(E['btn-obj-dismiss']), 'goal 2 has no dismiss X either');
+  PR.dismiss(s, '2'); step(s); eq(s.progress.objectives['2'].state, 'active', 'and progress.dismiss(2) is refused');
+  // a save from before the pass with goal 2 dismissed: the tutorial picks itself up
+  s.progress.objectives['2'].state = 'dismissed'; s.progress.card = null; s.progress.background = null; step(s, 3);
+  ok(s.progress.objectives['2'].state === 'active' && PR.objective(s) && PR.objective(s).id === '2', 'a stuck save (goal 2 dismissed at stage 3) is healed: goal 2 is back on the card');
+  // paused: the path is drawn, the goal waits, the card says why and offers Resume
+  U.goalOpen(true); BSU.session.setSpeed(s, 0, 'user'); upd(60);
+  const pr = drawPath(s); upd(700); upd(700);
+  ok(pr && pr.placed > 5 && PR.tutorialStage(s) === 3 && s.progress.objectives['2'].state === 'active', 'paused: the path is drawn and the goal waits (no tick runs while paused)');
+  ok(lis().length === 1 && lis()[0].classList.contains('done'), 'its step is ticked');
+  ok(vis(E['obj-paused']) && E['obj-paused-text'].textContent === 'Done. The game is paused: press Play to go on.' && vis(E['btn-obj-resume']) && E['btn-obj-resume'].textContent === 'Resume', 'the card says the game is paused, with Resume');
+  ok(E['obj-paused'].getAttribute('role') === 'status', 'the paused row is a status');
+  U.goalOpen(false); upd(60);
+  ok(vis(E['gp-step']) && E['gp-step'].textContent === 'Paused: press Play to go on' && E['goal-pill'].classList.contains('has-step'), 'the pill says so too');
+  U.goalOpen(true); upd(60); click(E['btn-obj-resume']);
+  eq(s.ui.speed, 1, 'Resume runs the clock');
+  step(s, 8);
+  ok(PR.tutorialStage(s) === 4 && PR.objective(s).id === '3' && !vis(E['obj-paused']), 'the goal completes, goal 3 is on the card and the paused row is gone');
+  ok(s.ui.tabsIntroduced.essentials === true, 'the Essentials tab arrives with goal 3');
+  U.goalOpen(true); upd();
+  eq(E['obj-count'].textContent, 'Step 1 of 2', 'goal 3 counts its two steps');
+  ok(!vis(E['btn-obj-dismiss']), 'goal 3 has no dismiss X');
+  // running, not paused: no paused row
+  ok(!vis(E['obj-paused']) && !/Paused/.test(E['gp-step'].textContent), 'no paused row while the clock runs');
+  // the gap between goals 3 and 4: the finished goal leaves the card
+  const d1 = place(s, 'dorm'), d2 = place(s, 'dining_hall'); step(s, 8);
+  ok(d1 && d2 && s.progress.objectives['3'].state === 'done' && PR.objective(s) === null && PR.tutorialStage(s) === 5, 'goal 3 done; goal 4 has not arrived yet (it comes with the first rain)');
+  ok(vis(E['objective-card']) || vis(E['goal-pill']), 'the goal card (or its pill) is still on screen');
+  eq(E['obj-title'].textContent, 'The next goal is on its way', 'and it does not show the finished goal: its title');
+  ok(!vis(E['obj-steps']) && !vis(E['btn-obj-build']) && !vis(E['btn-obj-dismiss']) && !/Build a Dining Hall|Build a Dorm/.test(deepText(E['objective-card'])), 'no steps, no Build it, no leftover of goal 3');
+  ok(/the next goal arrives with the first rain/.test(E['obj-text'].textContent), 'it says what it is waiting for');
+  BSU.session.setSpeed(s, 0, 'user'); upd(60);
+  ok(vis(E['obj-paused']) && E['obj-paused-text'].textContent === 'The game is paused. Press Play and the next goal arrives.', 'paused in the gap: the card says so');
+  BSU.session.setSpeed(s, 1, 'user'); upd(60);
+  let got4 = false; for (let k = 0; k < 900 && !got4; k++) { H.tick(1); if (k % 10 === 0) U.update(s, 400); const o4 = PR.objective(s); got4 = !!o4 && o4.id === '4'; }
+  upd();
+  ok(got4 && E['obj-title'].textContent !== 'The next goal is on its way' && /canal/i.test(E['obj-title'].textContent), 'goal 4 arrives on its own and takes the card: "' + E['obj-title'].textContent + '"');
+  // past the tutorial a goal can be put away, and the snackbar brings it back
+  s = fresh(); H.tick(5); U.goalOpen(true); upd();
+  ok(PR.objective(s).id === '6' && vis(E['btn-obj-dismiss']) && /Menu → Milestones brings it back/.test(E['btn-obj-dismiss'].title), 'after the tutorial the X is there, and its tooltip says where the goal goes');
+  U.dismissNotifs(); click(E['btn-obj-dismiss']); upd(60);
+  const sn = U._snacks().visible.map((x) => x.text);
+  ok(s.progress.objectives['6'].state === 'dismissed' && sn.some((x) => /^Goal put away: .*Menu → Milestones brings it back\.$/.test(x)), 'the X puts goal 6 away and a snackbar says where it went: ' + sn.join(' | '));
+  const back = E.notifications.children.map((n) => (n.children || []).find((c) => c.tagName === 'BUTTON' && c.textContent === 'Bring it back')).filter(Boolean)[0];
+  ok(!!back, 'with "Bring it back"'); if (back) click(back); H.tick(3);
+  ok(s.progress.objectives['6'].state === 'active' || s.progress.objectives['6'].state === 'queued', 'which reopens it (' + s.progress.objectives['6'].state + ')');
+  eq(errs().filter((e) => /ui|progress|buildings/.test(e)).length, 0, 'no BSU.error from ui / progress / buildings: ' + errs().join(', '));
+}
+
 console.log(`\n${passes} passed, ${failures} failed`);
 process.exit(failures ? 1 : 0);

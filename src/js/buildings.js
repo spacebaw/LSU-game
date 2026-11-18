@@ -291,6 +291,13 @@
     } catch (e) { BSU.error('buildings', 'unlocked', e); return { ok: false, reason: 'Locked' }; }
   };
   /** summer (May 6–Aug 4) −15% (GDD §5.3) */
+  /** unstick pass: '' or the Board's refusal while it runs the budget ("Receivership: 23 days left"); rowId = a catalog row (progress.receiverRefusal knows
+   *  which rows stay open), none for an upgrade / pilings / a regrade. A progress without receiverRefusal (a stub) falls back to receiverActive */
+  function receiverWhy(state, rowId) {
+    const rv = call('progress', 'receiverRefusal', [state, rowId || ''], null);
+    if (typeof rv === 'string') return rv;
+    return call('progress', 'receiverActive', [state], false) === true ? 'Receivership' : '';
+  }
   M.constructionMult = function (state) { return semesterOf(state) === 'summer' ? 1 + PE.terrainCost.summer : 1; };
 
   // ---------------------------------------------------------------------------
@@ -1046,7 +1053,7 @@
     // 1. unlock / receivership / austerity
     const u = M.unlocked(state, id);
     if (!u.ok) return fail(r, u.reason || 'Locked');
-    if (call('progress', 'receiverActive', [state], false) === true) return fail(r, 'Receivership');
+    if (!(opts.ignoreCash && opts.instant)) { const rv = receiverWhy(state, id); if (rv) return fail(r, rv); }   // unstick pass: "Receivership: 23 days left" (never the bare word); the rows the Board does not freeze (Gravel Path, Boardwalk) pass, and so does a free delivery (the Coastal Resilience Grant's pump: ignoreCash + instant)
     if (timer(state, 'noConstruction')) return fail(r, 'Austerity: no construction this month');
     const day = dayOf(state);
     r.summer = semesterOf(state) === 'summer';
@@ -1543,7 +1550,7 @@
       }
       undoRec.connector = fin(undoRec.connector, 0) + laid.length;
     }
-    if (!sharedUndo) pushUndo(state, undoRec, id);
+    if (!sharedUndo) { if (id === 'founders_hall') c.undo = null; else pushUndo(state, undoRec, id); }   // unstick pass: Founders' Hall is not undone (Ctrl+Z in its 10 s window took the hall away for good: it is in no Build tab)
     dirtyAll(c);
     emit(EV.BUILDING_PLACED, { id: b.id, type: b.type, tx: b.tx, ty: b.ty, w: b.w, h: b.h, cost: r.cost, pilings: b.pilings, connector: laid.length });
     if (b.built >= 1) onComplete(state, b);
@@ -1789,6 +1796,7 @@
       const b = M.get(state, id);
       if (!b) return { ok: false, cost: 0, reason: 'Pick a building' };
       if (b.pilings) return { ok: false, cost: 0, reason: 'Already on pilings' };
+      { const rv = receiverWhy(state); if (rv) return { ok: false, cost: 0, reason: rv }; }
       const cost = retrofitCost(state, b);
       if (!opts.ignoreCash && !charge(state, cost, 'construction', { i: BSU.idx(b.tx, b.ty) })) return { ok: false, cost: cost, reason: 'Not enough cash' };
       const day = dayOf(state);
@@ -1806,6 +1814,7 @@
       const b = M.get(state, id);
       if (!b) return { ok: false, cost: 0, reason: 'Pick a building' };
       const tiles = footprintOf(b), cost = PSUB.regradeCost * tiles.length;
+      { const rv = receiverWhy(state); if (rv) return { ok: false, cost: cost, reason: rv }; }
       if (!charge(state, cost, 'construction', { i: BSU.idx(b.tx, b.ty) })) return { ok: false, cost: cost, reason: 'Not enough cash' };
       const day = dayOf(state);
       for (const i of tiles) setElev(state, i, state.tiles.elev[i] + PSUB.regradeFt);
@@ -1865,6 +1874,7 @@
       if (b.upgradeDoneDay >= 0) { out.inProgress = true; out.doneDay = b.upgradeDoneDay; out.reason = 'Upgrade in progress'; return out; }
       if (!isComplete(b)) { out.reason = b.ruin ? 'A ruin cannot be upgraded' : 'Still under construction'; return out; }
       if (!next) { out.reason = 'Top tier'; return out; }
+      { const rv = receiverWhy(state); if (rv) { out.reason = rv; return out; } }   // unstick pass: the Board freezes upgrades too
       const pr = dep.progress();
       const okUnlock = (pr && typeof pr.unlockOk === 'function') ? pr.unlockOk(state, next.unlock) !== false : unlockOkLocal(state, next.unlock);
       if (!okUnlock) for (const n of unlockNeeds(state, next.unlock)) out.needs.push(n);

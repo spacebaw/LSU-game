@@ -24,6 +24,7 @@
 //   │  │   #stat-prestige · #stat-happiness · #stat-ecology) · #date-chip(#sky-glyph #stat-date(.date-text) #chip-weather) · #speed(.speed-btn[data-speed]) ·
 //   │  │   .actions(#btn-alerts(#alerts-badge) · #ov-lit (the lit overlay chip) · #btn-layers · #btn-map · #btn-menu · #btn-mute · #chip-endowed)
 //   │  ├─ #alert-strip.hidden  #alert-icon #alert-text #alert-action #alert-gator
+//   │  ├─ #board-chip.hidden[data-tone]  (unstick pass: the Board's standing chip, top-right under the bar: "Losing $240k a month" / "Board deadline · 42 days" / "Receivership · 23 days left"; a click opens the 'receiver' dialog)
 //   │  ├─ #goal-pill (at rest: ring + #gp-kicker #gp-title #gp-count) ↔ #objective-card (the goal card: canvas#obj-portrait #obj-kicker #obj-title #obj-text #obj-why
 //   │  │     #btn-goal-collapse #btn-obj-dismiss #obj-progress(.fill) #obj-count #btn-obj-build #btn-showme #obj-next #obj-background #speech-bubble)
 //   │  ├─ #voice-card.hidden (the scrim host)  #voice-dialog.card  #voice-student #voice-text #voice-payoff #btn-voice-decline #btn-voice-accept
@@ -173,7 +174,7 @@
   let menuEdit = null, menuReason = { text: '', until: 0 }, menuSig = '';   // menu layout pass: the Edit menu overlay ({id} while open, never saved), its inline refusal line, the dish-grid signature (cells are rebuilt only when the set changes)
   let tk = { seen: 0, lastLen: -1 };       // U2: the news lines of state.ticker already shown as snackbars (the Log panel lists them all)
   const snackQueue = [];                   // U2: notifications / news waiting for one of the two snackbar slots ({spec, kind, …} like `notifs`)
-  const goal = { open: false, until: 0, hover: false, id: '' };   // U2: the goal pill ↔ goal card (open = the card; until = the clock the card folds at)
+  const goal = { open: false, until: 0, hover: false, id: '', paused: '' };   // U2: the goal pill ↔ goal card (open = the card; until = the clock the card folds at)
   // goal steps pass: the card's steps (progress.goalSteps). Recomputed when the goal's key changes, an event marks them dirty, a day turns, or
   // (card open) once a second; the list's DOM is rebuilt only when its signature changes. Never per frame.
   const gsteps = { id: '', list: [], cur: null, sig: null, at: -1e9, day: -1, dirty: true, open: false, tool: '' };
@@ -363,6 +364,12 @@
     p.appendChild(k); p.appendChild(t); p.appendChild(n); p.appendChild(icon('expand_more')); p.appendChild(st); E['gp-step'] = st;
     E['goal-pill'] = p; E['gp-kicker'] = k; E['gp-title'] = t; E['gp-count'] = n; E['gp-ring'] = fl; return p;
   }
+  /** unstick pass: the Board's standing chip (progress.receivership): a deficit, the Board's deadline, receivership; a click opens the explanation */
+  function buildBoardChip() {
+    const b = plainBtn('board-chip', 'sl hidden', function () { const s = stateOf(); if (s) M.card(s, 'receiver', {}); });
+    const ic = el('span', 'ic-w'); ic.appendChild(icon('hourglass')); const t = el('span', 't', ''); b.appendChild(ic); b.appendChild(t); b.appendChild(icon('chevron_right', 'go'));
+    E['board-chip'] = b; E['board-chip-text'] = t; E['board-chip-icon'] = ic; return b;
+  }
   function buildObjective() {
     // the goal card (U2; the UX pass's GOALS TRACKER ids are kept so progress / tests keep working): top-left under the bar, opened from the pill or by a goal change
     const c = el('div', 'goal-card hidden'); c.id = 'objective-card';
@@ -372,7 +379,7 @@
     const openMs = function () { const s = stateOf(); if (!s || coach.step >= 0) return; M.openPanel(s.ui.panel === 'milestones' ? null : 'milestones'); };
     col.addEventListener('click', openMs); col.title = 'All milestones'; portrait.addEventListener('click', openMs);
     const fold = btn('btn-goal-collapse', null, 'icon', function () { goalCollapse(); }); fold.title = 'Fold to the pill'; fold.appendChild(icon('expand_less'));
-    const dis = btn('btn-obj-dismiss', null, 'icon', function () { const s = stateOf(); const o = s ? call('progress', 'objective', s) : null; if (o) call('progress', 'dismiss', s, o.id); }); dis.title = 'Dismiss this goal'; dis.appendChild(icon('close'));
+    const dis = btn('btn-obj-dismiss', null, 'icon', function () { dismissGoal(); }); dis.title = 'Put this goal away (Menu → Milestones brings it back)'; dis.appendChild(icon('close'));
     head.appendChild(portrait); head.appendChild(col); head.appendChild(fold); head.appendChild(dis);
     const progRow = el('div', 'obj-prog-row'); const prog = el('div', 'bar'); prog.id = 'obj-progress'; const fill = el('div', 'fill'); prog.appendChild(fill); const count = el('span', null, ''); count.id = 'obj-count'; progRow.appendChild(prog); progRow.appendChild(count);
     const acts = el('div', 'obj-actions');
@@ -383,9 +390,13 @@
     const post = btn('btn-postcard-obj', 'Postcard', 'hidden', function () { postcard(stateOf()); });
     acts.appendChild(build); acts.appendChild(showme); acts.appendChild(post);
     const next = el('div', 'obj-next hidden', ''); next.id = 'obj-next';
+    // unstick pass: the game is paused and this goal is waiting on the clock (its steps are done, or the next goal is on its way): say so, with the one button that goes on
+    const paused = el('div', 'obj-paused hidden'); paused.id = 'obj-paused'; paused.setAttribute('role', 'status'); const pausedT = el('span', null, ''); paused.appendChild(icon('pause')); paused.appendChild(pausedT);
+    const resume = btn('btn-obj-resume', 'Resume', 'gold small', function () { const s = stateOf(); if (s) M.setSpeed(s, 1); }); resume.title = 'Run the clock (Space)'; paused.appendChild(resume);
+    E['obj-paused'] = paused; E['obj-paused-text'] = pausedT; E['btn-obj-resume'] = resume;
     const bg = el('div', 'row hidden', ''); bg.id = 'obj-background'; const bub = el('div', 'hidden', ''); bub.id = 'speech-bubble';
     c.addEventListener('mouseenter', function () { goal.hover = true; }); c.addEventListener('mouseleave', function () { goal.hover = false; goal.until = clock + M._goalCollapseMs; });   // hover holds the card; leaving restarts its 10 s
-    c.appendChild(bub); c.appendChild(head); c.appendChild(steps); c.appendChild(progRow); c.appendChild(acts); c.appendChild(next); c.appendChild(bg);
+    c.appendChild(bub); c.appendChild(head); c.appendChild(steps); c.appendChild(paused); c.appendChild(progRow); c.appendChild(acts); c.appendChild(next); c.appendChild(bg);
     E['obj-steps'] = steps;
     E['objective-card'] = c; E['obj-portrait'] = portrait; E['obj-kicker'] = kick; E['obj-title'] = title; E['obj-text'] = text; E['obj-why'] = why; E['obj-progress'] = prog; E['obj-prog-row'] = progRow; E['obj-fill'] = fill; E['obj-count'] = count; E['obj-actions'] = acts;
     E['btn-obj-build'] = build; E['btn-showme'] = showme; E['btn-postcard-obj'] = post; E['btn-obj-dismiss'] = dis; E['btn-goal-collapse'] = fold; E['obj-next'] = next; E['obj-background'] = bg; E['speech-bubble'] = bub;
@@ -569,7 +580,7 @@
     if (!world) { world = el('canvas', 'world'); world.id = 'world'; world.setAttribute('tabindex', '0'); app.appendChild(world); }
     E.world = world;
     const hud = el('div'); hud.id = 'hud'; E.hud = hud;
-    hud.appendChild(buildTopbar()); hud.appendChild(buildAlert()); hud.appendChild(buildGoalPill());
+    hud.appendChild(buildTopbar()); hud.appendChild(buildAlert()); hud.appendChild(buildGoalPill()); hud.appendChild(buildBoardChip());
     buildObjective().forEach(function (x) { hud.appendChild(x); });
     buildPopovers().forEach(function (x) { hud.appendChild(x); });
     // U2: the snackbar lane (bottom centre): the Dismiss-all button, the news / notification stack (at most two), the decision snackbar
@@ -1656,7 +1667,7 @@
     if (dom()) { ghostLabel(px, py, r && r.reason ? r.reason : 'Cannot build here', r && r.charter ? 'State land · click to open the Land Office (O)' : ((r && r.reason === tieReason()) ? 'Hold N to see the campus network' : ''), 'red'); shakeLabel(); }
     if (r && r.charter) charterRefusal(s, r.charter);   // L2: the Land Office reason with a button that opens the panel on that section
     else if (r && r.reason === tieReason()) tieRefusal(s, pre, g);
-    else if (!heldShift && !toolLocked) M.notify(s, { kind: 'info', text: row.name + ': ' + (r && r.reason ? r.reason : 'cannot build here'), ttl: 4000, stamp: 'placeRefused' });   // release pass: the click drops the tool, so the reason is a snackbar   // paths pass: the P2 reason with a Show me that pans to the nearest network tile
+    else if (!heldShift && !toolLocked) M.notify(s, { kind: 'info', text: row.name + ': ' + (r && r.reason ? r.reason : 'cannot build here'), ttl: 4000, stamp: 'placeRefused', action: (r && /^Receivership/.test(r.reason || '')) ? { label: 'Why?', card: 'receiver' } : null });   // release pass: the click drops the tool, so the reason is a snackbar   // paths pass: the P2 reason with a Show me that pans to the nearest network tile
     return false;
   }
   // L2: a tool refused on unchartered land. The first refusal is noted (the "Charter your first section" goal's trigger); the toast carries
@@ -2237,7 +2248,7 @@
   function stepClick() { const s = stateOf(); if (!s || !gsteps.cur || !gsteps.cur.action) return; goal.until = clock + M._goalCollapseMs; runStepAction(s, gsteps.cur.action); gsteps.dirty = true; }
   /** the steps of the goal on the card, refreshed on a key change, a dirty mark, a new day or (card open) once a second */
   function refreshSteps(s, view, force) {
-    const isGoal = !!view && view.kind !== 'milestone';
+    const isGoal = !!view && view.kind !== 'milestone' && view.kind !== 'wait';
     const day = dayOf(s), tool = s.ui.tool ? s.ui.tool.id : '';
     const due = force || gsteps.dirty || gsteps.id !== (isGoal ? view.id : '') || gsteps.day !== day || gsteps.open !== goal.open || gsteps.tool !== tool || (goal.open && clock - gsteps.at >= STEPS_MS);
     if (!due) return;
@@ -2282,9 +2293,18 @@
   function syncStepChrome(s) {
     const cur = gsteps.cur, ca = cur && cur.action, sp = !!(s && s.setPiece);
     show(E['btn-showme'], !!gsteps.showme && !sp && !(ca && (ca.kind === 'show' || ca.kind === 'inspect')));
-    const line = (cur && gsteps.list.length > 1) ? cur.text : '';   // a one-step goal's step only repeats its title: the pill stays one line
-    setText(E['gp-step'], line ? 'Next: ' + line : ''); show(E['gp-step'], !!line); cls(E['goal-pill'], 'has-step', !!line);
-    if (E['goal-pill']) E['goal-pill'].title = (gsteps.pillBase || '') + (line ? ' · next: ' + line : '') + ' · click for the goal card';
+    const line = goal.paused ? 'Paused: press Play to go on' : (cur && gsteps.list.length > 1) ? 'Next: ' + cur.text : '';   // a one-step goal's step only repeats its title: the pill stays one line
+    setText(E['gp-step'], line); show(E['gp-step'], !!line); cls(E['goal-pill'], 'has-step', !!line);
+    // unstick pass: "Step 2 of 4" where the old counter counted steps (the bar and the ring follow the steps done)
+    const n = gsteps.list.length, stepped = !!gsteps.stepCounted && n > 1;
+    const count = stepped ? 'Step ' + Math.min(n, gsteps.list.filter(function (x) { return x.done; }).length + 1) + ' of ' + n : (gsteps.countBase || '');
+    const frac = stepped ? gsteps.list.filter(function (x) { return x.done; }).length / n : fin(gsteps.fracBase, 0);
+    if (gsteps.title !== undefined) {
+      setText(E['obj-count'], count); setText(E['gp-count'], count); show(E['gp-count'], !!count); gsteps.pillBase = (gsteps.title || '') + (count ? ' · ' + count : '');
+      if (stepped) { const w = Math.round(frac * 100) + '%'; if (E['obj-fill'] && E['obj-fill'].style.width !== w) E['obj-fill'].style.width = w; }
+      try { if (E['gp-ring']) E['gp-ring'].setAttribute('stroke-dashoffset', String(Math.round(56.5 * (1 - frac) * 10) / 10)); } catch (e) { /* stub */ }
+    }
+    if (E['goal-pill']) E['goal-pill'].title = (gsteps.pillBase || '') + (line ? ' · ' + line.replace(/^Next: /, 'next: ') : '') + ' · click for the goal card';
     setText(E['obj-next'], (gsteps.nextBase || '') + (gsteps.nextBase && gsteps.bgStep ? ' · ' + gsteps.bgStep : ''));
   }
   /** the five gauges + the binding constraint, from the same numbers the Students popover uses (economy.capacity) plus live coverage */
@@ -2976,6 +2996,7 @@
     else if (Number.isFinite(a.overlay)) out.fn = function (st) { M.setOverlay(st, a.overlay); };
     else if (a.event) out.fn = function () { emit(a.event, a.payload || {}); };
     else if (a.panel) out.fn = function () { M.openPanel(a.panel); };
+    else if (a.card) out.fn = function (st) { M.card(st, a.card, a.payload || {}); };   // unstick pass: "What is this?" on the Board's snackbars
     else return null;
     return out;
   }
@@ -3334,7 +3355,7 @@
   M.panel = function () { const s = stateOf(); return s && s.ui ? s.ui.panel : null; };
   function refreshPanel(s, name) { const p = panels[name]; if (!p || !p.el) return; p.lastRefresh = clock; try { if (typeof p.refresh === 'function') p.refresh(s, p.el); } catch (e) { uerr('panel:refresh:' + name, e); } }
   /** UI scale pass: a panel wide enough to reach the docked cards (goals tracker, minimap, overlay keys, notifications, voice card) fades just the ones it overlaps, so no half-hidden text peeks out around it */
-  const FADE_IDS = ['objective-card', 'goal-pill', 'snack-lane', 'alert-strip', 'undo-chip', 'inspect', 'fab-build'];   // 'inspect' fades only under the Edit menu overlay (menu layout pass); U2: the popovers close when a panel opens
+  const FADE_IDS = ['objective-card', 'goal-pill', 'snack-lane', 'alert-strip', 'undo-chip', 'inspect', 'fab-build', 'board-chip'];   // 'inspect' fades only under the Edit menu overlay (menu layout pass); U2: the popovers close when a panel opens
   let fadeAt = -1e9;
   function syncPanelFade(s) {
     if (!dom() || clock - fadeAt < 250) return; fadeAt = clock;
@@ -3589,6 +3610,47 @@
   }
 
   // ---------------------------------------------------------------------------
+  // The Board's chip and dialog (unstick pass): a deficit, the Board's deadline, receivership
+  // ---------------------------------------------------------------------------
+  const board = { key: '', at: -1e9 };
+  const BOARD_ICON = { receiver: 'hourglass', notice: 'hourglass', deficit: 'warning' };
+  /** twice a second: the chip follows progress.receivership (hidden when there is nothing to say); its text, title and accessible name are the countdown */
+  function updateBoard(s) {
+    if (clock - board.at < L.refreshMs) return; board.at = clock;
+    const r = call('progress', 'receivership', s) || { phase: 'none', chip: '' };
+    const on = r.phase !== 'none' && !!r.chip, key = on ? r.phase + '|' + r.tone + '|' + r.chip : '';
+    if (key === board.key) return; board.key = key;
+    const b = E['board-chip']; if (!b) return;
+    show(b, on); if (!on) return;
+    setText(E['board-chip-text'], r.chip); b.dataset.tone = r.tone || 'warn'; b.dataset.phase = r.phase;
+    const ic = E['board-chip-icon'], name = BOARD_ICON[r.phase] || 'warning'; if (ic && ic.dataset.icon !== name) { ic.dataset.icon = name; clear(ic); ic.appendChild(icon(name)); }
+    b.title = r.chip + ' · click for what it means and what fixes it'; b.setAttribute('aria-label', r.chip + ': what it means and what fixes it');
+  }
+  /** the 'receiver' dialog: progress.receiverBrief as a card (payload.phase 'exit' = the day the Board leaves; otherwise today's phase). One "Got it";
+   *  the deadline and deficit versions add Open Budget, the deadline version also "The Board's offers" */
+  M.registerCard('receiver', function (s, p) {
+    const br = call('progress', 'receiverBrief', s, p && p.phase === 'exit' ? 'exit' : undefined); if (!br) return null;
+    board.at = -1e9;   // the chip is re-read on the next frame (the dialog opens the day the phase changes)
+    let body = null;
+    if (dom()) {
+      body = el('div', 'brief'); body.appendChild(el('p', 'lead', br.lead));
+      const facts = el('div', 'facts'); br.facts.forEach(function (f) { const r = el('div', 'row' + (f.bad ? ' bad' : '')); r.appendChild(el('span', 'k', f.k)); r.appendChild(el('span', 'v', f.v)); facts.appendChild(r); }); body.appendChild(facts);
+      br.sections.forEach(function (sc) { body.appendChild(el('div', 'card-kicker', sc.title)); const ul = el('ul'); sc.lines.forEach(function (ln) { ul.appendChild(el('li', null, ln)); }); body.appendChild(ul); });
+    }
+    const actions = [{ label: 'Got it', primary: true }];
+    if (br.buttons.indexOf('budget') >= 0) actions.push({ label: 'Open Budget', fn: function () { M.openPanel('budget'); } });
+    if (br.buttons.indexOf('offers') >= 0) actions.push({ label: 'The Board\'s offers', fn: function (st) { call('progress', 'boardOffers', st); } });
+    return { id: 'receiver', kicker: br.kicker, title: br.title, body: body || [br.lead], actions: actions, brief: br };
+  });
+  /** the goal card's X: a goal that can be put away goes to Menu → Milestones, and a snackbar says so with the way back (a tutorial goal has no X) */
+  function dismissGoal() {
+    const s = stateOf(); const o = s ? call('progress', 'objective', s) : null; if (!o || call('progress', 'dismissable', s, o.id) === false) return;
+    call('progress', 'dismiss', s, o.id);
+    const st = s.progress && s.progress.objectives && s.progress.objectives[o.id];
+    if (st && st.state === 'dismissed') M.notify(s, { kind: 'info', text: 'Goal put away: ' + (o.title || 'this goal') + '. Menu → Milestones brings it back.', ttl: 9000, confirm: true, action: { label: 'Bring it back', fn: function (s2) { call('progress', 'reopen', s2, o.id); } } });
+  }
+
+  // ---------------------------------------------------------------------------
   // Top bar (GDD §11.1): odometers, delta flash, chips, speed, storm dot, mute
   // ---------------------------------------------------------------------------
   function flashDelta(delta) { if (!dom()) return; const d = E['stat-cash-delta']; setText(d, (delta > 0 ? '+' : '−') + money(Math.abs(delta))); d.dataset.sign = delta > 0 ? 'pos' : 'neg'; cls(d, 'on', true); odo.deltaUntil = clock + L.deltaMs; }
@@ -3657,8 +3719,10 @@
       let next = '';
       if (o.background && o.background.id !== o.id) next = 'Next up: ' + (o.background.title || o.background.text || '');
       else { const ms = call('progress', 'nearestMilestones', s, 1) || []; if (ms[0]) next = 'Next milestone: ' + ms[0].name + (ms[0].goal > 1 ? ' · ' + Math.round(fin(ms[0].progress, 0)) + ' / ' + ms[0].goal : ''); }
-      return { id: o.id, kind: o.kind === BSU.OBJ.BACKGROUND ? 'background' : 'interrupt', kicker: o.kind === BSU.OBJ.BACKGROUND ? 'Goal · in the background' : 'Goal', title: o.title || '', text: o.text || '', why: g ? g.why : '', progress: fin(o.progress, 0), goal: fin(o.goal, 0), deadline: o.deadline, target: target, next: next, bg: (o.background && o.background.id !== o.id) ? o.background.id : '', showme: true, dismiss: true, postcard: o.id === '7' && /parade|postcard/i.test(o.text || ''), capped: o.id === '8' && /capped/i.test(o.text || '') };
+      return { id: o.id, kind: o.kind === BSU.OBJ.BACKGROUND ? 'background' : 'interrupt', kicker: o.kind === BSU.OBJ.BACKGROUND ? 'Goal · in the background' : 'Goal', title: o.title || '', text: o.text || '', why: g ? g.why : '', progress: fin(o.progress, 0), goal: fin(o.goal, 0), deadline: o.deadline, target: target, next: next, bg: (o.background && o.background.id !== o.id) ? o.background.id : '', showme: true, dismiss: call('progress', 'dismissable', s, o.id) !== false, postcard: o.id === '7' && /parade|postcard/i.test(o.text || ''), capped: o.id === '8' && /capped/i.test(o.text || '') };
     }
+    // unstick pass: the gap between tutorial goals 3 and 4 (the next goal comes with the first rain, about half a minute at 1×): the card says so instead of going blank
+    if (stage === 5) return { id: 'next', kind: 'wait', kicker: 'Goal', title: 'The next goal is on its way', text: 'The founders are settling in. Keep building: the next goal arrives with the first rain.', why: '', progress: 0, goal: 0, deadline: -1, target: null, next: '', bg: '', showme: false, dismiss: false, postcard: false, capped: false };
     if (stage < 6) return null;
     const ms = call('progress', 'nearestMilestones', s, 2) || []; const m = ms[0]; if (!m) return null;
     const def = ((BSU.data && BSU.data.milestones) || []).find(function (x) { return x.id === m.id; }) || {};
@@ -3670,7 +3734,7 @@
     const stage = fin(call('progress', 'tutorialStage', s), 6);
     const view = trackerView(s, o, stage);
     show(E['milestones-card'], false);   // the tracker carries the nearest milestone now
-    if (!view) { if (objKey !== '') { objKey = ''; goal.id = ''; goal.open = false; show(E['objective-card'], false); show(E['goal-pill'], false); show(E['speech-bubble'], false); } litTick(); return; }
+    if (!view) { if (objKey !== '' || goal.id !== '') { objKey = ''; goal.id = ''; goal.open = false; goal.paused = ''; show(E['objective-card'], false); show(E['goal-pill'], false); show(E['speech-bubble'], false); } litTick(); return; }   // unstick pass: goal.id too (the objective:complete / :dismissed handlers clear objKey to force a redraw, so with no next goal the finished goal's card stayed up)
     const sp = !!s.setPiece;
     const key = view.id + '|' + view.title + '|' + view.text + '|' + view.progress + '/' + view.goal + '|' + (view.deadline >= 0 ? view.deadline : '') + '|' + (view.target || '') + '|' + view.next + '|' + (sp ? 'sp' : '') + '|' + (s.ui.tool ? s.ui.tool.id : '');
     if (key !== objKey) {
@@ -3685,6 +3749,8 @@
       show(E['obj-progress'], view.goal > 1); if (view.goal > 1) { const w = Math.round(frac * 100) + '%'; if (E['obj-fill'].style.width !== w) E['obj-fill'].style.width = w; }
       const countText = view.goal > 1 ? Math.round(view.progress) + ' / ' + view.goal : (view.deadline >= 0 ? 'by ' + BSU.formatDate(view.deadline) : '');
       setText(E['obj-count'], countText);
+      // unstick pass: a goal whose counter counts steps ("0 / 4" on Game Day read as "build 4 fields") says "Step 1 of 4" from the steps list (syncStepChrome); counted goals keep "3 / 5"
+      gsteps.countBase = countText; gsteps.fracBase = frac; gsteps.title = view.title; gsteps.stepCounted = view.kind !== 'milestone' && view.kind !== 'wait' && call('progress', 'countsSteps', s, view.id) === true;
       gsteps.showme = !!view.showme; gsteps.pillBase = view.title + (countText ? ' · ' + countText : ''); gsteps.nextBase = view.next || '';
       refreshSteps(s, view, true); syncStepChrome(s);   // goal steps pass: the steps and the current step's one button (#btn-obj-build: "Build it" and "Show me" are folded into it where they say the same thing)
       show(E['btn-obj-dismiss'], view.dismiss && !sp);
@@ -3694,14 +3760,19 @@
       show(E['obj-background'], false);
       E['objective-card'].dataset.kind = view.kind; E['goal-pill'].dataset.kind = view.kind;
       // the pill: "GOAL n" (or the milestone kicker) · title · count · the ring
-      setText(E['gp-kicker'], num ? 'Goal ' + num : (view.kind === 'milestone' ? 'Milestone' : 'Goal')); setText(E['gp-title'], view.title); setText(E['gp-count'], countText); show(E['gp-count'], !!countText);
-      try { E['gp-ring'].setAttribute('stroke-dashoffset', String(Math.round(56.5 * (1 - frac) * 10) / 10)); } catch (e) { /* stub */ }
+      setText(E['gp-kicker'], num ? 'Goal ' + num : (view.kind === 'milestone' ? 'Milestone' : 'Goal')); setText(E['gp-title'], view.title);   // the count and the ring are syncStepChrome's (a step-counted goal reads "Step 2 of 4")
+      syncStepChrome(s);
       call('render', 'drawPortrait', E['obj-portrait'], 0);
       if (changed && !sp && !titleOn) goalOpen(true);   // a goal change opens the card on its own (it folds after 10 s without hover)
       show(E['objective-card'], goal.open); show(E['goal-pill'], !goal.open && !sp);
     }
     else refreshSteps(s, view, false);
     litTick();
+    // unstick pass: paused with nothing left to do but wait (every step done, or the next goal on its way): the card and the pill say so, with Resume
+    { const isGoal = view.kind !== 'milestone' && view.kind !== 'wait';
+      const pz = (fin(s.ui.speed, 1) === 0 && !sp) ? (view.kind === 'wait' ? 'The game is paused. Press Play and the next goal arrives.' : (isGoal && gsteps.list.length && !gsteps.cur) ? 'Done. The game is paused: press Play to go on.' : '') : '';
+      if (fin(s.ui.speed, 1) === 0 && isGoal && clock - gsteps.at > 500) gsteps.dirty = true;   // paused: nothing ticks, so the steps are re-read here (a path drawn while paused ticks its step)
+      if (pz !== goal.paused) { goal.paused = pz; setText(E['obj-paused-text'], pz); show(E['obj-paused'], !!pz); syncStepChrome(s); } }
     if (sp && goal.open) goalCollapse();
     if (goal.open && coach.step < 0 && !goal.hover && clock >= goal.until) goalCollapse();
     // the needs gauges (in the Students popover) once the Essentials tab exists (tutorial stage 4+)
@@ -3780,13 +3851,14 @@
     if (!inited || !state || !state.ui) return;
     root = state; dtMs = fin(dtMs, 16.67); clock += dtMs;
     if (dom()) { try { const raw = M.settings().uiScale; const want = wantScale(raw); if (want !== appliedScale || (isAuto(raw) ? 'auto' : want) !== uiMode) applyScale(raw); if (clock - fitAt > 1000) { fitAt = clock; const tb = E.topbar; if (tb && fitLevel < 2 && tb.scrollWidth > tb.clientWidth + 1) fitTopbar(); } } catch (e) { /* stub */ } }
-    if (titleOn) { sec('title', function (s) { refreshMuteButtons(); if (s.ui.panel) updatePanels(s); }, state, dtMs); return; }
+    if (titleOn) { sec('title', function (s) { refreshMuteButtons(); if (s.ui.panel) updatePanels(s); if (board.key) { board.key = ''; board.at = -1e9; show(E['board-chip'], false); } }, state, dtMs); return; }   // (unstick pass: the Board's chip belongs to the game, not the title)
     sec('queue', drainQueue, state, dtMs);
     sec('pan', heldPan, state, dtMs);
     sec('topbar', updateTopbar, state, dtMs);
     sec('hud', updateHud, state, dtMs);   // hud + zoom pass: mode + pills
     sec('scorebug', function (s) { if (typeof M.scoreBug === 'function') M.scoreBug(s); }, state, dtMs);   // ui_panels' live score bug (hidden when no game)
     sec('alert', updateAlert, state, dtMs);
+    sec('board', updateBoard, state, dtMs);
     sec('objective', updateObjective, state, dtMs);
     sec('notifs', updateNotifs, state, dtMs);
     sec('toast', updateToast, state, dtMs);
@@ -3821,7 +3893,7 @@
       tk = { seen: Math.max(0, ((state && state.ticker) || []).length - 1), lastLen: -1 };   // the latest line shows once after a load
       alertClosedKey = ''; tray.suggestOpen = false; tray.sopen = {};
       gsteps.id = ''; gsteps.list = []; gsteps.cur = null; gsteps.sig = null; gsteps.dirty = true; gsteps.day = -1; if (lit && lit.el) cls(lit.el, 'step-lit', false); lit = null;   // goal steps pass
-      pops.open = null; goal.open = false; goal.id = ''; goal.hover = false; pal.open = false; kb.in = false; kb.id = null; bm.query = ''; fabShown = null; legendKey = ''; mbAt = -1e9;   // U2
+      pops.open = null; goal.open = false; goal.id = ''; goal.paused = ''; goal.hover = false; board.key = ''; board.at = -1e9; show(E['board-chip'], false); pal.open = false; kb.in = false; kb.id = null; bm.query = ''; fabShown = null; legendKey = ''; mbAt = -1e9;   // U2
       bubble = { since: clock, until: 0, key: '' }; objKey = ''; alertKey = ''; alertAt = -1e9; msAt = -1e9; speedKey = ''; paletteKey = ''; palShownTab = ''; pipKey = ''; paletteDirty = true; capacityShown = false; skipShown = false; paletteHidden = null; hudFade = false;   // null: the first updateSetPiece re-syncs #palette and #hud.no-palette (a stale no-palette from the title / tutorial left a 0-height palette after newGame/load)
       M.debug.open = false; M.hoverTile = -1; lastGhost = null;
       tray.key = ''; tray.rows = []; tray.hadIssues = false; tray.clearAt = -1e9; heldI = false; spotToggled = false; try { if (BSU.issues) { BSU.issues.select(null); BSU.issues.spotlight(false); BSU.issues.pulse(null); } } catch (e) { /* */ }

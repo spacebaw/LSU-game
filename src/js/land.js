@@ -204,6 +204,7 @@
       out.section = s; out.price = s.price; out.gate = s.gate;
       if (s.owned) { out.reason = 'Already chartered'; return out; }
       if (!s.forSale) { out.reason = 'Not next to your land yet'; return out; }
+      { const rv = call('progress', 'receiverRefusal', [state, ''], ''); if (rv) { out.reason = rv; return out; } }   // unstick pass: the Board buys no land while it runs the budget ("Receivership: 23 days left")
       if (s.locked) { out.reason = 'Needs prestige ' + s.gate + ' (you have ' + Math.floor(out.prestige) + ')'; return out; }
       if (cash(state) < s.price) { out.reason = 'Needs ' + money(s.price) + ' in cash'; return out; }
       out.ok = true; return out;

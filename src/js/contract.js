@@ -492,7 +492,7 @@
         austerityUpkeep: 0.3, austerityHappiness: 10, austerityDays: 120, austerityNoBuildDays: 10,
         hikeTuition: 3000, hikeApplicants: 0.4, hikeDays: 120,
         namingRights: 1000000, namingPrestige: 3,
-        receiverDays: 60, receiverYearDays: 120, receiverPrestige: 20, receiverSpeed: 4,
+        receiverDays: 60, receiverTermDays: 30, receiverPrestige: 20, receiverSpeed: 4, receiverAllow: ['path', 'boardwalk'],   // unstick pass: the Board's notice (60 days), then 30 days of receivership (was a 120-day year: 20 minutes at 4× with nothing to do); receiverAllow = the rows it never freezes
         underwaterShare: 0.5, underwaterDays: 15, cancelledPrestige: 15, cancelledAttritionMult: 2, resilienceGrant: 3000000,
         probationPrestige: 5, probationDays: 120, probationSeatShare: 0.5, probationSemesters: 2, probationApplicants: 0.5, probationExit: 15
       },
