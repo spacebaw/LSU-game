@@ -177,7 +177,7 @@
     if (fl & F.OPEN_WATER) return T.OPEN_WATER;
     if (fl & F.BAYOU) return T.BAYOU;
     if (fl & F.POND_SINK) return T.POND;
-    if (elev < PT.typeBounds.marsh) return (fl & F.DRAINED) ? T.DRAINED : T.MARSH;
+    if (elev < PT.typeBounds.marsh) return (fl & F.DRAINED) ? T.DRAINED : (((fl & F.CANAL) && !(fl & F.WETLAND_ORIGINAL)) ? T.WET : T.MARSH);   // water pass: a canal's bed is cut below the marsh bound; ground that was not marsh does not become Marsh by being dug (it read "Marsh" on its card, lost 0.08 ft of head per tile and refused a road over it)
     if (elev < PT.typeBounds.wet) return T.WET;
     if (elev < PT.typeBounds.high) return T.DRY;
     return T.HIGH;

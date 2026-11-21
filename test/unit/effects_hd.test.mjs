@@ -257,7 +257,7 @@ try {
   ok(B.bars(gb, arr, 1, 1, '#fff', 1) === 1 && calls.filter((c) => c[0] === 'rect').pop()[3] === 6, 'brush.bars: scale defaults to 1 (CSS px = device px)');
   const wsrc = rendSrc.slice(rendSrc.indexOf('function waterPass('), rendSrc.indexOf('// Pass 3b'));
   ok(wsrc.length > 2000 && !/fillRect/.test(wsrc) && /waterBars\(g, Wa/.test(wsrc) && /waterBars\(g, Wcl/.test(wsrc) && /waterBars\(g, Wcd/.test(wsrc) && /waterBars\(g, Wd,/.test(wsrc), 'the live water pass has no fillRect left: swells, ripples, glints, foam, flecks, streaks and the surge debris / chop are layers filled through brush.bars');
-  ok((wsrc.match(/waterBars\(g, /g) || []).length === 12, 'twelve layers, one fill each (about a dozen calls a frame instead of ~6,000 fillRects)');
+  ok((wsrc.match(/waterBars\(g, /g) || []).length === 13, 'thirteen layers, one fill each (about a dozen calls a frame instead of ~6,000 fillRects; water pass: the canal streaks are the thirteenth)');
   // a frame over water: the bars layers reach the context as strokes of their own alphas
   BSU.session.newGame({ seed: 42, skipTutorial: true, size: 64 });
   const sw = BSU.state, tp = sw.tiles; let wi = -1; for (let i = 0; i < tp.type.length; i++) if (tp.type[i] === BSU.T.BAYOU) { wi = i; break; }

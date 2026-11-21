@@ -300,7 +300,7 @@ ok(st && st.ok, 'ui.selfTest ok (includes ui_panels pushed tests) ' + (st && st.
   ok(host._sbSel.has(wk.key), 'Select all weak runs ticks the weak run');
   click(byId(host, 'btn-sandbags')); ok(B.sandbagRuns(sp, 5).every((r) => r.sandbagged) && byId(host, 'btn-sandbags').disabled, 'Sandbag all finishes the rest and disables itself');
   // pre-drain / evacuate stay off outside a storm; open the Storm
-  const storm = H.forceHurricane(3); H.tick(30); refreshN(sp, 2);
+  const storm = H.forceHurricane(3); storm.forecastCat = 3; H.tick(30); refreshN(sp, 2);   // water pass: the forecast (drawn ±1 from the sim stream) is pinned: a Cat 4 forecast adds Evacuate to Prepare everything and the evacuate button below is then already spent
   ok(/HURRICANE .* · CAT|HURRICANE .* · Cat/i.test(status.textContent) && /landfall in \d+ days? \(/.test(status.textContent), 'status strip in the cone: ' + status.textContent);
   ok(!host._testcat.classList.contains('hidden'), 'the Cat selector and cone show during a storm');
   // reset to bare walls and bare levees for the cone

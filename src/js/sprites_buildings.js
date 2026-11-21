@@ -2492,7 +2492,7 @@
   const ICON_BOX = 60, ICON_MIN = 42, ICON_REF = 400, ICON_EXP = 0.22;
   const ICON_RUN = {
     path: { stamps: ['surf:1'], ground: 'grass' }, road: { stamps: ['surf:2'], ground: 'grass' },
-    boardwalk: { deck: 'boardwalk', ground: 'marsh' }, bridge: { deck: 'bridge', ground: 'water' },
+    boardwalk: { deck: 'boardwalk', ground: 'marsh' }, bridge: { deck: 'bridge', ground: 'water' }, road_bridge: { deck: 'road_bridge', ground: 'water' },   // road_bridge: water pass
     gator_fence: { stamps: ['surf:4'], ground: 'grass' }, levee: { stamps: ['levee'], ground: 'grass' },
     floodwall: { stamps: ['floodwall'], ground: 'grass' }, canal: { stamps: ['canal'], ground: 'grass' },
     surge_barrier: { stamps: ['floodwall', 'surge_barrier', 'floodwall'], ground: 'grass' }
@@ -2596,7 +2596,7 @@
    *  stilts / piers, the deck slab with its lit SW side, plank courses or expansion joints, then the rails (cypress rail with posts; purple
    *  truss with gold caps and braces). Heights are logical px above the plate. */
   function iconDeck(P, kind, s, ox, oy) {
-    const br = kind === 'bridge', hw = 0.36, rise = br ? 5 : 4, dth = 2, U = 1.5;
+    const br = kind === 'bridge' || kind === 'road_bridge', hw = 0.36, rise = br ? 5 : 4, dth = 2, U = 1.5;
     const pt = (u, v, h) => { const w = uv(u, v); return [w[0] * s + ox, w[1] * s + oy - (h || 0)]; };
     const fill = (pts, c) => { const sp = iconSpans(pts, 0); for (let i = 0; i < sp.length; i += 3) P.rect(sp[i + 1], sp[i], sp[i + 2] - sp[i + 1], 1, c); };
     const quad = (u0, u1, v0, v1, h) => [pt(u0, v0, h), pt(u1, v0, h), pt(u1, v1, h), pt(u0, v1, h)];

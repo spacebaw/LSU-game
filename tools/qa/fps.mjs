@@ -19,7 +19,7 @@ const args = parseArgs(argv, {
   size: { type: 'num', def: 96 }, dpr: { type: 'num', def: 2 }, zoom: { type: 'num', def: 1 }, night: { type: 'bool', def: false },
   index: { type: 'str', def: '' }, frames: { type: 'num', def: 150 }, runs: { type: 'num', def: 1 },
   width: { type: 'num', def: 1440 }, height: { type: 'num', def: 900 }, buildings: { type: 'num', def: 46 },
-  shot: { type: 'str', def: '' }, out: { type: 'str', def: DEFAULT_OUT }, pan: { type: 'bool', def: false },
+  shot: { type: 'str', def: '' }, out: { type: 'str', def: DEFAULT_OUT }, pan: { type: 'bool', def: false }, paused: { type: 'bool', def: false },
 });
 if (args.size !== 64 && args.size !== 96) { console.error('--size must be 64 or 96'); process.exit(2); }
 
@@ -34,6 +34,10 @@ async function measure(index) {
     const view = await g.frameCampus(args.zoom);
     const bake = await g.waitBake({ timeoutMs: 60000 });
     const sky = args.night ? await g.eval(`BSU.weather.sky(BSU.state).phase`) : null;
+    // --paused (water pass): stop the sim before sampling, so every frame draws the same campus and only the render code differs between two builds. With the
+    // sim running the frame time follows what the students happen to be doing in the 150 sampled frames (a crowd walking bakes and draws more sprite frames
+    // than one standing still), and two builds whose campuses have drifted apart are not comparable to within a few per cent
+    if (args.paused) { await g.eval(`(BSU.session.setSpeed(BSU.state, 0, 'user'), true)`); await g.sleep(1500); }
     const p = await g.sample(args.frames, { settle: 30 });
     if (args.shot) await g.shot(args.shot + (compare ? '-' + (index === compare[0] ? 'A' : 'B') : ''));
     // --pan: move the camera 20 tiles toward the middle of the map, let it re-bake, sample again: the ring must pre-bake and the view upgrade again (no lock-out at the cap)

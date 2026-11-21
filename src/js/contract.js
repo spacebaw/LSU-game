@@ -50,14 +50,14 @@
   });   // catalog placeRule (BRIDGE: bridge pass — water-only drag, both ends on land; FILL: L3 Dredge & fill — Marsh only, chartered land, ≥ 3 tiles from a Preserve)
   BSU.SPR = freeze({ NIGHT: 1, DAMAGED: 2, PILINGS: 4, SCAFFOLD: 8, RUIN: 16, TIER_SHIFT: 5, TIER_MASK: 3 << 5, BOARDED: 128, FRONT_L: 256, FLOODED: 512 });   // FLOODED (art pass B3): waterline stain + sandbags; render.variantOf sets it from b.flooded   // building sprite variant bits (D17); FRONT_L = entrance (door, walk, lamps) on the SW face (design pass)
 
-  // The 43 catalog ids in GDD §0.3 row order (BSU.B_ORDER[n-1] is row n) + row 44 'bridge' (bridge pass) + rows 45 'bunkhouse' / 46 'suites' (housing tiers pass, PLAN_V2 P7) + row 47 'dredge_fill' (L3: Dredge & fill, Swamp tab after the canal).
+  // The 43 catalog ids in GDD §0.3 row order (BSU.B_ORDER[n-1] is row n) + row 44 'bridge' (bridge pass) + rows 45 'bunkhouse' / 46 'suites' (housing tiers pass, PLAN_V2 P7) + row 47 'dredge_fill' (L3: Dredge & fill, Swamp tab after the canal) + row 48 'road_bridge' (water pass: the Road Bridge, Paths tab after the road).
   BSU.B_ORDER = freeze([
     'path', 'road', 'boardwalk', 'substation', 'water_tower', 'generator', 'wastewater', 'founders_hall', 'lecture_hall',
     'library', 'engineering', 'coastal_institute', 'dorm', 'res_tower', 'greek_house', 'dining_hall', 'poboy', 'practice_field',
     'stadium', 'union', 'rec_center', 'health_center', 'quad', 'parking', 'levee', 'floodwall', 'canal', 'pump', 'pond',
     'pilings', 'gator_fence', 'abatement', 'bat_house', 'wildlife_post', 'preserve', 'live_oak', 'cypress', 'azalea',
     'bell_tower', 'tiger_habitat', 'surge_barrier', 'marsh_restoration', 'rookery', 'bridge', 'bunkhouse', 'suites',
-    'dredge_fill'
+    'dredge_fill', 'road_bridge'
   ]);
   {
     const B = {};
@@ -243,6 +243,7 @@
       pumpTileFtPerDay: 15, pumpRadius: 8,   // §6.1.5
       preDrainMult: 2,                       // §6.2 prep
       canalCut: 2, canalBedMin: 0.5,         // §0.3 row 27
+      canalReach: 3,                         // water pass: a canal's catchment is the ground within this many steps whose water runs to it (hydro.canalStats / canalPreview: the card's and the drag label's "drains N tiles")
       gateCloseStage: 1,                     // Floodgate closes above +1 ft (§4.11)
       barrierCloseStage: 2, barrierPumps: 2, // Surge Barrier (§0.3 row 41)
       thresholds: { puddle: 0.05, wading: 0.3, flood: 0.5, floodPilings: 3, impassable: 0.6, surgeDmg: 2, surgeDmg2: 4, bridgeSurge: 2, pedBridgeSurge: 6 },   // §6.1.6; pedBridgeSurge: bridge pass (the Pedestrian Bridge deck is 6 ft over normal stage)
@@ -723,6 +724,8 @@
       autoTieMax: 12,                        // §3.6 access, paths pass (was connectorMax 4): a placement — a path-adjacency building or the end of a path / road / boardwalk drag — up to this many tiles from the network lays its own gravel tie (a boardwalk over water), charged and undone with it
       tieSnap: 2,                            // paths pass: a drag whose last tile is within this many tiles of the network snaps onto it in the drag's own material
       crossTieMax: 6,                        // crossings pass: a water crossing (road bridge, Pedestrian Bridge, boardwalk) ties BOTH banks; the bank that does not carry the campus tie reaches this many tiles to the nearest path / road / boardwalk / bridge, connected to campus or not
+      roadBridgeMaxSpan: 8, roadBridgeBankMax: 4,   // water pass: the Road Bridge tool's own reach (water tiles, first to last) and marsh tiles per bank; measured on 10 seeds: 99 % of straight bayou reaches are ≤ 8 water tiles (84 % ≤ 3), and banks ≤ 4 take 52 % (96) / 68 % (64) of crossings against the Campus Road's 35 % / 50 %
+      canalTieMax: 6,                        // water pass: the end of a Drainage Canal run within this many tiles of open water (or of a canal that already drains) digs itself on to it, priced and previewed with the run (Alt = no tie)
       bridgeBankMax: 2,                      // crossings pass: a road bridge's deck also carries over up to this many marsh tiles on each bank (bridge price); bridgeMaxSpan counts the water between them
       tieRefuseUntil: 5,                     // paths pass: until this many buildings are complete (Founders' excluded) a footprint that cannot be tied to the network is refused; afterwards it is allowed and becomes the tray's "Not linked" suggestion
       pilingsMult: 0.4, pilingsUpkeep: 0.05, // §0.3 row 30
@@ -1465,7 +1468,7 @@
     BSU.SELFTEST = true;
     try {
       for (const k of ['T', 'SURF', 'FLAG', 'SKY', 'OV', 'STORM', 'STORM_PHASE', 'OBJ', 'PLACE', 'SPR', 'B', 'EV', 'MAP']) BSU.assert(Object.isFrozen(BSU[k]), k + ' frozen');
-      BSU.assert(BSU.B_ORDER.length === 47 && Object.keys(BSU.B).length === 47, '47 catalog ids');   // L3: dredge_fill
+      BSU.assert(BSU.B_ORDER.length === 48 && Object.keys(BSU.B).length === 48, '48 catalog ids');   // L3: dredge_fill; water pass: road_bridge
       BSU.assert(BSU.MILESTONES.length === 28, '28 milestones');   // L2: landBaron, L3: reclaimed
       BSU.assert(new Set(BSU.EV_LIST).size === BSU.EV_LIST.length, 'event names unique');
       BSU.assert(Object.keys(BSU.EV).length === BSU.EV_LIST.length, 'EV constants unique');

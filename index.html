@@ -853,14 +853,14 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
   });   // catalog placeRule (BRIDGE: bridge pass — water-only drag, both ends on land; FILL: L3 Dredge & fill — Marsh only, chartered land, ≥ 3 tiles from a Preserve)
   BSU.SPR = freeze({ NIGHT: 1, DAMAGED: 2, PILINGS: 4, SCAFFOLD: 8, RUIN: 16, TIER_SHIFT: 5, TIER_MASK: 3 << 5, BOARDED: 128, FRONT_L: 256, FLOODED: 512 });   // FLOODED (art pass B3): waterline stain + sandbags; render.variantOf sets it from b.flooded   // building sprite variant bits (D17); FRONT_L = entrance (door, walk, lamps) on the SW face (design pass)
 
-  // The 43 catalog ids in GDD §0.3 row order (BSU.B_ORDER[n-1] is row n) + row 44 'bridge' (bridge pass) + rows 45 'bunkhouse' / 46 'suites' (housing tiers pass, PLAN_V2 P7) + row 47 'dredge_fill' (L3: Dredge & fill, Swamp tab after the canal).
+  // The 43 catalog ids in GDD §0.3 row order (BSU.B_ORDER[n-1] is row n) + row 44 'bridge' (bridge pass) + rows 45 'bunkhouse' / 46 'suites' (housing tiers pass, PLAN_V2 P7) + row 47 'dredge_fill' (L3: Dredge & fill, Swamp tab after the canal) + row 48 'road_bridge' (water pass: the Road Bridge, Paths tab after the road).
   BSU.B_ORDER = freeze([
     'path', 'road', 'boardwalk', 'substation', 'water_tower', 'generator', 'wastewater', 'founders_hall', 'lecture_hall',
     'library', 'engineering', 'coastal_institute', 'dorm', 'res_tower', 'greek_house', 'dining_hall', 'poboy', 'practice_field',
     'stadium', 'union', 'rec_center', 'health_center', 'quad', 'parking', 'levee', 'floodwall', 'canal', 'pump', 'pond',
     'pilings', 'gator_fence', 'abatement', 'bat_house', 'wildlife_post', 'preserve', 'live_oak', 'cypress', 'azalea',
     'bell_tower', 'tiger_habitat', 'surge_barrier', 'marsh_restoration', 'rookery', 'bridge', 'bunkhouse', 'suites',
-    'dredge_fill'
+    'dredge_fill', 'road_bridge'
   ]);
   {
     const B = {};
@@ -1046,6 +1046,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
       pumpTileFtPerDay: 15, pumpRadius: 8,   // §6.1.5
       preDrainMult: 2,                       // §6.2 prep
       canalCut: 2, canalBedMin: 0.5,         // §0.3 row 27
+      canalReach: 3,                         // water pass: a canal's catchment is the ground within this many steps whose water runs to it (hydro.canalStats / canalPreview: the card's and the drag label's "drains N tiles")
       gateCloseStage: 1,                     // Floodgate closes above +1 ft (§4.11)
       barrierCloseStage: 2, barrierPumps: 2, // Surge Barrier (§0.3 row 41)
       thresholds: { puddle: 0.05, wading: 0.3, flood: 0.5, floodPilings: 3, impassable: 0.6, surgeDmg: 2, surgeDmg2: 4, bridgeSurge: 2, pedBridgeSurge: 6 },   // §6.1.6; pedBridgeSurge: bridge pass (the Pedestrian Bridge deck is 6 ft over normal stage)
@@ -1526,6 +1527,8 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
       autoTieMax: 12,                        // §3.6 access, paths pass (was connectorMax 4): a placement — a path-adjacency building or the end of a path / road / boardwalk drag — up to this many tiles from the network lays its own gravel tie (a boardwalk over water), charged and undone with it
       tieSnap: 2,                            // paths pass: a drag whose last tile is within this many tiles of the network snaps onto it in the drag's own material
       crossTieMax: 6,                        // crossings pass: a water crossing (road bridge, Pedestrian Bridge, boardwalk) ties BOTH banks; the bank that does not carry the campus tie reaches this many tiles to the nearest path / road / boardwalk / bridge, connected to campus or not
+      roadBridgeMaxSpan: 8, roadBridgeBankMax: 4,   // water pass: the Road Bridge tool's own reach (water tiles, first to last) and marsh tiles per bank; measured on 10 seeds: 99 % of straight bayou reaches are ≤ 8 water tiles (84 % ≤ 3), and banks ≤ 4 take 52 % (96) / 68 % (64) of crossings against the Campus Road's 35 % / 50 %
+      canalTieMax: 6,                        // water pass: the end of a Drainage Canal run within this many tiles of open water (or of a canal that already drains) digs itself on to it, priced and previewed with the run (Alt = no tie)
       bridgeBankMax: 2,                      // crossings pass: a road bridge's deck also carries over up to this many marsh tiles on each bank (bridge price); bridgeMaxSpan counts the water between them
       tieRefuseUntil: 5,                     // paths pass: until this many buildings are complete (Founders' excluded) a footprint that cannot be tied to the network is refused; afterwards it is allowed and becomes the tray's "Not linked" suggestion
       pilingsMult: 0.4, pilingsUpkeep: 0.05, // §0.3 row 30
@@ -2268,7 +2271,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
     BSU.SELFTEST = true;
     try {
       for (const k of ['T', 'SURF', 'FLAG', 'SKY', 'OV', 'STORM', 'STORM_PHASE', 'OBJ', 'PLACE', 'SPR', 'B', 'EV', 'MAP']) BSU.assert(Object.isFrozen(BSU[k]), k + ' frozen');
-      BSU.assert(BSU.B_ORDER.length === 47 && Object.keys(BSU.B).length === 47, '47 catalog ids');   // L3: dredge_fill
+      BSU.assert(BSU.B_ORDER.length === 48 && Object.keys(BSU.B).length === 48, '48 catalog ids');   // L3: dredge_fill; water pass: road_bridge
       BSU.assert(BSU.MILESTONES.length === 28, '28 milestones');   // L2: landBaron, L3: reclaimed
       BSU.assert(new Set(BSU.EV_LIST).size === BSU.EV_LIST.length, 'event names unique');
       BSU.assert(Object.keys(BSU.EV).length === BSU.EV_LIST.length, 'EV constants unique');
@@ -2347,7 +2350,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
 'use strict';
 // ============================================================================
 // BAYOU STATE — data.js (module 1; immutable tables)
-// Owner: nothing at runtime. Assigns BSU.data: the 43-row building catalog (+ row 44 'bridge', bridge pass; rows 45 'bunkhouse' and 46 'suites', housing tiers pass P7; row 47 'dredge_fill', L3),
+// Owner: nothing at runtime. Assigns BSU.data: the 43-row building catalog (+ row 44 'bridge', bridge pass; rows 45 'bunkhouse' and 46 'suites', housing tiers pass P7; row 47 'dredge_fill', L3; row 48 'road_bridge', water pass),
 // tabs, decals, name pools, students/coaches/gators/storms, opponents and the
 // schedule, the calendar, the 62 ticker lines, objectives, milestones, Student
 // Voice and Board cards, failure cards, the tutorial script, overlays, the key
@@ -2426,7 +2429,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
   const ESSENTIALS = { path: 1, dorm: 1, dining_hall: 1, lecture_hall: 1, poboy: 1, quad: 1, live_oak: 1 };
   const NOT_DEMOLISHABLE = { founders_hall: 1, library: 1, res_tower: 1, stadium: 1, bell_tower: 1, tiger_habitat: 1, rookery: 1, surge_barrier: 1, marsh_restoration: 1 };
   const TAB_OF_ROW = function (n) {
-    if (n <= 3 || n === 44) return 'paths';   // 44 = Pedestrian Bridge (bridge pass): the Paths tab after the boardwalk
+    if (n <= 3 || n === 44 || n === 48) return 'paths';   // 44 = Pedestrian Bridge (bridge pass): after the boardwalk; 48 = Road Bridge (water pass): after the road
     if (n <= 7) return 'utilities';
     if (n <= 12) return 'academic';
     if (n <= 15 || n === 45 || n === 46) return 'housing';   // 45 / 46 = Bayou Bunkhouse / Magnolia Suites (P7), ordered in the tab below
@@ -2440,7 +2443,8 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
   /** One plain line per row: what it does (the build menu's first line; GDD §11.2 "say it in one breath"). */
   const BLURB = {
     path: 'A gravel walkway. Every building needs one on its edge.',
-    road: 'A paved road for buses, parades and the Stadium; bridges up to 3 water tiles.',
+    road: 'A paved road for buses, parades and the Stadium; bridges 3 water tiles (wider: Road Bridge).',
+    road_bridge: 'A road on concrete piers across the bayou: up to 8 water tiles, Campus Road at both ends.',
     boardwalk: 'A raised walk over marsh and water that leaves the wetland alone.',
     bridge: 'A high pedestrian span over the bayou: six feet of clearance, passable through a Cat 3 surge.',
     substation: 'Powers up to 40 buildings within 10 tiles.',
@@ -2466,9 +2470,9 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
     health_center: 'Mosquito illness −60% and heat illness −50% within 12 tiles.',
     quad: '+2 happiness within 6 tiles and a free Live Oak. No path needed.',
     parking: 'Parks 600 students’ cars; +$4k/mo in tickets. Needs a road within 4.',
-    levee: 'A 6-foot earthen wall against rising water. Walkable.',
+    levee: 'A 6-foot earthen wall against rising water: close it into a ring. Walkable.',
     floodwall: 'A 12-foot concrete wall. Nutria-proof; −1 happiness within 3.',
-    canal: 'A ditch that carries rainwater downhill to the bayou.',
+    canal: 'A ditch that carries rain off low ground to the bayou; its end digs itself on to water.',
     pump: 'Pumps 15 tile-ft a day out of its canal network. Needs power.',
     pond: 'Holds 20 tile-ft of runoff; once stocked, mosquitoes −80% within 4.',
     pilings: 'Lifts one building 3 ft above the flood line (+40% of its cost).',
@@ -2788,7 +2792,13 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
       effects: { ecologyPerTile: -1 / BSU.params.terrain.fill.ecologyPer, special: ['fill'] },
       paint: flat(['#8A7A5A', '#5E5238'], ['pipes']),
       why: 'Spoil from the bayou raises marsh to dry land. Ecology pays.',
-      desc: 'Marsh only, on chartered land; $40k a tile, ten days to fill; −1 ecology per 4 tiles (permanent); refused within 2 tiles of a Preserve; the tile becomes Dry ground.' })
+      desc: 'Marsh only, on chartered land; $40k a tile, ten days to fill; −1 ecology per 4 tiles (permanent); refused within 2 tiles of a Preserve; the tile becomes Dry ground.' }),
+    // water pass — row 48, Paths tab right after the Campus Road: a road run that must cross water; deck at its own price, Campus Road on the dry ground of the run
+    row({ n: 48, name: 'Road Bridge', kind: 'drag', cost: 10000 * BSU.params.build.bridgeCostMult, upkeep: 100, wr: 3, placeRule: PLACE.ROAD,
+      effects: { surfaceId: SURF.ROAD, noise: { value: 1, radius: 1 } },
+      paint: flat(['#3A3A40', '#B8B8BC'], ['stilts', 'lights'], 'bridge'),
+      why: 'The bayou splits the campus. This carries road, buses and parade across.',
+      desc: 'Drag bank to bank: up to 8 water tiles and 4 marsh tiles a bank on concrete piers at $40k a deck tile; Campus Road ($10k) on the dry ground of the run; both banks tie themselves in; open to vehicles and walkers; impassable above a 4-ft surge.' })
   ];
   const catalog = {};
   for (const r of catalogList) catalog[r.id] = r;
@@ -2803,6 +2813,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
     const ids = catalogList.filter(r => r.tab === t[0] && r.id !== 'founders_hall').map(r => r.id);
     const order = TAB_ORDER[t[0]];
     if (order) ids.sort((a, b) => order.indexOf(a) - order.indexOf(b));
+    if (t[0] === 'paths') { const k = ids.indexOf('road_bridge'); if (k >= 0) { ids.splice(k, 1); ids.splice(ids.indexOf('road') + 1, 0, 'road_bridge'); } }   // water pass: the Road Bridge sits right after the Campus Road
     if (t[0] === 'swamp') { const k = ids.indexOf('dredge_fill'), c = ids.indexOf('canal'); if (k >= 0 && c >= 0) { ids.splice(k, 1); ids.splice(ids.indexOf('canal') + 1, 0, 'dredge_fill'); } }   // L3: Dredge & fill sits right after the canal
     tabs.push({ id: t[0], name: t[1], rows: ids });
   }
@@ -3737,10 +3748,11 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
   };
   requirements.place[PLACE.PATH] = { glyph: '↔', text: 'Drag a run across land' };
   requirements.place[PLACE.ROAD] = { glyph: '↔', text: 'Drag a run; bridges up to 3 tiles of water, bank to bank (both ends connect themselves); not on open marsh' };
+  requirements.row = { road_bridge: { glyph: '↔', icon: 'road_bridge', text: 'Drag bank to bank across water (up to 8 tiles): both ends connect themselves' } };   // water pass: a row's own line wins over its placeRule's
   requirements.place[PLACE.BOARDWALK] = { glyph: '↔', text: 'Drag a run over marsh, preserve or water: both ends connect themselves' };
   requirements.place[PLACE.BRIDGE] = { glyph: '↔', text: 'Drag bank to bank across water: both ends connect themselves' };
-  requirements.place[PLACE.LEVEE] = { glyph: '↔', text: 'Drag a run along the ground; close the ring' };
-  requirements.place[PLACE.CANAL] = { glyph: '↔', text: 'Drag a run downhill to the bayou or open water' };
+  requirements.place[PLACE.LEVEE] = { glyph: '↔', text: 'Drag a run along the ground; close the ring (the label says when it is closed)' };
+  requirements.place[PLACE.CANAL] = { glyph: '↔', text: 'Drag a run from the wet ground toward water: the end connects itself' };
   requirements.place[PLACE.FENCE] = { glyph: '↔', text: 'Drag a run along a water edge' };
   requirements.place[PLACE.PRESERVE] = { glyph: '🖌', text: 'Drag to paint marsh tiles' };
   requirements.place[PLACE.NEAR_WATER] = { glyph: '🌊', text: 'Within 3 tiles of water' };
@@ -3792,8 +3804,8 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
     try {
       const D = BSU.data, L = D.catalogList, C = D.catalog;
       // 1. row count and numbering
-      check(L.length === 47, 'catalogList.length === 47 (got ' + L.length + ')');   // L3: dredge_fill
-      check(Object.keys(C).length === 47, 'catalog has 47 keys');
+      check(L.length === 48, 'catalogList.length === 48 (got ' + L.length + ')');   // L3: dredge_fill; water pass: road_bridge
+      check(Object.keys(C).length === 48, 'catalog has 48 keys');
       for (let i = 0; i < L.length; i++) {
         check(L[i].n === i + 1, 'row ' + (i + 1) + ' has n ' + L[i].n);
         check(C[L[i].id] === L[i], 'catalog[' + L[i].id + '] is the same object as catalogList[' + i + ']');
@@ -4156,7 +4168,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
     if (fl & F.OPEN_WATER) return T.OPEN_WATER;
     if (fl & F.BAYOU) return T.BAYOU;
     if (fl & F.POND_SINK) return T.POND;
-    if (elev < PT.typeBounds.marsh) return (fl & F.DRAINED) ? T.DRAINED : T.MARSH;
+    if (elev < PT.typeBounds.marsh) return (fl & F.DRAINED) ? T.DRAINED : (((fl & F.CANAL) && !(fl & F.WETLAND_ORIGINAL)) ? T.WET : T.MARSH);   // water pass: a canal's bed is cut below the marsh bound; ground that was not marsh does not become Marsh by being dug (it read "Marsh" on its card, lost 0.08 ft of head per tile and refused a road over it)
     if (elev < PT.typeBounds.wet) return T.WET;
     if (elev < PT.typeBounds.high) return T.DRY;
     return T.HIGH;
@@ -5895,6 +5907,10 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
       bfsQueue: new Uint16Array(N),
       bayouIndex: new Int16Array(N),
       tileNet: new Int16Array(N),
+      canalDir: new Int8Array(N),      // water pass: the way a canal tile's water runs (0 N, 1 E, 2 S, 3 W toward its outlet; −1 = no outlet, or no canal)
+      canalOut: new Float32Array(N),   // water pass: tile-ft a canal tile has given to open water today (the outlet tiles); canalOutPrev = yesterday's
+      canalOutPrev: new Float32Array(N),
+      drained: null, drainedVer: -1, netVer: 0,   // water pass: the catchment mask of every canal network that has an outlet or a pump (lazy, per network rebuild)
       tileDirty: new Uint8Array(N),
       waterList: new Uint16Array(N), waterN: 0, waterListDirty: true,   // L1: the boundary (OPEN_WATER / BAYOU) tiles as a list, so the per-pass boundary reset is O(water), not O(N)
       lossMulApplied: NaN, lossDirty: true,                          // L1: lossEff = lossTable × lossMul is recomputed only when either changes
@@ -6025,7 +6041,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
     const levee = tiles.crest[i] > 0;
     const preserve = (fl & F.PRESERVE) !== 0;
     const drained = (fl & F.DRAINED) !== 0;
-    const marsh = ty === T.MARSH && !drained;
+    const marsh = ty === T.MARSH && !drained && !canal;   // water pass: a canal's bed is no marsh, whatever its elevation says (no marsh absorb, no head loss, no 0.15-ft floor)
     let absorb, drain;
     // class by type (POND is Wet class)
     if (drained || ty === T.DRAINED) { absorb = P.absorb.drained; drain = P.drain.drained; }
@@ -6071,12 +6087,13 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
     const ctx = C, tiles = state.tiles, flags = tiles.flags;
     ctx.tileNet.fill(-1);
     ctx.canalNear.fill(0);
+    ctx.canalDir.fill(-1); ctx.netVer++;
     const nets = [];
     const q = ctx.bfsQueue;
     for (let s = 0; s < N; s++) {
       if (!(flags[s] & F.CANAL) || ctx.tileNet[s] >= 0) continue;
       const id = nets.length;
-      const net = { id: id, tiles: [], drainsToWater: false, drainsTo: '', waterAdj: [], pumps: [], gates: [], stage: 0 };
+      const net = { id: id, tiles: [], drainsToWater: false, drainsTo: '', waterAdj: [], pumps: [], gates: [], stage: 0, outlets: [] };   // outlets (water pass): the canal tiles that touch open water
       let head = 0, tail = 0;
       q[tail++] = s; ctx.tileNet[s] = id;
       while (head < tail) {
@@ -6094,6 +6111,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
             net.drainsToWater = true;
             if (ctx.water[j] === 2) net.drainsTo = 'Bayou'; else if (!net.drainsTo) net.drainsTo = 'River';
             if (net.waterAdj.indexOf(j) < 0) net.waterAdj.push(j);
+            if (ctx.canalDir[i] < 0) { ctx.canalDir[i] = d; net.outlets.push(i); }
             continue;
           }
           if ((flags[j] & F.CANAL) && ctx.tileNet[j] < 0) { ctx.tileNet[j] = id; q[tail++] = j; }
@@ -6105,6 +6123,18 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
         for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
           const x = tx + dx, y = ty + dy;
           if (x >= 0 && y >= 0 && x < W && y < H) ctx.canalNear[y * W + x] = 1;
+        }
+      }
+      // water pass: every other tile of a network with an outlet runs toward it (BFS from the outlet tiles; the direction of the step back)
+      if (net.outlets.length) {
+        let h2 = 0, t2 = 0; const cd = ctx.canalDir;
+        for (let k = 0; k < net.outlets.length; k++) q[t2++] = net.outlets[k];
+        while (h2 < t2) {
+          const i = q[h2++], tx = (i % W), ty = ((i / W) | 0);
+          if (ty > 0 && ctx.tileNet[i - W] === id && cd[i - W] < 0) { cd[i - W] = 2; q[t2++] = i - W; }
+          if (tx < W - 1 && ctx.tileNet[i + 1] === id && cd[i + 1] < 0) { cd[i + 1] = 3; q[t2++] = i + 1; }
+          if (ty < H - 1 && ctx.tileNet[i + W] === id && cd[i + W] < 0) { cd[i + W] = 0; q[t2++] = i + W; }
+          if (tx > 0 && ctx.tileNet[i - 1] === id && cd[i - 1] < 0) { cd[i - 1] = 1; q[t2++] = i - 1; }
         }
       }
       nets.push(net);
@@ -6422,7 +6452,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
   function applyRain(state, ctx, rain) {
     const r = fin(rain.r, 0);
     if (r <= 0) return 0;
-    const D = ctx.D, S = ctx.S, land = ctx.land, af = ctx.absorbFrac, fill = P.satFill;
+    const D = ctx.D, S = ctx.S, land = ctx.land, af = ctx.absorbFrac, fill = P.satFill, ce = ctx.crestEff;
     let net = 0;
     let x0 = 0, y0 = 0, x1 = W - 1, y1 = H - 1;
     if (!rain.mapWide) {
@@ -6432,7 +6462,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
     for (let y = y0; y <= y1; y++) {
       for (let x = x0; x <= x1; x++) {
         const i = y * W + x;
-        if (!land[i]) continue;
+        if (!land[i] || ce[i] > 0) continue;   // water pass: rain on a wall's own crown is shed down its outer face, not poured into the ring (14 crown tiles used to feed the 6 tiles they enclosed: a closed ring took in twice its own rain)
         const s = S[i];
         const absorbed = r * af[i] * (1 - s);
         const add = r - absorbed;
@@ -6448,7 +6478,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
     const D = ctx.D, back = ctx.back, ct = ctx.crestTop, ce = ctx.crestEff, le = ctx.lossEff, km = ctx.kMul, bl = ctx.blocked, elev = state.tiles.elev, water = ctx.water, tch = ctx.touched;
     const list = ctx.activeList, n = ctx.activeN;
     let moved = 0, bndIn = 0, bndOut = 0;
-    const f = ctx.fScratch, nb = ctx.nbScratch;
+    const f = ctx.fScratch, nb = ctx.nbScratch, co = ctx.quiet ? null : ctx.canalOut, KC = P.kCanal;
     for (let a = 0; a < n; a++) {
       const i = list[a];
       const di = D[i];
@@ -6484,7 +6514,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
       for (let c = 0; c < cnt; c++) {
         const j = nb[c], fl = f[c] * sc;
         back[j] += fl; tch[j] = 1;
-        if (wi && !water[j]) bndIn += fl; else if (!wi && water[j]) bndOut += fl;
+        if (wi && !water[j]) bndIn += fl; else if (!wi && water[j]) { bndOut += fl; if (co !== null && km[i] === KC) co[i] += fl; }
       }
       moved += give;
     }
@@ -6649,6 +6679,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
     for (let i = 0; i < N; i++) if (ot[i]) { ot[i] = 0; integrityHit(state, ctx, i, P.overtopDmg); }
     // pumps: today's running log restarts
     ctx.pumpToday = {};
+    { const a = ctx.canalOutPrev; ctx.canalOutPrev = ctx.canalOut; ctx.canalOut = a; a.fill(0); }   // water pass: what each outlet carried yesterday (the canal's card)
     // powered pumps within 8 (for the drained-marsh rules)
     const pn = ctx.pumpNear; pn.fill(0);
     try {
@@ -6699,7 +6730,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
         }
         continue;
       }
-      if (type[i] !== T.MARSH || (fl & (F.PRESERVE | F.MOUND))) { dry[i] = 0; continue; }
+      if (type[i] !== T.MARSH || (fl & (F.PRESERVE | F.MOUND | F.CANAL))) { dry[i] = 0; continue; }   // (a canal's own bed is not a marsh tile that "drains": water pass)
       if (D[i] < MD.drainDepth) { if (dry[i] < 255) dry[i]++; } else dry[i] = 0;
       if (dry[i] >= MD.daysToDrain && (cn[i] || pn[i])) {
         dry[i] = 0;
@@ -6889,6 +6920,113 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
   M.conservationCheck = function (state) {
     try { const ctx = ensure(state), D = state.tiles.depth; let total = 0; for (let i = 0; i < N; i++) if (ctx.land[i]) total += D[i]; return { total: total, leak: ctx.lastLeak, moved: ctx.lastMoved }; } catch (e) { return { total: 0, leak: 0, moved: 0 }; }
   };
+  // ---------------------------------------------------------------------------
+  // Water pass (the playtester's "drainage paths don't drain"): what a canal is doing, in numbers.
+  // The CATCHMENT of a set of canal tiles is the ground whose water runs to them: a walk outward from the canal over land that is
+  // never lower than the tile it drains to (0.05 ft of tolerance), at most params.hydro.canalReach (3) steps, stopped by open water,
+  // another canal and a levee / floodwall. It is what the drag label promises ("drains 14 tiles"), what the card counts and what
+  // render_fx keeps the rain puddles off. Pure array walks over a few dozen tiles; nothing here runs per tick.
+  // ---------------------------------------------------------------------------
+  const REACH = Math.max(1, fin(P.canalReach, 3) | 0);
+  let catStamp = null, catGen = 0, catQ = null, catD = null;
+  /** → the catchment tiles of `tiles` (canal tiles, or tiles about to become canal: `extra` marks those), each once, the canal tiles themselves left out */
+  function catchmentOf(state, ctx, tiles, extra) {
+    if (!catStamp || catStamp.length !== N) { catStamp = new Uint32Array(N); catQ = new Int32Array(N); catD = new Uint8Array(N); catGen = 0; }
+    if (++catGen > 4e9) { catStamp.fill(0); catGen = 1; }
+    const t = state.tiles, elev = t.elev, flags = t.flags, crest = t.crest, out = [], gen = catGen;
+    let head = 0, tail = 0;
+    for (let k = 0; k < tiles.length; k++) { const i = tiles[k] | 0; if (i < 0 || i >= N || catStamp[i] === gen) continue; catStamp[i] = gen; catQ[tail] = i; catD[tail++] = 0; }
+    const isCanal = function (i) { return (flags[i] & F.CANAL) !== 0 || (extra !== undefined && extra.has(i)); };
+    while (head < tail) {
+      const i = catQ[head], d = catD[head++]; if (d >= REACH) continue;
+      const tx = (i % W), ty = ((i / W) | 0), src = isCanal(i), e0 = elev[i];
+      for (let q = 0; q < 4; q++) {
+        let j;
+        if (q === 0) { if (ty === 0) continue; j = i - W; } else if (q === 1) { if (tx === W - 1) continue; j = i + 1; } else if (q === 2) { if (ty === H - 1) continue; j = i + W; } else { if (tx === 0) continue; j = i - 1; }
+        if (catStamp[j] === gen || ctx.water[j] || crest[j] > 0 || isCanal(j)) continue;
+        if (!src && elev[j] < e0 - 0.05) continue;   // lower ground sheds its water somewhere else
+        catStamp[j] = gen; catQ[tail] = j; catD[tail++] = d + 1; out.push(j);
+      }
+    }
+    return out;
+  }
+  /** "the bayou" / "the river" / "the lake" for a water tile */
+  function waterName(state, ctx, j) {
+    if (ctx.water[j] === 2) return 'the bayou';
+    const lk = (state.plot && Array.isArray(state.plot.lake)) ? state.plot.lake : [];
+    return lk.indexOf(j) >= 0 ? 'the lake' : 'the river';
+  }
+  function netOutlet(state, ctx, net) {
+    if (!net) return '';
+    if (net.drainsToWater && net.waterAdj.length) { for (let k = 0; k < net.waterAdj.length; k++) if (ctx.water[net.waterAdj[k]] === 2) return 'the bayou'; return waterName(state, ctx, net.waterAdj[0]); }
+    if (net.pumps.length) return 'a Pump Station';
+    return '';
+  }
+  /** the canal network through tile i, in numbers: { tiles, outlet ('' = none: "the bayou", "the river", "the lake", "a Pump Station"), drains (bool),
+   *  catchment (tiles whose water runs to it), wet (of those, under ≥ 0.05 ft now), water (tile-ft in the channel now), depth (deepest channel
+   *  tile, ft), flowing (an outlet and water in the channel), movedToday / movedYesterday (tile-ft given to open water), gates, pumps } or null */
+  M.canalStats = function (state, i) {
+    try {
+      const ctx = ensure(state); i |= 0; if (i < 0 || i >= N) return null;
+      if (ctx.networksDirty) rebuildNetworks(state);
+      const id = ctx.tileNet[i]; if (id < 0) return null;
+      const net = ctx.networks[id], D = state.tiles.depth, cat = catchmentOf(state, ctx, net.tiles);
+      let wet = 0, water = 0, depth = 0, today = 0, yest = 0;
+      for (let k = 0; k < cat.length; k++) if (D[cat[k]] >= P.thresholds.puddle) wet++;
+      for (let k = 0; k < net.tiles.length; k++) { const j = net.tiles[k]; water += D[j]; if (D[j] > depth) depth = D[j]; today += ctx.canalOut[j]; yest += ctx.canalOutPrev[j]; }
+      const outlet = netOutlet(state, ctx, net);
+      return { tiles: net.tiles.length, outlet: outlet, drains: outlet !== '', catchment: cat.length, wet: wet, water: water, depth: depth, flowing: net.drainsToWater && water > 0.02 * net.tiles.length, movedToday: today, movedYesterday: yest, gates: net.gates.length, pumps: net.pumps.length };
+    } catch (e) { BSU.error('hydro', 'canalStats', e); return null; }
+  };
+  /** what a canal dug on `tiles` (indices, not yet canal) would do, the canals it would join included: { n (catchment tiles), outlet ('' = none),
+   *  touch (the run itself reaches the outlet), tiles (the catchment) }. `outlets` adds tiles to treat as part of the run (its tie-in). Nothing is changed. */
+  M.canalPreview = function (state, tiles) {
+    const out = { n: 0, outlet: '', touch: false, tiles: [] };
+    try {
+      const ctx = ensure(state); if (ctx.networksDirty) rebuildNetworks(state);
+      const run = [], set = new Set();
+      for (const v of (Array.isArray(tiles) ? tiles : [])) { const i = v | 0; if (i >= 0 && i < N && !set.has(i) && ctx.land[i]) { set.add(i); run.push(i); } }
+      if (!run.length) return out;
+      const all = run.slice(); let outlet = '', bayou = false;
+      const seenNet = new Set();
+      for (const i of run) {
+        const tx = (i % W), ty = ((i / W) | 0);
+        for (let q = 0; q < 4; q++) {
+          let j;
+          if (q === 0) { if (ty === 0) continue; j = i - W; } else if (q === 1) { if (tx === W - 1) continue; j = i + 1; } else if (q === 2) { if (ty === H - 1) continue; j = i + W; } else { if (tx === 0) continue; j = i - 1; }
+          if (ctx.water[j]) { if (ctx.water[j] === 2) bayou = true; else if (!outlet) outlet = waterName(state, ctx, j); continue; }
+          const id = ctx.tileNet[j]; if (id < 0 || seenNet.has(id) || set.has(j)) continue;
+          seenNet.add(id); const net = ctx.networks[id]; for (const k of net.tiles) all.push(k);
+          const o = netOutlet(state, ctx, net); if (o === 'the bayou') bayou = true; else if (o && !outlet) outlet = o;
+        }
+      }
+      out.outlet = bayou ? 'the bayou' : outlet; out.touch = out.outlet !== '';
+      out.tiles = catchmentOf(state, ctx, all, set); out.n = out.tiles.length;
+      return out;
+    } catch (e) { BSU.error('hydro', 'canalPreview', e); return out; }
+  };
+  /** is tile j an outlet a canal can run to: open water, or a canal whose network already has an outlet or a pump → its name, else '' */
+  M.outletAt = function (state, j) {
+    try {
+      const ctx = ensure(state); j |= 0; if (j < 0 || j >= N) return '';
+      if (ctx.networksDirty) rebuildNetworks(state);
+      if (ctx.water[j]) return waterName(state, ctx, j);
+      const id = ctx.tileNet[j]; return id >= 0 ? netOutlet(state, ctx, ctx.networks[id]) : '';
+    } catch (e) { return ''; }
+  };
+  /** Uint8Array over tiles: 1 = in the catchment of a canal network that has an outlet or a pump, 2 = a canal tile of one (render_fx: no rain puddles there). Rebuilt when the networks are */
+  M.drainedMask = function (state) {
+    try {
+      const ctx = ensure(state); if (ctx.networksDirty) rebuildNetworks(state);
+      if (ctx.drained && ctx.drainedVer === ctx.netVer) return ctx.drained;
+      const m = (ctx.drained && ctx.drained.length === N) ? ctx.drained : new Uint8Array(N); m.fill(0);
+      for (const net of ctx.networks) { if (!netOutlet(state, ctx, net)) continue; const cat = catchmentOf(state, ctx, net.tiles); for (let k = 0; k < cat.length; k++) m[cat[k]] = 1; for (let k = 0; k < net.tiles.length; k++) m[net.tiles[k]] = 2; }
+      ctx.drained = m; ctx.drainedVer = ctx.netVer;
+      return m;
+    } catch (e) { BSU.error('hydro', 'drainedMask', e); return null; }
+  };
+  /** render's live canal water: the per-tile flow direction (Int8Array: 0 N, 1 E, 2 S, 3 W toward the outlet, −1 none). Read-only */
+  M.canalDirs = function (state) { try { const ctx = ensure(state); if (ctx.networksDirty) rebuildNetworks(state); return ctx.canalDir; } catch (e) { return null; } };
   M.drainsTo = function (state, i) {
     try {
       const ctx = ensure(state); i |= 0; if (i < 0 || i >= N) return 'ground';
@@ -6948,7 +7086,8 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
       ctx.networksDirty = true; ctx.tileDirty[i] = 1; ctx.anyTileDirty = true;
       if (state.hydro.risk) state.hydro.risk.dirty = true;
       activate(ctx, i);
-      const Tn = terrainApi(); if (typeof Tn.touch === 'function') Tn.touch(state, i, 'flags');
+      const Tn = terrainApi(); if (typeof Tn.classify === 'function') Tn.classify(state, i);   // water pass: a canal bed dug in wet ground is not Marsh (terrain.typeOf reads the flag)
+      if (typeof Tn.touch === 'function') Tn.touch(state, i, 'flags');
     } catch (e) { BSU.error('hydro', 'markCanal', e); }
   };
   M.markPond = function (state, tiles, id, on) {
@@ -11604,12 +11743,13 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
       }
       a.wet = isPed || ((isRoad || isWalk) && spanTile(state, i));
       let reason = '';
-      if (isRoad && a.wet) { const chk = bridgeSpanOk(state, i, run); if (!chk.ok) reason = chk.reason; }
+      if (isRoad && a.wet) { const chk = bridgeSpanOk(state, i, run, row); if (!chk.ok) reason = chk.reason; }
       if (!reason) { const r = M.canPlace(state, id, x, y, o); if (!r.ok) reason = r.reason || 'Cannot place here'; else { a.act = 'lay'; a.cost = fin(r.cost, 0); a.bridge = !!r.bridge; } }
       if (reason) { a.reason = reason; if (reason.indexOf('Already ') === 0) a.act = 'same'; }
     }
     let cut = -1, pre = null, post = null, cutWhy = '';
-    if (isPed && !acts.some(function (a) { return a.wet; })) { for (const a of acts) if (a.act !== 'same') { a.act = 'skip'; a.reason = 'Bridges go over water'; } }
+    const isRB = isRoadBridge(row);
+    if ((isPed || isRB) && !acts.some(function (a) { return a.wet; })) { for (const a of acts) if (a.act !== 'same') { a.act = 'skip'; a.reason = OVER_WATER; } }
     else if (isRoad || isPed || isWalk) {
       const inRun = new Set(run), last = acts.length - 1;
       for (let k = 0; k <= last && cut < 0; k++) {
@@ -11638,6 +11778,9 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
       if (isPed && !acts.some(function (a) { return a.act === 'lay' || (a.wet && a.act === 'same'); })) {   // no deck at all (its only span is refused): the bridge tool lays no stray gravel on the approach either
         pre = null; post = null;
         for (const a of acts) if (a.act === 'landing') { a.act = 'skip'; a.reason = cutWhy || 'Bridges go over water'; }
+      }
+      if (isRB && !acts.some(function (a) { return a.wet && (a.act === 'lay' || a.act === 'same'); })) {   // water pass: a Road Bridge whose span is refused lays no stray approach road
+        for (const a of acts) if (a.act === 'lay') { a.act = 'skip'; a.reason = cutWhy || OVER_WATER; }
       }
     }
     let crossing = false; for (const a of acts) if (a.wet && a.act === 'lay') { crossing = true; break; }
@@ -11691,9 +11834,78 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
     let cost = 0, n = 0; for (const t of ties) { cost += t.cost; n += t.tiles.length; }
     return { shores: sh.map(function (s) { return { end: s.end, touch: s.touch || s.net, net: s.net, tie: s.tie, reach: s.reach }; }), ties: ties, cost: cost, n: n };
   }
+  // ---------------------------------------------------------------------------
+  // Water pass (the playtester's "drainage paths don't drain"): a canal run connects itself to an outlet the way a crossing ties in.
+  // canalPlan(run) → { carry (the run's tiles that are or will be canal), dig (the ones to dig), touch (the run itself reaches an outlet:
+  // open water, or a canal that already drains or is pumped), outlet (its name), tie ({tiles, cost, outlet}: the tiles dug on from the
+  // run's end — its start, when the end finds nothing — to the nearest outlet within params.build.canalTieMax, through ground a canal
+  // may be dug in; null when the run reaches one itself, when Alt (opts.noTie) is held, or when nothing is in reach) }.
+  // gradeCanals lowers every bed on the way from the new tiles to their outlet to the deepest bed upstream of it (never below
+  // canalBedMin): a canal dug over a rise used to keep a sill there, and the low spot behind it kept its water.
+  // ---------------------------------------------------------------------------
+  function canalTieMax() { return Math.max(0, Math.floor(fin(PB.canalTieMax, 6))); }
+  function canalPlan(state, row, run, opts) {
+    const scratch = {}, carry = [], dig = [], cmask = charterMask(state);
+    const diggable = function (i) { return !(cmask && cmask[i] !== 1) && isLand(state, i) && dragTileRule(state, row, i, {}, scratch) === ''; };
+    for (const i of run) { if (isCanal(state, i)) carry.push(i); else if (diggable(i)) { carry.push(i); dig.push(i); } }
+    const out = { carry: carry, dig: dig, touch: false, outlet: '', tie: null };
+    if (!dig.length) return out;
+    const inRun = new Set(carry);
+    const outletBeside = function (i) { let best = ''; for (const n of BSU.nbr4(i)) { if (inRun.has(n)) continue; const o = call('hydro', 'outletAt', [state, n], ''); if (o === 'the bayou') return o; if (o && !best) best = o; } return best; };
+    for (const i of carry) { const o = outletBeside(i) || (isCanal(state, i) ? call('hydro', 'outletAt', [state, i], '') : ''); if (o) { out.touch = true; if (o === 'the bayou' || !out.outlet) out.outlet = o; } }
+    const max = canalTieMax();
+    if (out.touch || opts.noTie || !(max > 0)) return out;
+    // the tie: a BFS from beside the run's last tile (then its first, then the rest), through diggable ground, to a tile beside an outlet
+    const res = reservedTiles(state), parent = new Map(), depth = new Map(), q = [];
+    const order = [carry[carry.length - 1], carry[0]].concat(carry.slice(1, -1).reverse());
+    for (const c of order) for (const n of BSU.nbr4(c)) { if (parent.has(n) || inRun.has(n) || (res && res.indexOf(n) >= 0) || !diggable(n)) continue; parent.set(n, -1); depth.set(n, 1); q.push(n); }
+    let found = -1, name = '';
+    for (let head = 0; head < q.length && found < 0; head++) {
+      const t = q[head], o = outletBeside(t);
+      if (o) { found = t; name = o; break; }
+      const dd = depth.get(t); if (dd >= max) continue;
+      for (const n of BSU.nbr4(t)) { if (parent.has(n) || inRun.has(n) || (res && res.indexOf(n) >= 0) || !diggable(n)) continue; parent.set(n, t); depth.set(n, dd + 1); q.push(n); }
+    }
+    if (found < 0) return out;
+    const tiles = []; for (let c = found; c !== -1; c = parent.get(c)) tiles.push(c); tiles.reverse();
+    const pc = M.canPlace(state, row.id, (tiles[0] % W), ((tiles[0] / W) | 0), { ignoreCash: true });
+    if (!pc || !pc.ok) return out;
+    out.tie = { tiles: tiles, cost: fin(pc.cost, row.cost) * tiles.length, outlet: name };
+    return out;
+  }
+  /** after canal tiles were dug: no bed on the way to the outlet is higher than a bed upstream of it. Lowered tiles ride on the undo record ({kind: 'elev'}). → tiles lowered */
+  function gradeCanals(state, tiles, undoRec) {
+    let n = 0; const done = new Set(), tl = state.tiles;
+    for (const t0 of tiles) {
+      const net = call('hydro', 'networkAt', [state, t0], null);
+      if (!net || done.has(net.tiles[0]) || !net.drainsToWater || !Array.isArray(net.outlets) || !net.outlets.length) continue;
+      done.add(net.tiles[0]);
+      const inNet = new Set(net.tiles), par = new Map(), order = [];
+      for (const o of net.outlets) if (!par.has(o)) { par.set(o, -1); order.push(o); }
+      for (let h = 0; h < order.length; h++) { const i = order[h]; for (const nb of BSU.nbr4(i)) if (inNet.has(nb) && !par.has(nb)) { par.set(nb, i); order.push(nb); } }
+      for (let k = order.length - 1; k >= 0; k--) {   // farthest first: each bed pulls the next one toward the outlet down to its own level
+        const i = order[k], pi = par.get(i); if (pi < 0) continue;
+        if (tl.elev[pi] > tl.elev[i] + 1e-4) { if (undoRec) undoRec.entries.push({ kind: 'elev', i: pi, elev: tl.elev[pi] }); setElev(state, pi, Math.max(PH.canalBedMin, tl.elev[i])); n++; }
+      }
+    }
+    return n;
+  }
   /** rule 8: how many plants (state.veg entries) stand on a set of tiles */
   function vegCount(state, set) { let n = 0; const veg = state.veg; if (Array.isArray(veg) && set.size) for (let k = 0; k < veg.length; k++) { const v = veg[k]; if (v && set.has(v.ty * W + v.tx)) n++; } return n; }
-  function clearsVeg(row) { const r = row && row.placeRule; return r === PLACE.PATH || r === PLACE.ROAD || r === PLACE.BOARDWALK || r === PLACE.BRIDGE; }
+  // water pass (N5, "building on trees should make them disappear"): every footprint building and everything that re-shapes its tile clears the
+  // plants on it — surfaces (crossings pass), a levee or floodwall (a berm is built on the tile), a canal and a pond (dug), Dredge & Fill
+  // (buried). Left standing: under the plants themselves, the Wetland Preserve and the Marsh Restoration Program (they are the point), a
+  // Gator Fence (a rail threads between the trunks and hides nothing) and a Quad Lawn (a lawn is where trees belong).
+  const KEEPS_VEG = { live_oak: 1, cypress: 1, azalea: 1, marsh_restoration: 1, quad: 1, founders_hall: 1 };
+  function clearsVeg(row) {
+    if (!row || KEEPS_VEG[row.id]) return false;
+    if (row.kind === 'footprint') return true;
+    const r = row.placeRule; return r === PLACE.PATH || r === PLACE.ROAD || r === PLACE.BOARDWALK || r === PLACE.BRIDGE || r === PLACE.LEVEE || r === PLACE.CANAL || r === PLACE.FILL;
+  }
+  /** does placing row `id` clear the plants on its tiles? */
+  M.clearsPlants = function (id) { return clearsVeg(rowOf(id)); };
+  /** how many plants (state.veg entries) stand on these tiles */
+  M.plantsOn = function (state, tiles) { try { return (state && Array.isArray(tiles) && tiles.length) ? vegCount(state, new Set(tiles)) : 0; } catch (e) { return 0; } };
   /** roads pass: what placeRun would do with a drag run, without placing — the same plan (runPlan): {n, skipped: [{i, reason}] (refused tiles, in run
    *  order), refused (their count), same: [i…] (tiles already carrying this surface: passed over silently, not refused), placed (tiles that would be laid),
    *  cost (their price, bridges at bridge price), wet (water + marsh tiles in the run), bridge (deck tiles), tie (runTie's quote for a path / road /
@@ -11702,7 +11914,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
    *  placed / cost), extra: [i…] (landings just off a run that starts / ends on the water), cut (tiles not laid past a refused crossing, counted in
    *  refused), clears (plants standing on the tiles the run and its ties will lay: a surface clears its tile; clearsRun = the run's own tiles only). opts.rot is passed through. */
   M.runQuote = function (state, id, tiles, opts) {
-    const out = { n: 0, skipped: [], refused: 0, same: [], placed: 0, cost: 0, wet: 0, bridge: 0, tie: null, touches: false, cross: null, landings: 0, landingCost: 0, extra: [], cut: 0, clears: 0, clearsRun: 0 };
+    const out = { n: 0, skipped: [], refused: 0, same: [], placed: 0, cost: 0, wet: 0, bridge: 0, tie: null, touches: false, cross: null, landings: 0, landingCost: 0, extra: [], cut: 0, clears: 0, clearsRun: 0, canal: null, ring: null };
     try {
       const row = rowOf(id); if (!row || !state || !state.tiles || !Array.isArray(tiles)) return out;
       opts = opts || {};
@@ -11722,8 +11934,17 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
         if (plan.crossing) { out.cross = crossTies(state, row, run, plan); out.touches = !!(out.cross && out.cross.shores.some(function (s) { return s.net && !s.tie; })); }
         else if (access) { const eff = plan.cut >= 0 ? planCarried(plan).map(function (e) { return e[0]; }) : run; out.tie = eff.length ? runTieInner(state, row, eff) : null; out.touches = !out.tie && M.runTouches(state, eff); }
       }
+      if (row.placeRule === PLACE.LEVEE) out.ring = ringPreview(state, row, run);   // water pass: what the wall this run makes will do (the cursor may rest on a tile that is already wall: canPlace's own preview is not reached then)
+      if (row.placeRule === PLACE.CANAL && out.placed > 0) {   // water pass: where the run drains to, the tiles it digs on to get there, and what it will drain
+        const cp = canalPlan(state, row, run, { noTie: opts.tie === false || opts.noTie === true });
+        const all = cp.carry.concat(cp.tie ? cp.tie.tiles : []);
+        const pv = call('hydro', 'canalPreview', [state, all], null) || { n: 0, outlet: '', tiles: [] };
+        let wet = 0; for (const i of pv.tiles) if (state.tiles.depth[i] >= PH.thresholds.puddle) wet++;
+        out.canal = { tie: cp.tie, touch: cp.touch, outlet: pv.outlet || cp.outlet || (cp.tie ? cp.tie.outlet : ''), drains: pv.n, wet: wet, reach: canalTieMax() };
+      }
       if (clearsVeg(row)) {
         out.clearsRun = vegCount(state, laid);
+        if (out.canal && out.canal.tie) for (const i of out.canal.tie.tiles) laid.add(i);
         if (out.tie) for (const i of out.tie.tiles) laid.add(i);
         if (out.cross) for (const t of out.cross.ties) for (const i of t.tiles) laid.add(i);
         out.clears = vegCount(state, laid);
@@ -11784,12 +12005,30 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
   // crossings pass: bridgeMaxSpan caps the REACH (the first to the last water tile of the span); the deck also carries over up to bridgeBankMax
   // marsh tiles on each bank. (Marsh banks used to count toward the cap: on the generated maps every bayou reach has 1–2 marsh tiles on each
   // bank, so no reach in the start charter took a road bridge on six of seven seeds sampled.) The refusal names the reach: "(this reach is 4)".
-  const SPAN_LONG = 'Bridges span ' + PB.bridgeMaxSpan + ' tiles at most', SPAN_WATER = 'Bridges span ' + PB.bridgeMaxSpan + ' water tiles at most', SPAN_DRY = 'Bridges start from dry ground';
-  function spanBankReason() { const n = Math.max(0, fin(PB.bridgeBankMax, 2) | 0); return 'Marsh bank too wide for a bridge (' + n + (n === 1 ? ' tile' : ' tiles') + ' at most): use a Boardwalk'; }
+  // water pass (N7, "vehicle bridge"): the Road Bridge row is a road whose own reach is roadBridgeMaxSpan (8) water tiles with roadBridgeBankMax (4)
+  // marsh tiles per bank; it lays Campus Road on the dry ground of its run (road price) and deck over the span (its own price, the bridge
+  // price), must cross water, and a Campus Road run refused for its length names it.
+  const SPAN_DRY = 'Bridges start from dry ground', OVER_WATER = 'Bridges go over water';
+  function isRoadBridge(row) { return !!row && row.id === 'road_bridge'; }
+  function spanMax(row) { return isRoadBridge(row) ? Math.max(1, fin(PB.roadBridgeMaxSpan, 8) | 0) : PB.bridgeMaxSpan; }
+  function bankMax(row) { return isRoadBridge(row) ? Math.max(0, fin(PB.roadBridgeBankMax, 4) | 0) : Math.max(0, fin(PB.bridgeBankMax, 2) | 0); }
+  function rbRow() { return rowOf('road_bridge'); }
+  function spanLongReason(row) { return isRoadBridge(row) ? 'A Road Bridge spans ' + spanMax(row) + ' tiles at most' : 'Bridges span ' + PB.bridgeMaxSpan + ' tiles at most'; }
+  function spanWaterReason(row, reach) {
+    if (isRoadBridge(row)) return 'A Road Bridge spans ' + spanMax(row) + ' water tiles at most (this reach is ' + reach + ')';
+    const rb = rbRow();
+    return 'Bridges span ' + PB.bridgeMaxSpan + ' water tiles at most (this reach is ' + reach + ')' + (rb && reach <= spanMax(rb) ? ': use the Road Bridge (up to ' + spanMax(rb) + ')' : '');
+  }
+  function spanBankReason(row, wide) {
+    const n = bankMax(row), tiles = n + (n === 1 ? ' tile' : ' tiles');
+    if (isRoadBridge(row)) return 'Marsh bank too wide for a Road Bridge (' + tiles + ' at most): cross where the marsh is narrower, or Dredge & Fill it';
+    const rb = rbRow();
+    return 'Marsh bank too wide for a bridge (' + tiles + ' at most): use a Boardwalk' + (rb && wide <= bankMax(rb) ? ', or the Road Bridge (' + bankMax(rb) + ')' : '');
+  }
   function spanTile(state, i) { return hasWaterFlag(state, i) || isMarsh(state, i); }
   function dryLand(state, i) { return isLand(state, i) && !isMarsh(state, i); }
   /** true when the run (opts.tiles) contains a legal span through tile i (road bridges): a reach of ≤ bridgeMaxSpan water tiles with ≤ bridgeBankMax marsh tiles on each bank */
-  function bridgeSpanOk(state, i, run) {
+  function bridgeSpanOk(state, i, run, row) {
     const surf = state.tiles.surface;
     if (Array.isArray(run) && run.length) {
       const k = run.indexOf(i);
@@ -11799,9 +12038,9 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
       while (b + 1 < run.length && spanTile(state, run[b + 1])) b++;
       let w0 = -1, w1 = -1; for (let q = a; q <= b; q++) if (hasWaterFlag(state, run[q])) { if (w0 < 0) w0 = q; w1 = q; }
       if (w0 < 0) return { ok: false, reason: 'Use a Boardwalk or a bridge' };
-      const reach = w1 - w0 + 1, bankMax = Math.max(0, fin(PB.bridgeBankMax, 2) | 0);   // the reach: first to last water tile (a marsh island between them counts)
-      if (reach > PB.bridgeMaxSpan) return { ok: false, reason: SPAN_WATER + ' (this reach is ' + reach + ')' };
-      if (w0 - a > bankMax || b - w1 > bankMax) return { ok: false, reason: spanBankReason() };
+      const reach = w1 - w0 + 1, bkMax = bankMax(row);   // the reach: first to last water tile (a marsh island between them counts)
+      if (reach > spanMax(row)) return { ok: false, reason: spanWaterReason(row, reach) };
+      if (w0 - a > bkMax || b - w1 > bkMax) return { ok: false, reason: spanBankReason(row, Math.max(w0 - a, b - w1)) };
       const before = a - 1 >= 0 ? run[a - 1] : -1, after = b + 1 < run.length ? run[b + 1] : -1;
       const landBefore = before >= 0 && dryLand(state, before), landAfter = after >= 0 && dryLand(state, after);
       // an end may also be an existing bridge tile continuing off the run, or an existing road on land
@@ -11825,7 +12064,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
     for (let x = tx + 1; x < W && hasWaterFlag(state, BSU.idx(x, ty)) && surf[BSU.idx(x, ty)] === SURF.ROAD; x++) spanX++;
     for (let y = ty - 1; y >= 0 && hasWaterFlag(state, BSU.idx(tx, y)) && surf[BSU.idx(tx, y)] === SURF.ROAD; y--) spanY++;
     for (let y = ty + 1; y < H && hasWaterFlag(state, BSU.idx(tx, y)) && surf[BSU.idx(tx, y)] === SURF.ROAD; y++) spanY++;
-    if (Math.max(spanX, spanY) > PB.bridgeMaxSpan) return { ok: false, reason: SPAN_LONG };
+    if (Math.max(spanX, spanY) > spanMax(row)) return { ok: false, reason: spanLongReason(row) };
     return { ok: true };
   }
   /** bridge pass — the Pedestrian Bridge: every water segment of the run must reach land at both ends (a land tile in the run,
@@ -11872,11 +12111,12 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
         if (surf === SURF.ROAD) return 'Already a road';
         if (surf === SURF.FENCE) return 'Fence in the way';
         if (surf === SURF.BOARDWALK || surf === SURF.BRIDGE) return 'Occupied';
-        if (water) { const b = bridgeSpanOk(state, i, opts.tiles); if (!b.ok) return b.reason; r.bridge = true; return ''; }
+        if (water) { const b = bridgeSpanOk(state, i, opts.tiles, row); if (!b.ok) return b.reason; r.bridge = true; return ''; }
         if (isMarsh(state, i)) {   // roads pass: a marsh bank inside a run's bridge span is deck (bridge price); any other marsh is refused as before
-          if (Array.isArray(opts.tiles) && opts.tiles.length > 1) { const b = bridgeSpanOk(state, i, opts.tiles); if (b.ok) { r.bridge = true; return ''; } return b.reason; }
-          return 'Use a Boardwalk or a bridge';
+          if (Array.isArray(opts.tiles) && opts.tiles.length > 1) { const b = bridgeSpanOk(state, i, opts.tiles, row); if (b.ok) { r.bridge = true; return ''; } return b.reason; }
+          return isRoadBridge(row) ? OVER_WATER : 'Use a Boardwalk or a bridge';
         }
+        if (isRoadBridge(row) && !(Array.isArray(opts.tiles) && opts.tiles.length > 1 && opts.tiles.indexOf(i) >= 0)) return OVER_WATER;   // water pass: on dry ground the Road Bridge lays road only as part of a run that crosses water
         return '';
       case PLACE.BOARDWALK:
         if (owner >= 0) return 'Occupied';
@@ -12060,6 +12300,8 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
       // 7. marsh → pilings
       if (marsh && !row.allowMarsh) return fail(r, 'Too wet: drain it or add Pilings');
       if (marsh || row.alwaysPilings || opts.pilings === true) r.needsPilings = true;
+    } else if (isRoadBridge(row)) {
+      base = r.bridge ? row.cost : fin((rowOf('road') || row).cost, row.cost);   // water pass: the deck at the Road Bridge's own price, the approach on dry ground at the Campus Road's
     } else if (r.bridge) {
       base = row.cost * PB.bridgeCostMult;
     } else if (r.landing) {
@@ -12113,7 +12355,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
       }
       r.sink = sinkLine(state, row, tiles);
     }
-    if (row.placeRule === PLACE.LEVEE && Array.isArray(opts.tiles) && opts.tiles.length) r.ring = ringPreview(state, row, opts.tiles);
+    if (row.placeRule === PLACE.LEVEE && Array.isArray(opts.tiles) && opts.tiles.length && !opts.noRing && !opts.noTie) r.ring = ringPreview(state, row, opts.tiles);   // (runQuote carries the run's preview: its own per-tile canPlace calls (noTie) and the ghost's (noRing) skip this copy)
     // 10. affordability (the building and its connector are one purchase)
     r.affordable = canAfford(state, r.cost + (r.connector ? r.connector.cost : 0));
     r.ok = true;
@@ -12391,16 +12633,19 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
       case PLACE.FENCE:
         setSurface(state, i, SURF.FENCE); rewalk(state, i); break;
       case PLACE.LEVEE:
+        clearVegAt(state, i, ent);   // water pass: no tree poking out of the berm
         tl.crest[i] = row.effects.crest; tl.integrity[i] = 100;
         markLeveeChange(state, i); rewalk(state, i); break;
       case PLACE.CANAL:
+        clearVegAt(state, i, ent);
         setElev(state, i, Math.max(tl.elev[i] - PH.canalCut, PH.canalBedMin));
         markCanal(state, i, true); rewalk(state, i);
         if (isMarsh(state, i)) { ent.eco = fin(row.effects.ecologyPerTile, 0); call('wildlife', 'applyEcologyOnce', [state, row.effects.ecologyPerTile], null); }
         break;
       case PLACE.PRESERVE:
         setFlag(state, i, FLAG.PRESERVE, true); break;
-      case PLACE.FILL: {   // L3: the tile joins this drag's run (one timer, one ticker line); the ecology cost is taken now and given back by undo
+      case PLACE.FILL: {   // L3: the tile joins this drag's run
+        clearVegAt(state, i, ent);   // water pass: the spoil buries what grew there (one timer, one ticker line); the ecology cost is taken now and given back by undo
         const run = startFillRun(state, undoRec, day);
         run.tiles.push(i); fillState(state).rev++;
         ent.fill = run.id; ent.eco = fin(row.effects.ecologyPerTile, 0);
@@ -12476,6 +12721,11 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
       let mean = 0; for (const i of r.tiles) mean += state.tiles.elev[i]; mean /= r.tiles.length;
       for (const i of r.tiles) { undoRec.entries.push({ kind: 'elev', i: i, elev: state.tiles.elev[i] }); setElev(state, i, mean); }
     }
+    if (clearsVeg(row)) {   // water pass: a building clears the plants on its footprint (they return, each at its own index, with undo)
+      const lists = [];   // one list per tile, in the order cleared: undo walks them backwards, so every index is the one the plant had
+      for (const i of r.tiles) { const e1 = {}; if (clearVegAt(state, i, e1)) lists.push(e1.veg); }
+      if (lists.length) undoRec.entries.push({ kind: 'cleared', lists: lists });
+    }
     state.buildings.push(b);
     undoRec.entries.push({ kind: 'building', id: b.id, type: b.type, pilings: b.pilings, tier: b.tier });
     for (const i of r.tiles) { state.tiles.owner[i] = b.id; rewalk(state, i); touch(state, i, 'decor'); }
@@ -12529,7 +12779,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
         return out;
       }
       const undoRec = { tick: fin(state.tick, 0), entries: [], cost: 0 };
-      const o = Object.assign({}, opts, { tiles: run });
+      const o = Object.assign({}, opts, { tiles: run, noRing: true });
       let ties = [];
       if (row.placeRule === PLACE.ROAD || row.placeRule === PLACE.BRIDGE || row.placeRule === PLACE.BOARDWALK) {
         // crossings pass: the three rows that cross water follow runPlan (exactly what runQuote showed): a refused span is refused whole and nothing is
@@ -12558,9 +12808,19 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
       } else {
         // paths pass: the end of a path run ties itself to the network (quoted before the run is laid; opts.noTie = Alt held)
         const tie = opts.noTie ? null : runTieInner(state, row, run); if (tie) ties = [tie];
+        const cplan = row.placeRule === PLACE.CANAL ? canalPlan(state, row, run, opts) : null;   // water pass: the outlet tie, planned before anything is dug (exactly what runQuote showed)
         for (const i of run) {
           const r = placeInner(state, id, (i % W), ((i / W) | 0), o, undoRec);
           if (r.ok) { out.placed++; out.cost += r.cost; } else out.skipped.push({ i: i, reason: r.reason });
+        }
+        if (cplan && out.placed > 0) {
+          const dug = [];
+          if (cplan.tie) {   // dug on to the outlet, tile by tile from the run's end: each is its own charge on the same undo record (what cannot be paid for is not dug)
+            for (const i of cplan.tie.tiles) { const r = placeInner(state, id, (i % W), ((i / W) | 0), o, undoRec); if (!r.ok) break; dug.push(i); out.cost += r.cost; }
+            if (dug.length) out.canalTie = { tiles: dug, cost: dug.length * fin(cplan.tie.cost / cplan.tie.tiles.length, 0), outlet: dug.length === cplan.tie.tiles.length ? cplan.tie.outlet : '' };
+            if (dug.length < cplan.tie.tiles.length) out.tieSkipped = 'Not enough cash for the outlet';
+          }
+          out.graded = gradeCanals(state, cplan.carry.concat(dug), undoRec);
         }
       }
       if (out.placed > 0) {
@@ -12572,6 +12832,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
         if (out.ties) out.tie = out.ties[0];
         pushUndo(state, undoRec, id);
         if (tied) undoRec.n = Math.max(1, undoRec.n - tied);   // the chip says "12 × Gravel Path + 4 path tiles"
+        if (out.graded) undoRec.n = Math.max(1, undoRec.n);
         out.ok = true; dirtyAll(cache(state));
       }
       return out;
@@ -12706,6 +12967,8 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
           if (e.fill) cancelFillTile(state, e.fill, i);   // L3: the tile leaves its run; an empty run disappears
           if (e.veg) for (let q = e.veg.length - 1; q >= 0; q--) { const g = e.veg[q]; state.veg.splice(Math.min(Math.max(0, g.k), state.veg.length), 0, g.v); }   // rule 8: the cleared plants return, each at its old index
           rewalk(state, i); touch(state, i, 'decor');
+        } else if (e.kind === 'cleared') {   // water pass: the plants a building's footprint cleared
+          for (let li = e.lists.length - 1; li >= 0; li--) { const L = e.lists[li]; for (let q = L.length - 1; q >= 0; q--) { const g = L[q]; state.veg.splice(Math.min(Math.max(0, g.k), state.veg.length), 0, g.v); } if (L.length) touch(state, BSU.idx(L[0].v.tx, L[0].v.ty), 'decor'); }
         } else if (e.kind === 'eco') {
           call('wildlife', 'applyEcologyOnce', [state, -e.amount], null);
         } else if (e.kind === 'elev') {
@@ -12713,7 +12976,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
         } else if (e.kind === 'veg') {
           let idx = -1;
           for (let j = state.veg.length - 1; j >= 0; j--) { const v = state.veg[j]; if (v && v.tx === e.tx && v.ty === e.ty && v.type === e.type && v.planted) { idx = j; break; } }
-          if (idx >= 0) { const tr = dep.terrain(); if (tr && typeof tr.removeVeg === 'function') tr.removeVeg(state, e.tx, e.ty); else state.veg.splice(idx, 1); touch(state, BSU.idx(e.tx, e.ty), 'decor'); }
+          if (idx >= 0) { state.veg.splice(idx, 1); touch(state, BSU.idx(e.tx, e.ty), 'decor'); }   // water pass: that tree only (terrain.removeVeg takes every plant on the tile: a wild shrub under a planted oak went with it)
         }
       }
       if (u.cost > 0) refund(state, u.cost, { key: 'construction' });
@@ -13529,27 +13792,112 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
     try { const h = fin(Hft, PS.ringDefaultH); return gapsInner(state, h, protectionInner(state, h)); }
     catch (e) { if (BSU.SELFTEST) throw e; BSU.error('buildings', 'gaps', e); return { gaps: [], weak: [], gates: [], reachedBuildings: [] }; }
   };
-  /** levee/floodwall drag preview: the fill on a scratch with the dragged crests added */
-  function ringPreview(state, row, run) {
+  // ---------------------------------------------------------------------------
+  // Water pass (the playtester's "levee … not really functioning as one"): what ONE wall does, in plain words. A wall is a 4-connected
+  // run of levee / floodwall tiles. At the test height H (the forecast surge while a storm is inbound, else ringDefaultH 5 ft) it
+  // PROTECTS the tiles the water reaches without it and does not reach with it; a wall that protects nothing is open, and the gap
+  // finder's runs that touch it say where. Rain that falls inside a closed wall has no way out unless a canal crosses it (a floodgate)
+  // or a pump works a canal inside. The drag preview is the same question asked of the wall the run would make.
+  // ---------------------------------------------------------------------------
+  function testHeight(state) {
     const st = state.storms && state.storms.current;
-    const Hft = st ? fin(call('weather', 'forecastSurge', [state], PS.surge[Math.min(5, Math.max(0, fin(st.forecastCat, st.cat)))]), PS.ringDefaultH) : PS.ringDefaultH;
+    return st ? fin(call('weather', 'forecastSurge', [state], PS.surge[Math.min(5, Math.max(0, fin(st.forecastCat, st.cat)))]), PS.ringDefaultH) : PS.ringDefaultH;
+  }
+  function plural(n, w) { return n + ' ' + w + (n === 1 ? '' : 's'); }
+  /** the wall through tile i0: its tiles (crestAt = is a wall tile) */
+  function wallFrom(state, seeds, crestAt) {
+    const seen = new Set(), q = [];
+    for (const i of seeds) if (crestAt(i) && !seen.has(i)) { seen.add(i); q.push(i); }
+    for (let h = 0; h < q.length; h++) for (const n of BSU.nbr4(q[h])) if (!seen.has(n) && crestAt(n)) { seen.add(n); q.push(n); }
+    return q;
+  }
+  /** what the wall `tiles` does at H on the reached mask m (the wall standing) against m0 (the wall gone): the shared core of the card and the drag label */
+  function wallReport(state, tiles, Hft, m, m0, crestAt, headAt) {
+    const tl = state.tiles, inWall = new Set(tiles);
+    let protects = 0, over = 0, lowTop = Infinity, lowBase = Infinity, gates = 0;
+    const kept = [];
+    for (let i = 0; i < N; i++) if (m0[i] && !m[i] && !inWall.has(i)) { protects++; kept.push(i); }
+    for (const i of tiles) { const h = headAt(i); if (h < lowTop) { lowTop = h; lowBase = tl.elev[i]; } if (m[i]) over++; if (tl.flags[i] & FLAG.FLOODGATE) gates++; }
+    // gaps: the gap finder's runs that touch this wall (Chebyshev 1)
+    const near = new Set(); for (const i of tiles) { near.add(i); for (const n of BSU.nbr8(i)) near.add(n); }
+    // a GAP lies between two ends of the wall (it touches two or more wall tiles, or is longer than the one tile past an end); the tile past a lone
+    // free end is an open END, not "1 tile short"
+    const all = protects > 0 ? [] : gapRuns(state, m, crestAt).filter(function (g) { return g.tiles.some(function (t) { return near.has(t); }); });
+    for (const g of all) { const touch = new Set(); for (const t of g.tiles) for (const n of BSU.nbr4(t)) if (inWall.has(n)) touch.add(n); g.ends = touch.size; }
+    const gaps = all.filter(function (g) { return g.ends >= 2 || g.len >= 2; }), openEnds = all.filter(function (g) { return !(g.ends >= 2 || g.len >= 2); });
+    // the way out for rain: a floodgate on the wall, or a pumped canal network with a tile inside
+    let pumps = 0;
+    if (protects > 0) {
+      const keptSet = new Set(kept), nets = call('hydro', 'networks', [state], []) || [];
+      for (const net of nets) if (net && net.pumps && net.pumps.length && (net.tiles || []).some(function (t) { return keptSet.has(t); })) pumps += net.pumps.length;
+    }
+    const r = { H: Hft, tiles: tiles.length, closed: protects > 0, protects: protects, kept: kept, gaps: gaps, openEnds: openEnds, overtopped: over, lowTop: Math.round(lowTop * 10) / 10, holds: Math.round((lowTop - lowBase) * 10) / 10, gates: gates, pumps: pumps, text: '', missing: '', rain: '' };
+    const hft = Math.round(Hft * 10) / 10 + ' ft';
+    if (r.closed) {
+      r.text = 'Ring closed: holds a ' + hft + ' surge off ' + plural(protects, 'tile');
+      r.rain = gates ? 'Rain inside drains through ' + plural(gates, 'floodgate') : (pumps ? 'Rain inside is pumped out' : '');
+      if (!gates && !pumps) r.missing = 'Rain inside has no way out: run a canal through the wall (a floodgate) or put a Pump on a canal inside';
+    } else if (over >= tiles.length && tiles.length) {
+      r.text = 'Too low for a ' + hft + ' surge: its crest is at ' + r.lowTop + ' ft';
+      r.missing = 'Build it on higher ground, or use a Concrete Floodwall';
+    } else if (gaps.length) {
+      const g0 = gaps[0];
+      r.text = 'Ring open: ' + plural(gaps.length, 'gap');
+      r.missing = plural(g0.len, 'tile') + ' short at ' + g0.name + ': a ' + hft + ' surge comes in there';
+    } else {
+      let wetSide = false; for (const i of tiles) { for (const n of BSU.nbr4(i)) if (m[n] && !inWall.has(n)) { wetSide = true; break; } if (wetSide) break; }
+      if (wetSide) { r.text = 'Open wall: a ' + hft + ' surge comes round its ' + (openEnds.length === 1 ? 'end' : 'ends'); r.missing = 'Carry ' + (openEnds.length === 1 ? 'the open end' : 'both ends') + ' on to ground above ' + hft + ', or close it into a ring'; }
+      else { r.text = 'No water reaches this ground at ' + hft; }
+    }
+    return r;
+  }
+  /** the wall through tile i, for its card: { H, tiles, closed, protects (tiles kept dry at H), kept: [i…], gaps: [{tiles, len, cx, cy, name}…] (open walls),
+   *  overtopped (wall tiles under water at H), lowTop (its lowest crest, ft), holds (ft of water that tile holds back above its own ground), gates,
+   *  pumps, text ("Ring closed: holds a 5 ft surge off 14 tiles" | "Ring open: 2 gaps" | "Open wall: …" | "Too low …" | "No water reaches …"),
+   *  missing (what to do, '' when nothing), rain (how rain inside gets out, '' when it cannot) } or null. Cached until the ring caches are */
+  M.leveeStatus = function (state, i, Hft) {
+    try {
+      i |= 0; if (!state || !state.tiles || i < 0 || i >= N || !(state.tiles.crest[i] > 0)) return null;
+      const H0 = Number.isFinite(Hft) ? Hft : testHeight(state), tl = state.tiles, c = cache(state);
+      const m = protectionInner(state, H0);
+      const crestAt = function (k) { return tl.crest[k] > 0; };
+      const tiles = wallFrom(state, [i], crestAt).sort(function (p, q) { return p - q; });
+      if (!c.wallCache) c.wallCache = new Map();
+      const key = tiles[0] + '|' + tiles.length + '|' + H0, hit = c.wallCache.get(key);
+      if (hit && hit.ver === c.tileVer) return hit.r;
+      const override = new Map(); for (const k of tiles) override.set(k, { crest: 0, integrity: 100 });
+      const r = wallReport(state, tiles, H0, m, floodFill(state, H0, override), crestAt, function (k) { return effectiveHead(tl, k, null); });
+      if (c.wallCache.size > 64) c.wallCache.clear();
+      c.wallCache.set(key, { ver: c.tileVer, r: r });
+      return r;
+    } catch (e) { if (BSU.SELFTEST) throw e; BSU.error('buildings', 'leveeStatus', e); return null; }
+  };
+  /** levee/floodwall drag preview: the same report for the wall the run would make (the dragged crests on a scratch), with the legacy fields
+   *  closes / short / where the Objective 11 texts read */
+  function ringPreview(state, row, run) {
+    const Hft = testHeight(state), tl = state.tiles;
     const override = new Map();
-    for (const i of run) if (Number.isInteger(i) && i >= 0 && i < N && state.tiles.crest[i] === 0 && isLand(state, i) && state.tiles.owner[i] === -1 && !isPreserve(state, i) && !isMound(state, i)) override.set(i, { crest: row.effects.crest, integrity: 100 });
+    for (const i of run) if (Number.isInteger(i) && i >= 0 && i < N && tl.crest[i] === 0 && isLand(state, i) && tl.owner[i] === -1 && !isPreserve(state, i) && !isMound(state, i)) override.set(i, { crest: row.effects.crest, integrity: 100 });
     const m = floodFill(state, Hft, override);
-    const closes = ringClosedFrom(state, m);
+    const crestAt = function (i) { return tl.crest[i] > 0 || override.has(i); };
+    const tiles = wallFrom(state, run.filter(function (i) { return Number.isInteger(i) && i >= 0 && i < N; }), crestAt);
+    if (!tiles.length) return { closes: false, short: 0, where: '', text: '' };
+    // without the wall: every tile of it at crest 0 (existing tiles through the override, new ones simply absent)
+    const gone = new Map(); for (const k of tiles) if (tl.crest[k] > 0) gone.set(k, { crest: 0, integrity: 100 });
+    const m0 = gone.size ? floodFill(state, Hft, gone) : protectionInner(state, Hft);
+    const r = wallReport(state, tiles, Hft, m, m0, crestAt, function (k) { return effectiveHead(tl, k, override); });
     const cove = (state.plot && state.plot.cove) || [];
-    const coveOk = cove.length > 0 && !cove.some(function (i) { return m[i]; });
-    if (closes || coveOk) return { closes: true, short: 0, where: '' };
-    // the smallest remaining gap on the scratch (not cached: a scratch is transient)
-    const tl = state.tiles;
-    const gaps = gapRuns(state, m, function (i) { return tl.crest[i] > 0 || override.has(i); });
-    if (!gaps.length) return { closes: false, short: 0, where: '' };
-    return { closes: false, short: gaps[0].len, where: gaps[0].name };
+    const campus = ringClosedFrom(state, m) || (cove.length > 0 && !cove.some(function (i) { return m[i]; }));
+    r.closes = r.closed || campus; r.short = r.gaps.length ? r.gaps[0].len : 0; r.where = r.gaps.length ? r.gaps[0].name : '';
+    if (r.closed) r.text = 'Closes the ring: holds a ' + (Math.round(Hft * 10) / 10) + ' ft surge off ' + plural(r.protects, 'tile') + (r.missing ? ' · rain inside will need a floodgate or a pump' : '');
+    else if (r.gaps.length) r.text = 'Ring open: ' + plural(r.gaps.length, 'gap') + ' · ' + r.missing;
+    else if (r.missing) r.text = r.text + ' · ' + r.missing.charAt(0).toLowerCase() + r.missing.slice(1);
+    return r;
   }
   /** invalidate the protection / gap / run caches (hydro and wildlife call this after integrity or gate changes) */
   M.dirtyRing = function (state) {
     const c = cache(state);
-    c.ringDirty = true; c.ringEmitPending = true; c.ringCache.clear(); c.gapCache.clear(); c.runCache = null; c.statsCache = null;
+    c.ringDirty = true; c.ringEmitPending = true; c.ringCache.clear(); c.gapCache.clear(); c.runCache = null; c.statsCache = null; if (c.wallCache) c.wallCache.clear();
   };
   /** after any integrity write by hydro / wildlife / this module */
   M.onIntegrityChanged = function (state, i) {
@@ -17475,6 +17823,18 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
   }
   function mosqAt(state, i) { const v = state.tiles.mosq[i]; return Number.isFinite(v) ? v : 0; }
   function depthAt(state, i) { const v = state.tiles.depth[i]; return Number.isFinite(v) ? v : 0; }
+  /** water pass (N15, "NPCs don't know how to use bridges"): the water a WALKER is in. On a deck — a Boardwalk or a Pedestrian Bridge anywhere, a road
+   *  over water or over the marsh bank of its span — it is 0: the bed's depth used to count, so everyone crossing a bridge was put in the WADE state
+   *  (wading pace, the splash animation and its particles, wet clothes, an inner tube) for as long as they were on it. A deck the surge has overtopped
+   *  is walk class 0 and is not routed over at all. */
+  function wadeDepth(state, i) {
+    const d = depthAt(state, i); if (d < WADE_FT) return d;
+    const sf = state.tiles.surface[i];
+    if (sf === BSU.SURF.BOARDWALK || sf === BSU.SURF.BRIDGE) return 0;
+    if (sf === BSU.SURF.ROAD || sf === BSU.SURF.PATH) { const t = state.tiles.type[i]; if (t === T.OPEN_WATER || t === T.BAYOU || t === T.MARSH || (state.tiles.flags[i] & (FLAG.OPEN_WATER | FLAG.BAYOU))) return 0; }
+    return d;
+  }
+  const WADE_FT = BSU.params.hydro.thresholds.wading;
 
   /** walk-class speed in tiles per tick at 1× (§5.8): class 1 → .4, 2 → .24, 3 → .16, 4 → .12; mods {advisory, watch, debris} */
   M.stepSpeed = function (cls, mods) {
@@ -18437,7 +18797,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
       }
     }
     // wading entry: the inner tube
-    const d = depthAt(state, i);
+    const d = wadeDepth(state, i);
     if (d >= BSU.params.hydro.thresholds.wading) {
       if (!a.wading) { a.wading = true; if (BSU.rng.sim.chance(P.tubeP)) a.tube = true; }
     } else { a.wading = false; a.tube = false; }
@@ -18520,7 +18880,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
   }
   function updateStats(state, a, ctx, moving) {
     const i = agentTile(a);
-    const inWater = !a.inside && depthAt(state, i) >= BSU.params.hydro.thresholds.wading;
+    const inWater = !a.inside && wadeDepth(state, i) >= BSU.params.hydro.thresholds.wading;
     if (inWater) a.wet = Math.min(1, a.wet + C.wetGainWade);
     else if (!a.inside && ctx.rain) a.wet = Math.min(1, a.wet + C.wetGainRain);
     else a.wet = Math.max(0, a.wet - C.wetDecay);
@@ -18619,7 +18979,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
       }
       if (a.route.length && a.routeIdx < a.route.length && a.state !== 'IDLE') {
         const i = agentTile(a);
-        const d = depthAt(state, i);
+        const d = wadeDepth(state, i);
         let cls = state.tiles.walk[i];
         if (d >= BSU.params.hydro.thresholds.wading) { cls = 4; if (a.state === 'WALK') a.state = 'WADE'; }
         else if (a.state === 'WADE') a.state = 'WALK';
@@ -25791,53 +26151,105 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
     return [{ d: DIRS[0], len: stub }, { d: DIRS[2], len: stub }];
   }
   const bandQuad = (cx, cy, d, len, j0, j1, top) => [[cx, cy + top + j0], [cx + d.dx * len, cy + d.dy * (len >> 1) + top + j0], [cx + d.dx * len, cy + d.dy * (len >> 1) + top + j1], [cx, cy + top + j1]];
-  // levee — variant = mask | 16 cracked crown; a grassy berm rising 12 px over the diamond with a gravel crown path
-  // canvas 64×48, ox −32, oy −28 (12 rows above the diamond, 4 below for the toe)
+  // ---------------------------------------------------------------------------
+  // Water pass (the playtester's "levee looks weird"): walls are drawn as SOLIDS at their true height (6 px a foot: a 6-ft levee is 36 px,
+  // a 12-ft floodwall 72 px, so a 5-ft surge stands visibly below the crown that holds it), built as a stack of horizontal slices from the
+  // ground up. A slice at height z is the plus-shaped union of two rectangles of half-width r(z) around the tile's arms; drawn bottom to
+  // top, each slice hides what is behind and below it exactly (in this projection a higher point at the same pixel is always nearer), so
+  // straight runs, corners, tees, crosses and free ends all come out of one rule with no per-shape case: a corner is a mitre, a free end a
+  // hipped cap, and two tiles meet without a seam because the arm runs to the shared edge with the same profile on both sides.
+  //   ext[d] (d = 0 N, 1 E, 2 S, 3 W): 2 the wall goes on into that neighbour (the arm runs to the edge, open cut), 1 another kind of
+  //   wall is there (the arm runs to the edge and ends in a plain face: a levee butts against a floodwall at full height), 0 nothing (a cap
+  //   at the tile centre). variant = same-kind mask | 16 weak crest | other-kind mask << 5.
+  // ---------------------------------------------------------------------------
+  M.WALL_OTHER_SHIFT = 5;
+  M.WALL_RISE = Object.freeze({ levee: 6 * PX_PER_FT, floodwall: 12 * PX_PER_FT });
+  const WPX = (cx, cy, x, y, z) => [cx + (x - y) * 32, cy + (x + y) * 16 - z];
+  const T64 = (t) => Math.round(t * 64) / 64;   // brush.tone caches per 1/64 of a tone step under the FIRST value asked in that step: the slices ask exact steps, so they never leave a near-miss in the cache for another painter
+  function wallExt(v) { const same = v & 15, other = (v >> M.WALL_OTHER_SHIFT) & 15, e = [0, 0, 0, 0]; for (let d = 0; d < 4; d++) e[d] = (same >> d) & 1 ? 2 : ((other >> d) & 1 ? 1 : 0); return e; }
+  /** the stack: prof(z) → the half-width at height z (tile units), tone(z, face) → a CSS colour (face 0 top fill, 1 the SW face, 2 the SE face); returns the top slice's geometry */
+  function wallStack(ctx, cx, cy, ext, H, dz, prof, tone, capOf) {
+    const reach = (d, r) => (ext[d] === 2 ? 0.52 : (ext[d] === 1 ? 0.5 : (capOf ? capOf(r) : r)));   // (ext 1: a full-height end face at the shared edge, against the other wall)
+    const P = (x, y, z) => WPX(cx, cy, x, y, z);
+    const seg = (a, b) => { ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); };
+    let top = null;
+    ctx.lineCap = 'butt'; ctx.lineJoin = 'round';
+    for (let z = 0; z <= H + 1e-6; z += dz) {
+      const r = prof(z), eN = reach(0, r), eE = reach(1, r), eS = reach(2, r), eW = reach(3, r);
+      // the slice: rect X [−eW, eE] × [−r, r] ∪ rect Y [−r, r] × [−eN, eS]
+      ctx.beginPath();
+      let q = [P(-eW, -r, z), P(eE, -r, z), P(eE, r, z), P(-eW, r, z)]; ctx.moveTo(q[0][0], q[0][1]); for (let k = 1; k < 4; k++) ctx.lineTo(q[k][0], q[k][1]); ctx.closePath();
+      q = [P(-r, -eN, z), P(r, -eN, z), P(r, eS, z), P(-r, eS, z)]; ctx.moveTo(q[0][0], q[0][1]); for (let k = 1; k < 4; k++) ctx.lineTo(q[k][0], q[k][1]); ctx.closePath();
+      ctx.fillStyle = tone(z, 0); ctx.fill();
+      ctx.lineWidth = dz + 1.1;
+      // the faces toward the viewer: +y edges (SW, lit) and +x edges (SE, shadow); an arm that goes on (ext 2) has no end face
+      ctx.beginPath();
+      if (eS > r + 1e-6) { seg(P(-eW, r, z), P(-r, r, z)); seg(P(r, r, z), P(eE, r, z)); if (ext[2] !== 2) seg(P(-r, eS, z), P(r, eS, z)); } else seg(P(-eW, r, z), P(eE, r, z));
+      ctx.strokeStyle = tone(z, 1); ctx.stroke();
+      ctx.beginPath();
+      if (eE > r + 1e-6) { seg(P(r, -eN, z), P(r, -r, z)); seg(P(r, r, z), P(r, eS, z)); if (ext[1] !== 2) seg(P(eE, -r, z), P(eE, r, z)); } else seg(P(r, -eN, z), P(r, eS, z));
+      ctx.strokeStyle = tone(z, 2); ctx.stroke();
+      top = { r: r, eN: eN, eE: eE, eS: eS, eW: eW, z: z };
+    }
+    return top;
+  }
+  // levee — an earthen berm: a trapezoid 0.46 tile to each side at the foot, 0.13 at the crown, 36 px high, grass on the slopes, a gravel path on the crown
+  // canvas 64 × 72, ox −32, oy −52 (36 rows above the tile centre, 4 below the diamond for the toe)
   M.registerHD('levee', function (ctx, spec) {
-    const Br = B(); const RISE = 12, TOE = 4; const g = Br.begin(ctx, TW, TH + RISE + TOE, spec), env = g.env, lod = env.lod;
-    const v = spec.variant, mask = v & 15, cracked = !!(v & 16), cx = TW >> 1, cy = (TH >> 1) + RISE, seed = hash(0x1e, v);
-    const t = 22, crownT = 10, top = -(RISE - (t >> 1)) + 2 - (t >> 1);   // = −10: the crown's back edge sits 10 px above the centre
-    const runs = runDirs(mask, 8);
-    const crown = (pts) => { Br.plane(ctx, pts, 'grass', 0.12, { vert: true, amp: 0.1, rim: 0 }); Br.microGrain(ctx, pts, 0.2, env); };
-    const slope = (pts) => { Br.plane(ctx, pts, 'grass', -0.2, { vert: true, amp: 0.22, rim: 0.12 }); Br.microGrain(ctx, pts, 0.25, env); if (pts.length === 4) Br.edgeFade(ctx, pts, pts[2], pts[3], TOE + 2, AO, 0, 0.35); };
-    // the centre: the upper / lower halves of the strip rhombus, then every direction's bands over them
-    crown([[cx, cy + top], [cx + 20, cy + top + crownT], [cx, cy + top + crownT + 1], [cx - 20, cy + top + crownT]]);
-    slope([[cx - 20, cy + top + crownT], [cx + 20, cy + top + crownT], [cx, cy + top + t]]);
-    for (const r of runs) { slope(bandQuad(cx, cy, r.d, r.len, crownT, t, top)); }
-    for (const r of runs) { crown(bandQuad(cx, cy, r.d, r.len, 0, crownT + 0.6, top)); }
-    // the lit back edge of the crown and the crown's front lip
-    for (const r of runs) { const q = bandQuad(cx, cy, r.d, r.len, 0, crownT, top); Br.stroke(ctx, [q[0], q[1]], 1.1, 'grass', 0.75, 0.6, { cap: 'butt' }); Br.stroke(ctx, [q[3], q[2]], 1, 'grass', -0.7, 0.55, { cap: 'butt' }); }
-    // the gravel crown path along the middle of the crown (rows 3–5 of the pen strip → y = top + 4.5)
-    ctx.save(); ctx.beginPath(); for (const r of runs) { ctx.moveTo(cx, cy + top + 4.5); ctx.lineTo(cx + r.d.dx * r.len, cy + r.d.dy * (r.len >> 1) + top + 4.5); }
-    Br.strokePath(ctx, 4.5, env, { material: 'gravel', unit: 1, seed: seed }); ctx.restore();
-    if (cracked) for (let i = 0; i < (lod > 0 ? 3 : 5); i++) {   // a weak crest: dark cracks across the crown
-      const r = runs[i % runs.length], k = 2 + (hash(seed, 50 + i) % Math.max(1, r.len - 3)), x = cx + r.d.dx * k, y = cy + r.d.dy * (k >> 1) + top + 2 + (hash(seed, 60 + i) % 6);
-      Br.stroke(ctx, [[x - 2, y - 1], [x, y + 1.5], [x + 2.5, y + 0.5], [x + 3.5, y + 3]], 0.9, 'bark', -0.6, 0.8, { cap: 'round' });
+    const Br = B(); const RISE = M.WALL_RISE.levee, TOE = 4; const g = Br.begin(ctx, TW, TH + RISE + TOE, spec), env = g.env, lod = env.lod;
+    const v = spec.variant | 0, cracked = !!(v & 16), ext = wallExt(v), cx = TW >> 1, cy = (TH >> 1) + RISE, seed = hash(0x1e, v & 0x1ef);
+    const FOOT = 0.46, CROWN = 0.13, dz = lod > 0 ? 1 : 0.5;
+    const prof = (z) => FOOT - (FOOT - CROWN) * Math.min(1, z / RISE);
+    // tones: the toe sits in its own shade, the slope lightens toward the crown; the SE faces are a step darker; a weak crest is browner
+    const grass = cracked ? Br.mix('grass', 'dirt', 0.35) : 'grass';
+    const tone = (z, face) => { const k = z / RISE; return Br.tone(grass, T64(face === 1 ? -0.42 + 0.5 * k : (face === 2 ? -0.7 + 0.42 * k : -0.25 + 0.3 * k))); };
+    Br.softEllipse(ctx, cx, cy + 1, 31, 15.5, AO, 0.28, 0.55);   // contact shade under the foot
+    const top = wallStack(ctx, cx, cy, ext, RISE, dz, prof, tone);
+    // the crown: its lit back edges, then the gravel path down the middle of every arm
+    const P = (x, y) => WPX(cx, cy, x, y, RISE), r = top.r;
+    ctx.beginPath(); ctx.moveTo.apply(ctx, P(-top.eW, -r)); ctx.lineTo.apply(ctx, P(top.eE, -r)); ctx.moveTo.apply(ctx, P(-r, -top.eN)); ctx.lineTo.apply(ctx, P(-r, top.eS));
+    ctx.lineWidth = 0.9; ctx.strokeStyle = Br.tone(grass, 0.7, 0.55); ctx.stroke();
+    const ends = [[0, -top.eN], [top.eE, 0], [0, top.eS], [-top.eW, 0]];
+    ctx.save(); ctx.beginPath();
+    for (let d = 0; d < 4; d++) { if (!ext[d]) continue; const e = ends[d], k = ext[d] === 2 ? 1 : 0.82; ctx.moveTo.apply(ctx, P(0, 0)); ctx.lineTo.apply(ctx, P(e[0] * k, e[1] * k)); }
+    if (!ext[0] && !ext[1] && !ext[2] && !ext[3]) { ctx.moveTo.apply(ctx, P(-r * 0.5, 0)); ctx.lineTo.apply(ctx, P(r * 0.5, 0)); }
+    Br.strokePath(ctx, 4.2, env, { material: 'gravel', unit: 1, seed: seed }); ctx.restore();
+    if (lod === 0) for (let i = 0; i < 7; i++) {   // grass on the lit slopes
+      const d = [1, 2, 3, 0][i & 3]; if (!ext[d] && (ext[0] || ext[1] || ext[2] || ext[3])) continue;
+      const t = 0.12 + (hash(seed, 30 + i) % 70) / 100 * 0.36, zz = 4 + (hash(seed, 40 + i) % 22), rr = prof(zz) + 0.004;
+      const p = (d === 1 || d === 3) ? WPX(cx, cy, (d === 1 ? t : -t), rr, zz) : WPX(cx, cy, rr, (d === 2 ? t : -t), zz);
+      Br.blade(ctx, p[0], p[1], 2.4 + (hash(seed, 50 + i) % 3) * 0.6, ((hash(seed, 60 + i) % 5) - 2) * 0.4, 'grass', (d === 1 || d === 3) ? 0.2 : -0.15, 0.9);
+    }
+    if (cracked) for (let i = 0; i < (lod > 0 ? 3 : 5); i++) {   // a weak crest: dark cracks across the crown and down the slope
+      const d = ext.findIndex((e, k) => e && ((hash(seed, 70 + i) + k) % 2 === 0)), dd = d < 0 ? 1 : d, t = ((hash(seed, 80 + i) % 80) / 100 - 0.4) * 0.5, e = ends[dd];
+      const a = P(e[0] * Math.abs(t) * 1.6 - (dd & 1 ? 0 : r), e[1] * Math.abs(t) * 1.6 - (dd & 1 ? r : 0)), w = WPX(cx, cy, (dd & 1 ? e[0] * Math.abs(t) * 1.6 : prof(RISE - 12)), (dd & 1 ? prof(RISE - 12) : e[1] * Math.abs(t) * 1.6), RISE - 12);
+      Br.stroke(ctx, [a, [(a[0] + w[0]) / 2 + 1.5, (a[1] + w[1]) / 2 - 1], w], 0.9, 'bark', -0.6, 0.8, { cap: 'round' });
     }
     return { w: g.w, h: g.h, ox: -(TW >> 1), oy: -(TH >> 1) - RISE };
   });
-  // floodwall — variant = mask; gray T-wall panels 18 px high with joints every 8 px, purple 1-ft gauge stripes + gold ticks
-  // canvas 64×56, ox −32, oy −36
+  // floodwall — a concrete T-wall: 0.075 tile to each side, a wider cap, 72 px high, a purple gauge line every foot and a joint every quarter tile
+  // canvas 64 × 106, ox −32, oy −88
   M.registerHD('floodwall', function (ctx, spec) {
-    const Br = B(); const RISE = 20; const g = Br.begin(ctx, TW, TH + RISE + 2, spec), env = g.env;
-    const mask = spec.variant & 15, cx = TW >> 1, cy = (TH >> 1) + RISE, seed = hash(0xf1, spec.variant);
-    const cap = 4, face = 18, t = cap + face + 2, top = -(RISE - (t >> 1)) + 1 - (t >> 1);   // = −19
-    const steel = X.steel || '#8A8A8E', conc = X.concrete || '#B8B8BC', runs = runDirs(mask, 8);
-    for (const r of runs) {
-      const q = r.d;
-      Br.fillQuadShaded(ctx, bandQuad(cx, cy, q, r.len, t - 2, t, top), conc, { face: 'top', material: 'stone', t: -0.25 }, env);                    // footing
-      Br.fillQuadShaded(ctx, bandQuad(cx, cy, q, r.len, cap, t - 2, top), steel, { face: q.dy > 0 ? 'sw' : 'se', material: 'metal', t: 0.05 }, env);   // the panel face
-      Br.fillQuadShaded(ctx, bandQuad(cx, cy, q, r.len, 0, cap, top), steel, { face: 'top', material: 'metal', t: 0.25, noAO: true }, env);            // the cap (top of the T)
-      const fq = bandQuad(cx, cy, q, r.len, cap, t - 2, top);
-      Br.stroke(ctx, [fq[0], fq[1]], 1, steel, -0.7, 0.6, { cap: 'butt' });   // the cap's underside
-      for (let k = 8; k < r.len; k += 8) { const x = cx + q.dx * k, y = cy + q.dy * (k >> 1) + top; Br.stroke(ctx, [[x, y + cap], [x, y + t - 2]], 1, steel, -0.6, 0.6, { cap: 'butt' }); }   // panel joints
-      for (let ft = 1; ft * PX_PER_FT < face; ft++) {   // 1-ft gauge stripes up the face, a gold tick beside each joint
-        const yy = top + t - 2 - ft * PX_PER_FT, a = [cx, cy + yy], b = [cx + q.dx * r.len, cy + q.dy * (r.len >> 1) + yy];
-        Br.stroke(ctx, [a, b], 1, PAL.purple, 0, 0.9, { cap: 'butt' });
-        for (let k = 1; k < r.len; k += 8) Br.stroke(ctx, [[cx + q.dx * k, cy + q.dy * (k >> 1) + yy], [cx + q.dx * (k + 1.5), cy + q.dy * ((k + 1.5) >> 1) + yy]], 1.2, PAL.gold, 0.2, 1, { cap: 'butt' });
-      }
-    }
-    void seed;
+    const Br = B(); const RISE = M.WALL_RISE.floodwall; const g = Br.begin(ctx, TW, TH + RISE + 2, spec), env = g.env, lod = env.lod;
+    const v = spec.variant | 0, cx = TW >> 1, cy = (TH >> 1) + RISE;
+    const ext = [0, 1, 2, 3].map((d) => (((v & 15) | ((v >> M.WALL_OTHER_SHIFT) & 15)) >> d) & 1 ? 2 : 0);   // a floodwall runs on into a levee as it does into another floodwall
+    const steel = X.steel || '#8A8A8E', conc = X.concrete || '#B8B8BC', WALL = 0.075, CAP = 0.115, capZ = RISE - 5, dz = lod > 0 ? 1 : 0.5;
+    const prof = (z) => (z < 3 ? 0.13 : (z >= capZ ? CAP : WALL));   // footing, panel, cap
+    const tone = (z, face) => {
+      if (z < 3) return Br.tone(conc, face === 1 ? -0.1 : (face === 2 ? -0.45 : -0.25));
+      if (z >= capZ) return Br.tone(steel, face === 1 ? 0.3 : (face === 2 ? -0.15 : 0.45));
+      const ft = z / PX_PER_FT, near = Math.abs(ft - Math.round(ft)) * PX_PER_FT < 0.55, stripe = z > 4 && near && Math.round(ft) % 3 === 0;   // the gauge: a purple line every third foot, a faint score on the others
+      if (stripe && face) return Br.tone(PAL.purple, face === 1 ? 0.1 : -0.3);
+      if (near && face && z > 4) return Br.tone(steel, face === 1 ? -0.12 : -0.52);
+      return Br.tone(steel, T64(face === 1 ? 0.12 - 0.1 * (1 - z / RISE) : (face === 2 ? -0.4 : 0)));
+    };
+    Br.softEllipse(ctx, cx, cy + 1, 26, 11, AO, 0.3, 0.5);
+    wallStack(ctx, cx, cy, ext, RISE, dz, prof, tone, (r) => (r > WALL ? r : WALL));
+    // panel joints and a gold tick on every gauge line, on the two faces toward the viewer
+    const run = (d) => (ext[d] === 2 ? 0.5 : WALL), eN = run(0), eE = run(1), eS = run(2), eW = run(3);
+    ctx.lineCap = 'butt';
+    for (let t = -eW + 0.125; t < eE - 0.01; t += 0.25) { if (eS > WALL && Math.abs(t) < WALL) continue; const a = WPX(cx, cy, t, WALL, 3), b = WPX(cx, cy, t, WALL, capZ); Br.stroke(ctx, [a, b], 0.8, steel, -0.6, 0.6, { cap: 'butt' }); for (let f = 3; f * PX_PER_FT < capZ; f += 3) { const q = WPX(cx, cy, t + 0.03, WALL, f * PX_PER_FT); Br.stroke(ctx, [q, [q[0] + 1.6, q[1] + 0.8]], 1.1, PAL.gold, 0.2, 1, { cap: 'butt' }); } }
+    for (let t = -eN + 0.125; t < eS - 0.01; t += 0.25) { if (eE > WALL && Math.abs(t) < WALL) continue; const a = WPX(cx, cy, WALL, t, 3), b = WPX(cx, cy, WALL, t, capZ); Br.stroke(ctx, [a, b], 0.8, steel, -0.75, 0.6, { cap: 'butt' }); }
     return { w: g.w, h: g.h, ox: -(TW >> 1), oy: -(TH >> 1) - RISE };
   });
   // canal — variant = mask | 16 culvert | 32 gate present | 64 gate closed; a 12-px cut with concrete lips and a dark bed; 64×32
@@ -25845,12 +26257,13 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
     const Br = B(); const g = Br.begin(ctx, TW, TH, spec), env = g.env;
     const v = spec.variant, mask = v & 15, culvert = !!(v & 16), gate = !!(v & 32), closed = !!(v & 64), cx = TW >> 1, cy = TH >> 1;
     const t = 12, top = -(t >> 1), conc = X.concrete || '#B8B8BC', runs = runDirs(mask, 8), pop = (mask & 1) + ((mask >> 1) & 1) + ((mask >> 2) & 1) + ((mask >> 3) & 1);
-    Br.plane(ctx, [[cx - 6, cy + top], [cx + 6, cy + top], [cx + 6, cy + top + t], [cx - 6, cy + top + t]], 'waterDeep', -0.1, { vert: true, amp: 0.2, rim: 0 });
+    const BED = 'dirt';   // water pass: the bed is wet earth with a trickle down its middle — the live water pass lays the water over it while the canal carries any, so a dry canal reads dry
+    Br.plane(ctx, [[cx - 6, cy + top], [cx + 6, cy + top], [cx + 6, cy + top + t], [cx - 6, cy + top + t]], BED, -0.62, { vert: true, amp: 0.14, rim: 0 });
     for (const r of runs) {
       const q = bandQuad(cx, cy, r.d, r.len, 0, t, top);
-      Br.plane(ctx, q, 'waterDeep', -0.1, { vert: true, amp: 0.22, rim: 0.1 });
+      Br.plane(ctx, q, BED, -0.62, { vert: true, amp: 0.16, rim: 0.1 });
       Br.edgeFade(ctx, q, q[0], q[1], 4, AO, 0, 0.45);                                                   // the near bank's shadow on the water
-      const mq = bandQuad(cx, cy, r.d, r.len, t >> 1, (t >> 1) + 1, top); Br.stroke(ctx, [mq[0], mq[1]], 1, 'waterDeep', 0.65, 0.45, { cap: 'butt' });   // the reflective mid line
+      const mq = bandQuad(cx, cy, r.d, r.len, t >> 1, (t >> 1) + 1, top); Br.stroke(ctx, [mq[0], mq[1]], 1.6, 'waterDeep', 0.35, 0.7, { cap: 'butt' });   // the trickle down the middle
       Br.stroke(ctx, [q[0], q[1]], 1.2, conc, 0.1, 1, { cap: 'butt' }); Br.stroke(ctx, [q[3], q[2]], 1.2, conc, -0.3, 1, { cap: 'butt' });            // concrete lips
     }
     if (culvert || pop >= 3) for (const s of [-1, 1]) { const x = cx + s * 14, y = cy + 8; Br.fillQuadShaded(ctx, [[x - 2, y], [x + 2, y], [x + 2, y + 4], [x - 2, y + 4]], X.steelDark || '#6A6A70', { face: 'se', material: 'metal', noAO: true }, env); Br.orb(ctx, x, y + 2, 1.1, 1.1, X.black || '#1B1B1B', -0.5, { noRim: true }); }
@@ -25900,7 +26313,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
       if (e.zoom !== z || !e.hd) fail(id + '@' + z + ' is not an HD entry at master ' + z);
       if (id.startsWith('tile') && !(e.sw === 64 * z && e.sh === 32 * z && e.ox === -32 * z && e.oy === -16 * z)) fail(id + '@' + z + ' geometry ' + JSON.stringify([e.sw, e.sh, e.ox, e.oy]));
       if (id === 'cliff' && !(e.sw === 32 * z && e.sh === (16 + v) * z && e.ox === 0 && e.oy === 0)) fail('cliff east ' + v + '@' + z + ' geometry ' + JSON.stringify([e.sw, e.sh, e.ox, e.oy]));
-      if (id === 'levee' && !(e.sw === 64 * z && e.sh === 48 * z && e.oy === -28 * z)) fail('levee@' + z + ' geometry');
+      if (id === 'levee' && !(e.sw === 64 * z && e.sh === 72 * z && e.oy === -52 * z)) fail('levee@' + z + ' geometry');   // water pass: 36 px of rise (6 ft) + 4 of toe
     }
     if (BSU.errors && BSU.errors.size !== errs) fail('BSU.errors grew while baking the HD terrain families');
     return { ok: notes.length === 0, notes: notes.length ? notes.join('; ') : 'HD terrain: ' + FAMILIES.length + ' families at masters 1 + 2' };
@@ -28851,7 +29264,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
   const ICON_BOX = 60, ICON_MIN = 42, ICON_REF = 400, ICON_EXP = 0.22;
   const ICON_RUN = {
     path: { stamps: ['surf:1'], ground: 'grass' }, road: { stamps: ['surf:2'], ground: 'grass' },
-    boardwalk: { deck: 'boardwalk', ground: 'marsh' }, bridge: { deck: 'bridge', ground: 'water' },
+    boardwalk: { deck: 'boardwalk', ground: 'marsh' }, bridge: { deck: 'bridge', ground: 'water' }, road_bridge: { deck: 'road_bridge', ground: 'water' },   // road_bridge: water pass
     gator_fence: { stamps: ['surf:4'], ground: 'grass' }, levee: { stamps: ['levee'], ground: 'grass' },
     floodwall: { stamps: ['floodwall'], ground: 'grass' }, canal: { stamps: ['canal'], ground: 'grass' },
     surge_barrier: { stamps: ['floodwall', 'surge_barrier', 'floodwall'], ground: 'grass' }
@@ -28955,7 +29368,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
    *  stilts / piers, the deck slab with its lit SW side, plank courses or expansion joints, then the rails (cypress rail with posts; purple
    *  truss with gold caps and braces). Heights are logical px above the plate. */
   function iconDeck(P, kind, s, ox, oy) {
-    const br = kind === 'bridge', hw = 0.36, rise = br ? 5 : 4, dth = 2, U = 1.5;
+    const br = kind === 'bridge' || kind === 'road_bridge', hw = 0.36, rise = br ? 5 : 4, dth = 2, U = 1.5;
     const pt = (u, v, h) => { const w = uv(u, v); return [w[0] * s + ox, w[1] * s + oy - (h || 0)]; };
     const fill = (pts, c) => { const sp = iconSpans(pts, 0); for (let i = 0; i < sp.length; i += 3) P.rect(sp[i + 1], sp[i], sp[i + 2] - sp[i + 1], 1, c); };
     const quad = (u0, u1, v0, v1, h) => [pt(u0, v0, h), pt(u1, v0, h), pt(u1, v1, h), pt(u0, v1, h)];
@@ -31040,6 +31453,15 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
       for (let u = -U + 0.1; u <= U; u += 0.5) { const a = pt(u, 0, 0); B.column(ctx, a[0], a[1], 10, 0.8, '#C4C8D4', env); }
       for (const h of [3.5, 8]) B.stroke(ctx, [pt(-U, 0, h), pt(U, 0, h)], 1, '#D8DCE6', h > 5 ? 0.45 : 0.1, 0.95);
       for (let u = -U + 0.1; u < U; u += 0.2) B.stroke(ctx, [pt(u, 0, 3.5), pt(u + 0.2, 0, 8)], 0.5, '#C4C8D4', 0.1, 0.4);
+    } else if (kind === 'road_bridge') {   // water pass: the Road Bridge — an asphalt deck with a dashed centre line and concrete parapets on three heavy piers
+      const hw = 0.42, rise = 6, dth = 2.6;
+      const quad = (u0, u1, v0, v1, h) => [pt(u0, v0, h), pt(u1, v0, h), pt(u1, v1, h), pt(u0, v1, h)];
+      B.shadow(ctx, { poly: quad(-U, U, -hw + 0.1, hw + 0.1, 0).map((p) => [p[0] + 2, p[1] + 1]), soft: 2.5, a: 0.42 }, env);
+      for (let u = -U + 0.5; u < U; u += 1) { const a = pt(u, hw - 0.06, rise - dth); B.column(ctx, a[0], a[1] + rise - dth, rise - dth + 0.5, 1.7, '#B8B8BC', env); }
+      B.fillQuadShaded(ctx, [pt(-U, hw, rise - dth), pt(U, hw, rise - dth), pt(U, hw, rise), pt(-U, hw, rise)], '#B8B8BC', { face: 'sw', material: 'stone', noAO: true }, env);
+      B.fillQuadShaded(ctx, quad(-U, U, -hw, hw, rise), '#3A3A40', { face: 'top', material: 'asphalt' }, env);
+      for (let u = -U + 0.2; u < U - 0.2; u += 0.55) B.stroke(ctx, [pt(u, 0, rise), pt(u + 0.28, 0, rise)], 0.9, '#FDD023', 0.1, 0.95, { cap: 'butt' });
+      for (const side of [-1, 1]) { const v = side * hw; B.stroke(ctx, [pt(-U, v, rise + 1.4), pt(U, v, rise + 1.4)], 1.5, '#C9C9CE', side > 0 ? 0.35 : -0.15, 1, { cap: 'butt' }); for (let u = -U; u <= U + 0.01; u += 0.75) { const a = pt(u, v, rise); B.column(ctx, a[0], a[1], 2.2, 0.6, '#B8B8BC', env); } }
     } else if (kind === 'boardwalk' || kind === 'bridge') {
       const br = kind === 'bridge', hw = 0.36, rise = br ? 5 : 4, dth = 2.2;
       const quad = (u0, u1, v0, v1, h) => [pt(u0, v0, h), pt(u1, v0, h), pt(u1, v1, h), pt(u0, v1, h)];
@@ -31124,7 +31546,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
   // ---------------------------------------------------------------------------
   // The painter
   // ---------------------------------------------------------------------------
-  const RUN_KINDS = { path: 1, road: 1, boardwalk: 1, bridge: 1, gator_fence: 1 };   // drawn by the brush; every other run is made of HD terrain stamps
+  const RUN_KINDS = { path: 1, road: 1, boardwalk: 1, bridge: 1, gator_fence: 1, road_bridge: 1 };   // drawn by the brush; every other run is made of HD terrain stamps
   M.registerHD('icon', function (ctx, spec) {
     const id = spec.sub, locked = (spec.variant & 1) === 1, G = B.begin(ctx, ICON, ICON, spec), env = G.env, z = G.S === 2 ? 2 : 1;
     drawBackdrop(ctx, env, locked);
@@ -35133,6 +35555,17 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
   function tfIso(g, tx, ty) { const s = g._bs || 1; g.setTransform(32 * s, 16 * s, -32 * s, 16 * s, tx * s, ty * s); }
   /** H0: a tile-layer sprite for the chunk bake — HD families at the chunk's master, pen families at 1× (pixel-doubled by the transform) */
   function tref(id, variant, frame) { const sp = S(); return sp.get(id, variant, frame, (bakeM === 2 && sp.isHD(id)) ? 2 : 1); }
+  /** water pass: a levee / floodwall tile's sprite variant — the same-kind neighbour mask (N 1, E 2, S 4, W 8), | 16 a weak crest (integrity < 50),
+   *  | the other-kind wall neighbours << 5 (a levee and a floodwall join each other: sprites.WALL_OTHER_SHIFT) */
+  function wallVariant(crest, integ, i, tx, ty) {
+    const cr = crest[i]; let same = 0, other = 0;
+    if (ty > 0) { const c = crest[i - W]; if (c === cr) same |= 1; else if (c > 0) other |= 1; }
+    if (tx < W - 1) { const c = crest[i + 1]; if (c === cr) same |= 2; else if (c > 0) other |= 2; }
+    if (ty < HGT - 1) { const c = crest[i + W]; if (c === cr) same |= 4; else if (c > 0) other |= 4; }
+    if (tx > 0) { const c = crest[i - 1]; if (c === cr) same |= 8; else if (c > 0) other |= 8; }
+    return same | (integ[i] < 50 ? 16 : 0) | (other << 5);
+  }
+
   function sameMask(arr, i, tx, ty, val) {
     let m = 0;
     if (ty > 0 && arr[i - W] === val) m |= 1;
@@ -35989,8 +36422,8 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
         }
         if (ty8 >= T.MARSH && ty8 !== T.POND && surf[i] !== SURF.PATH && surf[i] !== SURF.ROAD && (nearCypress(i, tx, ty) || cypStamp[i] === cypGen) && (fin(depth[i], 0) > 0.05 || ty8 === T.MARSH)) { ref = tref('knees', (tx & 7) | ((ty & 7) << 3), 0, 1); if (ref) blit1(g, ref, wx, wy); }   // art pass B2: a tile overlay keyed by position, knees on the pool rims
         if (f & FLAG.DESIRE_WORN) { ref = tref('worn', 0, 0, 1); if (ref) blit1(g, ref, wx, wy); }
-        // (f) canal cut (open gate variant baked; pass 3 overlays the live gate frame)
-        if (f & FLAG.CANAL) { let v = flagMask(fl, i, tx, ty, FLAG.CANAL, false); if (surf[i] > 0) v |= 16; ref = tref('canal', v, 0, 1); if (ref) blit1(g, ref, wx, wy); }
+        // (f) canal cut (open gate variant baked; pass 3 overlays the live gate frame); water pass: the cut runs on to the open water it drains into
+        if (f & FLAG.CANAL) { let v = flagMask(fl, i, tx, ty, FLAG.CANAL, false) | nbrMask(t, i, tx, ty, waterTypeAt); if (surf[i] > 0) v |= 16; ref = tref('canal', v, 0, 1); if (ref) blit1(g, ref, wx, wy); }
         // (e) surfaces: fences stay auto-tiled stamps; paths / roads / boardwalks are stroked centrelines (smoothing pass),
         //     drawn for every non-fence tile the curves touch (a curve may spill into a neighbour at a corner)
         const sf = surf[i], wet = (f & WATER_FLAGS) !== 0 || ty8 === T.OPEN_WATER || ty8 === T.BAYOU || ty8 === T.POND;
@@ -36006,10 +36439,9 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
         // (g) levee berms / floodwall panels
         const cr = crest[i];
         if (cr > 0) {
-          let v = sameMask(crest, i, tx, ty, cr);
-          if (integ[i] < 50) v |= 16;
+          const v = wallVariant(crest, integ, i, tx, ty);
           ref = tref(cr >= 12 ? 'floodwall' : 'levee', v, 0, 1); if (ref) blit1(g, ref, wx, wy);
-          if (t.sandbag && t.sandbag[i] > 0) { ref = tref('decal:sandbags', 0, 0, 1); if (ref) blit1(g, ref, wx, wy - 10); }
+          if (t.sandbag && t.sandbag[i] > 0) { ref = tref('decal:sandbags', 0, 0, 1); if (ref) blit1(g, ref, wx, wy - Math.round(cr * PXFT) + 2); }   // on the crown (water pass: walls are drawn at their true height)
         }
         // (h) preserve posts, (i) mounds
         if (f & FLAG.PRESERVE) { const v = flagMask(fl, i, tx, ty, FLAG.PRESERVE, true); if (v) { ref = tref('preservePost', v, 0, 1); if (ref) blit1(g, ref, wx, wy); } }
@@ -36266,8 +36698,9 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
   }
   // H7: the water pass's bars (wave bands, glints, foam, flecks, streaks, the surge's debris + chop) were ~6,000 pen-era fillRects a frame; each layer is now one flat (x, y, len)
   // list filled ONCE through BSU.brush.bars (device-pixel-snapped rects in one path): about a dozen fills a frame
-  const WLAY = ['bandA', 'bandB', 'glint', 'foam0', 'foam1', 'foam2', 'fleck', 'bayou', 'river', 'debris', 'chopL', 'chopD'];
-  const WLAY_PER = { bandA: 8, bandB: 6, glint: 1, foam0: 16, foam1: 16, foam2: 16, fleck: 3, bayou: 1, river: 1, debris: 2, chopL: 2, chopD: 1 };
+  const WLAY = ['bandA', 'bandB', 'glint', 'foam0', 'foam1', 'foam2', 'fleck', 'bayou', 'river', 'debris', 'chopL', 'chopD', 'canal'];
+  const WLAY_PER = { bandA: 8, bandB: 6, glint: 1, foam0: 16, foam1: 16, foam2: 16, fleck: 3, bayou: 1, river: 1, debris: 2, chopL: 2, chopD: 1, canal: 3 };
+  const CANAL_DX = [2, 2, -2, -2], CANAL_DY = [-1, 1, 1, -1];   // water pass: screen direction of a canal tile's flow (hydro.canalDirs: 0 N, 1 E, 2 S, 3 W)
   const WL = {}; let wlCap = 0;
   function waterLayers(cap) {
     if (cap <= wlCap && WL.bandA) return;
@@ -36277,6 +36710,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
   const WFOAM_A = [0.05, 0.16, 0.28];
   function waterBars(g, L, w, color, alpha) { if (L.n > 0) { const BR = BSU.brush; if (BR && typeof BR.bars === 'function') { BR.bars(g, L.a, L.n, w, color, alpha, dpr); drawCalls++; } L.n = 0; } }
   const waterGates = [];
+  let wallsRedrawn = 0;
   function waterPass(state, g) {
     const t = state.tiles, elev = t.elev, depth = t.depth, type = t.type, fl = t.flags;
     const z = zoomNow, w = TW * z, h = TH * z;
@@ -36292,9 +36726,10 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
     const phA = frameNo * 0.11, phB = frameNo * 0.07, fr3 = frameNo >> 3;
     const hasBank = te && typeof te.bank === 'function';
     let bankRow = -1, bankX = 99;
-    waterDrawn = 0; waterGates.length = 0;
+    const crest = t.crest, cdir = (hyd && typeof hyd.canalDirs === 'function') ? hyd.canalDirs(state) : null;   // water pass: walls re-drawn in painter's order beside flood water; the way each canal tile runs
+    waterDrawn = 0; waterGates.length = 0; wallsRedrawn = 0;
     waterLayers(C.waterCapSurge); for (let k = 0; k < WLAY.length; k++) WL[WLAY[k]].n = 0;
-    const Wa = WL.bandA, Wb = WL.bandB, Wg = WL.glint, Wf0 = WL.foam0, Wf1 = WL.foam1, Wf2 = WL.foam2, Wfl = WL.fleck, Wby = WL.bayou, Wr = WL.river, Wd = WL.debris, Wcl = WL.chopL, Wcd = WL.chopD;
+    const Wa = WL.bandA, Wb = WL.bandB, Wg = WL.glint, Wf0 = WL.foam0, Wf1 = WL.foam1, Wf2 = WL.foam2, Wfl = WL.fleck, Wby = WL.bayou, Wr = WL.river, Wd = WL.debris, Wcl = WL.chopL, Wcd = WL.chopD, Wcn = WL.canal;
     const bar = (L, x, y, len) => { const o = L.n * 3; L.a[o] = x; L.a[o + 1] = y; L.a[o + 2] = len; L.n++; };
     g.globalCompositeOperation = 'source-over';
     for (let ty = view.y0; ty <= view.y1 && waterDrawn < cap; ty++) {
@@ -36302,7 +36737,14 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
         const i = ty * W + tx, ty8 = type[i], f = fl[i];
         let d = fin(depth[i], 0);
         const isWater = (f & WATER_FLAGS) !== 0 || ty8 === T.OPEN_WATER || ty8 === T.BAYOU;
-        const show = isWater || ty8 === T.POND || (ty8 === T.MARSH ? d >= (PR.marshLiveDepth || 0.5) : d >= 0.05);
+        if (crest[i] > 0) {   // water pass: a wall with water standing higher than its foot on the far side (N / W) is drawn again HERE, in painter's order: over the water behind it, under the water in front of it
+          const e0 = fin(elev[i], 0) + 0.3;
+          if ((ty > 0 && depth[i - W] >= 0.05 && elev[i - W] + depth[i - W] > e0) || (tx > 0 && depth[i - 1] >= 0.05 && elev[i - 1] + depth[i - 1] > e0)) {
+            const ref = getRef(crest[i] >= 12 ? 'floodwall' : 'levee', wallVariant(crest, t.integrity, i, tx, ty), 0);
+            if (ref) { g.globalAlpha = 1; blit(g, ref, ((tx - ty) * 32 - camx) * z + hw, ((tx + ty) * 16 - fin(elev[i], 0) * PXFT - camy) * z + hh, zsOf(ref)); wallsRedrawn++; }
+          }
+        }
+        const show = isWater || ty8 === T.POND || (ty8 === T.MARSH ? d >= (PR.marshLiveDepth || 0.5) : d >= ((f & FLAG.CANAL) ? 0.03 : 0.05));
         if (!show) continue;
         if (isWater && d < 0.25) d = 1;
         const surfE = fin(elev[i], 0) + d;
@@ -36356,6 +36798,10 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
           if (deckArr && deckArr[i] === deckArr[i]) {   // flecks around the stilts of a deck over this tile
             for (let k = 0; k < 3; k++) { if (((fr3 + k + (hv >> 4)) & 3) === 0) continue; bar(Wfl, sx - 12 * z + ((hv >> (k * 3)) % 24) * z, sy + 2 * z + ((hv >> (k * 2 + 1)) % 7) * z, 3 * z); }
           }
+          if ((f & FLAG.CANAL) && cdir !== null && cdir[i] >= 0) {   // water pass: a canal that is carrying water — two streaks running toward its outlet (a canal with none shows still water)
+            const dv = cdir[i], ph = ((frameNo >> 1) + tx * 5 + ty * 3) % 16;
+            for (let k = 0; k < 3; k++) { const off = ((ph + k * 5.33) % 16) - 8; bar(Wcn, sx + CANAL_DX[dv] * off * z - 3 * z, sy + CANAL_DY[dv] * off * z, 6 * z); }
+          }
           if (f & FLAG.BAYOU) {   // the bayou current line along the direction of the next bayou tile
             const dirE = (tx < W - 1 && (fl[i + 1] & FLAG.BAYOU)) ? 1 : 0, dirS = (ty < HGT - 1 && (fl[i + W] & FLAG.BAYOU)) ? 1 : 0;
             const off = ((frameNo >> 1) + tx * 3) % 24 - 12;
@@ -36372,7 +36818,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
     // the bars, one fill per layer (bottom to top: swells, ripples, glints, foam, flecks, streaks, then the surge's debris and chop)
     waterBars(g, Wa, z, wc.band1, 0.42); waterBars(g, Wb, z, wc.band2, 0.3); waterBars(g, Wg, z, glintCol, glintA);
     waterBars(g, Wf0, z, wc.foam, WFOAM_A[0]); waterBars(g, Wf1, z, wc.foam, WFOAM_A[1]); waterBars(g, Wf2, z, wc.foam, WFOAM_A[2]);
-    waterBars(g, Wfl, z, wc.foam, 0.35); waterBars(g, Wby, z, wc.current, 0.35); waterBars(g, Wr, z, wc.current, 0.28);
+    waterBars(g, Wfl, z, wc.foam, 0.35); waterBars(g, Wby, z, wc.current, 0.35); waterBars(g, Wr, z, wc.current, 0.28); waterBars(g, Wcn, z, wc.foam, 0.7);
     waterBars(g, Wd, z, wc.debris, 0.8); waterBars(g, Wcl, z, wc.chopL, 0.55); waterBars(g, Wcd, z, wc.chopD, 0.6);
     for (let k = 0; k < waterGates.length; k += 3) {   // live floodgate frames (0 open → 3 closed; animated over 12 frames from the gate:* event)
       const gs = gates.get(waterGates[k]); let fr = 0;
@@ -36711,7 +37157,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
     return e;
   }
   /** ground elevation — or, on a deck over water (bridge pass), the deck's: students and buses walk the deck, not the bed */
-  const groundElev = (t, i) => { const d = curves && curves.deck; return (d && d[i] === d[i]) ? d[i] : fin(t.elev[i], 0); };
+  const groundElev = (t, i) => { const d = curves && curves.deck; return (d && d[i] === d[i]) ? d[i] : fin(t.elev[i], 0) + (t.crest[i] > 0 && t.owner[i] < 0 ? t.crest[i] : 0); };   // water pass: on a levee they walk its crown (the berm is drawn at its true height)
   const VEH_ID = { pirogue: 'pirogue', bus: 'bus', fogger: 'fogger', cajunNavy: 'navy', navy: 'navy', crew: 'officer', float: 'float' };
   const WATER_VEH = { pirogue: 1, cajunNavy: 1, navy: 1 };
 
@@ -38644,8 +39090,10 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
   function rebuildPuddles(state, view) {
     const t = state.tiles; pdN = 0; hotN = 0;
     pdX0 = Math.max(0, (view.x0 | 0) - 2); pdY0 = Math.max(0, (view.y0 | 0) - 2); pdX1 = Math.min(W - 1, (view.x1 | 0) + 2); pdY1 = Math.min(HGT - 1, (view.y1 | 0) + 2);
+    let dm = null; try { const hy = BSU.hydro; dm = (hy && typeof hy.drainedMask === 'function') ? hy.drainedMask(state) : null; } catch (e) { dm = null; }   // water pass: no rain puddle on ground a working canal drains (the playtester dug a canal beside the puddles and they stayed)
     for (let ty = pdY0; ty <= pdY1; ty++) for (let tx = pdX0; tx <= pdX1; tx++) {
-      const i = ty * W + tx, th = puddleTh(t, i, tx, ty); if (th > 0.55) continue;
+      const i = ty * W + tx; if (dm !== null && dm[i]) continue;
+      const th = puddleTh(t, i, tx, ty); if (th > 0.55) continue;
       const sf = t.surface[i];
       if (hotN < 256 && (sf === SURF.PATH || sf === SURF.ROAD)) hotIdx[hotN++] = i;
       if (pdN >= PUD_CAND) continue;
@@ -40269,6 +40717,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
     // build requirements (the detail NEEDS list and the card chips)
     walk: ['M13 5a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3z', 'M12 8l-2 5 3 2v6', 'M10 13l-3 3', 'M12 8l3 2.5 2.5.5'],
     road: ['M8 3 5 21', 'M16 3l3 18', 'M12 5v2', 'M12 11v2', 'M12 17v2'],
+    road_bridge: ['M2 9h20', 'M2 13h20', 'M6 13v5', 'M12 13v5', 'M18 13v5', 'M2 20c2-1.2 3.5-1.2 5 0s3.5 1.2 5 0 3.5-1.2 5 0 3.5 1.2 5 0', 'M8 11h2', 'M14 11h2'],   // water pass: a deck on piers over the water (the Road Bridge)
     pilings: ['M6 4v13', 'M12 4v13', 'M18 4v13', 'M3 20c2-1.5 4-1.5 6 0s4 1.5 6 0 4-1.5 6 0'],
     // U6: the needs gauges (the Students popover): beds, seats, dining, sewage (power and water reuse bolt and drop)
     bed: ['M3 20v-9', 'M3 16h18', 'M21 20v-6a2 2 0 0 0-2-2h-8v4', 'M5 12h3'],
@@ -41482,7 +41931,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
   function quoteRun(s, run) {
     if (!s || !s.ui || !s.ui.tool) return null;
     const tool = s.ui.tool, row = rowOf(tool.id); if (!isRunRow(row)) return null;
-    const q = call('buildings', 'runQuote', s, tool.id, run, { rot: tool.rot }); if (!q) return null;
+    const q = call('buildings', 'runQuote', s, tool.id, run, { rot: tool.rot, noTie: heldAlt }); if (!q) return null;   // noTie (water pass): a canal's outlet tie is not planned while Alt is held
     const access = [PLACE.PATH, PLACE.ROAD, PLACE.BOARDWALK].indexOf(row.placeRule) >= 0;
     if (q.cross && Array.isArray(q.cross.shores)) { let rank = 0; for (const sh of q.cross.shores) rank += sh.tie ? sh.tie.tiles.length : (sh.touch ? 0 : 99); q.tieRank = rank; }
     else q.tieRank = q.touches ? 0 : (q.tie ? q.tie.tiles.length : (access ? 99 : 0));
@@ -41810,8 +42259,11 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
     const dragging = live.state === 'DRAGGING';
     const isRing = row.id === 'levee' || row.id === 'floodwall';
     const shrank = dragging && live.run.length < lastRunLen; lastRunLen = dragging ? live.run.length : 0;   // a backtrack changes the ring maths at once: never serve the throttled copy
-    if (dragging && isRing && !shrank && clock - lastRingMs < L.ringThrottleMs && lastGhost) { drawGhost(s, tool, row, lastGhost.r, g, px, py, dragging); return; }
-    const opts = { rot: tool.rot, noTie: heldAlt }; if (dragging) opts.tiles = live.run;
+    // water pass: the ring preview is the machine plan's (buildings.runQuote → ring, one per candidate run on every move), so the 50-ms throttle that
+    // served the previous ghost is gone: it showed the run as it was up to 50 ms before the pointer stopped ("0 tiles · $0" after a quick drag), and
+    // canPlace is told not to compute its own copy of the preview (noRing)
+    void shrank; void isRing;
+    const opts = { rot: tool.rot, noTie: heldAlt }; if (dragging) { opts.tiles = live.run; opts.noRing = true; }
     const r = call('buildings', 'canPlace', s, tool.id, g.tx, g.ty, opts); if (!r) return;
     if (dragging) {   // paths pass: the drag end's tie / snap preview; roads pass: from the machine's plan (one quote per move) when it has one
       const pl = live.plan && live.plan.n === live.run.length ? live.plan : null; r.plan = pl;
@@ -41843,7 +42295,9 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
     if (pl && pl.extra && pl.extra.length) tiles = tiles.concat(pl.extra);   // crossings pass: the landing a bridge that starts / ends on the water steps off onto
     const conn = (!dragging && !g.cove && r.connector && Array.isArray(r.connector.tiles) && r.connector.tiles.length) ? r.connector : (dragging && r.tie && r.tie.tiles.length ? r.tie : null);   // paths pass: the tie this placement (or this drag's end) would lay
     const cross = (dragging && r.cross && !heldAlt) ? r.cross : null, xties = cross && cross.ties.length ? cross.ties : null;   // crossings pass: one tie per bank
-    const spec = { tiles: tiles, skipTiles: fq ? fq.skipped.map(function (x) { return x.i; }) : (pl && pl.skipped.length ? pl.skipped.map(function (x) { return x.i; }) : null), color: color, connectorTiles: null, ringTiles: r.ring && Array.isArray(r.ring.tiles) ? r.ring.tiles : null, label: '', radius: fin(r.radius, 0), radiusCenter: { tx: g.tx, ty: g.ty } };
+    const cnl = (pl && pl.canal && pl.placed > 0) ? pl.canal : null;   // water pass: where a canal run drains to, and the tiles it digs on to get there
+    if (cnl && !cnl.outlet && color === 'green') color = 'yellow';
+    const spec = { tiles: tiles, skipTiles: fq ? fq.skipped.map(function (x) { return x.i; }) : (pl && pl.skipped.length ? pl.skipped.map(function (x) { return x.i; }) : null), color: color, connectorTiles: (cnl && cnl.tie) ? cnl.tie.tiles : null, ringTiles: r.ring && Array.isArray(r.ring.tiles) ? r.ring.tiles : null, label: '', radius: fin(r.radius, 0), radiusCenter: { tx: g.tx, ty: g.ty } };
     if (row.kind === 'footprint' || row.kind === 'upgrade') spec.sprite = { id: tool.id, variant: r.needsPilings ? SPR.PILINGS : 0, tx: g.tx, ty: g.ty, rot: tool.rot };
     if (dragging && live.run.length > 1 && row.kind === 'drag' && [PLACE.PATH, PLACE.ROAD, PLACE.BOARDWALK, PLACE.BRIDGE].indexOf(row.placeRule) >= 0) { spec.line = live.run; spec.lineKind = fin(row.effects && row.effects.surfaceId, 0); }   // roads pass: the run as a stroked centreline (its L and elbow)
     call('render', 'ghost', spec);
@@ -41856,21 +42310,25 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
     else if (dragging) {
       const n = pl ? pl.placed : live.run.length; const per = fin(r.cost, row.cost) || row.cost; l1 = n + (n === 1 ? ' tile' : ' tiles') + ' · ' + money(pl ? pl.cost : per * n);   // the tiles that will be laid, at their own prices (bridge tiles ×4)
       if (pl && row.placeRule === PLACE.BRIDGE && pl.placed > 0) { const nb = pl.placed - fin(pl.landings, 0); l1 = 'Bridge ' + nb + (nb === 1 ? ' tile' : ' tiles') + (pl.landings ? ' + ' + pl.landings + ' path' : '') + ' · ' + money(pl.cost); }   // crossings pass: the deck and the gravel it lays on land, both priced
+      if (pl && row.id === 'road_bridge' && pl.placed > 0) { const nb = fin(pl.bridge, 0), nr = pl.placed - nb; l1 = 'Road Bridge ' + nb + (nb === 1 ? ' tile' : ' tiles') + (nr > 0 ? ' + ' + nr + ' road' : '') + ' · ' + money(pl.cost); }   // water pass: the deck and the road it lays on the dry ground of the run
+      if (cnl && cnl.tie) l1 += ' + ' + money(cnl.tie.cost) + ' outlet';   // "3 tiles · $75k + $50k outlet"
       if (xties) l1 += ' + ' + money(cross.cost) + (xties.length > 1 ? ' ties (both banks)' : ((xties[0].snap ? ' snap (' : ' tie (') + bankName(xties[0].end).toLowerCase() + ')'));   // "Bridge 3 tiles · $135k + $6k ties (both banks)"
       else if (conn) l1 += ' + ' + money(conn.cost) + (conn.snap ? ' snap' : ' tie');   // "12 tiles · $24k + $8k tie"
       { const nc = pl ? fin(heldAlt ? pl.clearsRun : pl.clears, 0) : 0; if (nc > 0) l1 += ' · clears ' + nc + (nc === 1 ? ' tree' : ' trees'); }   // rule 8: a surface clears its tile
-      if (r.ring && r.ring.text) l2 = r.ring.text; else if (r.ring && typeof r.ring.closed === 'boolean') l2 = r.ring.closed ? 'closes the ring' : (r.ring.shortText || ('still ' + fin(r.ring.short, 0) + ' tiles short'));
+      { const ring = (pl && pl.ring) || r.ring; if (ring && ring.text) l2 = ring.text; }   // water pass: buildings' wall report ("Closes the ring: holds a 5 ft surge off 14 tiles" / "Ring open: 1 gap · …" / "Open wall: …"); the old branch read a field (`closed`) the preview never had
+      if (cnl) l2 = cnl.outlet ? ('Drains ' + cnl.drains + (cnl.drains === 1 ? ' tile' : ' tiles') + ' to ' + cnl.outlet + (cnl.tie ? ' · digs on ' + cnl.tie.tiles.length + (cnl.tie.tiles.length === 1 ? ' tile' : ' tiles') + ' to reach it' : '')) : ('No outlet: this canal drains nowhere' + (heldAlt ? ' (Alt held: no outlet tie)' : ' · no water within ' + fin(cnl.reach, 6) + ' tiles of its ends'));
       const st = dragStatus(s, row, r, conn); if (st) l2 = st + (l2 ? ' · ' + l2 : '');
       const sk = skipText(pl); if (sk) l2 = sk + (pl.cut > 0 ? ' · nothing is laid past it' : '') + (l2 ? ' · ' + l2 : '');   // roads pass: "3 marsh tiles skipped: use a Boardwalk or a bridge" first
       if (!l2 && live.run.length > 1) l2 = 'Drag back to shorten · Esc cancels'; else if (st && !sk && live.run.length > 1) l2 += ' · Drag back to shorten';
     }
     else if (g.cove) { l1 = 'Not here'; l2 = 'The cove floods every rain. Build on the ridge.'; }
-    else if (!r.ok && row.placeRule === PLACE.BRIDGE && isRunRow(row) && r.reason === 'Bridges go over water') { color = 'yellow'; l1 = money(row.cost) + ' / tile'; l2 = 'Press on the bank and drag across the water: both ends connect themselves'; }   // crossings pass: the bank is where the drag starts, not a refusal
+    else if (!r.ok && (row.placeRule === PLACE.BRIDGE || row.id === 'road_bridge') && isRunRow(row) && r.reason === 'Bridges go over water') { color = 'yellow'; l1 = money(row.cost) + ' / tile'; l2 = 'Press on the bank and drag across the water: both ends connect themselves'; }   // crossings pass: the bank is where the drag starts, not a refusal
     else if (!r.ok) { l1 = r.reason || 'Cannot build here'; l2 = r.charter ? 'State land · click to open the Land Office (O)' : (r.reason === tieReason() ? 'Hold N to see the campus network' : (ridgeText(r.ridgeFull) || sinkText(r.sink) || '')); }   // L2: the charter line
     else {
       l1 = money(r.cost); if (isRunRow(row)) l1 += ' / tile';
       if (conn) l1 += ' + ' + money(conn.cost) + ' tie';   // "$600k + $8k tie"
       if (r.needsGrading) l1 += ' · Grade the site +' + money(r.gradingCost || 0); else if (r.needsPilings) l1 += ' · Pilings +' + money(r.pilingsCost || 0);
+      if (call('buildings', 'clearsPlants', tool.id) === true) { const nc = fin(call('buildings', 'plantsOn', s, (r.tiles || []).concat(conn && conn.tiles ? conn.tiles : [])), 0); if (nc > 0) l1 += ' · clears ' + nc + (nc === 1 ? ' tree' : ' trees'); }   // water pass (N5): a building clears its footprint
       if (ridgeText(r.ridgeFull)) l2 = ridgeText(r.ridgeFull); else if (sinkText(r.sink)) l2 = sinkText(r.sink); else if (r.ring && r.ring.text) l2 = r.ring.text; else if (!r.affordable) l2 = 'Not enough cash';
       else { const uw = utilityWarning(s, row, r); if (uw) l2 = uw; }
       if (!l2 && row.kind === 'paint') l2 = 'Drag to paint an area';   // goal pass
@@ -42284,12 +42742,31 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
         body.appendChild(row('Crest', ft(t.crest) + (sand ? ' (+' + (sand / 10).toFixed(1) + ' sandbags, ' + Math.max(0, sd - dayOf(s)) + ' days left)' : '')));
         const integ = fin(t.integrity, 100); body.appendChild(row('Integrity', integ + '%' + (integ < 50 ? ' · halved' : integ < 80 ? ' · weak' : ''), integ < 80 ? 'bad' : ''));
         const bl = s.wildlife && s.wildlife.burrowLog && s.wildlife.burrowLog[i]; if (bl) body.appendChild(row('Burrows', bl.n + ' · last ' + BSU.formatDate(bl.day)));
-        const H = fin(call('weather', 'forecastSurge', s), 5) || 5; const bnd = call('buildings', 'boundaryLevees', s, H); if (bnd && typeof bnd.indexOf === 'function') body.appendChild(row('Boundary at ' + H.toFixed(0) + ' ft', bnd.indexOf(i) >= 0 ? 'yes — on the ring' : 'no'));
+        // water pass: what this wall does, in plain words (buildings.leveeStatus): closed and what it keeps dry, or open and where; how rain inside gets out
+        const ws = call('buildings', 'leveeStatus', s, i);
+        if (ws) {
+          if (!rname) setText(E['insp-title'], t.crest >= 12 ? 'Concrete Floodwall' : 'Earthen Levee');
+          body.appendChild(row('Protects', ws.text, ws.closed ? 'good' : (ws.text.indexOf('No water') === 0 ? '' : 'bad')));
+          if (ws.missing) body.appendChild(row(ws.closed ? 'Rain inside' : 'To close it', ws.closed ? ws.missing.replace(/^Rain inside /, '') : ws.missing, 'bad'));
+          else if (ws.rain) body.appendChild(row('Rain inside', ws.rain.replace(/^Rain inside /, '')));
+          body.appendChild(row('Holds back', ft(ws.holds) + ' of water along ' + ws.tiles + (ws.tiles === 1 ? ' tile' : ' tiles') + ' (its lowest crest is at ' + ft(ws.lowTop) + ')'));
+          if (!ws.closed && ((ws.gaps && ws.gaps.length) || (ws.openEnds && ws.openEnds.length))) acts.appendChild(action(ws.gaps.length ? 'Show me the gap' : 'Show me the open end', function () { const g0 = ws.gaps[0] || ws.openEnds[0]; call('render', 'panToTile', g0.cx, g0.cy); call('render', 'flashTiles', g0.tiles, 6000); return null; }, 'primary'));
+        }
         if (integ < 100) acts.appendChild(action('Repair $5k', function (st) { return call('buildings', 'repairLevee', st, i); }));
         if (integ < 100 && issuesApi()) { const wl = issuesApi().list(s).find(function (it) { return it.kind === 'weakLevee' && it.tiles.indexOf(i) >= 0; }); if (wl && wl.action && wl.action.run && wl.action.run.length > 1) acts.appendChild(action('Repair run · ' + money(wl.cost), function (st) { const r2 = call('buildings', 'repairLeveeRun', st, wl.action.run); if (r2 && r2.ok && issuesApi()) issuesApi().invalidate(); return r2; })); }   // issues v2
         acts.appendChild(action('Demolish', function (st) { const rr = call('buildings', 'remove', st, { tile: i }, 'demolish'); if (rr && rr.ok) closeInspectDom(); return rr; }, 'danger'));
       } else {
         setText(E['insp-title'], tname); setText(E['insp-sub'], 'Tile (' + (i % W) + ', ' + ((i / W) | 0) + ')');
+        const cs = (t.flags & BSU.FLAG.CANAL) ? call('hydro', 'canalStats', s, i) : null;   // water pass: a canal tile's card is the canal's (what it drains, where to, what is in it)
+        if (cs) {
+          setText(E['insp-title'], (t.flags & BSU.FLAG.FLOODGATE) ? 'Floodgate' : 'Drainage Canal'); setText(E['insp-sub'], cs.tiles + (cs.tiles === 1 ? ' tile' : ' tiles') + ' · (' + (i % W) + ', ' + ((i / W) | 0) + ')');
+          if (cs.drains) body.appendChild(row('Draining', cs.catchment + (cs.catchment === 1 ? ' tile' : ' tiles') + ' · outlet: ' + cs.outlet, 'good'));
+          else { body.appendChild(row('Draining', 'No outlet: this canal drains nowhere', 'bad')); body.appendChild(row('To fix it', 'Dig it on to the bayou or open water, or put a Pump Station on it')); }
+          body.appendChild(row('In the channel', cs.depth < 0.03 ? 'dry' : (ft(cs.depth) + ' of water, ' + (cs.flowing ? 'flowing to ' + cs.outlet : (cs.pumps ? 'waiting for the pump' : 'standing'))), cs.depth >= 0.03 ? 'water' : ''));
+          if (cs.drains) body.appendChild(row('Carried off', (Math.round(cs.movedToday * 10) / 10) + ' tile-ft today · ' + (Math.round(cs.movedYesterday * 10) / 10) + ' yesterday'));
+          body.appendChild(row('Around it', cs.wet ? cs.wet + (cs.wet === 1 ? ' tile' : ' tiles') + ' under water now' : 'no standing water'));
+          if (cs.gates) body.appendChild(row('Floodgates', cs.gates + ' · close when the water outside passes 1 ft'));
+        }
         body.appendChild(row('Elevation', ft(t.elev)));
         if (fin(t.depth, 0) > 0.005) body.appendChild(row('Water', ft(t.depth), 'water'));
         body.appendChild(row('Saturation', Math.round(fin(t.sat, 0) * 100) + '%'));
@@ -42298,9 +42775,9 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
         const rate = call('terrain', 'subsidenceRate', s, i, false); if (Number.isFinite(rate) && rate > 0) body.appendChild(row('Sinking', rate.toFixed(2) + ' ft/yr'));
         if (t.flags & BSU.FLAG.WETLAND_ORIGINAL) body.appendChild(row('Wetland', 'original marsh'));
         if (t.flags & BSU.FLAG.PRESERVE) body.appendChild(row('Preserve', 'protected'));
-        body.appendChild(row('Drains to', String(t.drainsTo || 'ground')));
+        if (!cs) body.appendChild(row('Drains to', String(t.drainsTo || 'ground')));
         const can = t.type === T.MARSH ? 'Boardwalks, levees, canals; buildings on Pilings' : (t.type === T.OPEN_WATER || t.type === T.BAYOU) ? 'Boardwalk bridges, a Surge Barrier' : t.type === T.POND ? 'nothing — it is a pond' : 'anything with a path on its edge';
-        body.appendChild(row('Can build', can));
+        if (!cs) body.appendChild(row('Can build', can));
       }
     } else if (kind === 'agent') {
       const a = (s.agents || [])[insp.id]; const q = call('agents', 'inspect', s, insp.id) || {};
@@ -42790,10 +43267,10 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
   /** requirement glyphs for a row → [{glyph, text}] */
   const REQ_LABEL = { '⚡': 'Power', '💧': 'Water', '🚶': 'Path', '🛣': 'Road', '🪵': 'Pilings', '↔': 'Drag' };   // UI scale pass: the requirement glyphs carry a word
   /** U5: a requirement's data glyph (data.js keeps the emoji) → its registry icon */
-  function reqIcon(g) { return BSU.icons.fromGlyph(g) || 'help'; }
+  function reqIcon(q) { return (q && q.icon && BSU.icons.has(q.icon)) ? q.icon : (BSU.icons.fromGlyph(q && q.glyph) || 'help'); }   // water pass: a requirement may name its own registry icon (the Road Bridge)
   function requirementsOf(row) {
     const RQ = (BSU.data && BSU.data.requirements) || {}; const out = []; if (!row) return out;
-    const place = RQ.place && RQ.place[row.placeRule]; if (place && row.placeRule !== BSU.PLACE.LAND) out.push(place);
+    const place = (RQ.row && RQ.row[row.id]) || (RQ.place && RQ.place[row.placeRule]); if (place && row.placeRule !== BSU.PLACE.LAND) out.push(place);   // water pass: a row's own line (the Road Bridge) wins over its placeRule's
     if (row.pathAdjacency && RQ.path) out.push(RQ.path);
     if (row.roadWithin > 0 && RQ.road) out.push({ glyph: RQ.road.glyph, text: RQ.road.text.replace('{n}', String(row.roadWithin)) });
     if (row.needsPower && RQ.power) out.push(RQ.power);
@@ -42914,7 +43391,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
           const ic = el('canvas', 'icon'); ic.width = 64; ic.height = 64; c.appendChild(ic); call('render', 'drawIcon', ic, id);
           c.appendChild(el('div', 'bm-name', r.name));
           const price = el('div', 'bm-price'); price.appendChild(el('span', 'bm-cost', money(r.cost) + (r.kind === 'drag' || r.kind === 'paint' ? '/tile' : (r.kind === 'upgrade' ? ' +40%' : '')))); if (r.upkeep || !(r.kind === 'drag' || r.kind === 'paint')) price.appendChild(el('span', 'bm-upkeep', r.upkeep ? '· ' + money(r.upkeep) + '/mo' : '· no upkeep')); c.appendChild(price);
-          if (u.ok) { const reqs = el('div', 'bm-reqs'); for (const q of requirementsOf(r)) { const sp = el('span', 'bm-req'); sp.appendChild(icon(reqIcon(q.glyph), 'sm')); if (REQ_LABEL[q.glyph]) sp.appendChild(el('span', 'rq-l', REQ_LABEL[q.glyph])); sp.title = q.text; reqs.appendChild(sp); } if (r.w > 1 || r.h > 1) { const fp = el('span', 'bm-req fp', r.w + '×' + r.h); fp.title = 'Footprint ' + r.w + '×' + r.h + ' tiles' + (r.rotatable ? ' (R rotates)' : ''); reqs.appendChild(fp); } c.appendChild(reqs); }
+          if (u.ok) { const reqs = el('div', 'bm-reqs'); for (const q of requirementsOf(r)) { const sp = el('span', 'bm-req'); sp.appendChild(icon(reqIcon(q), 'sm')); if (REQ_LABEL[q.glyph]) sp.appendChild(el('span', 'rq-l', REQ_LABEL[q.glyph])); sp.title = q.text; reqs.appendChild(sp); } if (r.w > 1 || r.h > 1) { const fp = el('span', 'bm-req fp', r.w + '×' + r.h); fp.title = 'Footprint ' + r.w + '×' + r.h + ' tiles' + (r.rotatable ? ' (R rotates)' : ''); reqs.appendChild(fp); } c.appendChild(reqs); }
           else { const lk = el('div', 'bm-lock'); lk.appendChild(el('span', null, unlockText(u.reason))); c.appendChild(lk); }
           if (reco[id]) { const st = el('span', 'bm-star star'); st.title = badgeText(reco[id]); st.appendChild(icon('star', 'sm')); c.appendChild(st); }
           c.addEventListener('click', function () { armCard(stateOf(), id, false); });
@@ -42945,7 +43422,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
     d.appendChild(el('div', 'bm-dblurb', r.blurb || ''));
     if (r.why) d.appendChild(el('div', 'bm-dwhy', '“' + r.why + '”'));
     const eff = effectLines(r); if (eff.length) { d.appendChild(el('div', 'card-kicker', 'Effects')); const ul = el('div', 'bm-list'); for (const line of eff) ul.appendChild(el('div', 'bm-li', line)); d.appendChild(ul); }
-    const rq = requirementsOf(r); if (rq.length) { d.appendChild(el('div', 'card-kicker', 'Needs')); const ul = el('div', 'bm-list'); for (const q of rq) { const li = el('div', 'bm-li'); li.appendChild(icon(reqIcon(q.glyph), 's20')); li.appendChild(el('span', null, q.text)); ul.appendChild(li); } d.appendChild(ul); }
+    const rq = requirementsOf(r); if (rq.length) { d.appendChild(el('div', 'card-kicker', 'Needs')); const ul = el('div', 'bm-list'); for (const q of rq) { const li = el('div', 'bm-li'); li.appendChild(icon(reqIcon(q), 's20')); li.appendChild(el('span', null, q.text)); ul.appendChild(li); } d.appendChild(ul); }
     if (r.desc) d.appendChild(el('div', 'bm-ddesc', r.desc));
     if (!u.ok) d.appendChild(el('div', 'bm-dlock', unlockText(u.reason)));
     else {

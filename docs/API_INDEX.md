@@ -4,12 +4,12 @@ Loaded: contract.js, data.js, terrain.js, hydro.js, weather.js, wildlife.js, bui
 
 Read this instead of the module sources. Signatures are the real ones. See docs/ARCHITECTURE.md for semantics.
 
-## BSU.B  — enum/table, 47 keys (e.g. path, road, boardwalk, substation, water_tower, generator, wastewater, founders_hall)
+## BSU.B  — enum/table, 48 keys (water pass: + road_bridge, row 48) (e.g. path, road, boardwalk, substation, water_tower, generator, wastewater, founders_hall)
 
 ## BSU.BOARD_CARDS
 - values: 0:string, 1:string, 2:string, 3:string, 4:string, 5:string, 6:string, 7:string
 
-## BSU.B_ORDER  — enum/table, 47 keys (e.g. 0, 1, 2, 3, 4, 5, 6, 7)
+## BSU.B_ORDER  — enum/table, 48 keys (e.g. 0, 1, 2, 3, 4, 5, 6, 7)
 
 ## BSU.EV  — enum/table, 113 keys (e.g. TILE_CHANGED, BUILDING_PLACED, BUILDING_REMOVED, BUILDING_COMPLETE, BUILDING_UPGRADED, BUILDING_FLOODED, BUILDING_DRIED, BUILDING_DAMAGED)
 
@@ -251,7 +251,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - buildings.connectedMask(state)
 - buildings.runTouches(state, tiles)
 - buildings.runTie(state, rowId, tiles)
-- buildings.runQuote(state, id, tiles, opts)   // crossings pass: also → cross ({shores: [{end, touch, net, tie, reach} ×2], ties, cost, n} for a run that lays a tile over water or marsh, else null), landings / landingCost, extra, cut, clears / clearsRun
+- buildings.runQuote(state, id, tiles, opts)   // water pass: also → canal ({tie: {tiles, cost, outlet} | null, touch, outlet, drains, wet, reach} for a Drainage Canal run: the outlet tie from its end within params.build.canalTieMax, what it will drain and where to; opts.noTie = no tie) and ring (a levee / floodwall run: leveeStatus's report for the wall the run would make, + closes / short / where, text "Closes the ring: holds a 5 ft surge off 12 tiles · rain inside will need a floodgate or a pump"); clears counts levee / canal / fill tiles too; the row road_bridge (deck at its own price, Campus Road on the dry tiles of the run, span roadBridgeMaxSpan 8 / roadBridgeBankMax 4, nothing laid without water). crossings pass: also → cross ({shores: [{end, touch, net, tie, reach} ×2], ties, cost, n} for a run that lays a tile over water or marsh, else null), landings / landingCost, extra, cut, clears / clearsRun
 - buildings.crossSnap(state, rowId, from, to, prev) → tile   (crossings pass: the tile a road / boardwalk / Pedestrian Bridge drag from `from` should end on with the cursor on `to`: the free land tile in line with an access surface's dead end within params.build.tieSnap, else `to`; `prev` is kept while it is as good)
 - buildings.connectorFor(state, rowId, tx, ty, rot)
 - buildings.canPlace(state, id, tx, ty, opts)
@@ -259,7 +259,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - buildings.fillQuote(state, tiles)
 - buildings.fillStats(state)
 - buildings.place(state, id, tx, ty, opts)
-- buildings.placeRun(state, id, tiles, opts)   // crossings pass: → also ties ([{tiles, surfaces, cost, water, snap, end, net}], one per bank of a crossing; tie = ties[0]); a surface tile clears the plants on it (state.veg), restored by undo
+- buildings.placeRun(state, id, tiles, opts)   // water pass: a canal run → also canalTie ({tiles, cost, outlet}: the tiles dug on to the outlet, each its own charge on the run's undo record) and graded (beds lowered so none on the way to the outlet is higher than one upstream; they ride on the undo record). crossings pass: → also ties ([{tiles, surfaces, cost, water, snap, end, net}], one per bank of a crossing; tie = ties[0]); a surface tile clears the plants on it (state.veg), restored by undo
 - buildings.remove(state, idOrTile, reason)
 - buildings.undoInfo(state)
 - buildings.undo(state)
@@ -290,6 +290,8 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - buildings.dirtyRing(state)
 - buildings.onIntegrityChanged(state, i)
 - buildings.leveeRuns(state)
+- buildings.leveeStatus(state, i, Hft?) → { H, tiles, closed, protects, kept: [i…], gaps: [{tiles, len, cx, cy, name, ends}…], openEnds: […], overtopped, lowTop, holds, gates, pumps, text, missing, rain } | null   // water pass: what the wall (4-connected levee / floodwall tiles) through tile i does at H (the forecast surge while a storm is inbound, else ringDefaultH 5). closed = it keeps `protects` tiles dry that the water reaches without it; else gaps (between two ends of the wall) or openEnds (the tile past a lone free end). text: "Ring closed: holds a 5 ft surge off 12 tiles" | "Ring open: 1 gap" | "Open wall: a 5 ft surge comes round its ends" | "Too low for a 5 ft surge: its crest is at 4.1 ft" | "No water reaches this ground at 5 ft"; missing = what to do ('' when nothing); rain = how rain inside gets out (a floodgate, a pumped canal; '' when it cannot: missing then says so). Cached until a tile or the ring changes
+- buildings.clearsPlants(rowId) → bool / buildings.plantsOn(state, tiles) → n   // water pass (N5): every footprint row and every row that re-shapes its tile (path, road, boardwalk, bridge decks' land tiles, levee, floodwall, canal, Dredge & Fill) clears the state.veg entries on it, restored by undo each at its own index; the plants themselves, the Preserve, Marsh Restoration, the Gator Fence and the Quad Lawn leave them
 - buildings.sandbagRuns(state, Hft)
 - buildings.sandbags(state, Hft, opts)
 - buildings.repair(state, id)
@@ -326,7 +328,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - contract.selfTest()
 
 ## BSU.data
-- values: catalog:object, catalogList:array[47], tabs:array[10], decals:object, names:object, students:object, coaches:array[10], coachQuotes:array[12], staff:object, gatorNames:array[14], leGrand:string, stormNames:array[26], opponents:object, schedule:array[8], calendar:object, ticker:array[62], tickerKinds:object, tickerKindList:array[7], objectives:object, milestones:array[28], voiceCards:array[12], boardCards:array[8], failureCards:object, tutorial:array[7], thibodeaux:array[12], stormQuotes:array[8], overlays:array[6], keys:array[50], toastKeys:object, panKeys:object, rainKinds:object, guide:object, needs:object, requirements:object, coach:array[6], football:object, dishes:array[24], menuPresets:object, menuDefaults:object
+- values: catalog:object, catalogList:array[48], tabs:array[10], decals:object, names:object, students:object, coaches:array[10], coachQuotes:array[12], staff:object, gatorNames:array[14], leGrand:string, stormNames:array[26], opponents:object, schedule:array[8], calendar:object, ticker:array[62], tickerKinds:object, tickerKindList:array[7], objectives:object, milestones:array[28], voiceCards:array[12], boardCards:array[8], failureCards:object, tutorial:array[7], thibodeaux:array[12], stormQuotes:array[8], overlays:array[6], keys:array[50], toastKeys:object, panKeys:object, rainKinds:object, guide:object, needs:object, requirements:object, coach:array[6], football:object, dishes:array[24], menuPresets:object, menuDefaults:object
 - data.selfTest()
 
 - BSU.dateToDay(str, year)
@@ -422,7 +424,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 
 ## BSU.icons   // U5: the one inline-SVG registry (src/js/icons.js, before ui.js); 24 × 24, stroke 2 in currentColor, a few filled
 - icons.get(name, cls?)   // a fresh <svg class="ic cls" viewBox="0 0 24 24" data-icon=name>; cls: 'sm' 18 px, 's20' 20 px, 'hidden', …; an unknown name → an empty svg, recorded in missing()
-- icons.names()   // every name, sorted (78: U6 added bed, school, restaurant, sewage for the needs gauges)
+- icons.names()   // every name, sorted (79: U6 added bed, school, restaurant, sewage for the needs gauges; water pass: road_bridge, named by data.requirements.row.road_bridge.icon)
 - icons.has(name) / icons.paths(name) / icons.isFilled(name)
 - icons.fromGlyph(ch)   // the registry name for an emoji / text glyph data.js or an old caller still carries (⚡ 💧 🚶 🛣 🪵 ↔ 🌀 🦟 🌡 🌊 🚱 🐊 …), else null
 - icons.requested() / icons.missing()   // names asked for / asked for but absent (tests)
@@ -442,7 +444,13 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - hydro.floodedBuildings(state)
 - hydro.floodedTiles(state)
 - hydro.footprintDepth(state, id)
-- hydro.networks(state)
+- hydro.networks(state)   // water pass: each network also carries outlets: [i…] (its canal tiles that touch open water)
+- hydro.canalStats(state, i) → { tiles, outlet ('' | 'the bayou' | 'the river' | 'the lake' | 'a Pump Station'), drains, catchment, wet, water, depth, flowing, movedToday, movedYesterday, gates, pumps } | null   // water pass: the canal network through tile i in numbers. catchment = the ground whose water runs to it (a walk outward over land never lower than the tile it drains to, ≤ params.hydro.canalReach 3 steps, stopped by water, another canal and a wall); wet = of those, under ≥ 0.05 ft now; movedToday / Yesterday = tile-ft its outlet tiles gave to open water
+- hydro.canalPreview(state, tiles) → { n, outlet, touch, tiles }   // water pass: what a canal dug on `tiles` would drain and where to, the canals it would join included; nothing is changed
+- hydro.outletAt(state, j) → ''   | name   // water pass: is tile j an outlet a canal can run to (open water, or a canal whose network drains or is pumped)
+- hydro.drainedMask(state) → Uint8Array   // water pass: 1 = in the catchment of a canal network with an outlet or a pump, 2 = a canal tile of one (render_fx keeps the rain puddles off both); rebuilt with the networks
+- hydro.canalDirs(state) → Int8Array   // water pass: the way each canal tile's water runs (0 N, 1 E, 2 S, 3 W toward its outlet; −1 none): render's flow streaks
+- (water pass) rain on a wall's own crown (crestEff > 0) is not taken in; a canal tile has no marsh head loss, no marsh floor and no drained-marsh flip; hydro.markCanal reclassifies the tile (terrain.typeOf: a canal bed below the marsh bound on ground that was not wetland is Wet)
 - hydro.networkAt(state, i)
 - hydro.surgeReached(state, i)
 - hydro.surgeFrontDistance(state, i)
@@ -844,6 +852,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - sports.selfTest()
 
 ## BSU.sprites
+- (water pass) sprites.WALL_RISE {levee: 36, floodwall: 72} and WALL_OTHER_SHIFT 5: levee / floodwall variants are same-kind mask | 16 weak crest | other-kind wall neighbours << 5 (render's wallVariant); the HD levee is 64 × 72 (anchor −52), the HD floodwall 64 × 106 (anchor −88)
 - values: palette:object, CANVAS_LIMIT_MB:number, ZOOM2:boolean, GC_FRAMES:number, TILE_W:number, TILE_H:number, PX_PER_FT:number, extra:object, RAMPS:object, RAMP_BASES:object, COOL_TINT:string, WARM_TINT:string, TH_GROUND:array[4], FONT:object, _tests:array[7], FRAMES:object, hdFallback:boolean, DIRS:array[4], EXTRA_DECALS:object, decalPainters:object, LIGHTS:object, TREE_SIL_SHIFT:number, TREE_WATER:number, TREE_JIT_SHIFT:number, HD_TERRAIN:array[14], TILE_SHALLOW:number, TILE_DEEP:number, TILE_POS_SHIFT:number, hdVegetationCells:object, extraBuildings:object, APRON:object, materials:object, FEATURES:array[23], roofs:object, HABITAT:object, HD_ROWS:object, ICON_FRAME:object, entityConst:object, entityColors:object, _buf:object, SHEET_LIMIT_MB:number, _gcWrapped:boolean, fbFrames:object, fbSizes:object, fbPoses:object, fbRoles:array[5], fbCompose:object, stuAnims:object, _bake:object, animFrames:object, vehCompose:object, entFrames:object, entityFacings:number, _initWrappedEntities:boolean, entitySizes:object, entityCells:object, HD_SHEET_LIMIT_MB:number, _hdBake:object, hdEntityCells:object, hdCompose:object
 - sprites.hex(h)
 - sprites.rgb(r, g, b)

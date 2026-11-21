@@ -279,53 +279,105 @@
     return [{ d: DIRS[0], len: stub }, { d: DIRS[2], len: stub }];
   }
   const bandQuad = (cx, cy, d, len, j0, j1, top) => [[cx, cy + top + j0], [cx + d.dx * len, cy + d.dy * (len >> 1) + top + j0], [cx + d.dx * len, cy + d.dy * (len >> 1) + top + j1], [cx, cy + top + j1]];
-  // levee — variant = mask | 16 cracked crown; a grassy berm rising 12 px over the diamond with a gravel crown path
-  // canvas 64×48, ox −32, oy −28 (12 rows above the diamond, 4 below for the toe)
+  // ---------------------------------------------------------------------------
+  // Water pass (the playtester's "levee looks weird"): walls are drawn as SOLIDS at their true height (6 px a foot: a 6-ft levee is 36 px,
+  // a 12-ft floodwall 72 px, so a 5-ft surge stands visibly below the crown that holds it), built as a stack of horizontal slices from the
+  // ground up. A slice at height z is the plus-shaped union of two rectangles of half-width r(z) around the tile's arms; drawn bottom to
+  // top, each slice hides what is behind and below it exactly (in this projection a higher point at the same pixel is always nearer), so
+  // straight runs, corners, tees, crosses and free ends all come out of one rule with no per-shape case: a corner is a mitre, a free end a
+  // hipped cap, and two tiles meet without a seam because the arm runs to the shared edge with the same profile on both sides.
+  //   ext[d] (d = 0 N, 1 E, 2 S, 3 W): 2 the wall goes on into that neighbour (the arm runs to the edge, open cut), 1 another kind of
+  //   wall is there (the arm runs to the edge and ends in a plain face: a levee butts against a floodwall at full height), 0 nothing (a cap
+  //   at the tile centre). variant = same-kind mask | 16 weak crest | other-kind mask << 5.
+  // ---------------------------------------------------------------------------
+  M.WALL_OTHER_SHIFT = 5;
+  M.WALL_RISE = Object.freeze({ levee: 6 * PX_PER_FT, floodwall: 12 * PX_PER_FT });
+  const WPX = (cx, cy, x, y, z) => [cx + (x - y) * 32, cy + (x + y) * 16 - z];
+  const T64 = (t) => Math.round(t * 64) / 64;   // brush.tone caches per 1/64 of a tone step under the FIRST value asked in that step: the slices ask exact steps, so they never leave a near-miss in the cache for another painter
+  function wallExt(v) { const same = v & 15, other = (v >> M.WALL_OTHER_SHIFT) & 15, e = [0, 0, 0, 0]; for (let d = 0; d < 4; d++) e[d] = (same >> d) & 1 ? 2 : ((other >> d) & 1 ? 1 : 0); return e; }
+  /** the stack: prof(z) → the half-width at height z (tile units), tone(z, face) → a CSS colour (face 0 top fill, 1 the SW face, 2 the SE face); returns the top slice's geometry */
+  function wallStack(ctx, cx, cy, ext, H, dz, prof, tone, capOf) {
+    const reach = (d, r) => (ext[d] === 2 ? 0.52 : (ext[d] === 1 ? 0.5 : (capOf ? capOf(r) : r)));   // (ext 1: a full-height end face at the shared edge, against the other wall)
+    const P = (x, y, z) => WPX(cx, cy, x, y, z);
+    const seg = (a, b) => { ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); };
+    let top = null;
+    ctx.lineCap = 'butt'; ctx.lineJoin = 'round';
+    for (let z = 0; z <= H + 1e-6; z += dz) {
+      const r = prof(z), eN = reach(0, r), eE = reach(1, r), eS = reach(2, r), eW = reach(3, r);
+      // the slice: rect X [−eW, eE] × [−r, r] ∪ rect Y [−r, r] × [−eN, eS]
+      ctx.beginPath();
+      let q = [P(-eW, -r, z), P(eE, -r, z), P(eE, r, z), P(-eW, r, z)]; ctx.moveTo(q[0][0], q[0][1]); for (let k = 1; k < 4; k++) ctx.lineTo(q[k][0], q[k][1]); ctx.closePath();
+      q = [P(-r, -eN, z), P(r, -eN, z), P(r, eS, z), P(-r, eS, z)]; ctx.moveTo(q[0][0], q[0][1]); for (let k = 1; k < 4; k++) ctx.lineTo(q[k][0], q[k][1]); ctx.closePath();
+      ctx.fillStyle = tone(z, 0); ctx.fill();
+      ctx.lineWidth = dz + 1.1;
+      // the faces toward the viewer: +y edges (SW, lit) and +x edges (SE, shadow); an arm that goes on (ext 2) has no end face
+      ctx.beginPath();
+      if (eS > r + 1e-6) { seg(P(-eW, r, z), P(-r, r, z)); seg(P(r, r, z), P(eE, r, z)); if (ext[2] !== 2) seg(P(-r, eS, z), P(r, eS, z)); } else seg(P(-eW, r, z), P(eE, r, z));
+      ctx.strokeStyle = tone(z, 1); ctx.stroke();
+      ctx.beginPath();
+      if (eE > r + 1e-6) { seg(P(r, -eN, z), P(r, -r, z)); seg(P(r, r, z), P(r, eS, z)); if (ext[1] !== 2) seg(P(eE, -r, z), P(eE, r, z)); } else seg(P(r, -eN, z), P(r, eS, z));
+      ctx.strokeStyle = tone(z, 2); ctx.stroke();
+      top = { r: r, eN: eN, eE: eE, eS: eS, eW: eW, z: z };
+    }
+    return top;
+  }
+  // levee — an earthen berm: a trapezoid 0.46 tile to each side at the foot, 0.13 at the crown, 36 px high, grass on the slopes, a gravel path on the crown
+  // canvas 64 × 72, ox −32, oy −52 (36 rows above the tile centre, 4 below the diamond for the toe)
   M.registerHD('levee', function (ctx, spec) {
-    const Br = B(); const RISE = 12, TOE = 4; const g = Br.begin(ctx, TW, TH + RISE + TOE, spec), env = g.env, lod = env.lod;
-    const v = spec.variant, mask = v & 15, cracked = !!(v & 16), cx = TW >> 1, cy = (TH >> 1) + RISE, seed = hash(0x1e, v);
-    const t = 22, crownT = 10, top = -(RISE - (t >> 1)) + 2 - (t >> 1);   // = −10: the crown's back edge sits 10 px above the centre
-    const runs = runDirs(mask, 8);
-    const crown = (pts) => { Br.plane(ctx, pts, 'grass', 0.12, { vert: true, amp: 0.1, rim: 0 }); Br.microGrain(ctx, pts, 0.2, env); };
-    const slope = (pts) => { Br.plane(ctx, pts, 'grass', -0.2, { vert: true, amp: 0.22, rim: 0.12 }); Br.microGrain(ctx, pts, 0.25, env); if (pts.length === 4) Br.edgeFade(ctx, pts, pts[2], pts[3], TOE + 2, AO, 0, 0.35); };
-    // the centre: the upper / lower halves of the strip rhombus, then every direction's bands over them
-    crown([[cx, cy + top], [cx + 20, cy + top + crownT], [cx, cy + top + crownT + 1], [cx - 20, cy + top + crownT]]);
-    slope([[cx - 20, cy + top + crownT], [cx + 20, cy + top + crownT], [cx, cy + top + t]]);
-    for (const r of runs) { slope(bandQuad(cx, cy, r.d, r.len, crownT, t, top)); }
-    for (const r of runs) { crown(bandQuad(cx, cy, r.d, r.len, 0, crownT + 0.6, top)); }
-    // the lit back edge of the crown and the crown's front lip
-    for (const r of runs) { const q = bandQuad(cx, cy, r.d, r.len, 0, crownT, top); Br.stroke(ctx, [q[0], q[1]], 1.1, 'grass', 0.75, 0.6, { cap: 'butt' }); Br.stroke(ctx, [q[3], q[2]], 1, 'grass', -0.7, 0.55, { cap: 'butt' }); }
-    // the gravel crown path along the middle of the crown (rows 3–5 of the pen strip → y = top + 4.5)
-    ctx.save(); ctx.beginPath(); for (const r of runs) { ctx.moveTo(cx, cy + top + 4.5); ctx.lineTo(cx + r.d.dx * r.len, cy + r.d.dy * (r.len >> 1) + top + 4.5); }
-    Br.strokePath(ctx, 4.5, env, { material: 'gravel', unit: 1, seed: seed }); ctx.restore();
-    if (cracked) for (let i = 0; i < (lod > 0 ? 3 : 5); i++) {   // a weak crest: dark cracks across the crown
-      const r = runs[i % runs.length], k = 2 + (hash(seed, 50 + i) % Math.max(1, r.len - 3)), x = cx + r.d.dx * k, y = cy + r.d.dy * (k >> 1) + top + 2 + (hash(seed, 60 + i) % 6);
-      Br.stroke(ctx, [[x - 2, y - 1], [x, y + 1.5], [x + 2.5, y + 0.5], [x + 3.5, y + 3]], 0.9, 'bark', -0.6, 0.8, { cap: 'round' });
+    const Br = B(); const RISE = M.WALL_RISE.levee, TOE = 4; const g = Br.begin(ctx, TW, TH + RISE + TOE, spec), env = g.env, lod = env.lod;
+    const v = spec.variant | 0, cracked = !!(v & 16), ext = wallExt(v), cx = TW >> 1, cy = (TH >> 1) + RISE, seed = hash(0x1e, v & 0x1ef);
+    const FOOT = 0.46, CROWN = 0.13, dz = lod > 0 ? 1 : 0.5;
+    const prof = (z) => FOOT - (FOOT - CROWN) * Math.min(1, z / RISE);
+    // tones: the toe sits in its own shade, the slope lightens toward the crown; the SE faces are a step darker; a weak crest is browner
+    const grass = cracked ? Br.mix('grass', 'dirt', 0.35) : 'grass';
+    const tone = (z, face) => { const k = z / RISE; return Br.tone(grass, T64(face === 1 ? -0.42 + 0.5 * k : (face === 2 ? -0.7 + 0.42 * k : -0.25 + 0.3 * k))); };
+    Br.softEllipse(ctx, cx, cy + 1, 31, 15.5, AO, 0.28, 0.55);   // contact shade under the foot
+    const top = wallStack(ctx, cx, cy, ext, RISE, dz, prof, tone);
+    // the crown: its lit back edges, then the gravel path down the middle of every arm
+    const P = (x, y) => WPX(cx, cy, x, y, RISE), r = top.r;
+    ctx.beginPath(); ctx.moveTo.apply(ctx, P(-top.eW, -r)); ctx.lineTo.apply(ctx, P(top.eE, -r)); ctx.moveTo.apply(ctx, P(-r, -top.eN)); ctx.lineTo.apply(ctx, P(-r, top.eS));
+    ctx.lineWidth = 0.9; ctx.strokeStyle = Br.tone(grass, 0.7, 0.55); ctx.stroke();
+    const ends = [[0, -top.eN], [top.eE, 0], [0, top.eS], [-top.eW, 0]];
+    ctx.save(); ctx.beginPath();
+    for (let d = 0; d < 4; d++) { if (!ext[d]) continue; const e = ends[d], k = ext[d] === 2 ? 1 : 0.82; ctx.moveTo.apply(ctx, P(0, 0)); ctx.lineTo.apply(ctx, P(e[0] * k, e[1] * k)); }
+    if (!ext[0] && !ext[1] && !ext[2] && !ext[3]) { ctx.moveTo.apply(ctx, P(-r * 0.5, 0)); ctx.lineTo.apply(ctx, P(r * 0.5, 0)); }
+    Br.strokePath(ctx, 4.2, env, { material: 'gravel', unit: 1, seed: seed }); ctx.restore();
+    if (lod === 0) for (let i = 0; i < 7; i++) {   // grass on the lit slopes
+      const d = [1, 2, 3, 0][i & 3]; if (!ext[d] && (ext[0] || ext[1] || ext[2] || ext[3])) continue;
+      const t = 0.12 + (hash(seed, 30 + i) % 70) / 100 * 0.36, zz = 4 + (hash(seed, 40 + i) % 22), rr = prof(zz) + 0.004;
+      const p = (d === 1 || d === 3) ? WPX(cx, cy, (d === 1 ? t : -t), rr, zz) : WPX(cx, cy, rr, (d === 2 ? t : -t), zz);
+      Br.blade(ctx, p[0], p[1], 2.4 + (hash(seed, 50 + i) % 3) * 0.6, ((hash(seed, 60 + i) % 5) - 2) * 0.4, 'grass', (d === 1 || d === 3) ? 0.2 : -0.15, 0.9);
+    }
+    if (cracked) for (let i = 0; i < (lod > 0 ? 3 : 5); i++) {   // a weak crest: dark cracks across the crown and down the slope
+      const d = ext.findIndex((e, k) => e && ((hash(seed, 70 + i) + k) % 2 === 0)), dd = d < 0 ? 1 : d, t = ((hash(seed, 80 + i) % 80) / 100 - 0.4) * 0.5, e = ends[dd];
+      const a = P(e[0] * Math.abs(t) * 1.6 - (dd & 1 ? 0 : r), e[1] * Math.abs(t) * 1.6 - (dd & 1 ? r : 0)), w = WPX(cx, cy, (dd & 1 ? e[0] * Math.abs(t) * 1.6 : prof(RISE - 12)), (dd & 1 ? prof(RISE - 12) : e[1] * Math.abs(t) * 1.6), RISE - 12);
+      Br.stroke(ctx, [a, [(a[0] + w[0]) / 2 + 1.5, (a[1] + w[1]) / 2 - 1], w], 0.9, 'bark', -0.6, 0.8, { cap: 'round' });
     }
     return { w: g.w, h: g.h, ox: -(TW >> 1), oy: -(TH >> 1) - RISE };
   });
-  // floodwall — variant = mask; gray T-wall panels 18 px high with joints every 8 px, purple 1-ft gauge stripes + gold ticks
-  // canvas 64×56, ox −32, oy −36
+  // floodwall — a concrete T-wall: 0.075 tile to each side, a wider cap, 72 px high, a purple gauge line every foot and a joint every quarter tile
+  // canvas 64 × 106, ox −32, oy −88
   M.registerHD('floodwall', function (ctx, spec) {
-    const Br = B(); const RISE = 20; const g = Br.begin(ctx, TW, TH + RISE + 2, spec), env = g.env;
-    const mask = spec.variant & 15, cx = TW >> 1, cy = (TH >> 1) + RISE, seed = hash(0xf1, spec.variant);
-    const cap = 4, face = 18, t = cap + face + 2, top = -(RISE - (t >> 1)) + 1 - (t >> 1);   // = −19
-    const steel = X.steel || '#8A8A8E', conc = X.concrete || '#B8B8BC', runs = runDirs(mask, 8);
-    for (const r of runs) {
-      const q = r.d;
-      Br.fillQuadShaded(ctx, bandQuad(cx, cy, q, r.len, t - 2, t, top), conc, { face: 'top', material: 'stone', t: -0.25 }, env);                    // footing
-      Br.fillQuadShaded(ctx, bandQuad(cx, cy, q, r.len, cap, t - 2, top), steel, { face: q.dy > 0 ? 'sw' : 'se', material: 'metal', t: 0.05 }, env);   // the panel face
-      Br.fillQuadShaded(ctx, bandQuad(cx, cy, q, r.len, 0, cap, top), steel, { face: 'top', material: 'metal', t: 0.25, noAO: true }, env);            // the cap (top of the T)
-      const fq = bandQuad(cx, cy, q, r.len, cap, t - 2, top);
-      Br.stroke(ctx, [fq[0], fq[1]], 1, steel, -0.7, 0.6, { cap: 'butt' });   // the cap's underside
-      for (let k = 8; k < r.len; k += 8) { const x = cx + q.dx * k, y = cy + q.dy * (k >> 1) + top; Br.stroke(ctx, [[x, y + cap], [x, y + t - 2]], 1, steel, -0.6, 0.6, { cap: 'butt' }); }   // panel joints
-      for (let ft = 1; ft * PX_PER_FT < face; ft++) {   // 1-ft gauge stripes up the face, a gold tick beside each joint
-        const yy = top + t - 2 - ft * PX_PER_FT, a = [cx, cy + yy], b = [cx + q.dx * r.len, cy + q.dy * (r.len >> 1) + yy];
-        Br.stroke(ctx, [a, b], 1, PAL.purple, 0, 0.9, { cap: 'butt' });
-        for (let k = 1; k < r.len; k += 8) Br.stroke(ctx, [[cx + q.dx * k, cy + q.dy * (k >> 1) + yy], [cx + q.dx * (k + 1.5), cy + q.dy * ((k + 1.5) >> 1) + yy]], 1.2, PAL.gold, 0.2, 1, { cap: 'butt' });
-      }
-    }
-    void seed;
+    const Br = B(); const RISE = M.WALL_RISE.floodwall; const g = Br.begin(ctx, TW, TH + RISE + 2, spec), env = g.env, lod = env.lod;
+    const v = spec.variant | 0, cx = TW >> 1, cy = (TH >> 1) + RISE;
+    const ext = [0, 1, 2, 3].map((d) => (((v & 15) | ((v >> M.WALL_OTHER_SHIFT) & 15)) >> d) & 1 ? 2 : 0);   // a floodwall runs on into a levee as it does into another floodwall
+    const steel = X.steel || '#8A8A8E', conc = X.concrete || '#B8B8BC', WALL = 0.075, CAP = 0.115, capZ = RISE - 5, dz = lod > 0 ? 1 : 0.5;
+    const prof = (z) => (z < 3 ? 0.13 : (z >= capZ ? CAP : WALL));   // footing, panel, cap
+    const tone = (z, face) => {
+      if (z < 3) return Br.tone(conc, face === 1 ? -0.1 : (face === 2 ? -0.45 : -0.25));
+      if (z >= capZ) return Br.tone(steel, face === 1 ? 0.3 : (face === 2 ? -0.15 : 0.45));
+      const ft = z / PX_PER_FT, near = Math.abs(ft - Math.round(ft)) * PX_PER_FT < 0.55, stripe = z > 4 && near && Math.round(ft) % 3 === 0;   // the gauge: a purple line every third foot, a faint score on the others
+      if (stripe && face) return Br.tone(PAL.purple, face === 1 ? 0.1 : -0.3);
+      if (near && face && z > 4) return Br.tone(steel, face === 1 ? -0.12 : -0.52);
+      return Br.tone(steel, T64(face === 1 ? 0.12 - 0.1 * (1 - z / RISE) : (face === 2 ? -0.4 : 0)));
+    };
+    Br.softEllipse(ctx, cx, cy + 1, 26, 11, AO, 0.3, 0.5);
+    wallStack(ctx, cx, cy, ext, RISE, dz, prof, tone, (r) => (r > WALL ? r : WALL));
+    // panel joints and a gold tick on every gauge line, on the two faces toward the viewer
+    const run = (d) => (ext[d] === 2 ? 0.5 : WALL), eN = run(0), eE = run(1), eS = run(2), eW = run(3);
+    ctx.lineCap = 'butt';
+    for (let t = -eW + 0.125; t < eE - 0.01; t += 0.25) { if (eS > WALL && Math.abs(t) < WALL) continue; const a = WPX(cx, cy, t, WALL, 3), b = WPX(cx, cy, t, WALL, capZ); Br.stroke(ctx, [a, b], 0.8, steel, -0.6, 0.6, { cap: 'butt' }); for (let f = 3; f * PX_PER_FT < capZ; f += 3) { const q = WPX(cx, cy, t + 0.03, WALL, f * PX_PER_FT); Br.stroke(ctx, [q, [q[0] + 1.6, q[1] + 0.8]], 1.1, PAL.gold, 0.2, 1, { cap: 'butt' }); } }
+    for (let t = -eN + 0.125; t < eS - 0.01; t += 0.25) { if (eE > WALL && Math.abs(t) < WALL) continue; const a = WPX(cx, cy, WALL, t, 3), b = WPX(cx, cy, WALL, t, capZ); Br.stroke(ctx, [a, b], 0.8, steel, -0.75, 0.6, { cap: 'butt' }); }
     return { w: g.w, h: g.h, ox: -(TW >> 1), oy: -(TH >> 1) - RISE };
   });
   // canal — variant = mask | 16 culvert | 32 gate present | 64 gate closed; a 12-px cut with concrete lips and a dark bed; 64×32
@@ -333,12 +385,13 @@
     const Br = B(); const g = Br.begin(ctx, TW, TH, spec), env = g.env;
     const v = spec.variant, mask = v & 15, culvert = !!(v & 16), gate = !!(v & 32), closed = !!(v & 64), cx = TW >> 1, cy = TH >> 1;
     const t = 12, top = -(t >> 1), conc = X.concrete || '#B8B8BC', runs = runDirs(mask, 8), pop = (mask & 1) + ((mask >> 1) & 1) + ((mask >> 2) & 1) + ((mask >> 3) & 1);
-    Br.plane(ctx, [[cx - 6, cy + top], [cx + 6, cy + top], [cx + 6, cy + top + t], [cx - 6, cy + top + t]], 'waterDeep', -0.1, { vert: true, amp: 0.2, rim: 0 });
+    const BED = 'dirt';   // water pass: the bed is wet earth with a trickle down its middle — the live water pass lays the water over it while the canal carries any, so a dry canal reads dry
+    Br.plane(ctx, [[cx - 6, cy + top], [cx + 6, cy + top], [cx + 6, cy + top + t], [cx - 6, cy + top + t]], BED, -0.62, { vert: true, amp: 0.14, rim: 0 });
     for (const r of runs) {
       const q = bandQuad(cx, cy, r.d, r.len, 0, t, top);
-      Br.plane(ctx, q, 'waterDeep', -0.1, { vert: true, amp: 0.22, rim: 0.1 });
+      Br.plane(ctx, q, BED, -0.62, { vert: true, amp: 0.16, rim: 0.1 });
       Br.edgeFade(ctx, q, q[0], q[1], 4, AO, 0, 0.45);                                                   // the near bank's shadow on the water
-      const mq = bandQuad(cx, cy, r.d, r.len, t >> 1, (t >> 1) + 1, top); Br.stroke(ctx, [mq[0], mq[1]], 1, 'waterDeep', 0.65, 0.45, { cap: 'butt' });   // the reflective mid line
+      const mq = bandQuad(cx, cy, r.d, r.len, t >> 1, (t >> 1) + 1, top); Br.stroke(ctx, [mq[0], mq[1]], 1.6, 'waterDeep', 0.35, 0.7, { cap: 'butt' });   // the trickle down the middle
       Br.stroke(ctx, [q[0], q[1]], 1.2, conc, 0.1, 1, { cap: 'butt' }); Br.stroke(ctx, [q[3], q[2]], 1.2, conc, -0.3, 1, { cap: 'butt' });            // concrete lips
     }
     if (culvert || pop >= 3) for (const s of [-1, 1]) { const x = cx + s * 14, y = cy + 8; Br.fillQuadShaded(ctx, [[x - 2, y], [x + 2, y], [x + 2, y + 4], [x - 2, y + 4]], X.steelDark || '#6A6A70', { face: 'se', material: 'metal', noAO: true }, env); Br.orb(ctx, x, y + 2, 1.1, 1.1, X.black || '#1B1B1B', -0.5, { noRim: true }); }
@@ -388,7 +441,7 @@
       if (e.zoom !== z || !e.hd) fail(id + '@' + z + ' is not an HD entry at master ' + z);
       if (id.startsWith('tile') && !(e.sw === 64 * z && e.sh === 32 * z && e.ox === -32 * z && e.oy === -16 * z)) fail(id + '@' + z + ' geometry ' + JSON.stringify([e.sw, e.sh, e.ox, e.oy]));
       if (id === 'cliff' && !(e.sw === 32 * z && e.sh === (16 + v) * z && e.ox === 0 && e.oy === 0)) fail('cliff east ' + v + '@' + z + ' geometry ' + JSON.stringify([e.sw, e.sh, e.ox, e.oy]));
-      if (id === 'levee' && !(e.sw === 64 * z && e.sh === 48 * z && e.oy === -28 * z)) fail('levee@' + z + ' geometry');
+      if (id === 'levee' && !(e.sw === 64 * z && e.sh === 72 * z && e.oy === -52 * z)) fail('levee@' + z + ' geometry');   // water pass: 36 px of rise (6 ft) + 4 of toe
     }
     if (BSU.errors && BSU.errors.size !== errs) fail('BSU.errors grew while baking the HD terrain families');
     return { ok: notes.length === 0, notes: notes.length ? notes.join('; ') : 'HD terrain: ' + FAMILIES.length + ' families at masters 1 + 2' };

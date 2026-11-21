@@ -2,7 +2,7 @@
 // when a path or a road is built, any shrubberies, bush, trees, any nature is cleared"). A path, road, boardwalk or Pedestrian Bridge tile
 // clears every plant (state.veg entry, natural or planted) standing on it — a run tile, a bridge landing, an auto-tie tile, a building's
 // own tie — on the same undo record (Ctrl+Z puts each entry back exactly, at its old index); the quote carries `clears`; the Wetland
-// Preserve, levees, canals and fences clear nothing; old saves are not swept; goal 6 still counts the oaks beside a path.
+// Preserve and fences clear nothing (water pass: a levee and a canal clear their tile now, test/unit/water.test.mjs); old saves are not swept; goal 6 still counts the oaks beside a path.
 // Usage: node build.mjs --check && node test/unit/clearing.test.mjs   (exit 1 on any failure)
 import { loadGame } from '../domstub.mjs';
 
@@ -99,8 +99,10 @@ const live64 = BSU.state;
   s.veg.length = 0; marsh(20, 44); marsh(21, 44); plant('cypress', 20, 44); plant('cypress', 21, 44); plant('oak', 20, 46); plant('oak', 20, 48); plant('oak', 20, 50);
   const v5 = snap();
   ok(B.runQuote(s, 'preserve', [at(20, 44), at(21, 44)], {}).clears === 0 && B.placeRun(s, 'preserve', [at(20, 44), at(21, 44)], { ignoreCash: true }).placed === 2 && snap() === v5, 'the Wetland Preserve paints the marsh and leaves its cypress standing');
-  ok(B.placeRun(s, 'levee', row(46, 19, 21), { ignoreCash: true }).placed === 3 && B.placeRun(s, 'canal', row(48, 19, 21), { ignoreCash: true }).placed === 3 && B.placeRun(s, 'gator_fence', row(50, 19, 21), { ignoreCash: true }).placed === 3 && snap() === v5, 'levees, canals and fences clear nothing (as before)');
-  ok(B.runQuote(s, 'levee', row(52, 19, 21), {}).clears === 0, 'and their quotes carry clears 0');
+  ok(B.placeRun(s, 'gator_fence', row(50, 19, 21), { ignoreCash: true }).placed === 3 && snap() === v5 && B.runQuote(s, 'gator_fence', row(52, 19, 21), {}).clears === 0, 'a Gator Fence clears nothing, and its quote carries clears 0');
+  // water pass (N5): a levee is a berm built on the tile and a canal is dug through it: both clear their tile, with the same exact undo
+  ok(B.runQuote(s, 'levee', row(46, 19, 21), {}).clears === 1 && B.placeRun(s, 'levee', row(46, 19, 21), { ignoreCash: true }).placed === 3 && !s.veg.some((v) => v.tx === 20 && v.ty === 46) && B.undo(s).ok && snap() === v5, 'a levee run clears the oak on its tile (quote: clears 1); undo puts it back');
+  ok(B.runQuote(s, 'canal', row(48, 19, 21), {}).clears === 1 && B.placeRun(s, 'canal', row(48, 19, 21), { ignoreCash: true, noTie: true }).placed === 3 && !s.veg.some((v) => v.tx === 20 && v.ty === 48) && B.undo(s).ok && snap() === v5, 'a canal run clears the oak on its tile (quote: clears 1); undo puts it back');
 
   // old saves: a plant already standing on a path is left alone (no sweep)
   s.veg.length = 0; B.placeRun(s, 'path', row(56, 20, 24), { ignoreCash: true, noTie: true }); plant('oak', 22, 56);

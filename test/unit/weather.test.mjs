@@ -483,6 +483,7 @@ function shapeOk(r) {
   s.economy.cash = 30000000;
   // a storm arrives: cone → the queue path, then Prepare everything
   const storm = H.forceHurricane(3); H.tick(30);
+  console.log('      (forecast drawn: Cat ' + storm.forecastCat + ')'); storm.forecastCat = 3;   // water pass: the forecast is drawn ±1 around the category from the sim stream, and a Cat 4 forecast puts Evacuate into Prepare everything (the evacuate checks below then meet alreadyDone); pinned, so the test no longer depends on how many draws came before it
   ok(!!Wt.cone(s) && storm.phase >= BSU.STORM.NAMED, 'a Cat 3 is in the cone');
   { const covered = B.boardInfo(s).rows.filter((r) => r.covers).length; ok(covered >= 5, 'precautionary boards that outlast the landfall still count in the cone (' + covered + ' covered)'); }
   for (const b of B.list(s)) b.data.boardedUntil = -1;   // start the storm prep from bare walls

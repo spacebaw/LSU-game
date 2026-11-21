@@ -657,12 +657,13 @@
       }
       a.wet = isPed || ((isRoad || isWalk) && spanTile(state, i));
       let reason = '';
-      if (isRoad && a.wet) { const chk = bridgeSpanOk(state, i, run); if (!chk.ok) reason = chk.reason; }
+      if (isRoad && a.wet) { const chk = bridgeSpanOk(state, i, run, row); if (!chk.ok) reason = chk.reason; }
       if (!reason) { const r = M.canPlace(state, id, x, y, o); if (!r.ok) reason = r.reason || 'Cannot place here'; else { a.act = 'lay'; a.cost = fin(r.cost, 0); a.bridge = !!r.bridge; } }
       if (reason) { a.reason = reason; if (reason.indexOf('Already ') === 0) a.act = 'same'; }
     }
     let cut = -1, pre = null, post = null, cutWhy = '';
-    if (isPed && !acts.some(function (a) { return a.wet; })) { for (const a of acts) if (a.act !== 'same') { a.act = 'skip'; a.reason = 'Bridges go over water'; } }
+    const isRB = isRoadBridge(row);
+    if ((isPed || isRB) && !acts.some(function (a) { return a.wet; })) { for (const a of acts) if (a.act !== 'same') { a.act = 'skip'; a.reason = OVER_WATER; } }
     else if (isRoad || isPed || isWalk) {
       const inRun = new Set(run), last = acts.length - 1;
       for (let k = 0; k <= last && cut < 0; k++) {
@@ -691,6 +692,9 @@
       if (isPed && !acts.some(function (a) { return a.act === 'lay' || (a.wet && a.act === 'same'); })) {   // no deck at all (its only span is refused): the bridge tool lays no stray gravel on the approach either
         pre = null; post = null;
         for (const a of acts) if (a.act === 'landing') { a.act = 'skip'; a.reason = cutWhy || 'Bridges go over water'; }
+      }
+      if (isRB && !acts.some(function (a) { return a.wet && (a.act === 'lay' || a.act === 'same'); })) {   // water pass: a Road Bridge whose span is refused lays no stray approach road
+        for (const a of acts) if (a.act === 'lay') { a.act = 'skip'; a.reason = cutWhy || OVER_WATER; }
       }
     }
     let crossing = false; for (const a of acts) if (a.wet && a.act === 'lay') { crossing = true; break; }
@@ -744,9 +748,78 @@
     let cost = 0, n = 0; for (const t of ties) { cost += t.cost; n += t.tiles.length; }
     return { shores: sh.map(function (s) { return { end: s.end, touch: s.touch || s.net, net: s.net, tie: s.tie, reach: s.reach }; }), ties: ties, cost: cost, n: n };
   }
+  // ---------------------------------------------------------------------------
+  // Water pass (the playtester's "drainage paths don't drain"): a canal run connects itself to an outlet the way a crossing ties in.
+  // canalPlan(run) → { carry (the run's tiles that are or will be canal), dig (the ones to dig), touch (the run itself reaches an outlet:
+  // open water, or a canal that already drains or is pumped), outlet (its name), tie ({tiles, cost, outlet}: the tiles dug on from the
+  // run's end — its start, when the end finds nothing — to the nearest outlet within params.build.canalTieMax, through ground a canal
+  // may be dug in; null when the run reaches one itself, when Alt (opts.noTie) is held, or when nothing is in reach) }.
+  // gradeCanals lowers every bed on the way from the new tiles to their outlet to the deepest bed upstream of it (never below
+  // canalBedMin): a canal dug over a rise used to keep a sill there, and the low spot behind it kept its water.
+  // ---------------------------------------------------------------------------
+  function canalTieMax() { return Math.max(0, Math.floor(fin(PB.canalTieMax, 6))); }
+  function canalPlan(state, row, run, opts) {
+    const scratch = {}, carry = [], dig = [], cmask = charterMask(state);
+    const diggable = function (i) { return !(cmask && cmask[i] !== 1) && isLand(state, i) && dragTileRule(state, row, i, {}, scratch) === ''; };
+    for (const i of run) { if (isCanal(state, i)) carry.push(i); else if (diggable(i)) { carry.push(i); dig.push(i); } }
+    const out = { carry: carry, dig: dig, touch: false, outlet: '', tie: null };
+    if (!dig.length) return out;
+    const inRun = new Set(carry);
+    const outletBeside = function (i) { let best = ''; for (const n of BSU.nbr4(i)) { if (inRun.has(n)) continue; const o = call('hydro', 'outletAt', [state, n], ''); if (o === 'the bayou') return o; if (o && !best) best = o; } return best; };
+    for (const i of carry) { const o = outletBeside(i) || (isCanal(state, i) ? call('hydro', 'outletAt', [state, i], '') : ''); if (o) { out.touch = true; if (o === 'the bayou' || !out.outlet) out.outlet = o; } }
+    const max = canalTieMax();
+    if (out.touch || opts.noTie || !(max > 0)) return out;
+    // the tie: a BFS from beside the run's last tile (then its first, then the rest), through diggable ground, to a tile beside an outlet
+    const res = reservedTiles(state), parent = new Map(), depth = new Map(), q = [];
+    const order = [carry[carry.length - 1], carry[0]].concat(carry.slice(1, -1).reverse());
+    for (const c of order) for (const n of BSU.nbr4(c)) { if (parent.has(n) || inRun.has(n) || (res && res.indexOf(n) >= 0) || !diggable(n)) continue; parent.set(n, -1); depth.set(n, 1); q.push(n); }
+    let found = -1, name = '';
+    for (let head = 0; head < q.length && found < 0; head++) {
+      const t = q[head], o = outletBeside(t);
+      if (o) { found = t; name = o; break; }
+      const dd = depth.get(t); if (dd >= max) continue;
+      for (const n of BSU.nbr4(t)) { if (parent.has(n) || inRun.has(n) || (res && res.indexOf(n) >= 0) || !diggable(n)) continue; parent.set(n, t); depth.set(n, dd + 1); q.push(n); }
+    }
+    if (found < 0) return out;
+    const tiles = []; for (let c = found; c !== -1; c = parent.get(c)) tiles.push(c); tiles.reverse();
+    const pc = M.canPlace(state, row.id, (tiles[0] % W), ((tiles[0] / W) | 0), { ignoreCash: true });
+    if (!pc || !pc.ok) return out;
+    out.tie = { tiles: tiles, cost: fin(pc.cost, row.cost) * tiles.length, outlet: name };
+    return out;
+  }
+  /** after canal tiles were dug: no bed on the way to the outlet is higher than a bed upstream of it. Lowered tiles ride on the undo record ({kind: 'elev'}). → tiles lowered */
+  function gradeCanals(state, tiles, undoRec) {
+    let n = 0; const done = new Set(), tl = state.tiles;
+    for (const t0 of tiles) {
+      const net = call('hydro', 'networkAt', [state, t0], null);
+      if (!net || done.has(net.tiles[0]) || !net.drainsToWater || !Array.isArray(net.outlets) || !net.outlets.length) continue;
+      done.add(net.tiles[0]);
+      const inNet = new Set(net.tiles), par = new Map(), order = [];
+      for (const o of net.outlets) if (!par.has(o)) { par.set(o, -1); order.push(o); }
+      for (let h = 0; h < order.length; h++) { const i = order[h]; for (const nb of BSU.nbr4(i)) if (inNet.has(nb) && !par.has(nb)) { par.set(nb, i); order.push(nb); } }
+      for (let k = order.length - 1; k >= 0; k--) {   // farthest first: each bed pulls the next one toward the outlet down to its own level
+        const i = order[k], pi = par.get(i); if (pi < 0) continue;
+        if (tl.elev[pi] > tl.elev[i] + 1e-4) { if (undoRec) undoRec.entries.push({ kind: 'elev', i: pi, elev: tl.elev[pi] }); setElev(state, pi, Math.max(PH.canalBedMin, tl.elev[i])); n++; }
+      }
+    }
+    return n;
+  }
   /** rule 8: how many plants (state.veg entries) stand on a set of tiles */
   function vegCount(state, set) { let n = 0; const veg = state.veg; if (Array.isArray(veg) && set.size) for (let k = 0; k < veg.length; k++) { const v = veg[k]; if (v && set.has(v.ty * W + v.tx)) n++; } return n; }
-  function clearsVeg(row) { const r = row && row.placeRule; return r === PLACE.PATH || r === PLACE.ROAD || r === PLACE.BOARDWALK || r === PLACE.BRIDGE; }
+  // water pass (N5, "building on trees should make them disappear"): every footprint building and everything that re-shapes its tile clears the
+  // plants on it — surfaces (crossings pass), a levee or floodwall (a berm is built on the tile), a canal and a pond (dug), Dredge & Fill
+  // (buried). Left standing: under the plants themselves, the Wetland Preserve and the Marsh Restoration Program (they are the point), a
+  // Gator Fence (a rail threads between the trunks and hides nothing) and a Quad Lawn (a lawn is where trees belong).
+  const KEEPS_VEG = { live_oak: 1, cypress: 1, azalea: 1, marsh_restoration: 1, quad: 1, founders_hall: 1 };
+  function clearsVeg(row) {
+    if (!row || KEEPS_VEG[row.id]) return false;
+    if (row.kind === 'footprint') return true;
+    const r = row.placeRule; return r === PLACE.PATH || r === PLACE.ROAD || r === PLACE.BOARDWALK || r === PLACE.BRIDGE || r === PLACE.LEVEE || r === PLACE.CANAL || r === PLACE.FILL;
+  }
+  /** does placing row `id` clear the plants on its tiles? */
+  M.clearsPlants = function (id) { return clearsVeg(rowOf(id)); };
+  /** how many plants (state.veg entries) stand on these tiles */
+  M.plantsOn = function (state, tiles) { try { return (state && Array.isArray(tiles) && tiles.length) ? vegCount(state, new Set(tiles)) : 0; } catch (e) { return 0; } };
   /** roads pass: what placeRun would do with a drag run, without placing — the same plan (runPlan): {n, skipped: [{i, reason}] (refused tiles, in run
    *  order), refused (their count), same: [i…] (tiles already carrying this surface: passed over silently, not refused), placed (tiles that would be laid),
    *  cost (their price, bridges at bridge price), wet (water + marsh tiles in the run), bridge (deck tiles), tie (runTie's quote for a path / road /
@@ -755,7 +828,7 @@
    *  placed / cost), extra: [i…] (landings just off a run that starts / ends on the water), cut (tiles not laid past a refused crossing, counted in
    *  refused), clears (plants standing on the tiles the run and its ties will lay: a surface clears its tile; clearsRun = the run's own tiles only). opts.rot is passed through. */
   M.runQuote = function (state, id, tiles, opts) {
-    const out = { n: 0, skipped: [], refused: 0, same: [], placed: 0, cost: 0, wet: 0, bridge: 0, tie: null, touches: false, cross: null, landings: 0, landingCost: 0, extra: [], cut: 0, clears: 0, clearsRun: 0 };
+    const out = { n: 0, skipped: [], refused: 0, same: [], placed: 0, cost: 0, wet: 0, bridge: 0, tie: null, touches: false, cross: null, landings: 0, landingCost: 0, extra: [], cut: 0, clears: 0, clearsRun: 0, canal: null, ring: null };
     try {
       const row = rowOf(id); if (!row || !state || !state.tiles || !Array.isArray(tiles)) return out;
       opts = opts || {};
@@ -775,8 +848,17 @@
         if (plan.crossing) { out.cross = crossTies(state, row, run, plan); out.touches = !!(out.cross && out.cross.shores.some(function (s) { return s.net && !s.tie; })); }
         else if (access) { const eff = plan.cut >= 0 ? planCarried(plan).map(function (e) { return e[0]; }) : run; out.tie = eff.length ? runTieInner(state, row, eff) : null; out.touches = !out.tie && M.runTouches(state, eff); }
       }
+      if (row.placeRule === PLACE.LEVEE) out.ring = ringPreview(state, row, run);   // water pass: what the wall this run makes will do (the cursor may rest on a tile that is already wall: canPlace's own preview is not reached then)
+      if (row.placeRule === PLACE.CANAL && out.placed > 0) {   // water pass: where the run drains to, the tiles it digs on to get there, and what it will drain
+        const cp = canalPlan(state, row, run, { noTie: opts.tie === false || opts.noTie === true });
+        const all = cp.carry.concat(cp.tie ? cp.tie.tiles : []);
+        const pv = call('hydro', 'canalPreview', [state, all], null) || { n: 0, outlet: '', tiles: [] };
+        let wet = 0; for (const i of pv.tiles) if (state.tiles.depth[i] >= PH.thresholds.puddle) wet++;
+        out.canal = { tie: cp.tie, touch: cp.touch, outlet: pv.outlet || cp.outlet || (cp.tie ? cp.tie.outlet : ''), drains: pv.n, wet: wet, reach: canalTieMax() };
+      }
       if (clearsVeg(row)) {
         out.clearsRun = vegCount(state, laid);
+        if (out.canal && out.canal.tie) for (const i of out.canal.tie.tiles) laid.add(i);
         if (out.tie) for (const i of out.tie.tiles) laid.add(i);
         if (out.cross) for (const t of out.cross.ties) for (const i of t.tiles) laid.add(i);
         out.clears = vegCount(state, laid);
@@ -837,12 +919,30 @@
   // crossings pass: bridgeMaxSpan caps the REACH (the first to the last water tile of the span); the deck also carries over up to bridgeBankMax
   // marsh tiles on each bank. (Marsh banks used to count toward the cap: on the generated maps every bayou reach has 1–2 marsh tiles on each
   // bank, so no reach in the start charter took a road bridge on six of seven seeds sampled.) The refusal names the reach: "(this reach is 4)".
-  const SPAN_LONG = 'Bridges span ' + PB.bridgeMaxSpan + ' tiles at most', SPAN_WATER = 'Bridges span ' + PB.bridgeMaxSpan + ' water tiles at most', SPAN_DRY = 'Bridges start from dry ground';
-  function spanBankReason() { const n = Math.max(0, fin(PB.bridgeBankMax, 2) | 0); return 'Marsh bank too wide for a bridge (' + n + (n === 1 ? ' tile' : ' tiles') + ' at most): use a Boardwalk'; }
+  // water pass (N7, "vehicle bridge"): the Road Bridge row is a road whose own reach is roadBridgeMaxSpan (8) water tiles with roadBridgeBankMax (4)
+  // marsh tiles per bank; it lays Campus Road on the dry ground of its run (road price) and deck over the span (its own price, the bridge
+  // price), must cross water, and a Campus Road run refused for its length names it.
+  const SPAN_DRY = 'Bridges start from dry ground', OVER_WATER = 'Bridges go over water';
+  function isRoadBridge(row) { return !!row && row.id === 'road_bridge'; }
+  function spanMax(row) { return isRoadBridge(row) ? Math.max(1, fin(PB.roadBridgeMaxSpan, 8) | 0) : PB.bridgeMaxSpan; }
+  function bankMax(row) { return isRoadBridge(row) ? Math.max(0, fin(PB.roadBridgeBankMax, 4) | 0) : Math.max(0, fin(PB.bridgeBankMax, 2) | 0); }
+  function rbRow() { return rowOf('road_bridge'); }
+  function spanLongReason(row) { return isRoadBridge(row) ? 'A Road Bridge spans ' + spanMax(row) + ' tiles at most' : 'Bridges span ' + PB.bridgeMaxSpan + ' tiles at most'; }
+  function spanWaterReason(row, reach) {
+    if (isRoadBridge(row)) return 'A Road Bridge spans ' + spanMax(row) + ' water tiles at most (this reach is ' + reach + ')';
+    const rb = rbRow();
+    return 'Bridges span ' + PB.bridgeMaxSpan + ' water tiles at most (this reach is ' + reach + ')' + (rb && reach <= spanMax(rb) ? ': use the Road Bridge (up to ' + spanMax(rb) + ')' : '');
+  }
+  function spanBankReason(row, wide) {
+    const n = bankMax(row), tiles = n + (n === 1 ? ' tile' : ' tiles');
+    if (isRoadBridge(row)) return 'Marsh bank too wide for a Road Bridge (' + tiles + ' at most): cross where the marsh is narrower, or Dredge & Fill it';
+    const rb = rbRow();
+    return 'Marsh bank too wide for a bridge (' + tiles + ' at most): use a Boardwalk' + (rb && wide <= bankMax(rb) ? ', or the Road Bridge (' + bankMax(rb) + ')' : '');
+  }
   function spanTile(state, i) { return hasWaterFlag(state, i) || isMarsh(state, i); }
   function dryLand(state, i) { return isLand(state, i) && !isMarsh(state, i); }
   /** true when the run (opts.tiles) contains a legal span through tile i (road bridges): a reach of ≤ bridgeMaxSpan water tiles with ≤ bridgeBankMax marsh tiles on each bank */
-  function bridgeSpanOk(state, i, run) {
+  function bridgeSpanOk(state, i, run, row) {
     const surf = state.tiles.surface;
     if (Array.isArray(run) && run.length) {
       const k = run.indexOf(i);
@@ -852,9 +952,9 @@
       while (b + 1 < run.length && spanTile(state, run[b + 1])) b++;
       let w0 = -1, w1 = -1; for (let q = a; q <= b; q++) if (hasWaterFlag(state, run[q])) { if (w0 < 0) w0 = q; w1 = q; }
       if (w0 < 0) return { ok: false, reason: 'Use a Boardwalk or a bridge' };
-      const reach = w1 - w0 + 1, bankMax = Math.max(0, fin(PB.bridgeBankMax, 2) | 0);   // the reach: first to last water tile (a marsh island between them counts)
-      if (reach > PB.bridgeMaxSpan) return { ok: false, reason: SPAN_WATER + ' (this reach is ' + reach + ')' };
-      if (w0 - a > bankMax || b - w1 > bankMax) return { ok: false, reason: spanBankReason() };
+      const reach = w1 - w0 + 1, bkMax = bankMax(row);   // the reach: first to last water tile (a marsh island between them counts)
+      if (reach > spanMax(row)) return { ok: false, reason: spanWaterReason(row, reach) };
+      if (w0 - a > bkMax || b - w1 > bkMax) return { ok: false, reason: spanBankReason(row, Math.max(w0 - a, b - w1)) };
       const before = a - 1 >= 0 ? run[a - 1] : -1, after = b + 1 < run.length ? run[b + 1] : -1;
       const landBefore = before >= 0 && dryLand(state, before), landAfter = after >= 0 && dryLand(state, after);
       // an end may also be an existing bridge tile continuing off the run, or an existing road on land
@@ -878,7 +978,7 @@
     for (let x = tx + 1; x < W && hasWaterFlag(state, BSU.idx(x, ty)) && surf[BSU.idx(x, ty)] === SURF.ROAD; x++) spanX++;
     for (let y = ty - 1; y >= 0 && hasWaterFlag(state, BSU.idx(tx, y)) && surf[BSU.idx(tx, y)] === SURF.ROAD; y--) spanY++;
     for (let y = ty + 1; y < H && hasWaterFlag(state, BSU.idx(tx, y)) && surf[BSU.idx(tx, y)] === SURF.ROAD; y++) spanY++;
-    if (Math.max(spanX, spanY) > PB.bridgeMaxSpan) return { ok: false, reason: SPAN_LONG };
+    if (Math.max(spanX, spanY) > spanMax(row)) return { ok: false, reason: spanLongReason(row) };
     return { ok: true };
   }
   /** bridge pass — the Pedestrian Bridge: every water segment of the run must reach land at both ends (a land tile in the run,
@@ -925,11 +1025,12 @@
         if (surf === SURF.ROAD) return 'Already a road';
         if (surf === SURF.FENCE) return 'Fence in the way';
         if (surf === SURF.BOARDWALK || surf === SURF.BRIDGE) return 'Occupied';
-        if (water) { const b = bridgeSpanOk(state, i, opts.tiles); if (!b.ok) return b.reason; r.bridge = true; return ''; }
+        if (water) { const b = bridgeSpanOk(state, i, opts.tiles, row); if (!b.ok) return b.reason; r.bridge = true; return ''; }
         if (isMarsh(state, i)) {   // roads pass: a marsh bank inside a run's bridge span is deck (bridge price); any other marsh is refused as before
-          if (Array.isArray(opts.tiles) && opts.tiles.length > 1) { const b = bridgeSpanOk(state, i, opts.tiles); if (b.ok) { r.bridge = true; return ''; } return b.reason; }
-          return 'Use a Boardwalk or a bridge';
+          if (Array.isArray(opts.tiles) && opts.tiles.length > 1) { const b = bridgeSpanOk(state, i, opts.tiles, row); if (b.ok) { r.bridge = true; return ''; } return b.reason; }
+          return isRoadBridge(row) ? OVER_WATER : 'Use a Boardwalk or a bridge';
         }
+        if (isRoadBridge(row) && !(Array.isArray(opts.tiles) && opts.tiles.length > 1 && opts.tiles.indexOf(i) >= 0)) return OVER_WATER;   // water pass: on dry ground the Road Bridge lays road only as part of a run that crosses water
         return '';
       case PLACE.BOARDWALK:
         if (owner >= 0) return 'Occupied';
@@ -1113,6 +1214,8 @@
       // 7. marsh → pilings
       if (marsh && !row.allowMarsh) return fail(r, 'Too wet: drain it or add Pilings');
       if (marsh || row.alwaysPilings || opts.pilings === true) r.needsPilings = true;
+    } else if (isRoadBridge(row)) {
+      base = r.bridge ? row.cost : fin((rowOf('road') || row).cost, row.cost);   // water pass: the deck at the Road Bridge's own price, the approach on dry ground at the Campus Road's
     } else if (r.bridge) {
       base = row.cost * PB.bridgeCostMult;
     } else if (r.landing) {
@@ -1166,7 +1269,7 @@
       }
       r.sink = sinkLine(state, row, tiles);
     }
-    if (row.placeRule === PLACE.LEVEE && Array.isArray(opts.tiles) && opts.tiles.length) r.ring = ringPreview(state, row, opts.tiles);
+    if (row.placeRule === PLACE.LEVEE && Array.isArray(opts.tiles) && opts.tiles.length && !opts.noRing && !opts.noTie) r.ring = ringPreview(state, row, opts.tiles);   // (runQuote carries the run's preview: its own per-tile canPlace calls (noTie) and the ghost's (noRing) skip this copy)
     // 10. affordability (the building and its connector are one purchase)
     r.affordable = canAfford(state, r.cost + (r.connector ? r.connector.cost : 0));
     r.ok = true;
@@ -1444,16 +1547,19 @@
       case PLACE.FENCE:
         setSurface(state, i, SURF.FENCE); rewalk(state, i); break;
       case PLACE.LEVEE:
+        clearVegAt(state, i, ent);   // water pass: no tree poking out of the berm
         tl.crest[i] = row.effects.crest; tl.integrity[i] = 100;
         markLeveeChange(state, i); rewalk(state, i); break;
       case PLACE.CANAL:
+        clearVegAt(state, i, ent);
         setElev(state, i, Math.max(tl.elev[i] - PH.canalCut, PH.canalBedMin));
         markCanal(state, i, true); rewalk(state, i);
         if (isMarsh(state, i)) { ent.eco = fin(row.effects.ecologyPerTile, 0); call('wildlife', 'applyEcologyOnce', [state, row.effects.ecologyPerTile], null); }
         break;
       case PLACE.PRESERVE:
         setFlag(state, i, FLAG.PRESERVE, true); break;
-      case PLACE.FILL: {   // L3: the tile joins this drag's run (one timer, one ticker line); the ecology cost is taken now and given back by undo
+      case PLACE.FILL: {   // L3: the tile joins this drag's run
+        clearVegAt(state, i, ent);   // water pass: the spoil buries what grew there (one timer, one ticker line); the ecology cost is taken now and given back by undo
         const run = startFillRun(state, undoRec, day);
         run.tiles.push(i); fillState(state).rev++;
         ent.fill = run.id; ent.eco = fin(row.effects.ecologyPerTile, 0);
@@ -1529,6 +1635,11 @@
       let mean = 0; for (const i of r.tiles) mean += state.tiles.elev[i]; mean /= r.tiles.length;
       for (const i of r.tiles) { undoRec.entries.push({ kind: 'elev', i: i, elev: state.tiles.elev[i] }); setElev(state, i, mean); }
     }
+    if (clearsVeg(row)) {   // water pass: a building clears the plants on its footprint (they return, each at its own index, with undo)
+      const lists = [];   // one list per tile, in the order cleared: undo walks them backwards, so every index is the one the plant had
+      for (const i of r.tiles) { const e1 = {}; if (clearVegAt(state, i, e1)) lists.push(e1.veg); }
+      if (lists.length) undoRec.entries.push({ kind: 'cleared', lists: lists });
+    }
     state.buildings.push(b);
     undoRec.entries.push({ kind: 'building', id: b.id, type: b.type, pilings: b.pilings, tier: b.tier });
     for (const i of r.tiles) { state.tiles.owner[i] = b.id; rewalk(state, i); touch(state, i, 'decor'); }
@@ -1582,7 +1693,7 @@
         return out;
       }
       const undoRec = { tick: fin(state.tick, 0), entries: [], cost: 0 };
-      const o = Object.assign({}, opts, { tiles: run });
+      const o = Object.assign({}, opts, { tiles: run, noRing: true });
       let ties = [];
       if (row.placeRule === PLACE.ROAD || row.placeRule === PLACE.BRIDGE || row.placeRule === PLACE.BOARDWALK) {
         // crossings pass: the three rows that cross water follow runPlan (exactly what runQuote showed): a refused span is refused whole and nothing is
@@ -1611,9 +1722,19 @@
       } else {
         // paths pass: the end of a path run ties itself to the network (quoted before the run is laid; opts.noTie = Alt held)
         const tie = opts.noTie ? null : runTieInner(state, row, run); if (tie) ties = [tie];
+        const cplan = row.placeRule === PLACE.CANAL ? canalPlan(state, row, run, opts) : null;   // water pass: the outlet tie, planned before anything is dug (exactly what runQuote showed)
         for (const i of run) {
           const r = placeInner(state, id, (i % W), ((i / W) | 0), o, undoRec);
           if (r.ok) { out.placed++; out.cost += r.cost; } else out.skipped.push({ i: i, reason: r.reason });
+        }
+        if (cplan && out.placed > 0) {
+          const dug = [];
+          if (cplan.tie) {   // dug on to the outlet, tile by tile from the run's end: each is its own charge on the same undo record (what cannot be paid for is not dug)
+            for (const i of cplan.tie.tiles) { const r = placeInner(state, id, (i % W), ((i / W) | 0), o, undoRec); if (!r.ok) break; dug.push(i); out.cost += r.cost; }
+            if (dug.length) out.canalTie = { tiles: dug, cost: dug.length * fin(cplan.tie.cost / cplan.tie.tiles.length, 0), outlet: dug.length === cplan.tie.tiles.length ? cplan.tie.outlet : '' };
+            if (dug.length < cplan.tie.tiles.length) out.tieSkipped = 'Not enough cash for the outlet';
+          }
+          out.graded = gradeCanals(state, cplan.carry.concat(dug), undoRec);
         }
       }
       if (out.placed > 0) {
@@ -1625,6 +1746,7 @@
         if (out.ties) out.tie = out.ties[0];
         pushUndo(state, undoRec, id);
         if (tied) undoRec.n = Math.max(1, undoRec.n - tied);   // the chip says "12 × Gravel Path + 4 path tiles"
+        if (out.graded) undoRec.n = Math.max(1, undoRec.n);
         out.ok = true; dirtyAll(cache(state));
       }
       return out;
@@ -1759,6 +1881,8 @@
           if (e.fill) cancelFillTile(state, e.fill, i);   // L3: the tile leaves its run; an empty run disappears
           if (e.veg) for (let q = e.veg.length - 1; q >= 0; q--) { const g = e.veg[q]; state.veg.splice(Math.min(Math.max(0, g.k), state.veg.length), 0, g.v); }   // rule 8: the cleared plants return, each at its old index
           rewalk(state, i); touch(state, i, 'decor');
+        } else if (e.kind === 'cleared') {   // water pass: the plants a building's footprint cleared
+          for (let li = e.lists.length - 1; li >= 0; li--) { const L = e.lists[li]; for (let q = L.length - 1; q >= 0; q--) { const g = L[q]; state.veg.splice(Math.min(Math.max(0, g.k), state.veg.length), 0, g.v); } if (L.length) touch(state, BSU.idx(L[0].v.tx, L[0].v.ty), 'decor'); }
         } else if (e.kind === 'eco') {
           call('wildlife', 'applyEcologyOnce', [state, -e.amount], null);
         } else if (e.kind === 'elev') {
@@ -1766,7 +1890,7 @@
         } else if (e.kind === 'veg') {
           let idx = -1;
           for (let j = state.veg.length - 1; j >= 0; j--) { const v = state.veg[j]; if (v && v.tx === e.tx && v.ty === e.ty && v.type === e.type && v.planted) { idx = j; break; } }
-          if (idx >= 0) { const tr = dep.terrain(); if (tr && typeof tr.removeVeg === 'function') tr.removeVeg(state, e.tx, e.ty); else state.veg.splice(idx, 1); touch(state, BSU.idx(e.tx, e.ty), 'decor'); }
+          if (idx >= 0) { state.veg.splice(idx, 1); touch(state, BSU.idx(e.tx, e.ty), 'decor'); }   // water pass: that tree only (terrain.removeVeg takes every plant on the tile: a wild shrub under a planted oak went with it)
         }
       }
       if (u.cost > 0) refund(state, u.cost, { key: 'construction' });
@@ -2582,27 +2706,112 @@
     try { const h = fin(Hft, PS.ringDefaultH); return gapsInner(state, h, protectionInner(state, h)); }
     catch (e) { if (BSU.SELFTEST) throw e; BSU.error('buildings', 'gaps', e); return { gaps: [], weak: [], gates: [], reachedBuildings: [] }; }
   };
-  /** levee/floodwall drag preview: the fill on a scratch with the dragged crests added */
-  function ringPreview(state, row, run) {
+  // ---------------------------------------------------------------------------
+  // Water pass (the playtester's "levee … not really functioning as one"): what ONE wall does, in plain words. A wall is a 4-connected
+  // run of levee / floodwall tiles. At the test height H (the forecast surge while a storm is inbound, else ringDefaultH 5 ft) it
+  // PROTECTS the tiles the water reaches without it and does not reach with it; a wall that protects nothing is open, and the gap
+  // finder's runs that touch it say where. Rain that falls inside a closed wall has no way out unless a canal crosses it (a floodgate)
+  // or a pump works a canal inside. The drag preview is the same question asked of the wall the run would make.
+  // ---------------------------------------------------------------------------
+  function testHeight(state) {
     const st = state.storms && state.storms.current;
-    const Hft = st ? fin(call('weather', 'forecastSurge', [state], PS.surge[Math.min(5, Math.max(0, fin(st.forecastCat, st.cat)))]), PS.ringDefaultH) : PS.ringDefaultH;
+    return st ? fin(call('weather', 'forecastSurge', [state], PS.surge[Math.min(5, Math.max(0, fin(st.forecastCat, st.cat)))]), PS.ringDefaultH) : PS.ringDefaultH;
+  }
+  function plural(n, w) { return n + ' ' + w + (n === 1 ? '' : 's'); }
+  /** the wall through tile i0: its tiles (crestAt = is a wall tile) */
+  function wallFrom(state, seeds, crestAt) {
+    const seen = new Set(), q = [];
+    for (const i of seeds) if (crestAt(i) && !seen.has(i)) { seen.add(i); q.push(i); }
+    for (let h = 0; h < q.length; h++) for (const n of BSU.nbr4(q[h])) if (!seen.has(n) && crestAt(n)) { seen.add(n); q.push(n); }
+    return q;
+  }
+  /** what the wall `tiles` does at H on the reached mask m (the wall standing) against m0 (the wall gone): the shared core of the card and the drag label */
+  function wallReport(state, tiles, Hft, m, m0, crestAt, headAt) {
+    const tl = state.tiles, inWall = new Set(tiles);
+    let protects = 0, over = 0, lowTop = Infinity, lowBase = Infinity, gates = 0;
+    const kept = [];
+    for (let i = 0; i < N; i++) if (m0[i] && !m[i] && !inWall.has(i)) { protects++; kept.push(i); }
+    for (const i of tiles) { const h = headAt(i); if (h < lowTop) { lowTop = h; lowBase = tl.elev[i]; } if (m[i]) over++; if (tl.flags[i] & FLAG.FLOODGATE) gates++; }
+    // gaps: the gap finder's runs that touch this wall (Chebyshev 1)
+    const near = new Set(); for (const i of tiles) { near.add(i); for (const n of BSU.nbr8(i)) near.add(n); }
+    // a GAP lies between two ends of the wall (it touches two or more wall tiles, or is longer than the one tile past an end); the tile past a lone
+    // free end is an open END, not "1 tile short"
+    const all = protects > 0 ? [] : gapRuns(state, m, crestAt).filter(function (g) { return g.tiles.some(function (t) { return near.has(t); }); });
+    for (const g of all) { const touch = new Set(); for (const t of g.tiles) for (const n of BSU.nbr4(t)) if (inWall.has(n)) touch.add(n); g.ends = touch.size; }
+    const gaps = all.filter(function (g) { return g.ends >= 2 || g.len >= 2; }), openEnds = all.filter(function (g) { return !(g.ends >= 2 || g.len >= 2); });
+    // the way out for rain: a floodgate on the wall, or a pumped canal network with a tile inside
+    let pumps = 0;
+    if (protects > 0) {
+      const keptSet = new Set(kept), nets = call('hydro', 'networks', [state], []) || [];
+      for (const net of nets) if (net && net.pumps && net.pumps.length && (net.tiles || []).some(function (t) { return keptSet.has(t); })) pumps += net.pumps.length;
+    }
+    const r = { H: Hft, tiles: tiles.length, closed: protects > 0, protects: protects, kept: kept, gaps: gaps, openEnds: openEnds, overtopped: over, lowTop: Math.round(lowTop * 10) / 10, holds: Math.round((lowTop - lowBase) * 10) / 10, gates: gates, pumps: pumps, text: '', missing: '', rain: '' };
+    const hft = Math.round(Hft * 10) / 10 + ' ft';
+    if (r.closed) {
+      r.text = 'Ring closed: holds a ' + hft + ' surge off ' + plural(protects, 'tile');
+      r.rain = gates ? 'Rain inside drains through ' + plural(gates, 'floodgate') : (pumps ? 'Rain inside is pumped out' : '');
+      if (!gates && !pumps) r.missing = 'Rain inside has no way out: run a canal through the wall (a floodgate) or put a Pump on a canal inside';
+    } else if (over >= tiles.length && tiles.length) {
+      r.text = 'Too low for a ' + hft + ' surge: its crest is at ' + r.lowTop + ' ft';
+      r.missing = 'Build it on higher ground, or use a Concrete Floodwall';
+    } else if (gaps.length) {
+      const g0 = gaps[0];
+      r.text = 'Ring open: ' + plural(gaps.length, 'gap');
+      r.missing = plural(g0.len, 'tile') + ' short at ' + g0.name + ': a ' + hft + ' surge comes in there';
+    } else {
+      let wetSide = false; for (const i of tiles) { for (const n of BSU.nbr4(i)) if (m[n] && !inWall.has(n)) { wetSide = true; break; } if (wetSide) break; }
+      if (wetSide) { r.text = 'Open wall: a ' + hft + ' surge comes round its ' + (openEnds.length === 1 ? 'end' : 'ends'); r.missing = 'Carry ' + (openEnds.length === 1 ? 'the open end' : 'both ends') + ' on to ground above ' + hft + ', or close it into a ring'; }
+      else { r.text = 'No water reaches this ground at ' + hft; }
+    }
+    return r;
+  }
+  /** the wall through tile i, for its card: { H, tiles, closed, protects (tiles kept dry at H), kept: [i…], gaps: [{tiles, len, cx, cy, name}…] (open walls),
+   *  overtopped (wall tiles under water at H), lowTop (its lowest crest, ft), holds (ft of water that tile holds back above its own ground), gates,
+   *  pumps, text ("Ring closed: holds a 5 ft surge off 14 tiles" | "Ring open: 2 gaps" | "Open wall: …" | "Too low …" | "No water reaches …"),
+   *  missing (what to do, '' when nothing), rain (how rain inside gets out, '' when it cannot) } or null. Cached until the ring caches are */
+  M.leveeStatus = function (state, i, Hft) {
+    try {
+      i |= 0; if (!state || !state.tiles || i < 0 || i >= N || !(state.tiles.crest[i] > 0)) return null;
+      const H0 = Number.isFinite(Hft) ? Hft : testHeight(state), tl = state.tiles, c = cache(state);
+      const m = protectionInner(state, H0);
+      const crestAt = function (k) { return tl.crest[k] > 0; };
+      const tiles = wallFrom(state, [i], crestAt).sort(function (p, q) { return p - q; });
+      if (!c.wallCache) c.wallCache = new Map();
+      const key = tiles[0] + '|' + tiles.length + '|' + H0, hit = c.wallCache.get(key);
+      if (hit && hit.ver === c.tileVer) return hit.r;
+      const override = new Map(); for (const k of tiles) override.set(k, { crest: 0, integrity: 100 });
+      const r = wallReport(state, tiles, H0, m, floodFill(state, H0, override), crestAt, function (k) { return effectiveHead(tl, k, null); });
+      if (c.wallCache.size > 64) c.wallCache.clear();
+      c.wallCache.set(key, { ver: c.tileVer, r: r });
+      return r;
+    } catch (e) { if (BSU.SELFTEST) throw e; BSU.error('buildings', 'leveeStatus', e); return null; }
+  };
+  /** levee/floodwall drag preview: the same report for the wall the run would make (the dragged crests on a scratch), with the legacy fields
+   *  closes / short / where the Objective 11 texts read */
+  function ringPreview(state, row, run) {
+    const Hft = testHeight(state), tl = state.tiles;
     const override = new Map();
-    for (const i of run) if (Number.isInteger(i) && i >= 0 && i < N && state.tiles.crest[i] === 0 && isLand(state, i) && state.tiles.owner[i] === -1 && !isPreserve(state, i) && !isMound(state, i)) override.set(i, { crest: row.effects.crest, integrity: 100 });
+    for (const i of run) if (Number.isInteger(i) && i >= 0 && i < N && tl.crest[i] === 0 && isLand(state, i) && tl.owner[i] === -1 && !isPreserve(state, i) && !isMound(state, i)) override.set(i, { crest: row.effects.crest, integrity: 100 });
     const m = floodFill(state, Hft, override);
-    const closes = ringClosedFrom(state, m);
+    const crestAt = function (i) { return tl.crest[i] > 0 || override.has(i); };
+    const tiles = wallFrom(state, run.filter(function (i) { return Number.isInteger(i) && i >= 0 && i < N; }), crestAt);
+    if (!tiles.length) return { closes: false, short: 0, where: '', text: '' };
+    // without the wall: every tile of it at crest 0 (existing tiles through the override, new ones simply absent)
+    const gone = new Map(); for (const k of tiles) if (tl.crest[k] > 0) gone.set(k, { crest: 0, integrity: 100 });
+    const m0 = gone.size ? floodFill(state, Hft, gone) : protectionInner(state, Hft);
+    const r = wallReport(state, tiles, Hft, m, m0, crestAt, function (k) { return effectiveHead(tl, k, override); });
     const cove = (state.plot && state.plot.cove) || [];
-    const coveOk = cove.length > 0 && !cove.some(function (i) { return m[i]; });
-    if (closes || coveOk) return { closes: true, short: 0, where: '' };
-    // the smallest remaining gap on the scratch (not cached: a scratch is transient)
-    const tl = state.tiles;
-    const gaps = gapRuns(state, m, function (i) { return tl.crest[i] > 0 || override.has(i); });
-    if (!gaps.length) return { closes: false, short: 0, where: '' };
-    return { closes: false, short: gaps[0].len, where: gaps[0].name };
+    const campus = ringClosedFrom(state, m) || (cove.length > 0 && !cove.some(function (i) { return m[i]; }));
+    r.closes = r.closed || campus; r.short = r.gaps.length ? r.gaps[0].len : 0; r.where = r.gaps.length ? r.gaps[0].name : '';
+    if (r.closed) r.text = 'Closes the ring: holds a ' + (Math.round(Hft * 10) / 10) + ' ft surge off ' + plural(r.protects, 'tile') + (r.missing ? ' · rain inside will need a floodgate or a pump' : '');
+    else if (r.gaps.length) r.text = 'Ring open: ' + plural(r.gaps.length, 'gap') + ' · ' + r.missing;
+    else if (r.missing) r.text = r.text + ' · ' + r.missing.charAt(0).toLowerCase() + r.missing.slice(1);
+    return r;
   }
   /** invalidate the protection / gap / run caches (hydro and wildlife call this after integrity or gate changes) */
   M.dirtyRing = function (state) {
     const c = cache(state);
-    c.ringDirty = true; c.ringEmitPending = true; c.ringCache.clear(); c.gapCache.clear(); c.runCache = null; c.statsCache = null;
+    c.ringDirty = true; c.ringEmitPending = true; c.ringCache.clear(); c.gapCache.clear(); c.runCache = null; c.statsCache = null; if (c.wallCache) c.wallCache.clear();
   };
   /** after any integrity write by hydro / wildlife / this module */
   M.onIntegrityChanged = function (state, i) {

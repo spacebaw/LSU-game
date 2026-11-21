@@ -164,7 +164,7 @@ const live64 = BSU.state;
   console.log('--- buildings: no orphan stubs ---');
   for (let x = 26; x <= 29; x++) water(x, 54);   // row 54: 7 water tiles (26–32)
   const runL = row(54, 35, 23), ql = B.runQuote(s, 'road', runL, {});
-  ok(ql.placed === 3 && ql.refused === 10 && ql.cut === 3 && ql.skipped.slice(0, 7).every((k) => k.reason === 'Bridges span 3 water tiles at most (this reach is 7)') && ql.skipped.slice(7).every((k) => /^Not laid: /.test(k.reason)), 'a 7-tile reach: the span refused with the cap and the reach, the three tiles past it not laid (' + ql.skipped[0].reason + ')');
+  ok(ql.placed === 3 && ql.refused === 10 && ql.cut === 3 && ql.skipped.slice(0, 7).every((k) => k.reason === 'Bridges span 3 water tiles at most (this reach is 7): use the Road Bridge (up to 8)') && ql.skipped.slice(7).every((k) => /^Not laid: /.test(k.reason)), 'a 7-tile reach: the span refused with the cap and the reach, the three tiles past it not laid (' + ql.skipped[0].reason + ')');
   const prL = B.placeRun(s, 'road', runL, { ignoreCash: true, noTie: true });
   ok(prL.placed === 3 && [35, 34, 33].every((x) => surfAt(x, 54) === SURF.ROAD) && [23, 24, 25].every((x) => surfAt(x, 54) === SURF.NONE), 'released: the near side up to the bank, nothing on the far bank');
   ok(prL.skipped.length === ql.skipped.length && prL.skipped.every((k, n) => k.i === ql.skipped[n].i && k.reason === ql.skipped[n].reason), 'placeRun skipped exactly what the quote listed');
@@ -352,7 +352,7 @@ console.log('--- live: one drag connects both banks ---');
   ok(seen(col(72, 38, 47)) === 'dmmwwwwmmd', 'site E (column 72): dry · 2 marsh · 4 water · 2 marsh · dry');
   b = hold('road', [72, 38], [72, 47]);
   ok(ghost.skipTiles && ghost.skipTiles.length === 9 && ghost.tiles.length === 1 && ghost.color === 'yellow', '(e) the span and the far bank tile are red before release (' + (ghost.skipTiles && ghost.skipTiles.length) + ' tiles), the near tile stays');
-  ok(/^1 tile · \$10k \+ \$10k snap$/.test(l1()) && /^8 tiles skipped: bridges span 3 water tiles at most \(this reach is 4\) · nothing is laid past it/.test(l2()), '(e) "' + l1() + '" / "' + l2() + '"');
+  ok(/^1 tile · \$10k \+ \$10k snap$/.test(l1()) && /^8 tiles skipped: bridges span 3 water tiles at most \(this reach is 4\): use the Road Bridge \(up to 8\) · nothing is laid past it/.test(l2()), '(e) "' + l1() + '" / "' + l2() + '"');
   release(b);
   ok(laid().map(xy).sort().join(' ') === '72,38 73,38' && s.tiles.surface[I(72, 47)] === SURF.NONE && B.connectedMask(s)[I(72, 38)] === 1, '(e) released: the near tile and its snap onto the campus path; no stub on the far bank');
   U.selectTool(s, null);

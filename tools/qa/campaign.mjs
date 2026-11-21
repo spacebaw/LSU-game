@@ -6,7 +6,7 @@
 // the UI itself calls (buildings.place / placeRun / upgrade / linkBuilding / repairAll / boardUp, economy.set*, sports.hire*,
 // land.buy, headless.fill). Prints a year-by-year table per run, then medians and worst cases over the seeds.
 //
-//   node tools/qa/campaign.mjs [--size 96|64|both] [--seed 1] [--seeds N] [--years 15] [--policy goals|greedy|passive|storm|all]
+//   node tools/qa/campaign.mjs [--index path] [--size 96|64|both] [--seed 1] [--seeds N] [--years 15] [--policy goals|greedy|passive|storm|all]
 //                              [--jobs K] [--assert] [--json out.json] [--quiet]
 //
 // Policies: goals (does only what the coach's current goal and the Issues tray say), greedy (max students as fast as cash
@@ -15,7 +15,7 @@
 // median of the seeds (see BANDS). Runs fan out over child processes (`--jobs`, default min(4, cpus − 1)); `--worker` is internal.
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve as resolvePath } from 'node:path';
 import { writeFileSync, readFileSync } from 'node:fs';
 import os from 'node:os';
 
@@ -46,7 +46,7 @@ const BANDS = {
 // ---------------------------------------------------------------------------------------------------------------------
 async function runOne({ size, seed, years, policy }) {
   const { loadGame } = await import('../../test/domstub.mjs');
-  const { win } = loadGame();
+  const { win } = loadGame(flag('index', '') ? { file: resolvePath(process.cwd(), flag('index', '')) } : undefined);   // --index path: play another build (a before / after pair)
   const BSU = win.BSU;
   // --tune a.b.c=1,x.y=2: patch BSU.params before the game starts (balance experiments; the module closures read params by reference)
   for (const kv of String(flag('tune', '')).split(',').filter(Boolean)) {
@@ -745,6 +745,7 @@ async function main() {
         const t0 = Date.now();
         const args = [fileURLToPath(import.meta.url), '--worker', '--size', String(j.size), '--seed', String(j.seed), '--years', String(YEARS), '--policy', j.policy];
         if (flag('tune', '')) args.push('--tune', flag('tune', ''));
+        if (flag('index', '')) args.push('--index', resolvePath(process.cwd(), flag('index', '')));
         if (has('diag')) args.push('--diag');
         const child = spawn(process.execPath, args, { stdio: ['ignore', 'pipe', 'inherit'] });
         let buf = '';

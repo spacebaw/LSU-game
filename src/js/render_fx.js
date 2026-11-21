@@ -344,8 +344,10 @@
   function rebuildPuddles(state, view) {
     const t = state.tiles; pdN = 0; hotN = 0;
     pdX0 = Math.max(0, (view.x0 | 0) - 2); pdY0 = Math.max(0, (view.y0 | 0) - 2); pdX1 = Math.min(W - 1, (view.x1 | 0) + 2); pdY1 = Math.min(HGT - 1, (view.y1 | 0) + 2);
+    let dm = null; try { const hy = BSU.hydro; dm = (hy && typeof hy.drainedMask === 'function') ? hy.drainedMask(state) : null; } catch (e) { dm = null; }   // water pass: no rain puddle on ground a working canal drains (the playtester dug a canal beside the puddles and they stayed)
     for (let ty = pdY0; ty <= pdY1; ty++) for (let tx = pdX0; tx <= pdX1; tx++) {
-      const i = ty * W + tx, th = puddleTh(t, i, tx, ty); if (th > 0.55) continue;
+      const i = ty * W + tx; if (dm !== null && dm[i]) continue;
+      const th = puddleTh(t, i, tx, ty); if (th > 0.55) continue;
       const sf = t.surface[i];
       if (hotN < 256 && (sf === SURF.PATH || sf === SURF.ROAD)) hotIdx[hotN++] = i;
       if (pdN >= PUD_CAND) continue;

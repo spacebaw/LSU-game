@@ -356,6 +356,17 @@
   function tfIso(g, tx, ty) { const s = g._bs || 1; g.setTransform(32 * s, 16 * s, -32 * s, 16 * s, tx * s, ty * s); }
   /** H0: a tile-layer sprite for the chunk bake — HD families at the chunk's master, pen families at 1× (pixel-doubled by the transform) */
   function tref(id, variant, frame) { const sp = S(); return sp.get(id, variant, frame, (bakeM === 2 && sp.isHD(id)) ? 2 : 1); }
+  /** water pass: a levee / floodwall tile's sprite variant — the same-kind neighbour mask (N 1, E 2, S 4, W 8), | 16 a weak crest (integrity < 50),
+   *  | the other-kind wall neighbours << 5 (a levee and a floodwall join each other: sprites.WALL_OTHER_SHIFT) */
+  function wallVariant(crest, integ, i, tx, ty) {
+    const cr = crest[i]; let same = 0, other = 0;
+    if (ty > 0) { const c = crest[i - W]; if (c === cr) same |= 1; else if (c > 0) other |= 1; }
+    if (tx < W - 1) { const c = crest[i + 1]; if (c === cr) same |= 2; else if (c > 0) other |= 2; }
+    if (ty < HGT - 1) { const c = crest[i + W]; if (c === cr) same |= 4; else if (c > 0) other |= 4; }
+    if (tx > 0) { const c = crest[i - 1]; if (c === cr) same |= 8; else if (c > 0) other |= 8; }
+    return same | (integ[i] < 50 ? 16 : 0) | (other << 5);
+  }
+
   function sameMask(arr, i, tx, ty, val) {
     let m = 0;
     if (ty > 0 && arr[i - W] === val) m |= 1;
@@ -1212,8 +1223,8 @@
         }
         if (ty8 >= T.MARSH && ty8 !== T.POND && surf[i] !== SURF.PATH && surf[i] !== SURF.ROAD && (nearCypress(i, tx, ty) || cypStamp[i] === cypGen) && (fin(depth[i], 0) > 0.05 || ty8 === T.MARSH)) { ref = tref('knees', (tx & 7) | ((ty & 7) << 3), 0, 1); if (ref) blit1(g, ref, wx, wy); }   // art pass B2: a tile overlay keyed by position, knees on the pool rims
         if (f & FLAG.DESIRE_WORN) { ref = tref('worn', 0, 0, 1); if (ref) blit1(g, ref, wx, wy); }
-        // (f) canal cut (open gate variant baked; pass 3 overlays the live gate frame)
-        if (f & FLAG.CANAL) { let v = flagMask(fl, i, tx, ty, FLAG.CANAL, false); if (surf[i] > 0) v |= 16; ref = tref('canal', v, 0, 1); if (ref) blit1(g, ref, wx, wy); }
+        // (f) canal cut (open gate variant baked; pass 3 overlays the live gate frame); water pass: the cut runs on to the open water it drains into
+        if (f & FLAG.CANAL) { let v = flagMask(fl, i, tx, ty, FLAG.CANAL, false) | nbrMask(t, i, tx, ty, waterTypeAt); if (surf[i] > 0) v |= 16; ref = tref('canal', v, 0, 1); if (ref) blit1(g, ref, wx, wy); }
         // (e) surfaces: fences stay auto-tiled stamps; paths / roads / boardwalks are stroked centrelines (smoothing pass),
         //     drawn for every non-fence tile the curves touch (a curve may spill into a neighbour at a corner)
         const sf = surf[i], wet = (f & WATER_FLAGS) !== 0 || ty8 === T.OPEN_WATER || ty8 === T.BAYOU || ty8 === T.POND;
@@ -1229,10 +1240,9 @@
         // (g) levee berms / floodwall panels
         const cr = crest[i];
         if (cr > 0) {
-          let v = sameMask(crest, i, tx, ty, cr);
-          if (integ[i] < 50) v |= 16;
+          const v = wallVariant(crest, integ, i, tx, ty);
           ref = tref(cr >= 12 ? 'floodwall' : 'levee', v, 0, 1); if (ref) blit1(g, ref, wx, wy);
-          if (t.sandbag && t.sandbag[i] > 0) { ref = tref('decal:sandbags', 0, 0, 1); if (ref) blit1(g, ref, wx, wy - 10); }
+          if (t.sandbag && t.sandbag[i] > 0) { ref = tref('decal:sandbags', 0, 0, 1); if (ref) blit1(g, ref, wx, wy - Math.round(cr * PXFT) + 2); }   // on the crown (water pass: walls are drawn at their true height)
         }
         // (h) preserve posts, (i) mounds
         if (f & FLAG.PRESERVE) { const v = flagMask(fl, i, tx, ty, FLAG.PRESERVE, true); if (v) { ref = tref('preservePost', v, 0, 1); if (ref) blit1(g, ref, wx, wy); } }
@@ -1489,8 +1499,9 @@
   }
   // H7: the water pass's bars (wave bands, glints, foam, flecks, streaks, the surge's debris + chop) were ~6,000 pen-era fillRects a frame; each layer is now one flat (x, y, len)
   // list filled ONCE through BSU.brush.bars (device-pixel-snapped rects in one path): about a dozen fills a frame
-  const WLAY = ['bandA', 'bandB', 'glint', 'foam0', 'foam1', 'foam2', 'fleck', 'bayou', 'river', 'debris', 'chopL', 'chopD'];
-  const WLAY_PER = { bandA: 8, bandB: 6, glint: 1, foam0: 16, foam1: 16, foam2: 16, fleck: 3, bayou: 1, river: 1, debris: 2, chopL: 2, chopD: 1 };
+  const WLAY = ['bandA', 'bandB', 'glint', 'foam0', 'foam1', 'foam2', 'fleck', 'bayou', 'river', 'debris', 'chopL', 'chopD', 'canal'];
+  const WLAY_PER = { bandA: 8, bandB: 6, glint: 1, foam0: 16, foam1: 16, foam2: 16, fleck: 3, bayou: 1, river: 1, debris: 2, chopL: 2, chopD: 1, canal: 3 };
+  const CANAL_DX = [2, 2, -2, -2], CANAL_DY = [-1, 1, 1, -1];   // water pass: screen direction of a canal tile's flow (hydro.canalDirs: 0 N, 1 E, 2 S, 3 W)
   const WL = {}; let wlCap = 0;
   function waterLayers(cap) {
     if (cap <= wlCap && WL.bandA) return;
@@ -1500,6 +1511,7 @@
   const WFOAM_A = [0.05, 0.16, 0.28];
   function waterBars(g, L, w, color, alpha) { if (L.n > 0) { const BR = BSU.brush; if (BR && typeof BR.bars === 'function') { BR.bars(g, L.a, L.n, w, color, alpha, dpr); drawCalls++; } L.n = 0; } }
   const waterGates = [];
+  let wallsRedrawn = 0;
   function waterPass(state, g) {
     const t = state.tiles, elev = t.elev, depth = t.depth, type = t.type, fl = t.flags;
     const z = zoomNow, w = TW * z, h = TH * z;
@@ -1515,9 +1527,10 @@
     const phA = frameNo * 0.11, phB = frameNo * 0.07, fr3 = frameNo >> 3;
     const hasBank = te && typeof te.bank === 'function';
     let bankRow = -1, bankX = 99;
-    waterDrawn = 0; waterGates.length = 0;
+    const crest = t.crest, cdir = (hyd && typeof hyd.canalDirs === 'function') ? hyd.canalDirs(state) : null;   // water pass: walls re-drawn in painter's order beside flood water; the way each canal tile runs
+    waterDrawn = 0; waterGates.length = 0; wallsRedrawn = 0;
     waterLayers(C.waterCapSurge); for (let k = 0; k < WLAY.length; k++) WL[WLAY[k]].n = 0;
-    const Wa = WL.bandA, Wb = WL.bandB, Wg = WL.glint, Wf0 = WL.foam0, Wf1 = WL.foam1, Wf2 = WL.foam2, Wfl = WL.fleck, Wby = WL.bayou, Wr = WL.river, Wd = WL.debris, Wcl = WL.chopL, Wcd = WL.chopD;
+    const Wa = WL.bandA, Wb = WL.bandB, Wg = WL.glint, Wf0 = WL.foam0, Wf1 = WL.foam1, Wf2 = WL.foam2, Wfl = WL.fleck, Wby = WL.bayou, Wr = WL.river, Wd = WL.debris, Wcl = WL.chopL, Wcd = WL.chopD, Wcn = WL.canal;
     const bar = (L, x, y, len) => { const o = L.n * 3; L.a[o] = x; L.a[o + 1] = y; L.a[o + 2] = len; L.n++; };
     g.globalCompositeOperation = 'source-over';
     for (let ty = view.y0; ty <= view.y1 && waterDrawn < cap; ty++) {
@@ -1525,7 +1538,14 @@
         const i = ty * W + tx, ty8 = type[i], f = fl[i];
         let d = fin(depth[i], 0);
         const isWater = (f & WATER_FLAGS) !== 0 || ty8 === T.OPEN_WATER || ty8 === T.BAYOU;
-        const show = isWater || ty8 === T.POND || (ty8 === T.MARSH ? d >= (PR.marshLiveDepth || 0.5) : d >= 0.05);
+        if (crest[i] > 0) {   // water pass: a wall with water standing higher than its foot on the far side (N / W) is drawn again HERE, in painter's order: over the water behind it, under the water in front of it
+          const e0 = fin(elev[i], 0) + 0.3;
+          if ((ty > 0 && depth[i - W] >= 0.05 && elev[i - W] + depth[i - W] > e0) || (tx > 0 && depth[i - 1] >= 0.05 && elev[i - 1] + depth[i - 1] > e0)) {
+            const ref = getRef(crest[i] >= 12 ? 'floodwall' : 'levee', wallVariant(crest, t.integrity, i, tx, ty), 0);
+            if (ref) { g.globalAlpha = 1; blit(g, ref, ((tx - ty) * 32 - camx) * z + hw, ((tx + ty) * 16 - fin(elev[i], 0) * PXFT - camy) * z + hh, zsOf(ref)); wallsRedrawn++; }
+          }
+        }
+        const show = isWater || ty8 === T.POND || (ty8 === T.MARSH ? d >= (PR.marshLiveDepth || 0.5) : d >= ((f & FLAG.CANAL) ? 0.03 : 0.05));
         if (!show) continue;
         if (isWater && d < 0.25) d = 1;
         const surfE = fin(elev[i], 0) + d;
@@ -1579,6 +1599,10 @@
           if (deckArr && deckArr[i] === deckArr[i]) {   // flecks around the stilts of a deck over this tile
             for (let k = 0; k < 3; k++) { if (((fr3 + k + (hv >> 4)) & 3) === 0) continue; bar(Wfl, sx - 12 * z + ((hv >> (k * 3)) % 24) * z, sy + 2 * z + ((hv >> (k * 2 + 1)) % 7) * z, 3 * z); }
           }
+          if ((f & FLAG.CANAL) && cdir !== null && cdir[i] >= 0) {   // water pass: a canal that is carrying water — two streaks running toward its outlet (a canal with none shows still water)
+            const dv = cdir[i], ph = ((frameNo >> 1) + tx * 5 + ty * 3) % 16;
+            for (let k = 0; k < 3; k++) { const off = ((ph + k * 5.33) % 16) - 8; bar(Wcn, sx + CANAL_DX[dv] * off * z - 3 * z, sy + CANAL_DY[dv] * off * z, 6 * z); }
+          }
           if (f & FLAG.BAYOU) {   // the bayou current line along the direction of the next bayou tile
             const dirE = (tx < W - 1 && (fl[i + 1] & FLAG.BAYOU)) ? 1 : 0, dirS = (ty < HGT - 1 && (fl[i + W] & FLAG.BAYOU)) ? 1 : 0;
             const off = ((frameNo >> 1) + tx * 3) % 24 - 12;
@@ -1595,7 +1619,7 @@
     // the bars, one fill per layer (bottom to top: swells, ripples, glints, foam, flecks, streaks, then the surge's debris and chop)
     waterBars(g, Wa, z, wc.band1, 0.42); waterBars(g, Wb, z, wc.band2, 0.3); waterBars(g, Wg, z, glintCol, glintA);
     waterBars(g, Wf0, z, wc.foam, WFOAM_A[0]); waterBars(g, Wf1, z, wc.foam, WFOAM_A[1]); waterBars(g, Wf2, z, wc.foam, WFOAM_A[2]);
-    waterBars(g, Wfl, z, wc.foam, 0.35); waterBars(g, Wby, z, wc.current, 0.35); waterBars(g, Wr, z, wc.current, 0.28);
+    waterBars(g, Wfl, z, wc.foam, 0.35); waterBars(g, Wby, z, wc.current, 0.35); waterBars(g, Wr, z, wc.current, 0.28); waterBars(g, Wcn, z, wc.foam, 0.7);
     waterBars(g, Wd, z, wc.debris, 0.8); waterBars(g, Wcl, z, wc.chopL, 0.55); waterBars(g, Wcd, z, wc.chopD, 0.6);
     for (let k = 0; k < waterGates.length; k += 3) {   // live floodgate frames (0 open → 3 closed; animated over 12 frames from the gate:* event)
       const gs = gates.get(waterGates[k]); let fr = 0;
@@ -1934,7 +1958,7 @@
     return e;
   }
   /** ground elevation — or, on a deck over water (bridge pass), the deck's: students and buses walk the deck, not the bed */
-  const groundElev = (t, i) => { const d = curves && curves.deck; return (d && d[i] === d[i]) ? d[i] : fin(t.elev[i], 0); };
+  const groundElev = (t, i) => { const d = curves && curves.deck; return (d && d[i] === d[i]) ? d[i] : fin(t.elev[i], 0) + (t.crest[i] > 0 && t.owner[i] < 0 ? t.crest[i] : 0); };   // water pass: on a levee they walk its crown (the berm is drawn at its true height)
   const VEH_ID = { pirogue: 'pirogue', bus: 'bus', fogger: 'fogger', cajunNavy: 'navy', navy: 'navy', crew: 'officer', float: 'float' };
   const WATER_VEH = { pirogue: 1, cajunNavy: 1, navy: 1 };
 

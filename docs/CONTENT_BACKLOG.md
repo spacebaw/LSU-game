@@ -19,17 +19,17 @@ The screenshot that came with them shows the old purple HUD, so some notes preda
 - [x] **done** N30 "When asked to build practice field asks to build 4, at most should be 2." The goal 15 counter reads 0 / 4 because it counts four steps, not four fields. *Now:* "Step 1 of 4" on the card and the pill for the eight goals that count steps (3, 5, 12, 15, 17, 19, 20, 22); counted goals keep "3 / 5".
 
 ### Simulation and visual bugs (pass 2)
-- [ ] **open** N3 Drainage canals don't drain.
-- [ ] **open** N4 Levee looks weird and does not seem to work as one.
+- [x] **done** N3 Drainage canals don't drain. *Found:* they drained the cove (0.08 tile-ft standing against 3.6), but the game showed the opposite: the canal's own water was drawn as three flooded tiles that stayed for a week (0.08 ft of head lost per canal tile, a sill where it crossed the rim), its card read "Marsh · Drains to nowhere", a canal released one tile short of the bayou said nothing, and the rain puddles ignored it. *Now:* the run's end digs itself on to water, the bed is graded, the channel empties in a day and shows flow, the label and the card say what it drains in numbers.
+- [x] **done** N4 Levee looks weird and does not seem to work as one. *Found:* a 6-ft levee was drawn 2 ft high in per-tile boxes with pads at its ends, broke on slopes and did not meet a floodwall; nothing said whether a ring was closed; a ring took in twice its own rain. *Now:* one berm at true height with clean corners and ends, "Closes the ring: holds a 5 ft surge off 12 tiles" / "Ring open: 1 gap" with Show me on the drag and the card, and the rain's way out named.
 - [ ] **open** N8 Football field rotated: goalposts on the wrong ends.
 - [ ] **open** N9 Students never scatter, always in the same location.
 - [ ] **open** N26 Quad Lawn should be connectable (adjacent lawns join).
 - [ ] **open** N27 Keep gators, make them occasional, not always around.
 - [ ] **open** N29 Night is too dark; add a glow at the mouse so you can see where you point.
-- [ ] **open** N7 Vehicle bridge ("would help figure out connecting campus"). A Campus Road already bridges up to 3 water tiles, but nothing says so and the span may be too short.
-- [ ] **verify** N13 Pedestrian bridge does not sit right, connects to the ground weirdly (crossings pass changed this).
-- [ ] **verify** N15 NPCs don't know how to use bridges (crossings pass changed this).
-- [ ] **verify** N5 Trees: building on them should clear them instantly (done for paths, roads, boardwalks, bridges; check footprints).
+- [x] **done** N7 Vehicle bridge. A Road Bridge row beside Campus Road: 8 water tiles and 4 marsh tiles a bank at $40k a deck tile, both banks tied in; a Campus Road refused for its reach names it.
+- [x] **verified** N13 Pedestrian bridge joins: shot on four bank shapes at both zooms on the current build; the deck, its steps and landings meet the ground. Nothing changed.
+- [x] **done** N15 NPCs on bridges: still wrong. They routed over the deck but were put in the WADE state on it (84 % of their time there: wading pace, the splash, inner tubes), because the bed's depth counted. A walker on a deck now walks.
+- [x] **done** N5 Trees under everything: no footprint building cleared its plants. Every footprint and every levee, floodwall, canal, pond and fill tile now does, with exact undo and "clears N trees" on the label; plants, the Preserve, Marsh Restoration, the Gator Fence and the Quad Lawn leave them.
 
 ### Audio (pass 3)
 - [ ] **open** N14 Sounds are weird: should be calmer and more subtle, too abrupt.

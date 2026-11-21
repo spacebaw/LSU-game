@@ -51,6 +51,24 @@ const AUDIT_JS = `(function () {
     var e = top; while (e && e !== document.body) { var c = parse(getComputedStyle(e).backgroundColor); if (c && c.a > 0) return c.a >= 0.94 ? 'opaque' : { c: c }; e = e.parentElement; }
     return null;   // a cover with no paint of its own (the canvas, a pointer layer)
   }
+  // water pass: an element caught in the middle of an opacity animation or transition (the cash chip's "+$12k" delta fading out at 78 %) is not
+  // at rest: its contrast at that instant says nothing (it flaked the gate once). It is reported as info, never a failure.
+  function fadingOf(el) {
+    var e = el;
+    while (e && e.nodeType === 1) {
+      try {
+        var an = e.getAnimations ? e.getAnimations() : [];
+        for (var k = 0; k < an.length; k++) {
+          var a = an[k]; if (a.playState !== 'running') continue;
+          if (a.transitionProperty === 'opacity') return true;
+          var kf = a.effect && a.effect.getKeyframes ? a.effect.getKeyframes() : [];
+          for (var q = 0; q < kf.length; q++) if (kf[q] && kf[q].opacity !== undefined) return true;
+        }
+      } catch (err) { /* no Web Animations: nothing to skip */ }
+      e = e.parentElement;
+    }
+    return false;
+  }
   function push(kind, el, fg, size, weight, text, rect, extra) {
     var cx = Math.max(0, Math.min(vw - 1, rect.left + rect.width / 2)), cy = Math.max(0, Math.min(vh - 1, rect.top + rect.height / 2));
     var op = opacityOf(el), dis = disabledOf(el), b = bgOf(el, cx, cy), bg = b.bg, cover = null, note = '';
@@ -61,7 +79,8 @@ const AUDIT_JS = `(function () {
     var large = kind === 'text' && (size >= 24 || (weight >= 700 && size >= 19));
     var min = kind === 'text' && !large ? 4.5 : 3.0;
     var r = ratio(fg, bg); checked++;
-    var info = note === 'covered' || op.inert || dis || /under scrim/.test(note);
+    var fading = op.o < 1 && fadingOf(el); if (fading) note = (note ? note + '; ' : '') + 'mid-fade';
+    var info = note === 'covered' || op.inert || dis || fading || /under scrim/.test(note);
     if (dis) note = (note ? note + '; ' : '') + 'disabled'; if (op.inert) note = (note ? note + '; ' : '') + 'inert';
     if (r < min || ${args.verbose}) rows.push({ kind: kind, fg: hex(fg), bg: hex(bg), ratio: Math.round(r * 100) / 100, min: min, size: Math.round(size * 10) / 10, weight: weight, text: text, path: pathOf(el), note: note, info: info, extra: extra || '' });
   }

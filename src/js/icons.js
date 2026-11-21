@@ -98,6 +98,7 @@
     // build requirements (the detail NEEDS list and the card chips)
     walk: ['M13 5a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3z', 'M12 8l-2 5 3 2v6', 'M10 13l-3 3', 'M12 8l3 2.5 2.5.5'],
     road: ['M8 3 5 21', 'M16 3l3 18', 'M12 5v2', 'M12 11v2', 'M12 17v2'],
+    road_bridge: ['M2 9h20', 'M2 13h20', 'M6 13v5', 'M12 13v5', 'M18 13v5', 'M2 20c2-1.2 3.5-1.2 5 0s3.5 1.2 5 0 3.5-1.2 5 0 3.5 1.2 5 0', 'M8 11h2', 'M14 11h2'],   // water pass: a deck on piers over the water (the Road Bridge)
     pilings: ['M6 4v13', 'M12 4v13', 'M18 4v13', 'M3 20c2-1.5 4-1.5 6 0s4 1.5 6 0 4-1.5 6 0'],
     // U6: the needs gauges (the Students popover): beds, seats, dining, sewage (power and water reuse bolt and drop)
     bed: ['M3 20v-9', 'M3 16h18', 'M21 20v-6a2 2 0 0 0-2-2h-8v4', 'M5 12h3'],

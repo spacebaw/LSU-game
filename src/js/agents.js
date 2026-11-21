@@ -250,6 +250,18 @@
   }
   function mosqAt(state, i) { const v = state.tiles.mosq[i]; return Number.isFinite(v) ? v : 0; }
   function depthAt(state, i) { const v = state.tiles.depth[i]; return Number.isFinite(v) ? v : 0; }
+  /** water pass (N15, "NPCs don't know how to use bridges"): the water a WALKER is in. On a deck — a Boardwalk or a Pedestrian Bridge anywhere, a road
+   *  over water or over the marsh bank of its span — it is 0: the bed's depth used to count, so everyone crossing a bridge was put in the WADE state
+   *  (wading pace, the splash animation and its particles, wet clothes, an inner tube) for as long as they were on it. A deck the surge has overtopped
+   *  is walk class 0 and is not routed over at all. */
+  function wadeDepth(state, i) {
+    const d = depthAt(state, i); if (d < WADE_FT) return d;
+    const sf = state.tiles.surface[i];
+    if (sf === BSU.SURF.BOARDWALK || sf === BSU.SURF.BRIDGE) return 0;
+    if (sf === BSU.SURF.ROAD || sf === BSU.SURF.PATH) { const t = state.tiles.type[i]; if (t === T.OPEN_WATER || t === T.BAYOU || t === T.MARSH || (state.tiles.flags[i] & (FLAG.OPEN_WATER | FLAG.BAYOU))) return 0; }
+    return d;
+  }
+  const WADE_FT = BSU.params.hydro.thresholds.wading;
 
   /** walk-class speed in tiles per tick at 1× (§5.8): class 1 → .4, 2 → .24, 3 → .16, 4 → .12; mods {advisory, watch, debris} */
   M.stepSpeed = function (cls, mods) {
@@ -1212,7 +1224,7 @@
       }
     }
     // wading entry: the inner tube
-    const d = depthAt(state, i);
+    const d = wadeDepth(state, i);
     if (d >= BSU.params.hydro.thresholds.wading) {
       if (!a.wading) { a.wading = true; if (BSU.rng.sim.chance(P.tubeP)) a.tube = true; }
     } else { a.wading = false; a.tube = false; }
@@ -1295,7 +1307,7 @@
   }
   function updateStats(state, a, ctx, moving) {
     const i = agentTile(a);
-    const inWater = !a.inside && depthAt(state, i) >= BSU.params.hydro.thresholds.wading;
+    const inWater = !a.inside && wadeDepth(state, i) >= BSU.params.hydro.thresholds.wading;
     if (inWater) a.wet = Math.min(1, a.wet + C.wetGainWade);
     else if (!a.inside && ctx.rain) a.wet = Math.min(1, a.wet + C.wetGainRain);
     else a.wet = Math.max(0, a.wet - C.wetDecay);
@@ -1394,7 +1406,7 @@
       }
       if (a.route.length && a.routeIdx < a.route.length && a.state !== 'IDLE') {
         const i = agentTile(a);
-        const d = depthAt(state, i);
+        const d = wadeDepth(state, i);
         let cls = state.tiles.walk[i];
         if (d >= BSU.params.hydro.thresholds.wading) { cls = 4; if (a.state === 'WALK') a.state = 'WADE'; }
         else if (a.state === 'WADE') a.state = 'WALK';

@@ -1,7 +1,7 @@
 'use strict';
 // ============================================================================
 // BAYOU STATE — data.js (module 1; immutable tables)
-// Owner: nothing at runtime. Assigns BSU.data: the 43-row building catalog (+ row 44 'bridge', bridge pass; rows 45 'bunkhouse' and 46 'suites', housing tiers pass P7; row 47 'dredge_fill', L3),
+// Owner: nothing at runtime. Assigns BSU.data: the 43-row building catalog (+ row 44 'bridge', bridge pass; rows 45 'bunkhouse' and 46 'suites', housing tiers pass P7; row 47 'dredge_fill', L3; row 48 'road_bridge', water pass),
 // tabs, decals, name pools, students/coaches/gators/storms, opponents and the
 // schedule, the calendar, the 62 ticker lines, objectives, milestones, Student
 // Voice and Board cards, failure cards, the tutorial script, overlays, the key
@@ -80,7 +80,7 @@
   const ESSENTIALS = { path: 1, dorm: 1, dining_hall: 1, lecture_hall: 1, poboy: 1, quad: 1, live_oak: 1 };
   const NOT_DEMOLISHABLE = { founders_hall: 1, library: 1, res_tower: 1, stadium: 1, bell_tower: 1, tiger_habitat: 1, rookery: 1, surge_barrier: 1, marsh_restoration: 1 };
   const TAB_OF_ROW = function (n) {
-    if (n <= 3 || n === 44) return 'paths';   // 44 = Pedestrian Bridge (bridge pass): the Paths tab after the boardwalk
+    if (n <= 3 || n === 44 || n === 48) return 'paths';   // 44 = Pedestrian Bridge (bridge pass): after the boardwalk; 48 = Road Bridge (water pass): after the road
     if (n <= 7) return 'utilities';
     if (n <= 12) return 'academic';
     if (n <= 15 || n === 45 || n === 46) return 'housing';   // 45 / 46 = Bayou Bunkhouse / Magnolia Suites (P7), ordered in the tab below
@@ -94,7 +94,8 @@
   /** One plain line per row: what it does (the build menu's first line; GDD §11.2 "say it in one breath"). */
   const BLURB = {
     path: 'A gravel walkway. Every building needs one on its edge.',
-    road: 'A paved road for buses, parades and the Stadium; bridges up to 3 water tiles.',
+    road: 'A paved road for buses, parades and the Stadium; bridges 3 water tiles (wider: Road Bridge).',
+    road_bridge: 'A road on concrete piers across the bayou: up to 8 water tiles, Campus Road at both ends.',
     boardwalk: 'A raised walk over marsh and water that leaves the wetland alone.',
     bridge: 'A high pedestrian span over the bayou: six feet of clearance, passable through a Cat 3 surge.',
     substation: 'Powers up to 40 buildings within 10 tiles.',
@@ -120,9 +121,9 @@
     health_center: 'Mosquito illness −60% and heat illness −50% within 12 tiles.',
     quad: '+2 happiness within 6 tiles and a free Live Oak. No path needed.',
     parking: 'Parks 600 students’ cars; +$4k/mo in tickets. Needs a road within 4.',
-    levee: 'A 6-foot earthen wall against rising water. Walkable.',
+    levee: 'A 6-foot earthen wall against rising water: close it into a ring. Walkable.',
     floodwall: 'A 12-foot concrete wall. Nutria-proof; −1 happiness within 3.',
-    canal: 'A ditch that carries rainwater downhill to the bayou.',
+    canal: 'A ditch that carries rain off low ground to the bayou; its end digs itself on to water.',
     pump: 'Pumps 15 tile-ft a day out of its canal network. Needs power.',
     pond: 'Holds 20 tile-ft of runoff; once stocked, mosquitoes −80% within 4.',
     pilings: 'Lifts one building 3 ft above the flood line (+40% of its cost).',
@@ -442,7 +443,13 @@
       effects: { ecologyPerTile: -1 / BSU.params.terrain.fill.ecologyPer, special: ['fill'] },
       paint: flat(['#8A7A5A', '#5E5238'], ['pipes']),
       why: 'Spoil from the bayou raises marsh to dry land. Ecology pays.',
-      desc: 'Marsh only, on chartered land; $40k a tile, ten days to fill; −1 ecology per 4 tiles (permanent); refused within 2 tiles of a Preserve; the tile becomes Dry ground.' })
+      desc: 'Marsh only, on chartered land; $40k a tile, ten days to fill; −1 ecology per 4 tiles (permanent); refused within 2 tiles of a Preserve; the tile becomes Dry ground.' }),
+    // water pass — row 48, Paths tab right after the Campus Road: a road run that must cross water; deck at its own price, Campus Road on the dry ground of the run
+    row({ n: 48, name: 'Road Bridge', kind: 'drag', cost: 10000 * BSU.params.build.bridgeCostMult, upkeep: 100, wr: 3, placeRule: PLACE.ROAD,
+      effects: { surfaceId: SURF.ROAD, noise: { value: 1, radius: 1 } },
+      paint: flat(['#3A3A40', '#B8B8BC'], ['stilts', 'lights'], 'bridge'),
+      why: 'The bayou splits the campus. This carries road, buses and parade across.',
+      desc: 'Drag bank to bank: up to 8 water tiles and 4 marsh tiles a bank on concrete piers at $40k a deck tile; Campus Road ($10k) on the dry ground of the run; both banks tie themselves in; open to vehicles and walkers; impassable above a 4-ft surge.' })
   ];
   const catalog = {};
   for (const r of catalogList) catalog[r.id] = r;
@@ -457,6 +464,7 @@
     const ids = catalogList.filter(r => r.tab === t[0] && r.id !== 'founders_hall').map(r => r.id);
     const order = TAB_ORDER[t[0]];
     if (order) ids.sort((a, b) => order.indexOf(a) - order.indexOf(b));
+    if (t[0] === 'paths') { const k = ids.indexOf('road_bridge'); if (k >= 0) { ids.splice(k, 1); ids.splice(ids.indexOf('road') + 1, 0, 'road_bridge'); } }   // water pass: the Road Bridge sits right after the Campus Road
     if (t[0] === 'swamp') { const k = ids.indexOf('dredge_fill'), c = ids.indexOf('canal'); if (k >= 0 && c >= 0) { ids.splice(k, 1); ids.splice(ids.indexOf('canal') + 1, 0, 'dredge_fill'); } }   // L3: Dredge & fill sits right after the canal
     tabs.push({ id: t[0], name: t[1], rows: ids });
   }
@@ -1391,10 +1399,11 @@
   };
   requirements.place[PLACE.PATH] = { glyph: '↔', text: 'Drag a run across land' };
   requirements.place[PLACE.ROAD] = { glyph: '↔', text: 'Drag a run; bridges up to 3 tiles of water, bank to bank (both ends connect themselves); not on open marsh' };
+  requirements.row = { road_bridge: { glyph: '↔', icon: 'road_bridge', text: 'Drag bank to bank across water (up to 8 tiles): both ends connect themselves' } };   // water pass: a row's own line wins over its placeRule's
   requirements.place[PLACE.BOARDWALK] = { glyph: '↔', text: 'Drag a run over marsh, preserve or water: both ends connect themselves' };
   requirements.place[PLACE.BRIDGE] = { glyph: '↔', text: 'Drag bank to bank across water: both ends connect themselves' };
-  requirements.place[PLACE.LEVEE] = { glyph: '↔', text: 'Drag a run along the ground; close the ring' };
-  requirements.place[PLACE.CANAL] = { glyph: '↔', text: 'Drag a run downhill to the bayou or open water' };
+  requirements.place[PLACE.LEVEE] = { glyph: '↔', text: 'Drag a run along the ground; close the ring (the label says when it is closed)' };
+  requirements.place[PLACE.CANAL] = { glyph: '↔', text: 'Drag a run from the wet ground toward water: the end connects itself' };
   requirements.place[PLACE.FENCE] = { glyph: '↔', text: 'Drag a run along a water edge' };
   requirements.place[PLACE.PRESERVE] = { glyph: '🖌', text: 'Drag to paint marsh tiles' };
   requirements.place[PLACE.NEAR_WATER] = { glyph: '🌊', text: 'Within 3 tiles of water' };
@@ -1446,8 +1455,8 @@
     try {
       const D = BSU.data, L = D.catalogList, C = D.catalog;
       // 1. row count and numbering
-      check(L.length === 47, 'catalogList.length === 47 (got ' + L.length + ')');   // L3: dredge_fill
-      check(Object.keys(C).length === 47, 'catalog has 47 keys');
+      check(L.length === 48, 'catalogList.length === 48 (got ' + L.length + ')');   // L3: dredge_fill; water pass: road_bridge
+      check(Object.keys(C).length === 48, 'catalog has 48 keys');
       for (let i = 0; i < L.length; i++) {
         check(L[i].n === i + 1, 'row ' + (i + 1) + ' has n ' + L[i].n);
         check(C[L[i].id] === L[i], 'catalog[' + L[i].id + '] is the same object as catalogList[' + i + ']');

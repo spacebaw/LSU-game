@@ -126,6 +126,10 @@
       bfsQueue: new Uint16Array(N),
       bayouIndex: new Int16Array(N),
       tileNet: new Int16Array(N),
+      canalDir: new Int8Array(N),      // water pass: the way a canal tile's water runs (0 N, 1 E, 2 S, 3 W toward its outlet; −1 = no outlet, or no canal)
+      canalOut: new Float32Array(N),   // water pass: tile-ft a canal tile has given to open water today (the outlet tiles); canalOutPrev = yesterday's
+      canalOutPrev: new Float32Array(N),
+      drained: null, drainedVer: -1, netVer: 0,   // water pass: the catchment mask of every canal network that has an outlet or a pump (lazy, per network rebuild)
       tileDirty: new Uint8Array(N),
       waterList: new Uint16Array(N), waterN: 0, waterListDirty: true,   // L1: the boundary (OPEN_WATER / BAYOU) tiles as a list, so the per-pass boundary reset is O(water), not O(N)
       lossMulApplied: NaN, lossDirty: true,                          // L1: lossEff = lossTable × lossMul is recomputed only when either changes
@@ -256,7 +260,7 @@
     const levee = tiles.crest[i] > 0;
     const preserve = (fl & F.PRESERVE) !== 0;
     const drained = (fl & F.DRAINED) !== 0;
-    const marsh = ty === T.MARSH && !drained;
+    const marsh = ty === T.MARSH && !drained && !canal;   // water pass: a canal's bed is no marsh, whatever its elevation says (no marsh absorb, no head loss, no 0.15-ft floor)
     let absorb, drain;
     // class by type (POND is Wet class)
     if (drained || ty === T.DRAINED) { absorb = P.absorb.drained; drain = P.drain.drained; }
@@ -302,12 +306,13 @@
     const ctx = C, tiles = state.tiles, flags = tiles.flags;
     ctx.tileNet.fill(-1);
     ctx.canalNear.fill(0);
+    ctx.canalDir.fill(-1); ctx.netVer++;
     const nets = [];
     const q = ctx.bfsQueue;
     for (let s = 0; s < N; s++) {
       if (!(flags[s] & F.CANAL) || ctx.tileNet[s] >= 0) continue;
       const id = nets.length;
-      const net = { id: id, tiles: [], drainsToWater: false, drainsTo: '', waterAdj: [], pumps: [], gates: [], stage: 0 };
+      const net = { id: id, tiles: [], drainsToWater: false, drainsTo: '', waterAdj: [], pumps: [], gates: [], stage: 0, outlets: [] };   // outlets (water pass): the canal tiles that touch open water
       let head = 0, tail = 0;
       q[tail++] = s; ctx.tileNet[s] = id;
       while (head < tail) {
@@ -325,6 +330,7 @@
             net.drainsToWater = true;
             if (ctx.water[j] === 2) net.drainsTo = 'Bayou'; else if (!net.drainsTo) net.drainsTo = 'River';
             if (net.waterAdj.indexOf(j) < 0) net.waterAdj.push(j);
+            if (ctx.canalDir[i] < 0) { ctx.canalDir[i] = d; net.outlets.push(i); }
             continue;
           }
           if ((flags[j] & F.CANAL) && ctx.tileNet[j] < 0) { ctx.tileNet[j] = id; q[tail++] = j; }
@@ -336,6 +342,18 @@
         for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
           const x = tx + dx, y = ty + dy;
           if (x >= 0 && y >= 0 && x < W && y < H) ctx.canalNear[y * W + x] = 1;
+        }
+      }
+      // water pass: every other tile of a network with an outlet runs toward it (BFS from the outlet tiles; the direction of the step back)
+      if (net.outlets.length) {
+        let h2 = 0, t2 = 0; const cd = ctx.canalDir;
+        for (let k = 0; k < net.outlets.length; k++) q[t2++] = net.outlets[k];
+        while (h2 < t2) {
+          const i = q[h2++], tx = (i % W), ty = ((i / W) | 0);
+          if (ty > 0 && ctx.tileNet[i - W] === id && cd[i - W] < 0) { cd[i - W] = 2; q[t2++] = i - W; }
+          if (tx < W - 1 && ctx.tileNet[i + 1] === id && cd[i + 1] < 0) { cd[i + 1] = 3; q[t2++] = i + 1; }
+          if (ty < H - 1 && ctx.tileNet[i + W] === id && cd[i + W] < 0) { cd[i + W] = 0; q[t2++] = i + W; }
+          if (tx > 0 && ctx.tileNet[i - 1] === id && cd[i - 1] < 0) { cd[i - 1] = 1; q[t2++] = i - 1; }
         }
       }
       nets.push(net);
@@ -653,7 +671,7 @@
   function applyRain(state, ctx, rain) {
     const r = fin(rain.r, 0);
     if (r <= 0) return 0;
-    const D = ctx.D, S = ctx.S, land = ctx.land, af = ctx.absorbFrac, fill = P.satFill;
+    const D = ctx.D, S = ctx.S, land = ctx.land, af = ctx.absorbFrac, fill = P.satFill, ce = ctx.crestEff;
     let net = 0;
     let x0 = 0, y0 = 0, x1 = W - 1, y1 = H - 1;
     if (!rain.mapWide) {
@@ -663,7 +681,7 @@
     for (let y = y0; y <= y1; y++) {
       for (let x = x0; x <= x1; x++) {
         const i = y * W + x;
-        if (!land[i]) continue;
+        if (!land[i] || ce[i] > 0) continue;   // water pass: rain on a wall's own crown is shed down its outer face, not poured into the ring (14 crown tiles used to feed the 6 tiles they enclosed: a closed ring took in twice its own rain)
         const s = S[i];
         const absorbed = r * af[i] * (1 - s);
         const add = r - absorbed;
@@ -679,7 +697,7 @@
     const D = ctx.D, back = ctx.back, ct = ctx.crestTop, ce = ctx.crestEff, le = ctx.lossEff, km = ctx.kMul, bl = ctx.blocked, elev = state.tiles.elev, water = ctx.water, tch = ctx.touched;
     const list = ctx.activeList, n = ctx.activeN;
     let moved = 0, bndIn = 0, bndOut = 0;
-    const f = ctx.fScratch, nb = ctx.nbScratch;
+    const f = ctx.fScratch, nb = ctx.nbScratch, co = ctx.quiet ? null : ctx.canalOut, KC = P.kCanal;
     for (let a = 0; a < n; a++) {
       const i = list[a];
       const di = D[i];
@@ -715,7 +733,7 @@
       for (let c = 0; c < cnt; c++) {
         const j = nb[c], fl = f[c] * sc;
         back[j] += fl; tch[j] = 1;
-        if (wi && !water[j]) bndIn += fl; else if (!wi && water[j]) bndOut += fl;
+        if (wi && !water[j]) bndIn += fl; else if (!wi && water[j]) { bndOut += fl; if (co !== null && km[i] === KC) co[i] += fl; }
       }
       moved += give;
     }
@@ -880,6 +898,7 @@
     for (let i = 0; i < N; i++) if (ot[i]) { ot[i] = 0; integrityHit(state, ctx, i, P.overtopDmg); }
     // pumps: today's running log restarts
     ctx.pumpToday = {};
+    { const a = ctx.canalOutPrev; ctx.canalOutPrev = ctx.canalOut; ctx.canalOut = a; a.fill(0); }   // water pass: what each outlet carried yesterday (the canal's card)
     // powered pumps within 8 (for the drained-marsh rules)
     const pn = ctx.pumpNear; pn.fill(0);
     try {
@@ -930,7 +949,7 @@
         }
         continue;
       }
-      if (type[i] !== T.MARSH || (fl & (F.PRESERVE | F.MOUND))) { dry[i] = 0; continue; }
+      if (type[i] !== T.MARSH || (fl & (F.PRESERVE | F.MOUND | F.CANAL))) { dry[i] = 0; continue; }   // (a canal's own bed is not a marsh tile that "drains": water pass)
       if (D[i] < MD.drainDepth) { if (dry[i] < 255) dry[i]++; } else dry[i] = 0;
       if (dry[i] >= MD.daysToDrain && (cn[i] || pn[i])) {
         dry[i] = 0;
@@ -1120,6 +1139,113 @@
   M.conservationCheck = function (state) {
     try { const ctx = ensure(state), D = state.tiles.depth; let total = 0; for (let i = 0; i < N; i++) if (ctx.land[i]) total += D[i]; return { total: total, leak: ctx.lastLeak, moved: ctx.lastMoved }; } catch (e) { return { total: 0, leak: 0, moved: 0 }; }
   };
+  // ---------------------------------------------------------------------------
+  // Water pass (the playtester's "drainage paths don't drain"): what a canal is doing, in numbers.
+  // The CATCHMENT of a set of canal tiles is the ground whose water runs to them: a walk outward from the canal over land that is
+  // never lower than the tile it drains to (0.05 ft of tolerance), at most params.hydro.canalReach (3) steps, stopped by open water,
+  // another canal and a levee / floodwall. It is what the drag label promises ("drains 14 tiles"), what the card counts and what
+  // render_fx keeps the rain puddles off. Pure array walks over a few dozen tiles; nothing here runs per tick.
+  // ---------------------------------------------------------------------------
+  const REACH = Math.max(1, fin(P.canalReach, 3) | 0);
+  let catStamp = null, catGen = 0, catQ = null, catD = null;
+  /** → the catchment tiles of `tiles` (canal tiles, or tiles about to become canal: `extra` marks those), each once, the canal tiles themselves left out */
+  function catchmentOf(state, ctx, tiles, extra) {
+    if (!catStamp || catStamp.length !== N) { catStamp = new Uint32Array(N); catQ = new Int32Array(N); catD = new Uint8Array(N); catGen = 0; }
+    if (++catGen > 4e9) { catStamp.fill(0); catGen = 1; }
+    const t = state.tiles, elev = t.elev, flags = t.flags, crest = t.crest, out = [], gen = catGen;
+    let head = 0, tail = 0;
+    for (let k = 0; k < tiles.length; k++) { const i = tiles[k] | 0; if (i < 0 || i >= N || catStamp[i] === gen) continue; catStamp[i] = gen; catQ[tail] = i; catD[tail++] = 0; }
+    const isCanal = function (i) { return (flags[i] & F.CANAL) !== 0 || (extra !== undefined && extra.has(i)); };
+    while (head < tail) {
+      const i = catQ[head], d = catD[head++]; if (d >= REACH) continue;
+      const tx = (i % W), ty = ((i / W) | 0), src = isCanal(i), e0 = elev[i];
+      for (let q = 0; q < 4; q++) {
+        let j;
+        if (q === 0) { if (ty === 0) continue; j = i - W; } else if (q === 1) { if (tx === W - 1) continue; j = i + 1; } else if (q === 2) { if (ty === H - 1) continue; j = i + W; } else { if (tx === 0) continue; j = i - 1; }
+        if (catStamp[j] === gen || ctx.water[j] || crest[j] > 0 || isCanal(j)) continue;
+        if (!src && elev[j] < e0 - 0.05) continue;   // lower ground sheds its water somewhere else
+        catStamp[j] = gen; catQ[tail] = j; catD[tail++] = d + 1; out.push(j);
+      }
+    }
+    return out;
+  }
+  /** "the bayou" / "the river" / "the lake" for a water tile */
+  function waterName(state, ctx, j) {
+    if (ctx.water[j] === 2) return 'the bayou';
+    const lk = (state.plot && Array.isArray(state.plot.lake)) ? state.plot.lake : [];
+    return lk.indexOf(j) >= 0 ? 'the lake' : 'the river';
+  }
+  function netOutlet(state, ctx, net) {
+    if (!net) return '';
+    if (net.drainsToWater && net.waterAdj.length) { for (let k = 0; k < net.waterAdj.length; k++) if (ctx.water[net.waterAdj[k]] === 2) return 'the bayou'; return waterName(state, ctx, net.waterAdj[0]); }
+    if (net.pumps.length) return 'a Pump Station';
+    return '';
+  }
+  /** the canal network through tile i, in numbers: { tiles, outlet ('' = none: "the bayou", "the river", "the lake", "a Pump Station"), drains (bool),
+   *  catchment (tiles whose water runs to it), wet (of those, under ≥ 0.05 ft now), water (tile-ft in the channel now), depth (deepest channel
+   *  tile, ft), flowing (an outlet and water in the channel), movedToday / movedYesterday (tile-ft given to open water), gates, pumps } or null */
+  M.canalStats = function (state, i) {
+    try {
+      const ctx = ensure(state); i |= 0; if (i < 0 || i >= N) return null;
+      if (ctx.networksDirty) rebuildNetworks(state);
+      const id = ctx.tileNet[i]; if (id < 0) return null;
+      const net = ctx.networks[id], D = state.tiles.depth, cat = catchmentOf(state, ctx, net.tiles);
+      let wet = 0, water = 0, depth = 0, today = 0, yest = 0;
+      for (let k = 0; k < cat.length; k++) if (D[cat[k]] >= P.thresholds.puddle) wet++;
+      for (let k = 0; k < net.tiles.length; k++) { const j = net.tiles[k]; water += D[j]; if (D[j] > depth) depth = D[j]; today += ctx.canalOut[j]; yest += ctx.canalOutPrev[j]; }
+      const outlet = netOutlet(state, ctx, net);
+      return { tiles: net.tiles.length, outlet: outlet, drains: outlet !== '', catchment: cat.length, wet: wet, water: water, depth: depth, flowing: net.drainsToWater && water > 0.02 * net.tiles.length, movedToday: today, movedYesterday: yest, gates: net.gates.length, pumps: net.pumps.length };
+    } catch (e) { BSU.error('hydro', 'canalStats', e); return null; }
+  };
+  /** what a canal dug on `tiles` (indices, not yet canal) would do, the canals it would join included: { n (catchment tiles), outlet ('' = none),
+   *  touch (the run itself reaches the outlet), tiles (the catchment) }. `outlets` adds tiles to treat as part of the run (its tie-in). Nothing is changed. */
+  M.canalPreview = function (state, tiles) {
+    const out = { n: 0, outlet: '', touch: false, tiles: [] };
+    try {
+      const ctx = ensure(state); if (ctx.networksDirty) rebuildNetworks(state);
+      const run = [], set = new Set();
+      for (const v of (Array.isArray(tiles) ? tiles : [])) { const i = v | 0; if (i >= 0 && i < N && !set.has(i) && ctx.land[i]) { set.add(i); run.push(i); } }
+      if (!run.length) return out;
+      const all = run.slice(); let outlet = '', bayou = false;
+      const seenNet = new Set();
+      for (const i of run) {
+        const tx = (i % W), ty = ((i / W) | 0);
+        for (let q = 0; q < 4; q++) {
+          let j;
+          if (q === 0) { if (ty === 0) continue; j = i - W; } else if (q === 1) { if (tx === W - 1) continue; j = i + 1; } else if (q === 2) { if (ty === H - 1) continue; j = i + W; } else { if (tx === 0) continue; j = i - 1; }
+          if (ctx.water[j]) { if (ctx.water[j] === 2) bayou = true; else if (!outlet) outlet = waterName(state, ctx, j); continue; }
+          const id = ctx.tileNet[j]; if (id < 0 || seenNet.has(id) || set.has(j)) continue;
+          seenNet.add(id); const net = ctx.networks[id]; for (const k of net.tiles) all.push(k);
+          const o = netOutlet(state, ctx, net); if (o === 'the bayou') bayou = true; else if (o && !outlet) outlet = o;
+        }
+      }
+      out.outlet = bayou ? 'the bayou' : outlet; out.touch = out.outlet !== '';
+      out.tiles = catchmentOf(state, ctx, all, set); out.n = out.tiles.length;
+      return out;
+    } catch (e) { BSU.error('hydro', 'canalPreview', e); return out; }
+  };
+  /** is tile j an outlet a canal can run to: open water, or a canal whose network already has an outlet or a pump → its name, else '' */
+  M.outletAt = function (state, j) {
+    try {
+      const ctx = ensure(state); j |= 0; if (j < 0 || j >= N) return '';
+      if (ctx.networksDirty) rebuildNetworks(state);
+      if (ctx.water[j]) return waterName(state, ctx, j);
+      const id = ctx.tileNet[j]; return id >= 0 ? netOutlet(state, ctx, ctx.networks[id]) : '';
+    } catch (e) { return ''; }
+  };
+  /** Uint8Array over tiles: 1 = in the catchment of a canal network that has an outlet or a pump, 2 = a canal tile of one (render_fx: no rain puddles there). Rebuilt when the networks are */
+  M.drainedMask = function (state) {
+    try {
+      const ctx = ensure(state); if (ctx.networksDirty) rebuildNetworks(state);
+      if (ctx.drained && ctx.drainedVer === ctx.netVer) return ctx.drained;
+      const m = (ctx.drained && ctx.drained.length === N) ? ctx.drained : new Uint8Array(N); m.fill(0);
+      for (const net of ctx.networks) { if (!netOutlet(state, ctx, net)) continue; const cat = catchmentOf(state, ctx, net.tiles); for (let k = 0; k < cat.length; k++) m[cat[k]] = 1; for (let k = 0; k < net.tiles.length; k++) m[net.tiles[k]] = 2; }
+      ctx.drained = m; ctx.drainedVer = ctx.netVer;
+      return m;
+    } catch (e) { BSU.error('hydro', 'drainedMask', e); return null; }
+  };
+  /** render's live canal water: the per-tile flow direction (Int8Array: 0 N, 1 E, 2 S, 3 W toward the outlet, −1 none). Read-only */
+  M.canalDirs = function (state) { try { const ctx = ensure(state); if (ctx.networksDirty) rebuildNetworks(state); return ctx.canalDir; } catch (e) { return null; } };
   M.drainsTo = function (state, i) {
     try {
       const ctx = ensure(state); i |= 0; if (i < 0 || i >= N) return 'ground';
@@ -1179,7 +1305,8 @@
       ctx.networksDirty = true; ctx.tileDirty[i] = 1; ctx.anyTileDirty = true;
       if (state.hydro.risk) state.hydro.risk.dirty = true;
       activate(ctx, i);
-      const Tn = terrainApi(); if (typeof Tn.touch === 'function') Tn.touch(state, i, 'flags');
+      const Tn = terrainApi(); if (typeof Tn.classify === 'function') Tn.classify(state, i);   // water pass: a canal bed dug in wet ground is not Marsh (terrain.typeOf reads the flag)
+      if (typeof Tn.touch === 'function') Tn.touch(state, i, 'flags');
     } catch (e) { BSU.error('hydro', 'markCanal', e); }
   };
   M.markPond = function (state, tiles, id, on) {

@@ -54,7 +54,7 @@ const GEO = [
   ['shore:sand', 5, 0, 64, 32, -32, -16], ['shore:mud', 10, 0, 64, 32, -32, -16], ['shore:ripple', 15, 0, 64, 32, -32, -16], ['shore:beach', 0, 0, 64, 32, -32, -16],
   ['tone:warm', 0, 0, 64, 32, -32, -16], ['tone:cool', 0, 0, 64, 32, -32, -16], ['reeds', 1, 1, 12, 14, -6, -13], ['knees', 9, 0, 64, 32, -32, -16], ['knees', 63, 0, 64, 32, -32, -16],
   ['worn', 4, 0, 64, 32, -32, -16], ['worn', 1, 0, 64, 32, -32, -16], ['mound', 0, 0, 24, 14, -12, -20],
-  ['levee', 0, 0, 64, 48, -32, -28], ['levee', 16 | 3, 0, 64, 48, -32, -28], ['levee', 15, 0, 64, 48, -32, -28], ['floodwall', 10, 0, 64, 54, -32, -36], ['floodwall', 0, 0, 64, 54, -32, -36],
+  ['levee', 0, 0, 64, 72, -32, -52], ['levee', 16 | 3, 0, 64, 72, -32, -52], ['levee', 15, 0, 64, 72, -32, -52], ['levee', 5 | (2 << 5), 0, 64, 72, -32, -52], ['floodwall', 10, 0, 64, 106, -32, -88], ['floodwall', 0, 0, 64, 106, -32, -88],   // water pass: walls at their true height (a 6-ft levee rises 36 px, a 12-ft floodwall 72); bits 5–8 = the other-kind wall neighbours
   ['canal', 32 | 64 | 5, 0, 64, 32, -32, -16], ['canal', 16, 0, 64, 32, -32, -16], ['canal', 15, 0, 64, 32, -32, -16], ['water', 0, 0, 64, 32, -32, -16], ['water', 1, 0, 64, 32, -32, -16],
 ];
 let geoOk = true, hdOk = true, errs0 = BSU.errors.size, nBaked = 0;

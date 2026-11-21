@@ -1144,7 +1144,7 @@
   function quoteRun(s, run) {
     if (!s || !s.ui || !s.ui.tool) return null;
     const tool = s.ui.tool, row = rowOf(tool.id); if (!isRunRow(row)) return null;
-    const q = call('buildings', 'runQuote', s, tool.id, run, { rot: tool.rot }); if (!q) return null;
+    const q = call('buildings', 'runQuote', s, tool.id, run, { rot: tool.rot, noTie: heldAlt }); if (!q) return null;   // noTie (water pass): a canal's outlet tie is not planned while Alt is held
     const access = [PLACE.PATH, PLACE.ROAD, PLACE.BOARDWALK].indexOf(row.placeRule) >= 0;
     if (q.cross && Array.isArray(q.cross.shores)) { let rank = 0; for (const sh of q.cross.shores) rank += sh.tie ? sh.tie.tiles.length : (sh.touch ? 0 : 99); q.tieRank = rank; }
     else q.tieRank = q.touches ? 0 : (q.tie ? q.tie.tiles.length : (access ? 99 : 0));
@@ -1472,8 +1472,11 @@
     const dragging = live.state === 'DRAGGING';
     const isRing = row.id === 'levee' || row.id === 'floodwall';
     const shrank = dragging && live.run.length < lastRunLen; lastRunLen = dragging ? live.run.length : 0;   // a backtrack changes the ring maths at once: never serve the throttled copy
-    if (dragging && isRing && !shrank && clock - lastRingMs < L.ringThrottleMs && lastGhost) { drawGhost(s, tool, row, lastGhost.r, g, px, py, dragging); return; }
-    const opts = { rot: tool.rot, noTie: heldAlt }; if (dragging) opts.tiles = live.run;
+    // water pass: the ring preview is the machine plan's (buildings.runQuote → ring, one per candidate run on every move), so the 50-ms throttle that
+    // served the previous ghost is gone: it showed the run as it was up to 50 ms before the pointer stopped ("0 tiles · $0" after a quick drag), and
+    // canPlace is told not to compute its own copy of the preview (noRing)
+    void shrank; void isRing;
+    const opts = { rot: tool.rot, noTie: heldAlt }; if (dragging) { opts.tiles = live.run; opts.noRing = true; }
     const r = call('buildings', 'canPlace', s, tool.id, g.tx, g.ty, opts); if (!r) return;
     if (dragging) {   // paths pass: the drag end's tie / snap preview; roads pass: from the machine's plan (one quote per move) when it has one
       const pl = live.plan && live.plan.n === live.run.length ? live.plan : null; r.plan = pl;
@@ -1505,7 +1508,9 @@
     if (pl && pl.extra && pl.extra.length) tiles = tiles.concat(pl.extra);   // crossings pass: the landing a bridge that starts / ends on the water steps off onto
     const conn = (!dragging && !g.cove && r.connector && Array.isArray(r.connector.tiles) && r.connector.tiles.length) ? r.connector : (dragging && r.tie && r.tie.tiles.length ? r.tie : null);   // paths pass: the tie this placement (or this drag's end) would lay
     const cross = (dragging && r.cross && !heldAlt) ? r.cross : null, xties = cross && cross.ties.length ? cross.ties : null;   // crossings pass: one tie per bank
-    const spec = { tiles: tiles, skipTiles: fq ? fq.skipped.map(function (x) { return x.i; }) : (pl && pl.skipped.length ? pl.skipped.map(function (x) { return x.i; }) : null), color: color, connectorTiles: null, ringTiles: r.ring && Array.isArray(r.ring.tiles) ? r.ring.tiles : null, label: '', radius: fin(r.radius, 0), radiusCenter: { tx: g.tx, ty: g.ty } };
+    const cnl = (pl && pl.canal && pl.placed > 0) ? pl.canal : null;   // water pass: where a canal run drains to, and the tiles it digs on to get there
+    if (cnl && !cnl.outlet && color === 'green') color = 'yellow';
+    const spec = { tiles: tiles, skipTiles: fq ? fq.skipped.map(function (x) { return x.i; }) : (pl && pl.skipped.length ? pl.skipped.map(function (x) { return x.i; }) : null), color: color, connectorTiles: (cnl && cnl.tie) ? cnl.tie.tiles : null, ringTiles: r.ring && Array.isArray(r.ring.tiles) ? r.ring.tiles : null, label: '', radius: fin(r.radius, 0), radiusCenter: { tx: g.tx, ty: g.ty } };
     if (row.kind === 'footprint' || row.kind === 'upgrade') spec.sprite = { id: tool.id, variant: r.needsPilings ? SPR.PILINGS : 0, tx: g.tx, ty: g.ty, rot: tool.rot };
     if (dragging && live.run.length > 1 && row.kind === 'drag' && [PLACE.PATH, PLACE.ROAD, PLACE.BOARDWALK, PLACE.BRIDGE].indexOf(row.placeRule) >= 0) { spec.line = live.run; spec.lineKind = fin(row.effects && row.effects.surfaceId, 0); }   // roads pass: the run as a stroked centreline (its L and elbow)
     call('render', 'ghost', spec);
@@ -1518,21 +1523,25 @@
     else if (dragging) {
       const n = pl ? pl.placed : live.run.length; const per = fin(r.cost, row.cost) || row.cost; l1 = n + (n === 1 ? ' tile' : ' tiles') + ' · ' + money(pl ? pl.cost : per * n);   // the tiles that will be laid, at their own prices (bridge tiles ×4)
       if (pl && row.placeRule === PLACE.BRIDGE && pl.placed > 0) { const nb = pl.placed - fin(pl.landings, 0); l1 = 'Bridge ' + nb + (nb === 1 ? ' tile' : ' tiles') + (pl.landings ? ' + ' + pl.landings + ' path' : '') + ' · ' + money(pl.cost); }   // crossings pass: the deck and the gravel it lays on land, both priced
+      if (pl && row.id === 'road_bridge' && pl.placed > 0) { const nb = fin(pl.bridge, 0), nr = pl.placed - nb; l1 = 'Road Bridge ' + nb + (nb === 1 ? ' tile' : ' tiles') + (nr > 0 ? ' + ' + nr + ' road' : '') + ' · ' + money(pl.cost); }   // water pass: the deck and the road it lays on the dry ground of the run
+      if (cnl && cnl.tie) l1 += ' + ' + money(cnl.tie.cost) + ' outlet';   // "3 tiles · $75k + $50k outlet"
       if (xties) l1 += ' + ' + money(cross.cost) + (xties.length > 1 ? ' ties (both banks)' : ((xties[0].snap ? ' snap (' : ' tie (') + bankName(xties[0].end).toLowerCase() + ')'));   // "Bridge 3 tiles · $135k + $6k ties (both banks)"
       else if (conn) l1 += ' + ' + money(conn.cost) + (conn.snap ? ' snap' : ' tie');   // "12 tiles · $24k + $8k tie"
       { const nc = pl ? fin(heldAlt ? pl.clearsRun : pl.clears, 0) : 0; if (nc > 0) l1 += ' · clears ' + nc + (nc === 1 ? ' tree' : ' trees'); }   // rule 8: a surface clears its tile
-      if (r.ring && r.ring.text) l2 = r.ring.text; else if (r.ring && typeof r.ring.closed === 'boolean') l2 = r.ring.closed ? 'closes the ring' : (r.ring.shortText || ('still ' + fin(r.ring.short, 0) + ' tiles short'));
+      { const ring = (pl && pl.ring) || r.ring; if (ring && ring.text) l2 = ring.text; }   // water pass: buildings' wall report ("Closes the ring: holds a 5 ft surge off 14 tiles" / "Ring open: 1 gap · …" / "Open wall: …"); the old branch read a field (`closed`) the preview never had
+      if (cnl) l2 = cnl.outlet ? ('Drains ' + cnl.drains + (cnl.drains === 1 ? ' tile' : ' tiles') + ' to ' + cnl.outlet + (cnl.tie ? ' · digs on ' + cnl.tie.tiles.length + (cnl.tie.tiles.length === 1 ? ' tile' : ' tiles') + ' to reach it' : '')) : ('No outlet: this canal drains nowhere' + (heldAlt ? ' (Alt held: no outlet tie)' : ' · no water within ' + fin(cnl.reach, 6) + ' tiles of its ends'));
       const st = dragStatus(s, row, r, conn); if (st) l2 = st + (l2 ? ' · ' + l2 : '');
       const sk = skipText(pl); if (sk) l2 = sk + (pl.cut > 0 ? ' · nothing is laid past it' : '') + (l2 ? ' · ' + l2 : '');   // roads pass: "3 marsh tiles skipped: use a Boardwalk or a bridge" first
       if (!l2 && live.run.length > 1) l2 = 'Drag back to shorten · Esc cancels'; else if (st && !sk && live.run.length > 1) l2 += ' · Drag back to shorten';
     }
     else if (g.cove) { l1 = 'Not here'; l2 = 'The cove floods every rain. Build on the ridge.'; }
-    else if (!r.ok && row.placeRule === PLACE.BRIDGE && isRunRow(row) && r.reason === 'Bridges go over water') { color = 'yellow'; l1 = money(row.cost) + ' / tile'; l2 = 'Press on the bank and drag across the water: both ends connect themselves'; }   // crossings pass: the bank is where the drag starts, not a refusal
+    else if (!r.ok && (row.placeRule === PLACE.BRIDGE || row.id === 'road_bridge') && isRunRow(row) && r.reason === 'Bridges go over water') { color = 'yellow'; l1 = money(row.cost) + ' / tile'; l2 = 'Press on the bank and drag across the water: both ends connect themselves'; }   // crossings pass: the bank is where the drag starts, not a refusal
     else if (!r.ok) { l1 = r.reason || 'Cannot build here'; l2 = r.charter ? 'State land · click to open the Land Office (O)' : (r.reason === tieReason() ? 'Hold N to see the campus network' : (ridgeText(r.ridgeFull) || sinkText(r.sink) || '')); }   // L2: the charter line
     else {
       l1 = money(r.cost); if (isRunRow(row)) l1 += ' / tile';
       if (conn) l1 += ' + ' + money(conn.cost) + ' tie';   // "$600k + $8k tie"
       if (r.needsGrading) l1 += ' · Grade the site +' + money(r.gradingCost || 0); else if (r.needsPilings) l1 += ' · Pilings +' + money(r.pilingsCost || 0);
+      if (call('buildings', 'clearsPlants', tool.id) === true) { const nc = fin(call('buildings', 'plantsOn', s, (r.tiles || []).concat(conn && conn.tiles ? conn.tiles : [])), 0); if (nc > 0) l1 += ' · clears ' + nc + (nc === 1 ? ' tree' : ' trees'); }   // water pass (N5): a building clears its footprint
       if (ridgeText(r.ridgeFull)) l2 = ridgeText(r.ridgeFull); else if (sinkText(r.sink)) l2 = sinkText(r.sink); else if (r.ring && r.ring.text) l2 = r.ring.text; else if (!r.affordable) l2 = 'Not enough cash';
       else { const uw = utilityWarning(s, row, r); if (uw) l2 = uw; }
       if (!l2 && row.kind === 'paint') l2 = 'Drag to paint an area';   // goal pass
@@ -1946,12 +1955,31 @@
         body.appendChild(row('Crest', ft(t.crest) + (sand ? ' (+' + (sand / 10).toFixed(1) + ' sandbags, ' + Math.max(0, sd - dayOf(s)) + ' days left)' : '')));
         const integ = fin(t.integrity, 100); body.appendChild(row('Integrity', integ + '%' + (integ < 50 ? ' · halved' : integ < 80 ? ' · weak' : ''), integ < 80 ? 'bad' : ''));
         const bl = s.wildlife && s.wildlife.burrowLog && s.wildlife.burrowLog[i]; if (bl) body.appendChild(row('Burrows', bl.n + ' · last ' + BSU.formatDate(bl.day)));
-        const H = fin(call('weather', 'forecastSurge', s), 5) || 5; const bnd = call('buildings', 'boundaryLevees', s, H); if (bnd && typeof bnd.indexOf === 'function') body.appendChild(row('Boundary at ' + H.toFixed(0) + ' ft', bnd.indexOf(i) >= 0 ? 'yes — on the ring' : 'no'));
+        // water pass: what this wall does, in plain words (buildings.leveeStatus): closed and what it keeps dry, or open and where; how rain inside gets out
+        const ws = call('buildings', 'leveeStatus', s, i);
+        if (ws) {
+          if (!rname) setText(E['insp-title'], t.crest >= 12 ? 'Concrete Floodwall' : 'Earthen Levee');
+          body.appendChild(row('Protects', ws.text, ws.closed ? 'good' : (ws.text.indexOf('No water') === 0 ? '' : 'bad')));
+          if (ws.missing) body.appendChild(row(ws.closed ? 'Rain inside' : 'To close it', ws.closed ? ws.missing.replace(/^Rain inside /, '') : ws.missing, 'bad'));
+          else if (ws.rain) body.appendChild(row('Rain inside', ws.rain.replace(/^Rain inside /, '')));
+          body.appendChild(row('Holds back', ft(ws.holds) + ' of water along ' + ws.tiles + (ws.tiles === 1 ? ' tile' : ' tiles') + ' (its lowest crest is at ' + ft(ws.lowTop) + ')'));
+          if (!ws.closed && ((ws.gaps && ws.gaps.length) || (ws.openEnds && ws.openEnds.length))) acts.appendChild(action(ws.gaps.length ? 'Show me the gap' : 'Show me the open end', function () { const g0 = ws.gaps[0] || ws.openEnds[0]; call('render', 'panToTile', g0.cx, g0.cy); call('render', 'flashTiles', g0.tiles, 6000); return null; }, 'primary'));
+        }
         if (integ < 100) acts.appendChild(action('Repair $5k', function (st) { return call('buildings', 'repairLevee', st, i); }));
         if (integ < 100 && issuesApi()) { const wl = issuesApi().list(s).find(function (it) { return it.kind === 'weakLevee' && it.tiles.indexOf(i) >= 0; }); if (wl && wl.action && wl.action.run && wl.action.run.length > 1) acts.appendChild(action('Repair run · ' + money(wl.cost), function (st) { const r2 = call('buildings', 'repairLeveeRun', st, wl.action.run); if (r2 && r2.ok && issuesApi()) issuesApi().invalidate(); return r2; })); }   // issues v2
         acts.appendChild(action('Demolish', function (st) { const rr = call('buildings', 'remove', st, { tile: i }, 'demolish'); if (rr && rr.ok) closeInspectDom(); return rr; }, 'danger'));
       } else {
         setText(E['insp-title'], tname); setText(E['insp-sub'], 'Tile (' + (i % W) + ', ' + ((i / W) | 0) + ')');
+        const cs = (t.flags & BSU.FLAG.CANAL) ? call('hydro', 'canalStats', s, i) : null;   // water pass: a canal tile's card is the canal's (what it drains, where to, what is in it)
+        if (cs) {
+          setText(E['insp-title'], (t.flags & BSU.FLAG.FLOODGATE) ? 'Floodgate' : 'Drainage Canal'); setText(E['insp-sub'], cs.tiles + (cs.tiles === 1 ? ' tile' : ' tiles') + ' · (' + (i % W) + ', ' + ((i / W) | 0) + ')');
+          if (cs.drains) body.appendChild(row('Draining', cs.catchment + (cs.catchment === 1 ? ' tile' : ' tiles') + ' · outlet: ' + cs.outlet, 'good'));
+          else { body.appendChild(row('Draining', 'No outlet: this canal drains nowhere', 'bad')); body.appendChild(row('To fix it', 'Dig it on to the bayou or open water, or put a Pump Station on it')); }
+          body.appendChild(row('In the channel', cs.depth < 0.03 ? 'dry' : (ft(cs.depth) + ' of water, ' + (cs.flowing ? 'flowing to ' + cs.outlet : (cs.pumps ? 'waiting for the pump' : 'standing'))), cs.depth >= 0.03 ? 'water' : ''));
+          if (cs.drains) body.appendChild(row('Carried off', (Math.round(cs.movedToday * 10) / 10) + ' tile-ft today · ' + (Math.round(cs.movedYesterday * 10) / 10) + ' yesterday'));
+          body.appendChild(row('Around it', cs.wet ? cs.wet + (cs.wet === 1 ? ' tile' : ' tiles') + ' under water now' : 'no standing water'));
+          if (cs.gates) body.appendChild(row('Floodgates', cs.gates + ' · close when the water outside passes 1 ft'));
+        }
         body.appendChild(row('Elevation', ft(t.elev)));
         if (fin(t.depth, 0) > 0.005) body.appendChild(row('Water', ft(t.depth), 'water'));
         body.appendChild(row('Saturation', Math.round(fin(t.sat, 0) * 100) + '%'));
@@ -1960,9 +1988,9 @@
         const rate = call('terrain', 'subsidenceRate', s, i, false); if (Number.isFinite(rate) && rate > 0) body.appendChild(row('Sinking', rate.toFixed(2) + ' ft/yr'));
         if (t.flags & BSU.FLAG.WETLAND_ORIGINAL) body.appendChild(row('Wetland', 'original marsh'));
         if (t.flags & BSU.FLAG.PRESERVE) body.appendChild(row('Preserve', 'protected'));
-        body.appendChild(row('Drains to', String(t.drainsTo || 'ground')));
+        if (!cs) body.appendChild(row('Drains to', String(t.drainsTo || 'ground')));
         const can = t.type === T.MARSH ? 'Boardwalks, levees, canals; buildings on Pilings' : (t.type === T.OPEN_WATER || t.type === T.BAYOU) ? 'Boardwalk bridges, a Surge Barrier' : t.type === T.POND ? 'nothing — it is a pond' : 'anything with a path on its edge';
-        body.appendChild(row('Can build', can));
+        if (!cs) body.appendChild(row('Can build', can));
       }
     } else if (kind === 'agent') {
       const a = (s.agents || [])[insp.id]; const q = call('agents', 'inspect', s, insp.id) || {};
@@ -2452,10 +2480,10 @@
   /** requirement glyphs for a row → [{glyph, text}] */
   const REQ_LABEL = { '⚡': 'Power', '💧': 'Water', '🚶': 'Path', '🛣': 'Road', '🪵': 'Pilings', '↔': 'Drag' };   // UI scale pass: the requirement glyphs carry a word
   /** U5: a requirement's data glyph (data.js keeps the emoji) → its registry icon */
-  function reqIcon(g) { return BSU.icons.fromGlyph(g) || 'help'; }
+  function reqIcon(q) { return (q && q.icon && BSU.icons.has(q.icon)) ? q.icon : (BSU.icons.fromGlyph(q && q.glyph) || 'help'); }   // water pass: a requirement may name its own registry icon (the Road Bridge)
   function requirementsOf(row) {
     const RQ = (BSU.data && BSU.data.requirements) || {}; const out = []; if (!row) return out;
-    const place = RQ.place && RQ.place[row.placeRule]; if (place && row.placeRule !== BSU.PLACE.LAND) out.push(place);
+    const place = (RQ.row && RQ.row[row.id]) || (RQ.place && RQ.place[row.placeRule]); if (place && row.placeRule !== BSU.PLACE.LAND) out.push(place);   // water pass: a row's own line (the Road Bridge) wins over its placeRule's
     if (row.pathAdjacency && RQ.path) out.push(RQ.path);
     if (row.roadWithin > 0 && RQ.road) out.push({ glyph: RQ.road.glyph, text: RQ.road.text.replace('{n}', String(row.roadWithin)) });
     if (row.needsPower && RQ.power) out.push(RQ.power);
@@ -2576,7 +2604,7 @@
           const ic = el('canvas', 'icon'); ic.width = 64; ic.height = 64; c.appendChild(ic); call('render', 'drawIcon', ic, id);
           c.appendChild(el('div', 'bm-name', r.name));
           const price = el('div', 'bm-price'); price.appendChild(el('span', 'bm-cost', money(r.cost) + (r.kind === 'drag' || r.kind === 'paint' ? '/tile' : (r.kind === 'upgrade' ? ' +40%' : '')))); if (r.upkeep || !(r.kind === 'drag' || r.kind === 'paint')) price.appendChild(el('span', 'bm-upkeep', r.upkeep ? '· ' + money(r.upkeep) + '/mo' : '· no upkeep')); c.appendChild(price);
-          if (u.ok) { const reqs = el('div', 'bm-reqs'); for (const q of requirementsOf(r)) { const sp = el('span', 'bm-req'); sp.appendChild(icon(reqIcon(q.glyph), 'sm')); if (REQ_LABEL[q.glyph]) sp.appendChild(el('span', 'rq-l', REQ_LABEL[q.glyph])); sp.title = q.text; reqs.appendChild(sp); } if (r.w > 1 || r.h > 1) { const fp = el('span', 'bm-req fp', r.w + '×' + r.h); fp.title = 'Footprint ' + r.w + '×' + r.h + ' tiles' + (r.rotatable ? ' (R rotates)' : ''); reqs.appendChild(fp); } c.appendChild(reqs); }
+          if (u.ok) { const reqs = el('div', 'bm-reqs'); for (const q of requirementsOf(r)) { const sp = el('span', 'bm-req'); sp.appendChild(icon(reqIcon(q), 'sm')); if (REQ_LABEL[q.glyph]) sp.appendChild(el('span', 'rq-l', REQ_LABEL[q.glyph])); sp.title = q.text; reqs.appendChild(sp); } if (r.w > 1 || r.h > 1) { const fp = el('span', 'bm-req fp', r.w + '×' + r.h); fp.title = 'Footprint ' + r.w + '×' + r.h + ' tiles' + (r.rotatable ? ' (R rotates)' : ''); reqs.appendChild(fp); } c.appendChild(reqs); }
           else { const lk = el('div', 'bm-lock'); lk.appendChild(el('span', null, unlockText(u.reason))); c.appendChild(lk); }
           if (reco[id]) { const st = el('span', 'bm-star star'); st.title = badgeText(reco[id]); st.appendChild(icon('star', 'sm')); c.appendChild(st); }
           c.addEventListener('click', function () { armCard(stateOf(), id, false); });
@@ -2607,7 +2635,7 @@
     d.appendChild(el('div', 'bm-dblurb', r.blurb || ''));
     if (r.why) d.appendChild(el('div', 'bm-dwhy', '“' + r.why + '”'));
     const eff = effectLines(r); if (eff.length) { d.appendChild(el('div', 'card-kicker', 'Effects')); const ul = el('div', 'bm-list'); for (const line of eff) ul.appendChild(el('div', 'bm-li', line)); d.appendChild(ul); }
-    const rq = requirementsOf(r); if (rq.length) { d.appendChild(el('div', 'card-kicker', 'Needs')); const ul = el('div', 'bm-list'); for (const q of rq) { const li = el('div', 'bm-li'); li.appendChild(icon(reqIcon(q.glyph), 's20')); li.appendChild(el('span', null, q.text)); ul.appendChild(li); } d.appendChild(ul); }
+    const rq = requirementsOf(r); if (rq.length) { d.appendChild(el('div', 'card-kicker', 'Needs')); const ul = el('div', 'bm-list'); for (const q of rq) { const li = el('div', 'bm-li'); li.appendChild(icon(reqIcon(q), 's20')); li.appendChild(el('span', null, q.text)); ul.appendChild(li); } d.appendChild(ul); }
     if (r.desc) d.appendChild(el('div', 'bm-ddesc', r.desc));
     if (!u.ok) d.appendChild(el('div', 'bm-dlock', unlockText(u.reason)));
     else {

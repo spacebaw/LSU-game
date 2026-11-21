@@ -118,6 +118,15 @@
       for (let u = -U + 0.1; u <= U; u += 0.5) { const a = pt(u, 0, 0); B.column(ctx, a[0], a[1], 10, 0.8, '#C4C8D4', env); }
       for (const h of [3.5, 8]) B.stroke(ctx, [pt(-U, 0, h), pt(U, 0, h)], 1, '#D8DCE6', h > 5 ? 0.45 : 0.1, 0.95);
       for (let u = -U + 0.1; u < U; u += 0.2) B.stroke(ctx, [pt(u, 0, 3.5), pt(u + 0.2, 0, 8)], 0.5, '#C4C8D4', 0.1, 0.4);
+    } else if (kind === 'road_bridge') {   // water pass: the Road Bridge — an asphalt deck with a dashed centre line and concrete parapets on three heavy piers
+      const hw = 0.42, rise = 6, dth = 2.6;
+      const quad = (u0, u1, v0, v1, h) => [pt(u0, v0, h), pt(u1, v0, h), pt(u1, v1, h), pt(u0, v1, h)];
+      B.shadow(ctx, { poly: quad(-U, U, -hw + 0.1, hw + 0.1, 0).map((p) => [p[0] + 2, p[1] + 1]), soft: 2.5, a: 0.42 }, env);
+      for (let u = -U + 0.5; u < U; u += 1) { const a = pt(u, hw - 0.06, rise - dth); B.column(ctx, a[0], a[1] + rise - dth, rise - dth + 0.5, 1.7, '#B8B8BC', env); }
+      B.fillQuadShaded(ctx, [pt(-U, hw, rise - dth), pt(U, hw, rise - dth), pt(U, hw, rise), pt(-U, hw, rise)], '#B8B8BC', { face: 'sw', material: 'stone', noAO: true }, env);
+      B.fillQuadShaded(ctx, quad(-U, U, -hw, hw, rise), '#3A3A40', { face: 'top', material: 'asphalt' }, env);
+      for (let u = -U + 0.2; u < U - 0.2; u += 0.55) B.stroke(ctx, [pt(u, 0, rise), pt(u + 0.28, 0, rise)], 0.9, '#FDD023', 0.1, 0.95, { cap: 'butt' });
+      for (const side of [-1, 1]) { const v = side * hw; B.stroke(ctx, [pt(-U, v, rise + 1.4), pt(U, v, rise + 1.4)], 1.5, '#C9C9CE', side > 0 ? 0.35 : -0.15, 1, { cap: 'butt' }); for (let u = -U; u <= U + 0.01; u += 0.75) { const a = pt(u, v, rise); B.column(ctx, a[0], a[1], 2.2, 0.6, '#B8B8BC', env); } }
     } else if (kind === 'boardwalk' || kind === 'bridge') {
       const br = kind === 'bridge', hw = 0.36, rise = br ? 5 : 4, dth = 2.2;
       const quad = (u0, u1, v0, v1, h) => [pt(u0, v0, h), pt(u1, v0, h), pt(u1, v1, h), pt(u0, v1, h)];
@@ -202,7 +211,7 @@
   // ---------------------------------------------------------------------------
   // The painter
   // ---------------------------------------------------------------------------
-  const RUN_KINDS = { path: 1, road: 1, boardwalk: 1, bridge: 1, gator_fence: 1 };   // drawn by the brush; every other run is made of HD terrain stamps
+  const RUN_KINDS = { path: 1, road: 1, boardwalk: 1, bridge: 1, gator_fence: 1, road_bridge: 1 };   // drawn by the brush; every other run is made of HD terrain stamps
   M.registerHD('icon', function (ctx, spec) {
     const id = spec.sub, locked = (spec.variant & 1) === 1, G = B.begin(ctx, ICON, ICON, spec), env = G.env, z = G.S === 2 ? 2 : 1;
     drawBackdrop(ctx, env, locked);
