@@ -125,7 +125,17 @@
     marsh_restoration: { ground: 'lawn', props: [{ kind: 'lookout', at: [3, 3], back: true }, { kind: 'airboat', at: [8, 29], atL: [29, 8] }] },
     rookery: { body: 'rookery' },
     practice_field: { body: 'field' },
-    stadium: { body: 'stadium' }
+    stadium: { body: 'stadium' },
+    // colleges and venues pass: 23 rows. Plain rows are one line (the paint carries the look); three leave a yard in front of a shortened box for a yard prop (like the Rec Center's pool deck)
+    univ_college: { ground: 'brick' }, online_center: { ground: 'pave' }, business_college: { ground: 'brick' }, education_college: { ground: 'lawn' },
+    masscomm_school: { ground: 'pave' }, humanities_college: { ground: 'brick', columns: 6 }, art_college: { ground: 'pave' }, music_college: { ground: 'brick', columns: 4 },
+    ag_college: { ground: 'lawn' }, science_college: { ground: 'pave' }, honors_college: { ground: 'brick', columns: 4 }, grad_school: { ground: 'brick' },
+    rotc_armory: { ground: 'gravel', box: [12, 116, 12, 76], boxL: [12, 76, 12, 116], props: [{ kind: 'flagpoles' }] },
+    law_center: { ground: 'brick', columns: 6 }, vet_school: { ground: 'lawn' },
+    concert_hall: { ground: 'pave', columns: 4 }, theatre: { ground: 'pave' }, band_hall: { ground: 'lawn' }, art_gallery: { ground: 'pave' },
+    vet_hospital: { ground: 'lawn', box: [12, 116, 12, 70], boxL: [12, 70, 12, 116], props: [{ kind: 'paddock' }] },
+    nat_museum: { ground: 'brick', columns: 6 }, computer_lab: { ground: 'pave' },
+    ag_greenhouses: { ground: 'lawn', box: [12, 84, 12, 50], boxL: [12, 50, 12, 84], props: [{ kind: 'glasshouse' }] }
   });
   const GROUND_BY_TAB = { academic: 'brick', housing: 'lawn', utilities: 'gravel', dining: 'terrace', life: 'pave', swamp: 'lawn', grounds: 'lawnPlain', sports: 'lawnPlain' };
   M.HD_ROWS = HD_ROWS;
@@ -646,6 +656,44 @@
         for (const dx of [-5.4, 5.4]) line(ctx, [x + dx, y - H + 5], [x + dx, y - H + 1], 0.7, C.bark, 0.1, 0.9);
         line(ctx, [x - 5.6, y - H + 1.5], [x + 5.6, y - H + 1.5], 0.9, C.gold, 0.2, 0.95);
         B.plane(ctx, [[x - 7, y - H], [x + 7, y - H], [x + 5, y - H - 2.5], [x - 5, y - H - 2.5]], C.tin, 0.2, { amp: 0.2, rim: 0.3 });
+        break; }
+      case 'flagpoles': case 'paddock': case 'glasshouse': {   // colleges pass: the yard props on the strip the row's box leaves free (HD_ROWS.box / boxL), like the pool deck: parade apron + three flagpoles / barn wing + fenced paddock / two glass bays
+        if (g.lift > 0) break; const L = g.frontLeft;
+        const X0 = L ? b.X1 + 2 : b.X0 + 4, X1 = L ? g.fw * 32 - g.ipx - 2 : b.X1 - 4, Y0 = L ? b.Y0 + 4 : b.Y1 + 2, Y1 = L ? b.Y1 - 4 : g.fh * 32 - g.ipy - 2;
+        const LU = L ? Y1 - Y0 : X1 - X0, LV = L ? X1 - X0 : Y1 - Y0;   // u along the strip's long side, v across it
+        const XY = (u, v) => L ? [X0 + v, Y0 + u] : [X0 + u, Y0 + v];
+        const P = (u, v, up) => { const c = XY(u, v); return fp(g, c[0], c[1], up || 0, true); };
+        const quad = (u0, u1, v0, v1, up) => [P(u0, v0, up), P(u1, v0, up), P(u1, v1, up), P(u0, v1, up)];
+        const ground = pr.kind === 'flagpoles' ? C.asphalt : pr.kind === 'paddock' ? C.sandYard : C.paveLight;
+        B.fillQuadShaded(ctx, quad(0, LU, 0, LV, 0), ground, { face: 'top', material: 'stone', t: 0.05, noAO: true }, env);
+        if (pr.kind === 'flagpoles') {
+          line(ctx, P(2, LV / 2, 0.2), P(LU - 2, LV / 2, 0.2), 0.7, C.white, 0.1, 0.7);   // the parade line
+          const FL = [C.purple, C.gold, C.white];
+          for (let i = 0; i < 3; i++) {
+            const p = P(LU * (i + 1) / 4, LV * 0.55, 0), x = p[0], y = p[1];
+            B.shadow(ctx, { x: x + 1, y: y + 0.4, rx: 2.5, ry: 1, a: 0.3 }, env);
+            B.column(ctx, x, y, 26, 0.7, C.steel, env); B.orb(ctx, x, y - 26.6, 1, 1, C.gold, 0.4, { noRim: true });
+            const s2 = L ? -1 : 1;
+            B.fillQuadShaded(ctx, [[x, y - 25], [x + 9 * s2, y - 24], [x + 9 * s2, y - 17], [x, y - 18]], FL[i], { face: L ? 'se' : 'sw', material: 'cloth', noAO: true }, env);
+          }
+        } else if (pr.kind === 'paddock') {
+          const rail = (a, b2) => { for (const h of [2.4, 4.6]) line(ctx, P(a[0], a[1], h), P(b2[0], b2[1], h), 0.7, C.wood, 0.1, 0.95); };
+          const fe = LU - 44;   // the barn takes the last 44 px of the strip
+          rail([1, 1], [fe, 1]); rail([fe, 1], [fe, LV - 1]); rail([fe, LV - 1], [1, LV - 1]); rail([1, LV - 1], [1, 1]);
+          for (let u = 1; u <= fe; u += 12) for (const v of [1, LV - 1]) line(ctx, P(u, v, 0), P(u, v, 5), 0.8, C.bark, -0.1, 0.95);
+          if (env.lod === 0) for (const k of [0.3, 0.6]) { const p = P(fe * k, LV * 0.5, 0); B.orb(ctx, p[0], p[1] - 2, 2.6, 2, '#C9B060', 0.1, { noRim: true }); }   // hay
+          const bc = XY(LU - 22, LV / 2), bx = miniBox(ctx, g, bc[0], bc[1], L ? LV / 2 - 3 : 20, L ? 20 : LV / 2 - 3, 14, '#A8402E', 'wood', env, 0, { top: '#7A3A2E', topT: -0.1 });
+          line(ctx, facePt(bx, 0, 0, 14), facePt(bx, 0, 1, 14), 1.2, C.gold, 0.3, 0.9);
+          const dq = faceQuad(bx, L ? 1 : 0, 0.38, 0.62, 0, 9); flat(ctx, dq, '#4A1F18', -0.2);
+        } else {
+          for (const k of [0.28, 0.72]) {
+            const c = XY(LU * k, LV / 2), hx = L ? LV / 2 - 3 : LU * 0.18, hy = L ? LU * 0.18 : LV / 2 - 3;
+            const gb = miniBox(ctx, g, c[0], c[1], hx, hy, 9, '#BFE0D0', 'glass', env, 0, { top: '#DDF0E6', topT: 0.2 });
+            for (let m = 1; m < 6; m++) { line(ctx, facePt(gb, 0, m / 6, 0), facePt(gb, 0, m / 6, 9), 0.5, '#6F9A88', 0, 0.8); }
+            line(ctx, facePt(gb, 0, 0, 9), facePt(gb, 0, 1, 9), 0.8, C.white, 0.4, 0.9);
+          }
+          if (env.lod === 0) for (let i = 0; i < 5; i++) { const p = P(LU * (0.06 + i * 0.2), LV * 0.9, 0); B.orb(ctx, p[0], p[1] - 1.5, 1.4, 1.2, C.green, 0.1, { noRim: true }); }   // potted plants along the yard
+        }
         break; }
       case 'clarifier': { const x = at[0], y = at[1] - 2; B.orb(ctx, x, y, 10, 5, C.concrete, 0.1, { noRim: true }); B.puddle(ctx, x, y - 0.4, 8, 4, env, { t: -0.15, spec: 0.35, rim: 0.3 }); const a = (frame & 1) ? 1 : -1; line(ctx, [x - 7 * a, y - 2], [x + 7 * a, y + 2], 1, C.concrete, 0.6, 0.9); B.orb(ctx, x, y - 0.6, 1, 1, C.iron, 0, { noRim: true }); break; }
       case 'dish': { const x = at[0], y = at[1]; B.column(ctx, x, y, 5, 0.6, C.iron, env); B.orb(ctx, x - 1.5, y - 7, 3.4, 2.6, C.offWhite, 0.2, { spec: 0.5 }); line(ctx, [x - 1.5, y - 7], [x + 1.5, y - 9], 0.7, C.iron, 0, 1); break; }

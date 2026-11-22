@@ -65,7 +65,7 @@ const stMs = performance.now() - t2;
 // per ARCHITECTURE §4.1's formulas (a 12-floor res_tower, a 6x5 stadium…), genuinely need more; render's real
 // ceiling (ARCHITECTURE.md §6.3) is 64 MB total, so 40 still leaves headroom for sprites_entities.js's sheets.
 ok(st && st.ok === true, 'sprites.selfTest().ok === true — ' + (st && st.notes));
-ok(BUSY || stMs < 450, `selfTest ran in ${stMs.toFixed(1)} ms < 450 ms${BUSY ? ' [machine busy: budget advisory]' : ''}`);   // B3: the registered self-test paints 10 variant combos per row (was 8: + FLOODED, FLOODED|NIGHT|DAMAGED)
+ok(BUSY || stMs < 900, `selfTest ran in ${stMs.toFixed(1)} ms < 900 ms${BUSY ? ' [machine busy: budget advisory]' : ''}`);   // colleges pass: 71 rows (was 48): the budget grows with the row count (450 → 900)   // B3: the registered self-test paints 10 variant combos per row (was 8: + FLOODED, FLOODED|NIGHT|DAMAGED)
 // Also run every M._tests entry directly (belt-and-suspenders: this is the unconditional check of this
 // file's own pushed self-test, independent of whatever else sprites.js's bundled selfTest asserts).
 for (const fn of S._tests) {
@@ -225,7 +225,7 @@ eq(bad.join(','), '', 'every row x every variant combo renders');
     if (!(a && a.sw === 64 && a.sh === 64 && b && b.sw === 128 && b.sh === 128 && b.ox === -64 && b.oy === -64)) bad.push(id);
     if (!(c && c.sw === 128 && c.sh === 128)) badLock.push(id);
   }
-  eq(ids.length, 48, 'the catalog has 48 rows (every one needs an icon)');
+  eq(ids.length, 71, 'the catalog has 71 rows (every one needs an icon)');
   eq(bad.join(','), '', 'every catalog row has a 64x64 icon and a 128x128 master (anchor at the centre)');
   eq(badLock.join(','), '', 'every catalog row has a locked 128x128 icon variant');
   // plans: what each kind of row shows

@@ -38,8 +38,8 @@ eq(BSU.STORM.PASSED, 7, 'STORM.PASSED = 7');
 eq(BSU.STORM_PHASE.CLEARING, 5, 'STORM_PHASE.CLEARING = 5');
 eq(BSU.PLACE.UPGRADE, 15, 'PLACE.UPGRADE = 15');
 eq(BSU.SPR.TIER_MASK, 3 << 5, 'SPR.TIER_MASK');
-eq(BSU.B_ORDER.length, 48, '48 catalog ids in B_ORDER (43 + the bridge pass row + the two housing-tier rows + L3 dredge_fill + the water pass Road Bridge)');
-eq(Object.keys(BSU.B).length, 48, '48 keys in BSU.B');
+eq(BSU.B_ORDER.length, 71, '71 catalog ids in B_ORDER (48 + the colleges pass: 15 colleges and 8 venues)');
+eq(Object.keys(BSU.B).length, 71, '71 keys in BSU.B');
 eq(BSU.B_ORDER[47], 'road_bridge', 'row 48 is road_bridge (water pass)');
 eq(BSU.B_ORDER[46], 'dredge_fill', 'row 47 is dredge_fill (L3)');
 eq(BSU.PLACE.FILL, 17, 'PLACE.FILL is 17 (L3)');
@@ -53,7 +53,7 @@ eq(BSU.B_ORDER[7], 'founders_hall', 'row 8 is founders_hall');
 eq(BSU.B_ORDER[42], 'rookery', 'row 43 is rookery');
 eq(BSU.SAVE_VERSION, 2, 'SAVE_VERSION = 2 (L1: v2 stores state.world)');
 eq(BSU.MAP.N, 4096, 'MAP.N = 4096');
-eq(BSU.MILESTONES.length, 28, '28 milestone ids (L2: landBaron, L3: reclaimed)');
+eq(BSU.MILESTONES.length, 30, '30 milestone ids (L2: landBaron, L3: reclaimed, colleges pass: fiveColleges, fullCurriculum)');
 eq(BSU.OBJECTIVE_IDS.length, 25, '25 objective ids');
 ok(Array.isArray(BSU.SAVE_SKIP) && BSU.SAVE_SKIP.includes('agents'), 'SAVE_SKIP lists agents');
 eq(BSU.EV.TILE_CHANGED, 'tile:changed', 'EV.TILE_CHANGED');
@@ -150,7 +150,7 @@ eq(st.calendar.season, 'winter', 'Jan 1 is winter');
 eq(st.calendar.semester, 'break', 'Jan 1 is break');
 eq(st.plot.bank0, 58, 'plot.bank0 = bank(7) = 58');
 eq(st.plot.founders.tx, 51, 'plot.founders.tx = bank0 − 7');
-eq(Object.keys(st.progress.milestones).length, 28, 'progress.milestones pre-keyed');
+eq(Object.keys(st.progress.milestones).length, 30, 'progress.milestones pre-keyed');
 eq(Object.keys(st.progress.objectives).length, 25, 'progress.objectives pre-keyed');
 ok(st.hydro.networks === null && st.wildlife.campusMask === null, 'non-saved caches start null');
 // plain data: JSON-able apart from typed arrays
@@ -324,7 +324,7 @@ const row = {
   cost: 700000, upkeep: 9000, wr: 3, needsPower: true, needsWater: true, pathAdjacency: true, roadWithin: 0, placeRule: BSU.PLACE.LAND,
   allowMarsh: true, alwaysPilings: false, buildDays: 2, unlock: {}, pip: '', effects, tiers: [],
   paint: { wall: ['#F5ECD7', '#E8D9B5'], roof: 'hip', roofColor: '#B5533C', floors: 4, windows: { cols: 6, rows: 4 }, decals: ['arcade'], accent: '#461D7C', lift: 0, special: '' },
-  namePool: 'halls', why: 'why', blurb: 'A sample building.', desc: 'desc', demolishable: true, shelterOwn: true
+  namePool: 'halls', why: 'why', blurb: 'A sample building.', desc: 'desc', demolishable: true, shelterOwn: true, programs: [], college: ''
 };
 const vr = BSU.validateCatalogRow(row);
 ok(vr.ok, 'a well-formed catalog row validates' + (vr.ok ? '' : ': ' + vr.errors.join('; ')));

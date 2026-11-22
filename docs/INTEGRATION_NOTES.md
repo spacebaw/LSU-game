@@ -1987,3 +1987,99 @@ Walls stay in the baked ground layer. An entity that stands behind a wall tile w
 - **Balance** (`node tools/qa/campaign.mjs --seed 5 --years 6 --policy goals,storm`, before / after, re-run on the final build). *goals*: no win within 6 years on either build; Year 1 identical in students (804) and near it in cash ($897k / $887k); Year 6 students 7,897 → 8,377, cash $66.6M → $56.0M, prestige 69.9 → 73.8. *storm*: Flagship in Year 5 on both; Year 6 students 13,148 → 12,054, cash $14.5M → $8.6M, prestige 84.2 → 85.7. The pass changes no economy number; the two builds part after Year 1 because the students' walks draw the sim stream differently (other storms in other years: under the storm policy, Year 5 brought a Cat 1 with $751k of damage before and a Cat 3 with $1.8M after), so one seed says "the same game", not which is richer. Happiness on the typical campus over sixteen sky days: 67.4 → 66.4 (N9, above).
 - **Screenshots looked at** (`tools/qa/out/life-before-*` and `life-after-*`, 79 files): the four hours of the spread case at zoom 1 on both builds (one column of students between two doors before; twos and threes at doors, on the lawns and along every path after); every field and tier in both rotations at zoom 2 and 1, and the game on a rotated Bayou Field; the lawn ghost beside a lawn, two lawns side by side, the block mid-drag and laid at zoom 2 and 1, the card; noon, dusk, midnight and before dawn at both zooms with and without a tool armed, and the three settings at midnight (re-shot after the vignette fix: the same picture, 54 % of noon); the wall case at both zooms.
 - **Left alone.** (1) The hover ghost of the Quad Lawn tool is still the old single-lawn sprite (kerb all round, a cross of paths); what is laid is the joined ground. (2) Lawns are graded lawn by lawn, so a block across a slope steps with the ground. (3) The low-detail pen painter mirrors a rotated field but keeps its own shading (it has no `env.flip`). (4) A rotated Stadium's scoreboard bar is mirrored with the rest of the painting. (5) Wall order: a wall tile is drawn again whole, and only for what stands within its reach (three tiles in front of a levee, six for a floodwall, two from a building's near faces); a building corner that overlaps a wall from farther back is not re-sorted. (6) Two students in three outdoors are walking at any moment (N9, "What it does not change"). (7) `docs/ARCHITECTURE.md` and `docs/UI_STYLE.md` do not describe the day plan, the lawn ground layer, the visit budget or the Night brightness row. (8) The hurricane oak-loss line in `buildings.js` (`PS.oakLoss`) is exactly as it was. (9) `fps.mjs` has no same-campus mode; the like-for-like figures above came from a scratch tool that loads one save into both builds, and that would be worth having in the repo. (10) `src/style.css` (106.2 KB of 108) and `src/js/data.js` (147.4 KB of 158) were not touched; neither cap was raised.
+
+
+## colleges and venues pass
+
+Josh's decision (CONTENT_BACKLOG section 0): one building per college or school with none today (15), plus the places people visit (8 signature venues), every department listed on its college's card, not one building per department. Rows 49-71 of the catalog (71 rows now). The game is fictional: names are the discipline only, never a donor, a person or a real university's trademark (the unit test bans Ourso, Manship, Ogden, Hebert, Reich, Rucks, Stephenson, Flores, Swine Palace, LSU).
+
+### The 23 buildings
+
+Cost / upkeep per month. Unlock "X built" means that building (a venue is locked until its college stands; the lock reason is "Build the College of ..."). Effects use only keys the catalog already has.
+
+| # | Name | Footprint | Cost / upkeep | Unlock | Tab | Effects |
+|---|---|---|---|---|---|---|
+| 49 | University College | 3×2 | $900k / $11k | 300 students | colleges | 300 seats; +3 happiness radius 8; 1 program. |
+| 50 | Continuing Education Center | 3×2 | $700k / $9k | 400 students | colleges | $20k/mo in online and continuing tuition; no beds, parking or dining; 1 program. |
+| 51 | College of Business | 4×3 | $1.5M / $18k | 600 students | colleges | 350 seats; $14k/mo consulting and executive education; 8 programs. |
+| 52 | College of Human Sciences & Education | 3×3 | $1.4M / $16k | 700 students | colleges | 300 seats; heat penalty ×0.7 within 8 tiles (Kinesiology); 5 programs. |
+| 53 | School of Mass Communication | 3×3 | $1.3M / $15k | 900 students | colleges | 250 seats; landmark +2; +2 happiness radius 12; 4 programs. |
+| 54 | College of Humanities & Social Sciences | 5×3 | $1.8M / $20k | 1,000 students | colleges | 600 seats; landmark +1; 23 programs, the most of any college. |
+| 55 | College of Art & Design | 4×3 | $1.7M / $17k | 1,200 students | colleges | 300 seats; +3 happiness radius 8; 4 programs. |
+| 56 | College of Music & Dramatic Arts | 4×3 | $2M / $22k | 1,400 students | colleges | 250 seats; landmark +1; +4 happiness radius 10; 3 programs; opens the Concert Hall, Theatre and Band Hall. |
+| 57 | College of Agriculture | 5×3 | $2.4M / $24k | 1,700 students | academic | 300 seats; feeds 400 within 8 tiles; $8k/mo farm sales; 10 programs; opens the Ag Greenhouses. |
+| 58 | College of Science | 4×3 | $2.8M / $30k | 2,000 students | academic | 450 seats; research $10k/mo (scales with prestige); 6 programs; opens the Natural Science Museum. |
+| 59 | Honors College | 3×2 | $1.8M / $16k | 2,500 students + prestige 35 | colleges | 150 seats; landmark +3 (prestige); 1 program. |
+| 60 | Graduate School | 3×3 | $2.2M / $22k | 3,000 students + prestige 40 | colleges | 200 seats; research $9k/mo (scales with prestige); 1 program. |
+| 61 | ROTC Armory | 4×4 | $1.4M / $14k | 3,500 students | colleges | Shelter 1,500 (storm readiness); +2 happiness radius 6; 3 programs. |
+| 62 | Law Center | 4×3 | $3.4M / $34k | 4,500 students + prestige 50 | colleges | 250 seats; landmark +4 (prestige); 1 program. |
+| 63 | School of Veterinary Medicine | 5×4 | $3.8M / $40k | 6,000 students + prestige 45 | academic | 300 seats; landmark +2; research $8k/mo (scales with prestige); 4 programs; opens the Teaching Hospital. |
+| 64 | Concert Hall | 4×3 | $2.2M / $20k | College of Music & Dramatic Arts built | arts | Landmark +2; +6 happiness radius 12; $6k/mo in ticket sales. |
+| 65 | Theatre | 3×3 | $1.2M / $12k | College of Music & Dramatic Arts built | arts | +4 happiness radius 9; $3k/mo at the box office. |
+| 66 | Band Hall | 3×2 | $800k / $9k | College of Music & Dramatic Arts built | arts | +3 happiness radius 10 (game-day spirit). |
+| 67 | Art Studios & Gallery | 2×2 | $600k / $7k | College of Art & Design built | arts | +3 happiness radius 7; $2k/mo in gallery sales. |
+| 68 | Veterinary Teaching Hospital | 4×4 | $2.6M / $28k | School of Veterinary Medicine built | arts | Landmark +1; +3 happiness radius 8; $14k/mo in clinic fees; barn wing and paddock. |
+| 69 | Museum of Natural Science | 4×3 | $2M / $18k | College of Science built | arts | Landmark +3; +3 happiness radius 10; $4k/mo in admissions. |
+| 70 | Computer Lab | 2×2 | $700k / $9k | Engineering Hall built | arts | 300 seats. |
+| 71 | Ag Greenhouses | 3×3 | $500k / $6k | College of Agriculture built | arts | +2 happiness radius 5; $5k/mo in plant sales; glass bays. |
+
+Unlock ladder of the colleges: 300 (University College) and 400 (Continuing Education) up through 600, 700, 900, 1,000, 1,200, 1,400, 1,700, 2,000, with prestige gates on the Honors College (2,500 + prestige 35), the Graduate School (3,000 + 40), the Law Center (4,500 + 50) and the School of Veterinary Medicine (6,000 + 45). ROTC Armory at 3,500. Footprints run 2 × 2 (Art Studios, Computer Lab) to 5 × 4 (Veterinary Medicine); three rows are square (ROTC 4 × 4, Teaching Hospital 4 × 4, Greenhouses 3 × 3) because their yard prop needs the same strip in both rotations.
+
+### Which effect keys the simulation honours (read before choosing)
+
+Generic over every row (a new row gets them for free): `seats` (lecture seats, and the academic-quality term of prestige), `beds`, `feeds` + `diningRadius` (dining coverage), `landmark` (the prestige landmarks term), `shelter` (hurricane shelter), `happiness {value, radius}` (the aura), `heat {mult, radius}` (the heat aura), `power`/`water` (substation / tower rows only by type), `crest`/`surfaceId`/`ecologyPerTile` (drag rows). Hard-wired to specific rows, so they could not be reused as they were: `research` (Engineering Hall and the Coastal Institute each had their own formula), `revenueMonthly` (the Po'boy Shack only), `academic` (a flag for the Library, Engineering and Coastal only), `teamRating` / `illness` / `gatorAvoidRadius` / `homeWinBonus` (read off one named row).
+
+So the effects are: **seats, landmark, happiness, heat, shelter, feeds** wherever they fit (Law and Honors = landmark; Mass Communication = landmark and a wide happiness; ROTC = shelter; Kinesiology = a heat aura; Agriculture = feeds; Music and its venues = happiness), and for Josh's research and revenue ideas two small generic hooks in `economy.js` (the only simulation code of the pass besides programs): `collegeIncome(state, prestigeF, brownout)` posts `effects.revenueMonthly` of every complete row except the Po'boy Shack to the `misc` ledger line ("Colleges and venues") and adds `effects.research.base × prestige factor × effectiveness` of every complete row whose research kind is not engineering or coastal to `research` (Science 10k, Graduate School 9k, Veterinary Medicine 8k a month at prestige 50; the existing researchBonus / researchPush multipliers apply to it); `economy.budget` (the Board's "average month") reads the same function. The schema's `research.kind` enum gained science | graduate | veterinary. Where nothing fit (applications for Mass Communication, wildlife for Veterinary Medicine, team rating for Kinesiology, dining cost for Agriculture) the nearest honoured key was used and the text says only what it does.
+
+### The mechanic: programs offered
+
+Every school and department of section 2 of CONTENT_BACKLOG is stored once, as `programs: [...]` on the row of its college (Engineering Hall 8, Coastal Studies Institute 2, Library 1; the five units with no department list - Honors College, University College, Law Center, Graduate School, Continuing Education - stand for themselves as one program; ROTC 3; 86 in all; Humanities & Social Sciences 23: 12 departments + 11 programs; the Museum of Natural Science and the Veterinary Teaching Hospital are listed by their colleges as the catalog does; venues list none). `economy.programCount(state)` counts the programs of every distinct complete building type that lists some (two Business buildings count once); `programsBonus` = min(cap, perProgram × count). Applicants are multiplied by (1 + bonus) next to the menu and housing terms. `params.econ.programs = { perProgram: 0.004, cap: 0.25 }`: 0.4 % a program, at most +25 % (reached at 63 programs). It shows as one line, "Programs offered (N), %", in the Students chip's applicants breakdown (`economy.breakdown('applicants')`), and every college card says "Adds 8 programs: applications +3.2% (all programs together cap at +25%)". The Build sheet detail has a **Programs** list (`#bm-programs`, every name), the built building's inspect card a **Programs** row with the same list (`#insp-programs`). The Build sheet's search also matches department names.
+
+### Milestones
+
+`fiveColleges` "Five Colleges" (five of the 17 college rows built: the 15 new ones plus Engineering Hall and the Coastal Studies Institute; reward $250,000) and `fullCurriculum` "Flagship Curriculum" (all 17; reward prestige +3). `BSU.MILESTONES` is 30 long (the two are appended after `reclaimed`, so every existing id and slot is unchanged); `params.progress.milestoneGoals.fiveColleges = 5`; progress bars on both.
+
+### The Build sheet
+
+Academic held 4 cards; with the new rows it would have held 18. Now: **Academic 7** (Lecture Hall, Library, Engineering Hall, Coastal Studies Institute, College of Science, College of Agriculture, School of Veterinary Medicine), **Colleges 12** (the other twelve colleges, in unlock order), **Arts & Venues 8** (the eight venues). The new tabs follow Academic (12 tabs). The tab mechanism, order logic, keyboard handling (Tab / Shift+Tab, G, numbers), search and the tab pips are the old ones: a tab shows when it has an unlocked row, so Colleges appears at 300 students and Arts & Venues once the College of Music & Dramatic Arts, Art & Design, Science, Veterinary Medicine or Agriculture (or Engineering, for the Computer Lab) stands. The self-test asserts every tab holds at most 12 cards; the one exception is Swamp at 14, which it already held before this pass and which was left alone (the brief said "about 12").
+
+### How they look
+
+All 23 rows are parametric (`P({...})`) and read apart at zoom 1: a different footprint, height, wall material (stucco, brick, stone, metal, wood, glass), roof (hip, gable, flat, barrel, dome), accent and feature set each (a unit test asserts no two share wall, roof, floors and material; the QA scene asserts no two bake to the same sprite). Every footprint row must have an HD painter entry (buildings_hd.test), so each row has a line in `sprites_buildings_hd.js` `HD_ROWS` (apron ground, portico columns). **Special painters: none written in the pen painter (`sprites_buildings.js`)** - the HD layer is what the game draws, so the three rows that a box cannot say are HD yard props on a shortened box (the Rec Center's pool-deck mechanism): `flagpoles` (ROTC Armory: an asphalt parade apron with a line and three flagpoles with purple, gold and white flags), `paddock` (Veterinary Teaching Hospital: a barn wing and a fenced paddock with hay), `glasshouse` (Ag Greenhouses: two mullioned glass bays and potted plants beside the barrel-vaulted glass house). They are drawn through `fp()` in footprint space on square footprints, so both rotations and the door-on-SW-face variant (the four combinations) are right; `tools/qa/colleges_scene.mjs` shows the contact sheet. The Museum (dome, columns, pediment, banner), Concert Hall (gold barrel shell), Theatre (a three-storey brick fly tower) and the rest needed no special painter. `sprites.init` leaves rows n ≥ 49 to bake lazily (first placement or Build card) so the load-time atlas stays inside its 40 MB ceiling.
+
+### Caps raised
+
+`src/js/data.js` is now 163.8 KB: its cap in `test/unit/data.test.mjs` went from 158 KB to 190 KB (once). `src/style.css` was not touched (the new cards use the existing `bm-*` and `card-kicker` classes). Test budgets moved with the row count: `sprites_buildings.test` selfTest time 450 → 900 ms (71 rows, was 48).
+
+### Rules and numbers changed
+
+`params.econ.programs` (new), `params.progress.milestoneGoals.fiveColleges` (new), the schema (`row.programs`, `row.college`, `research.kind` enum, `tab` enum), `agents.ACADEMIC` (the new halls with seats are class halls for the day plan), `BSU.B_ORDER` 48 → 71, `BSU.MILESTONES` 28 → 30, data tabs 10 → 12.
+
+### New public
+
+`economy.programCount`, `programsBonus`; `data.catalog[id].programs`, `.college`; `ui` ids `#bm-programs`, `#insp-programs`; HD props `flagpoles`, `paddock`, `glasshouse`.
+
+### Tests, gates, numbers
+
+- **Tests.** New `test/unit/colleges.test.mjs` (276 checks): the 23 rows (schema, footprints 2 × 2 to 5 × 4, costs, the unlock ladder with prestige gates, no two share a look, every row has its HD entry), a college places when unlocked and a venue waits for its college with the reason naming it, every one of the 15 colleges and 8 venues places on a 64 × 64 map, every department parsed from CONTENT_BACKLOG section 2 is on exactly one row and no program name repeats, the programs mechanic (8 programs = +3.2 %, a second building does not count twice, an unfinished one counts nothing, capped at +25 %, the breakdown line), the generic research and revenue income (Continuing Education +$20k, Science research), both milestones, the tab sizes, the banned-name list. Existing assertions updated: `data.test` (71 rows, 12 tabs, 190 KB), `contract.test` (71 ids, 30 milestones, a well-formed row carries programs / college), `fill.test` (Reclaimed keeps slot 28), `buildings_hd.test` (55 HD rows), `sprites_buildings.test` (71 icons, selfTest budget). 46 unit files in all, every one exits 0.
+- **QA scene.** New `tools/qa/colleges_scene.mjs [--strict]`: 7 shots (campus at zoom 1, colleges and venues at zoom 2, the four-rotation contact sheet of the three yard-prop rows, the Colleges and Arts & Venues tabs with a card's detail, a built card), looked at and fixed (the Law Center and the Humanities college first baked as near twins: Law is now four storeys of darker flat-roofed limestone). `--strict` exits 0.
+- **Gates, all on the final build.** `node build.mjs --check` OK · `test/smoke.mjs` ALL OK at 96 and 64 · `test/modules.mjs` 20 self-tests, 0 failed · `test/contract.test.mjs` 239 passed · 46 unit files exit 0 · `tools/qa/play.mjs` ALL OK (96 + 64, 13 scenarios) · `steps_scene.mjs --strict`, `unstick_scene.mjs --strict`, `life_scene.mjs --strict` exit 0 · `contrast_audit.mjs` 2,290 checks over 38 states, 0 failing · `u6_matrix.mjs` 72 screenshots · `colleges_scene.mjs --strict` exit 0.
+
+### Balance
+
+`node tools/qa/campaign.mjs --seed 5 --years 6 --policy goals,greedy`, `tools/qa/out/index-before.html` against the final build (96 × 96):
+
+| policy | build | Y5 students | Y5 prestige | Y5 cash | Y6 students | Flagship |
+|---|---|---|---|---|---|---|
+| goals | before | 6,716 | 69.8 | $22.6M | 8,377 | none within 6 (year 7) |
+| goals | after | 6,729 | 64.8 | $22.3M | 8,003 | none within 6 (year 7) |
+| greedy | before | 9,501 | 80.3 | $3.7M | 12,436 | year 5 |
+| greedy | after | 11,500 | 81.8 | $5.3M | 12,964 | year 5 |
+
+Nobody wins earlier or later, but the greedy run is ahead in Y5 (students +21 %, applications 4,265 → 5,263 in Y4). That is the pass's one real effect on the existing policies, and it is not from a new college (no policy builds one): Library, Engineering Hall and the Coastal Studies Institute now list 11 programs between them, +4.4 % applications once they stand, and a different roll of the one seed's storms and football does the rest (Y1 identical, Y2 within 3 students; the early prestige path differs from Y3). The goals policy ends lower in Y5 prestige (64.8 against 69.8) and higher in Y6 cash. Retuned nothing: the cap on the mechanic is +25 %, a full set of colleges costs $39.7M and $417k a month in upkeep, and the revenue rows are small, so the new buildings add applications and prestige, not a cash machine.
+
+### Left alone / not done
+
+- The campaign policies (goals, greedy, passive, storm) build from fixed lists, so none of them builds a college: the balance run shows the mechanic's absence of side effects, not what a player who builds every college earns. The programs bonus is capped at +25 % of applications and the colleges' income is smaller than their upkeep (revenue rows return about $76k a month against $417k a month of upkeep for all 23, $39.7M to build), so building them is a prestige and applications decision, not a cash engine.
+- No pen-painter (`sprites_buildings.js`) special painters for the new rows; the pen painter only draws them as standard boxes (used where HD is off).
+- `fps.mjs` not re-run: no per-frame code was touched (the pass changed the monthly income step, the load-time bake list, the Build sheet detail and inspect card, none of which run per frame).

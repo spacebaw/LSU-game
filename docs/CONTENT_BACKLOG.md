@@ -37,12 +37,13 @@ The screenshot that came with them shows the old purple HUD, so some notes preda
 - [ ] **open** N16 Game-day music: more epic, currently too goofy and plain.
 
 ### New content (passes 4–6)
-- [ ] N18 Buildings: Art, Music, Theatre, Computer Lab, Apparel / merch shop, Basketball arena, Golf course (takes a lot of space, forces extra land), Recycling center.
+- [ ] N18 Buildings: ~~Art, Music, Theatre, Computer Lab~~ (done, colleges and venues pass: Art Studios & Gallery, College of Music & Dramatic Arts with the Concert Hall, Theatre and Band Hall, Computer Lab), Apparel / merch shop, Basketball arena, Golf course (takes a lot of space, forces extra land), Recycling center.
+- [x] **done** N18 Art, Music, Theatre and Computer Lab buildings: Art Studios & Gallery, Concert Hall, Theatre, Band Hall (College of Music & Dramatic Arts) and the Computer Lab (Engineering Hall); see `INTEGRATION_NOTES.md` "colleges and venues pass".
 - [ ] N18 Decorations: Tiger statue, Train or airplane, General grounds (Parade Ground).
 - [ ] N19 Upgrades for: Tiger Habitat, Library, Dining Hall, Rec Center, Health Center, Parking Lot (becomes a roofed multi-floor garage), Student Union (2 floors).
 - [ ] N20 Rain water collection system; campus buses.
 - [ ] N12 Level-up bar (a progress / mastery bar). XP from building and from goals; costlier buildings give more. About level 20 unlocks College Town and a College Town Center.
-- [ ] Josh: a building for every academic unit in section 2.
+- [x] **done** Josh: a building for every academic unit in section 2. 15 new college buildings, 8 signature venues, and the three existing buildings (Engineering Hall, Coastal Studies Institute, Library) now list their departments as Programs.
 
 ### Already addressed
 - [x] N1 Build tab UI gets funky when hidden; N2 Goals and Map buttons not in the corners; N24 Goals window glitchy: all replaced by the UI refresh (app bar, goal pill and card, Build sheet).
@@ -57,24 +58,24 @@ Sources: `lsu.edu/academics/index.php` and each college's own site. The game is 
 
 | Unit | Schools and departments | In the game today |
 |---|---|---|
-| College of Agriculture | Agricultural Economics & Agribusiness; Agricultural & Extension Education; Animal Sciences; Entomology; Experimental Statistics; Nutrition & Food Sciences; Plant, Environmental & Soil Sciences; Plant Pathology & Crop Physiology; Renewable Natural Resources; Textiles, Apparel Design & Merchandising | none |
-| College of Art & Design | Architecture; Art; Interior Design; Landscape Architecture | none |
-| College of Business | Accounting; Economics; Finance; Marketing; Public Administration; Management; Entrepreneurship & Information Systems; MBA | none |
+| College of Agriculture | Agricultural Economics & Agribusiness; Agricultural & Extension Education; Animal Sciences; Entomology; Experimental Statistics; Nutrition & Food Sciences; Plant, Environmental & Soil Sciences; Plant Pathology & Crop Physiology; Renewable Natural Resources; Textiles, Apparel Design & Merchandising | College of Agriculture + Ag Greenhouses |
+| College of Art & Design | Architecture; Art; Interior Design; Landscape Architecture | College of Art & Design + Art Studios & Gallery |
+| College of Business | Accounting; Economics; Finance; Marketing; Public Administration; Management; Entrepreneurship & Information Systems; MBA | College of Business |
 | College of the Coast & Environment | Environmental Sciences; Oceanography & Coastal Sciences | Coastal Studies Institute |
-| College of Engineering | Biological & Agricultural; Chemical; Civil & Environmental; Computer Science; Construction Management; Electrical & Computer; Mechanical & Industrial; Petroleum | Engineering Hall |
-| College of Human Sciences & Education | Education; Information Studies; Kinesiology; Leadership & Human Resource Development; Social Work | none |
-| College of Humanities & Social Sciences | African & African American Studies; Communication Sciences & Disorders; Communication Studies; English; French Studies; Geography & Anthropology; History; Philosophy & Religious Studies; Political Science; Psychology; Sociology; World Languages, Literatures & Cultures. Programs: Asian Studies; Classical Civilization; Comparative Literature; Disaster Science & Management; Interdisciplinary Studies; International Studies; Jewish Studies; Linguistics; Liberal Arts; Screen Arts; Women's, Gender & Sexuality Studies | Lecture Hall (generic) |
-| School of Mass Communication | Journalism; Public Relations; Digital Advertising; Political Communication | none |
-| College of Music & Dramatic Arts | School of Music; Bands; School of Theatre & Film | none |
-| College of Science | Biological Sciences; Chemistry; Geology & Geophysics; Mathematics; Physics & Astronomy; Museum of Natural Science | none |
-| School of Veterinary Medicine | Comparative Biomedical Sciences; Pathobiological Sciences; Veterinary Clinical Sciences; Veterinary Teaching Hospital | none |
-| Honors College | | none |
-| University College | first-year and undeclared students | none |
-| Law Center | | none |
-| Graduate School | | none |
-| Online & Continuing Education | | none |
+| College of Engineering | Biological & Agricultural; Chemical; Civil & Environmental; Computer Science; Construction Management; Electrical & Computer; Mechanical & Industrial; Petroleum | Engineering Hall + Computer Lab |
+| College of Human Sciences & Education | Education; Information Studies; Kinesiology; Leadership & Human Resource Development; Social Work | College of Human Sciences & Education |
+| College of Humanities & Social Sciences | African & African American Studies; Communication Sciences & Disorders; Communication Studies; English; French Studies; Geography & Anthropology; History; Philosophy & Religious Studies; Political Science; Psychology; Sociology; World Languages, Literatures & Cultures. Programs: Asian Studies; Classical Civilization; Comparative Literature; Disaster Science & Management; Interdisciplinary Studies; International Studies; Jewish Studies; Linguistics; Liberal Arts; Screen Arts; Women's, Gender & Sexuality Studies | College of Humanities & Social Sciences (and the Lecture Hall) |
+| School of Mass Communication | Journalism; Public Relations; Digital Advertising; Political Communication | School of Mass Communication |
+| College of Music & Dramatic Arts | School of Music; Bands; School of Theatre & Film | College of Music & Dramatic Arts + Concert Hall, Theatre, Band Hall |
+| College of Science | Biological Sciences; Chemistry; Geology & Geophysics; Mathematics; Physics & Astronomy; Museum of Natural Science | College of Science + Museum of Natural Science |
+| School of Veterinary Medicine | Comparative Biomedical Sciences; Pathobiological Sciences; Veterinary Clinical Sciences; Veterinary Teaching Hospital | School of Veterinary Medicine + Veterinary Teaching Hospital |
+| Honors College | | Honors College |
+| University College | first-year and undeclared students | University College |
+| Law Center | | Law Center |
+| Graduate School | | Graduate School |
+| Online & Continuing Education | | Continuing Education Center |
 | Libraries | | Library |
-| ROTC | Army (Military Science); Air Force (Aerospace Studies); Naval | none |
+| ROTC | Army (Military Science); Air Force (Aerospace Studies); Naval | ROTC Armory |
 
 Not campus units, left out: the two Health Sciences Centers (New Orleans, Shreveport).
 

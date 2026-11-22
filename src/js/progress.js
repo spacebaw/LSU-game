@@ -393,6 +393,9 @@
   }
   /** L3: marsh tiles Dredge & Fill has turned to dry ground (state.fill.done, kept by buildings) */
   function filledTiles(s) { return fin(s && s.fill && s.fill.done, 0); }
+  /** colleges pass: the college rows = the 15 new colleges (rows 49-63) + Engineering Hall and the Coastal Studies Institute (their colleges' buildings); Library, ROTC and the venues are counted among the 15 / not at all */
+  function collegeRows() { const L = (data().catalogList || []); return L.filter(function (r) { return (r.n >= 49 && r.n <= 63) || r.id === 'engineering' || r.id === 'coastal_institute'; }); }
+  function collegesBuilt(s) { let n = 0; for (const r of collegeRows()) if (bcount(s, r.id) > 0) n++; return n; }
   const MILESTONE_COND = {
     chartered: null, welcome: null, cajunEngineer: null, wetFeet: null, stormChaser: null, eyeOfTheStorm: null, sunbather: null,
     bayouField: null, nightFalls: null, geauxBeatMagnolia: null, undefeated: null, bigBoil: null, throwMeSomethin: null, skeeterBeater: null,
@@ -409,9 +412,13 @@
     laissez: function (s) { const g = MG.laissez || {}; return students(s) >= fin(g.students, 20000) && prestige(s) >= fin(g.prestige, 85) && ecology(s) >= fin(g.ecology, 50); },
     untouched: function (s) { return M.earned(s, 'flagship') && !pr(s).drainedEver; },
     landBaron: function (s) { return fin(call('land', 'count', s), 0) >= fin(PL.landBaron, 5); },   // L2
-    reclaimed: function (s) { return filledTiles(s) >= fin(PFILL.reclaimed, 50); }   // L3
+    reclaimed: function (s) { return filledTiles(s) >= fin(PFILL.reclaimed, 50); },   // L3
+    fiveColleges: function (s) { return collegesBuilt(s) >= fin(MG.fiveColleges, 5); },   // colleges pass
+    fullCurriculum: function (s) { const n = collegeRows().length; return n > 0 && collegesBuilt(s) >= n; }   // colleges pass: every college stands
   };
   const MILESTONE_PROGRESS = {
+    fiveColleges: function (s) { return { progress: Math.min(collegesBuilt(s), fin(MG.fiveColleges, 5)), goal: fin(MG.fiveColleges, 5) }; },   // colleges pass
+    fullCurriculum: function (s) { return { progress: collegesBuilt(s), goal: collegeRows().length }; },
     reclaimed: function (s) { return { progress: filledTiles(s), goal: fin(PFILL.reclaimed, 50) }; },   // L3
     landBaron: function (s) { return { progress: fin(call('land', 'count', s), 0), goal: fin(PL.landBaron, 5) }; },   // L2
     firstBell: function (s) { return { progress: students(s), goal: fin(MG.firstBell, 600) }; },

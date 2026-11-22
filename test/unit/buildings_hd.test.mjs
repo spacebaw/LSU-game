@@ -42,7 +42,7 @@ ok(S.isHD('dorm') && S.isHD('founders_hall:r') && S.isHD('bldlight:dorm') && S.i
 const ROWS = S.hdBuildingRows();
 const VEG = ['live_oak', 'cypress', 'azalea'];   // veg entities in play (buildings.place plants them): the pen until H3
 const WANT = Object.keys(cat).filter((id) => cat[id].kind === 'footprint' && !VEG.includes(id));
-eq(ROWS.length, 32, '32 converted rows (every footprint row but the three vegetation rows)');
+eq(ROWS.length, 55, '55 converted rows (every footprint row but the three vegetation rows: 32 + the 23 colleges and venues)');
 ok(WANT.every((id) => ROWS.includes(id)) && ROWS.every((id) => WANT.includes(id)), 'the converted rows are exactly the footprint rows of B_ORDER minus the vegetation rows: ' + ROWS.join(','));
 ok(BSU.B_ORDER.every((id) => cat[id].kind !== 'footprint' || VEG.includes(id) || S.isHDBuilding(id)), 'every building row of B_ORDER is HD');
 ok(S.isHDBuilding('dorm') && S.isHDBuilding('dorm:r') && S.isHDBuilding('union') && S.isHDBuilding('stadium:r') && !S.isHDBuilding('live_oak') && !S.isHDBuilding('tile:4'), 'isHDBuilding(id) by base id');

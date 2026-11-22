@@ -1913,6 +1913,7 @@
       }
       if (ef.beds) body.appendChild(row('Beds', String(ef.beds))); if (ef.seats) body.appendChild(row('Seats', String(ef.seats))); if (ef.feeds) body.appendChild(row('Feeds', ms ? '~' + ms.throughput.toLocaleString('en-US') + ' a day (menu)' : String(ef.feeds)));
       if (ef.quality) body.appendChild(row('Quality', meter(ef.quality, 5, 'star')));
+      if (r.programs && r.programs.length && b.built >= 1 && !b.ruin) { const pn = r.programs.length; body.appendChild(row('Programs', pn + (pn === 1 ? ' program' : ' programs') + ' offered')); const pl = el('div', 'bm-ddesc', r.programs.join(' · ')); pl.id = 'insp-programs'; body.appendChild(pl); }   // colleges pass: the Programs list on the built building's card
       body.appendChild(row('Ground', (TILE_NAMES[tl.type[i0]] || '') + ' · ' + ft(tl.elev[i0])));
       const depth = call('hydro', 'footprintDepth', s, b.id); if (Number.isFinite(depth) && depth > 0.01) body.appendChild(row('Water', ft(depth), 'water'));
       body.appendChild(row('Saturation', Math.round(fin(tl.sat[i0], 0) * 100) + '%'));
@@ -2478,6 +2479,7 @@
     if (e.crest) add('Holds water up to ' + e.crest + ' ft above the ground');
     if (e.canal) add('Carries water downhill to the bayou');
     if (e.gate) add('Closes against storm surge');
+    if (row.programs && row.programs.length) { const n = row.programs.length, pg = BSU.params.econ.programs || { perProgram: 0.004 }; add('Adds ' + n + (n === 1 ? ' program' : ' programs') + ': applications +' + (Math.round(n * pg.perProgram * 1000) / 10) + '% (all programs together cap at +' + Math.round(fin(pg.cap, 0.25) * 100) + '%)'); }   // colleges pass
     if (e.pumpTileFt) add('Pumps ' + e.pumpTileFt + ' tile-ft of water a day');
     if (e.pondCapacity) add('Holds ' + e.pondCapacity + ' tile-ft of runoff');
     if (e.drainPerDay) add('Drains ' + e.drainPerDay + ' ft of water a day nearby');
@@ -2584,7 +2586,7 @@
     const q = bm.query.split(/\s+/).filter(Boolean), out = [], seen = {};
     for (const t of vis) for (const id of t.rows) {
       if (!ok(id) || seen[id]) continue; const r = rowOf(id);
-      const hay = (r.name + ' ' + t.name + ' ' + (r.blurb || '') + ' ' + (r.desc || '') + ' ' + id).toLowerCase();
+      const hay = (r.name + ' ' + t.name + ' ' + (r.blurb || '') + ' ' + (r.desc || '') + ' ' + (r.programs ? r.programs.join(' ') : '') + ' ' + id).toLowerCase();
       if (q.every(function (w) { return hay.indexOf(w) >= 0; })) { seen[id] = 1; out.push(id); }
     }
     return out;
@@ -2650,6 +2652,7 @@
     d.appendChild(el('div', 'bm-dblurb', r.blurb || ''));
     if (r.why) d.appendChild(el('div', 'bm-dwhy', '“' + r.why + '”'));
     const eff = effectLines(r); if (eff.length) { d.appendChild(el('div', 'card-kicker', 'Effects')); const ul = el('div', 'bm-list'); for (const line of eff) ul.appendChild(el('div', 'bm-li', line)); d.appendChild(ul); }
+    if (r.programs && r.programs.length) { d.appendChild(el('div', 'card-kicker', 'Programs')); const pd = el('div', 'bm-ddesc', r.programs.join(' · ')); pd.id = 'bm-programs'; d.appendChild(pd); }   // colleges pass: every school and department, by name
     const rq = requirementsOf(r); if (rq.length) { d.appendChild(el('div', 'card-kicker', 'Needs')); const ul = el('div', 'bm-list'); for (const q of rq) { const li = el('div', 'bm-li'); li.appendChild(icon(reqIcon(q), 's20')); li.appendChild(el('span', null, q.text)); ul.appendChild(li); } d.appendChild(ul); }
     if (r.desc) d.appendChild(el('div', 'bm-ddesc', r.desc));
     if (!u.ok) d.appendChild(el('div', 'bm-dlock', unlockText(u.reason)));

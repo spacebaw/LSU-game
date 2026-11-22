@@ -44,7 +44,7 @@ const once = (st) => st.wildlife.ecologyTerms.once;
   eq(swamp[swamp.indexOf('canal') + 1], 'dredge_fill', 'the Swamp tab lists Dredge & Fill right after the canal');
   ok(row.blurb.split(/\s+/).length <= 18 && /ten days/.test(row.blurb) && BSU.validateCatalogRow(row).ok, 'blurb ≤ 18 words, the row validates');
   ok(D.requirements.place[BSU.PLACE.FILL] && D.requirements.place[BSU.PLACE.FILL].text.length > 0, 'the build menu has a requirement line for PLACE.FILL');
-  ok(BSU.MILESTONES[BSU.MILESTONES.length - 1] === 'reclaimed' && D.milestones[D.milestones.length - 1].name === 'Reclaimed', 'the Reclaimed milestone is appended last (ids stable)');
+  ok(BSU.MILESTONES[27] === 'reclaimed' && D.milestones[27].name === 'Reclaimed' && BSU.MILESTONES.length === 30, 'the Reclaimed milestone keeps its slot (ids stable; the colleges pass appends two after it)');
   const s0 = BSU.newState(1);
   ok(s0.fill && Array.isArray(s0.fill.runs) && s0.fill.runs.length === 0 && s0.fill.done === 0 && s0.fill.nextId === 1, 'newState().fill = {runs: [], nextId 1, rev 0, done 0, runsDone 0}');
   ok(typeof H.fill === 'function' && typeof B.fillQuote === 'function' && typeof B.fillMask === 'function' && typeof B.fillStats === 'function', 'API: headless.fill, buildings.fillQuote / fillMask / fillStats');

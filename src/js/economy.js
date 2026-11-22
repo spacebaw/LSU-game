@@ -185,6 +185,31 @@
     return clamp(num(call('buildings', 'effective', [state, b.id], dflt), dflt), 0, 1);
   }
   function hasComplete(state, type) { return completeList(state, type).length > 0; }
+  /** colleges pass: the departments the campus offers = the programs of every distinct built college row (one college type counts once, however many stand) */
+  function programCount(state) {
+    const D = BSU.data, seen = {}; let n = 0;
+    if (!D || !D.catalog) return 0;
+    for (const b of completeList(state)) { const row = D.catalog[b.type]; if (row && row.programs && row.programs.length && !seen[b.type]) { seen[b.type] = 1; n += row.programs.length; } }
+    return n;
+  }
+  /** colleges pass: applications × (1 + perProgram × programs), capped at +cap (params.econ.programs: 0.4 % each, +25 % at most) */
+  function programsBonus(state) { const PG = PE.programs || { perProgram: 0.004, cap: 0.25 }; return Math.min(num(PG.cap, 0.25), num(PG.perProgram, 0.004) * programCount(state)); }
+  M.programCount = function (state) { try { return programCount(state); } catch (e) { BSU.error('economy', 'programCount', e); return 0; } };
+  M.programsBonus = function (state) { try { return programsBonus(state); } catch (e) { BSU.error('economy', 'programsBonus', e); return 0; } };
+  /** colleges pass: income of the rows whose own effects name it. research: every row with effects.research.base whose kind is not the two with their own formulas (engineering, coastal) = base × prestige factor × effectiveness;
+   *  revenue: effects.revenueMonthly of every row but the Po'boy Shack (which keeps its voice-card bump) */
+  function collegeIncome(state, prestigeF, brownout) {
+    const D = BSU.data, out = { research: 0, revenue: 0 };
+    if (!D || !D.catalog) return out;
+    for (const b of completeList(state)) {
+      const row = D.catalog[b.type]; if (!row) continue;
+      const eff = effective(state, b), e = row.effects;
+      if (!(eff > 0)) continue;
+      if (e.revenueMonthly > 0 && b.type !== 'poboy') out.revenue += e.revenueMonthly * eff;
+      if (!brownout && !b.blackout && e.research && e.research.base > 0 && e.research.kind && e.research.kind !== 'engineering' && e.research.kind !== 'coastal') out.research += e.research.base * prestigeF * eff;
+    }
+    return out;
+  }
   function plantCount(state, st) {
     const n = num(st && st.wastewaterPlants, 0);
     return n > 0 ? n : completeList(state, 'wastewater').length;
@@ -444,12 +469,13 @@
     const footballBuzz = 1 + A.buzzPerWin * sn.lastWins + (sn.bowlWon ? A.bowlBuzz : 0);
     const mix = housingMix(state);   // P7: the housing-tier mix (−3 % all economy, +3 % with ≥ 20 % premium beds)
     const menu = menuAppeal(state);  // P6: the campus menu's plate-weighted mean appeal → +0 % (all cheap) … +6 % (all premium)
-    const applicantsMult = (1 + tv(state, 'tuitionFreezeApplicants')) * (1 + tv(state, 'tuitionHike')) * (1 + tv(state, 'probation')) * (1 + tv(state, 'biblicalApplicants')) * (1 + mix) * (1 + menu);
+    const programs = programsBonus(state);   // colleges pass: 0.4 % per department of every built college, capped at +25 %
+    const applicantsMult = (1 + programs) * (1 + tv(state, 'tuitionFreezeApplicants')) * (1 + tv(state, 'tuitionHike')) * (1 + tv(state, 'probation')) * (1 + tv(state, 'biblicalApplicants')) * (1 + mix) * (1 + menu);
     const core = base * tuitionFactor * footballBuzz;
     const westAdd = e.westCampus ? (PE.west.applicantsMult - 1) * core : 0;
     const voiceAdd = tv(state, 'voiceApplicants');
     const total = Math.max(0, Math.round(core * Math.max(0, applicantsMult) + voiceAdd + westAdd));
-    return { base: base, tuitionFactor: tuitionFactor, footballBuzz: footballBuzz, applicantsMult: applicantsMult, applicantsAdd: voiceAdd + westAdd, housingMix: mix, menuAppeal: menu, total: total };
+    return { base: base, tuitionFactor: tuitionFactor, footballBuzz: footballBuzz, applicantsMult: applicantsMult, applicantsAdd: voiceAdd + westAdd, housingMix: mix, programs: programs, programCount: programCount(state), menuAppeal: menu, total: total };
   }
   /** P6 menu appeal term: applicantBonus (6 %) × (campus mean appeal − 1) / 3, so a cheap card (appeal 1) adds nothing and a premium one (4) adds the full bonus; 0 with no kitchen */
   function menuAppeal(state) {
@@ -841,7 +867,9 @@
       inc.roomFees = e.cancelledSemester ? 0 : num(M.roomFees(state).total, 0) * 2 / MY;
       inc.donations = int(e.alumni, 0) * PE.donationPerAlumnus * prestigeF * Math.min(PE.footballMultCap, 1 + PE.footballMultPerWin * sn.lastWins) * (tv(state, 'undefeatedDonations') || 1) * (tv(state, 'rivalryDonations') || 1);
       let research = 0;
+      const ci = collegeIncome(state, prestigeF, st.brownout);   // colleges pass: the new colleges' research grants and the venues' / colleges' monthly income
       if (!st.brownout) {
+        research += ci.research;
         for (const b of completeList(state, 'engineering')) { const eff = effective(state, b); if (eff > 0 && !b.blackout) research += PE.research.engineering * prestigeF * eff; }
         const restoration = hasComplete(state, 'marsh_restoration') ? PE.research.restorationMult : 1;
         for (const b of completeList(state, 'coastal_institute')) { const eff = effective(state, b); if (eff > 0 && !b.blackout) research += PE.research.coastal * (eco / PE.research.coastalEcoDiv) * prestigeF * eff * restoration; }
@@ -851,7 +879,7 @@
       const lots = num(st.lots) > 0 ? num(st.lots) : completeList(state, 'parking').length;
       inc.parking = Math.min(lots, lotsNeeded(students, st)) * PE.parkingPay + tv(state, 'voiceParking');
       let poboy = 0; { const row = catalogRow('poboy'); for (const b of completeList(state, 'poboy')) poboy += num(row && row.effects.revenueMonthly, 2000) * effective(state, b); }
-      inc.misc = poboy;
+      inc.misc = poboy + ci.revenue;
       let posts = 0; for (const b of completeList(state, 'wildlife_post')) if (b.data && b.data.policies && b.data.policies.nutriaBounty) posts++;
       inc.pelts = PE.peltPay * posts;
       inc.endowment = parts(state).year >= PE.endowmentFromYear ? int(e.endowment, 0) * PE.endowmentYield : 0;
@@ -928,7 +956,9 @@
     if (donations >= 1) M.post(state, 'donations', donations);
     // research
     let research = 0;
+    const ci = collegeIncome(state, prestigeF, st.brownout);   // colleges pass
     if (!st.brownout) {
+      research += ci.research;
       for (const b of completeList(state, 'engineering')) { const eff = effective(state, b); if (eff > 0 && !b.blackout) research += PE.research.engineering * prestigeF * eff; }
       const eco = ecologyNow(state);
       const restoration = hasComplete(state, 'marsh_restoration') ? PE.research.restorationMult : 1;
@@ -936,6 +966,7 @@
       research *= (1 + tv(state, 'researchBonus')) * (tv(state, 'researchPush') || 1);
     }
     if (research >= 1) M.post(state, 'research', research);
+    if (ci.revenue >= 1) M.post(state, 'misc', ci.revenue, { note: 'Colleges and venues' });
     // parking tickets
     const lots = num(st.lots) > 0 ? num(st.lots) : completeList(state, 'parking').length;
     const parking = Math.min(lots, lotsNeeded(students, st)) * PE.parkingPay + tv(state, 'voiceParking');
@@ -1331,6 +1362,7 @@
           ];
           if (f.housingMix) lines.push({ label: f.housingMix > 0 ? 'Premium housing mix (%)' : 'All-economy housing (%)', value: Math.round(f.housingMix * 100) });
           if (f.menuAppeal) lines.push({ label: 'Menu appeal (%)', value: Math.round(f.menuAppeal * 1000) / 10 });
+          if (f.programs) lines.push({ label: 'Programs offered (' + f.programCount + '), %', value: Math.round(f.programs * 1000) / 10 });   // colleges pass
           if (f.applicantsAdd) lines.push({ label: 'Extra applicants', value: Math.round(f.applicantsAdd) });
           return { value: f.total, lines: lines, next: 'Recomputed on the 1st' };
         }

@@ -4,12 +4,12 @@ Loaded: contract.js, data.js, terrain.js, hydro.js, weather.js, wildlife.js, bui
 
 Read this instead of the module sources. Signatures are the real ones. See docs/ARCHITECTURE.md for semantics.
 
-## BSU.B  — enum/table, 48 keys (water pass: + road_bridge, row 48) (e.g. path, road, boardwalk, substation, water_tower, generator, wastewater, founders_hall)
+## BSU.B  — enum/table, 71 keys (colleges pass: + rows 49-71, 15 colleges then 8 venues; water pass: + road_bridge, row 48) (e.g. path, road, boardwalk, substation, water_tower, generator, wastewater, founders_hall)
 
 ## BSU.BOARD_CARDS
 - values: 0:string, 1:string, 2:string, 3:string, 4:string, 5:string, 6:string, 7:string
 
-## BSU.B_ORDER  — enum/table, 48 keys (e.g. 0, 1, 2, 3, 4, 5, 6, 7)
+## BSU.B_ORDER  — enum/table, 71 keys (rows 49-63 colleges: univ_college online_center business_college education_college masscomm_school humanities_college art_college music_college ag_college science_college honors_college grad_school rotc_armory law_center vet_school; rows 64-71 venues: concert_hall theatre band_hall art_gallery vet_hospital nat_museum computer_lab ag_greenhouses) (e.g. 0, 1, 2, 3, 4, 5, 6, 7)
 
 ## BSU.EV  — enum/table, 113 keys (e.g. TILE_CHANGED, BUILDING_PLACED, BUILDING_REMOVED, BUILDING_COMPLETE, BUILDING_UPGRADED, BUILDING_FLOODED, BUILDING_DRIED, BUILDING_DAMAGED)
 
@@ -333,8 +333,9 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - contract.selfTest()
 
 ## BSU.data
-- values: catalog:object, catalogList:array[48], tabs:array[10], decals:object, names:object, students:object, coaches:array[10], coachQuotes:array[12], staff:object, gatorNames:array[14], leGrand:string, stormNames:array[26], opponents:object, schedule:array[8], calendar:object, ticker:array[62], tickerKinds:object, tickerKindList:array[7], objectives:object, milestones:array[28], voiceCards:array[12], boardCards:array[8], failureCards:object, tutorial:array[7], thibodeaux:array[12], stormQuotes:array[8], overlays:array[6], keys:array[50], toastKeys:object, panKeys:object, rainKinds:object, guide:object, needs:object, requirements:object, coach:array[6], football:object, dishes:array[24], menuPresets:object, menuDefaults:object
+- values: catalog:object, catalogList:array[71], tabs:array[12] (colleges pass: + 'colleges' 12 cards and 'arts' = Arts & Venues 8 cards, after 'academic' which keeps 7; every tab ≤ 12 but Swamp's 14), decals:object, names:object, students:object, coaches:array[10], coachQuotes:array[12], staff:object, gatorNames:array[14], leGrand:string, stormNames:array[26], opponents:object, schedule:array[8], calendar:object, ticker:array[62], tickerKinds:object, tickerKindList:array[7], objectives:object, milestones:array[28], voiceCards:array[12], boardCards:array[8], failureCards:object, tutorial:array[7], thibodeaux:array[12], stormQuotes:array[8], overlays:array[6], keys:array[50], toastKeys:object, panKeys:object, rainKinds:object, guide:object, needs:object, requirements:object, coach:array[6], football:object, dishes:array[24], menuPresets:object, menuDefaults:object
 - data.selfTest()
+- (colleges pass) every catalog row now also carries `programs: string[]` (the schools and departments listed on its Build card and built card; 0 on a venue) and `college: string` (a venue's parent row id, which is also its `unlock.building`; '' elsewhere). `catalog.humanities_college.programs` is the longest at 23. `milestones` is 30 long: `fiveColleges` (5 of the 17 college rows built: the 15 new ones plus Engineering Hall and the Coastal Studies Institute; $250k) and `fullCurriculum` (all 17; prestige +3). `params.econ.programs = { perProgram: 0.004, cap: 0.25 }`. `effects.research.kind` also takes science | graduate | veterinary.
 
 - BSU.dateToDay(str, year)
 
@@ -357,6 +358,8 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - economy.housingMix(state)
 - economy.roomFees(state)
 - economy.menuAppeal(state)
+- economy.programCount(state)   // colleges pass: programs of every distinct complete building type that lists some (a college type counts once)
+- economy.programsBonus(state)   // colleges pass: min(params.econ.programs.cap, perProgram × programCount); multiplies applicants as (1 + bonus); breakdown('applicants') shows one 'Programs offered (N), %' line. Also (internal, collegeIncome): every complete row with effects.revenueMonthly (not the Po'boy Shack) posts it monthly to 'misc' ('Colleges and venues') and every row with effects.research.base and a kind other than engineering / coastal adds base × prestige factor × effectiveness to 'research' (both in economy.budget and the monthly posting)
 - economy.foodCost(state)
 - economy.foodCostOf(state, id)
 - economy.applicants(state)
@@ -946,7 +949,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - sprites.paintBuilding(ctx, row, variant, frame, zoom, seed, rot, tees)
 - sprites.iconPlan(id)
 - sprites.iconFit(id)
-- sprites.hdBuildingRows()
+- sprites.hdBuildingRows()   // 55 rows since the colleges pass (HD_ROWS + 23); three of them take a yard prop on a shortened box (HD_ROWS.box/boxL): rotc_armory → flagpoles (parade apron), vet_hospital → paddock (barn wing + fenced paddock), ag_greenhouses → glasshouse (two glass bays); sprites.init leaves rows n ≥ 49 to bake lazily
 - sprites.isHDBuilding(id)
 - sprites.hdBuildingCells(id, variant, frame, rot)
 - sprites.iconBakeStats()

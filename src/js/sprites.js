@@ -1601,6 +1601,7 @@
       if (painters.building && data && data.catalogList) {
         const variants = [0, SPR.NIGHT, SPR.DAMAGED, SPR.PILINGS, SPR.SCAFFOLD, SPR.RUIN];
         for (const row of data.catalogList) {
+          if (row.n >= 49) continue;   // colleges pass: the 23 new rows bake lazily (first placement / Build card), so the load-time atlas stays inside its 40 MB ceiling
           for (const v of variants) M.get(row.id, v, 0, 1);
           if (row.tiers && row.tiers.length) for (const v of variants) M.get(row.id, v | (1 << SPR.TIER_SHIFT), 0, 1);
         }

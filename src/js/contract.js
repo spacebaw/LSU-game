@@ -57,7 +57,11 @@
     'stadium', 'union', 'rec_center', 'health_center', 'quad', 'parking', 'levee', 'floodwall', 'canal', 'pump', 'pond',
     'pilings', 'gator_fence', 'abatement', 'bat_house', 'wildlife_post', 'preserve', 'live_oak', 'cypress', 'azalea',
     'bell_tower', 'tiger_habitat', 'surge_barrier', 'marsh_restoration', 'rookery', 'bridge', 'bunkhouse', 'suites',
-    'dredge_fill', 'road_bridge'
+    'dredge_fill', 'road_bridge',
+    // colleges and venues pass: rows 49-71. 15 colleges (49-63) and 8 signature venues (64-71)
+    'univ_college', 'online_center', 'business_college', 'education_college', 'masscomm_school', 'humanities_college', 'art_college', 'music_college',
+    'ag_college', 'science_college', 'honors_college', 'grad_school', 'rotc_armory', 'law_center', 'vet_school',
+    'concert_hall', 'theatre', 'band_hall', 'art_gallery', 'vet_hospital', 'nat_museum', 'computer_lab', 'ag_greenhouses'
   ]);
   {
     const B = {};
@@ -113,7 +117,8 @@
     'greenAndGold', 'fortressBayou', 'livingWithWater', 'lightsAreOn', 'sinkingFeeling', 'rebuiltFromTheRoux', 'flagship',
     'laissez', 'untouched',
     'landBaron',  // L2: five sections chartered at the Land Office
-    'reclaimed'   // L3: 50 marsh tiles filled to dry land
+    'reclaimed',  // L3: 50 marsh tiles filled to dry land
+    'fiveColleges', 'fullCurriculum'   // colleges and venues pass: five colleges built; every college built
   ]);
   // Objective ids in GDD §10.2 order (progress.objectives keys).
   BSU.OBJECTIVE_IDS = freeze(['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '11a', '12', '13', '14', '15', '16', '17', '18a', '18b', '18', '19', '20', '21', '22']);
@@ -412,6 +417,7 @@
       statePerStudent: 2500, stateBase: 0.6, statePrestige: 0.8, stateEcoMult: 0.85, stateEcoMin: 30, stateDay: 'Jul 1',   // §5.2
       donationPerAlumnus: 8, donationBase: 0.5, footballMultPerWin: 0.1, footballMultCap: 2, homecomingDonation: 3,   // §5.2
       research: { engineering: 12000, coastal: 10000, base: 0.5, coastalEcoDiv: 50, restorationMult: 1.25 },   // §5.2
+      programs: { perProgram: 0.004, cap: 0.25 },   // colleges pass: every department of every built college adds 0.4 % to applications, capped at +25 %
       concessions: 12,                       // §5.2 athletics
       parkingPer: 600, parkingPay: 4000,     // §5.2
       housing: {                             // PLAN_V2 P7: the three tiers (effects.housingTier 1 economy / 2 standard / 3 premium)
@@ -856,7 +862,7 @@
         students21: 3000, students22: 10000, prestige22: 60, coneDays12: 6   // balance pass: students21 5000 → 3000 so the card is never silent between 2,000 and the flagship goal (docs/BALANCE_NOTES.md)
       },
       milestoneGoals: {                      // §10.5 conditions
-        firstBell: 600, highAndDryH: 8, stormChaser: 0.2, eyeOfTheStormCat: 4, gatorWrangler: 10, skeeterBeater: 0.1, skeeterMonth: 8,
+        firstBell: 600, fiveColleges: 5, highAndDryH: 8, stormChaser: 0.2, eyeOfTheStormCat: 4, gatorWrangler: 10, skeeterBeater: 0.1, skeeterMonth: 8,
         bigBoil: { attendance: 3000, studentShare: 0.6, alumniShare: 0.1, unionMult: 1.5 }, throwMeSomethin: 75,
         greenAndGold: { ecology: 70, students: 3000 }, fortressBayou: { H: 12, floodwalls: 40 },
         livingWithWater: { ecology: 75, students: 2000, floodwallMax: 10 }, sinkingFeeling: 1.0,
@@ -1417,13 +1423,14 @@
   BSU.catalogRowSchema = freeze({
     row: freeze({
       id: 'string', n: 'int', name: 'string',
-      tab: 'enum:paths|utilities|academic|housing|dining|sports|life|swamp|grounds',
+      tab: 'enum:paths|utilities|academic|colleges|arts|housing|dining|sports|life|swamp|grounds',
       essentials: 'boolean', kind: 'enum:footprint|drag|paint|upgrade',
       w: 'int', h: 'int', rotatable: 'boolean', cost: 'number', upkeep: 'number', wr: 'int',
       needsPower: 'boolean', needsWater: 'boolean', pathAdjacency: 'boolean', roadWithin: 'int', placeRule: 'placeRule',
       allowMarsh: 'boolean', alwaysPilings: 'boolean', buildDays: 'int', unlock: 'object:unlock',
       pip: 'enum:|gator|mosquito|cell|season', effects: 'object:effects', tiers: 'array:object:tier', paint: 'object:paint',
-      namePool: 'string', why: 'string', desc: 'string', blurb: 'string', demolishable: 'boolean', shelterOwn: 'boolean'
+      namePool: 'string', why: 'string', desc: 'string', blurb: 'string', demolishable: 'boolean', shelterOwn: 'boolean',
+      programs: 'array:string', college: 'string'   // colleges pass: the departments a college lists on its cards; a venue's parent college row id
     }),
     unlock: freeze({
       students: 'optional:number', prestige: 'optional:number', ecology: 'optional:number', milestone: 'optional:string',
@@ -1444,7 +1451,7 @@
     radiusCapacity: freeze({ radius: 'number', capacity: 'number' }),
     multRadius: freeze({ mult: 'number', radius: 'number' }),
     multRadiusStacks: freeze({ mult: 'number', radius: 'number', stacksTo: 'number' }),
-    research: freeze({ kind: 'enum:|engineering|coastal', base: 'number' }),
+    research: freeze({ kind: 'enum:|engineering|coastal|science|graduate|veterinary', base: 'number' }),
     illness: freeze({ mosquito: 'number', heat: 'number', radius: 'number' }),
     tier: freeze({
       tier: 'int', name: 'string', cost: 'number', upkeep: 'number', seats: 'number', landmark: 'number', shelter: 'number',
@@ -1506,8 +1513,8 @@
     BSU.SELFTEST = true;
     try {
       for (const k of ['T', 'SURF', 'FLAG', 'SKY', 'OV', 'STORM', 'STORM_PHASE', 'OBJ', 'PLACE', 'SPR', 'B', 'EV', 'MAP']) BSU.assert(Object.isFrozen(BSU[k]), k + ' frozen');
-      BSU.assert(BSU.B_ORDER.length === 48 && Object.keys(BSU.B).length === 48, '48 catalog ids');   // L3: dredge_fill; water pass: road_bridge
-      BSU.assert(BSU.MILESTONES.length === 28, '28 milestones');   // L2: landBaron, L3: reclaimed
+      BSU.assert(BSU.B_ORDER.length === 71 && Object.keys(BSU.B).length === 71, '71 catalog ids');   // L3: dredge_fill; water pass: road_bridge
+      BSU.assert(BSU.MILESTONES.length === 30, '30 milestones');   // L2: landBaron, L3: reclaimed
       BSU.assert(new Set(BSU.EV_LIST).size === BSU.EV_LIST.length, 'event names unique');
       BSU.assert(Object.keys(BSU.EV).length === BSU.EV_LIST.length, 'EV constants unique');
       BSU.assert(BSU.SKY_TICKS.reduce((a, b) => a + b, 0) === 300, 'sky cycle sums to 300');

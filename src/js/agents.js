@@ -66,7 +66,8 @@
     maxRouteFails: 3,          // an arrival whose goal is unreachable lands where it is (no teleport)
     idleWanderP: 0.02          // per-tick chance an idle agent picks a new idle spot
   };
-  const ACADEMIC = ['lecture_hall', 'founders_hall', 'library', 'engineering', 'coastal_institute'];
+  const ACADEMIC = ['lecture_hall', 'founders_hall', 'library', 'engineering', 'coastal_institute',
+    'univ_college', 'business_college', 'education_college', 'masscomm_school', 'humanities_college', 'art_college', 'music_college', 'ag_college', 'science_college', 'honors_college', 'grad_school', 'law_center', 'vet_school', 'computer_lab'];   // colleges pass: the new halls with seats are class halls too
   const HOUSING = ['dorm', 'res_tower', 'greek_house', 'bunkhouse', 'suites'];   // P7: the economy and premium tiers house students too
   const DINING = ['dining_hall', 'union', 'poboy'];
   const SPEED_BY_CLASS = [0, P.speed.path / 10, P.speed.dry / 10, P.speed.wet / 10, P.speed.wading / 10];

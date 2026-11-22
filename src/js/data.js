@@ -66,17 +66,22 @@
   function flat(wall, decals, special) {
     return P({ wall: wall, roof: 'none', roofColor: '', floors: 0, decals: decals || [], special: special || '' });
   }
+  const NEW_ROWS = BSU.B_ORDER.slice(48);   // colleges and venues pass: rows 49-71 (15 colleges, then 8 venues)
   const NEEDS_POWER = {
     water_tower: 1, wastewater: 1, founders_hall: 1, lecture_hall: 1, library: 1, engineering: 1, coastal_institute: 1,
     dorm: 1, res_tower: 1, greek_house: 1, bunkhouse: 1, suites: 1, dining_hall: 1, poboy: 1, stadium: 1, union: 1, rec_center: 1, health_center: 1,
     bell_tower: 1, tiger_habitat: 1, surge_barrier: 1, marsh_restoration: 1,
     pump: 1   // decision: the Pump "needs ⚡ (stops in blackout)"; one coverage rule for buildings
   };
+  for (const id of NEW_ROWS) NEEDS_POWER[id] = 1;
   const NEEDS_WATER = {
     founders_hall: 1, lecture_hall: 1, library: 1, engineering: 1, coastal_institute: 1, dorm: 1, res_tower: 1,
     greek_house: 1, bunkhouse: 1, suites: 1, dining_hall: 1, stadium: 1, union: 1, rec_center: 1, health_center: 1, tiger_habitat: 1
   };
-  const PATH_ADJ_ROWS = [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 24, 28, 32, 34, 39, 40, 42, 43, 45, 46];   // 45, 46 = bunkhouse, suites (P7)
+  for (const id of NEW_ROWS) NEEDS_WATER[id] = 1;
+  const NEW_TAB = { science_college: 'academic', ag_college: 'academic', vet_school: 'academic',
+    concert_hall: 'arts', theatre: 'arts', band_hall: 'arts', art_gallery: 'arts', vet_hospital: 'arts', nat_museum: 'arts', computer_lab: 'arts', ag_greenhouses: 'arts' };   // every other new college is in 'colleges'
+  const PATH_ADJ_ROWS = [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 24, 28, 32, 34, 39, 40, 42, 43, 45, 46].concat(NEW_ROWS.map(function (id, i) { return 49 + i; }));   // 45, 46 = bunkhouse, suites (P7)
   const ESSENTIALS = { path: 1, dorm: 1, dining_hall: 1, lecture_hall: 1, poboy: 1, quad: 1, live_oak: 1 };
   const NOT_DEMOLISHABLE = { founders_hall: 1, library: 1, res_tower: 1, stadium: 1, bell_tower: 1, tiger_habitat: 1, rookery: 1, surge_barrier: 1, marsh_restoration: 1 };
   const TAB_OF_ROW = function (n) {
@@ -87,6 +92,7 @@
     if (n <= 17) return 'dining';
     if (n <= 19) return 'sports';
     if (n <= 24) return 'life';
+    if (n >= 49) return NEW_TAB[BSU.B_ORDER[n - 1]] || 'colleges';   // colleges pass: rows 49-71
     if (n <= 35 || n === 41 || n === 42 || n === 47) return 'swamp';   // 47 = Dredge & fill (L3), placed right after the canal below
     return 'grounds';
   };
@@ -140,7 +146,31 @@
     surge_barrier: 'A gate that closes the bayou when the stage passes 2 ft. Needs 2 powered Pumps.',
     marsh_restoration: 'Turns 10–40 tiles back into marsh over 30 days; up to +15 ecology.',
     dredge_fill: 'Raises marsh to dry land in ten days at $40k a tile. Ecology pays for it.',   // L3
-    rookery: 'Landmark +6, +2 happiness within 8, and spoonbills every dawn.'
+    rookery: 'Landmark +6, +2 happiness within 8, and spoonbills every dawn.',
+    // colleges and venues pass
+    univ_college: '300 seats and +3 happiness within 8 tiles for first-years who are still deciding.',
+    online_center: '$20k a month in tuition with no beds, no parking and no dining.',
+    business_college: '350 seats and $14k a month in consulting income.',
+    education_college: '300 seats; heat penalty ×0.7 within 8 tiles; five programs.',
+    humanities_college: '600 seats, landmark +1 and 23 programs: the most of any college.',
+    masscomm_school: '250 seats, landmark +2 and +2 happiness campus-wide within 12.',
+    art_college: '300 seats and +3 happiness within 8 tiles; opens the Art Studios & Gallery.',
+    music_college: '250 seats, landmark +1, +4 happiness within 10; opens three arts venues.',
+    ag_college: '300 seats, feeds 400, $8k a month in farm sales; opens the Ag Greenhouses.',
+    science_college: '450 seats and $10k a month in research; opens the Natural Science Museum.',
+    honors_college: '150 seats and landmark +3: prestige in a small footprint.',
+    grad_school: '200 seats and $9k a month in graduate research.',
+    rotc_armory: 'Shelters 1,500 in a storm; +2 happiness within 6; three service programs.',
+    law_center: '250 seats and landmark +4: the surest prestige on the list.',
+    vet_school: '300 seats, landmark +2, $8k a month in research; opens the Teaching Hospital.',
+    concert_hall: 'Landmark +2, +6 happiness within 12 and $6k a month in tickets.',
+    theatre: '+4 happiness within 9 and $3k a month at the box office.',
+    band_hall: '+3 happiness within 10: the game-day spirit.',
+    art_gallery: '+3 happiness within 7 and $2k a month in gallery sales.',
+    vet_hospital: 'Landmark +1, +3 happiness within 8 and $14k a month in clinic fees.',
+    nat_museum: 'Landmark +3, +3 happiness within 10 and $4k a month in admissions.',
+    computer_lab: '300 more seats in a 2×2 footprint.',
+    ag_greenhouses: '+2 happiness within 5 and $5k a month in plant sales.'
   };
 
   /** One catalog row; fills every §4.1 field from the row-number rules, then applies overrides. */
@@ -158,6 +188,7 @@
       buildDays: kind === 'footprint' ? 1 + Math.floor(w * h / 6) : (kind === 'upgrade' ? 1 : 0),
       unlock: o.unlock || {}, pip: o.pip || '', effects: E(o.effects), tiers: o.tiers || [], paint: o.paint,
       namePool: o.namePool || '', why: o.why, desc: o.desc, blurb: BLURB[id] || '',
+      programs: o.programs || [], college: o.college || '',   // colleges pass: departments listed on the cards (each adds to applications); a venue's parent college row
       demolishable: !NOT_DEMOLISHABLE[id], shelterOwn: id === 'dorm' || id === 'res_tower' || id === 'suites'
     };
     return r;
@@ -217,6 +248,7 @@
     row({ n: 10, name: 'Library', w: 4, h: 3, cost: 1800000, upkeep: 14000, wr: 4,
       unlock: { students: 800 },
       effects: { academic: 20, landmark: 4, happiness: { value: 4, radius: 10 }, shelter: 800 },
+      programs: ['Libraries'],
       paint: P({ floors: 2, windows: { cols: 6, rows: 2 }, decals: ['arcade', 'dome', 'lights'], features: ['arched', 'mullions', 'gutters', 'sign:LIBRARY', 'steps', 'planters'] }),
       namePool: 'library',
       why: 'Prestige lives here, and so do the finals-week crowds.',
@@ -224,6 +256,7 @@
     row({ n: 11, name: 'Engineering Hall', w: 4, h: 3, cost: 2600000, upkeep: 30000, wr: 4,
       unlock: { students: 1500 },
       effects: { seats: 500, academic: 20, research: { kind: 'engineering', base: 12000 }, shelter: 800, special: ['discountSwamp'] },
+      programs: ['Biological & Agricultural', 'Chemical', 'Civil & Environmental', 'Computer Science', 'Construction Management', 'Electrical & Computer', 'Mechanical & Industrial', 'Petroleum'],
       paint: P({ wall: ['#8A8A8E', '#6E6E72'], roof: 'flat', roofColor: '#6E6E72', floors: 3, windows: { cols: 6, rows: 3 }, decals: ['pipes', 'crane'], material: 'metal', accent: '#4FA3D6', features: ['hvac', 'vents', 'tank', 'stack', 'mullions'] }),
       namePool: 'engineering',
       why: 'The engineers designed it themselves. Levees get cheaper the day it opens.',
@@ -231,6 +264,7 @@
     row({ n: 12, name: 'Coastal Studies Institute', w: 3, h: 3, cost: 2200000, upkeep: 24000, wr: 3, placeRule: PLACE.TOUCH_MARSH_BAYOU, alwaysPilings: true,
       unlock: { students: 1200, ecology: 40 },
       effects: { seats: 150, academic: 20, research: { kind: 'coastal', base: 10000 }, coneDays: 9, coneNarrow: 0.3, ecologyDecayMult: 0.5, special: ['radar'] },
+      programs: ['Environmental Sciences', 'Oceanography & Coastal Sciences'],
       paint: P({ roof: 'gable', roofColor: '#3F5E3A', floors: 2, windows: { cols: 4, rows: 2 }, decals: ['stilts', 'dish', 'airboat'], special: 'coastal_institute', material: 'wood', accent: '#3F5E3A', features: ['shutters', 'gallery', 'gutters'] }),
       namePool: 'institute',
       why: 'A longer warning and a narrower cone, paid for by keeping the marsh.',
@@ -449,7 +483,139 @@
       effects: { surfaceId: SURF.ROAD, noise: { value: 1, radius: 1 } },
       paint: flat(['#3A3A40', '#B8B8BC'], ['stilts', 'lights'], 'bridge'),
       why: 'The bayou splits the campus. This carries road, buses and parade across.',
-      desc: 'Drag bank to bank: up to 8 water tiles and 4 marsh tiles a bank on concrete piers at $40k a deck tile; Campus Road ($10k) on the dry ground of the run; both banks tie themselves in; open to vehicles and walkers; impassable above a 4-ft surge.' })
+      desc: 'Drag bank to bank: up to 8 water tiles and 4 marsh tiles a bank on concrete piers at $40k a deck tile; Campus Road ($10k) on the dry ground of the run; both banks tie themselves in; open to vehicles and walkers; impassable above a 4-ft surge.' }),
+    // ---- colleges and venues pass: rows 49-63 colleges (one building each), 64-71 signature venues. Programs = the schools and departments of docs/CONTENT_BACKLOG.md §2 ----
+    row({ n: 49, name: 'University College', w: 3, h: 2, cost: 900000, upkeep: 11000, wr: 3, unlock: { students: 300 },
+      effects: { seats: 300, happiness: { value: 3, radius: 8 } },
+      programs: ['First-Year & Undeclared Studies'],
+      paint: P({ floors: 2, windows: { cols: 4, rows: 2 }, decals: ['arcade'], accent: GOLD, features: ['arched', 'steps', 'planters', 'sign:UC'] }),
+      why: 'Where the undecided wait out their first year, enrolled.',
+      desc: '300 seats; +3 happiness radius 8; 1 program.' }),
+    row({ n: 50, name: 'Continuing Education Center', w: 3, h: 2, cost: 700000, upkeep: 9000, wr: 3, unlock: { students: 400 },
+      effects: { revenueMonthly: 20000 },
+      programs: ['Online & Continuing Education'],
+      paint: P({ wall: ['#7FA6C4', '#5E86A3'], roof: 'flat', roofColor: '#6E6E72', floors: 2, windows: { cols: 5, rows: 2 }, decals: ['dish', 'lights'], material: 'glass', accent: '#4FA3D6', features: ['hvac', 'mullions', 'sign:ONLINE'] }),
+      why: 'Tuition from students who never need a bed or a parking space.',
+      desc: '$20k/mo in online and continuing tuition; no beds, parking or dining; 1 program.' }),
+    row({ n: 51, name: 'College of Business', w: 4, h: 3, cost: 1500000, upkeep: 18000, wr: 3, unlock: { students: 600 },
+      effects: { seats: 350, revenueMonthly: 14000 },
+      programs: ['Accounting', 'Economics', 'Finance', 'Marketing', 'Public Administration', 'Management', 'Entrepreneurship & Information Systems', 'MBA'],
+      paint: P({ wall: ['#D9D2C0', '#B9B09A'], roof: 'flat', roofColor: '#6E6E72', floors: 4, windows: { cols: 6, rows: 4 }, decals: ['columns', 'flag'], material: 'stone', accent: '#1F4D3A', features: ['cornice', 'mullions', 'steps', 'flagpole'] }),
+      why: 'Teaches balance sheets, then invoices yours for the consulting.',
+      desc: '350 seats; $14k/mo consulting and executive education; 8 programs.' }),
+    row({ n: 52, name: 'College of Human Sciences & Education', w: 3, h: 3, cost: 1400000, upkeep: 16000, wr: 3, unlock: { students: 700 },
+      effects: { seats: 300, heat: { mult: 0.7, radius: 8 } },
+      programs: ['Education', 'Information Studies', 'Kinesiology', 'Leadership & Human Resource Development', 'Social Work'],
+      paint: P({ wall: ['#A8604A', '#8A4A3A'], roof: 'gable', roofColor: '#5A5A66', floors: 2, windows: { cols: 5, rows: 2 }, decals: ['clock'], material: 'brick', accent: '#E8C14A', features: ['gallery', 'shutters', 'dormers', 'steps'] }),
+      why: 'Kinesiology runs laps in August so the rest of you need not.',
+      desc: '300 seats; heat penalty ×0.7 within 8 tiles (Kinesiology); 5 programs.' }),
+    row({ n: 53, name: 'School of Mass Communication', w: 3, h: 3, cost: 1300000, upkeep: 15000, wr: 3, unlock: { students: 900 },
+      effects: { seats: 250, landmark: 2, happiness: { value: 2, radius: 12 } },
+      programs: ['Journalism', 'Public Relations', 'Digital Advertising', 'Political Communication'],
+      paint: P({ wall: ['#4A4A58', '#34343F'], roof: 'flat', roofColor: '#34343F', floors: 3, windows: { cols: 4, rows: 3 }, decals: ['dish', 'sign'], material: 'metal', accent: '#E0443E', features: ['hvac', 'mullions', 'sign:NEWS'] }),
+      why: 'The student paper says you are flagship. It prints it either way.',
+      desc: '250 seats; landmark +2; +2 happiness radius 12; 4 programs.' }),
+    row({ n: 54, name: 'College of Humanities & Social Sciences', w: 5, h: 3, cost: 1800000, upkeep: 20000, wr: 3, unlock: { students: 1000 },
+      effects: { seats: 600, landmark: 1 },
+      programs: ['African & African American Studies', 'Communication Sciences & Disorders', 'Communication Studies', 'English', 'French Studies', 'Geography & Anthropology', 'History', 'Philosophy & Religious Studies', 'Political Science', 'Psychology', 'Sociology', 'World Languages, Literatures & Cultures', 'Asian Studies', 'Classical Civilization', 'Comparative Literature', 'Disaster Science & Management', 'Interdisciplinary Studies', 'International Studies', 'Jewish Studies', 'Linguistics', 'Liberal Arts', 'Screen Arts', "Women's, Gender & Sexuality Studies"],
+      paint: P({ wall: ['#EDE6D3', '#D6CDB5'], roof: 'hip', roofColor: '#5E6B5A', floors: 3, windows: { cols: 8, rows: 3 }, decals: ['columns', 'clock'], material: 'stone', accent: GOLD, features: ['pediment', 'arched', 'cupola', 'steps', 'planters'] }),
+      why: 'Twenty-three programs and one very large hallway. Plan for the hallway.',
+      desc: '600 seats; landmark +1; 23 programs, the most of any college.' }),
+    row({ n: 55, name: 'College of Art & Design', w: 4, h: 3, cost: 1700000, upkeep: 17000, wr: 3, unlock: { students: 1200 },
+      effects: { seats: 300, happiness: { value: 3, radius: 8 } },
+      programs: ['Architecture', 'Art', 'Interior Design', 'Landscape Architecture'],
+      paint: P({ wall: ['#F5F1EA', '#E2DCCF'], roof: 'barrel', roofColor: '#8A8A8E', floors: 2, windows: { cols: 6, rows: 2 }, decals: ['banner', 'awning'], accent: '#E07020', features: ['awnings', 'vents', 'mullions'] }),
+      why: 'North light, loud critiques and a studio that is never empty.',
+      desc: '300 seats; +3 happiness radius 8; 4 programs.' }),
+    row({ n: 56, name: 'College of Music & Dramatic Arts', w: 4, h: 3, cost: 2000000, upkeep: 22000, wr: 3, unlock: { students: 1400 },
+      effects: { seats: 250, landmark: 1, happiness: { value: 4, radius: 10 } },
+      programs: ['School of Music', 'Bands', 'School of Theatre & Film'],
+      paint: P({ wall: ['#D8C8B0', '#B8A890'], roof: 'hip', roofColor: PURPLE, floors: 2, windows: { cols: 5, rows: 2 }, decals: ['columns', 'banner'], material: 'stone', accent: PURPLE, features: ['pediment', 'arched', 'cupola:gold', 'steps'] }),
+      why: 'Practice rooms leak sound. The whole campus gets the rehearsal.',
+      desc: '250 seats; landmark +1; +4 happiness radius 10; 3 programs; opens the Concert Hall, Theatre and Band Hall.' }),
+    row({ n: 57, name: 'College of Agriculture', w: 5, h: 3, cost: 2400000, upkeep: 24000, wr: 3, unlock: { students: 1700 },
+      effects: { seats: 300, feeds: 400, diningRadius: 8, revenueMonthly: 8000 },
+      programs: ['Agricultural Economics & Agribusiness', 'Agricultural & Extension Education', 'Animal Sciences', 'Entomology', 'Experimental Statistics', 'Nutrition & Food Sciences', 'Plant, Environmental & Soil Sciences', 'Plant Pathology & Crop Physiology', 'Renewable Natural Resources', 'Textiles, Apparel Design & Merchandising'],
+      paint: P({ wall: ['#8FAE6A', '#6F8F4F'], roof: 'gable', roofColor: '#8A3A2E', floors: 2, windows: { cols: 7, rows: 2 }, decals: ['sign'], material: 'wood', accent: '#E8C14A', features: ['gallery:both', 'vents', 'tank', 'shutters'] }),
+      why: 'The farm stand feeds four hundred and sells the surplus.',
+      desc: '300 seats; feeds 400 within 8 tiles; $8k/mo farm sales; 10 programs; opens the Ag Greenhouses.' }),
+    row({ n: 58, name: 'College of Science', w: 4, h: 3, cost: 2800000, upkeep: 30000, wr: 4, unlock: { students: 2000 },
+      effects: { seats: 450, research: { kind: 'science', base: 10000 } },
+      programs: ['Biological Sciences', 'Chemistry', 'Geology & Geophysics', 'Mathematics', 'Physics & Astronomy', 'Museum of Natural Science'],
+      paint: P({ wall: ['#9FB4C4', '#7C93A6'], roof: 'flat', roofColor: '#6E6E72', floors: 4, windows: { cols: 6, rows: 4 }, decals: ['dome', 'vents'], material: 'glass', accent: '#4FA3D6', features: ['hvac', 'vents', 'stack', 'mullions'] }),
+      why: 'Grants arrive faster than lab space. The labs run late.',
+      desc: '450 seats; research $10k/mo (scales with prestige); 6 programs; opens the Natural Science Museum.' }),
+    row({ n: 59, name: 'Honors College', w: 3, h: 2, cost: 1800000, upkeep: 16000, wr: 3, unlock: { students: 2500, prestige: 35 },
+      effects: { seats: 150, landmark: 3 },
+      programs: ['Honors College'],
+      paint: P({ wall: ['#E8E0CC', '#CFC5AA'], roof: 'hip', roofColor: '#3F3F4A', floors: 2, windows: { cols: 4, rows: 2 }, decals: ['columns', 'clock'], material: 'stone', accent: GOLD, features: ['pediment', 'cupola:gold', 'arched', 'steps', 'flagpole'] }),
+      why: 'Small seminars, large reputation. Admissions mentions it twice.',
+      desc: '150 seats; landmark +3 (prestige); 1 program.' }),
+    row({ n: 60, name: 'Graduate School', w: 3, h: 3, cost: 2200000, upkeep: 22000, wr: 3, unlock: { students: 3000, prestige: 40 },
+      effects: { seats: 200, research: { kind: 'graduate', base: 9000 } },
+      programs: ['Graduate School'],
+      paint: P({ wall: ['#6E4A44', '#583A36'], roof: 'gable', roofColor: '#4A4A55', floors: 3, windows: { cols: 4, rows: 3 }, decals: ['arcade'], material: 'brick', accent: '#C9A97A', features: ['dormers', 'gutters', 'belfry', 'steps'] }),
+      why: 'Where research gets done by people who are also grading.',
+      desc: '200 seats; research $9k/mo (scales with prestige); 1 program.' }),
+    row({ n: 61, name: 'ROTC Armory', w: 4, h: 4, cost: 1400000, upkeep: 14000, wr: 4, unlock: { students: 3500 },
+      effects: { shelter: 1500, happiness: { value: 2, radius: 6 } },
+      programs: ['Army (Military Science)', 'Air Force (Aerospace Studies)', 'Naval'],
+      paint: P({ wall: ['#8E8A74', '#706C5A'], roof: 'flat', roofColor: '#5A5A4A', floors: 1, windows: { cols: 5, rows: 1 }, decals: ['flag'], material: 'stone', accent: '#6B7A3A', features: ['cornice', 'steps', 'sign:ROTC'] }),
+      why: 'Drills at dawn, shelters a regiment when the surge comes.',
+      desc: 'Shelter 1,500 (storm readiness); +2 happiness radius 6; 3 programs.' }),
+    row({ n: 62, name: 'Law Center', w: 4, h: 3, cost: 3400000, upkeep: 34000, wr: 4, unlock: { students: 4500, prestige: 50 },
+      effects: { seats: 250, landmark: 4 },
+      programs: ['Law Center'],
+      paint: P({ wall: ['#CFC6AE', '#A9A087'], roof: 'flat', roofColor: '#3A3A46', floors: 4, windows: { cols: 6, rows: 4 }, decals: ['columns', 'flag'], material: 'stone', accent: '#7A1F2E', features: ['pediment', 'cornice', 'steps', 'arched'] }),
+      why: 'Columns do half the arguing. Prestige does the rest.',
+      desc: '250 seats; landmark +4 (prestige); 1 program.' }),
+    row({ n: 63, name: 'School of Veterinary Medicine', w: 5, h: 4, cost: 3800000, upkeep: 40000, wr: 4, unlock: { students: 6000, prestige: 45 },
+      effects: { seats: 300, landmark: 2, research: { kind: 'veterinary', base: 8000 } },
+      programs: ['Comparative Biomedical Sciences', 'Pathobiological Sciences', 'Veterinary Clinical Sciences', 'Veterinary Teaching Hospital'],
+      paint: P({ wall: ['#F0ECE2', '#D8D2C2'], roof: 'gable', roofColor: '#5E8F5A', floors: 3, windows: { cols: 8, rows: 3 }, decals: ['sign', 'lights'], accent: '#3FBF7F', features: ['gutters', 'mullions', 'awnings', 'hvac', 'sign:VET'] }),
+      why: 'The largest footprint on campus. The patients are larger still.',
+      desc: '300 seats; landmark +2; research $8k/mo (scales with prestige); 4 programs; opens the Teaching Hospital.' }),
+    row({ n: 64, name: 'Concert Hall', w: 4, h: 3, cost: 2200000, upkeep: 20000, wr: 3, college: 'music_college', unlock: { building: 'music_college' },
+      effects: { landmark: 2, happiness: { value: 6, radius: 12 }, revenueMonthly: 6000 },
+      paint: P({ wall: ['#EDE6D3', '#C9BFA0'], roof: 'barrel', roofColor: '#C9A04A', floors: 2, windows: { cols: 4, rows: 1 }, decals: ['lights', 'banner'], material: 'stone', accent: GOLD, features: ['arched', 'steps', 'planters', 'banner:roux'] }),
+      why: 'A shell for the orchestra and a reason to dress up.',
+      desc: 'Landmark +2; +6 happiness radius 12; $6k/mo in ticket sales.' }),
+    row({ n: 65, name: 'Theatre', w: 3, h: 3, cost: 1200000, upkeep: 12000, wr: 3, college: 'music_college', unlock: { building: 'music_college' },
+      effects: { happiness: { value: 4, radius: 9 }, revenueMonthly: 3000 },
+      paint: P({ wall: ['#5A3A5E', '#43294A'], roof: 'flat', roofColor: '#2A2A34', floors: 3, windows: { cols: 3, rows: 2 }, decals: ['awning', 'lights'], material: 'brick', accent: '#E0443E', features: ['gallery', 'sign:THEATRE'] }),
+      why: 'The fly tower is the tall part. The drama is the rest.',
+      desc: '+4 happiness radius 9; $3k/mo at the box office.' }),
+    row({ n: 66, name: 'Band Hall', w: 3, h: 2, cost: 800000, upkeep: 9000, wr: 3, college: 'music_college', unlock: { building: 'music_college' },
+      effects: { happiness: { value: 3, radius: 10 } },
+      paint: P({ wall: ['#5E2CA5', PURPLE], roof: 'gable', roofColor: '#3A3A46', floors: 1, windows: { cols: 3, rows: 1 }, decals: ['banner', 'lights'], accent: GOLD, features: ['awnings', 'sign:BAND'] }),
+      why: 'Game-day spirit starts here, at 7 a.m., in a stairwell.',
+      desc: '+3 happiness radius 10 (game-day spirit).' }),
+    row({ n: 67, name: 'Art Studios & Gallery', w: 2, h: 2, cost: 600000, upkeep: 7000, wr: 2, college: 'art_college', unlock: { building: 'art_college' },
+      effects: { happiness: { value: 3, radius: 7 }, revenueMonthly: 2000 },
+      paint: P({ wall: ['#FFFFFF', '#E8E8E8'], roof: 'flat', roofColor: '#E8E8E8', floors: 1, windows: { cols: 3, rows: 1 }, decals: ['banner'], accent: '#E75480', features: ['planters', 'steps', 'sign:ART'] }),
+      why: 'A white box for work the department could not sell.',
+      desc: '+3 happiness radius 7; $2k/mo in gallery sales.' }),
+    row({ n: 68, name: 'Veterinary Teaching Hospital', w: 4, h: 4, cost: 2600000, upkeep: 28000, wr: 3, college: 'vet_school', unlock: { building: 'vet_school' },
+      effects: { landmark: 1, happiness: { value: 3, radius: 8 }, revenueMonthly: 14000 },
+      paint: P({ wall: ['#FFFFFF', '#EDEDED'], roof: 'gable', roofColor: '#3FBF7F', floors: 2, windows: { cols: 5, rows: 2 }, decals: ['sign'], accent: '#3FBF7F', features: ['awnings', 'hvac', 'sign:VET'] }),
+      why: 'Open to every animal in the parish that can be walked in.',
+      desc: 'Landmark +1; +3 happiness radius 8; $14k/mo in clinic fees; barn wing and paddock.' }),
+    row({ n: 69, name: 'Museum of Natural Science', w: 4, h: 3, cost: 2000000, upkeep: 18000, wr: 3, college: 'science_college', unlock: { building: 'science_college' },
+      effects: { landmark: 3, happiness: { value: 3, radius: 10 }, revenueMonthly: 4000 },
+      paint: P({ wall: ['#E9DDBF', '#CDBE98'], roof: 'dome', roofColor: '#6E8F7A', floors: 2, windows: { cols: 5, rows: 2 }, decals: ['columns', 'dome', 'banner'], material: 'stone', accent: '#C9A04A', features: ['pediment', 'steps', 'banner:roux', 'planters'] }),
+      why: 'A dome, a skeleton and a school group in every hallway.',
+      desc: 'Landmark +3; +3 happiness radius 10; $4k/mo in admissions.' }),
+    row({ n: 70, name: 'Computer Lab', w: 2, h: 2, cost: 700000, upkeep: 9000, wr: 3, college: 'engineering', unlock: { building: 'engineering' },
+      effects: { seats: 300 },
+      paint: P({ wall: ['#6E7A8A', '#525C6B'], roof: 'flat', roofColor: '#4A5260', floors: 2, windows: { cols: 3, rows: 2 }, decals: ['vents'], material: 'glass', accent: '#4FA3D6', features: ['hvac', 'mullions', 'sign:LAB'] }),
+      why: 'Three hundred seats and one printer that works.',
+      desc: '300 seats.' }),
+    row({ n: 71, name: 'Ag Greenhouses', w: 3, h: 3, cost: 500000, upkeep: 6000, wr: 2, college: 'ag_college', unlock: { building: 'ag_college' },
+      effects: { happiness: { value: 2, radius: 5 }, revenueMonthly: 5000 },
+      paint: P({ wall: ['#BFE0D0', '#9CC8B4'], roof: 'barrel', roofColor: '#CFE8DA', floors: 1, windows: { cols: 6, rows: 1 }, decals: [], material: 'glass', accent: '#3F8F3B', features: ['vents', 'planters'] }),
+      why: 'Glass houses. Throw nothing; the plant sale is Saturday.',
+      desc: '+2 happiness radius 5; $5k/mo in plant sales; glass bays.' })
+
   ];
   const catalog = {};
   for (const r of catalogList) catalog[r.id] = r;
@@ -457,9 +623,13 @@
   // ---------------------------------------------------------------------------
   // Tabs (GDD §11.2): Essentials first, then the nine tabs in n order
   // ---------------------------------------------------------------------------
-  const TAB_NAMES = [['paths', 'Paths'], ['utilities', 'Utilities'], ['academic', 'Academic'], ['housing', 'Housing'], ['dining', 'Dining'], ['sports', 'Sports'], ['life', 'Life'], ['swamp', 'Swamp'], ['grounds', 'Grounds']];
+  const TAB_NAMES = [['paths', 'Paths'], ['utilities', 'Utilities'], ['academic', 'Academic'], ['colleges', 'Colleges'], ['arts', 'Arts & Venues'], ['housing', 'Housing'], ['dining', 'Dining'], ['sports', 'Sports'], ['life', 'Life'], ['swamp', 'Swamp'], ['grounds', 'Grounds']];
   const tabs = [{ id: 'essentials', name: 'Essentials', rows: ['path', 'dorm', 'dining_hall', 'lecture_hall', 'poboy', 'quad', 'live_oak'] }];
-  const TAB_ORDER = { housing: ['bunkhouse', 'dorm', 'suites', 'res_tower', 'greek_house'] };   // P7: cheap → premium, then the towers and the Greek row
+  const TAB_ORDER = {
+    academic: ['lecture_hall', 'library', 'engineering', 'coastal_institute', 'science_college', 'ag_college', 'vet_school'],
+    colleges: ['univ_college', 'online_center', 'business_college', 'education_college', 'masscomm_school', 'humanities_college', 'art_college', 'music_college', 'honors_college', 'grad_school', 'rotc_armory', 'law_center'],
+    arts: ['concert_hall', 'theatre', 'band_hall', 'art_gallery', 'nat_museum', 'computer_lab', 'ag_greenhouses', 'vet_hospital'],
+    housing: ['bunkhouse', 'dorm', 'suites', 'res_tower', 'greek_house'] };   // P7: cheap → premium, then the towers and the Greek row
   for (const t of TAB_NAMES) {
     const ids = catalogList.filter(r => r.tab === t[0] && r.id !== 'founders_hall').map(r => r.id);
     const order = TAB_ORDER[t[0]];
@@ -1150,7 +1320,9 @@
     ['Laissez les Bons Temps Rouler', '20,000 students, prestige 85, ecology ≥ 50', {}],
     ['Untouched', 'Reach Flagship without draining a single marsh tile', {}],
     ['Land Baron', 'Charter 5 sections at the Land Office', { prestige: 2 }],   // L2
-    ['Reclaimed', 'Fill 50 marsh tiles to dry land with Dredge & Fill', {}]   // L3
+    ['Reclaimed', 'Fill 50 marsh tiles to dry land with Dredge & Fill', {}],   // L3
+    ['Five Colleges', 'Build five colleges', { cash: 250000 }],   // colleges pass
+    ['Flagship Curriculum', 'Build every college: all fifteen, plus Engineering and Coastal Studies', { prestige: 3 }]   // colleges pass
   ];
   const RETIRED_MILESTONES = { gatorWrangler: true, sunbather: true };   // calm alerts + ambient gators pass: never earned again, hidden in the panel
   const milestones = BSU.MILESTONES.map(function (id, i) {
@@ -1455,8 +1627,8 @@
     try {
       const D = BSU.data, L = D.catalogList, C = D.catalog;
       // 1. row count and numbering
-      check(L.length === 48, 'catalogList.length === 48 (got ' + L.length + ')');   // L3: dredge_fill; water pass: road_bridge
-      check(Object.keys(C).length === 48, 'catalog has 48 keys');
+      check(L.length === 71, 'catalogList.length === 71 (got ' + L.length + ')');   // L3: dredge_fill; water pass: road_bridge
+      check(Object.keys(C).length === 71, 'catalog has 71 keys');
       for (let i = 0; i < L.length; i++) {
         check(L[i].n === i + 1, 'row ' + (i + 1) + ' has n ' + L[i].n);
         check(C[L[i].id] === L[i], 'catalog[' + L[i].id + '] is the same object as catalogList[' + i + ']');
@@ -1474,6 +1646,8 @@
         for (const t of r.tiers) check(t.name.length > 0 && t.cost > 0 && t.seats > 0, r.id + ' tier ' + t.tier + ' sane');
         if (r.unlock.milestone) check(BSU.MILESTONES.indexOf(r.unlock.milestone) >= 0, r.id + ' unlock.milestone known');
         if (r.unlock.building) check(!!C[r.unlock.building], r.id + ' unlock.building known');
+        if (r.college) check(!!C[r.college] && r.unlock.building === r.college, r.id + ' college is its unlock building');   // colleges pass
+        check(Array.isArray(r.programs) && r.programs.every(x => typeof x === 'string' && x.length > 0), r.id + ' programs are strings');
         if (r.unlock.any) for (const u of r.unlock.any) if (u.building) check(!!C[u.building], r.id + ' unlock.any building known');
         if (r.namePool) check(Array.isArray(D.names[r.namePool]), r.id + ' namePool ' + r.namePool + ' exists');
         check(r.needsPower === !!NEEDS_POWER[r.id] && r.needsWater === !!NEEDS_WATER[r.id], r.id + ' power/water flags');
@@ -1531,7 +1705,7 @@
       check(D.students.modernShare === 0.25 && D.students.nicknameShare === 0.12, 'student shares');
       check(D.voiceCards.length === 12 && D.voiceCards.every((c, i) => c.id === BSU.VOICE_CARDS[i]), '12 voice cards in BSU.VOICE_CARDS order');
       check(D.boardCards.length === 8 && D.boardCards.every((c, i) => c.id === BSU.BOARD_CARDS[i]), '8 board cards in BSU.BOARD_CARDS order');
-      check(D.milestones.length === 28 && D.milestones.every((m, i) => m.id === BSU.MILESTONES[i] && m.name.length > 0 && m.text.length > 0), '28 milestones in BSU.MILESTONES order');   // L2: landBaron, L3: reclaimed
+      check(D.milestones.length === 30 && D.milestones.every((m, i) => m.id === BSU.MILESTONES[i] && m.name.length > 0 && m.text.length > 0), '30 milestones in BSU.MILESTONES order');   // L2: landBaron, L3: reclaimed
       const objIds = Object.keys(D.objectives);
       check(objIds.length === 25 && BSU.OBJECTIVE_IDS.every(id => !!D.objectives[id]), '25 objectives keyed by BSU.OBJECTIVE_IDS');
       for (const id of objIds) {
@@ -1541,7 +1715,8 @@
         check(['plot', 'cove', 'landing', 'crown', 'ring', 'target'].indexOf(o.showMe) >= 0, 'objective ' + id + ' showMe');
         check((o.reward.grant === 50000) !== (o.reward.prestige === 2), 'objective ' + id + ' has exactly one reward');
       }
-      check(D.tabs.length === 10 && D.tabs[0].id === 'essentials', '10 tabs, essentials first');
+      check(D.tabs.length === 12 && D.tabs[0].id === 'essentials', '12 tabs, essentials first');
+      for (const t of D.tabs) check(t.rows.length <= (t.id === 'swamp' ? 14 : 12), 'tab ' + t.id + ' holds at most 12 cards, Swamp 14 as before (got ' + t.rows.length + ')');   // colleges pass: the Build sheet stays scannable
       const opp = Object.keys(D.opponents);
       check(opp.length === 9 && opp.filter(k => D.opponents[k].rival).length === 1 && opp.filter(k => D.opponents[k].crosstown).length === 1, '9 opponents, one rival, one crosstown');
       check(D.tutorial.length === 7 && D.tutorial.every((t, i) => t.stage === i && t.card.split(/\s+/).filter(Boolean).length <= 12), '7 tutorial stages, cards ≤ 12 words');
