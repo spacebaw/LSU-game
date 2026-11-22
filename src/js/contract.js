@@ -61,7 +61,9 @@
     // colleges and venues pass: rows 49-71. 15 colleges (49-63) and 8 signature venues (64-71)
     'univ_college', 'online_center', 'business_college', 'education_college', 'masscomm_school', 'humanities_college', 'art_college', 'music_college',
     'ag_college', 'science_college', 'honors_college', 'grad_school', 'rotc_armory', 'law_center', 'vet_school',
-    'concert_hall', 'theatre', 'band_hall', 'art_gallery', 'vet_hospital', 'nat_museum', 'computer_lab', 'ag_greenhouses'
+    'concert_hall', 'theatre', 'band_hall', 'art_gallery', 'vet_hospital', 'nat_museum', 'computer_lab', 'ag_greenhouses',
+    // more buildings and upgrades pass: rows 72-81
+    'campus_store', 'arena', 'golf_course', 'recycling', 'cistern', 'bus_depot', 'tiger_statue', 'locomotive', 'trainer_jet', 'parade'
   ]);
   {
     const B = {};
@@ -1420,6 +1422,17 @@
   // Type strings: 'string' | 'number' | 'int' | 'boolean' | 'enum:a|b|c' | 'array:string' | 'array:number'
   //               | 'object:<sub>' (a sub-schema name) | 'array:object:<sub>' | 'optional:<type>' | 'placeRule'
   // ---------------------------------------------------------------------------
+  const EFFECTS_SCHEMA = freeze({
+      seats: 'number', beds: 'number', quality: 'number', feeds: 'number', diningRadius: 'number',
+      happiness: 'object:valueRadius', flatTimer: 'string', landmark: 'number', shelter: 'number',
+      power: 'object:radiusCapacity', water: 'object:radiusCapacity', mosquito: 'object:multRadiusStacks', heat: 'object:multRadius',
+      ecology: 'number', ecologyPerTile: 'number', gatorAttract: 'number', research: 'object:research', academic: 'number',
+      teamRating: 'number', noise: 'object:valueRadius', windShield: 'object:multRadius', illness: 'object:illness',
+      drainPerDay: 'number', subsidenceMult: 'number', subsidenceRadius: 'number', pumpTileFt: 'number', pondCapacity: 'number',
+      fuelDays: 'number', crest: 'number', surfaceId: 'int', canal: 'boolean', gate: 'boolean', capacityStudents: 'number',
+      parkingPer: 'number', parkingSpaces: 'number', housingTier: 'int', tickets: 'number', revenueMonthly: 'number', coneDays: 'number', coneNarrow: 'number',
+      ecologyDecayMult: 'number', gatorAvoidRadius: 'number', homeWinBonus: 'number', attendanceSeats: 'number', special: 'array:string'
+  });
   BSU.catalogRowSchema = freeze({
     row: freeze({
       id: 'string', n: 'int', name: 'string',
@@ -1436,17 +1449,8 @@
       students: 'optional:number', prestige: 'optional:number', ecology: 'optional:number', milestone: 'optional:string',
       building: 'optional:string', any: 'optional:array:object:unlock', tier: 'optional:int'
     }),
-    effects: freeze({
-      seats: 'number', beds: 'number', quality: 'number', feeds: 'number', diningRadius: 'number',
-      happiness: 'object:valueRadius', flatTimer: 'string', landmark: 'number', shelter: 'number',
-      power: 'object:radiusCapacity', water: 'object:radiusCapacity', mosquito: 'object:multRadiusStacks', heat: 'object:multRadius',
-      ecology: 'number', ecologyPerTile: 'number', gatorAttract: 'number', research: 'object:research', academic: 'number',
-      teamRating: 'number', noise: 'object:valueRadius', windShield: 'object:multRadius', illness: 'object:illness',
-      drainPerDay: 'number', subsidenceMult: 'number', subsidenceRadius: 'number', pumpTileFt: 'number', pondCapacity: 'number',
-      fuelDays: 'number', crest: 'number', surfaceId: 'int', canal: 'boolean', gate: 'boolean', capacityStudents: 'number',
-      parkingPer: 'number', parkingSpaces: 'number', housingTier: 'int', tickets: 'number', revenueMonthly: 'number', coneDays: 'number', coneNarrow: 'number',
-      ecologyDecayMult: 'number', gatorAvoidRadius: 'number', homeWinBonus: 'number', attendanceSeats: 'number', special: 'array:string'
-    }),
+    effects: EFFECTS_SCHEMA,
+
     valueRadius: freeze({ value: 'number', radius: 'number' }),
     radiusCapacity: freeze({ radius: 'number', capacity: 'number' }),
     multRadius: freeze({ mult: 'number', radius: 'number' }),
@@ -1455,7 +1459,13 @@
     illness: freeze({ mosquito: 'number', heat: 'number', radius: 'number' }),
     tier: freeze({
       tier: 'int', name: 'string', cost: 'number', upkeep: 'number', seats: 'number', landmark: 'number', shelter: 'number',
-      wr: 'int', night: 'boolean', unlock: 'object:unlock', buildDays: 'int'
+      wr: 'int', night: 'boolean', unlock: 'object:unlock', buildDays: 'int',
+      effects: 'optional:object:tierEffects', paint: 'optional:object:tierPaint'   // more buildings pass: a tier's own effects (merged over the row's by buildings.effectsOf) and paint overrides
+    }),
+    tierEffects: freeze(Object.keys(EFFECTS_SCHEMA).reduce(function (o, k) { o[k] = 'optional:' + EFFECTS_SCHEMA[k]; return o; }, {})),
+    tierPaint: freeze({
+      wall: 'optional:array:string', roof: 'optional:enum:flat|gable|hip|dome|barrel|bowl|none', roofColor: 'optional:string', floors: 'optional:int',
+      windows: 'optional:object:colsRows', decals: 'optional:array:string', accent: 'optional:string', material: 'optional:string', trim: 'optional:string', features: 'optional:array:string'
     }),
     paint: freeze({
       wall: 'array:string', roof: 'enum:flat|gable|hip|dome|barrel|bowl|none', roofColor: 'string', floors: 'int',
@@ -1513,7 +1523,7 @@
     BSU.SELFTEST = true;
     try {
       for (const k of ['T', 'SURF', 'FLAG', 'SKY', 'OV', 'STORM', 'STORM_PHASE', 'OBJ', 'PLACE', 'SPR', 'B', 'EV', 'MAP']) BSU.assert(Object.isFrozen(BSU[k]), k + ' frozen');
-      BSU.assert(BSU.B_ORDER.length === 71 && Object.keys(BSU.B).length === 71, '71 catalog ids');   // L3: dredge_fill; water pass: road_bridge
+      BSU.assert(BSU.B_ORDER.length === 81 && Object.keys(BSU.B).length === 81, '81 catalog ids');   // L3: dredge_fill; water pass: road_bridge
       BSU.assert(BSU.MILESTONES.length === 30, '30 milestones');   // L2: landBaron, L3: reclaimed
       BSU.assert(new Set(BSU.EV_LIST).size === BSU.EV_LIST.length, 'event names unique');
       BSU.assert(Object.keys(BSU.EV).length === BSU.EV_LIST.length, 'EV constants unique');

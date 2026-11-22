@@ -24,7 +24,7 @@ const NEW = COLLEGES.concat(Object.keys(VENUES));
 
 // --- 1. rows: well formed, sized, priced, unlocked on a ladder ---------------------------------------------------------------------
 eq(NEW.length, 23, '23 new rows (15 colleges + 8 venues)');
-eq(D.catalogList.length, 71, '71 catalog rows in all');
+eq(D.catalogList.length, 81, '81 catalog rows in all (71 + the 10 of the more-buildings pass)');
 for (const id of NEW) {
   const r = C[id], v = BSU.validateCatalogRow(r);
   ok(!!r && v.ok, id + ' validates against the catalog schema' + (v.ok ? '' : ': ' + v.errors.join('; ')));
@@ -168,9 +168,9 @@ ok(NEW.every((id) => BSU.sprites.isHDBuilding(id)), 'every new row has its HD bu
 {
   const ids = D.tabs.map((t) => t.id).join();
   eq(ids, 'essentials,paths,utilities,academic,colleges,arts,housing,dining,sports,life,swamp,grounds', 'tab order: Colleges and Arts & Venues follow Academic');
-  for (const t of D.tabs) ok(t.rows.length <= (t.id === 'swamp' ? 14 : 12), 'tab ' + t.id + ' holds ' + t.rows.length + ' cards (≤ 12; Swamp keeps its 14)');
+  for (const t of D.tabs) ok(t.rows.length <= (t.id === 'swamp' ? 14 : t.id === 'colleges' ? 15 : 12), 'tab ' + t.id + ' holds ' + t.rows.length + ' cards (≤ 12; Swamp keeps its 14, Colleges 15)');
   eq(D.tabs.find((t) => t.id === 'arts').name, 'Arts & Venues', 'the arts tab is named Arts & Venues');
-  ok(D.tabs.find((t) => t.id === 'colleges').rows.length === 12 && D.tabs.find((t) => t.id === 'arts').rows.length === 8 && D.tabs.find((t) => t.id === 'academic').rows.length === 7, 'Academic 7, Colleges 12, Arts & Venues 8');
+  ok(D.tabs.find((t) => t.id === 'colleges').rows.length === 15 && D.tabs.find((t) => t.id === 'arts').rows.length === 8 && D.tabs.find((t) => t.id === 'academic').rows.length === 4, 'Academic 4, Colleges 15 (all of them), Arts & Venues 8');
   const seen = {}; for (const t of D.tabs) if (t.id !== 'essentials') for (const id of t.rows) seen[id] = (seen[id] || 0) + 1;
   ok(NEW.every((id) => seen[id] === 1), 'every new row is in exactly one tab');
   // the sheet shows a tab only once it has an unlocked row: Colleges and Arts & Venues appear with University College / the first college

@@ -37,11 +37,11 @@ The screenshot that came with them shows the old purple HUD, so some notes preda
 - [ ] **open** N16 Game-day music: more epic, currently too goofy and plain.
 
 ### New content (passes 4–6)
-- [ ] N18 Buildings: ~~Art, Music, Theatre, Computer Lab~~ (done, colleges and venues pass: Art Studios & Gallery, College of Music & Dramatic Arts with the Concert Hall, Theatre and Band Hall, Computer Lab), Apparel / merch shop, Basketball arena, Golf course (takes a lot of space, forces extra land), Recycling center.
+- [x] **done** N18 Buildings: ~~Art, Music, Theatre, Computer Lab~~ (done, colleges and venues pass: Art Studios & Gallery, College of Music & Dramatic Arts with the Concert Hall, Theatre and Band Hall, Computer Lab), ~~Apparel / merch shop, Basketball arena, Golf course~~ (done: Campus Store, Basketball Arena, Golf Course 10 × 8, Recycling Center) (takes a lot of space, forces extra land); ~~Recycling center~~ done.
 - [x] **done** N18 Art, Music, Theatre and Computer Lab buildings: Art Studios & Gallery, Concert Hall, Theatre, Band Hall (College of Music & Dramatic Arts) and the Computer Lab (Engineering Hall); see `INTEGRATION_NOTES.md` "colleges and venues pass".
-- [ ] N18 Decorations: Tiger statue, Train or airplane, General grounds (Parade Ground).
-- [ ] N19 Upgrades for: Tiger Habitat, Library, Dining Hall, Rec Center, Health Center, Parking Lot (becomes a roofed multi-floor garage), Student Union (2 floors).
-- [ ] N20 Rain water collection system; campus buses.
+- [x] **done** N18 Decorations: Tiger Statue, Heritage Locomotive, Trainer Jet, Parade Ground (a dragged block); see `INTEGRATION_NOTES.md` "more buildings and upgrades pass".
+- [x] **done** N19 Upgrades for: Tiger Habitat, Library, Dining Hall (2 tiers), Rec Center, Health Center, Parking Lot (garage, then tower), Student Union: tier effects, looks and the card's gains line; see the same section.
+- [x] **done** N20 Rainwater Cistern (a small water provider) and the Bus Depot (+2 buses in the game-day, arrival and evacuation fleets, +3 happiness within 16).
 - [ ] N12 Level-up bar (a progress / mastery bar). XP from building and from goals; costlier buildings give more. About level 20 unlocks College Town and a College Town Center.
 - [x] **done** Josh: a building for every academic unit in section 2. 15 new college buildings, 8 signature venues, and the three existing buildings (Engineering Hall, Coastal Studies Institute, Library) now list their departments as Programs.
 

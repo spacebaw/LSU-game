@@ -162,6 +162,9 @@
   function effLat(state, a) { return a.lat * M.latScale(state.tiles.surface[agentTile(a)]); }
   function catalogRow(type) { const D = dep('data'); return D && D.catalog ? D.catalog[type] : null; }
   function effectOf(type, key) { const r = catalogRow(type); return (r && r.effects && typeof r.effects[key] === 'number') ? r.effects[key] : 0; }
+  /** more buildings pass: the same read for a PLACED building: its row's effects with its current tier laid over them (buildings.effectsOf) */
+  function effectsOfB(b) { const B = dep('buildings'); const e = (B && typeof B.effectsOf === 'function') ? B.effectsOf(null, b) : null; if (e) return e; const r = b && catalogRow(b.type); return (r && r.effects) || {}; }
+  function effectOfB(b, key) { const e = effectsOfB(b)[key]; return typeof e === 'number' ? e : 0; }
   function isComplete(b) { return b && !b.ruin && fin(b.built, 0) >= 1; }
   function effective(state, b) {
     const B = dep('buildings');
@@ -477,8 +480,8 @@
     for (let k = 0; k < all.length; k++) {
       const b = all[k];
       if (!b || !isComplete(b)) continue;
-      if (HOUSING.indexOf(b.type) >= 0) { const beds = Math.max(1, effectOf(b.type, 'beds')); homes.push({ b: b, beds: beds }); totalBeds += beds; if (b.type === 'greek_house') greek.push(b); }
-      if (ACADEMIC.indexOf(b.type) >= 0 && effectOf(b.type, 'seats') > 0) classes.push(b);
+      if (HOUSING.indexOf(b.type) >= 0) { const beds = Math.max(1, effectOfB(b, 'beds')); homes.push({ b: b, beds: beds }); totalBeds += beds; if (b.type === 'greek_house') greek.push(b); }
+      if (ACADEMIC.indexOf(b.type) >= 0 && effectOfB(b, 'seats') > 0) classes.push(b);
       if (DINING.indexOf(b.type) >= 0) dining.push(b);
       if (b.type === 'poboy') poboys.push(b);
       if (b.type === 'quad' || b.type === 'union' || b.type === 'rec_center' || b.type === 'tiger_habitat' || b.type === 'bell_tower') idle.push(b);   // selfies at the Habitat / Bell Tower are idle-target flavor
@@ -546,7 +549,7 @@
     }
     if (best < 0 || agentId === undefined) return best;
     let sum = 0;
-    for (let k = 0; k < cs.length; k++) { const d = pickW[k]; if (d < 0 || d > bd + PL.classSpan) { pickW[k] = 0; continue; } const w = Math.max(1, effectOf(cs[k].type, 'seats')) * nearW(d); pickW[k] = w; sum += w; }
+    for (let k = 0; k < cs.length; k++) { const d = pickW[k]; if (d < 0 || d > bd + PL.classSpan) { pickW[k] = 0; continue; } const w = Math.max(1, effectOfB(cs[k], 'seats')) * nearW(d); pickW[k] = w; sum += w; }
     let r = hashFrac(agentId, 0x636c73) * sum;
     for (let k = 0; k < cs.length; k++) { if (pickW[k] <= 0) continue; r -= pickW[k]; if (r < 0) return cs[k].id; }
     return best;
@@ -556,7 +559,7 @@
     const B = dep('buildings');
     let perDay = -1;
     if (B && typeof B.menuOf === 'function') { const ms = B.menuOf(state, b.id); if (ms && Number.isFinite(ms.throughput)) perDay = ms.throughput; }
-    if (perDay < 0) { const D = dep('data'); const row = D && D.catalog ? D.catalog[b.type] : null; perDay = row && row.effects ? fin(row.effects.feeds, 0) : 0; }
+    if (perDay < 0) { const D = dep('data'); const row = D && D.catalog ? D.catalog[b.type] : null; perDay = row && row.effects ? fin(effectsOfB(b).feeds, 0) : 0; }
     const eff = effective(state, b); if (eff <= 0 || perDay <= 0) return 0;
     const students = fin(state.economy && state.economy.students, 0), n = liveCount(state);
     const ratio = students > 0 && n > 0 ? n / students : 1;
@@ -749,12 +752,12 @@
     return doorTile(state, b);
   }
   /** the share of idle strolls a habitat draws: its happiness value × radius / 225 (5 × 15 → one in three), clamped to 5–40 % — it scales with the effect, so a bigger catalog radius draws more */
-  function habShare() {
-    const row = BSU.data && BSU.data.catalog && BSU.data.catalog.tiger_habitat, hp = row && row.effects && row.effects.happiness;
+  function habShare(hb) {
+    const row = BSU.data && BSU.data.catalog && BSU.data.catalog.tiger_habitat, hp = hb ? effectsOfB(hb).happiness : (row && row.effects && row.effects.happiness);
     return hp ? BSU.clamp(fin(hp.value, 0) * fin(hp.radius, 0) / 225, 0.05, 0.4) : 0.1;
   }
   /** append a habitat's door to `choices` as many times as gives it its share of the final list (the others are already in `choices`; `nHab` habitats split the share) */
-  function addHabitat(choices, door, base, nHab) { const sh = habShare(), n = Math.max(1, Math.round(sh / (1 - sh) * base / Math.max(1, nHab))); for (let q = 0; q < n; q++) choices.push(door); }
+  function addHabitat(choices, door, base, nHab, hb) { const sh = habShare(hb), n = Math.max(1, Math.round(sh / (1 - sh) * base / Math.max(1, nHab))); for (let q = 0; q < n; q++) choices.push(door); }
   /** the standing cells [x, y, row, …] of a habitat, nearest the glass first (row 0 beside the wall, row 1 behind it, row 2 on the path tiles outside); plaza cells need a walkable tile just outside the plaza edge for the way out */
   function habSpots(state, b, fl) {
     const out = [], rows = [HB_SPOT_X[0], HB_SPOT_X[1], HB_OUT_X];
@@ -827,7 +830,7 @@
       let nh = 0;
       for (let k = 0; k < Hc.idle.length; k++) { const ib = Hc.idle[k]; if (ib.type === 'tiger_habitat') { if (habOpen(state, ib) && !habFull(ib)) nh++; } else choices.push(doorTile(state, ib)); }
       for (let k = 0; k < Hc.oakTiles.length; k++) choices.push(Hc.oakTiles[k]);
-      if (nh) { const base = choices.length; for (let k = 0; k < Hc.idle.length; k++) { const ib = Hc.idle[k]; if (ib.type === 'tiger_habitat' && habOpen(state, ib) && !habFull(ib)) addHabitat(choices, habDoor(state, ib), base, nh); } }   // habitat pass: weighted by its happiness effect
+      if (nh) { const base = choices.length; for (let k = 0; k < Hc.idle.length; k++) { const ib = Hc.idle[k]; if (ib.type === 'tiger_habitat' && habOpen(state, ib) && !habFull(ib)) addHabitat(choices, habDoor(state, ib), base, nh, ib); } }   // habitat pass: weighted by its happiness effect
     }
     if (!choices.length) choices.push(foundersFront(state));
     return pickTile(r, choices, foundersFront(state));
@@ -842,7 +845,7 @@
     for (let k = 0; k < Hc.greek.length; k++) choices.push(doorTile(state, Hc.greek[k]));
     for (let k = 0; k < Hc.union.length; k++) choices.push(doorTile(state, Hc.union[k]));
     { const base = choices.length; let nh = 0; for (let k = 0; k < Hc.idle.length; k++) if (Hc.idle[k].type === 'tiger_habitat' && habOpen(state, Hc.idle[k]) && !habFull(Hc.idle[k])) nh++;
-      if (base) for (let k = 0; k < Hc.idle.length; k++) { const ib = Hc.idle[k]; if (ib.type === 'tiger_habitat' && habOpen(state, ib) && !habFull(ib)) addHabitat(choices, habDoor(state, ib), base, nh); }   // habitat pass: the lit plaza at Dusk
+      if (base) for (let k = 0; k < Hc.idle.length; k++) { const ib = Hc.idle[k]; if (ib.type === 'tiger_habitat' && habOpen(state, ib) && !habFull(ib)) addHabitat(choices, habDoor(state, ib), base, nh, ib); }   // habitat pass: the lit plaza at Dusk
       else for (let k = 0; k < Hc.idle.length; k++) { const ib = Hc.idle[k]; if (ib.type === 'tiger_habitat' && habOpen(state, ib) && !habFull(ib)) choices.push(habDoor(state, ib)); } }
     if (!choices.length) return { goal: 'idle', target: idleSpot(state, a, r, false) };
     return { goal: 'idle', target: pickTile(r, choices, foundersFront(state)) };
@@ -868,7 +871,7 @@
   /** a building of `list` by weight × nearness to (tx, ty), drawn with u in [0, 1); needEff = only buildings that work */
   function pickNear(state, list, tx, ty, u, seatWeighted, needEff) {
     let sum = 0; const n = list.length;
-    for (let k = 0; k < n; k++) { const b = list[k]; if (needEff && effective(state, b) <= 0) { pickW[k] = 0; continue; } const w = (seatWeighted ? Math.max(1, effectOf(b.type, 'seats')) : 1) * nearW(nearestBuildingTile(b, tx, ty)); pickW[k] = w; sum += w; }
+    for (let k = 0; k < n; k++) { const b = list[k]; if (needEff && effective(state, b) <= 0) { pickW[k] = 0; continue; } const w = (seatWeighted ? Math.max(1, effectOfB(b, 'seats')) : 1) * nearW(nearestBuildingTile(b, tx, ty)); pickW[k] = w; sum += w; }
     if (!(sum > 0)) return null;
     let r = u * sum;
     for (let k = 0; k < n; k++) { r -= pickW[k]; if (r < 0) return list[k]; }
@@ -1803,7 +1806,7 @@
         let route = null;
         if (validTile(re.start) && validTile(re.end)) route = M.routeSync(state, re.start, re.end, 'road');
         if (!route) route = validTile(re.end) ? [re.end] : (validTile(re.start) ? [re.start] : [landingTile(state)]);
-        const nb = BSU.params.sports.buses;
+        const nb = fleetSize(state);
         for (let q = 0; q < nb; q++) vehicles.push(makeVehicle('bus', route, P.vehicleSpeed.bus / 10, { arrival: k, delay: q * 8, unloadAt: route[route.length - 1] }));
       } else {
         const nv = BSU.clamp(Math.ceil(count / C.pirogueCapacity), 1, P.piroguesMax);
@@ -1835,6 +1838,13 @@
     if (!v.ids.length && g && !g.announced) { g.announced = true; emit(EV.AGENT_ARRIVE, { count: g.count, kind: g.kind }); }
     v.ids = []; v.payload = 0;
   }
+  /** more buildings pass: the buses of every fleet (game-day loop, arrivals, evacuation): the base fleet plus two for each finished Bus Depot, at most four more */
+  function fleetSize(state) {
+    const l = listBuildings(state, 'bus_depot'); let n = 0;
+    for (let k = 0; k < l.length; k++) if (isComplete(l[k]) && effective(state, l[k]) > 0) n++;
+    return BSU.params.sports.buses + 2 * Math.min(2, n);
+  }
+  M.fleetSize = function (state) { return fleetSize(state); };
   function spawnBuses(state, on, tag) {
     removeVehicles(state, function (v) { return v.kind === 'bus' && v.tag === tag; });
     if (!on) return;
@@ -1844,7 +1854,7 @@
     if (!Array.isArray(loop) || loop.length < 2) { const re = roadEntry(state); loop = (validTile(re.start) && validTile(re.end)) ? M.routeSync(state, re.start, re.end, 'road') : null; }
     if (!Array.isArray(loop) || loop.length < 2) loop = Array.isArray(state.plot.highway) && state.plot.highway.length > 1 ? state.plot.highway.filter(validTile) : null;
     if (!loop || loop.length < 2) return;
-    const nb = BSU.params.sports.buses;
+    const nb = fleetSize(state);
     for (let q = 0; q < nb; q++) {
       const v = makeVehicle('bus', loop, C.busLoopSpeed / 10, { tag: tag, delay: q * Math.floor(loop.length / nb) });
       v.state = 'LOOP';

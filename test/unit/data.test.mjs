@@ -51,8 +51,8 @@ ok(st && st.ok === true, 'selfTest().ok === true — ' + (st && st.notes));
 ok(stMs < 50, `selfTest ran in ${stMs.toFixed(1)} ms < 50 ms`);
 
 // --- scenario 1: 43 rows, ids, order -----------------------------------------
-eq(D.catalogList.length, 71, '71 catalog rows (48 + the colleges pass: 15 colleges and 8 venues)');
-eq(Object.keys(D.catalog).length, 71, '71 catalog keys');
+eq(D.catalogList.length, 81, '81 catalog rows (48 + the colleges pass: 15 colleges and 8 venues + the 10 of the more-buildings pass)');
+eq(Object.keys(D.catalog).length, 81, '81 catalog keys');
 { const br = D.catalog.bridge; ok(br && br.n === 44 && br.kind === 'drag' && br.tab === 'paths' && br.cost === 45000 && br.upkeep === 300 && br.wr === 4 && br.placeRule === BSU.PLACE.BRIDGE && br.effects.surfaceId === BSU.SURF.BRIDGE, 'bridge row: n 44, drag, paths, $45k/tile, $300 upkeep, WR 4, PLACE.BRIDGE, SURF.BRIDGE');
   ok(br && Array.isArray(br.unlock.any) && br.unlock.any.length === 2 && br.unlock.any[0].students === 800 && br.unlock.any[1].building === 'engineering', 'bridge unlocks at 800 students or Engineering Hall');
   const paths = D.tabs.find(t => t.id === 'paths'); ok(paths && paths.rows.indexOf('bridge') === paths.rows.indexOf('boardwalk') + 1, 'bridge sits after boardwalk in the Paths tab');
@@ -68,8 +68,8 @@ eq(Object.keys(D.catalog).length, 71, '71 catalog keys');
   ok(BSU.LEDGER_INCOME_KEYS.indexOf('roomFees') === 1, "ledger income has a 'roomFees' key"); }
 ok(BSU.B_ORDER.every((id, i) => D.catalogList[i].id === id && D.catalogList[i].n === i + 1), 'catalogList matches B_ORDER and n');
 ok(D.catalogList.every(r => BSU.validateCatalogRow(r).ok), 'every row passes BSU.validateCatalogRow');
-ok(D.catalogList.every(r => typeof r.blurb === 'string' && r.blurb.length > 0 && r.blurb.split(/\s+/).length <= 18), 'all 71 rows have a plain blurb (≤ 18 words)');
-ok(D.catalogList.every(r => typeof r.why === 'string' && r.why.length > 0), 'all 71 rows have a why line');
+ok(D.catalogList.every(r => typeof r.blurb === 'string' && r.blurb.length > 0 && r.blurb.split(/\s+/).length <= 18), 'all 81 rows have a plain blurb (≤ 18 words)');
+ok(D.catalogList.every(r => typeof r.why === 'string' && r.why.length > 0), 'all 81 rows have a why line');
 ok(D.catalog.dorm.blurb === '300 beds for first-years.' && /enrollment ceiling/.test(D.catalog.dorm.why), 'dorm blurb/why read as the brief asks');
 ok(BSU.OBJECTIVE_IDS.concat(['p1', 'p2']).every(id => D.guide[id] && D.guide[id].why.length > 0 && Array.isArray(D.guide[id].build)), 'guide covers every objective');
 ok(D.guide['3'].build.join(',') === 'dorm,dining_hall' && D.guide['5'].build.join(',') === 'substation,water_tower', 'guide build lists for objectives 3 and 5');

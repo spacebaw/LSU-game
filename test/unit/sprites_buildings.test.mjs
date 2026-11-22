@@ -225,7 +225,7 @@ eq(bad.join(','), '', 'every row x every variant combo renders');
     if (!(a && a.sw === 64 && a.sh === 64 && b && b.sw === 128 && b.sh === 128 && b.ox === -64 && b.oy === -64)) bad.push(id);
     if (!(c && c.sw === 128 && c.sh === 128)) badLock.push(id);
   }
-  eq(ids.length, 71, 'the catalog has 71 rows (every one needs an icon)');
+  eq(ids.length, 81, 'the catalog has 81 rows (every one needs an icon)');
   eq(bad.join(','), '', 'every catalog row has a 64x64 icon and a 128x128 master (anchor at the centre)');
   eq(badLock.join(','), '', 'every catalog row has a locked 128x128 icon variant');
   // plans: what each kind of row shows

@@ -66,7 +66,7 @@
   function flat(wall, decals, special) {
     return P({ wall: wall, roof: 'none', roofColor: '', floors: 0, decals: decals || [], special: special || '' });
   }
-  const NEW_ROWS = BSU.B_ORDER.slice(48);   // colleges and venues pass: rows 49-71 (15 colleges, then 8 venues)
+  const NEW_ROWS = BSU.B_ORDER.slice(48, 71);   // colleges and venues pass: rows 49-71 (15 colleges, then 8 venues)
   const NEEDS_POWER = {
     water_tower: 1, wastewater: 1, founders_hall: 1, lecture_hall: 1, library: 1, engineering: 1, coastal_institute: 1,
     dorm: 1, res_tower: 1, greek_house: 1, bunkhouse: 1, suites: 1, dining_hall: 1, poboy: 1, stadium: 1, union: 1, rec_center: 1, health_center: 1,
@@ -74,14 +74,17 @@
     pump: 1   // decision: the Pump "needs ⚡ (stops in blackout)"; one coverage rule for buildings
   };
   for (const id of NEW_ROWS) NEEDS_POWER[id] = 1;
+  for (const id of ['campus_store', 'arena', 'golf_course', 'recycling', 'bus_depot']) NEEDS_POWER[id] = 1;   // more buildings pass: the cistern, the depot's water, the decorations and the Parade Ground need none
   const NEEDS_WATER = {
     founders_hall: 1, lecture_hall: 1, library: 1, engineering: 1, coastal_institute: 1, dorm: 1, res_tower: 1,
     greek_house: 1, bunkhouse: 1, suites: 1, dining_hall: 1, stadium: 1, union: 1, rec_center: 1, health_center: 1, tiger_habitat: 1
   };
   for (const id of NEW_ROWS) NEEDS_WATER[id] = 1;
-  const NEW_TAB = { science_college: 'academic', ag_college: 'academic', vet_school: 'academic',
+  for (const id of ['campus_store', 'arena', 'golf_course']) NEEDS_WATER[id] = 1;
+  const NEW_TAB = { campus_store: 'life', bus_depot: 'life', arena: 'sports', golf_course: 'sports', recycling: 'utilities', cistern: 'utilities',
+    tiger_statue: 'grounds', locomotive: 'grounds', trainer_jet: 'grounds', parade: 'grounds',   // more buildings pass: rows 72-81
     concert_hall: 'arts', theatre: 'arts', band_hall: 'arts', art_gallery: 'arts', vet_hospital: 'arts', nat_museum: 'arts', computer_lab: 'arts', ag_greenhouses: 'arts' };   // every other new college is in 'colleges'
-  const PATH_ADJ_ROWS = [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 24, 28, 32, 34, 39, 40, 42, 43, 45, 46].concat(NEW_ROWS.map(function (id, i) { return 49 + i; }));   // 45, 46 = bunkhouse, suites (P7)
+  const PATH_ADJ_ROWS = [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 24, 28, 32, 34, 39, 40, 42, 43, 45, 46].concat(NEW_ROWS.map(function (id, i) { return 49 + i; })).concat([72, 73, 74, 75, 77]);   // 72-77: the store, arena, golf course, recycling center and bus depot want a path; the cistern and the decorations do not   // 45, 46 = bunkhouse, suites (P7)
   const ESSENTIALS = { path: 1, dorm: 1, dining_hall: 1, lecture_hall: 1, poboy: 1, quad: 1, live_oak: 1 };
   const NOT_DEMOLISHABLE = { founders_hall: 1, library: 1, res_tower: 1, stadium: 1, bell_tower: 1, tiger_habitat: 1, rookery: 1, surge_barrier: 1, marsh_restoration: 1 };
   const TAB_OF_ROW = function (n) {
@@ -170,7 +173,18 @@
     vet_hospital: 'Landmark +1, +3 happiness within 8 and $14k a month in clinic fees.',
     nat_museum: 'Landmark +3, +3 happiness within 10 and $4k a month in admissions.',
     computer_lab: '300 more seats in a 2×2 footprint.',
-    ag_greenhouses: '+2 happiness within 5 and $5k a month in plant sales.'
+    ag_greenhouses: '+2 happiness within 5 and $5k a month in plant sales.',
+    // more buildings and upgrades pass
+    campus_store: '$7k a month in apparel and merchandise and +2 happiness within 6.',
+    arena: 'Landmark +5, +5 happiness within 12, shelters 3,000 and $14k a month in events.',
+    golf_course: 'A 10×8 course: landmark +6, +3 happiness within 10, $18k a month; costs ecology.',
+    recycling: 'Ecology +3 and $4k a month from sorted aluminum and paper.',
+    cistern: 'Rain water for 14 buildings within 6 tiles; no power needed.',
+    bus_depot: '+3 happiness within 16 tiles; adds two buses to every game-day fleet. Needs a road within 3.',
+    tiger_statue: 'Landmark +1 and +1 happiness within 5: the selfie spot.',
+    locomotive: 'A retired steam engine on a short track: landmark +1.',
+    trainer_jet: 'A retired trainer jet on a pole: landmark +1.',
+    parade: 'A drill lawn you drag out as a block: +3 happiness within 8, more beside an ROTC Armory.'
   };
 
   /** One catalog row; fills every §4.1 field from the row-number rules, then applies overrides. */
@@ -248,6 +262,9 @@
     row({ n: 10, name: 'Library', w: 4, h: 3, cost: 1800000, upkeep: 14000, wr: 4,
       unlock: { students: 800 },
       effects: { academic: 20, landmark: 4, happiness: { value: 4, radius: 10 }, shelter: 800 },
+      tiers: [{ tier: 1, name: 'Research Library', cost: 2200000, upkeep: 20000, seats: 0, landmark: 7, shelter: 1200, wr: 4, night: false, unlock: { students: 2000, prestige: 25 }, buildDays: 8,
+        effects: { seats: 300, academic: 20, landmark: 7, happiness: { value: 6, radius: 12 }, shelter: 1200 },
+        paint: { floors: 3, windows: { cols: 6, rows: 3 }, wall: ['#E8E0CC', '#CFC4A6'], material: 'stone', roofColor: '#47536A', decals: ['arcade', 'dome', 'lights', 'flag'], features: ['arched', 'mullions', 'gutters', 'sign:LIBRARY', 'steps', 'planters', 'pediment'] } }],
       programs: ['Libraries'],
       paint: P({ floors: 2, windows: { cols: 6, rows: 2 }, decals: ['arcade', 'dome', 'lights'], features: ['arched', 'mullions', 'gutters', 'sign:LIBRARY', 'steps', 'planters'] }),
       namePool: 'library',
@@ -291,6 +308,13 @@
       desc: '80 beds; quality 3; +3 happiness radius 6; tailgate +50% within 8 of the venue; gator attraction +2.' }),
     row({ n: 16, name: 'Dining Hall', w: 3, h: 2, cost: 500000, upkeep: 8000, wr: 3,
       effects: { feeds: 1200, diningRadius: 10, happiness: { value: 3, radius: 10 }, gatorAttract: 2, special: ['boilPot', 'dumpster'] },
+      tiers: [
+        { tier: 1, name: 'Food Court', cost: 650000, upkeep: 12000, seats: 0, landmark: 0, shelter: 0, wr: 3, night: false, unlock: { students: 1200 }, buildDays: 5,
+          effects: { feeds: 2000, diningRadius: 12, happiness: { value: 4, radius: 12 } },
+          paint: { floors: 2, windows: { cols: 6, rows: 2 }, features: ['awnings', 'vents', 'hvac', 'sign:DINING', 'planters', 'gallery'] } },
+        { tier: 2, name: 'Culinary Pavilion', cost: 1500000, upkeep: 22000, seats: 0, landmark: 0, shelter: 0, wr: 3, night: false, unlock: { students: 3500, prestige: 25 }, buildDays: 7,
+          effects: { feeds: 3200, diningRadius: 14, happiness: { value: 5, radius: 14 } },
+          paint: { floors: 3, windows: { cols: 6, rows: 3 }, roofColor: '#7A8A9A', features: ['awnings', 'vents', 'hvac', 'sign:DINING', 'planters', 'gallery:both', 'cupola:gold'] } }],
       paint: P({ floors: 1, windows: { cols: 6, rows: 1 }, decals: ['vents', 'boilpot', 'dumpster'], features: ['awnings', 'vents', 'hvac', 'sign:DINING', 'planters'] }),
       namePool: 'dining',
       why: 'Hungry students leave. Dining is the third enrollment ceiling.',
@@ -323,6 +347,9 @@
     row({ n: 20, name: 'Student Union', w: 4, h: 3, cost: 1600000, upkeep: 15000, wr: 3,
       unlock: { students: 600 },
       effects: { happiness: { value: 8, radius: 12 }, feeds: 400, shelter: 2000, special: ['festivalHost', 'idleHub'] },
+      tiers: [{ tier: 1, name: 'Student Union Commons', cost: 2000000, upkeep: 22000, seats: 0, landmark: 0, shelter: 3000, wr: 3, night: false, unlock: { students: 1500 }, buildDays: 7,
+        effects: { happiness: { value: 11, radius: 14 }, feeds: 800, shelter: 3000, special: ['festivalHost', 'idleHub'] },
+        paint: { floors: 3, windows: { cols: 6, rows: 3 }, wall: ['#E6DCC2', '#CDBF9E'], material: 'stone', roofColor: '#47536A', features: ['gallery:both', 'mullions', 'sign:UNION', 'flagpole', 'planters', 'steps', 'cupola:gold'] } }],
       paint: P({ floors: 2, windows: { cols: 6, rows: 2 }, decals: ['arcade', 'banner', 'fountain'], accent: PURPLE, features: ['gallery:both', 'mullions', 'sign:UNION', 'flagpole', 'planters', 'steps'] }),
       namePool: 'union',
       why: 'Where the campus idles, eats, and throws the Crawfish Boil.',
@@ -330,12 +357,18 @@
     row({ n: 21, name: 'Rec Center', w: 3, h: 3, cost: 1200000, upkeep: 12000, wr: 3,
       unlock: { students: 800 },
       effects: { happiness: { value: 6, radius: 10 }, heat: { mult: 0.5, radius: 10 }, shelter: 1000, special: ['pool', 'teamHeatFix'] },
+      tiers: [{ tier: 1, name: 'Wellness Complex', cost: 1600000, upkeep: 17000, seats: 0, landmark: 0, shelter: 1500, wr: 3, night: false, unlock: { students: 2000 }, buildDays: 6,
+        effects: { happiness: { value: 9, radius: 12 }, heat: { mult: 0.35, radius: 12 }, shelter: 1500, special: ['pool', 'teamHeatFix'] },
+        paint: { floors: 2, windows: { cols: 4, rows: 2 }, wall: ['#E6E2D6', '#CBC5B2'], material: 'stone', roofColor: '#5B5AA0', features: ['mullions', 'sign:REC', 'hvac', 'gallery', 'vents', 'banner:roux'] } }],
       paint: P({ roof: 'barrel', floors: 1, windows: { cols: 4, rows: 1 }, decals: ['arcade', 'pool'], roofColor: '#5E8F5A', accent: '#4FA3D6', features: ['mullions', 'sign:REC', 'hvac'] }),
       why: 'A pool in August is the difference between a team and a heat stroke.',
       desc: '+6 happiness radius 10; heat penalty −50% radius 10; fixes the team heat penalty; shelter 1,000.' }),
     row({ n: 22, name: 'Health Center', w: 2, h: 2, cost: 450000, upkeep: 6000, wr: 3,
       unlock: { students: 400 },
       effects: { illness: { mosquito: 0.6, heat: 0.5, radius: 12 } },
+      tiers: [{ tier: 1, name: 'Student Clinic', cost: 700000, upkeep: 9000, seats: 0, landmark: 0, shelter: 0, wr: 3, night: false, unlock: { students: 1200 }, buildDays: 5,
+        effects: { illness: { mosquito: 0.8, heat: 0.7, radius: 15 } },
+        paint: { floors: 2, windows: { cols: 3, rows: 2 }, features: ['awnings', 'sign:HEALTH', 'hvac', 'planters'] } }],
       paint: P({ wall: ['#FFFFFF', '#EDEDED'], floors: 1, windows: { cols: 3, rows: 1 }, decals: ['arcade', 'sign'], accent: '#3FBF7F', features: ['awnings', 'sign:HEALTH'] }),
       why: 'Sick students skip class. Skipped class is lost tuition.',
       desc: 'Mosquito illness −60% and heat illness −50% within 12.' }),
@@ -346,6 +379,13 @@
       desc: '+2 happiness radius 6 (stacks to +6); idle spot; plants one Live Oak; no path needed.' }),
     row({ n: 24, name: 'Parking Lot', w: 3, h: 2, cost: 150000, upkeep: 1500, wr: 1, roadWithin: 4,
       effects: { parkingPer: 600, tickets: 4000, special: ['floodsAt03', 'tailgateLot'] },
+      tiers: [
+        { tier: 1, name: 'Parking Garage', cost: 900000, upkeep: 5000, seats: 0, landmark: 0, shelter: 0, wr: 2, night: false, unlock: { students: 1500 }, buildDays: 5,
+          effects: { parkingPer: 1800, tickets: 4000, revenueMonthly: 2500, special: ['floodsAt03', 'tailgateLot'] },
+          paint: { floors: 3, roof: 'flat', roofColor: '#7A7A80', wall: ['#BDB7AA', '#9C968A'], material: 'stone', windows: { cols: 0, rows: 0 }, decals: [], features: [] } },
+        { tier: 2, name: 'Parking Tower', cost: 2200000, upkeep: 11000, seats: 0, landmark: 0, shelter: 0, wr: 3, night: false, unlock: { students: 4000 }, buildDays: 7,
+          effects: { parkingPer: 4200, tickets: 4000, revenueMonthly: 7000, special: ['floodsAt03', 'tailgateLot'] },
+          paint: { floors: 6, roof: 'flat', roofColor: '#7A7A80', wall: ['#BDB7AA', '#9C968A'], material: 'stone', windows: { cols: 0, rows: 0 }, decals: [], features: [] } }],
       paint: flat(['#3A3A40', '#2E2E34'], ['cars'], 'parking'),
       why: 'One lot per 600 students, or they complain. Floods at 0.3 ft.',
       desc: '1 per 600 students (else −4 happiness); tickets +$4k/mo; tailgate lot; floods at 0.3 ft.' }),
@@ -430,6 +470,8 @@
     row({ n: 40, name: 'Tiger Habitat', w: 3, h: 3, cost: 1800000, upkeep: 12000, wr: 4,
       unlock: { students: 1000, prestige: 20 },
       effects: { landmark: 8, happiness: { value: 5, radius: 15 }, homeWinBonus: 0.05, gatorAvoidRadius: 10, special: ['tank', 'habitat'] },
+      tiers: [{ tier: 1, name: "Roux's Grand Habitat", cost: 2400000, upkeep: 18000, seats: 0, landmark: 14, shelter: 0, wr: 5, night: false, unlock: { students: 2500, prestige: 30 }, buildDays: 8,
+        effects: { landmark: 14, happiness: { value: 7, radius: 18 }, homeWinBonus: 0.08, gatorAvoidRadius: 14, special: ['tank', 'habitat'] } }],
       paint: P({ wall: ['#9C978E', '#7C776F'], roof: 'none', roofColor: '', floors: 0, decals: [], special: 'tiger_habitat', material: 'stone', accent: '#E07020', features: ['sign:ROUX'] }),   // habitat pass: a bespoke zoo-exhibit painter (sprites_buildings.js habitatPaint) draws the pool, den, glass, plaza; the paint row only names it
       why: 'Roux lives here. The gators keep their distance. So do opponents.',
       desc: 'Landmark +8; +5 happiness radius 15; home win +5%; gators keep 10 tiles from Roux; floods → Roux Is Loose.' }),
@@ -614,7 +656,58 @@
       effects: { happiness: { value: 2, radius: 5 }, revenueMonthly: 5000 },
       paint: P({ wall: ['#BFE0D0', '#9CC8B4'], roof: 'barrel', roofColor: '#CFE8DA', floors: 1, windows: { cols: 6, rows: 1 }, decals: [], material: 'glass', accent: '#3F8F3B', features: ['vents', 'planters'] }),
       why: 'Glass houses. Throw nothing; the plant sale is Saturday.',
-      desc: '+2 happiness radius 5; $5k/mo in plant sales; glass bays.' })
+      desc: '+2 happiness radius 5; $5k/mo in plant sales; glass bays.' }),
+    // ---- more buildings and upgrades pass: rows 72-81 (a student playtester's wish list). Effects use only keys the simulation already reads (docs/INTEGRATION_NOTES.md) ----
+    row({ n: 72, name: 'Campus Store', w: 3, h: 2, cost: 450000, upkeep: 5000, wr: 2, unlock: { students: 600 },
+      effects: { revenueMonthly: 7000, happiness: { value: 2, radius: 6 } },
+      paint: P({ wall: ['#EFE4CC', '#D6C7A4'], roof: 'flat', roofColor: '#6E6E72', floors: 1, windows: { cols: 3, rows: 1 }, decals: ['awning', 'banner'], accent: PURPLE, features: ['awnings', 'sign:STORE', 'planters', 'steps'] }),
+      why: 'Every logo on campus came from here. So did the receipts.',
+      desc: '$7k/mo in apparel and merchandise (flat: the game has no home-game hook for shops); +2 happiness radius 6.' }),
+    row({ n: 73, name: 'Basketball Arena', w: 5, h: 4, cost: 4200000, upkeep: 40000, wr: 4, unlock: { students: 2500, prestige: 25 },
+      effects: { landmark: 5, shelter: 3000, happiness: { value: 5, radius: 12 }, revenueMonthly: 14000, special: ['events'] },
+      paint: P({ wall: ['#8E8E9A', '#6E6E7C'], roof: 'barrel', roofColor: '#5A6B88', floors: 3, windows: { cols: 8, rows: 2 }, decals: ['columns', 'banner', 'lights'], material: 'metal', accent: PURPLE, features: ['arched', 'banner:roux', 'steps', 'sign:ARENA', 'flagpole', 'hvac'] }),
+      why: 'Eleven thousand people and one shot clock. The roof holds the noise in.',
+      desc: 'Landmark +5; +5 happiness radius 12; shelter 3,000; $14k/mo in events. No new sport to manage.' }),
+    row({ n: 74, name: 'Golf Course', w: 10, h: 8, cost: 5500000, upkeep: 32000, wr: 1, unlock: { students: 2000, prestige: 20 },
+      effects: { landmark: 6, happiness: { value: 3, radius: 10 }, revenueMonthly: 18000, ecology: -6, special: ['ecoSite', 'golf'] },
+      paint: P({ wall: ['#6E8F3C', '#5A7A2E'], roof: 'none', roofColor: '', floors: 1, windows: { cols: 0, rows: 0 }, decals: [], features: [] }),
+      why: 'Eighty tiles of fairway. You will be chartering land for it.',
+      desc: '10 × 8 tiles: fairways, greens, a pond and a clubhouse. Landmark +6; +3 happiness radius 10; $18k/mo; ecology −6.' }),
+    row({ n: 75, name: 'Recycling Center', w: 3, h: 3, cost: 650000, upkeep: 7000, wr: 2, unlock: { students: 1000 },
+      effects: { ecology: 3, revenueMonthly: 4000, special: ['ecoSite'] },
+      paint: P({ wall: ['#4F8F5A', '#3F7A4A'], roof: 'flat', roofColor: '#5A5A60', floors: 1, windows: { cols: 2, rows: 1 }, decals: ['vents'], material: 'metal', accent: '#3FBF7F', features: ['hvac', 'vents', 'sign:RECYCLE'] }),
+      why: 'The blue bins end up here, sorted, baled and sold.',
+      desc: 'Ecology +3; $4k/mo from sorted aluminum and paper.' }),
+    row({ n: 76, name: 'Rainwater Cistern', w: 2, h: 2, cost: 140000, upkeep: 1500, wr: 2, unlock: { students: 300 },
+      effects: { water: { radius: 6, capacity: 14 }, special: ['cistern'] },
+      paint: P({ wall: ['#8FB8C8', '#6C97AA'], roof: 'none', roofColor: '', floors: 2, windows: { cols: 0, rows: 0 }, decals: [], material: 'metal' }),
+      why: 'The roof sends the rain here. Cheaper than a tower, and smaller.',
+      desc: 'A small water provider like the Water Tower: 14 buildings within 6 tiles, no power needed. Serves any building that needs water.' }),
+    row({ n: 77, name: 'Bus Depot', w: 4, h: 3, cost: 850000, upkeep: 9000, wr: 3, roadWithin: 3, unlock: { students: 1200 },
+      effects: { happiness: { value: 3, radius: 16 }, special: ['depotBuses'] },
+      paint: P({ wall: ['#8E8E9A', '#6E6E7A'], roof: 'gable', roofColor: '#5A5A66', floors: 1, windows: { cols: 0, rows: 0 }, decals: ['sign'], material: 'metal', accent: '#E8C14A', features: ['vents', 'sign:BUS', 'hvac'] }),
+      why: 'Nobody walks across a campus this big in August, once there are buses.',
+      desc: '+3 happiness radius 16; two buses join every game-day fleet and evacuation; a Road within 3 tiles.' }),
+    row({ n: 78, name: 'Tiger Statue', cost: 60000, upkeep: 200, wr: 3, unlock: { students: 300 },
+      effects: { landmark: 1, happiness: { value: 1, radius: 5 } },
+      paint: P({ wall: ['#9C978E', '#7C776F'], roof: 'none', roofColor: '', floors: 2, windows: { cols: 0, rows: 0 }, decals: [], material: 'stone', accent: '#E07020' }),
+      why: 'Every freshman is photographed on it. Every senior is, too.',
+      desc: '1 × 1 decoration: landmark +1; +1 happiness radius 5.' }),
+    row({ n: 79, name: 'Heritage Locomotive', w: 3, h: 1, cost: 180000, upkeep: 600, wr: 3, unlock: { students: 800 },
+      effects: { landmark: 1 },
+      paint: P({ wall: ['#2B2B33', '#1B1B22'], roof: 'none', roofColor: '', floors: 1, windows: { cols: 0, rows: 0 }, decals: [], material: 'metal', accent: GOLD }),
+      why: 'It hauled cotton, then freshmen, then nothing. Now it just looks great.',
+      desc: 'A retired steam engine on a short track: landmark +1.' }),
+    row({ n: 80, name: 'Trainer Jet', w: 2, h: 2, cost: 220000, upkeep: 600, wr: 3, unlock: { students: 1000 },
+      effects: { landmark: 1 },
+      paint: P({ wall: ['#E8E8EC', '#C2C2C8'], roof: 'none', roofColor: '', floors: 2, windows: { cols: 0, rows: 0 }, decals: [], material: 'metal', accent: PURPLE }),
+      why: 'ROTC got it for free and the campus got the pedestal.',
+      desc: 'A retired trainer jet on a pole: landmark +1.' }),
+    row({ n: 81, name: 'Parade Ground', w: 2, h: 2, cost: 45000, upkeep: 400, unlock: { students: 1200 },
+      effects: { happiness: { value: 3, radius: 8 }, special: ['paradeArmory', 'idleSpot'] },
+      paint: flat(['#7FA347', '#6E8F3C'], [], 'parade'),
+      why: 'A drill lawn for the whole corps. Drag it as wide as the regiment.',
+      desc: 'Drag a block of 2 × 2 lawns: +3 happiness radius 8, +2 more within 8 of a finished ROTC Armory; students idle here; no path needed.' })
 
   ];
   const catalog = {};
@@ -626,10 +719,14 @@
   const TAB_NAMES = [['paths', 'Paths'], ['utilities', 'Utilities'], ['academic', 'Academic'], ['colleges', 'Colleges'], ['arts', 'Arts & Venues'], ['housing', 'Housing'], ['dining', 'Dining'], ['sports', 'Sports'], ['life', 'Life'], ['swamp', 'Swamp'], ['grounds', 'Grounds']];
   const tabs = [{ id: 'essentials', name: 'Essentials', rows: ['path', 'dorm', 'dining_hall', 'lecture_hall', 'poboy', 'quad', 'live_oak'] }];
   const TAB_ORDER = {
-    academic: ['lecture_hall', 'library', 'engineering', 'coastal_institute', 'science_college', 'ag_college', 'vet_school'],
-    colleges: ['univ_college', 'online_center', 'business_college', 'education_college', 'masscomm_school', 'humanities_college', 'art_college', 'music_college', 'honors_college', 'grad_school', 'rotc_armory', 'law_center'],
+    academic: ['lecture_hall', 'library', 'engineering', 'coastal_institute'],
+    colleges: ['univ_college', 'online_center', 'business_college', 'education_college', 'masscomm_school', 'humanities_college', 'art_college', 'music_college', 'ag_college', 'science_college', 'honors_college', 'grad_school', 'rotc_armory', 'law_center', 'vet_school'],
     arts: ['concert_hall', 'theatre', 'band_hall', 'art_gallery', 'nat_museum', 'computer_lab', 'ag_greenhouses', 'vet_hospital'],
-    housing: ['bunkhouse', 'dorm', 'suites', 'res_tower', 'greek_house'] };   // P7: cheap → premium, then the towers and the Greek row
+    housing: ['bunkhouse', 'dorm', 'suites', 'res_tower', 'greek_house'],
+    sports: ['practice_field', 'stadium', 'arena', 'golf_course'],
+    utilities: ['substation', 'water_tower', 'generator', 'wastewater', 'cistern', 'recycling'],
+    life: ['union', 'rec_center', 'health_center', 'campus_store', 'bus_depot', 'quad', 'parking'],
+    grounds: ['live_oak', 'cypress', 'azalea', 'tiger_statue', 'parade', 'locomotive', 'trainer_jet', 'bell_tower', 'tiger_habitat', 'rookery'] };   // P7: cheap → premium, then the towers and the Greek row
   for (const t of TAB_NAMES) {
     const ids = catalogList.filter(r => r.tab === t[0] && r.id !== 'founders_hall').map(r => r.id);
     const order = TAB_ORDER[t[0]];
@@ -1627,8 +1724,8 @@
     try {
       const D = BSU.data, L = D.catalogList, C = D.catalog;
       // 1. row count and numbering
-      check(L.length === 71, 'catalogList.length === 71 (got ' + L.length + ')');   // L3: dredge_fill; water pass: road_bridge
-      check(Object.keys(C).length === 71, 'catalog has 71 keys');
+      check(L.length === 81, 'catalogList.length === 81 (got ' + L.length + ')');   // L3: dredge_fill; water pass: road_bridge
+      check(Object.keys(C).length === 81, 'catalog has 81 keys');
       for (let i = 0; i < L.length; i++) {
         check(L[i].n === i + 1, 'row ' + (i + 1) + ' has n ' + L[i].n);
         check(C[L[i].id] === L[i], 'catalog[' + L[i].id + '] is the same object as catalogList[' + i + ']');
@@ -1643,7 +1740,7 @@
         check(typeof r.why === 'string' && r.why.length > 0 && typeof r.desc === 'string' && r.desc.length > 0, r.id + ' why/desc');
         check(r.why.split(/\s+/).length <= 14, r.id + ' why ≤ 14 words');
         check(typeof r.blurb === 'string' && r.blurb.length > 0 && r.blurb.split(/\s+/).length <= 18, r.id + ' blurb present, ≤ 18 words');
-        for (const t of r.tiers) check(t.name.length > 0 && t.cost > 0 && t.seats > 0, r.id + ' tier ' + t.tier + ' sane');
+        for (const t of r.tiers) check(t.name.length > 0 && t.cost > 0 && t.seats >= 0 && (r.id === 'practice_field' || r.id === 'stadium' ? t.seats > 0 : true), r.id + ' tier ' + t.tier + ' sane');
         if (r.unlock.milestone) check(BSU.MILESTONES.indexOf(r.unlock.milestone) >= 0, r.id + ' unlock.milestone known');
         if (r.unlock.building) check(!!C[r.unlock.building], r.id + ' unlock.building known');
         if (r.college) check(!!C[r.college] && r.unlock.building === r.college, r.id + ' college is its unlock building');   // colleges pass
@@ -1716,7 +1813,7 @@
         check((o.reward.grant === 50000) !== (o.reward.prestige === 2), 'objective ' + id + ' has exactly one reward');
       }
       check(D.tabs.length === 12 && D.tabs[0].id === 'essentials', '12 tabs, essentials first');
-      for (const t of D.tabs) check(t.rows.length <= (t.id === 'swamp' ? 14 : 12), 'tab ' + t.id + ' holds at most 12 cards, Swamp 14 as before (got ' + t.rows.length + ')');   // colleges pass: the Build sheet stays scannable
+      for (const t of D.tabs) check(t.rows.length <= (t.id === 'swamp' ? 14 : t.id === 'colleges' ? 15 : 12), 'tab ' + t.id + ' holds at most 12 cards, Swamp 14 as before, Colleges 15 (got ' + t.rows.length + ')');   // colleges pass: the Build sheet stays scannable
       const opp = Object.keys(D.opponents);
       check(opp.length === 9 && opp.filter(k => D.opponents[k].rival).length === 1 && opp.filter(k => D.opponents[k].crosstown).length === 1, '9 opponents, one rival, one crosstown');
       check(D.tutorial.length === 7 && D.tutorial.every((t, i) => t.stage === i && t.card.split(/\s+/).filter(Boolean).length <= 12), '7 tutorial stages, cards ≤ 12 words');

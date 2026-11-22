@@ -135,8 +135,16 @@
     concert_hall: { ground: 'pave', columns: 4 }, theatre: { ground: 'pave' }, band_hall: { ground: 'lawn' }, art_gallery: { ground: 'pave' },
     vet_hospital: { ground: 'lawn', box: [12, 116, 12, 70], boxL: [12, 70, 12, 116], props: [{ kind: 'paddock' }] },
     nat_museum: { ground: 'brick', columns: 6 }, computer_lab: { ground: 'pave' },
-    ag_greenhouses: { ground: 'lawn', box: [12, 84, 12, 50], boxL: [12, 50, 12, 84], props: [{ kind: 'glasshouse' }] }
+    ag_greenhouses: { ground: 'lawn', box: [12, 84, 12, 50], boxL: [12, 50, 12, 84], props: [{ kind: 'glasshouse' }] },
+    // more buildings and upgrades pass: rows 72-81. The depot leaves a yard for two parked buses (a yard prop, like the pool deck); the rest are own-ground bodies or plain boxes
+    campus_store: { ground: 'pave' }, arena: { ground: 'pave', columns: 6 }, golf_course: { body: 'golf' },
+    recycling: { ground: 'gravel', props: [{ kind: 'dumpster', margin: [1, 0.12] }, { kind: 'dumpster', margin: [1, 0.46] }] },
+    cistern: { body: 'cistern' }, bus_depot: { ground: 'pave', box: [12, 116, 12, 50], boxL: [12, 70, 12, 84], props: [{ kind: 'buses' }] },
+    tiger_statue: { body: 'statue' }, locomotive: { body: 'loco' }, trainer_jet: { body: 'jet' }, parade: { body: 'parade' }
   });
+  /** per-tier overrides of a row's HD_ROWS entry (the tier's paint overrides live on the catalog row: sprites_buildings.paintRow): the Parking Lot's tiers are a garage */
+  const HD_TIERS = Object.freeze({ parking: { 1: { body: 'garage', ground: 'pave' }, 2: { body: 'garage', ground: 'pave' } } });
+  function hdRowOf(id, tier) { const D = HD_ROWS[id] || {}, t = HD_TIERS[id] && HD_TIERS[id][tier | 0]; return t ? Object.assign({}, D, t) : D; }
   const GROUND_BY_TAB = { academic: 'brick', housing: 'lawn', utilities: 'gravel', dining: 'terrace', life: 'pave', swamp: 'lawn', grounds: 'lawnPlain', sports: 'lawnPlain' };
   M.HD_ROWS = HD_ROWS;
   M.hdBuildingRows = function () { return Object.keys(HD_ROWS); };
@@ -657,16 +665,26 @@
         line(ctx, [x - 5.6, y - H + 1.5], [x + 5.6, y - H + 1.5], 0.9, C.gold, 0.2, 0.95);
         B.plane(ctx, [[x - 7, y - H], [x + 7, y - H], [x + 5, y - H - 2.5], [x - 5, y - H - 2.5]], C.tin, 0.2, { amp: 0.2, rim: 0.3 });
         break; }
-      case 'flagpoles': case 'paddock': case 'glasshouse': {   // colleges pass: the yard props on the strip the row's box leaves free (HD_ROWS.box / boxL), like the pool deck: parade apron + three flagpoles / barn wing + fenced paddock / two glass bays
+      case 'flagpoles': case 'paddock': case 'glasshouse': case 'buses': {   // colleges pass: the yard props on the strip the row's box leaves free (HD_ROWS.box / boxL), like the pool deck: parade apron + three flagpoles / barn wing + fenced paddock / two glass bays
         if (g.lift > 0) break; const L = g.frontLeft;
         const X0 = L ? b.X1 + 2 : b.X0 + 4, X1 = L ? g.fw * 32 - g.ipx - 2 : b.X1 - 4, Y0 = L ? b.Y0 + 4 : b.Y1 + 2, Y1 = L ? b.Y1 - 4 : g.fh * 32 - g.ipy - 2;
         const LU = L ? Y1 - Y0 : X1 - X0, LV = L ? X1 - X0 : Y1 - Y0;   // u along the strip's long side, v across it
         const XY = (u, v) => L ? [X0 + v, Y0 + u] : [X0 + u, Y0 + v];
         const P = (u, v, up) => { const c = XY(u, v); return fp(g, c[0], c[1], up || 0, true); };
         const quad = (u0, u1, v0, v1, up) => [P(u0, v0, up), P(u1, v0, up), P(u1, v1, up), P(u0, v1, up)];
-        const ground = pr.kind === 'flagpoles' ? C.asphalt : pr.kind === 'paddock' ? C.sandYard : C.paveLight;
+        const ground = (pr.kind === 'flagpoles' || pr.kind === 'buses') ? C.asphalt : pr.kind === 'paddock' ? C.sandYard : C.paveLight;
         B.fillQuadShaded(ctx, quad(0, LU, 0, LV, 0), ground, { face: 'top', material: 'stone', t: 0.05, noAO: true }, env);
-        if (pr.kind === 'flagpoles') {
+        if (pr.kind === 'buses') {   // more buildings pass: two campus buses (purple with a gold stripe and a window band) parked nose to tail in the yard, bay lines between
+          for (let k = 1; k < 4; k++) line(ctx, P(LU * k / 4, 2, 0.2), P(LU * k / 4, LV - 2, 0.2), 0.6, C.white, 0.2, 0.5);
+          for (const k of [0.3, 0.7]) {
+            const c = XY(LU * k, LV / 2), bl = Math.min(LU * 0.2, 17), bw = Math.min(LV / 2 - 3, 6.5);
+            const bx = miniBox(ctx, g, c[0], c[1], L ? bw : bl, L ? bl : bw, 11, C.purple, 'paint', env, 1.2, { top: C.purple2, topT: 0.2 });
+            const f0 = L ? 1 : 0;
+            B.fillQuadShaded(ctx, faceQuad(bx, f0, 0.08, 0.92, 6.4, 9.6), C.glass, { face: f0 === 0 ? 'sw' : 'se', material: 'glass', noAO: true }, env);
+            line(ctx, facePt(bx, f0, 0, 5.2), facePt(bx, f0, 1, 5.2), 1.2, C.gold, 0.2, 0.95);
+            for (const u of [0.18, 0.8]) { const p = facePt(bx, f0, u, 1.2); B.orb(ctx, p[0], p[1], 1.5, 1.5, C.black, 0.1, { spec: 0.2 }); }
+          }
+        } else if (pr.kind === 'flagpoles') {
           line(ctx, P(2, LV / 2, 0.2), P(LU - 2, LV / 2, 0.2), 0.7, C.white, 0.1, 0.7);   // the parade line
           const FL = [C.purple, C.gold, C.white];
           for (let i = 0; i < 3; i++) {
@@ -1013,7 +1031,7 @@
   // rectangle, the fan rows, the shader clip, the mast heads — lands on the painted structure) and the Tiger Habitat
   // (sprites.HABITAT: the pool, the den, the glass and the plaza where Roux's route and the lights pass expect them).
   // ---------------------------------------------------------------------------
-  const OWN_GROUND = { quad: 1, parking: 1, pond: 1, rookery: 1, batpole: 1, field: 1, stadium: 1, habitat: 1 };
+  const OWN_GROUND = { quad: 1, parking: 1, pond: 1, rookery: 1, batpole: 1, field: 1, stadium: 1, habitat: 1, golf: 1, cistern: 1, statue: 1, loco: 1, jet: 1, parade: 1 };
   const OWN_STATES = { habitat: 1, stadium: 1 };   // dresses DAMAGED / BOARDED / FLOODED itself (the pen's OWN_STATES); H7: the stadium has its own too
   const RX = 45.25, RY = 22.63;        // the screen half-axes of a 1-tile ground circle
   /** footprint TILE coordinates (the pen's fpPt): (X, Y) tiles, `up` px — the stadium / field / habitat language */
@@ -1456,6 +1474,17 @@
       { const a = pt(1.46, 1.58, FZ), c = pt(1.46, 2.42, FZ + 4); B.stroke(ctx, [a, c], 4.5, C.bark, -0.1, 1, { cap: 'round' }); B.stroke(ctx, [[a[0], a[1] - 1.2], [c[0], c[1] - 1.2]], 1.5, C.bark, 0.45, 0.9, { cap: 'round' }); B.orb(ctx, c[0], c[1], 1.6, 2.2, '#B58B5A', 0.1, { noRim: true }); boulder(1.46, 2.5, 4, 3, 55, false); }
       boulder(1.18, 2.32, 3, 2, 56, false);
       azalea(0.52, 2.62, 3); azalea(1.55, 0.5, 4); palmetto(1.74, 0.36, 5); shrub(1.42, 0.2);
+      if ((g.tier | 0) >= 1) {   // more buildings pass: Roux's Grand Habitat: a second fall and a cypress on the rock, an oak and more boulders on the floor, two banner poles and gold trim on the plaza
+        { const wy0 = 0.28, wy1 = 0.52, spoutZ = 12;
+          B.plane(ctx, faceX(RX0 + 0.012, wy0, wy1, FZ, spoutZ), C.shallows, 0.5, { vert: true, amp: 0.3, rim: 0 });
+          for (let i = 0; i < 3; i++) { const ly = wy0 + 0.04 + (wy1 - wy0 - 0.08) * i / 2; seg([RX0 + 0.016, ly, spoutZ - 1], [RX0 + 0.016, ly + 0.02, FZ + 1], 0.8, C.white, 0, 0.55); }
+          const fo = pt(RX0 + 0.2, (wy0 + wy1) / 2, FZ); for (let i = 0; i < (lod0 ? 8 : 4); i++) B.orb(ctx, fo[0] - 5 + (hash(seed + 35, i) % 11), fo[1] + (hash(seed + 36, i) % 3) - 1, 1.1, 0.7, C.white, 0.3, { noRim: true }); }
+        boulder(0.5, 0.15, 6, 4, 61, true); boulder(0.32, 2.25, 5, 3, 62, true); boulder(0.9, 0.5, 4, 3, 63, false);
+        { const cp = pt(RX0 + 0.04, 1.68, 18); ctx.save(); ctx.translate(cp[0], cp[1]); ctx.scale(0.42, 0.42); B.tree(ctx, 0, 0, 'cypress', { seed: seed + 5, stage: 0 }, env); ctx.restore(); }
+        { const op = pt(1.62, 1.0, FZ); B.tree(ctx, op[0], op[1], 'liveOak', { seed: seed + 9, stage: 0 }, env); }
+        for (const ly of [0.12, 2.88]) { const p0 = pt(2.82, ly, 0); B.column(ctx, p0[0], p0[1], 30, 0.8, C.limestone, env); B.orb(ctx, p0[0], p0[1] - 30.6, 1, 1, C.gold, 0.4, { noRim: true }); B.fillQuadShaded(ctx, [[p0[0], p0[1] - 29], [p0[0] + 7, p0[1] - 28 + (frame & 1)], [p0[0] + 7, p0[1] - 20 + (frame & 1)], [p0[0], p0[1] - 21]], C.purple, { face: 'sw', material: 'cloth', noAO: true }, env); line(ctx, [p0[0] + 1, p0[1] - 25], [p0[0] + 6, p0[1] - 24.5 + (frame & 1)], 1.2, C.gold, 0.3, 0.95); }
+        seg([WX - 0.14, 0.04, 0.2], [3, 0.04, 0.2], 0.9, C.gold, 0.2, 0.9); seg([WX - 0.14, 2.96, 0.2], [3, 2.96, 0.2], 0.9, C.gold, 0.2, 0.9);
+      }
     }
     // ---- 5. floodwater over the floor (the old pool a deeper swirl in it), leaves adrift
     if (flood && !front && built) {
@@ -1543,7 +1572,179 @@
     if (dmg && !front && built) seg([1.0, 0.95, 0], [1.5, 0.9, 1], 1.6, C.bark, -0.2, 1);
     return b;
   }
-  const BODIES = { box: standardBody, bunk: bunkBody, wings: wingsBody, substation: substationBody, tower: towerBody, generator: generatorBody,
+  // ---------------------------------------------------------------------------
+  // more buildings and upgrades pass: the new bodies. Own-ground bodies lay everything out in footprint FRACTIONS (u along fw, v along fh), so a rotated
+  // footprint (golf course 10 × 8 → 8 × 10, locomotive 3 × 1 → 1 × 3) is the same drawing on its own axes.
+  // ---------------------------------------------------------------------------
+  const GARAGE_CARS = ['#C9CDD2', '#2B2B33', '#B03A3A', '#E8E8E8', '#3D6FA8', '#8A6A3A', '#5E2CA5', '#FDD023'];
+  /** the parking garage / tower (a Parking Lot's tiers): a concrete shell with an open deck every storey (a dark opening with cars and piers), a roofed-over look of
+   *  slabs, a stair tower at the back corner and the roof deck with cars and lamps; the tower tier (5+ storeys) wears a gold band and purple flag */
+  function garageBody(ctx, g, frame, env) {
+    const b = mainBox(g), night = g.night, lod0 = env.lod === 0, floors = Math.max(2, b.floors | 0), H = floors * FLOOR_PX, tall = floors >= 5;
+    drawWalls(ctx, b, env, { raw: true });
+    for (const f of [0, 1]) {
+      const len = faceLen(b, f), nPier = Math.max(3, Math.round(len / 10));
+      for (let r = 0; r < floors; r++) {
+        const z0 = r * FLOOR_PX + 3, z1 = z0 + 7.5, ft = f === 0 ? -0.05 : -0.4;
+        flat(ctx, faceQuad(b, f, 0.04, 0.96, z0, z1), '#1E1E26', 0, 1);
+        const cars = nPier - 1;
+        for (let k = 0; k < cars; k++) { if (hash(g.seed, r * 17 + k + f * 5) % 3 === 0) continue; const u = 0.04 + 0.92 * (k + 0.5) / cars, p = facePt(b, f, u, z0 + 0.6, -0.4); line(ctx, [p[0] - 2.4, p[1]], [p[0] + 2.4, p[1]], 2.4, GARAGE_CARS[hash(g.seed, r * 31 + k * 3 + f) % GARAGE_CARS.length], night ? -0.3 : 0, 0.92); }
+        line(ctx, facePt(b, f, 0.04, z1), facePt(b, f, 0.96, z1), 1, C.concrete, f === 0 ? 0.4 : -0.3, 0.9);
+        for (let k = 0; k <= nPier; k++) { const u = 0.04 + 0.92 * k / nPier; line(ctx, facePt(b, f, u, z0 - 0.4), facePt(b, f, u, z1 + 0.6), 1.5, C.concrete, ft, 0.95); }
+        line(ctx, facePt(b, f, 0, (r + 1) * FLOOR_PX - 1), facePt(b, f, 1, (r + 1) * FLOOR_PX - 1), 1.6, C.concrete, f === 0 ? 0.5 : -0.35, 0.95);   // the deck slab edge
+        if (night && lod0) { const p = facePt(b, f, 0.5, z0 + 3.5); B.softEllipse(ctx, p[0], p[1], 14, 3, GLOWS[0], 0.15, 0.15); }
+      }
+    }
+    if (tall) for (const f of [1]) line(ctx, facePt(b, f, 0.5, 0), facePt(b, f, 0.5, H), 3, C.gold, 0, 0.9);   // the tower's gold band up the SE face
+    drawDoor(ctx, b, env, { wide: true, night: night });
+    b.roof = 'flat'; b.roofH = 3; b.roofColor = '#8A8A90'; drawRoof(ctx, b, env);
+    const top = H + 3;
+    for (let i = 0; i < 2 + (g.fw >= 3 ? 1 : 0); i++) { const X = b.X0 + 14 + (b.X1 - b.X0 - 28) * (i + 0.5) / 3, Y = b.Y0 + 14 + (b.Y1 - b.Y0 - 28) * ((i & 1) ? 0.3 : 0.7); const p = fp(g, X, Y, top); car(ctx, p[0], p[1], GARAGE_CARS[hash(g.seed, 60 + i) % GARAGE_CARS.length], night, env); }
+    { const p = fp(g, b.X1 - 8, b.Y1 - 8, top); lampPost(ctx, p, night, C.concrete, env); const q = fp(g, b.X0 + 8, b.Y1 - 8, top); lampPost(ctx, q, night, C.concrete, env); }
+    miniBox(ctx, g, b.X0 + 10, b.Y0 + 10, 8, 8, 13, g.wallBase, 'stone', env, top - 1, { top: C.concrete, topT: 0.1 });   // the stair tower
+    if (tall) { const p = fp(g, b.X0 + 10, b.Y0 + 10, top + 13); B.column(ctx, p[0], p[1], 16, 0.6, C.steel, env); B.fillQuadShaded(ctx, [[p[0], p[1] - 16], [p[0] + 8, p[1] - 15 + (frame & 1)], [p[0] + 8, p[1] - 10 + (frame & 1)], [p[0], p[1] - 11]], C.purple, { face: 'sw', material: 'cloth', noAO: true }, env); }
+    return b;
+  }
+  /** the golf course: rough, two mown fairways between tees and greens, bunkers, a pond with reeds, a cart path, flags, a ring of trees and a clubhouse at the front corner */
+  function golfBody(ctx, g, frame, env) {
+    const b = flatBody(g), fw = g.fw, fh = g.fh, lod0 = env.lod === 0, night = g.night, seed = g.seed;
+    const T = (u, v, up) => fT(g, u * fw, v * fh, up || 0);
+    const blob = (u, v, ru, rv, n) => { const o = []; for (let i = 0; i < (n || 22); i++) { const a = i / (n || 22) * Math.PI * 2; o.push(T(u + Math.cos(a) * ru, v + Math.sin(a) * rv)); } return o; };
+    const q = bodyQuad(g);
+    B.fillQuadShaded(ctx, q, '#4F7F38', { face: 'top', material: 'wood', t: -0.05, noAO: true }, env); B.macroGrain(ctx, q, 0.3, env);
+    ctx.save(); B.poly(ctx, q); ctx.clip();
+    const fair = [[T(0.1, 0.16), T(0.3, 0.2), T(0.5, 0.3), T(0.66, 0.34)], [T(0.2, 0.84), T(0.4, 0.74), T(0.58, 0.58), T(0.84, 0.52)], [T(0.12, 0.5), T(0.3, 0.5), T(0.42, 0.44)]];
+    const wid = Math.max(9, Math.min(g.fw, g.fh) * 2.2);
+    for (const f of fair) { B.stroke(ctx, f, wid + 5, '#6E9A44', 0, 1, { smooth: true, cap: 'round' }); B.stroke(ctx, f, wid, C.lawn, 0, 1, { smooth: true, cap: 'round' }); B.stroke(ctx, f, wid * 0.45, C.lawnStripe, 0.1, 0.8, { smooth: true, cap: 'round' }); }
+    // the pond (a kidney of two puddles) with a mud rim
+    const pc = T(0.6, 0.76); B.orb(ctx, pc[0], pc[1], 46, 19, C.mud, -0.05, { noRim: true }); B.puddle(ctx, pc[0], pc[1], 42, 16, env, { t: -0.1, spec: 0.3, rim: 0.2 }); const pc2 = T(0.68, 0.7); B.puddle(ctx, pc2[0], pc2[1], 24, 10, env, { t: -0.1, spec: 0.3, rim: 0.2 });
+    // greens and bunkers
+    const greens = [[0.72, 0.34], [0.9, 0.5], [0.46, 0.42]];
+    for (const gr of greens) { flat(ctx, blob(gr[0], gr[1], 0.5 / fw * 1.1, 0.5 / fh * 1.1), '#5E9A3A', 0, 1); flat(ctx, blob(gr[0], gr[1], 0.5 / fw, 0.5 / fh), '#9CCB5C', 0.05, 1); }
+    for (const bk of [[0.67, 0.4], [0.78, 0.29], [0.86, 0.58], [0.5, 0.5], [0.42, 0.36], [0.36, 0.62]]) flat(ctx, blob(bk[0], bk[1], 0.34 / fw, 0.28 / fh, 14), C.sandYard, 0.35, 1);
+    const cp = [T(0.82, 0.8), T(0.7, 0.6), T(0.55, 0.52), T(0.4, 0.4), T(0.25, 0.3), T(0.14, 0.2)];
+    B.path(ctx, cp, 3.4, env, { material: 'gravel' });
+    ctx.restore();
+    line(ctx, q[3], q[2], 1.6, '#4F7F38', -0.6, 0.8); line(ctx, q[2], q[1], 1.6, '#4F7F38', -0.6, 0.8);
+    for (const t of [[0.1, 0.16], [0.2, 0.84], [0.12, 0.5]]) { const p = T(t[0], t[1]); miniBox(ctx, g, t[0] * fw * 32, t[1] * fh * 32, 5, 4, 1.5, '#8A6A3A', 'wood', env, 0, { noAO: true }); void p; }   // tee boxes
+    // flags (back to front), then the trees ringing the course (back to front), then the clubhouse
+    const things = [];
+    for (const gr of greens) things.push({ d: gr[0] + gr[1], draw: () => { const p = T(gr[0], gr[1]); B.column(ctx, p[0], p[1], 15, 0.5, C.offWhite, env); B.fillQuadShaded(ctx, [[p[0], p[1] - 15], [p[0] + 6, p[1] - 13.5 + (frame & 1)], [p[0], p[1] - 11.5]], C.purple, { face: 'sw', material: 'cloth', noAO: true }, env); } });
+    const TR = []; for (let i = 0; i < 18; i++) { const a = (i + 0.3 * (hash(seed, i) % 3)) / 18 * Math.PI * 2, r = 0.44 + (hash(seed, 20 + i) % 6) / 100; TR.push([0.5 + Math.cos(a) * r, 0.5 + Math.sin(a) * r * 1.02]); }
+    for (const p of [[0.35, 0.3], [0.52, 0.2], [0.78, 0.66], [0.3, 0.7], [0.62, 0.44], [0.9, 0.3]]) TR.push(p);
+    for (const t of TR) { if (t[0] > 0.7 && t[1] > 0.7) continue; if (t[0] < 0.03 || t[1] < 0.03 || t[0] > 0.97 || t[1] > 0.97) continue; things.push({ d: t[0] + t[1], draw: () => { const p = T(t[0], t[1]); B.tree(ctx, p[0], p[1], (hash(seed, Math.round(t[0] * 90 + t[1] * 40)) & 1) ? 'liveOak' : 'cypress', { seed: seed + Math.round(t[0] * 50), stage: 1 }, env); } }); }
+    things.sort((a, c) => a.d - c.d); for (const t of things) t.draw();
+    // the clubhouse: a one-storey hip-roofed house with a gallery at the front corner
+    const X0 = fw * 32 * 0.72, X1 = fw * 32 * 0.9, Y0 = fh * 32 * 0.77, Y1 = fh * 32 * 0.93;
+    const cb = mkBox(g, X0, X1, Y0, Y1, 2, 'hip', 12, '#6E3A2E'); cb.wallH = 2 * FLOOR_PX - 4;
+    const wallSave = g.wallBase, mSave = g.material; g.wallBase = '#EFE4CC'; g.material = 'stucco';
+    drawWalls(ctx, cb, env); layoutWindows(cb, [4, 4], 2, night, frame); drawWindows(ctx, cb, env, { night: night, frame: frame }); drawDoor(ctx, cb, env, { wide: true, night: night }); drawRoof(ctx, cb, env); drawGallery(ctx, cb, true, env);
+    g.wallBase = wallSave; g.material = mSave;
+    for (const sx of [-1, 1]) { const p = facePt(cb, 0, 0.5 + sx * 0.3, 0, 2, true); car(ctx, p[0] + sx * 10, p[1] + 5, GARAGE_CARS[hash(seed, 7 + sx) % 8], night, env); }
+    return b;
+  }
+  /** the rainwater cistern: two steel-blue tanks on a gravel pad, a catchment canopy draining into them through a pipe, a ladder and a water gauge */
+  function cisternBody(ctx, g, frame, env) {
+    const b = flatBody(g), fw = g.fw, fh = g.fh, night = g.night;
+    drawApron(ctx, g, APRON.gravel, env, { lifted: g.lift > 0 });
+    const T = (u, v, up) => fT(g, u * fw, v * fh, up || 0);
+    const tank = (u, v, h, r) => { const p = T(u, v); B.shadow(ctx, { x: p[0] + 3, y: p[1] + 1, rx: r + 3, ry: r * 0.45, a: 0.3 }, env); B.column(ctx, p[0], p[1], h, r, '#8FB8C8', env); B.orb(ctx, p[0], p[1] - h, r, r * 0.5, '#B6D6E2', 0.25, { spec: 0.4 }); for (const hh of [0.35, 0.7]) { line(ctx, [p[0] - r, p[1] - h * hh], [p[0] + r, p[1] - h * hh + r * 0.1], 0.8, '#5E86A0', -0.2, 0.7); } B.orb(ctx, p[0] - r * 0.3, p[1] - h - r * 0.2, r * 0.3, r * 0.15, C.white, 0.6, { noRim: true }); return p; };
+    const p1 = tank(0.3, 0.32, 24, 10), p2 = tank(0.68, 0.46, 20, 9);
+    // the catchment canopy over a low frame at the front: a sloped purple roof with a gutter
+    const c0 = T(0.28, 0.82, 12), c1 = T(0.72, 0.82, 12), c2 = T(0.72, 0.62, 16), c3 = T(0.28, 0.62, 16);
+    for (const x of [0.28, 0.72]) { const a = T(x, 0.82), c = T(x, 0.82, 12); line(ctx, a, c, 1.2, C.iron, 0, 0.95); }
+    B.plane(ctx, [c3, c2, c1, c0], '#5E2CA5', 0.1, { amp: 0.25, rim: 0.3 });
+    line(ctx, c0, c1, 1.2, C.steel, 0.4, 0.95);
+    B.stroke(ctx, [T(0.3, 0.82, 11), T(0.3, 0.9, 2), T(0.12, 0.9, 2), T(0.2, 0.5, 1), [p1[0] - 5, p1[1] - 2]], 1.2, C.steel, 0.1, 0.9, {});   // the downspout and the feed pipe
+    const lp = [p1[0] + 9, p1[1]]; line(ctx, [lp[0], lp[1]], [lp[0], lp[1] - 22], 0.6, C.iron, 0, 0.9);   // the ladder rail
+    for (let k = 0; k < 6; k++) line(ctx, [lp[0] - 1.2, lp[1] - 3 - k * 3.4], [lp[0] + 1.2, lp[1] - 3 - k * 3.4], 0.5, C.iron, 0, 0.9);
+    const gp = [p2[0] + 6, p2[1]]; B.fillQuadShaded(ctx, [[gp[0] - 1, gp[1] - 3], [gp[0] + 1, gp[1] - 3], [gp[0] + 1, gp[1] - 15], [gp[0] - 1, gp[1] - 15]], C.white, { face: 'sw', material: 'paint', noAO: true }, env);
+    B.fillQuadShaded(ctx, [[gp[0] - 1, gp[1] - 3], [gp[0] + 1, gp[1] - 3], [gp[0] + 1, gp[1] - 3 - 8 - (frame & 0)], [gp[0] - 1, gp[1] - 3 - 8]], C.waterBlue, { face: 'sw', material: 'paint', noAO: true }, env);
+    if (night) B.softEllipse(ctx, p1[0], p1[1] - 12, 14, 6, C.glow, 0.12, 0.1);
+    return b;
+  }
+  /** the tiger statue: a stone pedestal with a purple plaque and a bronze-orange crouching tiger with dark stripes (1 x 1) */
+  function statueBody(ctx, g, frame, env) {
+    const b = flatBody(g), night = g.night;
+    drawApron(ctx, g, APRON.pave, env, { lifted: g.lift > 0 });
+    const c = fp(g, g.fw * 16, g.fh * 16, 0), x = c[0], y = c[1];
+    miniBox(ctx, g, g.fw * 16, g.fh * 16, 8, 6, 8, C.limestone, 'stone', env, 0, { top: C.limestone, topT: 0.2 });
+    B.fillQuadShaded(ctx, [[x - 4, y + 4], [x + 3, y + 7], [x + 3, y + 4.5], [x - 4, y + 1.5]], C.purple, { face: 'sw', material: 'paint', noAO: true }, env);
+    const O = C.tigerOrange, ty = y - 8.5;
+    B.shadow(ctx, { x: x + 2, y: ty + 1, rx: 9, ry: 2.4, a: 0.3 }, env);
+    B.orb(ctx, x - 1, ty - 4.2, 7.5, 4.6, O, 0.05, { spec: 0.3 });                       // the body
+    B.orb(ctx, x - 6.2, ty - 3, 2.4, 2.8, O, -0.05, { noRim: true });                    // the haunch
+    B.orb(ctx, x + 6.4, ty - 8.6, 3.4, 3.2, O, 0.12, { spec: 0.35 });                   // the head
+    B.orb(ctx, x + 8.8, ty - 7.6, 1.8, 1.3, '#F2E2C8', 0.2, { noRim: true });            // the muzzle
+    B.orb(ctx, x + 5.2, ty - 11.4, 0.9, 0.9, O, -0.1, { noRim: true }); B.orb(ctx, x + 7.8, ty - 11.2, 0.9, 0.9, O, -0.1, { noRim: true });   // the ears
+    B.orb(ctx, x + 7.2, ty - 9.2, 0.45, 0.45, C.black, 0, { noRim: true });
+    line(ctx, [x + 3.6, ty - 6.4], [x + 4.4, ty - 2.2], 2.6, O, -0.05, 1); line(ctx, [x + 0.4, ty - 1.2], [x + 0.8, ty + 0.4], 2.2, O, -0.15, 1);   // the forelegs
+    B.stroke(ctx, [[x - 8, ty - 2.6], [x - 11.4, ty - 6], [x - 10.2, ty - 10]], 1.6, O, -0.05, 1, { smooth: true, cap: 'round' });   // the tail
+    for (let i = 0; i < 4; i++) line(ctx, [x - 5 + i * 3.1, ty - 8.4], [x - 4.2 + i * 3.1, ty - 3.4], 0.9, '#2A1A10', 0, 0.85);   // the stripes
+    if (night) B.softEllipse(ctx, x, y + 1, 12, 5, C.glow, 0.25, 0.2);
+    return b;
+  }
+  /** the heritage locomotive (3 x 1): a short track and a black steam engine with a gold stripe, a stack, a cab, big drivers and a coal tender */
+  function locoBody(ctx, g, frame, env) {
+    const b = flatBody(g), night = g.night, longX = g.fw >= g.fh, L = (longX ? g.fw : g.fh) * 32, W = (longX ? g.fh : g.fw) * 32;
+    drawApron(ctx, g, APRON.gravel, env, { lifted: g.lift > 0 });
+    const XY = (u, v) => longX ? [u, v] : [v, u];
+    const P = (u, v, up) => { const c = XY(u, v); return fp(g, c[0], c[1], up || 0); };
+    for (const v of [W * 0.38, W * 0.62]) line(ctx, P(2, v), P(L - 2, v), 1.4, C.steel, 0.2, 0.95);   // rails
+    for (let u = 6; u < L - 4; u += 6) line(ctx, P(u, W * 0.3), P(u, W * 0.7), 1.6, C.bark, 0, 0.9);   // ties
+    const mb = (u0, u1, v0, v1, z0, z1, col, mat, topc) => { const c0 = XY((u0 + u1) / 2, (v0 + v1) / 2), h0 = longX ? (u1 - u0) / 2 : (v1 - v0) / 2, h1 = longX ? (v1 - v0) / 2 : (u1 - u0) / 2; return miniBox(ctx, g, c0[0], c0[1], h0, h1, z1 - z0, col, mat, env, z0, { top: topc || col, topT: 0.25 }); };
+    mb(L * 0.08, L * 0.66, W * 0.33, W * 0.67, 3, 13, '#1F1F26', 'metal', '#3A3A44');   // the boiler (a long box, rounded by a dome and band)
+    for (let k = 0; k < 4; k++) { const p = P(L * (0.18 + k * 0.14), W * 0.5, 13.5); B.orb(ctx, p[0], p[1], 3.6, 1.8, '#2A2A33', 0.25, { noRim: true }); }
+    mb(L * 0.66, L * 0.82, W * 0.3, W * 0.7, 3, 19, '#1F1F26', 'metal', '#2A2A33');     // the cab
+    { const p = P(L * 0.74, W * 0.5, 19.6); B.plane(ctx, [[p[0] - 8, p[1]], [p[0] + 8, p[1]], [p[0] + 6, p[1] - 4], [p[0] - 6, p[1] - 4]], '#4A1F18', 0, { amp: 0.15, rim: 0.2 }); }
+    const sp = P(L * 0.12, W * 0.5, 13); B.column(ctx, sp[0], sp[1], 8, 2.2, '#1B1B22', env); B.orb(ctx, sp[0], sp[1] - 8.4, 3.4, 1.4, C.gold, 0.2, { noRim: true });   // the stack with a gold cap
+    const hl = P(L * 0.06, W * 0.5, 10); B.orb(ctx, hl[0], hl[1], 1.8, 1.8, night ? C.glow : C.offWhite, 0.5, { spec: 0.6 });
+    for (const k of [0.2, 0.34, 0.48]) { const p = P(L * k, W * 0.68, 0); B.orb(ctx, p[0], p[1] - 3.4, 4, 4, '#2A2A33', 0.1, { spec: 0.2 }); B.orb(ctx, p[0], p[1] - 3.4, 1.4, 1.4, C.gold, 0.3, { noRim: true }); }
+    { const a = P(L * 0.1, W * 0.67, 8), c = P(L * 0.66, W * 0.67, 8); line(ctx, a, c, 1.6, C.gold, 0.2, 0.95); }
+    mb(L * 0.84, L * 0.97, W * 0.34, W * 0.66, 3, 11, '#26262E', 'metal', '#16161C');   // the coal tender
+    for (let k = 0; k < 4; k++) { const p = P(L * (0.87 + (k % 3) * 0.035), W * (0.42 + (k % 2) * 0.15), 11.4); B.orb(ctx, p[0], p[1], 1.6, 1, '#101014', 0, { noRim: true }); }
+    return b;
+  }
+  /** the trainer jet (2 x 2): a concrete pad, a steel pole and a white jet banked on it with a purple tail, a glass canopy and a gold stripe */
+  function jetBody(ctx, g, frame, env) {
+    const b = flatBody(g), night = g.night;
+    drawApron(ctx, g, APRON.pave, env, { lifted: g.lift > 0 });
+    const c = fp(g, g.fw * 16, g.fh * 16, 0), x = c[0], y = c[1];
+    B.orb(ctx, x, y, 12, 5.4, C.concrete, 0.1, { noRim: true }); B.shadow(ctx, { x: x + 3, y: y + 1, rx: 7, ry: 2.4, a: 0.3 }, env);
+    B.column(ctx, x, y, 17, 1.3, C.steel, env);
+    const jy = y - 20;
+    // wings: a long thin parallelogram across the body, swept back
+    B.plane(ctx, [[x - 15, jy + 3], [x - 2, jy - 3.2], [x + 2.6, jy - 2], [x - 9, jy + 6]], '#D8D8DE', -0.05, { amp: 0.15, rim: 0.3 });
+    B.plane(ctx, [[x + 15, jy + 5.5], [x + 3, jy - 1.6], [x - 1, jy + 0.4], [x + 9, jy + 8]], '#E8E8EC', 0.1, { amp: 0.15, rim: 0.3 });
+    B.orb(ctx, x - 0.5, jy + 1.5, 13, 3.4, '#F0F0F4', 0.1, { spec: 0.5 });                      // the fuselage
+    B.orb(ctx, x + 10.5, jy + 1.8, 4.2, 2.4, '#E8E8EC', 0.25, { noRim: true });                // the nose
+    line(ctx, [x - 11, jy + 1.2], [x + 11, jy + 2.2], 1.1, C.gold, 0.2, 0.95);                     // the stripe
+    B.orb(ctx, x + 4.2, jy - 0.8, 3, 1.7, '#7FB8E8', 0.2, { spec: 0.8 });                       // the canopy
+    B.plane(ctx, [[x - 11, jy + 1], [x - 15, jy - 8], [x - 12.5, jy - 8.4], [x - 7, jy + 0.4]], C.purple, 0, { amp: 0.15, rim: 0.3 });   // the tail fin
+    B.plane(ctx, [[x - 12, jy + 2.4], [x - 17, jy + 1], [x - 15, jy + 4.4], [x - 9, jy + 4]], '#C2C2C8', 0, { amp: 0.1, rim: 0.2 });
+    B.orb(ctx, x - 12.4, jy + 2.4, 1.2, 1.2, C.iron, 0, { noRim: true });                          // the exhaust
+    B.fillQuadShaded(ctx, [[x + 4, y + 5.4], [x + 10, y + 6.8], [x + 10, y + 4.8], [x + 4, y + 3.4]], C.purple, { face: 'sw', material: 'paint', noAO: true }, env);   // the plaque
+    if (night) B.softEllipse(ctx, x, y + 1, 14, 5, C.glow, 0.25, 0.2);
+    return b;
+  }
+  /** the parade ground (a 2 x 2 unit that joins its neighbours into one drill lawn): seamless turf with mowing stripes aligned to the unit, a faint drill grid, one flagpole */
+  function paradeBody(ctx, g, frame, env) {
+    const b = flatBody(g), fw = g.fw, fh = g.fh, night = g.night, q = bodyQuad(g), lod0 = env.lod === 0;
+    B.fillQuadShaded(ctx, q, '#86AE50', { face: 'top', material: 'wood', t: 0, noAO: true }, env);
+    ctx.save(); B.poly(ctx, q); ctx.clip();
+    for (let s = 0; s < fw * 4; s += 2) flat(ctx, [fT(g, s / 2, 0), fT(g, (s + 1) / 2, 0), fT(g, (s + 1) / 2, fh), fT(g, s / 2, fh)], '#7BA146', 0, 0.6);
+    for (let s = 1; s < fw; s++) line(ctx, fT(g, s, 0), fT(g, s, fh), 0.7, C.white, 0.4, 0.28);
+    for (let s = 1; s < fh; s++) line(ctx, fT(g, 0, s), fT(g, fw, s), 0.7, C.white, 0.4, 0.28);
+    if (lod0) for (let i = 0; i < fw * fh * 2; i++) { const p = fp(g, hash(g.seed, i * 3) % (fw * 32), hash(g.seed, i * 3 + 1) % (fh * 32), 0); B.orb(ctx, p[0], p[1], 1.4, 0.8, '#86AE50', 0.3, { noRim: true }); }
+    ctx.restore();
+    const c = fT(g, fw / 2, fh / 2, 0), x = c[0], y = c[1], wave = frame & 1;
+    B.shadow(ctx, { x: x + 1, y: y + 0.4, rx: 2.4, ry: 0.9, a: 0.3 }, env);
+    B.column(ctx, x, y, 22, 0.7, C.steel, env); B.orb(ctx, x, y - 22.6, 1, 1, C.gold, 0.4, { noRim: true });
+    B.fillQuadShaded(ctx, [[x, y - 21], [x + 8, y - 20 + wave], [x + 8, y - 16 + wave], [x, y - 17]], C.purple, { face: 'sw', material: 'cloth', noAO: true }, env);
+    B.fillQuadShaded(ctx, [[x, y - 17], [x + 8, y - 16 + wave], [x + 8, y - 12 + wave], [x, y - 13]], C.gold, { face: 'sw', material: 'cloth', noAO: true }, env);
+    return b;
+  }
+  const BODIES = { garage: garageBody, golf: golfBody, cistern: cisternBody, statue: statueBody, loco: locoBody, jet: jetBody, parade: paradeBody, box: standardBody, bunk: bunkBody, wings: wingsBody, substation: substationBody, tower: towerBody, generator: generatorBody,
     quad: quadBody, parking: parkingBody, pond: pondBody, rookery: rookeryBody, batpole: batpoleBody, field: fieldBody, stadium: stadiumBody, habitat: (ctx, g, frame, env) => habitatBody(ctx, g, frame, env, 0, -1) };
 
   // ---------------------------------------------------------------------------
@@ -1650,9 +1851,10 @@
   // ---------------------------------------------------------------------------
   // The painter
   // ---------------------------------------------------------------------------
-  function geometry(row, variant, frame, rot, seed, tees, env) {
+  function geometry(row0, variant, frame, rot, seed, tees, env) {
+    const row = M.paintRow ? M.paintRow(row0, variant) : row0;   // more buildings pass: the row as painted at its tier
     const g = M.buildingBox(row, variant, 1, rot);
-    g.row = row; g.paint = row.paint || {}; g.D = HD_ROWS[row.id] || {};
+    g.row = row; g.paint = row.paint || {}; g.D = hdRowOf(row.id, g.tier);
     g.seed = hash(strHash(row.id || 'b'), (seed ^ variant) >>> 0);
     g.frontLeft = !!(variant & SPR.FRONT_L); g.night = !!(variant & SPR.NIGHT);
     g.features = Array.isArray(g.paint.features) ? g.paint.features : []; g.decals = Array.isArray(g.paint.decals) ? g.paint.decals : [];

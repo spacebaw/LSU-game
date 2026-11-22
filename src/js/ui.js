@@ -1899,7 +1899,7 @@
     if (menuEdit && !(kind === 'building' && insp.id === menuEdit.id)) M.closeMenuEditor();   // the overlay belongs to the inspected kitchen
     if (kind === 'building') {
       const b = call('buildings', 'get', s, insp.id); if (!b) { closeInspectDom(); return; }
-      const r = rowOf(b.type) || { name: b.type, effects: {}, wr: 0, tiers: [] }, ef = r.effects || {}, i0 = b.ty * W + b.tx, tl = s.tiles;
+      const r = rowOf(b.type) || { name: b.type, effects: {}, wr: 0, tiers: [] }, ef = call('buildings', 'effectsOf', s, b) || r.effects || {}, i0 = b.ty * W + b.tx, tl = s.tiles;   // more buildings pass: what it does at its current tier
       if (!renaming) setText(E['insp-title'], b.name || r.name);
       setText(E['insp-sub'], r.name + (b.tier > 0 && r.tiers && r.tiers[b.tier - 1] ? ' · ' + (r.tiers[b.tier - 1].name || 'Tier ' + b.tier) : '') + (b.pilings ? ' · on pilings' : ''));
       call('render', 'drawIcon', spr, b.type); hasSprite = true;
@@ -1942,13 +1942,13 @@
       // bought the button is disabled and the reason is text on the card; while it is under way the card says so and when it ends; the top tier shows nothing
       if (r.tiers && r.tiers.length) {
         const q = call('buildings', 'upgradeQuote', s, b.id) || null, nx = q && q.next;
-        if (q && q.inProgress) { const left = fin(q.doneDay, 0) - dayOf(s); const up = el('div', 'insp-up'); up.id = 'insp-upgrade'; up.appendChild(el('div', 'up-now', 'Upgrading' + (nx ? ' to ' + nx.name : '') + ' · done ' + (left <= 0 ? 'today' : left === 1 ? 'in 1 day' : 'in ' + left + ' days'))); acts.appendChild(up); }
+        if (q && q.inProgress) { const left = fin(q.doneDay, 0) - dayOf(s); const up = el('div', 'insp-up'); up.id = 'insp-upgrade'; up.appendChild(el('div', 'up-now', 'Upgrading' + (nx ? ' to ' + nx.name : '') + ' · done ' + (left <= 0 ? 'today' : left === 1 ? 'in 1 day' : 'in ' + left + ' days') + ' · closed until then')); acts.appendChild(up); }
         else if (nx) {
           const up = el('div', 'insp-up'); up.id = 'insp-upgrade';
           const ub = action('Upgrade to ' + nx.name + ' · ' + money(nx.cost), function (st) { const rr = call('buildings', 'upgrade', st, b.id); if (rr && rr.ok) lightControl(null); return rr; }, 'primary'); ub.id = 'btn-insp-upgrade';
           if (!q.ok) { ub.disabled = true; ub.setAttribute('aria-disabled', 'true'); ub.setAttribute('aria-describedby', 'insp-up-why'); }
           litClass(ub, 'insp:upgrade'); up.appendChild(ub);
-          const gain = []; if (nx.seats) gain.push(fmtInt(nx.seats) + ' seats'); if (nx.night) gain.push('night games'); if (nx.upkeep) gain.push(money(nx.upkeep) + '/mo upkeep'); gain.push(nx.buildDays + (nx.buildDays === 1 ? ' day' : ' days') + ' to build');
+          const gain = []; if (nx.seats) gain.push(fmtInt(nx.seats) + ' seats'); if (nx.night) gain.push('night games'); if (q.gains) for (const gl of q.gains) gain.push(gl); if (nx.upkeep) gain.push(money(nx.upkeep) + '/mo upkeep'); gain.push(nx.buildDays + (nx.buildDays === 1 ? ' day' : ' days') + ' to build'); gain.push('closed while it upgrades');
           up.appendChild(el('div', 'up-gain', gain.join(' · ')));
           if (!q.ok) { const why = el('div', 'up-why', q.needs && q.needs.length ? 'Needs ' + q.needs.join(' · ') : (q.reason || 'Not available yet')); why.id = 'insp-up-why'; up.appendChild(why); }
           acts.appendChild(up);
@@ -2439,7 +2439,7 @@
     } catch (e) { uerr('placedHint', e); }
   }
   // ---- effects → plain lines (the detail card)
-  const SPECIAL_TEXT = { boilPot: 'Crawfish boil pot', dumpster: 'Dumpster (gator bait)', porch: 'Porch parties', tailgate: 'Tailgates near the venue', festivalHost: 'Hosts festivals (revenue ×2)', idleHub: 'Students hang out here', pool: 'Pool', teamHeatFix: 'Fixes the team heat penalty', idleSpot: 'Students idle here', oakDecal: 'Plants a Live Oak', floodsAt03: 'Floods at 0.3 ft of water', tailgateLot: 'Tailgate lot', nutriaImmune: 'Nutria cannot burrow it', egret: 'Egrets visit', stockAfter10: 'Stocked with bream after a month', gatorBlock: 'Gators cannot cross', fogger: 'Fogger truck at dusk', martins: 'Purple martins swirl at dusk', officer: 'Relocates gators within 14', traps: 'Nutria traps', debris: 'Clears storm debris', cajunNavy: 'Cajun Navy rescues', preserve: 'Protected wetland', bells: 'Bells at midday and dusk', beacon: 'Beacon at night', tank: 'Water tank', habitat: 'Home of Roux the tiger', restore: 'Restores marsh', spoonbills: 'Spoonbills at dawn', postcardFrame: 'The postcard frame', discountSwamp: 'Levees, floodwalls, canals and pumps −15%', radar: 'Weather radar', wastewater: 'Sewage treatment' };
+  const SPECIAL_TEXT = { boilPot: 'Crawfish boil pot', dumpster: 'Dumpster (gator bait)', porch: 'Porch parties', tailgate: 'Tailgates near the venue', festivalHost: 'Hosts festivals (revenue ×2)', idleHub: 'Students hang out here', pool: 'Pool', teamHeatFix: 'Fixes the team heat penalty', idleSpot: 'Students idle here', oakDecal: 'Plants a Live Oak', floodsAt03: 'Floods at 0.3 ft of water', tailgateLot: 'Tailgate lot', nutriaImmune: 'Nutria cannot burrow it', egret: 'Egrets visit', stockAfter10: 'Stocked with bream after a month', gatorBlock: 'Gators cannot cross', fogger: 'Fogger truck at dusk', martins: 'Purple martins swirl at dusk', officer: 'Relocates gators within 14', traps: 'Nutria traps', debris: 'Clears storm debris', cajunNavy: 'Cajun Navy rescues', preserve: 'Protected wetland', bells: 'Bells at midday and dusk', beacon: 'Beacon at night', tank: 'Water tank', habitat: 'Home of Roux the tiger', restore: 'Restores marsh', spoonbills: 'Spoonbills at dawn', postcardFrame: 'The postcard frame', discountSwamp: 'Levees, floodwalls, canals and pumps −15%', radar: 'Weather radar', wastewater: 'Sewage treatment', events: 'Hosts events', golf: 'Fairways, greens, a pond and a clubhouse', ecoSite: 'Counts toward the ecology score', cistern: 'Rain water: serves any building that needs water within its radius', depotBuses: 'Two more buses in every game-day fleet (up to four)', paradeArmory: 'Worth +2 more within 8 tiles of an ROTC Armory' };
   function pct(mult) { return Math.round((1 - mult) * 100) + '%'; }
   function within(r) { return r > 0 ? ' within ' + r + ' tiles' : ''; }
   function effectLines(row) {

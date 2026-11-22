@@ -203,7 +203,7 @@
     if (!D || !D.catalog) return out;
     for (const b of completeList(state)) {
       const row = D.catalog[b.type]; if (!row) continue;
-      const eff = effective(state, b), e = row.effects;
+      const eff = effective(state, b), e = call('buildings', 'effectsOf', [state, b], null) || row.effects;   // more buildings pass: the tier-resolved effects
       if (!(eff > 0)) continue;
       if (e.revenueMonthly > 0 && b.type !== 'poboy') out.revenue += e.revenueMonthly * eff;
       if (!brownout && !b.blackout && e.research && e.research.base > 0 && e.research.kind && e.research.kind !== 'engineering' && e.research.kind !== 'coastal') out.research += e.research.base * prestigeF * eff;

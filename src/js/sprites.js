@@ -509,7 +509,7 @@
     const canvas = newCanvas(1, 1);
     const ctx = ctx2d(canvas);
     const hd = fn.hd === true;
-    const spec = { id: id, family: r.family, sub: r.sub, variant: variant, frame: frame, zoom: z, master: z, hd: hd, env: null, row: r.row, rot: r.rot, seed: hash(strHash(id), variant), frames: 0 };
+    const spec = { id: id, family: r.family, sub: r.sub, variant: variant, frame: frame, zoom: z, master: z, hd: hd, env: null, row: (r.family === 'building' && typeof M.paintRow === 'function') ? M.paintRow(r.row, variant) : r.row, rot: r.rot, seed: hash(strHash(id), variant), frames: 0 };
     if (hd) {   // H0: an HD painter gets the master-scaled, smoothing-on context and the brush env (beginHD sizes the canvas and re-applies both)
       spec.env = (BSU.brush && typeof BSU.brush.env === 'function') ? BSU.brush.env(z) : { master: z, lod: z >= 2 ? 0 : 1, night: false, dpr: 1, originX: 0, originY: 0 };
       try { ctx.setTransform(z, 0, 0, z, 0, 0); ctx.imageSmoothingEnabled = true; } catch (e) { /* stub */ }
@@ -1603,7 +1603,7 @@
         for (const row of data.catalogList) {
           if (row.n >= 49) continue;   // colleges pass: the 23 new rows bake lazily (first placement / Build card), so the load-time atlas stays inside its 40 MB ceiling
           for (const v of variants) M.get(row.id, v, 0, 1);
-          if (row.tiers && row.tiers.length) for (const v of variants) M.get(row.id, v | (1 << SPR.TIER_SHIFT), 0, 1);
+          if (row.tiers && row.tiers.length && (row.id === 'stadium' || row.id === 'practice_field')) for (const v of variants) M.get(row.id, v | (1 << SPR.TIER_SHIFT), 0, 1);   // more buildings pass: the seven upgraded rows bake their tiers lazily
         }
       }
       if (painters.agent) { const look0 = M.agentLook(0); for (let f = 0; f < 16; f++) M.get('agent', look0, f, 1); for (let f = 0; f < 8; f++) M.get('agent:idle', look0, f, 1); }

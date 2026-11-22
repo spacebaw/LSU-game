@@ -864,7 +864,9 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
     // colleges and venues pass: rows 49-71. 15 colleges (49-63) and 8 signature venues (64-71)
     'univ_college', 'online_center', 'business_college', 'education_college', 'masscomm_school', 'humanities_college', 'art_college', 'music_college',
     'ag_college', 'science_college', 'honors_college', 'grad_school', 'rotc_armory', 'law_center', 'vet_school',
-    'concert_hall', 'theatre', 'band_hall', 'art_gallery', 'vet_hospital', 'nat_museum', 'computer_lab', 'ag_greenhouses'
+    'concert_hall', 'theatre', 'band_hall', 'art_gallery', 'vet_hospital', 'nat_museum', 'computer_lab', 'ag_greenhouses',
+    // more buildings and upgrades pass: rows 72-81
+    'campus_store', 'arena', 'golf_course', 'recycling', 'cistern', 'bus_depot', 'tiger_statue', 'locomotive', 'trainer_jet', 'parade'
   ]);
   {
     const B = {};
@@ -2223,6 +2225,17 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
   // Type strings: 'string' | 'number' | 'int' | 'boolean' | 'enum:a|b|c' | 'array:string' | 'array:number'
   //               | 'object:<sub>' (a sub-schema name) | 'array:object:<sub>' | 'optional:<type>' | 'placeRule'
   // ---------------------------------------------------------------------------
+  const EFFECTS_SCHEMA = freeze({
+      seats: 'number', beds: 'number', quality: 'number', feeds: 'number', diningRadius: 'number',
+      happiness: 'object:valueRadius', flatTimer: 'string', landmark: 'number', shelter: 'number',
+      power: 'object:radiusCapacity', water: 'object:radiusCapacity', mosquito: 'object:multRadiusStacks', heat: 'object:multRadius',
+      ecology: 'number', ecologyPerTile: 'number', gatorAttract: 'number', research: 'object:research', academic: 'number',
+      teamRating: 'number', noise: 'object:valueRadius', windShield: 'object:multRadius', illness: 'object:illness',
+      drainPerDay: 'number', subsidenceMult: 'number', subsidenceRadius: 'number', pumpTileFt: 'number', pondCapacity: 'number',
+      fuelDays: 'number', crest: 'number', surfaceId: 'int', canal: 'boolean', gate: 'boolean', capacityStudents: 'number',
+      parkingPer: 'number', parkingSpaces: 'number', housingTier: 'int', tickets: 'number', revenueMonthly: 'number', coneDays: 'number', coneNarrow: 'number',
+      ecologyDecayMult: 'number', gatorAvoidRadius: 'number', homeWinBonus: 'number', attendanceSeats: 'number', special: 'array:string'
+  });
   BSU.catalogRowSchema = freeze({
     row: freeze({
       id: 'string', n: 'int', name: 'string',
@@ -2239,17 +2252,8 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
       students: 'optional:number', prestige: 'optional:number', ecology: 'optional:number', milestone: 'optional:string',
       building: 'optional:string', any: 'optional:array:object:unlock', tier: 'optional:int'
     }),
-    effects: freeze({
-      seats: 'number', beds: 'number', quality: 'number', feeds: 'number', diningRadius: 'number',
-      happiness: 'object:valueRadius', flatTimer: 'string', landmark: 'number', shelter: 'number',
-      power: 'object:radiusCapacity', water: 'object:radiusCapacity', mosquito: 'object:multRadiusStacks', heat: 'object:multRadius',
-      ecology: 'number', ecologyPerTile: 'number', gatorAttract: 'number', research: 'object:research', academic: 'number',
-      teamRating: 'number', noise: 'object:valueRadius', windShield: 'object:multRadius', illness: 'object:illness',
-      drainPerDay: 'number', subsidenceMult: 'number', subsidenceRadius: 'number', pumpTileFt: 'number', pondCapacity: 'number',
-      fuelDays: 'number', crest: 'number', surfaceId: 'int', canal: 'boolean', gate: 'boolean', capacityStudents: 'number',
-      parkingPer: 'number', parkingSpaces: 'number', housingTier: 'int', tickets: 'number', revenueMonthly: 'number', coneDays: 'number', coneNarrow: 'number',
-      ecologyDecayMult: 'number', gatorAvoidRadius: 'number', homeWinBonus: 'number', attendanceSeats: 'number', special: 'array:string'
-    }),
+    effects: EFFECTS_SCHEMA,
+
     valueRadius: freeze({ value: 'number', radius: 'number' }),
     radiusCapacity: freeze({ radius: 'number', capacity: 'number' }),
     multRadius: freeze({ mult: 'number', radius: 'number' }),
@@ -2258,7 +2262,13 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
     illness: freeze({ mosquito: 'number', heat: 'number', radius: 'number' }),
     tier: freeze({
       tier: 'int', name: 'string', cost: 'number', upkeep: 'number', seats: 'number', landmark: 'number', shelter: 'number',
-      wr: 'int', night: 'boolean', unlock: 'object:unlock', buildDays: 'int'
+      wr: 'int', night: 'boolean', unlock: 'object:unlock', buildDays: 'int',
+      effects: 'optional:object:tierEffects', paint: 'optional:object:tierPaint'   // more buildings pass: a tier's own effects (merged over the row's by buildings.effectsOf) and paint overrides
+    }),
+    tierEffects: freeze(Object.keys(EFFECTS_SCHEMA).reduce(function (o, k) { o[k] = 'optional:' + EFFECTS_SCHEMA[k]; return o; }, {})),
+    tierPaint: freeze({
+      wall: 'optional:array:string', roof: 'optional:enum:flat|gable|hip|dome|barrel|bowl|none', roofColor: 'optional:string', floors: 'optional:int',
+      windows: 'optional:object:colsRows', decals: 'optional:array:string', accent: 'optional:string', material: 'optional:string', trim: 'optional:string', features: 'optional:array:string'
     }),
     paint: freeze({
       wall: 'array:string', roof: 'enum:flat|gable|hip|dome|barrel|bowl|none', roofColor: 'string', floors: 'int',
@@ -2316,7 +2326,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
     BSU.SELFTEST = true;
     try {
       for (const k of ['T', 'SURF', 'FLAG', 'SKY', 'OV', 'STORM', 'STORM_PHASE', 'OBJ', 'PLACE', 'SPR', 'B', 'EV', 'MAP']) BSU.assert(Object.isFrozen(BSU[k]), k + ' frozen');
-      BSU.assert(BSU.B_ORDER.length === 71 && Object.keys(BSU.B).length === 71, '71 catalog ids');   // L3: dredge_fill; water pass: road_bridge
+      BSU.assert(BSU.B_ORDER.length === 81 && Object.keys(BSU.B).length === 81, '81 catalog ids');   // L3: dredge_fill; water pass: road_bridge
       BSU.assert(BSU.MILESTONES.length === 30, '30 milestones');   // L2: landBaron, L3: reclaimed
       BSU.assert(new Set(BSU.EV_LIST).size === BSU.EV_LIST.length, 'event names unique');
       BSU.assert(Object.keys(BSU.EV).length === BSU.EV_LIST.length, 'EV constants unique');
@@ -2460,7 +2470,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
   function flat(wall, decals, special) {
     return P({ wall: wall, roof: 'none', roofColor: '', floors: 0, decals: decals || [], special: special || '' });
   }
-  const NEW_ROWS = BSU.B_ORDER.slice(48);   // colleges and venues pass: rows 49-71 (15 colleges, then 8 venues)
+  const NEW_ROWS = BSU.B_ORDER.slice(48, 71);   // colleges and venues pass: rows 49-71 (15 colleges, then 8 venues)
   const NEEDS_POWER = {
     water_tower: 1, wastewater: 1, founders_hall: 1, lecture_hall: 1, library: 1, engineering: 1, coastal_institute: 1,
     dorm: 1, res_tower: 1, greek_house: 1, bunkhouse: 1, suites: 1, dining_hall: 1, poboy: 1, stadium: 1, union: 1, rec_center: 1, health_center: 1,
@@ -2468,14 +2478,17 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
     pump: 1   // decision: the Pump "needs ⚡ (stops in blackout)"; one coverage rule for buildings
   };
   for (const id of NEW_ROWS) NEEDS_POWER[id] = 1;
+  for (const id of ['campus_store', 'arena', 'golf_course', 'recycling', 'bus_depot']) NEEDS_POWER[id] = 1;   // more buildings pass: the cistern, the depot's water, the decorations and the Parade Ground need none
   const NEEDS_WATER = {
     founders_hall: 1, lecture_hall: 1, library: 1, engineering: 1, coastal_institute: 1, dorm: 1, res_tower: 1,
     greek_house: 1, bunkhouse: 1, suites: 1, dining_hall: 1, stadium: 1, union: 1, rec_center: 1, health_center: 1, tiger_habitat: 1
   };
   for (const id of NEW_ROWS) NEEDS_WATER[id] = 1;
-  const NEW_TAB = { science_college: 'academic', ag_college: 'academic', vet_school: 'academic',
+  for (const id of ['campus_store', 'arena', 'golf_course']) NEEDS_WATER[id] = 1;
+  const NEW_TAB = { campus_store: 'life', bus_depot: 'life', arena: 'sports', golf_course: 'sports', recycling: 'utilities', cistern: 'utilities',
+    tiger_statue: 'grounds', locomotive: 'grounds', trainer_jet: 'grounds', parade: 'grounds',   // more buildings pass: rows 72-81
     concert_hall: 'arts', theatre: 'arts', band_hall: 'arts', art_gallery: 'arts', vet_hospital: 'arts', nat_museum: 'arts', computer_lab: 'arts', ag_greenhouses: 'arts' };   // every other new college is in 'colleges'
-  const PATH_ADJ_ROWS = [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 24, 28, 32, 34, 39, 40, 42, 43, 45, 46].concat(NEW_ROWS.map(function (id, i) { return 49 + i; }));   // 45, 46 = bunkhouse, suites (P7)
+  const PATH_ADJ_ROWS = [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 24, 28, 32, 34, 39, 40, 42, 43, 45, 46].concat(NEW_ROWS.map(function (id, i) { return 49 + i; })).concat([72, 73, 74, 75, 77]);   // 72-77: the store, arena, golf course, recycling center and bus depot want a path; the cistern and the decorations do not   // 45, 46 = bunkhouse, suites (P7)
   const ESSENTIALS = { path: 1, dorm: 1, dining_hall: 1, lecture_hall: 1, poboy: 1, quad: 1, live_oak: 1 };
   const NOT_DEMOLISHABLE = { founders_hall: 1, library: 1, res_tower: 1, stadium: 1, bell_tower: 1, tiger_habitat: 1, rookery: 1, surge_barrier: 1, marsh_restoration: 1 };
   const TAB_OF_ROW = function (n) {
@@ -2564,7 +2577,18 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
     vet_hospital: 'Landmark +1, +3 happiness within 8 and $14k a month in clinic fees.',
     nat_museum: 'Landmark +3, +3 happiness within 10 and $4k a month in admissions.',
     computer_lab: '300 more seats in a 2×2 footprint.',
-    ag_greenhouses: '+2 happiness within 5 and $5k a month in plant sales.'
+    ag_greenhouses: '+2 happiness within 5 and $5k a month in plant sales.',
+    // more buildings and upgrades pass
+    campus_store: '$7k a month in apparel and merchandise and +2 happiness within 6.',
+    arena: 'Landmark +5, +5 happiness within 12, shelters 3,000 and $14k a month in events.',
+    golf_course: 'A 10×8 course: landmark +6, +3 happiness within 10, $18k a month; costs ecology.',
+    recycling: 'Ecology +3 and $4k a month from sorted aluminum and paper.',
+    cistern: 'Rain water for 14 buildings within 6 tiles; no power needed.',
+    bus_depot: '+3 happiness within 16 tiles; adds two buses to every game-day fleet. Needs a road within 3.',
+    tiger_statue: 'Landmark +1 and +1 happiness within 5: the selfie spot.',
+    locomotive: 'A retired steam engine on a short track: landmark +1.',
+    trainer_jet: 'A retired trainer jet on a pole: landmark +1.',
+    parade: 'A drill lawn you drag out as a block: +3 happiness within 8, more beside an ROTC Armory.'
   };
 
   /** One catalog row; fills every §4.1 field from the row-number rules, then applies overrides. */
@@ -2642,6 +2666,9 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
     row({ n: 10, name: 'Library', w: 4, h: 3, cost: 1800000, upkeep: 14000, wr: 4,
       unlock: { students: 800 },
       effects: { academic: 20, landmark: 4, happiness: { value: 4, radius: 10 }, shelter: 800 },
+      tiers: [{ tier: 1, name: 'Research Library', cost: 2200000, upkeep: 20000, seats: 0, landmark: 7, shelter: 1200, wr: 4, night: false, unlock: { students: 2000, prestige: 25 }, buildDays: 8,
+        effects: { seats: 300, academic: 20, landmark: 7, happiness: { value: 6, radius: 12 }, shelter: 1200 },
+        paint: { floors: 3, windows: { cols: 6, rows: 3 }, wall: ['#E8E0CC', '#CFC4A6'], material: 'stone', roofColor: '#47536A', decals: ['arcade', 'dome', 'lights', 'flag'], features: ['arched', 'mullions', 'gutters', 'sign:LIBRARY', 'steps', 'planters', 'pediment'] } }],
       programs: ['Libraries'],
       paint: P({ floors: 2, windows: { cols: 6, rows: 2 }, decals: ['arcade', 'dome', 'lights'], features: ['arched', 'mullions', 'gutters', 'sign:LIBRARY', 'steps', 'planters'] }),
       namePool: 'library',
@@ -2685,6 +2712,13 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
       desc: '80 beds; quality 3; +3 happiness radius 6; tailgate +50% within 8 of the venue; gator attraction +2.' }),
     row({ n: 16, name: 'Dining Hall', w: 3, h: 2, cost: 500000, upkeep: 8000, wr: 3,
       effects: { feeds: 1200, diningRadius: 10, happiness: { value: 3, radius: 10 }, gatorAttract: 2, special: ['boilPot', 'dumpster'] },
+      tiers: [
+        { tier: 1, name: 'Food Court', cost: 650000, upkeep: 12000, seats: 0, landmark: 0, shelter: 0, wr: 3, night: false, unlock: { students: 1200 }, buildDays: 5,
+          effects: { feeds: 2000, diningRadius: 12, happiness: { value: 4, radius: 12 } },
+          paint: { floors: 2, windows: { cols: 6, rows: 2 }, features: ['awnings', 'vents', 'hvac', 'sign:DINING', 'planters', 'gallery'] } },
+        { tier: 2, name: 'Culinary Pavilion', cost: 1500000, upkeep: 22000, seats: 0, landmark: 0, shelter: 0, wr: 3, night: false, unlock: { students: 3500, prestige: 25 }, buildDays: 7,
+          effects: { feeds: 3200, diningRadius: 14, happiness: { value: 5, radius: 14 } },
+          paint: { floors: 3, windows: { cols: 6, rows: 3 }, roofColor: '#7A8A9A', features: ['awnings', 'vents', 'hvac', 'sign:DINING', 'planters', 'gallery:both', 'cupola:gold'] } }],
       paint: P({ floors: 1, windows: { cols: 6, rows: 1 }, decals: ['vents', 'boilpot', 'dumpster'], features: ['awnings', 'vents', 'hvac', 'sign:DINING', 'planters'] }),
       namePool: 'dining',
       why: 'Hungry students leave. Dining is the third enrollment ceiling.',
@@ -2717,6 +2751,9 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
     row({ n: 20, name: 'Student Union', w: 4, h: 3, cost: 1600000, upkeep: 15000, wr: 3,
       unlock: { students: 600 },
       effects: { happiness: { value: 8, radius: 12 }, feeds: 400, shelter: 2000, special: ['festivalHost', 'idleHub'] },
+      tiers: [{ tier: 1, name: 'Student Union Commons', cost: 2000000, upkeep: 22000, seats: 0, landmark: 0, shelter: 3000, wr: 3, night: false, unlock: { students: 1500 }, buildDays: 7,
+        effects: { happiness: { value: 11, radius: 14 }, feeds: 800, shelter: 3000, special: ['festivalHost', 'idleHub'] },
+        paint: { floors: 3, windows: { cols: 6, rows: 3 }, wall: ['#E6DCC2', '#CDBF9E'], material: 'stone', roofColor: '#47536A', features: ['gallery:both', 'mullions', 'sign:UNION', 'flagpole', 'planters', 'steps', 'cupola:gold'] } }],
       paint: P({ floors: 2, windows: { cols: 6, rows: 2 }, decals: ['arcade', 'banner', 'fountain'], accent: PURPLE, features: ['gallery:both', 'mullions', 'sign:UNION', 'flagpole', 'planters', 'steps'] }),
       namePool: 'union',
       why: 'Where the campus idles, eats, and throws the Crawfish Boil.',
@@ -2724,12 +2761,18 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
     row({ n: 21, name: 'Rec Center', w: 3, h: 3, cost: 1200000, upkeep: 12000, wr: 3,
       unlock: { students: 800 },
       effects: { happiness: { value: 6, radius: 10 }, heat: { mult: 0.5, radius: 10 }, shelter: 1000, special: ['pool', 'teamHeatFix'] },
+      tiers: [{ tier: 1, name: 'Wellness Complex', cost: 1600000, upkeep: 17000, seats: 0, landmark: 0, shelter: 1500, wr: 3, night: false, unlock: { students: 2000 }, buildDays: 6,
+        effects: { happiness: { value: 9, radius: 12 }, heat: { mult: 0.35, radius: 12 }, shelter: 1500, special: ['pool', 'teamHeatFix'] },
+        paint: { floors: 2, windows: { cols: 4, rows: 2 }, wall: ['#E6E2D6', '#CBC5B2'], material: 'stone', roofColor: '#5B5AA0', features: ['mullions', 'sign:REC', 'hvac', 'gallery', 'vents', 'banner:roux'] } }],
       paint: P({ roof: 'barrel', floors: 1, windows: { cols: 4, rows: 1 }, decals: ['arcade', 'pool'], roofColor: '#5E8F5A', accent: '#4FA3D6', features: ['mullions', 'sign:REC', 'hvac'] }),
       why: 'A pool in August is the difference between a team and a heat stroke.',
       desc: '+6 happiness radius 10; heat penalty −50% radius 10; fixes the team heat penalty; shelter 1,000.' }),
     row({ n: 22, name: 'Health Center', w: 2, h: 2, cost: 450000, upkeep: 6000, wr: 3,
       unlock: { students: 400 },
       effects: { illness: { mosquito: 0.6, heat: 0.5, radius: 12 } },
+      tiers: [{ tier: 1, name: 'Student Clinic', cost: 700000, upkeep: 9000, seats: 0, landmark: 0, shelter: 0, wr: 3, night: false, unlock: { students: 1200 }, buildDays: 5,
+        effects: { illness: { mosquito: 0.8, heat: 0.7, radius: 15 } },
+        paint: { floors: 2, windows: { cols: 3, rows: 2 }, features: ['awnings', 'sign:HEALTH', 'hvac', 'planters'] } }],
       paint: P({ wall: ['#FFFFFF', '#EDEDED'], floors: 1, windows: { cols: 3, rows: 1 }, decals: ['arcade', 'sign'], accent: '#3FBF7F', features: ['awnings', 'sign:HEALTH'] }),
       why: 'Sick students skip class. Skipped class is lost tuition.',
       desc: 'Mosquito illness −60% and heat illness −50% within 12.' }),
@@ -2740,6 +2783,13 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
       desc: '+2 happiness radius 6 (stacks to +6); idle spot; plants one Live Oak; no path needed.' }),
     row({ n: 24, name: 'Parking Lot', w: 3, h: 2, cost: 150000, upkeep: 1500, wr: 1, roadWithin: 4,
       effects: { parkingPer: 600, tickets: 4000, special: ['floodsAt03', 'tailgateLot'] },
+      tiers: [
+        { tier: 1, name: 'Parking Garage', cost: 900000, upkeep: 5000, seats: 0, landmark: 0, shelter: 0, wr: 2, night: false, unlock: { students: 1500 }, buildDays: 5,
+          effects: { parkingPer: 1800, tickets: 4000, revenueMonthly: 2500, special: ['floodsAt03', 'tailgateLot'] },
+          paint: { floors: 3, roof: 'flat', roofColor: '#7A7A80', wall: ['#BDB7AA', '#9C968A'], material: 'stone', windows: { cols: 0, rows: 0 }, decals: [], features: [] } },
+        { tier: 2, name: 'Parking Tower', cost: 2200000, upkeep: 11000, seats: 0, landmark: 0, shelter: 0, wr: 3, night: false, unlock: { students: 4000 }, buildDays: 7,
+          effects: { parkingPer: 4200, tickets: 4000, revenueMonthly: 7000, special: ['floodsAt03', 'tailgateLot'] },
+          paint: { floors: 6, roof: 'flat', roofColor: '#7A7A80', wall: ['#BDB7AA', '#9C968A'], material: 'stone', windows: { cols: 0, rows: 0 }, decals: [], features: [] } }],
       paint: flat(['#3A3A40', '#2E2E34'], ['cars'], 'parking'),
       why: 'One lot per 600 students, or they complain. Floods at 0.3 ft.',
       desc: '1 per 600 students (else −4 happiness); tickets +$4k/mo; tailgate lot; floods at 0.3 ft.' }),
@@ -2824,6 +2874,8 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
     row({ n: 40, name: 'Tiger Habitat', w: 3, h: 3, cost: 1800000, upkeep: 12000, wr: 4,
       unlock: { students: 1000, prestige: 20 },
       effects: { landmark: 8, happiness: { value: 5, radius: 15 }, homeWinBonus: 0.05, gatorAvoidRadius: 10, special: ['tank', 'habitat'] },
+      tiers: [{ tier: 1, name: "Roux's Grand Habitat", cost: 2400000, upkeep: 18000, seats: 0, landmark: 14, shelter: 0, wr: 5, night: false, unlock: { students: 2500, prestige: 30 }, buildDays: 8,
+        effects: { landmark: 14, happiness: { value: 7, radius: 18 }, homeWinBonus: 0.08, gatorAvoidRadius: 14, special: ['tank', 'habitat'] } }],
       paint: P({ wall: ['#9C978E', '#7C776F'], roof: 'none', roofColor: '', floors: 0, decals: [], special: 'tiger_habitat', material: 'stone', accent: '#E07020', features: ['sign:ROUX'] }),   // habitat pass: a bespoke zoo-exhibit painter (sprites_buildings.js habitatPaint) draws the pool, den, glass, plaza; the paint row only names it
       why: 'Roux lives here. The gators keep their distance. So do opponents.',
       desc: 'Landmark +8; +5 happiness radius 15; home win +5%; gators keep 10 tiles from Roux; floods → Roux Is Loose.' }),
@@ -3008,7 +3060,58 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
       effects: { happiness: { value: 2, radius: 5 }, revenueMonthly: 5000 },
       paint: P({ wall: ['#BFE0D0', '#9CC8B4'], roof: 'barrel', roofColor: '#CFE8DA', floors: 1, windows: { cols: 6, rows: 1 }, decals: [], material: 'glass', accent: '#3F8F3B', features: ['vents', 'planters'] }),
       why: 'Glass houses. Throw nothing; the plant sale is Saturday.',
-      desc: '+2 happiness radius 5; $5k/mo in plant sales; glass bays.' })
+      desc: '+2 happiness radius 5; $5k/mo in plant sales; glass bays.' }),
+    // ---- more buildings and upgrades pass: rows 72-81 (a student playtester's wish list). Effects use only keys the simulation already reads (docs/INTEGRATION_NOTES.md) ----
+    row({ n: 72, name: 'Campus Store', w: 3, h: 2, cost: 450000, upkeep: 5000, wr: 2, unlock: { students: 600 },
+      effects: { revenueMonthly: 7000, happiness: { value: 2, radius: 6 } },
+      paint: P({ wall: ['#EFE4CC', '#D6C7A4'], roof: 'flat', roofColor: '#6E6E72', floors: 1, windows: { cols: 3, rows: 1 }, decals: ['awning', 'banner'], accent: PURPLE, features: ['awnings', 'sign:STORE', 'planters', 'steps'] }),
+      why: 'Every logo on campus came from here. So did the receipts.',
+      desc: '$7k/mo in apparel and merchandise (flat: the game has no home-game hook for shops); +2 happiness radius 6.' }),
+    row({ n: 73, name: 'Basketball Arena', w: 5, h: 4, cost: 4200000, upkeep: 40000, wr: 4, unlock: { students: 2500, prestige: 25 },
+      effects: { landmark: 5, shelter: 3000, happiness: { value: 5, radius: 12 }, revenueMonthly: 14000, special: ['events'] },
+      paint: P({ wall: ['#8E8E9A', '#6E6E7C'], roof: 'barrel', roofColor: '#5A6B88', floors: 3, windows: { cols: 8, rows: 2 }, decals: ['columns', 'banner', 'lights'], material: 'metal', accent: PURPLE, features: ['arched', 'banner:roux', 'steps', 'sign:ARENA', 'flagpole', 'hvac'] }),
+      why: 'Eleven thousand people and one shot clock. The roof holds the noise in.',
+      desc: 'Landmark +5; +5 happiness radius 12; shelter 3,000; $14k/mo in events. No new sport to manage.' }),
+    row({ n: 74, name: 'Golf Course', w: 10, h: 8, cost: 5500000, upkeep: 32000, wr: 1, unlock: { students: 2000, prestige: 20 },
+      effects: { landmark: 6, happiness: { value: 3, radius: 10 }, revenueMonthly: 18000, ecology: -6, special: ['ecoSite', 'golf'] },
+      paint: P({ wall: ['#6E8F3C', '#5A7A2E'], roof: 'none', roofColor: '', floors: 1, windows: { cols: 0, rows: 0 }, decals: [], features: [] }),
+      why: 'Eighty tiles of fairway. You will be chartering land for it.',
+      desc: '10 × 8 tiles: fairways, greens, a pond and a clubhouse. Landmark +6; +3 happiness radius 10; $18k/mo; ecology −6.' }),
+    row({ n: 75, name: 'Recycling Center', w: 3, h: 3, cost: 650000, upkeep: 7000, wr: 2, unlock: { students: 1000 },
+      effects: { ecology: 3, revenueMonthly: 4000, special: ['ecoSite'] },
+      paint: P({ wall: ['#4F8F5A', '#3F7A4A'], roof: 'flat', roofColor: '#5A5A60', floors: 1, windows: { cols: 2, rows: 1 }, decals: ['vents'], material: 'metal', accent: '#3FBF7F', features: ['hvac', 'vents', 'sign:RECYCLE'] }),
+      why: 'The blue bins end up here, sorted, baled and sold.',
+      desc: 'Ecology +3; $4k/mo from sorted aluminum and paper.' }),
+    row({ n: 76, name: 'Rainwater Cistern', w: 2, h: 2, cost: 140000, upkeep: 1500, wr: 2, unlock: { students: 300 },
+      effects: { water: { radius: 6, capacity: 14 }, special: ['cistern'] },
+      paint: P({ wall: ['#8FB8C8', '#6C97AA'], roof: 'none', roofColor: '', floors: 2, windows: { cols: 0, rows: 0 }, decals: [], material: 'metal' }),
+      why: 'The roof sends the rain here. Cheaper than a tower, and smaller.',
+      desc: 'A small water provider like the Water Tower: 14 buildings within 6 tiles, no power needed. Serves any building that needs water.' }),
+    row({ n: 77, name: 'Bus Depot', w: 4, h: 3, cost: 850000, upkeep: 9000, wr: 3, roadWithin: 3, unlock: { students: 1200 },
+      effects: { happiness: { value: 3, radius: 16 }, special: ['depotBuses'] },
+      paint: P({ wall: ['#8E8E9A', '#6E6E7A'], roof: 'gable', roofColor: '#5A5A66', floors: 1, windows: { cols: 0, rows: 0 }, decals: ['sign'], material: 'metal', accent: '#E8C14A', features: ['vents', 'sign:BUS', 'hvac'] }),
+      why: 'Nobody walks across a campus this big in August, once there are buses.',
+      desc: '+3 happiness radius 16; two buses join every game-day fleet and evacuation; a Road within 3 tiles.' }),
+    row({ n: 78, name: 'Tiger Statue', cost: 60000, upkeep: 200, wr: 3, unlock: { students: 300 },
+      effects: { landmark: 1, happiness: { value: 1, radius: 5 } },
+      paint: P({ wall: ['#9C978E', '#7C776F'], roof: 'none', roofColor: '', floors: 2, windows: { cols: 0, rows: 0 }, decals: [], material: 'stone', accent: '#E07020' }),
+      why: 'Every freshman is photographed on it. Every senior is, too.',
+      desc: '1 × 1 decoration: landmark +1; +1 happiness radius 5.' }),
+    row({ n: 79, name: 'Heritage Locomotive', w: 3, h: 1, cost: 180000, upkeep: 600, wr: 3, unlock: { students: 800 },
+      effects: { landmark: 1 },
+      paint: P({ wall: ['#2B2B33', '#1B1B22'], roof: 'none', roofColor: '', floors: 1, windows: { cols: 0, rows: 0 }, decals: [], material: 'metal', accent: GOLD }),
+      why: 'It hauled cotton, then freshmen, then nothing. Now it just looks great.',
+      desc: 'A retired steam engine on a short track: landmark +1.' }),
+    row({ n: 80, name: 'Trainer Jet', w: 2, h: 2, cost: 220000, upkeep: 600, wr: 3, unlock: { students: 1000 },
+      effects: { landmark: 1 },
+      paint: P({ wall: ['#E8E8EC', '#C2C2C8'], roof: 'none', roofColor: '', floors: 2, windows: { cols: 0, rows: 0 }, decals: [], material: 'metal', accent: PURPLE }),
+      why: 'ROTC got it for free and the campus got the pedestal.',
+      desc: 'A retired trainer jet on a pole: landmark +1.' }),
+    row({ n: 81, name: 'Parade Ground', w: 2, h: 2, cost: 45000, upkeep: 400, unlock: { students: 1200 },
+      effects: { happiness: { value: 3, radius: 8 }, special: ['paradeArmory', 'idleSpot'] },
+      paint: flat(['#7FA347', '#6E8F3C'], [], 'parade'),
+      why: 'A drill lawn for the whole corps. Drag it as wide as the regiment.',
+      desc: 'Drag a block of 2 × 2 lawns: +3 happiness radius 8, +2 more within 8 of a finished ROTC Armory; students idle here; no path needed.' })
 
   ];
   const catalog = {};
@@ -3020,10 +3123,14 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
   const TAB_NAMES = [['paths', 'Paths'], ['utilities', 'Utilities'], ['academic', 'Academic'], ['colleges', 'Colleges'], ['arts', 'Arts & Venues'], ['housing', 'Housing'], ['dining', 'Dining'], ['sports', 'Sports'], ['life', 'Life'], ['swamp', 'Swamp'], ['grounds', 'Grounds']];
   const tabs = [{ id: 'essentials', name: 'Essentials', rows: ['path', 'dorm', 'dining_hall', 'lecture_hall', 'poboy', 'quad', 'live_oak'] }];
   const TAB_ORDER = {
-    academic: ['lecture_hall', 'library', 'engineering', 'coastal_institute', 'science_college', 'ag_college', 'vet_school'],
-    colleges: ['univ_college', 'online_center', 'business_college', 'education_college', 'masscomm_school', 'humanities_college', 'art_college', 'music_college', 'honors_college', 'grad_school', 'rotc_armory', 'law_center'],
+    academic: ['lecture_hall', 'library', 'engineering', 'coastal_institute'],
+    colleges: ['univ_college', 'online_center', 'business_college', 'education_college', 'masscomm_school', 'humanities_college', 'art_college', 'music_college', 'ag_college', 'science_college', 'honors_college', 'grad_school', 'rotc_armory', 'law_center', 'vet_school'],
     arts: ['concert_hall', 'theatre', 'band_hall', 'art_gallery', 'nat_museum', 'computer_lab', 'ag_greenhouses', 'vet_hospital'],
-    housing: ['bunkhouse', 'dorm', 'suites', 'res_tower', 'greek_house'] };   // P7: cheap → premium, then the towers and the Greek row
+    housing: ['bunkhouse', 'dorm', 'suites', 'res_tower', 'greek_house'],
+    sports: ['practice_field', 'stadium', 'arena', 'golf_course'],
+    utilities: ['substation', 'water_tower', 'generator', 'wastewater', 'cistern', 'recycling'],
+    life: ['union', 'rec_center', 'health_center', 'campus_store', 'bus_depot', 'quad', 'parking'],
+    grounds: ['live_oak', 'cypress', 'azalea', 'tiger_statue', 'parade', 'locomotive', 'trainer_jet', 'bell_tower', 'tiger_habitat', 'rookery'] };   // P7: cheap → premium, then the towers and the Greek row
   for (const t of TAB_NAMES) {
     const ids = catalogList.filter(r => r.tab === t[0] && r.id !== 'founders_hall').map(r => r.id);
     const order = TAB_ORDER[t[0]];
@@ -4021,8 +4128,8 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
     try {
       const D = BSU.data, L = D.catalogList, C = D.catalog;
       // 1. row count and numbering
-      check(L.length === 71, 'catalogList.length === 71 (got ' + L.length + ')');   // L3: dredge_fill; water pass: road_bridge
-      check(Object.keys(C).length === 71, 'catalog has 71 keys');
+      check(L.length === 81, 'catalogList.length === 81 (got ' + L.length + ')');   // L3: dredge_fill; water pass: road_bridge
+      check(Object.keys(C).length === 81, 'catalog has 81 keys');
       for (let i = 0; i < L.length; i++) {
         check(L[i].n === i + 1, 'row ' + (i + 1) + ' has n ' + L[i].n);
         check(C[L[i].id] === L[i], 'catalog[' + L[i].id + '] is the same object as catalogList[' + i + ']');
@@ -4037,7 +4144,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
         check(typeof r.why === 'string' && r.why.length > 0 && typeof r.desc === 'string' && r.desc.length > 0, r.id + ' why/desc');
         check(r.why.split(/\s+/).length <= 14, r.id + ' why ≤ 14 words');
         check(typeof r.blurb === 'string' && r.blurb.length > 0 && r.blurb.split(/\s+/).length <= 18, r.id + ' blurb present, ≤ 18 words');
-        for (const t of r.tiers) check(t.name.length > 0 && t.cost > 0 && t.seats > 0, r.id + ' tier ' + t.tier + ' sane');
+        for (const t of r.tiers) check(t.name.length > 0 && t.cost > 0 && t.seats >= 0 && (r.id === 'practice_field' || r.id === 'stadium' ? t.seats > 0 : true), r.id + ' tier ' + t.tier + ' sane');
         if (r.unlock.milestone) check(BSU.MILESTONES.indexOf(r.unlock.milestone) >= 0, r.id + ' unlock.milestone known');
         if (r.unlock.building) check(!!C[r.unlock.building], r.id + ' unlock.building known');
         if (r.college) check(!!C[r.college] && r.unlock.building === r.college, r.id + ' college is its unlock building');   // colleges pass
@@ -4110,7 +4217,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
         check((o.reward.grant === 50000) !== (o.reward.prestige === 2), 'objective ' + id + ' has exactly one reward');
       }
       check(D.tabs.length === 12 && D.tabs[0].id === 'essentials', '12 tabs, essentials first');
-      for (const t of D.tabs) check(t.rows.length <= (t.id === 'swamp' ? 14 : 12), 'tab ' + t.id + ' holds at most 12 cards, Swamp 14 as before (got ' + t.rows.length + ')');   // colleges pass: the Build sheet stays scannable
+      for (const t of D.tabs) check(t.rows.length <= (t.id === 'swamp' ? 14 : t.id === 'colleges' ? 15 : 12), 'tab ' + t.id + ' holds at most 12 cards, Swamp 14 as before, Colleges 15 (got ' + t.rows.length + ')');   // colleges pass: the Build sheet stays scannable
       const opp = Object.keys(D.opponents);
       check(opp.length === 9 && opp.filter(k => D.opponents[k].rival).length === 1 && opp.filter(k => D.opponents[k].crosstown).length === 1, '9 opponents, one rival, one crosstown');
       check(D.tutorial.length === 7 && D.tutorial.every((t, i) => t.stage === i && t.card.split(/\s+/).filter(Boolean).length <= 12), '7 tutorial stages, cards ≤ 12 words');
@@ -9737,6 +9844,21 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
     const tx = b.tx + b.w, ty = b.ty + b.h - 1;
     return BSU.inBounds(tx, ty) ? BSU.idx(tx, ty) : -1;
   }
+  /** more buildings pass: a placed building's effects with its tier laid over them (buildings.effectsOf); the row's own when the module is missing */
+  function effectsOfB(state, b) { const B = dep('buildings'), f = fn(B, 'effectsOf'); const e = f ? f(state, b) : null; if (e) return e; const cat = dep('data') && dep('data').catalog; const r = cat && cat[b.type]; return (r && r.effects) || {}; }
+  /** the Health Center's illness multipliers: {m (mosquito), h (heat)} of the best complete one, scaled from the params' base by its tier's illness effect; null = none built */
+  function healthMults(state) {
+    const l = listBuildings(state, 'health_center'), cat = dep('data') && dep('data').catalog, base = cat && cat.health_center && cat.health_center.effects.illness;
+    let best = null;
+    for (let i = 0; i < l.length; i++) {
+      if (!isComplete(l[i])) continue;
+      const il = effectsOfB(state, l[i]).illness || base || { mosquito: 0.6, heat: 0.5 };
+      const bm = base ? 1 - base.mosquito : 0.4, bh = base ? 1 - base.heat : 0.5;
+      const m = PM.healthMult * (bm > 0 ? (1 - il.mosquito) / bm : 1), h = BSU.params.heat.healthMult * (bh > 0 ? (1 - il.heat) / bh : 1);
+      if (!best || m < best.m) best = { m: m, h: best ? Math.min(best.h, h) : h }; else best.h = Math.min(best.h, h);
+    }
+    return best;
+  }
   function hasBuilding(state, type) { const l = listBuildings(state, type); for (let i = 0; i < l.length; i++) if (isComplete(l[i])) return true; return false; }
   function currentStorm(state) { const Wx = dep('weather'); const f = fn(Wx, 'storm'); if (f) { const s = f(state); if (s !== undefined) return s; } return (state.storms && state.storms.current) || null; }
   function heatInfo(state) {
@@ -9837,8 +9959,8 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
     for (let k = 0; k < habs.length; k++) {
       const b = habs[k];
       if (!isComplete(b)) continue;
-      const row = (dep('data') && dep('data').catalog) ? dep('data').catalog.tiger_habitat : null;
-      const rad = (row && row.effects && row.effects.gatorAvoidRadius > 0) ? row.effects.gatorAvoidRadius : PG.habitatRadius;
+      const hef = effectsOfB(state, b);   // more buildings pass: the Grand Habitat keeps gators farther away
+      const rad = (hef && hef.gatorAvoidRadius > 0) ? hef.gatorAvoidRadius : PG.habitatRadius;
       const x0 = Math.max(0, b.tx - rad), x1 = Math.min(W - 1, b.tx + b.w - 1 + rad);
       const y0 = Math.max(0, b.ty - rad), y1 = Math.min(H - 1, b.ty + b.h - 1 + rad);
       for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) habitat[y * W + x] = 1;
@@ -10602,15 +10724,19 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
       if (wl.mosqIndex > PM.biblical) { wl.biblicalDays++; if (wl.biblicalDays === 1) emit(BSU.EV.MOSQUITO_WARNING, { index: wl.mosqIndex, worstTile: worstCampusTile(state) }); }
       else wl.biblicalDays = 0;
     } else wl.biblicalDays = 0;
-    // illness (GDD §6.4, §6.6): Health Center presence applies to the whole term (decision)
-    const students = (state.economy && isNum(state.economy.students)) ? state.economy.students : 0;
-    const health = hasBuilding(state, 'health_center');
-    const sickMosq = students * wl.mosqIndex * PM.illness * (health ? PM.healthMult : 1);
-    const heat = heatInfo(state);
-    const sickHeat = heat.advisory ? students * BSU.params.heat.illness * (health ? BSU.params.heat.healthMult : 1) : 0;
-    wl.sick = Math.max(0, Math.round(sickMosq + sickHeat));
-    if (!isNum(wl.sick)) wl.sick = 0;
+    wl.sick = sickNow(state, wl.mosqIndex);
   }
+  /** illness (GDD §6.4, §6.6): students sick today at a mosquito index; a Health Center applies to the whole term (decision), a Student Clinic cuts more (more buildings pass) */
+  function sickNow(state, mosqIndex) {
+    const students = (state.economy && isNum(state.economy.students)) ? state.economy.students : 0;
+    const health = healthMults(state);
+    const sickMosq = students * mosqIndex * PM.illness * (health ? health.m : 1);
+    const heat = heatInfo(state);
+    const sickHeat = heat.advisory ? students * BSU.params.heat.illness * (health ? health.h : 1) : 0;
+    const sick = Math.max(0, Math.round(sickMosq + sickHeat));
+    return isNum(sick) ? sick : 0;
+  }
+  M.sickNow = function (state, mosqIndex) { try { return sickNow(state, isNum(mosqIndex) ? mosqIndex : (state.wildlife && state.wildlife.mosqIndex) || 0); } catch (e) { BSU.error('wildlife', 'sickNow', e); return 0; } };
   function worstCampusTile(state) {
     const cm = campusOf(state), mosq = state.tiles.mosq;
     let best = -1, bestV = -1;
@@ -10709,6 +10835,8 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
     }
     const B = dep('buildings'); const sf = fn(B, 'stats');
     if (sf) { try { const s = sf(state); if (s) { if (isNum(s.oaks)) oaks = Math.max(oaks + quads, s.oaks), quads = 0; if (isNum(s.cypress)) cypress = Math.max(cypress, s.cypress); if (isNum(s.stockedPonds)) ponds = Math.max(ponds, s.stockedPonds); if (isNum(s.posts)) posts = Math.max(posts, s.posts); } } catch (e) { BSU.error('wildlife', 'stats', e); } }
+    let sites = 0;   // more buildings pass: rows marked special 'ecoSite' (Golf Course −6, Recycling Center +3) count their effects.ecology
+    for (let k = 0; k < blds.length; k++) { const b = blds[k]; if (!isComplete(b)) continue; const ef = effectsOfB(state, b); if (ef && Array.isArray(ef.special) && ef.special.indexOf('ecoSite') >= 0 && isNum(ef.ecology)) sites += ef.ecology; }
     const oakCount = oaks + quads;
     const original = Math.max(1, isNum(wl.wetlandOriginal) ? wl.wetlandOriginal : 0);
     const lost = wetlandLost(state);
@@ -10726,9 +10854,10 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
       canalMarsh: -PE.canalMarsh * canalMarsh,
       leveeMarsh: -PE.leveeMarsh * leveeMarsh,
       barrier: -PE.barrierPenalty * (barrier > 0 ? 1 : 0),
+      sites: sites,
       once: once
     };
-    const raw = terms.wetland + terms.preserve + terms.cypress + terms.oak + terms.ponds + terms.posts + terms.fogger + terms.canalMarsh + terms.leveeMarsh + terms.barrier + terms.once;
+    const raw = terms.wetland + terms.preserve + terms.cypress + terms.oak + terms.ponds + terms.posts + terms.fogger + terms.canalMarsh + terms.leveeMarsh + terms.barrier + terms.sites + terms.once;
     terms.sum = isNum(raw) ? raw : 0;         // unclamped (forceEcology solves for `once` against it)
     terms.raw = clamp(terms.sum, 0, 100);
     return terms;
@@ -11384,6 +11513,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
     summerMonths: PE.utilities.summerMonths,            // [6, 9]
     quadStackCap: 6,                                    // Quad Lawn stacks to +6 (GDD §0.3 row 23)
     quadValue: 2,
+    paradeArmoryBonus: 2, paradeArmoryRadius: 8,   // more buildings pass
     negAuraCap: 3,                                      // P7: negative happiness auras (Bayou Bunkhouse −1) stack to −3 on a tile
     azaleaBloomBonus: 1,                                // +1 more in bloom (row 38)
     pondStockDays: PH.pond.stockDays,                   // 10
@@ -11454,8 +11584,24 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
   function footprintOf(b) { return BSU.footprintTiles(b.tx, b.ty, b.w, b.h) || []; }
   function isComplete(b) { return !!b && b.built >= 1 && !b.ruin; }
   function isClosed(b, day) { return b.closedUntil >= 0 && b.closedUntil >= day; }
-  function wrOf(row, b) { return (b && b.tier > 0 && row.tiers[b.tier - 1]) ? row.tiers[b.tier - 1].wr : row.wr; }
+  function wrOf(row, b) { const t = (b && b.tier > 0 && row.tiers[b.tier - 1]) || null; return (t && Number.isFinite(t.wr)) ? t.wr : row.wr; }
   function tierRow(row, b) { return (b && b.tier > 0 && row.tiers[b.tier - 1]) ? row.tiers[b.tier - 1] : null; }
+  // more buildings and upgrades pass: THE one resolver for what a placed building does. A row without tiers (and a building at tier 0) gets the
+  // row's own frozen effects object back (identical, so nothing that read row.effects can change); a tiered building gets the row's effects with
+  // its current tier's `effects` laid over them (a key replaces the row's whole value) and the tier's top-level landmark / shelter, cached per tier.
+  const TIER_FX = new WeakMap();
+  function effectsOfRow(row, b) {
+    const tr = tierRow(row, b);
+    if (!tr) return row.effects;
+    let m = TIER_FX.get(tr);
+    if (!m) {
+      m = Object.assign({}, row.effects, tr.effects || {});
+      if (Number.isFinite(tr.landmark) && !(tr.effects && 'landmark' in tr.effects)) m.landmark = tr.landmark;
+      if (Number.isFinite(tr.shelter) && !(tr.effects && 'shelter' in tr.effects)) m.shelter = tr.shelter;
+      m = Object.freeze(m); TIER_FX.set(tr, m);
+    }
+    return m;
+  }
   function coreRows() {
     if (!LOCAL.coreRows) { const c = {}; const cat = catalog(); for (const id of Object.keys(cat)) if (cat[id].needsPower || id === 'founders_hall') c[id] = true; LOCAL.coreRows = c; }
     return LOCAL.coreRows;
@@ -11760,7 +11906,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
     if (active.length) { for (const d of active) { prep += d.prep; cost += d.cost; appeal += d.appeal; } prep /= active.length; cost /= active.length; appeal /= active.length; }
     else { const t = PMx.tier.standard; prep = t.prep; cost = t.cost; appeal = t.appeal; }   // nothing in season (or an empty card): the kitchen falls back to the standard tier
     const mult = PMx.throughputMult / Math.max(0.5, prep);
-    return { cap: cap, menu: menu.slice(), active: active, specials: specials, meanPrep: prep, meanCost: cost, meanAppeal: appeal, mult: mult, throughput: Math.round(fin(row.effects.feeds, 0) * mult) };
+    return { cap: cap, menu: menu.slice(), active: active, specials: specials, meanPrep: prep, meanCost: cost, meanAppeal: appeal, mult: mult, throughput: Math.round(fin(effectsOfRow(row, b).feeds, 0) * mult) };
   }
   M.menuOf = function (state, id) {
     try { const b = M.get(state, id); if (!b || menuCap(b.type) <= 0) return null; return menuStats(state, b); }
@@ -12186,7 +12332,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
   // number of tiles deep, as a single 2 × 2 lawn's cross is). Every lawn keeps its Live Oak (it counts for ecology and shade as before), planted on
   // the lawn's own tile farthest from the group's middle, so the trees ring the quad and the middle stays open.
   // ---------------------------------------------------------------------------
-  const BLOCK_ROWS = { quad: 1 };
+  const BLOCK_ROWS = { quad: 1, parade: 1 };   // more buildings pass: the Parade Ground drags out as a block exactly as the Quad Lawn does
   const LAWN = { LAWN: 32768, WALK_X: 8, WALK_Y: 10, BENCH: 4096, BED: 8192, OAK: 16384 };
   M.LAWN = LAWN;
   M.isBlockRow = function (id) { return BLOCK_ROWS[id] === 1; };
@@ -13480,15 +13626,41 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
    * `needs` are concrete and live ("1,500 students (you have 1,240)", "$8M (you have $3.2M + $2M loan line)"); `reason` is the one-line
    * refusal M.upgrade returns ("Needs 1,500 students (you have 1,240)"). next is null at the top tier and for a row without tiers.
    */
+  /** more buildings and upgrades pass: what a placed building does now = its row's effects with its current tier laid over them (the one resolver every effect read goes through) */
+  M.effectsOf = function (state, b) {
+    try {
+      if (Number.isInteger(b)) b = M.get(state, b);
+      const row = b && rowOf(b.type);
+      return row ? effectsOfRow(row, b) : null;
+    } catch (e) { if (BSU.SELFTEST) throw e; BSU.error('buildings', 'effectsOf', e); return null; }
+  };
+  const nf = function (v) { return Math.round(v).toLocaleString('en-US'); }, pc = function (v) { return Math.round(v * 100) + '%'; };
+  /** the real gains of tier `next` over building b's current state, as short strings: ["Feeds 1,200 → 2,000 within 12 tiles", "Happiness +3 → +4 (radius 10 → 12)", ...] */
+  function tierGains(row, b, next) {
+    const a = effectsOfRow(row, b), z = effectsOfRow(row, { tier: next.tier }), out = [];
+    const ch = function (x, y) { return Math.abs(fin(x, 0) - fin(y, 0)) > 1e-9; };
+    if (ch(a.feeds, z.feeds)) out.push('Feeds ' + nf(a.feeds) + ' → ' + nf(z.feeds) + (ch(a.diningRadius, z.diningRadius) ? ' within ' + z.diningRadius + ' tiles' : ''));
+    if (ch(a.seats, z.seats)) out.push(a.seats > 0 ? 'Seats ' + nf(a.seats) + ' → ' + nf(z.seats) : '+' + nf(z.seats) + ' seats');
+    if (ch(a.happiness.value, z.happiness.value) || ch(a.happiness.radius, z.happiness.radius)) out.push('Happiness +' + a.happiness.value + ' → +' + z.happiness.value + (ch(a.happiness.radius, z.happiness.radius) ? ' (radius ' + a.happiness.radius + ' → ' + z.happiness.radius + ')' : ''));
+    if (ch(a.landmark, z.landmark)) out.push('Landmark +' + a.landmark + ' → +' + z.landmark);
+    if (ch(a.shelter, z.shelter)) out.push('Shelter ' + nf(a.shelter) + ' → ' + nf(z.shelter));
+    if (ch(a.heat.mult, z.heat.mult)) out.push('Heat penalty −' + pc(1 - a.heat.mult) + ' → −' + pc(1 - z.heat.mult));
+    if (ch(a.illness.mosquito, z.illness.mosquito) || ch(a.illness.heat, z.illness.heat)) out.push('Illness: mosquito −' + pc(a.illness.mosquito) + ' → −' + pc(z.illness.mosquito) + ', heat −' + pc(a.illness.heat) + ' → −' + pc(z.illness.heat));
+    if (ch(a.parkingPer, z.parkingPer)) out.push('Parks ' + nf(a.parkingPer) + ' → ' + nf(z.parkingPer) + ' students’ cars');
+    if (ch(a.revenueMonthly, z.revenueMonthly)) out.push('Income ' + BSU.formatMoney(a.revenueMonthly) + ' → ' + BSU.formatMoney(z.revenueMonthly) + '/mo');
+    if (ch(a.homeWinBonus, z.homeWinBonus)) out.push('Home win +' + pc(a.homeWinBonus) + ' → +' + pc(z.homeWinBonus));
+    if (ch(a.gatorAvoidRadius, z.gatorAvoidRadius)) out.push('Gators keep ' + a.gatorAvoidRadius + ' → ' + z.gatorAvoidRadius + ' tiles away');
+    return out;
+  }
   M.upgradeQuote = function (state, id) {
-    const out = { ok: false, next: null, reason: '', needs: [], inProgress: false, doneDay: -1 };
+    const out = { ok: false, next: null, reason: '', needs: [], inProgress: false, doneDay: -1, gains: [], closed: false };
     try {
       const b = M.get(state, id);
       if (!b) { out.reason = 'Pick a building'; return out; }
       const row = rowOf(b.type);
       if (!row || !Array.isArray(row.tiers) || !row.tiers.length) { out.reason = 'Nothing to upgrade'; return out; }
       const next = row.tiers.find(function (t) { return t.tier === fin(b.tier, 0) + 1; });
-      if (next) out.next = { tier: next.tier, name: next.name || ('Tier ' + next.tier), cost: fin(next.cost, 0), upkeep: fin(next.upkeep, 0), seats: fin(next.seats, 0), night: !!next.night, buildDays: fin(next.buildDays, PB.tierUpgradeDays) };
+      if (next) out.next = { tier: next.tier, name: next.name || ('Tier ' + next.tier), cost: fin(next.cost, 0), upkeep: fin(next.upkeep, 0), seats: fin(next.seats, 0), night: !!next.night, buildDays: fin(next.buildDays, PB.tierUpgradeDays) }; if (next) { out.gains = tierGains(row, b, next); out.closed = true; }   // more buildings pass: the real gains, and that it is closed while it builds
       if (b.upgradeDoneDay >= 0) { out.inProgress = true; out.doneDay = b.upgradeDoneDay; out.reason = 'Upgrade in progress'; return out; }
       if (!isComplete(b)) { out.reason = b.ruin ? 'A ruin cannot be upgraded' : 'Still under construction'; return out; }
       if (!next) { out.reason = 'Top tier'; return out; }
@@ -13633,6 +13805,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
     for (const b of list) {
       if (b.type === 'substation' && providerUsable(b, day)) subs.push({ b: b, cap: summer ? Math.floor(cat.substation.effects.power.capacity / LOCAL.substationSummerDraw) : cat.substation.effects.power.capacity, used: 0, r: cat.substation.effects.power.radius });
       if (b.type === 'water_tower' && providerUsable(b, day)) towers.push({ b: b, cap: cat.water_tower.effects.water.capacity, used: 0, r: cat.water_tower.effects.water.radius });
+      if (b.type === 'cistern' && providerUsable(b, day) && cat.cistern) towers.push({ b: b, cap: cat.cistern.effects.water.capacity, used: 0, r: cat.cistern.effects.water.radius });   // more buildings pass: the Rainwater Cistern is a small water provider through the same assignment (gravity fed: it needs no power)
       if (b.type === 'generator' && isComplete(b) && !b.flooded && !isClosed(b, day) && fin(b.data.fuelDays, 0) > 0) gens.push(b);
     }
     subs.sort(function (a, b) { return a.b.id - b.b.id; }); towers.sort(function (a, b) { return a.b.id - b.b.id; });
@@ -13663,7 +13836,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
       b.provider.power = -1;
       uncovered++;
     }
-    for (const t of towers) if (!t.b.powered) t.cap = PB.waterTowerUnpoweredCap;
+    for (const t of towers) if (t.b.type === 'water_tower' && !t.b.powered) t.cap = PB.waterTowerUnpoweredCap;
     for (const b of consumers) {
       const row = cat[b.type];
       if (!row.needsWater) { b.watered = false; b.provider.water = -1; continue; }
@@ -13763,10 +13936,13 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
     const quad = new Float32Array(N);
     const shadeMiss = new Float32Array(N); shadeMiss.fill(1);
     let neg = null;
+    const armories = M.list(state, 'rotc_armory').filter(isComplete);   // more buildings pass: a Parade Ground within LOCAL.paradeArmoryRadius of a finished ROTC Armory is worth LOCAL.paradeArmoryBonus more
     for (const b of M.list(state)) {
       const row = cat[b.type]; if (!row || !isComplete(b)) continue;
       const eff = M.effective(state, b.id); if (eff <= 0) continue;
-      let hp = row.effects.happiness;
+      const ef = effectsOfRow(row, b);
+      let hp = ef.happiness;
+      if (b.type === 'parade' && armories.some(function (r) { return rectDist(b.tx, b.ty, b.w, b.h, r.tx, r.ty, r.w, r.h) <= LOCAL.paradeArmoryRadius; })) hp = { value: hp.value + LOCAL.paradeArmoryBonus, radius: hp.radius };
       if (menuCap(b.type) > 0 && hp.radius > 0 && hp.value > 0) { const ms = menuStats(state, b); hp = { value: hp.value + PMENU().happinessBonus * BSU.clamp((ms.meanAppeal - 1) / 3, 0, 1), radius: hp.radius }; }   // P6: + 0 … +3 by the card's mean appeal (cheap 1 → +0, premium 4 → +3)
       if (b.type === 'quad') {
         forRadius(b.tx, b.ty, b.w, b.h, hp.radius, function (i) { quad[i] = Math.min(LOCAL.quadStackCap, quad[i] + LOCAL.quadValue * eff); });
@@ -13778,8 +13954,8 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
         neg = neg || new Float32Array(N);
         forRadius(b.tx, b.ty, b.w, b.h, hp.radius, function (i) { neg[i] = Math.min(LOCAL.negAuraCap, neg[i] - hp.value * eff); });
       }
-      if (row.effects.feeds > 0 && row.effects.diningRadius > 0) forRadius(b.tx, b.ty, b.w, b.h, row.effects.diningRadius, function (i) { A.dining[i] = 1; });
-      if (row.effects.heat.radius > 0 && row.effects.heat.mult > 0) forRadius(b.tx, b.ty, b.w, b.h, row.effects.heat.radius, function (i) { A.heat[i] = Math.min(A.heat[i], row.effects.heat.mult); });
+      if (ef.feeds > 0 && ef.diningRadius > 0) forRadius(b.tx, b.ty, b.w, b.h, ef.diningRadius, function (i) { A.dining[i] = 1; });
+      if (ef.heat.radius > 0 && ef.heat.mult > 0) forRadius(b.tx, b.ty, b.w, b.h, ef.heat.radius, function (i) { A.heat[i] = Math.min(A.heat[i], ef.heat.mult); });
     }
     const bloom = inBloom(state);
     for (const v of (state.veg || [])) {
@@ -13847,22 +14023,22 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
       if (b.hp < 1 && b.built >= 1) s.unrepaired++;
       if (!isComplete(b)) continue;
       const eff = M.effective(state, b.id);
-      const tr = tierRow(row, b);
-      s.beds += row.effects.beds * eff;
-      s.seats += row.effects.seats * eff;
-      if (row.effects.feeds > 0 && menuCap(b.type) > 0) { const ms = menuStats(state, b), fw = ms.throughput * eff; s.feeds += fw; menuW += fw; s.menuCost += ms.meanCost * fw; s.menuAppeal += ms.meanAppeal * fw; }   // P6: a kitchen feeds its menu's throughput, not the row's number
-      else s.feeds += row.effects.feeds * eff;
-      s.landmarks += tr ? tr.landmark : row.effects.landmark;
+      const ef = effectsOfRow(row, b);
+      s.beds += ef.beds * eff;
+      s.seats += ef.seats * eff;
+      if (ef.feeds > 0 && menuCap(b.type) > 0) { const ms = menuStats(state, b), fw = ms.throughput * eff; s.feeds += fw; menuW += fw; s.menuCost += ms.meanCost * fw; s.menuAppeal += ms.meanAppeal * fw; }   // P6: a kitchen feeds its menu's throughput, not the row's number
+      else s.feeds += ef.feeds * eff;
+      s.landmarks += ef.landmark;
       s.buildingValue += row.cost + (row.tiers.slice(0, b.tier).reduce(function (a, t) { return a + t.cost; }, 0));
-      if (row.effects.beds > 0) {
-        qualW += row.effects.beds * eff; s.quality += row.effects.quality * row.effects.beds * eff;   // housing quality = the bed-weighted mean of each row's tier quality (P7: 1 / 2 / 3)
-        const ht = row.effects.housingTier | 0; s[ht === 1 ? 'bedsEconomy' : ht === 3 ? 'bedsPremium' : 'bedsStandard'] += row.effects.beds * eff;
+      if (ef.beds > 0) {
+        qualW += ef.beds * eff; s.quality += ef.quality * ef.beds * eff;   // housing quality = the bed-weighted mean of each row's tier quality (P7: 1 / 2 / 3)
+        const ht = ef.housingTier | 0; s[ht === 1 ? 'bedsEconomy' : ht === 3 ? 'bedsPremium' : 'bedsStandard'] += ef.beds * eff;
       }
-      if (row.effects.parkingSpaces > 0) s.parkingSpaces += row.effects.parkingSpaces * eff;   // P7: Magnolia Suites' 60 spaces count toward the 1-lot-per-600-students requirement
+      if (ef.parkingSpaces > 0) s.parkingSpaces += ef.parkingSpaces * eff;   // P7: Magnolia Suites' 60 spaces count toward the 1-lot-per-600-students requirement
       if (b.type === 'quad') s.oaks++;
       if (b.type === 'pond' && b.data.stockedDay >= 0 && day >= b.data.stockedDay) s.stockedPonds++;
       if (b.type === 'wildlife_post') s.posts++;
-      if (b.type === 'parking') s.lots++;
+      if (b.type === 'parking') { s.lots++; if (ef.parkingPer > PE.parkingPer) s.parkingSpaces += (ef.parkingPer - PE.parkingPer) * eff; }   // more buildings pass: a garage's decks count as the extra lots' worth of spaces
       if (b.type === 'wastewater') s.wastewaterPlants++;
       if (b.type === 'library') s.academicFlags.library = true;
       if (b.type === 'engineering') s.academicFlags.engineering = true;
@@ -13939,13 +14115,13 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
   function shelterCapacityOf(state, b, row, emergency) {
     if (!isComplete(b) || b.flooded || M.effective(state, b.id) <= 0) return 0;
     if (b.type === 'founders_hall') return emergency ? PS.foundersEmergency : row.effects.shelter;
-    const tr = tierRow(row, b);
-    if (tr) return tr.shelter;
+    const ef = effectsOfRow(row, b);
+    if (tierRow(row, b)) return ef.shelter;
     if (row.shelterOwn) {
       const highAndDry = b.pilings || footprintOf(b).every(function (i) { return state.tiles.elev[i] >= P.terrain.crownElev; });
-      return highAndDry ? row.effects.beds : 0;
+      return highAndDry ? ef.beds : 0;
     }
-    return row.effects.shelter;
+    return ef.shelter;
   }
   /** {capacity, students, ok, lines} — the Storm panel's shelter block (GDD §4.11) */
   M.shelter = function (state) {
@@ -13957,7 +14133,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
         const row = cat[b.type]; if (!row) continue;
         let cap = shelterCapacityOf(state, b, row, emergency);
         if (cap <= 0) continue;
-        if (row.shelterOwn) cap = Math.min(cap, row.effects.beds);
+        if (row.shelterOwn) cap = Math.min(cap, effectsOfRow(row, b).beds);
         capacity += cap;
         lines.push(b.name + ': ' + cap.toLocaleString('en-US') + (row.shelterOwn ? ' residents' : ''));
       }
@@ -13974,7 +14150,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
       for (const b of M.list(state)) {
         const row = cat[b.type]; if (!row) continue;
         let cap = shelterCapacityOf(state, b, row, emergency);
-        if (row.shelterOwn) cap = Math.min(cap, row.effects.beds);
+        if (row.shelterOwn) cap = Math.min(cap, effectsOfRow(row, b).beds);
         if (cap > 0) out[b.id] = cap;
       }
     } catch (e) { if (BSU.SELFTEST) throw e; BSU.error('buildings', 'shelterAssignments', e); }
@@ -14790,6 +14966,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
         b.tier = fin(b.tier, 0) + 1;
         if (b.type === 'stadium' && nm.stadium && nm.stadium[b.tier]) b.name = nm.stadium[b.tier];
         if (b.type === 'practice_field' && b.tier === 1) b.name = (nm.stadium && nm.stadium[0]) || 'Bayou Field';
+        else if (b.type !== 'stadium' && row.tiers && row.tiers[b.tier - 1] && row.tiers[b.tier - 1].name) b.name = row.tiers[b.tier - 1].name;   // more buildings pass: the Library becomes the Research Library, the Parking Lot the Parking Garage
         b.upgradeDoneDay = -1;
         if (b.closedUntil >= 0 && b.closedUntil <= day) b.closedUntil = -1;
         dirtyAll(c);
@@ -16382,7 +16559,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
     if (!D || !D.catalog) return out;
     for (const b of completeList(state)) {
       const row = D.catalog[b.type]; if (!row) continue;
-      const eff = effective(state, b), e = row.effects;
+      const eff = effective(state, b), e = call('buildings', 'effectsOf', [state, b], null) || row.effects;   // more buildings pass: the tier-resolved effects
       if (!(eff > 0)) continue;
       if (e.revenueMonthly > 0 && b.type !== 'poboy') out.revenue += e.revenueMonthly * eff;
       if (!brownout && !b.blackout && e.research && e.research.base > 0 && e.research.kind && e.research.kind !== 'engineering' && e.research.kind !== 'coastal') out.research += e.research.base * prestigeF * eff;
@@ -18175,6 +18352,9 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
   function effLat(state, a) { return a.lat * M.latScale(state.tiles.surface[agentTile(a)]); }
   function catalogRow(type) { const D = dep('data'); return D && D.catalog ? D.catalog[type] : null; }
   function effectOf(type, key) { const r = catalogRow(type); return (r && r.effects && typeof r.effects[key] === 'number') ? r.effects[key] : 0; }
+  /** more buildings pass: the same read for a PLACED building: its row's effects with its current tier laid over them (buildings.effectsOf) */
+  function effectsOfB(b) { const B = dep('buildings'); const e = (B && typeof B.effectsOf === 'function') ? B.effectsOf(null, b) : null; if (e) return e; const r = b && catalogRow(b.type); return (r && r.effects) || {}; }
+  function effectOfB(b, key) { const e = effectsOfB(b)[key]; return typeof e === 'number' ? e : 0; }
   function isComplete(b) { return b && !b.ruin && fin(b.built, 0) >= 1; }
   function effective(state, b) {
     const B = dep('buildings');
@@ -18490,8 +18670,8 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
     for (let k = 0; k < all.length; k++) {
       const b = all[k];
       if (!b || !isComplete(b)) continue;
-      if (HOUSING.indexOf(b.type) >= 0) { const beds = Math.max(1, effectOf(b.type, 'beds')); homes.push({ b: b, beds: beds }); totalBeds += beds; if (b.type === 'greek_house') greek.push(b); }
-      if (ACADEMIC.indexOf(b.type) >= 0 && effectOf(b.type, 'seats') > 0) classes.push(b);
+      if (HOUSING.indexOf(b.type) >= 0) { const beds = Math.max(1, effectOfB(b, 'beds')); homes.push({ b: b, beds: beds }); totalBeds += beds; if (b.type === 'greek_house') greek.push(b); }
+      if (ACADEMIC.indexOf(b.type) >= 0 && effectOfB(b, 'seats') > 0) classes.push(b);
       if (DINING.indexOf(b.type) >= 0) dining.push(b);
       if (b.type === 'poboy') poboys.push(b);
       if (b.type === 'quad' || b.type === 'union' || b.type === 'rec_center' || b.type === 'tiger_habitat' || b.type === 'bell_tower') idle.push(b);   // selfies at the Habitat / Bell Tower are idle-target flavor
@@ -18559,7 +18739,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
     }
     if (best < 0 || agentId === undefined) return best;
     let sum = 0;
-    for (let k = 0; k < cs.length; k++) { const d = pickW[k]; if (d < 0 || d > bd + PL.classSpan) { pickW[k] = 0; continue; } const w = Math.max(1, effectOf(cs[k].type, 'seats')) * nearW(d); pickW[k] = w; sum += w; }
+    for (let k = 0; k < cs.length; k++) { const d = pickW[k]; if (d < 0 || d > bd + PL.classSpan) { pickW[k] = 0; continue; } const w = Math.max(1, effectOfB(cs[k], 'seats')) * nearW(d); pickW[k] = w; sum += w; }
     let r = hashFrac(agentId, 0x636c73) * sum;
     for (let k = 0; k < cs.length; k++) { if (pickW[k] <= 0) continue; r -= pickW[k]; if (r < 0) return cs[k].id; }
     return best;
@@ -18569,7 +18749,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
     const B = dep('buildings');
     let perDay = -1;
     if (B && typeof B.menuOf === 'function') { const ms = B.menuOf(state, b.id); if (ms && Number.isFinite(ms.throughput)) perDay = ms.throughput; }
-    if (perDay < 0) { const D = dep('data'); const row = D && D.catalog ? D.catalog[b.type] : null; perDay = row && row.effects ? fin(row.effects.feeds, 0) : 0; }
+    if (perDay < 0) { const D = dep('data'); const row = D && D.catalog ? D.catalog[b.type] : null; perDay = row && row.effects ? fin(effectsOfB(b).feeds, 0) : 0; }
     const eff = effective(state, b); if (eff <= 0 || perDay <= 0) return 0;
     const students = fin(state.economy && state.economy.students, 0), n = liveCount(state);
     const ratio = students > 0 && n > 0 ? n / students : 1;
@@ -18762,12 +18942,12 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
     return doorTile(state, b);
   }
   /** the share of idle strolls a habitat draws: its happiness value × radius / 225 (5 × 15 → one in three), clamped to 5–40 % — it scales with the effect, so a bigger catalog radius draws more */
-  function habShare() {
-    const row = BSU.data && BSU.data.catalog && BSU.data.catalog.tiger_habitat, hp = row && row.effects && row.effects.happiness;
+  function habShare(hb) {
+    const row = BSU.data && BSU.data.catalog && BSU.data.catalog.tiger_habitat, hp = hb ? effectsOfB(hb).happiness : (row && row.effects && row.effects.happiness);
     return hp ? BSU.clamp(fin(hp.value, 0) * fin(hp.radius, 0) / 225, 0.05, 0.4) : 0.1;
   }
   /** append a habitat's door to `choices` as many times as gives it its share of the final list (the others are already in `choices`; `nHab` habitats split the share) */
-  function addHabitat(choices, door, base, nHab) { const sh = habShare(), n = Math.max(1, Math.round(sh / (1 - sh) * base / Math.max(1, nHab))); for (let q = 0; q < n; q++) choices.push(door); }
+  function addHabitat(choices, door, base, nHab, hb) { const sh = habShare(hb), n = Math.max(1, Math.round(sh / (1 - sh) * base / Math.max(1, nHab))); for (let q = 0; q < n; q++) choices.push(door); }
   /** the standing cells [x, y, row, …] of a habitat, nearest the glass first (row 0 beside the wall, row 1 behind it, row 2 on the path tiles outside); plaza cells need a walkable tile just outside the plaza edge for the way out */
   function habSpots(state, b, fl) {
     const out = [], rows = [HB_SPOT_X[0], HB_SPOT_X[1], HB_OUT_X];
@@ -18840,7 +19020,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
       let nh = 0;
       for (let k = 0; k < Hc.idle.length; k++) { const ib = Hc.idle[k]; if (ib.type === 'tiger_habitat') { if (habOpen(state, ib) && !habFull(ib)) nh++; } else choices.push(doorTile(state, ib)); }
       for (let k = 0; k < Hc.oakTiles.length; k++) choices.push(Hc.oakTiles[k]);
-      if (nh) { const base = choices.length; for (let k = 0; k < Hc.idle.length; k++) { const ib = Hc.idle[k]; if (ib.type === 'tiger_habitat' && habOpen(state, ib) && !habFull(ib)) addHabitat(choices, habDoor(state, ib), base, nh); } }   // habitat pass: weighted by its happiness effect
+      if (nh) { const base = choices.length; for (let k = 0; k < Hc.idle.length; k++) { const ib = Hc.idle[k]; if (ib.type === 'tiger_habitat' && habOpen(state, ib) && !habFull(ib)) addHabitat(choices, habDoor(state, ib), base, nh, ib); } }   // habitat pass: weighted by its happiness effect
     }
     if (!choices.length) choices.push(foundersFront(state));
     return pickTile(r, choices, foundersFront(state));
@@ -18855,7 +19035,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
     for (let k = 0; k < Hc.greek.length; k++) choices.push(doorTile(state, Hc.greek[k]));
     for (let k = 0; k < Hc.union.length; k++) choices.push(doorTile(state, Hc.union[k]));
     { const base = choices.length; let nh = 0; for (let k = 0; k < Hc.idle.length; k++) if (Hc.idle[k].type === 'tiger_habitat' && habOpen(state, Hc.idle[k]) && !habFull(Hc.idle[k])) nh++;
-      if (base) for (let k = 0; k < Hc.idle.length; k++) { const ib = Hc.idle[k]; if (ib.type === 'tiger_habitat' && habOpen(state, ib) && !habFull(ib)) addHabitat(choices, habDoor(state, ib), base, nh); }   // habitat pass: the lit plaza at Dusk
+      if (base) for (let k = 0; k < Hc.idle.length; k++) { const ib = Hc.idle[k]; if (ib.type === 'tiger_habitat' && habOpen(state, ib) && !habFull(ib)) addHabitat(choices, habDoor(state, ib), base, nh, ib); }   // habitat pass: the lit plaza at Dusk
       else for (let k = 0; k < Hc.idle.length; k++) { const ib = Hc.idle[k]; if (ib.type === 'tiger_habitat' && habOpen(state, ib) && !habFull(ib)) choices.push(habDoor(state, ib)); } }
     if (!choices.length) return { goal: 'idle', target: idleSpot(state, a, r, false) };
     return { goal: 'idle', target: pickTile(r, choices, foundersFront(state)) };
@@ -18881,7 +19061,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
   /** a building of `list` by weight × nearness to (tx, ty), drawn with u in [0, 1); needEff = only buildings that work */
   function pickNear(state, list, tx, ty, u, seatWeighted, needEff) {
     let sum = 0; const n = list.length;
-    for (let k = 0; k < n; k++) { const b = list[k]; if (needEff && effective(state, b) <= 0) { pickW[k] = 0; continue; } const w = (seatWeighted ? Math.max(1, effectOf(b.type, 'seats')) : 1) * nearW(nearestBuildingTile(b, tx, ty)); pickW[k] = w; sum += w; }
+    for (let k = 0; k < n; k++) { const b = list[k]; if (needEff && effective(state, b) <= 0) { pickW[k] = 0; continue; } const w = (seatWeighted ? Math.max(1, effectOfB(b, 'seats')) : 1) * nearW(nearestBuildingTile(b, tx, ty)); pickW[k] = w; sum += w; }
     if (!(sum > 0)) return null;
     let r = u * sum;
     for (let k = 0; k < n; k++) { r -= pickW[k]; if (r < 0) return list[k]; }
@@ -19816,7 +19996,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
         let route = null;
         if (validTile(re.start) && validTile(re.end)) route = M.routeSync(state, re.start, re.end, 'road');
         if (!route) route = validTile(re.end) ? [re.end] : (validTile(re.start) ? [re.start] : [landingTile(state)]);
-        const nb = BSU.params.sports.buses;
+        const nb = fleetSize(state);
         for (let q = 0; q < nb; q++) vehicles.push(makeVehicle('bus', route, P.vehicleSpeed.bus / 10, { arrival: k, delay: q * 8, unloadAt: route[route.length - 1] }));
       } else {
         const nv = BSU.clamp(Math.ceil(count / C.pirogueCapacity), 1, P.piroguesMax);
@@ -19848,6 +20028,13 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
     if (!v.ids.length && g && !g.announced) { g.announced = true; emit(EV.AGENT_ARRIVE, { count: g.count, kind: g.kind }); }
     v.ids = []; v.payload = 0;
   }
+  /** more buildings pass: the buses of every fleet (game-day loop, arrivals, evacuation): the base fleet plus two for each finished Bus Depot, at most four more */
+  function fleetSize(state) {
+    const l = listBuildings(state, 'bus_depot'); let n = 0;
+    for (let k = 0; k < l.length; k++) if (isComplete(l[k]) && effective(state, l[k]) > 0) n++;
+    return BSU.params.sports.buses + 2 * Math.min(2, n);
+  }
+  M.fleetSize = function (state) { return fleetSize(state); };
   function spawnBuses(state, on, tag) {
     removeVehicles(state, function (v) { return v.kind === 'bus' && v.tag === tag; });
     if (!on) return;
@@ -19857,7 +20044,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
     if (!Array.isArray(loop) || loop.length < 2) { const re = roadEntry(state); loop = (validTile(re.start) && validTile(re.end)) ? M.routeSync(state, re.start, re.end, 'road') : null; }
     if (!Array.isArray(loop) || loop.length < 2) loop = Array.isArray(state.plot.highway) && state.plot.highway.length > 1 ? state.plot.highway.filter(validTile) : null;
     if (!loop || loop.length < 2) return;
-    const nb = BSU.params.sports.buses;
+    const nb = fleetSize(state);
     for (let q = 0; q < nb; q++) {
       const v = makeVehicle('bus', loop, C.busLoopSpeed / 10, { tag: tag, delay: q * Math.floor(loop.length / nb) });
       v.state = 'LOOP';
@@ -20699,8 +20886,13 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
   }
   function hasField(state) { return call('buildings', 'has', state, 'practice_field') === true; }
   function habitatComplete(state) { return call('buildings', 'has', state, 'tiger_habitat') === true; }
-  function habitatBonus() {
-    try { const row = data().catalog && data().catalog.tiger_habitat; const v = row && row.effects && row.effects.homeWinBonus; return num(v, 0.05); } catch (e) { return 0.05; }
+  function habitatBonus(state0) {
+    try {   // more buildings pass: the best complete habitat's tier-resolved bonus (the Grand Habitat 8 %)
+      const row = data().catalog && data().catalog.tiger_habitat; let v = row && row.effects && row.effects.homeWinBonus, best = null;
+      const list = state0 && call('buildings', 'list', state0, 'tiger_habitat');
+      if (Array.isArray(list)) for (const b of list) if (b && b.built >= 1 && !b.ruin) { const e = call('buildings', 'effectsOf', state0, b); if (e && num(e.homeWinBonus, 0) > num(best, 0)) best = e.homeWinBonus; }
+      return num(best != null ? best : v, 0.05);
+    } catch (e) { return 0.05; }
   }
   /** A complete Rec Center within L.recRadius (Chebyshev between footprints) of any complete practice field. */
   function recCenterNearField(state) {
@@ -21236,7 +21428,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
     if (state.sports.venue === 'stadium3') opp -= PS.stadium3Opp;
     const adv = home ? (night ? PS.homeNight : PS.homeDay) : 0;
     let p = 1 / (1 + Math.pow(10, (opp - num(team, 0) - adv) / PS.elo));
-    if (home && habitatComplete(state)) p += habitatBonus();
+    if (home && habitatComplete(state)) p += habitatBonus(state);
     return clampP(p);
   }
   /** The season's noisy rating for an opponent key (an unplayed entry first, any entry next, else the base). */
@@ -24609,7 +24801,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
     const canvas = newCanvas(1, 1);
     const ctx = ctx2d(canvas);
     const hd = fn.hd === true;
-    const spec = { id: id, family: r.family, sub: r.sub, variant: variant, frame: frame, zoom: z, master: z, hd: hd, env: null, row: r.row, rot: r.rot, seed: hash(strHash(id), variant), frames: 0 };
+    const spec = { id: id, family: r.family, sub: r.sub, variant: variant, frame: frame, zoom: z, master: z, hd: hd, env: null, row: (r.family === 'building' && typeof M.paintRow === 'function') ? M.paintRow(r.row, variant) : r.row, rot: r.rot, seed: hash(strHash(id), variant), frames: 0 };
     if (hd) {   // H0: an HD painter gets the master-scaled, smoothing-on context and the brush env (beginHD sizes the canvas and re-applies both)
       spec.env = (BSU.brush && typeof BSU.brush.env === 'function') ? BSU.brush.env(z) : { master: z, lod: z >= 2 ? 0 : 1, night: false, dpr: 1, originX: 0, originY: 0 };
       try { ctx.setTransform(z, 0, 0, z, 0, 0); ctx.imageSmoothingEnabled = true; } catch (e) { /* stub */ }
@@ -25703,7 +25895,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
         for (const row of data.catalogList) {
           if (row.n >= 49) continue;   // colleges pass: the 23 new rows bake lazily (first placement / Build card), so the load-time atlas stays inside its 40 MB ceiling
           for (const v of variants) M.get(row.id, v, 0, 1);
-          if (row.tiers && row.tiers.length) for (const v of variants) M.get(row.id, v | (1 << SPR.TIER_SHIFT), 0, 1);
+          if (row.tiers && row.tiers.length && (row.id === 'stadium' || row.id === 'practice_field')) for (const v of variants) M.get(row.id, v | (1 << SPR.TIER_SHIFT), 0, 1);   // more buildings pass: the seven upgraded rows bake their tiers lazily
         }
       }
       if (painters.agent) { const look0 = M.agentLook(0); for (let f = 0; f < 16; f++) M.get('agent', look0, f, 1); for (let f = 0; f < 8; f++) M.get('agent:idle', look0, f, 1); }
@@ -27740,8 +27932,22 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
    * (insetPx), so bl/br are the SW/SE face widths, bk the skew of the bottom corner (bx, by) from the
    * centre column; bgcy is the box quad's centre row at ground level (before the pilings lift).
    */
+  /**
+   * more buildings and upgrades pass: the row as painted at a tier. A row at tier 0 (or a tier with no `paint`) comes back unchanged; at tier n its
+   * tiers[n - 1].paint is laid over row.paint (floors, roof, wall, features, ...) on a cached clone, so every painter and buildingBox read the upgraded look.
+   */
+  const TIER_ROWS = new WeakMap();
+  M.paintRow = function (row, variant) {
+    const n = row && Array.isArray(row.tiers) && row.tiers.length ? tierOf(row, variant) : 0;
+    if (n <= 0) return row;
+    const t = row.tiers[n - 1];
+    if (!t || !t.paint) return row;
+    let list = TIER_ROWS.get(row); if (!list) { list = []; TIER_ROWS.set(row, list); }
+    return list[n] || (list[n] = Object.assign({}, row, { paint: Object.assign({}, row.paint, t.paint), tierPaint: n }));
+  };
   M.buildingBox = function (row, variant, zoom, rot) {
     variant = Number.isFinite(variant) ? Math.max(0, variant | 0) : 0;
+    row = M.paintRow(row, variant);
     const paint = (row && row.paint) || {};
     const fw0 = Math.max(1, Math.min(12, (row && row.w) | 0 || 1)), fh0 = Math.max(1, Math.min(12, (row && row.h) | 0 || 1));
     const swap = !!rot && fw0 !== fh0;
@@ -30468,8 +30674,16 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
     concert_hall: { ground: 'pave', columns: 4 }, theatre: { ground: 'pave' }, band_hall: { ground: 'lawn' }, art_gallery: { ground: 'pave' },
     vet_hospital: { ground: 'lawn', box: [12, 116, 12, 70], boxL: [12, 70, 12, 116], props: [{ kind: 'paddock' }] },
     nat_museum: { ground: 'brick', columns: 6 }, computer_lab: { ground: 'pave' },
-    ag_greenhouses: { ground: 'lawn', box: [12, 84, 12, 50], boxL: [12, 50, 12, 84], props: [{ kind: 'glasshouse' }] }
+    ag_greenhouses: { ground: 'lawn', box: [12, 84, 12, 50], boxL: [12, 50, 12, 84], props: [{ kind: 'glasshouse' }] },
+    // more buildings and upgrades pass: rows 72-81. The depot leaves a yard for two parked buses (a yard prop, like the pool deck); the rest are own-ground bodies or plain boxes
+    campus_store: { ground: 'pave' }, arena: { ground: 'pave', columns: 6 }, golf_course: { body: 'golf' },
+    recycling: { ground: 'gravel', props: [{ kind: 'dumpster', margin: [1, 0.12] }, { kind: 'dumpster', margin: [1, 0.46] }] },
+    cistern: { body: 'cistern' }, bus_depot: { ground: 'pave', box: [12, 116, 12, 50], boxL: [12, 70, 12, 84], props: [{ kind: 'buses' }] },
+    tiger_statue: { body: 'statue' }, locomotive: { body: 'loco' }, trainer_jet: { body: 'jet' }, parade: { body: 'parade' }
   });
+  /** per-tier overrides of a row's HD_ROWS entry (the tier's paint overrides live on the catalog row: sprites_buildings.paintRow): the Parking Lot's tiers are a garage */
+  const HD_TIERS = Object.freeze({ parking: { 1: { body: 'garage', ground: 'pave' }, 2: { body: 'garage', ground: 'pave' } } });
+  function hdRowOf(id, tier) { const D = HD_ROWS[id] || {}, t = HD_TIERS[id] && HD_TIERS[id][tier | 0]; return t ? Object.assign({}, D, t) : D; }
   const GROUND_BY_TAB = { academic: 'brick', housing: 'lawn', utilities: 'gravel', dining: 'terrace', life: 'pave', swamp: 'lawn', grounds: 'lawnPlain', sports: 'lawnPlain' };
   M.HD_ROWS = HD_ROWS;
   M.hdBuildingRows = function () { return Object.keys(HD_ROWS); };
@@ -30990,16 +31204,26 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
         line(ctx, [x - 5.6, y - H + 1.5], [x + 5.6, y - H + 1.5], 0.9, C.gold, 0.2, 0.95);
         B.plane(ctx, [[x - 7, y - H], [x + 7, y - H], [x + 5, y - H - 2.5], [x - 5, y - H - 2.5]], C.tin, 0.2, { amp: 0.2, rim: 0.3 });
         break; }
-      case 'flagpoles': case 'paddock': case 'glasshouse': {   // colleges pass: the yard props on the strip the row's box leaves free (HD_ROWS.box / boxL), like the pool deck: parade apron + three flagpoles / barn wing + fenced paddock / two glass bays
+      case 'flagpoles': case 'paddock': case 'glasshouse': case 'buses': {   // colleges pass: the yard props on the strip the row's box leaves free (HD_ROWS.box / boxL), like the pool deck: parade apron + three flagpoles / barn wing + fenced paddock / two glass bays
         if (g.lift > 0) break; const L = g.frontLeft;
         const X0 = L ? b.X1 + 2 : b.X0 + 4, X1 = L ? g.fw * 32 - g.ipx - 2 : b.X1 - 4, Y0 = L ? b.Y0 + 4 : b.Y1 + 2, Y1 = L ? b.Y1 - 4 : g.fh * 32 - g.ipy - 2;
         const LU = L ? Y1 - Y0 : X1 - X0, LV = L ? X1 - X0 : Y1 - Y0;   // u along the strip's long side, v across it
         const XY = (u, v) => L ? [X0 + v, Y0 + u] : [X0 + u, Y0 + v];
         const P = (u, v, up) => { const c = XY(u, v); return fp(g, c[0], c[1], up || 0, true); };
         const quad = (u0, u1, v0, v1, up) => [P(u0, v0, up), P(u1, v0, up), P(u1, v1, up), P(u0, v1, up)];
-        const ground = pr.kind === 'flagpoles' ? C.asphalt : pr.kind === 'paddock' ? C.sandYard : C.paveLight;
+        const ground = (pr.kind === 'flagpoles' || pr.kind === 'buses') ? C.asphalt : pr.kind === 'paddock' ? C.sandYard : C.paveLight;
         B.fillQuadShaded(ctx, quad(0, LU, 0, LV, 0), ground, { face: 'top', material: 'stone', t: 0.05, noAO: true }, env);
-        if (pr.kind === 'flagpoles') {
+        if (pr.kind === 'buses') {   // more buildings pass: two campus buses (purple with a gold stripe and a window band) parked nose to tail in the yard, bay lines between
+          for (let k = 1; k < 4; k++) line(ctx, P(LU * k / 4, 2, 0.2), P(LU * k / 4, LV - 2, 0.2), 0.6, C.white, 0.2, 0.5);
+          for (const k of [0.3, 0.7]) {
+            const c = XY(LU * k, LV / 2), bl = Math.min(LU * 0.2, 17), bw = Math.min(LV / 2 - 3, 6.5);
+            const bx = miniBox(ctx, g, c[0], c[1], L ? bw : bl, L ? bl : bw, 11, C.purple, 'paint', env, 1.2, { top: C.purple2, topT: 0.2 });
+            const f0 = L ? 1 : 0;
+            B.fillQuadShaded(ctx, faceQuad(bx, f0, 0.08, 0.92, 6.4, 9.6), C.glass, { face: f0 === 0 ? 'sw' : 'se', material: 'glass', noAO: true }, env);
+            line(ctx, facePt(bx, f0, 0, 5.2), facePt(bx, f0, 1, 5.2), 1.2, C.gold, 0.2, 0.95);
+            for (const u of [0.18, 0.8]) { const p = facePt(bx, f0, u, 1.2); B.orb(ctx, p[0], p[1], 1.5, 1.5, C.black, 0.1, { spec: 0.2 }); }
+          }
+        } else if (pr.kind === 'flagpoles') {
           line(ctx, P(2, LV / 2, 0.2), P(LU - 2, LV / 2, 0.2), 0.7, C.white, 0.1, 0.7);   // the parade line
           const FL = [C.purple, C.gold, C.white];
           for (let i = 0; i < 3; i++) {
@@ -31346,7 +31570,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
   // rectangle, the fan rows, the shader clip, the mast heads — lands on the painted structure) and the Tiger Habitat
   // (sprites.HABITAT: the pool, the den, the glass and the plaza where Roux's route and the lights pass expect them).
   // ---------------------------------------------------------------------------
-  const OWN_GROUND = { quad: 1, parking: 1, pond: 1, rookery: 1, batpole: 1, field: 1, stadium: 1, habitat: 1 };
+  const OWN_GROUND = { quad: 1, parking: 1, pond: 1, rookery: 1, batpole: 1, field: 1, stadium: 1, habitat: 1, golf: 1, cistern: 1, statue: 1, loco: 1, jet: 1, parade: 1 };
   const OWN_STATES = { habitat: 1, stadium: 1 };   // dresses DAMAGED / BOARDED / FLOODED itself (the pen's OWN_STATES); H7: the stadium has its own too
   const RX = 45.25, RY = 22.63;        // the screen half-axes of a 1-tile ground circle
   /** footprint TILE coordinates (the pen's fpPt): (X, Y) tiles, `up` px — the stadium / field / habitat language */
@@ -31789,6 +32013,17 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
       { const a = pt(1.46, 1.58, FZ), c = pt(1.46, 2.42, FZ + 4); B.stroke(ctx, [a, c], 4.5, C.bark, -0.1, 1, { cap: 'round' }); B.stroke(ctx, [[a[0], a[1] - 1.2], [c[0], c[1] - 1.2]], 1.5, C.bark, 0.45, 0.9, { cap: 'round' }); B.orb(ctx, c[0], c[1], 1.6, 2.2, '#B58B5A', 0.1, { noRim: true }); boulder(1.46, 2.5, 4, 3, 55, false); }
       boulder(1.18, 2.32, 3, 2, 56, false);
       azalea(0.52, 2.62, 3); azalea(1.55, 0.5, 4); palmetto(1.74, 0.36, 5); shrub(1.42, 0.2);
+      if ((g.tier | 0) >= 1) {   // more buildings pass: Roux's Grand Habitat: a second fall and a cypress on the rock, an oak and more boulders on the floor, two banner poles and gold trim on the plaza
+        { const wy0 = 0.28, wy1 = 0.52, spoutZ = 12;
+          B.plane(ctx, faceX(RX0 + 0.012, wy0, wy1, FZ, spoutZ), C.shallows, 0.5, { vert: true, amp: 0.3, rim: 0 });
+          for (let i = 0; i < 3; i++) { const ly = wy0 + 0.04 + (wy1 - wy0 - 0.08) * i / 2; seg([RX0 + 0.016, ly, spoutZ - 1], [RX0 + 0.016, ly + 0.02, FZ + 1], 0.8, C.white, 0, 0.55); }
+          const fo = pt(RX0 + 0.2, (wy0 + wy1) / 2, FZ); for (let i = 0; i < (lod0 ? 8 : 4); i++) B.orb(ctx, fo[0] - 5 + (hash(seed + 35, i) % 11), fo[1] + (hash(seed + 36, i) % 3) - 1, 1.1, 0.7, C.white, 0.3, { noRim: true }); }
+        boulder(0.5, 0.15, 6, 4, 61, true); boulder(0.32, 2.25, 5, 3, 62, true); boulder(0.9, 0.5, 4, 3, 63, false);
+        { const cp = pt(RX0 + 0.04, 1.68, 18); ctx.save(); ctx.translate(cp[0], cp[1]); ctx.scale(0.42, 0.42); B.tree(ctx, 0, 0, 'cypress', { seed: seed + 5, stage: 0 }, env); ctx.restore(); }
+        { const op = pt(1.62, 1.0, FZ); B.tree(ctx, op[0], op[1], 'liveOak', { seed: seed + 9, stage: 0 }, env); }
+        for (const ly of [0.12, 2.88]) { const p0 = pt(2.82, ly, 0); B.column(ctx, p0[0], p0[1], 30, 0.8, C.limestone, env); B.orb(ctx, p0[0], p0[1] - 30.6, 1, 1, C.gold, 0.4, { noRim: true }); B.fillQuadShaded(ctx, [[p0[0], p0[1] - 29], [p0[0] + 7, p0[1] - 28 + (frame & 1)], [p0[0] + 7, p0[1] - 20 + (frame & 1)], [p0[0], p0[1] - 21]], C.purple, { face: 'sw', material: 'cloth', noAO: true }, env); line(ctx, [p0[0] + 1, p0[1] - 25], [p0[0] + 6, p0[1] - 24.5 + (frame & 1)], 1.2, C.gold, 0.3, 0.95); }
+        seg([WX - 0.14, 0.04, 0.2], [3, 0.04, 0.2], 0.9, C.gold, 0.2, 0.9); seg([WX - 0.14, 2.96, 0.2], [3, 2.96, 0.2], 0.9, C.gold, 0.2, 0.9);
+      }
     }
     // ---- 5. floodwater over the floor (the old pool a deeper swirl in it), leaves adrift
     if (flood && !front && built) {
@@ -31876,7 +32111,179 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
     if (dmg && !front && built) seg([1.0, 0.95, 0], [1.5, 0.9, 1], 1.6, C.bark, -0.2, 1);
     return b;
   }
-  const BODIES = { box: standardBody, bunk: bunkBody, wings: wingsBody, substation: substationBody, tower: towerBody, generator: generatorBody,
+  // ---------------------------------------------------------------------------
+  // more buildings and upgrades pass: the new bodies. Own-ground bodies lay everything out in footprint FRACTIONS (u along fw, v along fh), so a rotated
+  // footprint (golf course 10 × 8 → 8 × 10, locomotive 3 × 1 → 1 × 3) is the same drawing on its own axes.
+  // ---------------------------------------------------------------------------
+  const GARAGE_CARS = ['#C9CDD2', '#2B2B33', '#B03A3A', '#E8E8E8', '#3D6FA8', '#8A6A3A', '#5E2CA5', '#FDD023'];
+  /** the parking garage / tower (a Parking Lot's tiers): a concrete shell with an open deck every storey (a dark opening with cars and piers), a roofed-over look of
+   *  slabs, a stair tower at the back corner and the roof deck with cars and lamps; the tower tier (5+ storeys) wears a gold band and purple flag */
+  function garageBody(ctx, g, frame, env) {
+    const b = mainBox(g), night = g.night, lod0 = env.lod === 0, floors = Math.max(2, b.floors | 0), H = floors * FLOOR_PX, tall = floors >= 5;
+    drawWalls(ctx, b, env, { raw: true });
+    for (const f of [0, 1]) {
+      const len = faceLen(b, f), nPier = Math.max(3, Math.round(len / 10));
+      for (let r = 0; r < floors; r++) {
+        const z0 = r * FLOOR_PX + 3, z1 = z0 + 7.5, ft = f === 0 ? -0.05 : -0.4;
+        flat(ctx, faceQuad(b, f, 0.04, 0.96, z0, z1), '#1E1E26', 0, 1);
+        const cars = nPier - 1;
+        for (let k = 0; k < cars; k++) { if (hash(g.seed, r * 17 + k + f * 5) % 3 === 0) continue; const u = 0.04 + 0.92 * (k + 0.5) / cars, p = facePt(b, f, u, z0 + 0.6, -0.4); line(ctx, [p[0] - 2.4, p[1]], [p[0] + 2.4, p[1]], 2.4, GARAGE_CARS[hash(g.seed, r * 31 + k * 3 + f) % GARAGE_CARS.length], night ? -0.3 : 0, 0.92); }
+        line(ctx, facePt(b, f, 0.04, z1), facePt(b, f, 0.96, z1), 1, C.concrete, f === 0 ? 0.4 : -0.3, 0.9);
+        for (let k = 0; k <= nPier; k++) { const u = 0.04 + 0.92 * k / nPier; line(ctx, facePt(b, f, u, z0 - 0.4), facePt(b, f, u, z1 + 0.6), 1.5, C.concrete, ft, 0.95); }
+        line(ctx, facePt(b, f, 0, (r + 1) * FLOOR_PX - 1), facePt(b, f, 1, (r + 1) * FLOOR_PX - 1), 1.6, C.concrete, f === 0 ? 0.5 : -0.35, 0.95);   // the deck slab edge
+        if (night && lod0) { const p = facePt(b, f, 0.5, z0 + 3.5); B.softEllipse(ctx, p[0], p[1], 14, 3, GLOWS[0], 0.15, 0.15); }
+      }
+    }
+    if (tall) for (const f of [1]) line(ctx, facePt(b, f, 0.5, 0), facePt(b, f, 0.5, H), 3, C.gold, 0, 0.9);   // the tower's gold band up the SE face
+    drawDoor(ctx, b, env, { wide: true, night: night });
+    b.roof = 'flat'; b.roofH = 3; b.roofColor = '#8A8A90'; drawRoof(ctx, b, env);
+    const top = H + 3;
+    for (let i = 0; i < 2 + (g.fw >= 3 ? 1 : 0); i++) { const X = b.X0 + 14 + (b.X1 - b.X0 - 28) * (i + 0.5) / 3, Y = b.Y0 + 14 + (b.Y1 - b.Y0 - 28) * ((i & 1) ? 0.3 : 0.7); const p = fp(g, X, Y, top); car(ctx, p[0], p[1], GARAGE_CARS[hash(g.seed, 60 + i) % GARAGE_CARS.length], night, env); }
+    { const p = fp(g, b.X1 - 8, b.Y1 - 8, top); lampPost(ctx, p, night, C.concrete, env); const q = fp(g, b.X0 + 8, b.Y1 - 8, top); lampPost(ctx, q, night, C.concrete, env); }
+    miniBox(ctx, g, b.X0 + 10, b.Y0 + 10, 8, 8, 13, g.wallBase, 'stone', env, top - 1, { top: C.concrete, topT: 0.1 });   // the stair tower
+    if (tall) { const p = fp(g, b.X0 + 10, b.Y0 + 10, top + 13); B.column(ctx, p[0], p[1], 16, 0.6, C.steel, env); B.fillQuadShaded(ctx, [[p[0], p[1] - 16], [p[0] + 8, p[1] - 15 + (frame & 1)], [p[0] + 8, p[1] - 10 + (frame & 1)], [p[0], p[1] - 11]], C.purple, { face: 'sw', material: 'cloth', noAO: true }, env); }
+    return b;
+  }
+  /** the golf course: rough, two mown fairways between tees and greens, bunkers, a pond with reeds, a cart path, flags, a ring of trees and a clubhouse at the front corner */
+  function golfBody(ctx, g, frame, env) {
+    const b = flatBody(g), fw = g.fw, fh = g.fh, lod0 = env.lod === 0, night = g.night, seed = g.seed;
+    const T = (u, v, up) => fT(g, u * fw, v * fh, up || 0);
+    const blob = (u, v, ru, rv, n) => { const o = []; for (let i = 0; i < (n || 22); i++) { const a = i / (n || 22) * Math.PI * 2; o.push(T(u + Math.cos(a) * ru, v + Math.sin(a) * rv)); } return o; };
+    const q = bodyQuad(g);
+    B.fillQuadShaded(ctx, q, '#4F7F38', { face: 'top', material: 'wood', t: -0.05, noAO: true }, env); B.macroGrain(ctx, q, 0.3, env);
+    ctx.save(); B.poly(ctx, q); ctx.clip();
+    const fair = [[T(0.1, 0.16), T(0.3, 0.2), T(0.5, 0.3), T(0.66, 0.34)], [T(0.2, 0.84), T(0.4, 0.74), T(0.58, 0.58), T(0.84, 0.52)], [T(0.12, 0.5), T(0.3, 0.5), T(0.42, 0.44)]];
+    const wid = Math.max(9, Math.min(g.fw, g.fh) * 2.2);
+    for (const f of fair) { B.stroke(ctx, f, wid + 5, '#6E9A44', 0, 1, { smooth: true, cap: 'round' }); B.stroke(ctx, f, wid, C.lawn, 0, 1, { smooth: true, cap: 'round' }); B.stroke(ctx, f, wid * 0.45, C.lawnStripe, 0.1, 0.8, { smooth: true, cap: 'round' }); }
+    // the pond (a kidney of two puddles) with a mud rim
+    const pc = T(0.6, 0.76); B.orb(ctx, pc[0], pc[1], 46, 19, C.mud, -0.05, { noRim: true }); B.puddle(ctx, pc[0], pc[1], 42, 16, env, { t: -0.1, spec: 0.3, rim: 0.2 }); const pc2 = T(0.68, 0.7); B.puddle(ctx, pc2[0], pc2[1], 24, 10, env, { t: -0.1, spec: 0.3, rim: 0.2 });
+    // greens and bunkers
+    const greens = [[0.72, 0.34], [0.9, 0.5], [0.46, 0.42]];
+    for (const gr of greens) { flat(ctx, blob(gr[0], gr[1], 0.5 / fw * 1.1, 0.5 / fh * 1.1), '#5E9A3A', 0, 1); flat(ctx, blob(gr[0], gr[1], 0.5 / fw, 0.5 / fh), '#9CCB5C', 0.05, 1); }
+    for (const bk of [[0.67, 0.4], [0.78, 0.29], [0.86, 0.58], [0.5, 0.5], [0.42, 0.36], [0.36, 0.62]]) flat(ctx, blob(bk[0], bk[1], 0.34 / fw, 0.28 / fh, 14), C.sandYard, 0.35, 1);
+    const cp = [T(0.82, 0.8), T(0.7, 0.6), T(0.55, 0.52), T(0.4, 0.4), T(0.25, 0.3), T(0.14, 0.2)];
+    B.path(ctx, cp, 3.4, env, { material: 'gravel' });
+    ctx.restore();
+    line(ctx, q[3], q[2], 1.6, '#4F7F38', -0.6, 0.8); line(ctx, q[2], q[1], 1.6, '#4F7F38', -0.6, 0.8);
+    for (const t of [[0.1, 0.16], [0.2, 0.84], [0.12, 0.5]]) { const p = T(t[0], t[1]); miniBox(ctx, g, t[0] * fw * 32, t[1] * fh * 32, 5, 4, 1.5, '#8A6A3A', 'wood', env, 0, { noAO: true }); void p; }   // tee boxes
+    // flags (back to front), then the trees ringing the course (back to front), then the clubhouse
+    const things = [];
+    for (const gr of greens) things.push({ d: gr[0] + gr[1], draw: () => { const p = T(gr[0], gr[1]); B.column(ctx, p[0], p[1], 15, 0.5, C.offWhite, env); B.fillQuadShaded(ctx, [[p[0], p[1] - 15], [p[0] + 6, p[1] - 13.5 + (frame & 1)], [p[0], p[1] - 11.5]], C.purple, { face: 'sw', material: 'cloth', noAO: true }, env); } });
+    const TR = []; for (let i = 0; i < 18; i++) { const a = (i + 0.3 * (hash(seed, i) % 3)) / 18 * Math.PI * 2, r = 0.44 + (hash(seed, 20 + i) % 6) / 100; TR.push([0.5 + Math.cos(a) * r, 0.5 + Math.sin(a) * r * 1.02]); }
+    for (const p of [[0.35, 0.3], [0.52, 0.2], [0.78, 0.66], [0.3, 0.7], [0.62, 0.44], [0.9, 0.3]]) TR.push(p);
+    for (const t of TR) { if (t[0] > 0.7 && t[1] > 0.7) continue; if (t[0] < 0.03 || t[1] < 0.03 || t[0] > 0.97 || t[1] > 0.97) continue; things.push({ d: t[0] + t[1], draw: () => { const p = T(t[0], t[1]); B.tree(ctx, p[0], p[1], (hash(seed, Math.round(t[0] * 90 + t[1] * 40)) & 1) ? 'liveOak' : 'cypress', { seed: seed + Math.round(t[0] * 50), stage: 1 }, env); } }); }
+    things.sort((a, c) => a.d - c.d); for (const t of things) t.draw();
+    // the clubhouse: a one-storey hip-roofed house with a gallery at the front corner
+    const X0 = fw * 32 * 0.72, X1 = fw * 32 * 0.9, Y0 = fh * 32 * 0.77, Y1 = fh * 32 * 0.93;
+    const cb = mkBox(g, X0, X1, Y0, Y1, 2, 'hip', 12, '#6E3A2E'); cb.wallH = 2 * FLOOR_PX - 4;
+    const wallSave = g.wallBase, mSave = g.material; g.wallBase = '#EFE4CC'; g.material = 'stucco';
+    drawWalls(ctx, cb, env); layoutWindows(cb, [4, 4], 2, night, frame); drawWindows(ctx, cb, env, { night: night, frame: frame }); drawDoor(ctx, cb, env, { wide: true, night: night }); drawRoof(ctx, cb, env); drawGallery(ctx, cb, true, env);
+    g.wallBase = wallSave; g.material = mSave;
+    for (const sx of [-1, 1]) { const p = facePt(cb, 0, 0.5 + sx * 0.3, 0, 2, true); car(ctx, p[0] + sx * 10, p[1] + 5, GARAGE_CARS[hash(seed, 7 + sx) % 8], night, env); }
+    return b;
+  }
+  /** the rainwater cistern: two steel-blue tanks on a gravel pad, a catchment canopy draining into them through a pipe, a ladder and a water gauge */
+  function cisternBody(ctx, g, frame, env) {
+    const b = flatBody(g), fw = g.fw, fh = g.fh, night = g.night;
+    drawApron(ctx, g, APRON.gravel, env, { lifted: g.lift > 0 });
+    const T = (u, v, up) => fT(g, u * fw, v * fh, up || 0);
+    const tank = (u, v, h, r) => { const p = T(u, v); B.shadow(ctx, { x: p[0] + 3, y: p[1] + 1, rx: r + 3, ry: r * 0.45, a: 0.3 }, env); B.column(ctx, p[0], p[1], h, r, '#8FB8C8', env); B.orb(ctx, p[0], p[1] - h, r, r * 0.5, '#B6D6E2', 0.25, { spec: 0.4 }); for (const hh of [0.35, 0.7]) { line(ctx, [p[0] - r, p[1] - h * hh], [p[0] + r, p[1] - h * hh + r * 0.1], 0.8, '#5E86A0', -0.2, 0.7); } B.orb(ctx, p[0] - r * 0.3, p[1] - h - r * 0.2, r * 0.3, r * 0.15, C.white, 0.6, { noRim: true }); return p; };
+    const p1 = tank(0.3, 0.32, 24, 10), p2 = tank(0.68, 0.46, 20, 9);
+    // the catchment canopy over a low frame at the front: a sloped purple roof with a gutter
+    const c0 = T(0.28, 0.82, 12), c1 = T(0.72, 0.82, 12), c2 = T(0.72, 0.62, 16), c3 = T(0.28, 0.62, 16);
+    for (const x of [0.28, 0.72]) { const a = T(x, 0.82), c = T(x, 0.82, 12); line(ctx, a, c, 1.2, C.iron, 0, 0.95); }
+    B.plane(ctx, [c3, c2, c1, c0], '#5E2CA5', 0.1, { amp: 0.25, rim: 0.3 });
+    line(ctx, c0, c1, 1.2, C.steel, 0.4, 0.95);
+    B.stroke(ctx, [T(0.3, 0.82, 11), T(0.3, 0.9, 2), T(0.12, 0.9, 2), T(0.2, 0.5, 1), [p1[0] - 5, p1[1] - 2]], 1.2, C.steel, 0.1, 0.9, {});   // the downspout and the feed pipe
+    const lp = [p1[0] + 9, p1[1]]; line(ctx, [lp[0], lp[1]], [lp[0], lp[1] - 22], 0.6, C.iron, 0, 0.9);   // the ladder rail
+    for (let k = 0; k < 6; k++) line(ctx, [lp[0] - 1.2, lp[1] - 3 - k * 3.4], [lp[0] + 1.2, lp[1] - 3 - k * 3.4], 0.5, C.iron, 0, 0.9);
+    const gp = [p2[0] + 6, p2[1]]; B.fillQuadShaded(ctx, [[gp[0] - 1, gp[1] - 3], [gp[0] + 1, gp[1] - 3], [gp[0] + 1, gp[1] - 15], [gp[0] - 1, gp[1] - 15]], C.white, { face: 'sw', material: 'paint', noAO: true }, env);
+    B.fillQuadShaded(ctx, [[gp[0] - 1, gp[1] - 3], [gp[0] + 1, gp[1] - 3], [gp[0] + 1, gp[1] - 3 - 8 - (frame & 0)], [gp[0] - 1, gp[1] - 3 - 8]], C.waterBlue, { face: 'sw', material: 'paint', noAO: true }, env);
+    if (night) B.softEllipse(ctx, p1[0], p1[1] - 12, 14, 6, C.glow, 0.12, 0.1);
+    return b;
+  }
+  /** the tiger statue: a stone pedestal with a purple plaque and a bronze-orange crouching tiger with dark stripes (1 x 1) */
+  function statueBody(ctx, g, frame, env) {
+    const b = flatBody(g), night = g.night;
+    drawApron(ctx, g, APRON.pave, env, { lifted: g.lift > 0 });
+    const c = fp(g, g.fw * 16, g.fh * 16, 0), x = c[0], y = c[1];
+    miniBox(ctx, g, g.fw * 16, g.fh * 16, 8, 6, 8, C.limestone, 'stone', env, 0, { top: C.limestone, topT: 0.2 });
+    B.fillQuadShaded(ctx, [[x - 4, y + 4], [x + 3, y + 7], [x + 3, y + 4.5], [x - 4, y + 1.5]], C.purple, { face: 'sw', material: 'paint', noAO: true }, env);
+    const O = C.tigerOrange, ty = y - 8.5;
+    B.shadow(ctx, { x: x + 2, y: ty + 1, rx: 9, ry: 2.4, a: 0.3 }, env);
+    B.orb(ctx, x - 1, ty - 4.2, 7.5, 4.6, O, 0.05, { spec: 0.3 });                       // the body
+    B.orb(ctx, x - 6.2, ty - 3, 2.4, 2.8, O, -0.05, { noRim: true });                    // the haunch
+    B.orb(ctx, x + 6.4, ty - 8.6, 3.4, 3.2, O, 0.12, { spec: 0.35 });                   // the head
+    B.orb(ctx, x + 8.8, ty - 7.6, 1.8, 1.3, '#F2E2C8', 0.2, { noRim: true });            // the muzzle
+    B.orb(ctx, x + 5.2, ty - 11.4, 0.9, 0.9, O, -0.1, { noRim: true }); B.orb(ctx, x + 7.8, ty - 11.2, 0.9, 0.9, O, -0.1, { noRim: true });   // the ears
+    B.orb(ctx, x + 7.2, ty - 9.2, 0.45, 0.45, C.black, 0, { noRim: true });
+    line(ctx, [x + 3.6, ty - 6.4], [x + 4.4, ty - 2.2], 2.6, O, -0.05, 1); line(ctx, [x + 0.4, ty - 1.2], [x + 0.8, ty + 0.4], 2.2, O, -0.15, 1);   // the forelegs
+    B.stroke(ctx, [[x - 8, ty - 2.6], [x - 11.4, ty - 6], [x - 10.2, ty - 10]], 1.6, O, -0.05, 1, { smooth: true, cap: 'round' });   // the tail
+    for (let i = 0; i < 4; i++) line(ctx, [x - 5 + i * 3.1, ty - 8.4], [x - 4.2 + i * 3.1, ty - 3.4], 0.9, '#2A1A10', 0, 0.85);   // the stripes
+    if (night) B.softEllipse(ctx, x, y + 1, 12, 5, C.glow, 0.25, 0.2);
+    return b;
+  }
+  /** the heritage locomotive (3 x 1): a short track and a black steam engine with a gold stripe, a stack, a cab, big drivers and a coal tender */
+  function locoBody(ctx, g, frame, env) {
+    const b = flatBody(g), night = g.night, longX = g.fw >= g.fh, L = (longX ? g.fw : g.fh) * 32, W = (longX ? g.fh : g.fw) * 32;
+    drawApron(ctx, g, APRON.gravel, env, { lifted: g.lift > 0 });
+    const XY = (u, v) => longX ? [u, v] : [v, u];
+    const P = (u, v, up) => { const c = XY(u, v); return fp(g, c[0], c[1], up || 0); };
+    for (const v of [W * 0.38, W * 0.62]) line(ctx, P(2, v), P(L - 2, v), 1.4, C.steel, 0.2, 0.95);   // rails
+    for (let u = 6; u < L - 4; u += 6) line(ctx, P(u, W * 0.3), P(u, W * 0.7), 1.6, C.bark, 0, 0.9);   // ties
+    const mb = (u0, u1, v0, v1, z0, z1, col, mat, topc) => { const c0 = XY((u0 + u1) / 2, (v0 + v1) / 2), h0 = longX ? (u1 - u0) / 2 : (v1 - v0) / 2, h1 = longX ? (v1 - v0) / 2 : (u1 - u0) / 2; return miniBox(ctx, g, c0[0], c0[1], h0, h1, z1 - z0, col, mat, env, z0, { top: topc || col, topT: 0.25 }); };
+    mb(L * 0.08, L * 0.66, W * 0.33, W * 0.67, 3, 13, '#1F1F26', 'metal', '#3A3A44');   // the boiler (a long box, rounded by a dome and band)
+    for (let k = 0; k < 4; k++) { const p = P(L * (0.18 + k * 0.14), W * 0.5, 13.5); B.orb(ctx, p[0], p[1], 3.6, 1.8, '#2A2A33', 0.25, { noRim: true }); }
+    mb(L * 0.66, L * 0.82, W * 0.3, W * 0.7, 3, 19, '#1F1F26', 'metal', '#2A2A33');     // the cab
+    { const p = P(L * 0.74, W * 0.5, 19.6); B.plane(ctx, [[p[0] - 8, p[1]], [p[0] + 8, p[1]], [p[0] + 6, p[1] - 4], [p[0] - 6, p[1] - 4]], '#4A1F18', 0, { amp: 0.15, rim: 0.2 }); }
+    const sp = P(L * 0.12, W * 0.5, 13); B.column(ctx, sp[0], sp[1], 8, 2.2, '#1B1B22', env); B.orb(ctx, sp[0], sp[1] - 8.4, 3.4, 1.4, C.gold, 0.2, { noRim: true });   // the stack with a gold cap
+    const hl = P(L * 0.06, W * 0.5, 10); B.orb(ctx, hl[0], hl[1], 1.8, 1.8, night ? C.glow : C.offWhite, 0.5, { spec: 0.6 });
+    for (const k of [0.2, 0.34, 0.48]) { const p = P(L * k, W * 0.68, 0); B.orb(ctx, p[0], p[1] - 3.4, 4, 4, '#2A2A33', 0.1, { spec: 0.2 }); B.orb(ctx, p[0], p[1] - 3.4, 1.4, 1.4, C.gold, 0.3, { noRim: true }); }
+    { const a = P(L * 0.1, W * 0.67, 8), c = P(L * 0.66, W * 0.67, 8); line(ctx, a, c, 1.6, C.gold, 0.2, 0.95); }
+    mb(L * 0.84, L * 0.97, W * 0.34, W * 0.66, 3, 11, '#26262E', 'metal', '#16161C');   // the coal tender
+    for (let k = 0; k < 4; k++) { const p = P(L * (0.87 + (k % 3) * 0.035), W * (0.42 + (k % 2) * 0.15), 11.4); B.orb(ctx, p[0], p[1], 1.6, 1, '#101014', 0, { noRim: true }); }
+    return b;
+  }
+  /** the trainer jet (2 x 2): a concrete pad, a steel pole and a white jet banked on it with a purple tail, a glass canopy and a gold stripe */
+  function jetBody(ctx, g, frame, env) {
+    const b = flatBody(g), night = g.night;
+    drawApron(ctx, g, APRON.pave, env, { lifted: g.lift > 0 });
+    const c = fp(g, g.fw * 16, g.fh * 16, 0), x = c[0], y = c[1];
+    B.orb(ctx, x, y, 12, 5.4, C.concrete, 0.1, { noRim: true }); B.shadow(ctx, { x: x + 3, y: y + 1, rx: 7, ry: 2.4, a: 0.3 }, env);
+    B.column(ctx, x, y, 17, 1.3, C.steel, env);
+    const jy = y - 20;
+    // wings: a long thin parallelogram across the body, swept back
+    B.plane(ctx, [[x - 15, jy + 3], [x - 2, jy - 3.2], [x + 2.6, jy - 2], [x - 9, jy + 6]], '#D8D8DE', -0.05, { amp: 0.15, rim: 0.3 });
+    B.plane(ctx, [[x + 15, jy + 5.5], [x + 3, jy - 1.6], [x - 1, jy + 0.4], [x + 9, jy + 8]], '#E8E8EC', 0.1, { amp: 0.15, rim: 0.3 });
+    B.orb(ctx, x - 0.5, jy + 1.5, 13, 3.4, '#F0F0F4', 0.1, { spec: 0.5 });                      // the fuselage
+    B.orb(ctx, x + 10.5, jy + 1.8, 4.2, 2.4, '#E8E8EC', 0.25, { noRim: true });                // the nose
+    line(ctx, [x - 11, jy + 1.2], [x + 11, jy + 2.2], 1.1, C.gold, 0.2, 0.95);                     // the stripe
+    B.orb(ctx, x + 4.2, jy - 0.8, 3, 1.7, '#7FB8E8', 0.2, { spec: 0.8 });                       // the canopy
+    B.plane(ctx, [[x - 11, jy + 1], [x - 15, jy - 8], [x - 12.5, jy - 8.4], [x - 7, jy + 0.4]], C.purple, 0, { amp: 0.15, rim: 0.3 });   // the tail fin
+    B.plane(ctx, [[x - 12, jy + 2.4], [x - 17, jy + 1], [x - 15, jy + 4.4], [x - 9, jy + 4]], '#C2C2C8', 0, { amp: 0.1, rim: 0.2 });
+    B.orb(ctx, x - 12.4, jy + 2.4, 1.2, 1.2, C.iron, 0, { noRim: true });                          // the exhaust
+    B.fillQuadShaded(ctx, [[x + 4, y + 5.4], [x + 10, y + 6.8], [x + 10, y + 4.8], [x + 4, y + 3.4]], C.purple, { face: 'sw', material: 'paint', noAO: true }, env);   // the plaque
+    if (night) B.softEllipse(ctx, x, y + 1, 14, 5, C.glow, 0.25, 0.2);
+    return b;
+  }
+  /** the parade ground (a 2 x 2 unit that joins its neighbours into one drill lawn): seamless turf with mowing stripes aligned to the unit, a faint drill grid, one flagpole */
+  function paradeBody(ctx, g, frame, env) {
+    const b = flatBody(g), fw = g.fw, fh = g.fh, night = g.night, q = bodyQuad(g), lod0 = env.lod === 0;
+    B.fillQuadShaded(ctx, q, '#86AE50', { face: 'top', material: 'wood', t: 0, noAO: true }, env);
+    ctx.save(); B.poly(ctx, q); ctx.clip();
+    for (let s = 0; s < fw * 4; s += 2) flat(ctx, [fT(g, s / 2, 0), fT(g, (s + 1) / 2, 0), fT(g, (s + 1) / 2, fh), fT(g, s / 2, fh)], '#7BA146', 0, 0.6);
+    for (let s = 1; s < fw; s++) line(ctx, fT(g, s, 0), fT(g, s, fh), 0.7, C.white, 0.4, 0.28);
+    for (let s = 1; s < fh; s++) line(ctx, fT(g, 0, s), fT(g, fw, s), 0.7, C.white, 0.4, 0.28);
+    if (lod0) for (let i = 0; i < fw * fh * 2; i++) { const p = fp(g, hash(g.seed, i * 3) % (fw * 32), hash(g.seed, i * 3 + 1) % (fh * 32), 0); B.orb(ctx, p[0], p[1], 1.4, 0.8, '#86AE50', 0.3, { noRim: true }); }
+    ctx.restore();
+    const c = fT(g, fw / 2, fh / 2, 0), x = c[0], y = c[1], wave = frame & 1;
+    B.shadow(ctx, { x: x + 1, y: y + 0.4, rx: 2.4, ry: 0.9, a: 0.3 }, env);
+    B.column(ctx, x, y, 22, 0.7, C.steel, env); B.orb(ctx, x, y - 22.6, 1, 1, C.gold, 0.4, { noRim: true });
+    B.fillQuadShaded(ctx, [[x, y - 21], [x + 8, y - 20 + wave], [x + 8, y - 16 + wave], [x, y - 17]], C.purple, { face: 'sw', material: 'cloth', noAO: true }, env);
+    B.fillQuadShaded(ctx, [[x, y - 17], [x + 8, y - 16 + wave], [x + 8, y - 12 + wave], [x, y - 13]], C.gold, { face: 'sw', material: 'cloth', noAO: true }, env);
+    return b;
+  }
+  const BODIES = { garage: garageBody, golf: golfBody, cistern: cisternBody, statue: statueBody, loco: locoBody, jet: jetBody, parade: paradeBody, box: standardBody, bunk: bunkBody, wings: wingsBody, substation: substationBody, tower: towerBody, generator: generatorBody,
     quad: quadBody, parking: parkingBody, pond: pondBody, rookery: rookeryBody, batpole: batpoleBody, field: fieldBody, stadium: stadiumBody, habitat: (ctx, g, frame, env) => habitatBody(ctx, g, frame, env, 0, -1) };
 
   // ---------------------------------------------------------------------------
@@ -31983,9 +32390,10 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
   // ---------------------------------------------------------------------------
   // The painter
   // ---------------------------------------------------------------------------
-  function geometry(row, variant, frame, rot, seed, tees, env) {
+  function geometry(row0, variant, frame, rot, seed, tees, env) {
+    const row = M.paintRow ? M.paintRow(row0, variant) : row0;   // more buildings pass: the row as painted at its tier
     const g = M.buildingBox(row, variant, 1, rot);
-    g.row = row; g.paint = row.paint || {}; g.D = HD_ROWS[row.id] || {};
+    g.row = row; g.paint = row.paint || {}; g.D = hdRowOf(row.id, g.tier);
     g.seed = hash(strHash(row.id || 'b'), (seed ^ variant) >>> 0);
     g.frontLeft = !!(variant & SPR.FRONT_L); g.night = !!(variant & SPR.NIGHT);
     g.features = Array.isArray(g.paint.features) ? g.paint.features : []; g.decals = Array.isArray(g.paint.decals) ? g.paint.decals : [];
@@ -43638,7 +44046,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
     if (menuEdit && !(kind === 'building' && insp.id === menuEdit.id)) M.closeMenuEditor();   // the overlay belongs to the inspected kitchen
     if (kind === 'building') {
       const b = call('buildings', 'get', s, insp.id); if (!b) { closeInspectDom(); return; }
-      const r = rowOf(b.type) || { name: b.type, effects: {}, wr: 0, tiers: [] }, ef = r.effects || {}, i0 = b.ty * W + b.tx, tl = s.tiles;
+      const r = rowOf(b.type) || { name: b.type, effects: {}, wr: 0, tiers: [] }, ef = call('buildings', 'effectsOf', s, b) || r.effects || {}, i0 = b.ty * W + b.tx, tl = s.tiles;   // more buildings pass: what it does at its current tier
       if (!renaming) setText(E['insp-title'], b.name || r.name);
       setText(E['insp-sub'], r.name + (b.tier > 0 && r.tiers && r.tiers[b.tier - 1] ? ' · ' + (r.tiers[b.tier - 1].name || 'Tier ' + b.tier) : '') + (b.pilings ? ' · on pilings' : ''));
       call('render', 'drawIcon', spr, b.type); hasSprite = true;
@@ -43681,13 +44089,13 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
       // bought the button is disabled and the reason is text on the card; while it is under way the card says so and when it ends; the top tier shows nothing
       if (r.tiers && r.tiers.length) {
         const q = call('buildings', 'upgradeQuote', s, b.id) || null, nx = q && q.next;
-        if (q && q.inProgress) { const left = fin(q.doneDay, 0) - dayOf(s); const up = el('div', 'insp-up'); up.id = 'insp-upgrade'; up.appendChild(el('div', 'up-now', 'Upgrading' + (nx ? ' to ' + nx.name : '') + ' · done ' + (left <= 0 ? 'today' : left === 1 ? 'in 1 day' : 'in ' + left + ' days'))); acts.appendChild(up); }
+        if (q && q.inProgress) { const left = fin(q.doneDay, 0) - dayOf(s); const up = el('div', 'insp-up'); up.id = 'insp-upgrade'; up.appendChild(el('div', 'up-now', 'Upgrading' + (nx ? ' to ' + nx.name : '') + ' · done ' + (left <= 0 ? 'today' : left === 1 ? 'in 1 day' : 'in ' + left + ' days') + ' · closed until then')); acts.appendChild(up); }
         else if (nx) {
           const up = el('div', 'insp-up'); up.id = 'insp-upgrade';
           const ub = action('Upgrade to ' + nx.name + ' · ' + money(nx.cost), function (st) { const rr = call('buildings', 'upgrade', st, b.id); if (rr && rr.ok) lightControl(null); return rr; }, 'primary'); ub.id = 'btn-insp-upgrade';
           if (!q.ok) { ub.disabled = true; ub.setAttribute('aria-disabled', 'true'); ub.setAttribute('aria-describedby', 'insp-up-why'); }
           litClass(ub, 'insp:upgrade'); up.appendChild(ub);
-          const gain = []; if (nx.seats) gain.push(fmtInt(nx.seats) + ' seats'); if (nx.night) gain.push('night games'); if (nx.upkeep) gain.push(money(nx.upkeep) + '/mo upkeep'); gain.push(nx.buildDays + (nx.buildDays === 1 ? ' day' : ' days') + ' to build');
+          const gain = []; if (nx.seats) gain.push(fmtInt(nx.seats) + ' seats'); if (nx.night) gain.push('night games'); if (q.gains) for (const gl of q.gains) gain.push(gl); if (nx.upkeep) gain.push(money(nx.upkeep) + '/mo upkeep'); gain.push(nx.buildDays + (nx.buildDays === 1 ? ' day' : ' days') + ' to build'); gain.push('closed while it upgrades');
           up.appendChild(el('div', 'up-gain', gain.join(' · ')));
           if (!q.ok) { const why = el('div', 'up-why', q.needs && q.needs.length ? 'Needs ' + q.needs.join(' · ') : (q.reason || 'Not available yet')); why.id = 'insp-up-why'; up.appendChild(why); }
           acts.appendChild(up);
@@ -44178,7 +44586,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
     } catch (e) { uerr('placedHint', e); }
   }
   // ---- effects → plain lines (the detail card)
-  const SPECIAL_TEXT = { boilPot: 'Crawfish boil pot', dumpster: 'Dumpster (gator bait)', porch: 'Porch parties', tailgate: 'Tailgates near the venue', festivalHost: 'Hosts festivals (revenue ×2)', idleHub: 'Students hang out here', pool: 'Pool', teamHeatFix: 'Fixes the team heat penalty', idleSpot: 'Students idle here', oakDecal: 'Plants a Live Oak', floodsAt03: 'Floods at 0.3 ft of water', tailgateLot: 'Tailgate lot', nutriaImmune: 'Nutria cannot burrow it', egret: 'Egrets visit', stockAfter10: 'Stocked with bream after a month', gatorBlock: 'Gators cannot cross', fogger: 'Fogger truck at dusk', martins: 'Purple martins swirl at dusk', officer: 'Relocates gators within 14', traps: 'Nutria traps', debris: 'Clears storm debris', cajunNavy: 'Cajun Navy rescues', preserve: 'Protected wetland', bells: 'Bells at midday and dusk', beacon: 'Beacon at night', tank: 'Water tank', habitat: 'Home of Roux the tiger', restore: 'Restores marsh', spoonbills: 'Spoonbills at dawn', postcardFrame: 'The postcard frame', discountSwamp: 'Levees, floodwalls, canals and pumps −15%', radar: 'Weather radar', wastewater: 'Sewage treatment' };
+  const SPECIAL_TEXT = { boilPot: 'Crawfish boil pot', dumpster: 'Dumpster (gator bait)', porch: 'Porch parties', tailgate: 'Tailgates near the venue', festivalHost: 'Hosts festivals (revenue ×2)', idleHub: 'Students hang out here', pool: 'Pool', teamHeatFix: 'Fixes the team heat penalty', idleSpot: 'Students idle here', oakDecal: 'Plants a Live Oak', floodsAt03: 'Floods at 0.3 ft of water', tailgateLot: 'Tailgate lot', nutriaImmune: 'Nutria cannot burrow it', egret: 'Egrets visit', stockAfter10: 'Stocked with bream after a month', gatorBlock: 'Gators cannot cross', fogger: 'Fogger truck at dusk', martins: 'Purple martins swirl at dusk', officer: 'Relocates gators within 14', traps: 'Nutria traps', debris: 'Clears storm debris', cajunNavy: 'Cajun Navy rescues', preserve: 'Protected wetland', bells: 'Bells at midday and dusk', beacon: 'Beacon at night', tank: 'Water tank', habitat: 'Home of Roux the tiger', restore: 'Restores marsh', spoonbills: 'Spoonbills at dawn', postcardFrame: 'The postcard frame', discountSwamp: 'Levees, floodwalls, canals and pumps −15%', radar: 'Weather radar', wastewater: 'Sewage treatment', events: 'Hosts events', golf: 'Fairways, greens, a pond and a clubhouse', ecoSite: 'Counts toward the ecology score', cistern: 'Rain water: serves any building that needs water within its radius', depotBuses: 'Two more buses in every game-day fleet (up to four)', paradeArmory: 'Worth +2 more within 8 tiles of an ROTC Armory' };
   function pct(mult) { return Math.round((1 - mult) * 100) + '%'; }
   function within(r) { return r > 0 ? ' within ' + r + ' tiles' : ''; }
   function effectLines(row) {

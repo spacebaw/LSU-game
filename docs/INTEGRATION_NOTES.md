@@ -2083,3 +2083,110 @@ Nobody wins earlier or later, but the greedy run is ahead in Y5 (students +21 %,
 - The campaign policies (goals, greedy, passive, storm) build from fixed lists, so none of them builds a college: the balance run shows the mechanic's absence of side effects, not what a player who builds every college earns. The programs bonus is capped at +25 % of applications and the colleges' income is smaller than their upkeep (revenue rows return about $76k a month against $417k a month of upkeep for all 23, $39.7M to build), so building them is a prestige and applications decision, not a cash engine.
 - No pen-painter (`sprites_buildings.js`) special painters for the new rows; the pen painter only draws them as standard boxes (used where HD is off).
 - `fps.mjs` not re-run: no per-frame code was touched (the pass changed the monthly income step, the load-time bake list, the Build sheet detail and inspect card, none of which run per frame).
+
+## more buildings and upgrades pass
+
+A student playtester's wish list (CONTENT_BACKLOG N18-N20): ten new buildings and decorations (rows 72-81, 81 rows now), seven existing buildings that upgrade, and the Colleges tab holding all 15 colleges. The game is fictional: no real university, company, person or trademark appears in any name or line (the unit test bans a list of them).
+
+### The ten new rows
+
+Cost / upkeep per month. Effects use only keys the simulation already reads; the three hooks that did not exist are listed below the table.
+
+| # | Name | Footprint | Cost / upkeep | Unlock | Tab | Effects |
+|---|---|---|---|---|---|---|
+| 72 | Campus Store | 3×2 | $450k / $5k | 600 students | life | $7k/mo (flat: no home-game hook exists for a shop); +2 happiness radius 6. |
+| 73 | Basketball Arena | 5×4 | $4.2M / $40k | 2,500 students + prestige 25 | sports | Landmark +5; +5 happiness radius 12; shelter 3,000; $14k/mo in events. No new sport. |
+| 74 | Golf Course | 10×8 | $5.5M / $32k | 2,000 students + prestige 20 | sports | Landmark +6; +3 happiness radius 10; $18k/mo; ecology −6. Forces chartering land (80 tiles). |
+| 75 | Recycling Center | 3×3 | $650k / $7k | 1,000 students | utilities | Ecology +3; $4k/mo. |
+| 76 | Rainwater Cistern | 2×2 | $140k / $1.5k | 300 students | utilities | A small water provider: 14 buildings within 6 tiles, no power needed. The card says what it serves. |
+| 77 | Bus Depot | 4×3 | $850k / $9k | 1,200 students | life | Road within 3 tiles; +3 happiness radius 16; +2 buses in every fleet. |
+| 78 | Tiger Statue | 1×1 | $60k / $200 | 300 students | grounds | Landmark +1; +1 happiness radius 5. |
+| 79 | Heritage Locomotive | 3×1 | $180k / $600 | 800 students | grounds | Landmark +1. |
+| 80 | Trainer Jet | 2×2 | $220k / $600 | 1,000 students | grounds | Landmark +1. |
+| 81 | Parade Ground | 2×2 block | $45k / $400 | 1,200 students | grounds | Dragged as a block like the Quad Lawn; +3 happiness radius 8, +2 more within 8 tiles of a finished ROTC Armory. |
+
+Hooks added (small, generic where possible):
+
+- **Water.** The Water Tower's mechanism is `recomputeCoverageInner`: providers are `{b, cap, used, r}` records and every consumer with `needsWater` is assigned the nearest provider with room. The Cistern is pushed into the same list (`cap` 14, `r` 6 from its own row) and, being gravity-fed, is exempt from the "unpowered tower runs at a cap" rule. It also paints the water overlay like a tower. (The Boil-Water advisory and the tower-topple rolls stay tower-only.)
+- **Buses.** The game already draws buses (the game-day loop, the arrival fleet, the evacuation fleet), all created by `agents.spawnBuses` / `spawnArrivals`. New `agents.fleetSize(state)` = `params.sports.buses` + 2 for each finished, effective Bus Depot, at most +4; the three spawners use it. No new routing, no per-frame code.
+- **Ecology.** There was no generic building-level ecology read (the terms in `wildlife.ecologyTermsOf` are hard-wired). Rows marked `special: ['ecoSite']` now add their resolved `effects.ecology` as a new term `sites` (Golf Course −6, Recycling Center +3).
+- **Parade Ground.** `BLOCK_ROWS = { quad: 1, parade: 1 }`: `runQuote`, `placeRun`, the ghost, the one-click placement, the setback join and the drag tool all key off `buildings.isBlockRow`, so the Parade Ground is the Quad Lawn's mechanism with nothing duplicated. It does not join the Quad's lawn layer (the lawn look word, oaks and walks are the Quad's own); its sprite is one seamless drill-lawn unit with a flagpole, so a dragged block reads as one parade ground. The Armory bonus is `LOCAL.paradeArmoryBonus` (+2) within `paradeArmoryRadius` (8) in `rebuildAuras`.
+- **Colleges tab.** `NEW_TAB` no longer sends Agriculture, Science and Veterinary Medicine to Academic: all 15 colleges are in Colleges (unlock order); Academic holds the four general buildings. The per-tab limit is 15 for Colleges (12 elsewhere, Swamp 14 as before).
+
+### The tiers (Part B)
+
+The mechanism is the Stadium's: `tiers` on the row, `buildings.upgradeQuote` / `upgrade`, the inspect card's "Upgrade to X · $price". A tier entry may now also carry `effects` (a partial effects object laid over the row's) and `paint` (a partial paint laid over the row's). The building is closed (`closedUntil`) while it upgrades, as the Stadium is; the card says "closed while it upgrades" and, in progress, "Upgrading to X · done in N days · closed until then". On completion the building takes the tier's name.
+
+| Building | Tier | Cost / upkeep / days | Unlock | What the simulation reads |
+|---|---|---|---|---|
+| Tiger Habitat | 1 Roux's Grand Habitat | $2.4M / $18k / 8 | 2,500 students + prestige 30 | landmark 8 → 14; happiness +5 r15 → +7 r18; home win +5% → +8% (sports.winProb); gators keep 10 → 14 tiles off (wildlife grid); WR 5 |
+| Library | 1 Research Library | $2.2M / $20k / 8 | 2,000 students + prestige 25 | +300 lecture seats (stats, agents' class weights); landmark 4 → 7; happiness +4 r10 → +6 r12; shelter 800 → 1,200 |
+| Dining Hall | 1 Food Court | $650k / $12k / 5 | 1,200 students | feeds 1,200 → 2,000 (the menu's throughput scales with it); dining radius 10 → 12; happiness +3 → +4 r12 |
+| Dining Hall | 2 Culinary Pavilion | $1.5M / $22k / 7 | 3,500 students + prestige 25 | feeds 3,200; radius 14; happiness +5 r14 |
+| Rec Center | 1 Wellness Complex | $1.6M / $17k / 6 | 2,000 students | happiness +6 r10 → +9 r12; heat penalty −50% r10 → −65% r12; shelter 1,000 → 1,500 |
+| Health Center | 1 Student Clinic | $700k / $9k / 5 | 1,200 students | illness: mosquito −60% → −80%, heat −50% → −70% (wildlife.sickNow scales both multipliers) |
+| Parking Lot | 1 Parking Garage | $900k / $5k / 5 | 1,500 students | 600 → 1,800 cars (the extra 1,200 spaces count against the one-lot-per-600 rule); +$2.5k/mo; 3 roofed decks |
+| Parking Lot | 2 Parking Tower | $2.2M / $11k / 7 | 4,000 students | 4,200 cars; +$7k/mo; 6 decks |
+| Student Union | 1 Student Union Commons | $2M / $22k / 7 | 1,500 students | happiness +8 r12 → +11 r14; feeds 400 → 800; shelter 2,000 → 3,000 |
+
+Note: the Union already drew two floors, so its tier is a third floor (stone walls, slate roof, gold cupola) rather than a "second floor". The Parking Lot's parking-income line (`min(lots, lotsNeeded) × $4k`) shrinks when a garage lowers the lots still needed, which the garage's own `revenueMonthly` more than repays.
+
+#### The resolver and the converted read sites
+
+`buildings.effectsOf(state, b | id)` (one function, `effectsOfRow` inside) returns the row's own frozen effects object, the identical object, for a row without tiers and for a building at tier 0; otherwise a frozen merge cached per tier entry (a WeakMap): `{...row.effects, ...tier.effects}` plus the tier's top-level `landmark` / `shelter` when numbers (these two were already tier-aware for the Stadium and Bayou Field and are now read through the same path). 26 read expressions in 6 modules were converted:
+
+- `buildings.js` (14): `menuStats` throughput; `rebuildAuras` happiness, dining radius and heat; `stats` beds, seats, feeds (both branches), landmarks, housing quality / tier split, parking spaces (and a Parking Lot's extra decks); `shelterCapacityOf` (+ both shelterOwn bed caps in `shelter` and `shelterAssignments`).
+- `agents.js` (6): beds of a home, seats of a class hall (three weights: the class list, the class pick, the idle / stroll pick), the kitchen's feeds in `diningCapAgents`, and the habitat's share of idle strolls (`habShare(b)`).
+- `wildlife.js` (3): the habitat's gator-avoid radius, the Health Center's illness multipliers (`healthMults`), and the new ecology `sites` term.
+- `economy.js` (1): `collegeIncome` (revenueMonthly and research per building).
+- `sports.js` (1): `habitatBonus` (the best complete habitat's home win bonus).
+- `ui.js` (1): the inspect card's `ef` (beds, seats, feeds, quality, shelter now show the tier's numbers).
+
+Deliberately row-level (no building to resolve): the placement ghost's overlay radius, the Build card's effect lines (they show the row at tier 0), the substation / tower / generator provider numbers (those rows have no tiers), `issues.js` hint radii, and the Po'boy's voice-card revenue. Also fixed: `wrOf` fell back to `undefined` when a tier carried no `wr` (every tier here sets it, and it now falls back to the row's).
+
+#### How the tiers look
+
+`sprites.paintRow(row, variant)` returns the row as painted at the variant's tier (a cached clone with `tiers[n-1].paint` over `row.paint`); `buildingBox`, the HD `geometry()` and the bake spec all read it, so the canvas grows with the floors. `HD_TIERS` (sprites_buildings_hd.js) overrides a row's HD entry per tier: the Parking Lot's tiers use the new `garage` body (a concrete shell with an open deck every storey, cars, piers, a stair tower, a roof deck with lamps; the tower tier has a gold band and flag). Library, Union and Rec Center get taller, stone-walled and slate / violet-roofed; Dining Hall and Health Center gain a floor and a gallery; the Tiger Habitat (own painter) gets a second waterfall, a cypress on the rock, a second oak, more boulders, two banner poles and gold trim on the plaza. The tier sprites bake lazily (only the Stadium's and the Practice Field's are in the load-time atlas), which keeps the atlas at its ceiling.
+
+### Saves
+
+A building saved before this pass has `tier` 0 (or no key): it loads at tier 0, reads the row's own effects (asserted identical), and offers the upgrade again. Nothing in the save format changed.
+
+### How the ten look
+
+All ten are HD rows (`HD_ROWS`; buildings_hd.test now counts 65). Plain boxes: Campus Store (awnings, STORE sign), Basketball Arena (barrel-vaulted steel roof, columns, Roux banners), Recycling Center (green metal shed, two dumpsters). New own-ground bodies, laid out in footprint fractions so a rotated footprint is the same drawing: `golf` (rough, two mown fairways, greens with purple flags, bunkers, a pond, a cart path, a ring of oaks and cypresses, a hip-roofed clubhouse with a gallery at the front corner), `cistern` (two steel-blue tanks, a purple catchment canopy, downspout, ladder, gauge), `statue` (a stone pedestal and an orange crouching tiger with stripes), `loco` (track, black engine with a gold stripe, stack, cab, drivers and a tender), `jet` (a pole, a white jet with a purple tail), `parade` (seamless turf with a faint drill grid and a flagpole, so a dragged block reads as one drill lawn). The Bus Depot is a shed on a shortened box with a new yard prop `buses` (two purple buses with window bands in bay lines), like the pool deck. Decorations get canvas height from `paint.floors` (the own-ground body paints no walls). Sprites bake lazily (rows 72-81 are skipped by the load-time atlas, as the colleges' are).
+
+### Caps raised
+
+None. `src/js/data.js` is 179.8 KB of 190 KB (the ten rows, nine tiers, ten blurbs); `src/style.css` was not touched (106.2 KB of 108 KB). The data selfTest relaxed one check: a tier's `seats` may be 0 (only the Stadium's and Practice Field's must be positive).
+
+### Rules and numbers changed
+
+`BSU.B_ORDER` 71 → 81, the schema (`tier.effects`, `tier.paint`, with every effect key optional in a tier), `data.tabs` unchanged at 12 but Colleges holds 15, `buildings.upgradeQuote` returns `gains` and `closed`, `wildlife` ecology terms gain `sites`. `params` untouched.
+
+### Tests, gates, numbers
+
+- **Tests.** New `test/unit/expansion.test.mjs` (260 checks): the ten rows (schema, HD entry, no real names, footprints vary, tabs), all 15 colleges in the Colleges tab and Academic at four, every row places on a 96 × 96 map (the golf course after chartering land), the depot refused with no road within 3 and accepted beside one, the fleet +2 per depot, the cistern watering a hall (and not after it is removed), the Parade Ground block (quote, placeRun, +3 happiness, the Armory bonus, a single click), the resolver (identical object at tier 0, nothing to upgrade on a row without tiers), and for each of the seven: quote, gains, charge, closure (effectiveness 0 and "in progress"), completion, rename, **the downstream number** (Library seats 0 → 300 and landmarks +3; Dining Hall feeds ×1.667; Rec Center heat penalty −65% at 12 tiles; Health Center students sick at mosquito index 1, 2,000 students: 16 → 8; Parking lotsNeeded 3 → 1 with 1,200 spaces; Union feeds and happiness at 13 tiles; Habitat win probability and landmarks +6), the sprite variant and a different baked entry, and an old save (tier 0 / no key) loading at tier 0; plus the Parking Tower and Culinary Pavilion second tiers, the Practice Field unchanged through the resolver. Existing assertions updated: `contract.test` (81 ids), `data.test` (81 rows, blurbs, why lines), `colleges.test` (81 rows, Colleges 15, Academic 4), `buildings_hd.test` (65 rows), `sprites_buildings.test` (81 icons), `goal_steps.test` (the in-progress card text now ends "· closed until then"). 47 unit files, every one exits 0.
+- **QA scene.** New `tools/qa/expansion_scene.mjs [--strict]`: 15 shots (the campus at zoom 1, the new buildings and the decorations at zoom 2, the golf course, contact sheets of the ten and of their rotations from the atlas, the seven upgraded buildings before and after in two sheets at master 2 and side by side in the game, the Colleges and Grounds tabs, the Dining Hall card with its gains line), looked at and fixed (the Arena's dome roof had no HD painter and drew as a pyramid: now a barrel vault; the Library, Union and Wellness tiers were hard to tell from their bases: now stone walls and slate / violet roofs; the Habitat's rock-top cypress was clipped by the canvas: scaled). `--strict` exits 0. `colleges_scene.mjs` updated for the 15-card Colleges tab.
+- **Gates, all on the final build.** `node build.mjs --check` OK · `test/smoke.mjs` ALL OK at 96 and 64 · `test/modules.mjs` 20 self-tests, 0 failed · `test/contract.test.mjs` 239 passed · 47 unit files exit 0 (6,246 ok lines) · `tools/qa/play.mjs` ALL OK (96 + 64, 13 scenarios) · `steps_scene.mjs --strict`, `unstick_scene.mjs --strict`, `life_scene.mjs --strict`, `colleges_scene.mjs --strict`, `expansion_scene.mjs --strict` exit 0 · `contrast_audit.mjs` 2,324 checks over 38 states, 0 failing · `u6_matrix.mjs` 72 screenshots.
+
+### Balance
+
+`node tools/qa/campaign.mjs --seed 5 --years 6 --policy goals,greedy`, `tools/qa/out/index-before.html` against the final build (96 × 96). Neither policy builds any of the new rows or upgrades anything, so this run is the proof that routing every effect read through the resolver changed nothing:
+
+| policy | build | Y5 students | Y5 prestige | Y5 cash | Y6 students | Flagship |
+|---|---|---|---|---|---|---|
+| goals | before | 6,729 | 64.8 | $22.3M | 8,003 | none within 6 (year 7) |
+| goals | after | 6,729 | 64.8 | $22.3M | 8,003 | none within 6 (year 7) |
+| greedy | before | 11,500 | 81.8 | $5.3M | 12,964 | year 5 |
+| greedy | after | 11,500 | 81.8 | $5.3M | 12,964 | year 5 |
+
+Every yearly row of both runs is identical to the digit. A new building or tier adds its listed numbers and nothing else; no campaign policy was changed to build them. What a full buy-everything campaign earns is not measured here (the same limitation the colleges pass noted).
+
+### Left alone / not done
+
+- `fps.mjs` not run: no per-frame code was touched (the pass changed sprite bakes at load / first placement, the monthly and daily simulation reads, the spawn of bus fleets and the inspect card, none of which run per frame).
+- The Student Union already painted two floors, so its upgrade adds a third rather than "a second floor"; the Student Union tier is mostly numbers (happiness, feeds, shelter) plus a taller stone-and-slate look.
+- The Campus Store is flat revenue: no existing home-game hook exists for shops, so none was invented.
+- Bus Depot buses join the game-day loop, the arrival fleet and the evacuation; there is no always-on campus bus line (that would be a new routing system and per-frame code).
+- No pen-painter (`sprites_buildings.js`) painters for the ten rows or the garage; only the HD layer draws them.

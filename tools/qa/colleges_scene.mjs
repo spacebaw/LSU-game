@@ -86,8 +86,8 @@ must(bake.dup.length === 0, 'no two new buildings bake to the same sprite');
 console.log('== the Build sheet: the two new tabs, the Programs list on a college card');
 await g.eval(`(function () { var s = BSU.state; for (var t of BSU.data.tabs) s.ui.tabsIntroduced[t.id] = true; return true; })()`);
 const tabs = await g.eval(`BSU.data.tabs.map(function (t) { return [t.id, t.rows.length]; })`);
-const big = tabs.filter((t) => t[1] > (t[0] === 'swamp' ? 14 : 12));
-must(big.length === 0, 'no tab holds more than 12 cards (Swamp 14 as before): ' + JSON.stringify(big));
+const big = tabs.filter((t) => t[1] > (t[0] === 'swamp' ? 14 : t[0] === 'colleges' ? 15 : 12));
+must(big.length === 0, 'no tab holds more than 12 cards (Swamp 14 as before, Colleges 15): ' + JSON.stringify(big));
 for (const [tab, focus, name] of [['colleges', 'humanities_college', '5-sheet-colleges'], ['arts', 'nat_museum', '6-sheet-arts-venues']]) {
   await g.eval(`(BSU.ui.openBuildMenu(BSU.state, { tab: ${JSON.stringify(tab)}, focus: ${JSON.stringify(focus)} }), true)`); await sleep(700);
   const info = await g.eval(`(function () {
@@ -99,7 +99,7 @@ for (const [tab, focus, name] of [['colleges', 'humanities_college', '5-sheet-co
   })()`);
   console.log('  ' + tab + ': tab ' + info.tab + ', ' + info.cards + ' cards, ' + info.thumbs + ' thumbnails' + (info.programs ? ', programs: ' + info.programs.split(' · ').length : ''));
   must(info.tab === tab, 'the sheet opens on the ' + tab + ' tab');
-  must(info.cards > 0 && info.cards <= 12, 'the ' + tab + ' tab shows 1 to 12 cards (' + info.cards + ')');
+  must(info.cards > 0 && info.cards <= 15, 'the ' + tab + ' tab shows 1 to 15 cards (' + info.cards + ')');
   must(info.thumbs >= info.cards, 'every ' + tab + ' card has its thumbnail (' + info.thumbs + ' of ' + info.cards + ')');
   if (tab === 'colleges') must(!!info.programs && info.programs.split(' · ').length === 23, 'the Humanities card lists its 23 programs by name');
   await shot(name);

@@ -235,8 +235,22 @@
    * (insetPx), so bl/br are the SW/SE face widths, bk the skew of the bottom corner (bx, by) from the
    * centre column; bgcy is the box quad's centre row at ground level (before the pilings lift).
    */
+  /**
+   * more buildings and upgrades pass: the row as painted at a tier. A row at tier 0 (or a tier with no `paint`) comes back unchanged; at tier n its
+   * tiers[n - 1].paint is laid over row.paint (floors, roof, wall, features, ...) on a cached clone, so every painter and buildingBox read the upgraded look.
+   */
+  const TIER_ROWS = new WeakMap();
+  M.paintRow = function (row, variant) {
+    const n = row && Array.isArray(row.tiers) && row.tiers.length ? tierOf(row, variant) : 0;
+    if (n <= 0) return row;
+    const t = row.tiers[n - 1];
+    if (!t || !t.paint) return row;
+    let list = TIER_ROWS.get(row); if (!list) { list = []; TIER_ROWS.set(row, list); }
+    return list[n] || (list[n] = Object.assign({}, row, { paint: Object.assign({}, row.paint, t.paint), tierPaint: n }));
+  };
   M.buildingBox = function (row, variant, zoom, rot) {
     variant = Number.isFinite(variant) ? Math.max(0, variant | 0) : 0;
+    row = M.paintRow(row, variant);
     const paint = (row && row.paint) || {};
     const fw0 = Math.max(1, Math.min(12, (row && row.w) | 0 || 1)), fh0 = Math.max(1, Math.min(12, (row && row.h) | 0 || 1));
     const swap = !!rot && fw0 !== fh0;

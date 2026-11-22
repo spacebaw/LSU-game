@@ -30,6 +30,7 @@
     summerMonths: PE.utilities.summerMonths,            // [6, 9]
     quadStackCap: 6,                                    // Quad Lawn stacks to +6 (GDD §0.3 row 23)
     quadValue: 2,
+    paradeArmoryBonus: 2, paradeArmoryRadius: 8,   // more buildings pass
     negAuraCap: 3,                                      // P7: negative happiness auras (Bayou Bunkhouse −1) stack to −3 on a tile
     azaleaBloomBonus: 1,                                // +1 more in bloom (row 38)
     pondStockDays: PH.pond.stockDays,                   // 10
@@ -100,8 +101,24 @@
   function footprintOf(b) { return BSU.footprintTiles(b.tx, b.ty, b.w, b.h) || []; }
   function isComplete(b) { return !!b && b.built >= 1 && !b.ruin; }
   function isClosed(b, day) { return b.closedUntil >= 0 && b.closedUntil >= day; }
-  function wrOf(row, b) { return (b && b.tier > 0 && row.tiers[b.tier - 1]) ? row.tiers[b.tier - 1].wr : row.wr; }
+  function wrOf(row, b) { const t = (b && b.tier > 0 && row.tiers[b.tier - 1]) || null; return (t && Number.isFinite(t.wr)) ? t.wr : row.wr; }
   function tierRow(row, b) { return (b && b.tier > 0 && row.tiers[b.tier - 1]) ? row.tiers[b.tier - 1] : null; }
+  // more buildings and upgrades pass: THE one resolver for what a placed building does. A row without tiers (and a building at tier 0) gets the
+  // row's own frozen effects object back (identical, so nothing that read row.effects can change); a tiered building gets the row's effects with
+  // its current tier's `effects` laid over them (a key replaces the row's whole value) and the tier's top-level landmark / shelter, cached per tier.
+  const TIER_FX = new WeakMap();
+  function effectsOfRow(row, b) {
+    const tr = tierRow(row, b);
+    if (!tr) return row.effects;
+    let m = TIER_FX.get(tr);
+    if (!m) {
+      m = Object.assign({}, row.effects, tr.effects || {});
+      if (Number.isFinite(tr.landmark) && !(tr.effects && 'landmark' in tr.effects)) m.landmark = tr.landmark;
+      if (Number.isFinite(tr.shelter) && !(tr.effects && 'shelter' in tr.effects)) m.shelter = tr.shelter;
+      m = Object.freeze(m); TIER_FX.set(tr, m);
+    }
+    return m;
+  }
   function coreRows() {
     if (!LOCAL.coreRows) { const c = {}; const cat = catalog(); for (const id of Object.keys(cat)) if (cat[id].needsPower || id === 'founders_hall') c[id] = true; LOCAL.coreRows = c; }
     return LOCAL.coreRows;
@@ -406,7 +423,7 @@
     if (active.length) { for (const d of active) { prep += d.prep; cost += d.cost; appeal += d.appeal; } prep /= active.length; cost /= active.length; appeal /= active.length; }
     else { const t = PMx.tier.standard; prep = t.prep; cost = t.cost; appeal = t.appeal; }   // nothing in season (or an empty card): the kitchen falls back to the standard tier
     const mult = PMx.throughputMult / Math.max(0.5, prep);
-    return { cap: cap, menu: menu.slice(), active: active, specials: specials, meanPrep: prep, meanCost: cost, meanAppeal: appeal, mult: mult, throughput: Math.round(fin(row.effects.feeds, 0) * mult) };
+    return { cap: cap, menu: menu.slice(), active: active, specials: specials, meanPrep: prep, meanCost: cost, meanAppeal: appeal, mult: mult, throughput: Math.round(fin(effectsOfRow(row, b).feeds, 0) * mult) };
   }
   M.menuOf = function (state, id) {
     try { const b = M.get(state, id); if (!b || menuCap(b.type) <= 0) return null; return menuStats(state, b); }
@@ -832,7 +849,7 @@
   // number of tiles deep, as a single 2 × 2 lawn's cross is). Every lawn keeps its Live Oak (it counts for ecology and shade as before), planted on
   // the lawn's own tile farthest from the group's middle, so the trees ring the quad and the middle stays open.
   // ---------------------------------------------------------------------------
-  const BLOCK_ROWS = { quad: 1 };
+  const BLOCK_ROWS = { quad: 1, parade: 1 };   // more buildings pass: the Parade Ground drags out as a block exactly as the Quad Lawn does
   const LAWN = { LAWN: 32768, WALK_X: 8, WALK_Y: 10, BENCH: 4096, BED: 8192, OAK: 16384 };
   M.LAWN = LAWN;
   M.isBlockRow = function (id) { return BLOCK_ROWS[id] === 1; };
@@ -2126,15 +2143,41 @@
    * `needs` are concrete and live ("1,500 students (you have 1,240)", "$8M (you have $3.2M + $2M loan line)"); `reason` is the one-line
    * refusal M.upgrade returns ("Needs 1,500 students (you have 1,240)"). next is null at the top tier and for a row without tiers.
    */
+  /** more buildings and upgrades pass: what a placed building does now = its row's effects with its current tier laid over them (the one resolver every effect read goes through) */
+  M.effectsOf = function (state, b) {
+    try {
+      if (Number.isInteger(b)) b = M.get(state, b);
+      const row = b && rowOf(b.type);
+      return row ? effectsOfRow(row, b) : null;
+    } catch (e) { if (BSU.SELFTEST) throw e; BSU.error('buildings', 'effectsOf', e); return null; }
+  };
+  const nf = function (v) { return Math.round(v).toLocaleString('en-US'); }, pc = function (v) { return Math.round(v * 100) + '%'; };
+  /** the real gains of tier `next` over building b's current state, as short strings: ["Feeds 1,200 → 2,000 within 12 tiles", "Happiness +3 → +4 (radius 10 → 12)", ...] */
+  function tierGains(row, b, next) {
+    const a = effectsOfRow(row, b), z = effectsOfRow(row, { tier: next.tier }), out = [];
+    const ch = function (x, y) { return Math.abs(fin(x, 0) - fin(y, 0)) > 1e-9; };
+    if (ch(a.feeds, z.feeds)) out.push('Feeds ' + nf(a.feeds) + ' → ' + nf(z.feeds) + (ch(a.diningRadius, z.diningRadius) ? ' within ' + z.diningRadius + ' tiles' : ''));
+    if (ch(a.seats, z.seats)) out.push(a.seats > 0 ? 'Seats ' + nf(a.seats) + ' → ' + nf(z.seats) : '+' + nf(z.seats) + ' seats');
+    if (ch(a.happiness.value, z.happiness.value) || ch(a.happiness.radius, z.happiness.radius)) out.push('Happiness +' + a.happiness.value + ' → +' + z.happiness.value + (ch(a.happiness.radius, z.happiness.radius) ? ' (radius ' + a.happiness.radius + ' → ' + z.happiness.radius + ')' : ''));
+    if (ch(a.landmark, z.landmark)) out.push('Landmark +' + a.landmark + ' → +' + z.landmark);
+    if (ch(a.shelter, z.shelter)) out.push('Shelter ' + nf(a.shelter) + ' → ' + nf(z.shelter));
+    if (ch(a.heat.mult, z.heat.mult)) out.push('Heat penalty −' + pc(1 - a.heat.mult) + ' → −' + pc(1 - z.heat.mult));
+    if (ch(a.illness.mosquito, z.illness.mosquito) || ch(a.illness.heat, z.illness.heat)) out.push('Illness: mosquito −' + pc(a.illness.mosquito) + ' → −' + pc(z.illness.mosquito) + ', heat −' + pc(a.illness.heat) + ' → −' + pc(z.illness.heat));
+    if (ch(a.parkingPer, z.parkingPer)) out.push('Parks ' + nf(a.parkingPer) + ' → ' + nf(z.parkingPer) + ' students’ cars');
+    if (ch(a.revenueMonthly, z.revenueMonthly)) out.push('Income ' + BSU.formatMoney(a.revenueMonthly) + ' → ' + BSU.formatMoney(z.revenueMonthly) + '/mo');
+    if (ch(a.homeWinBonus, z.homeWinBonus)) out.push('Home win +' + pc(a.homeWinBonus) + ' → +' + pc(z.homeWinBonus));
+    if (ch(a.gatorAvoidRadius, z.gatorAvoidRadius)) out.push('Gators keep ' + a.gatorAvoidRadius + ' → ' + z.gatorAvoidRadius + ' tiles away');
+    return out;
+  }
   M.upgradeQuote = function (state, id) {
-    const out = { ok: false, next: null, reason: '', needs: [], inProgress: false, doneDay: -1 };
+    const out = { ok: false, next: null, reason: '', needs: [], inProgress: false, doneDay: -1, gains: [], closed: false };
     try {
       const b = M.get(state, id);
       if (!b) { out.reason = 'Pick a building'; return out; }
       const row = rowOf(b.type);
       if (!row || !Array.isArray(row.tiers) || !row.tiers.length) { out.reason = 'Nothing to upgrade'; return out; }
       const next = row.tiers.find(function (t) { return t.tier === fin(b.tier, 0) + 1; });
-      if (next) out.next = { tier: next.tier, name: next.name || ('Tier ' + next.tier), cost: fin(next.cost, 0), upkeep: fin(next.upkeep, 0), seats: fin(next.seats, 0), night: !!next.night, buildDays: fin(next.buildDays, PB.tierUpgradeDays) };
+      if (next) out.next = { tier: next.tier, name: next.name || ('Tier ' + next.tier), cost: fin(next.cost, 0), upkeep: fin(next.upkeep, 0), seats: fin(next.seats, 0), night: !!next.night, buildDays: fin(next.buildDays, PB.tierUpgradeDays) }; if (next) { out.gains = tierGains(row, b, next); out.closed = true; }   // more buildings pass: the real gains, and that it is closed while it builds
       if (b.upgradeDoneDay >= 0) { out.inProgress = true; out.doneDay = b.upgradeDoneDay; out.reason = 'Upgrade in progress'; return out; }
       if (!isComplete(b)) { out.reason = b.ruin ? 'A ruin cannot be upgraded' : 'Still under construction'; return out; }
       if (!next) { out.reason = 'Top tier'; return out; }
@@ -2279,6 +2322,7 @@
     for (const b of list) {
       if (b.type === 'substation' && providerUsable(b, day)) subs.push({ b: b, cap: summer ? Math.floor(cat.substation.effects.power.capacity / LOCAL.substationSummerDraw) : cat.substation.effects.power.capacity, used: 0, r: cat.substation.effects.power.radius });
       if (b.type === 'water_tower' && providerUsable(b, day)) towers.push({ b: b, cap: cat.water_tower.effects.water.capacity, used: 0, r: cat.water_tower.effects.water.radius });
+      if (b.type === 'cistern' && providerUsable(b, day) && cat.cistern) towers.push({ b: b, cap: cat.cistern.effects.water.capacity, used: 0, r: cat.cistern.effects.water.radius });   // more buildings pass: the Rainwater Cistern is a small water provider through the same assignment (gravity fed: it needs no power)
       if (b.type === 'generator' && isComplete(b) && !b.flooded && !isClosed(b, day) && fin(b.data.fuelDays, 0) > 0) gens.push(b);
     }
     subs.sort(function (a, b) { return a.b.id - b.b.id; }); towers.sort(function (a, b) { return a.b.id - b.b.id; });
@@ -2309,7 +2353,7 @@
       b.provider.power = -1;
       uncovered++;
     }
-    for (const t of towers) if (!t.b.powered) t.cap = PB.waterTowerUnpoweredCap;
+    for (const t of towers) if (t.b.type === 'water_tower' && !t.b.powered) t.cap = PB.waterTowerUnpoweredCap;
     for (const b of consumers) {
       const row = cat[b.type];
       if (!row.needsWater) { b.watered = false; b.provider.water = -1; continue; }
@@ -2409,10 +2453,13 @@
     const quad = new Float32Array(N);
     const shadeMiss = new Float32Array(N); shadeMiss.fill(1);
     let neg = null;
+    const armories = M.list(state, 'rotc_armory').filter(isComplete);   // more buildings pass: a Parade Ground within LOCAL.paradeArmoryRadius of a finished ROTC Armory is worth LOCAL.paradeArmoryBonus more
     for (const b of M.list(state)) {
       const row = cat[b.type]; if (!row || !isComplete(b)) continue;
       const eff = M.effective(state, b.id); if (eff <= 0) continue;
-      let hp = row.effects.happiness;
+      const ef = effectsOfRow(row, b);
+      let hp = ef.happiness;
+      if (b.type === 'parade' && armories.some(function (r) { return rectDist(b.tx, b.ty, b.w, b.h, r.tx, r.ty, r.w, r.h) <= LOCAL.paradeArmoryRadius; })) hp = { value: hp.value + LOCAL.paradeArmoryBonus, radius: hp.radius };
       if (menuCap(b.type) > 0 && hp.radius > 0 && hp.value > 0) { const ms = menuStats(state, b); hp = { value: hp.value + PMENU().happinessBonus * BSU.clamp((ms.meanAppeal - 1) / 3, 0, 1), radius: hp.radius }; }   // P6: + 0 … +3 by the card's mean appeal (cheap 1 → +0, premium 4 → +3)
       if (b.type === 'quad') {
         forRadius(b.tx, b.ty, b.w, b.h, hp.radius, function (i) { quad[i] = Math.min(LOCAL.quadStackCap, quad[i] + LOCAL.quadValue * eff); });
@@ -2424,8 +2471,8 @@
         neg = neg || new Float32Array(N);
         forRadius(b.tx, b.ty, b.w, b.h, hp.radius, function (i) { neg[i] = Math.min(LOCAL.negAuraCap, neg[i] - hp.value * eff); });
       }
-      if (row.effects.feeds > 0 && row.effects.diningRadius > 0) forRadius(b.tx, b.ty, b.w, b.h, row.effects.diningRadius, function (i) { A.dining[i] = 1; });
-      if (row.effects.heat.radius > 0 && row.effects.heat.mult > 0) forRadius(b.tx, b.ty, b.w, b.h, row.effects.heat.radius, function (i) { A.heat[i] = Math.min(A.heat[i], row.effects.heat.mult); });
+      if (ef.feeds > 0 && ef.diningRadius > 0) forRadius(b.tx, b.ty, b.w, b.h, ef.diningRadius, function (i) { A.dining[i] = 1; });
+      if (ef.heat.radius > 0 && ef.heat.mult > 0) forRadius(b.tx, b.ty, b.w, b.h, ef.heat.radius, function (i) { A.heat[i] = Math.min(A.heat[i], ef.heat.mult); });
     }
     const bloom = inBloom(state);
     for (const v of (state.veg || [])) {
@@ -2493,22 +2540,22 @@
       if (b.hp < 1 && b.built >= 1) s.unrepaired++;
       if (!isComplete(b)) continue;
       const eff = M.effective(state, b.id);
-      const tr = tierRow(row, b);
-      s.beds += row.effects.beds * eff;
-      s.seats += row.effects.seats * eff;
-      if (row.effects.feeds > 0 && menuCap(b.type) > 0) { const ms = menuStats(state, b), fw = ms.throughput * eff; s.feeds += fw; menuW += fw; s.menuCost += ms.meanCost * fw; s.menuAppeal += ms.meanAppeal * fw; }   // P6: a kitchen feeds its menu's throughput, not the row's number
-      else s.feeds += row.effects.feeds * eff;
-      s.landmarks += tr ? tr.landmark : row.effects.landmark;
+      const ef = effectsOfRow(row, b);
+      s.beds += ef.beds * eff;
+      s.seats += ef.seats * eff;
+      if (ef.feeds > 0 && menuCap(b.type) > 0) { const ms = menuStats(state, b), fw = ms.throughput * eff; s.feeds += fw; menuW += fw; s.menuCost += ms.meanCost * fw; s.menuAppeal += ms.meanAppeal * fw; }   // P6: a kitchen feeds its menu's throughput, not the row's number
+      else s.feeds += ef.feeds * eff;
+      s.landmarks += ef.landmark;
       s.buildingValue += row.cost + (row.tiers.slice(0, b.tier).reduce(function (a, t) { return a + t.cost; }, 0));
-      if (row.effects.beds > 0) {
-        qualW += row.effects.beds * eff; s.quality += row.effects.quality * row.effects.beds * eff;   // housing quality = the bed-weighted mean of each row's tier quality (P7: 1 / 2 / 3)
-        const ht = row.effects.housingTier | 0; s[ht === 1 ? 'bedsEconomy' : ht === 3 ? 'bedsPremium' : 'bedsStandard'] += row.effects.beds * eff;
+      if (ef.beds > 0) {
+        qualW += ef.beds * eff; s.quality += ef.quality * ef.beds * eff;   // housing quality = the bed-weighted mean of each row's tier quality (P7: 1 / 2 / 3)
+        const ht = ef.housingTier | 0; s[ht === 1 ? 'bedsEconomy' : ht === 3 ? 'bedsPremium' : 'bedsStandard'] += ef.beds * eff;
       }
-      if (row.effects.parkingSpaces > 0) s.parkingSpaces += row.effects.parkingSpaces * eff;   // P7: Magnolia Suites' 60 spaces count toward the 1-lot-per-600-students requirement
+      if (ef.parkingSpaces > 0) s.parkingSpaces += ef.parkingSpaces * eff;   // P7: Magnolia Suites' 60 spaces count toward the 1-lot-per-600-students requirement
       if (b.type === 'quad') s.oaks++;
       if (b.type === 'pond' && b.data.stockedDay >= 0 && day >= b.data.stockedDay) s.stockedPonds++;
       if (b.type === 'wildlife_post') s.posts++;
-      if (b.type === 'parking') s.lots++;
+      if (b.type === 'parking') { s.lots++; if (ef.parkingPer > PE.parkingPer) s.parkingSpaces += (ef.parkingPer - PE.parkingPer) * eff; }   // more buildings pass: a garage's decks count as the extra lots' worth of spaces
       if (b.type === 'wastewater') s.wastewaterPlants++;
       if (b.type === 'library') s.academicFlags.library = true;
       if (b.type === 'engineering') s.academicFlags.engineering = true;
@@ -2585,13 +2632,13 @@
   function shelterCapacityOf(state, b, row, emergency) {
     if (!isComplete(b) || b.flooded || M.effective(state, b.id) <= 0) return 0;
     if (b.type === 'founders_hall') return emergency ? PS.foundersEmergency : row.effects.shelter;
-    const tr = tierRow(row, b);
-    if (tr) return tr.shelter;
+    const ef = effectsOfRow(row, b);
+    if (tierRow(row, b)) return ef.shelter;
     if (row.shelterOwn) {
       const highAndDry = b.pilings || footprintOf(b).every(function (i) { return state.tiles.elev[i] >= P.terrain.crownElev; });
-      return highAndDry ? row.effects.beds : 0;
+      return highAndDry ? ef.beds : 0;
     }
-    return row.effects.shelter;
+    return ef.shelter;
   }
   /** {capacity, students, ok, lines} — the Storm panel's shelter block (GDD §4.11) */
   M.shelter = function (state) {
@@ -2603,7 +2650,7 @@
         const row = cat[b.type]; if (!row) continue;
         let cap = shelterCapacityOf(state, b, row, emergency);
         if (cap <= 0) continue;
-        if (row.shelterOwn) cap = Math.min(cap, row.effects.beds);
+        if (row.shelterOwn) cap = Math.min(cap, effectsOfRow(row, b).beds);
         capacity += cap;
         lines.push(b.name + ': ' + cap.toLocaleString('en-US') + (row.shelterOwn ? ' residents' : ''));
       }
@@ -2620,7 +2667,7 @@
       for (const b of M.list(state)) {
         const row = cat[b.type]; if (!row) continue;
         let cap = shelterCapacityOf(state, b, row, emergency);
-        if (row.shelterOwn) cap = Math.min(cap, row.effects.beds);
+        if (row.shelterOwn) cap = Math.min(cap, effectsOfRow(row, b).beds);
         if (cap > 0) out[b.id] = cap;
       }
     } catch (e) { if (BSU.SELFTEST) throw e; BSU.error('buildings', 'shelterAssignments', e); }
@@ -3436,6 +3483,7 @@
         b.tier = fin(b.tier, 0) + 1;
         if (b.type === 'stadium' && nm.stadium && nm.stadium[b.tier]) b.name = nm.stadium[b.tier];
         if (b.type === 'practice_field' && b.tier === 1) b.name = (nm.stadium && nm.stadium[0]) || 'Bayou Field';
+        else if (b.type !== 'stadium' && row.tiers && row.tiers[b.tier - 1] && row.tiers[b.tier - 1].name) b.name = row.tiers[b.tier - 1].name;   // more buildings pass: the Library becomes the Research Library, the Parking Lot the Parking Garage
         b.upgradeDoneDay = -1;
         if (b.closedUntil >= 0 && b.closedUntil <= day) b.closedUntil = -1;
         dirtyAll(c);

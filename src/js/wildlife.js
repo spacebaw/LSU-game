@@ -128,6 +128,21 @@
     const tx = b.tx + b.w, ty = b.ty + b.h - 1;
     return BSU.inBounds(tx, ty) ? BSU.idx(tx, ty) : -1;
   }
+  /** more buildings pass: a placed building's effects with its tier laid over them (buildings.effectsOf); the row's own when the module is missing */
+  function effectsOfB(state, b) { const B = dep('buildings'), f = fn(B, 'effectsOf'); const e = f ? f(state, b) : null; if (e) return e; const cat = dep('data') && dep('data').catalog; const r = cat && cat[b.type]; return (r && r.effects) || {}; }
+  /** the Health Center's illness multipliers: {m (mosquito), h (heat)} of the best complete one, scaled from the params' base by its tier's illness effect; null = none built */
+  function healthMults(state) {
+    const l = listBuildings(state, 'health_center'), cat = dep('data') && dep('data').catalog, base = cat && cat.health_center && cat.health_center.effects.illness;
+    let best = null;
+    for (let i = 0; i < l.length; i++) {
+      if (!isComplete(l[i])) continue;
+      const il = effectsOfB(state, l[i]).illness || base || { mosquito: 0.6, heat: 0.5 };
+      const bm = base ? 1 - base.mosquito : 0.4, bh = base ? 1 - base.heat : 0.5;
+      const m = PM.healthMult * (bm > 0 ? (1 - il.mosquito) / bm : 1), h = BSU.params.heat.healthMult * (bh > 0 ? (1 - il.heat) / bh : 1);
+      if (!best || m < best.m) best = { m: m, h: best ? Math.min(best.h, h) : h }; else best.h = Math.min(best.h, h);
+    }
+    return best;
+  }
   function hasBuilding(state, type) { const l = listBuildings(state, type); for (let i = 0; i < l.length; i++) if (isComplete(l[i])) return true; return false; }
   function currentStorm(state) { const Wx = dep('weather'); const f = fn(Wx, 'storm'); if (f) { const s = f(state); if (s !== undefined) return s; } return (state.storms && state.storms.current) || null; }
   function heatInfo(state) {
@@ -228,8 +243,8 @@
     for (let k = 0; k < habs.length; k++) {
       const b = habs[k];
       if (!isComplete(b)) continue;
-      const row = (dep('data') && dep('data').catalog) ? dep('data').catalog.tiger_habitat : null;
-      const rad = (row && row.effects && row.effects.gatorAvoidRadius > 0) ? row.effects.gatorAvoidRadius : PG.habitatRadius;
+      const hef = effectsOfB(state, b);   // more buildings pass: the Grand Habitat keeps gators farther away
+      const rad = (hef && hef.gatorAvoidRadius > 0) ? hef.gatorAvoidRadius : PG.habitatRadius;
       const x0 = Math.max(0, b.tx - rad), x1 = Math.min(W - 1, b.tx + b.w - 1 + rad);
       const y0 = Math.max(0, b.ty - rad), y1 = Math.min(H - 1, b.ty + b.h - 1 + rad);
       for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) habitat[y * W + x] = 1;
@@ -993,15 +1008,19 @@
       if (wl.mosqIndex > PM.biblical) { wl.biblicalDays++; if (wl.biblicalDays === 1) emit(BSU.EV.MOSQUITO_WARNING, { index: wl.mosqIndex, worstTile: worstCampusTile(state) }); }
       else wl.biblicalDays = 0;
     } else wl.biblicalDays = 0;
-    // illness (GDD §6.4, §6.6): Health Center presence applies to the whole term (decision)
-    const students = (state.economy && isNum(state.economy.students)) ? state.economy.students : 0;
-    const health = hasBuilding(state, 'health_center');
-    const sickMosq = students * wl.mosqIndex * PM.illness * (health ? PM.healthMult : 1);
-    const heat = heatInfo(state);
-    const sickHeat = heat.advisory ? students * BSU.params.heat.illness * (health ? BSU.params.heat.healthMult : 1) : 0;
-    wl.sick = Math.max(0, Math.round(sickMosq + sickHeat));
-    if (!isNum(wl.sick)) wl.sick = 0;
+    wl.sick = sickNow(state, wl.mosqIndex);
   }
+  /** illness (GDD §6.4, §6.6): students sick today at a mosquito index; a Health Center applies to the whole term (decision), a Student Clinic cuts more (more buildings pass) */
+  function sickNow(state, mosqIndex) {
+    const students = (state.economy && isNum(state.economy.students)) ? state.economy.students : 0;
+    const health = healthMults(state);
+    const sickMosq = students * mosqIndex * PM.illness * (health ? health.m : 1);
+    const heat = heatInfo(state);
+    const sickHeat = heat.advisory ? students * BSU.params.heat.illness * (health ? health.h : 1) : 0;
+    const sick = Math.max(0, Math.round(sickMosq + sickHeat));
+    return isNum(sick) ? sick : 0;
+  }
+  M.sickNow = function (state, mosqIndex) { try { return sickNow(state, isNum(mosqIndex) ? mosqIndex : (state.wildlife && state.wildlife.mosqIndex) || 0); } catch (e) { BSU.error('wildlife', 'sickNow', e); return 0; } };
   function worstCampusTile(state) {
     const cm = campusOf(state), mosq = state.tiles.mosq;
     let best = -1, bestV = -1;
@@ -1100,6 +1119,8 @@
     }
     const B = dep('buildings'); const sf = fn(B, 'stats');
     if (sf) { try { const s = sf(state); if (s) { if (isNum(s.oaks)) oaks = Math.max(oaks + quads, s.oaks), quads = 0; if (isNum(s.cypress)) cypress = Math.max(cypress, s.cypress); if (isNum(s.stockedPonds)) ponds = Math.max(ponds, s.stockedPonds); if (isNum(s.posts)) posts = Math.max(posts, s.posts); } } catch (e) { BSU.error('wildlife', 'stats', e); } }
+    let sites = 0;   // more buildings pass: rows marked special 'ecoSite' (Golf Course −6, Recycling Center +3) count their effects.ecology
+    for (let k = 0; k < blds.length; k++) { const b = blds[k]; if (!isComplete(b)) continue; const ef = effectsOfB(state, b); if (ef && Array.isArray(ef.special) && ef.special.indexOf('ecoSite') >= 0 && isNum(ef.ecology)) sites += ef.ecology; }
     const oakCount = oaks + quads;
     const original = Math.max(1, isNum(wl.wetlandOriginal) ? wl.wetlandOriginal : 0);
     const lost = wetlandLost(state);
@@ -1117,9 +1138,10 @@
       canalMarsh: -PE.canalMarsh * canalMarsh,
       leveeMarsh: -PE.leveeMarsh * leveeMarsh,
       barrier: -PE.barrierPenalty * (barrier > 0 ? 1 : 0),
+      sites: sites,
       once: once
     };
-    const raw = terms.wetland + terms.preserve + terms.cypress + terms.oak + terms.ponds + terms.posts + terms.fogger + terms.canalMarsh + terms.leveeMarsh + terms.barrier + terms.once;
+    const raw = terms.wetland + terms.preserve + terms.cypress + terms.oak + terms.ponds + terms.posts + terms.fogger + terms.canalMarsh + terms.leveeMarsh + terms.barrier + terms.sites + terms.once;
     terms.sum = isNum(raw) ? raw : 0;         // unclamped (forceEcology solves for `once` against it)
     terms.raw = clamp(terms.sum, 0, 100);
     return terms;

@@ -243,8 +243,13 @@
   }
   function hasField(state) { return call('buildings', 'has', state, 'practice_field') === true; }
   function habitatComplete(state) { return call('buildings', 'has', state, 'tiger_habitat') === true; }
-  function habitatBonus() {
-    try { const row = data().catalog && data().catalog.tiger_habitat; const v = row && row.effects && row.effects.homeWinBonus; return num(v, 0.05); } catch (e) { return 0.05; }
+  function habitatBonus(state0) {
+    try {   // more buildings pass: the best complete habitat's tier-resolved bonus (the Grand Habitat 8 %)
+      const row = data().catalog && data().catalog.tiger_habitat; let v = row && row.effects && row.effects.homeWinBonus, best = null;
+      const list = state0 && call('buildings', 'list', state0, 'tiger_habitat');
+      if (Array.isArray(list)) for (const b of list) if (b && b.built >= 1 && !b.ruin) { const e = call('buildings', 'effectsOf', state0, b); if (e && num(e.homeWinBonus, 0) > num(best, 0)) best = e.homeWinBonus; }
+      return num(best != null ? best : v, 0.05);
+    } catch (e) { return 0.05; }
   }
   /** A complete Rec Center within L.recRadius (Chebyshev between footprints) of any complete practice field. */
   function recCenterNearField(state) {
@@ -780,7 +785,7 @@
     if (state.sports.venue === 'stadium3') opp -= PS.stadium3Opp;
     const adv = home ? (night ? PS.homeNight : PS.homeDay) : 0;
     let p = 1 / (1 + Math.pow(10, (opp - num(team, 0) - adv) / PS.elo));
-    if (home && habitatComplete(state)) p += habitatBonus();
+    if (home && habitatComplete(state)) p += habitatBonus(state);
     return clampP(p);
   }
   /** The season's noisy rating for an opponent key (an unplayed entry first, any entry next, else the base). */

@@ -4,12 +4,12 @@ Loaded: contract.js, data.js, terrain.js, hydro.js, weather.js, wildlife.js, bui
 
 Read this instead of the module sources. Signatures are the real ones. See docs/ARCHITECTURE.md for semantics.
 
-## BSU.B  — enum/table, 71 keys (colleges pass: + rows 49-71, 15 colleges then 8 venues; water pass: + road_bridge, row 48) (e.g. path, road, boardwalk, substation, water_tower, generator, wastewater, founders_hall)
+## BSU.B  — enum/table, 81 keys (more buildings pass: + rows 72-81, campus_store arena golf_course recycling cistern bus_depot tiger_statue locomotive trainer_jet parade; colleges pass: + rows 49-71, 15 colleges then 8 venues; water pass: + road_bridge, row 48) (e.g. path, road, boardwalk, substation, water_tower, generator, wastewater, founders_hall)
 
 ## BSU.BOARD_CARDS
 - values: 0:string, 1:string, 2:string, 3:string, 4:string, 5:string, 6:string, 7:string
 
-## BSU.B_ORDER  — enum/table, 71 keys (rows 49-63 colleges: univ_college online_center business_college education_college masscomm_school humanities_college art_college music_college ag_college science_college honors_college grad_school rotc_armory law_center vet_school; rows 64-71 venues: concert_hall theatre band_hall art_gallery vet_hospital nat_museum computer_lab ag_greenhouses) (e.g. 0, 1, 2, 3, 4, 5, 6, 7)
+## BSU.B_ORDER  — enum/table, 81 keys (rows 72-81 more-buildings pass: campus_store arena golf_course recycling cistern bus_depot tiger_statue locomotive trainer_jet parade; rows 49-63 colleges: univ_college online_center business_college education_college masscomm_school humanities_college art_college music_college ag_college science_college honors_college grad_school rotc_armory law_center vet_school; rows 64-71 venues: concert_hall theatre band_hall art_gallery vet_hospital nat_museum computer_lab ag_greenhouses) (e.g. 0, 1, 2, 3, 4, 5, 6, 7)
 
 ## BSU.EV  — enum/table, 113 keys (e.g. TILE_CHANGED, BUILDING_PLACED, BUILDING_REMOVED, BUILDING_COMPLETE, BUILDING_UPGRADED, BUILDING_FLOODED, BUILDING_DRIED, BUILDING_DAMAGED)
 
@@ -120,6 +120,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - agents.evacuate(state)
 - agents.spawnArrival(state, count, kind)
 - agents.gameDayBuses(state, on)
+- agents.fleetSize(state) → number   // more buildings pass: params.sports.buses + 2 for each finished Bus Depot (at most +4); the game-day loop, the arrival fleet and the evacuation use it
 - agents.startFogger(state, postId)
 - agents.launchCajunNavy(state, dormIds)
 - agents.crewSprites(state, target, n)
@@ -267,7 +268,8 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - buildings.undo(state)
 - buildings.retrofitPilings(state, id, opts)
 - buildings.regrade(state, id)
-- buildings.upgradeQuote(state, id) → { ok, next: {tier, name, cost, upkeep, seats, night, buildDays} | null, reason, needs: [strings], inProgress, doneDay }   // goal steps pass: pure (nothing charged or changed); needs are live ("1,500 students (you have 1,240)", "$8M (you have $3.2M + $2M loan line)"); next is null at the top tier and for a row without tiers
+- buildings.upgradeQuote(state, id) → { ok, next: {tier, name, cost, upkeep, seats, night, buildDays} | null, reason, needs: [strings], inProgress, doneDay, gains: [strings], closed } (more buildings pass: gains = the real number changes of the next tier, "Feeds 1,200 → 2,000 within 12 tiles"; closed = the building is shut while it upgrades)   // goal steps pass: pure (nothing charged or changed); needs are live ("1,500 students (you have 1,240)", "$8M (you have $3.2M + $2M loan line)"); next is null at the top tier and for a row without tiers
+- buildings.effectsOf(state, b | id) → effects | null   // more buildings pass: THE resolver. The row's own frozen effects object at tier 0 and for a row without tiers (identical object); otherwise the row's effects with tiers[tier-1].effects laid over them (a key replaces the row's whole value) plus the tier's top-level landmark / shelter, cached per tier. Every effect read of a placed building goes through it
 - buildings.upgrade(state, id)   // goal steps pass: a refusal carries upgradeQuote's reason ("Needs 400 students (you have 300)"), never a bare "Locked"
 - buildings.setPolicy(state, id, key, value)
 - buildings.refuel(state, id)
@@ -935,6 +937,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - sprites.offsetPen(P, dx, dy)
 - sprites._fillPoly(P, pts, color)
 - sprites.buildingBox(row, variant, zoom, rot)
+- sprites.paintRow(row, variant) → row   // more buildings pass: the row as painted at the variant's tier: unchanged at tier 0 or with no tier paint, else a cached clone with tiers[tier-1].paint laid over row.paint (floors, roof, wall, features...); buildingBox, the HD geometry and the bake spec all read it
 - sprites.teeable(row, rot)
 - sprites.teeCode(side, k, surf)
 - sprites.rampOf(hex)
@@ -1206,6 +1209,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - wildlife.mosqAt()
 - wildlife.mosqIndex()
 - wildlife.ecology()
+- wildlife.sickNow(state, mosqIndex) → number   // more buildings pass: students sick today at a mosquito index; the best Health Center's tier scales both illness multipliers; ecology terms gain `sites` (Golf Course -6, Recycling +3 through special 'ecoSite')
 - wildlife.ecologyTerms()
 - wildlife.wetlandLost()
 - wildlife.campusMask()

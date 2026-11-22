@@ -230,7 +230,7 @@ s = fresh();
   setStudents(s, 1700); c = insp(); click(c.b); U.update(s, 600);
   ok(pf.upgradeDoneDay === s.calendar.day + 6 && s.economy.cash === 16e6 - 600000, 'the click buys it');
   q = B.upgradeQuote(s, pf.id); ok(!q.ok && q.inProgress && q.doneDay === pf.upgradeDoneDay && q.next.name === 'Bayou Field' && q.reason === 'Upgrade in progress', 'in progress: inProgress, doneDay, the tier being built');
-  c = insp(); ok(live(c.up) && !live(c.b) && /^Upgrading to Bayou Field · done in 6 days$/.test(deepText(c.up).trim()), 'the card says "' + deepText(c.up).trim() + '"');
+  c = insp(); ok(live(c.up) && !live(c.b) && /^Upgrading to Bayou Field · done in 6 days · closed until then$/.test(deepText(c.up).trim()), 'the card says "' + deepText(c.up).trim() + '"');
   for (let k = 0; k < 14 && pf.tier < 1; k++) H.tick(TPD);   // the Spring Game's set piece holds the calendar for a while
   U.update(s, 600);
   ok(pf.tier === 1 && pf.name === 'Bayou Field' && s.calendar.day >= pf.builtDay + 6, 'six days later it is Bayou Field');
