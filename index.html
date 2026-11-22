@@ -42701,7 +42701,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
   function buildChips() {
     const perf = el('div', 'chip hidden', ''); perf.id = 'perf-chip'; const pm = el('div', 'chip hidden', 'Performance mode'); pm.id = 'perfmode-chip';
     const h = el('div', 'hidden'); h.id = 'hint'; const ht = el('span', null, ''); const ha = btn('btn-hint-action', '', 'small hidden', function () { if (hint && hint.action && typeof hint.action.fn === 'function') { hint.action.fn(stateOf()); } hideHint(); }); h.appendChild(ht); h.appendChild(ha);
-    const skip = btn('btn-skip', 'Skip', 'hidden', function () { const s = stateOf(); if (s && s.setPiece) call('session', 'skipSetPiece', s); }); skip.appendChild(icon('skip_next', 's20'));
+    const skip = btn('btn-skip', 'Skip', 'hidden', function () { skipNow(); }); skip.appendChild(icon('skip_next', 's20'));
     // undo pass: the Undo chip (above the palette, bottom-left) — shown for the undo window after any placement or drag run; click = Ctrl+Z
     const uc = btn('undo-chip', '', 'hidden', function () { doUndo(stateOf()); }); const ucMain = el('span', 'uc-main', ''); const ucBar = el('span', 'uc-bar'); const ucFill = el('span', 'uc-fill'); ucBar.appendChild(ucFill);
     uc.appendChild((function () { const g = el('span', 'uc-glyph'); g.appendChild(icon('undo', 's20')); return g; })()); uc.appendChild(ucMain); uc.appendChild(el('span', 'key', 'Ctrl+Z')); uc.appendChild(ucBar);
@@ -46006,6 +46006,15 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
   // ---------------------------------------------------------------------------
   // Set pieces, perf chip, uiQueue
   // ---------------------------------------------------------------------------
+  /** skip pass: Skip, then run the one tick that ends the set piece. A set piece only ends inside a sim tick, so a paused game (or one
+   *  held on a decision) used to take the click and show nothing until it was unpaused. */
+  function skipNow() {
+    const s = stateOf(); if (!s || !s.setPiece) return false;
+    call('session', 'skipSetPiece', s);
+    const sp = s.setPiece;
+    if (sp && fin(sp.tick, 0) >= fin(sp.len, 0) - 1) call('session', 'tick1');
+    return !s.setPiece;
+  }
   let fabShown = null;
   function updateSetPiece(s) {
     const sp = s.setPiece; const hasTabs = !!paletteKey.split('|')[0]; const hidePalette = !!sp || titleOn || !hasTabs || !pal.open || bm.open;   // U2: the Build sheet shows only while open
@@ -46014,7 +46023,8 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
     if (fabOn !== fabShown) { fabShown = fabOn; show(E['fab-build'], fabOn); }
     cls(E.hud, 'setpiece', !!sp);
     if (sp && bm.open) M.closeBuildMenu();
-    const skip = !!(sp && sp.skippable && fin(sp.tick, 0) >= L.skipAfterTick);
+    const cs = sp ? call('session', 'canSkip', s) : false;   // skip pass: ask the session, which knows the owner's rule (a stub without canSkip keeps the old test)
+    const skip = !!(sp && (typeof cs === 'boolean' ? cs : (sp.skippable && fin(sp.tick, 0) >= L.skipAfterTick)));
     if (skip !== skipShown) { skipShown = skip; show(E['btn-skip'], skip); }
     if (sp && s.ui.tool && !toolLocked) M.selectTool(s, null);
   }
@@ -51670,6 +51680,15 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
     emit(EV.SETPIECE_END || 'setpiece:end', { kind: kind, len: len });
     if (deferredAutosave) { deferredAutosave = false; autosave(); }
   };
+  /** skip pass: true when Skip would act right now. Skippable, past params.time.skipAfterTick, and a full game past its kickoff
+   *  (sports.skipToFinal refuses before it, so the button used to show for 50 ticks and do nothing). */
+  M.canSkip = function (s) {
+    s = s || BSU.state;
+    const sp = s && s.setPiece;
+    if (!sp || !sp.skippable || fin(sp.tick, 0) < PT.skipAfterTick) return false;
+    if (sp.kind === 'game' && fin(sp.tick, 0) < fin(BSU.params.sports && BSU.params.sports.kickoffTick, 0)) return false;
+    return true;
+  };
   /** Skip the running set piece when skippable and past params.time.skipAfterTick; dispatches to the owner. */
   M.skipSetPiece = function (s) {
     s = s || BSU.state;
@@ -51677,7 +51696,7 @@ body.reduce-motion .coach-ring::after{animation:none !important;opacity:0}
     if (!sp || !sp.skippable || sp.tick < PT.skipAfterTick) return;
     const kind = sp.kind, len = sp.len;
     if (kind === 'landfall') call('weather', 'skipSetPiece', s);
-    else if (kind === 'game' || kind === 'montage') call('sports', 'skipToFinal', s);
+    else if (kind === 'game' || kind === 'montage' || kind === 'spring') call('sports', 'skipToFinal', s);   // skip pass: the Spring Game has an owner too (it used to fall through to the bare jump)
     else if ((kind === 'parade' || kind === 'graduation') && has('progress', 'skipSetPiece')) call('progress', 'skipSetPiece', s);
     else sp.tick = len - 1;
     if (s.setPiece === sp && sp.tick < len - 1 && kind !== 'game' && kind !== 'montage') sp.tick = len - 1;

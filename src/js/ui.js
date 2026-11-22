@@ -554,7 +554,7 @@
   function buildChips() {
     const perf = el('div', 'chip hidden', ''); perf.id = 'perf-chip'; const pm = el('div', 'chip hidden', 'Performance mode'); pm.id = 'perfmode-chip';
     const h = el('div', 'hidden'); h.id = 'hint'; const ht = el('span', null, ''); const ha = btn('btn-hint-action', '', 'small hidden', function () { if (hint && hint.action && typeof hint.action.fn === 'function') { hint.action.fn(stateOf()); } hideHint(); }); h.appendChild(ht); h.appendChild(ha);
-    const skip = btn('btn-skip', 'Skip', 'hidden', function () { const s = stateOf(); if (s && s.setPiece) call('session', 'skipSetPiece', s); }); skip.appendChild(icon('skip_next', 's20'));
+    const skip = btn('btn-skip', 'Skip', 'hidden', function () { skipNow(); }); skip.appendChild(icon('skip_next', 's20'));
     // undo pass: the Undo chip (above the palette, bottom-left) — shown for the undo window after any placement or drag run; click = Ctrl+Z
     const uc = btn('undo-chip', '', 'hidden', function () { doUndo(stateOf()); }); const ucMain = el('span', 'uc-main', ''); const ucBar = el('span', 'uc-bar'); const ucFill = el('span', 'uc-fill'); ucBar.appendChild(ucFill);
     uc.appendChild((function () { const g = el('span', 'uc-glyph'); g.appendChild(icon('undo', 's20')); return g; })()); uc.appendChild(ucMain); uc.appendChild(el('span', 'key', 'Ctrl+Z')); uc.appendChild(ucBar);
@@ -3859,6 +3859,15 @@
   // ---------------------------------------------------------------------------
   // Set pieces, perf chip, uiQueue
   // ---------------------------------------------------------------------------
+  /** skip pass: Skip, then run the one tick that ends the set piece. A set piece only ends inside a sim tick, so a paused game (or one
+   *  held on a decision) used to take the click and show nothing until it was unpaused. */
+  function skipNow() {
+    const s = stateOf(); if (!s || !s.setPiece) return false;
+    call('session', 'skipSetPiece', s);
+    const sp = s.setPiece;
+    if (sp && fin(sp.tick, 0) >= fin(sp.len, 0) - 1) call('session', 'tick1');
+    return !s.setPiece;
+  }
   let fabShown = null;
   function updateSetPiece(s) {
     const sp = s.setPiece; const hasTabs = !!paletteKey.split('|')[0]; const hidePalette = !!sp || titleOn || !hasTabs || !pal.open || bm.open;   // U2: the Build sheet shows only while open
@@ -3867,7 +3876,8 @@
     if (fabOn !== fabShown) { fabShown = fabOn; show(E['fab-build'], fabOn); }
     cls(E.hud, 'setpiece', !!sp);
     if (sp && bm.open) M.closeBuildMenu();
-    const skip = !!(sp && sp.skippable && fin(sp.tick, 0) >= L.skipAfterTick);
+    const cs = sp ? call('session', 'canSkip', s) : false;   // skip pass: ask the session, which knows the owner's rule (a stub without canSkip keeps the old test)
+    const skip = !!(sp && (typeof cs === 'boolean' ? cs : (sp.skippable && fin(sp.tick, 0) >= L.skipAfterTick)));
     if (skip !== skipShown) { skipShown = skip; show(E['btn-skip'], skip); }
     if (sp && s.ui.tool && !toolLocked) M.selectTool(s, null);
   }

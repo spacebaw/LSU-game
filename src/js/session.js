@@ -144,6 +144,15 @@
     emit(EV.SETPIECE_END || 'setpiece:end', { kind: kind, len: len });
     if (deferredAutosave) { deferredAutosave = false; autosave(); }
   };
+  /** skip pass: true when Skip would act right now. Skippable, past params.time.skipAfterTick, and a full game past its kickoff
+   *  (sports.skipToFinal refuses before it, so the button used to show for 50 ticks and do nothing). */
+  M.canSkip = function (s) {
+    s = s || BSU.state;
+    const sp = s && s.setPiece;
+    if (!sp || !sp.skippable || fin(sp.tick, 0) < PT.skipAfterTick) return false;
+    if (sp.kind === 'game' && fin(sp.tick, 0) < fin(BSU.params.sports && BSU.params.sports.kickoffTick, 0)) return false;
+    return true;
+  };
   /** Skip the running set piece when skippable and past params.time.skipAfterTick; dispatches to the owner. */
   M.skipSetPiece = function (s) {
     s = s || BSU.state;
@@ -151,7 +160,7 @@
     if (!sp || !sp.skippable || sp.tick < PT.skipAfterTick) return;
     const kind = sp.kind, len = sp.len;
     if (kind === 'landfall') call('weather', 'skipSetPiece', s);
-    else if (kind === 'game' || kind === 'montage') call('sports', 'skipToFinal', s);
+    else if (kind === 'game' || kind === 'montage' || kind === 'spring') call('sports', 'skipToFinal', s);   // skip pass: the Spring Game has an owner too (it used to fall through to the bare jump)
     else if ((kind === 'parade' || kind === 'graduation') && has('progress', 'skipSetPiece')) call('progress', 'skipSetPiece', s);
     else sp.tick = len - 1;
     if (s.setPiece === sp && sp.tick < len - 1 && kind !== 'game' && kind !== 'montage') sp.tick = len - 1;

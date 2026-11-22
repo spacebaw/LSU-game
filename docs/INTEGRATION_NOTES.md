@@ -2190,3 +2190,15 @@ Every yearly row of both runs is identical to the digit. A new building or tier 
 - The Campus Store is flat revenue: no existing home-game hook exists for shops, so none was invented.
 - Bus Depot buses join the game-day loop, the arrival fleet and the evacuation; there is no always-on campus bus line (that would be a new routing system and per-frame code).
 - No pen-painter (`sprites_buildings.js`) painters for the ten rows or the garage; only the HD layer draws them.
+
+## skip pass (the Skip button acts on one click)
+
+Josh, 2026-11-22: "the skip button in the lower right never seems to work".
+
+- **What was wrong** (`tools/qa/skip_scene.mjs --index tools/qa/out/index-before.html`, real clicks on `#btn-skip`):
+  - A set piece only ends inside a sim tick (`session.tick1`, step 10). Skip set `setPiece.tick = len - 1` and waited for the next tick, so with the game paused, or held, the click was taken and nothing happened until it was unpaused.
+  - In a full game the button showed from `params.time.skipAfterTick` (150) but `sports.skipToFinal` refuses before `params.sports.kickoffTick` (200), and `session.skipSetPiece` never forces a game: 50 ticks of a button that did nothing.
+  - The Spring Game was not routed to its owner (`sports.skipToFinal` handles `spring`); it fell through to the bare jump.
+- **Changed.** `session.canSkip(state)` is the one rule for "Skip would act now" (skippable, past `skipAfterTick`, and a full game past kickoff); `ui.updateSetPiece` shows the button from it. The button's handler (`ui.skipNow`) calls `session.skipSetPiece` and then, when the set piece is on its last tick, runs `session.tick1()` once so it ends on the click at any speed, paused included. `session.skipSetPiece` sends `spring` to `sports.skipToFinal` (the bare jump is still the fallback when the owner declines).
+- **Unchanged.** A set piece is skippable only from its second viewing (`skippable: seen`), so the button does not appear the first time. Ending a set piece restores the speed from before it, as a natural end does.
+- **QA.** New `tools/qa/skip_scene.mjs --strict`: a full game before and after kickoff, a parade skipped while paused, a near miss, a Spring Game and a graduation; each must end on one click with no ticks run by the scene. Before: 6 problems. After: ALL OK.
