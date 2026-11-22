@@ -343,6 +343,7 @@
     M.dirtyChunk(cx + cy * CXN);
     teeInvalidateNear(i);
     curvesDirty = true;
+    if (p.what === 'crest' || p.what === undefined) wallsDirty = true;   // campus life pass: the entity pass asks whether the map has any wall
     // neighbours' cliff faces / auto-tile masks live in the adjacent chunk when the tile sits on a chunk edge, and a
     // smoothed centreline bends up to ~1.5 tiles from a changed tile (smoothing pass), so one tile in also re-bakes it
     if ((tx & 7) <= 1 && cx > 0) M.dirtyChunk(cx - 1 + cy * CXN);
@@ -1177,6 +1178,7 @@
     markCypress(state);
     const cv = ensureCurves(state), deck = cv ? cv.deck : null;
     const fillM = (BSU.buildings && typeof BSU.buildings.fillMask === 'function') ? BSU.buildings.fillMask(state) : null;   // L3: stage + 1 per tile of a Dredge & fill run in progress (null = none)
+    const lawn = lawnLookOf(state);   // campus life pass (N26): the Quad Lawns' ground layer (buildings.lawnLayout's look word per tile; null = none on the map)
     if (ch.deck) { try { ch.deckCtx.setTransform(1, 0, 0, 1, 0, 0); ch.deckCtx.clearRect(0, 0, ch.deck.width, ch.deck.height); } catch (e) { /* stub */ } }
     ch.deckTiles = [];
     const bx = ch.cx * CS, by = ch.cy * CS;
@@ -1223,6 +1225,8 @@
         }
         if (ty8 >= T.MARSH && ty8 !== T.POND && surf[i] !== SURF.PATH && surf[i] !== SURF.ROAD && (nearCypress(i, tx, ty) || cypStamp[i] === cypGen) && (fin(depth[i], 0) > 0.05 || ty8 === T.MARSH)) { ref = tref('knees', (tx & 7) | ((ty & 7) << 3), 0, 1); if (ref) blit1(g, ref, wx, wy); }   // art pass B2: a tile overlay keyed by position, knees on the pool rims
         if (f & FLAG.DESIRE_WORN) { ref = tref('worn', 0, 0, 1); if (ref) blit1(g, ref, wx, wy); }
+        // (d2) campus life pass (N26): a finished Quad Lawn's tile, drawn as part of its group (no kerb between lawns; the group's walks, benches and beds)
+        if (lawn !== null && lawn[i] !== 0) { ref = tref('lawn', lawn[i], 0, 1); if (ref) blit1(g, ref, wx, wy); }
         // (f) canal cut (open gate variant baked; pass 3 overlays the live gate frame); water pass: the cut runs on to the open water it drains into
         if (f & FLAG.CANAL) { let v = flagMask(fl, i, tx, ty, FLAG.CANAL, false) | nbrMask(t, i, tx, ty, waterTypeAt); if (surf[i] > 0) v |= 16; ref = tref('canal', v, 0, 1); if (ref) blit1(g, ref, wx, wy); }
         // (e) surfaces: fences stay auto-tiled stamps; paths / roads / boardwalks are stroked centrelines (smoothing pass),
@@ -1257,6 +1261,24 @@
     const bs = bakeStat[m]; bs.n++; bs.ms += nowMs() - tb;
     if (m === 2) hdCapCheck();
   }
+  // campus life pass (N26): the lawns' look words as last baked. lawnSync (once a frame) re-bakes the chunks of every tile whose word changed: a lawn
+  // finished or removed re-shapes its whole group (kerbs, walks, the oaks' tiles), which may lie in other chunks than the lawn itself
+  let lawnPrev = null, lawnVerSeen = -1, lawnAny = false, lawnRoot = null;
+  function lawnLayoutOf(state) { const bl = mod('buildings'); try { return bl && typeof bl.lawnLayout === 'function' ? bl.lawnLayout(state) : null; } catch (e) { return null; } }
+  function lawnLookOf(state) { const L = lawnLayoutOf(state); return L && L.groups.length ? L.look : null; }
+  function lawnSync(state) {
+    const L = lawnLayoutOf(state); if (!L) { lawnAny = false; return null; }
+    if (lawnRoot !== state || !lawnPrev || lawnPrev.length !== L.look.length) { lawnRoot = state; lawnPrev = new Uint16Array(L.look.length); lawnVerSeen = -1; }
+    if (L.ver !== lawnVerSeen) {
+      lawnVerSeen = L.ver;
+      const look = L.look;
+      for (let i = 0; i < look.length; i++) if (look[i] !== lawnPrev[i]) { lawnPrev[i] = look[i]; M.dirtyChunk(((i % W) >> 3) + (((i / W) | 0) >> 3) * CXN); }
+    }
+    lawnAny = L.groups.length > 0;
+    return L;
+  }
+  /** campus life pass (tests / QA): {groups, oaks, tiles} of the lawn ground layer as the last frame saw it */
+  M.lawnInfo = function () { const L = root ? lawnLayoutOf(root) : null; let n = 0; if (L) for (let i = 0; i < L.look.length; i++) if (L.look[i]) n++; return { groups: L ? L.groups.length : 0, oaks: L ? L.oaks.length : 0, tiles: n }; };
   const bakeStat = { 1: { n: 0, ms: 0 }, 2: { n: 0, ms: 0 } };   // H0: chunk bake counts / ms per master since load (hdInfo().bake; tests and the H0/H7 gates)
   M.bakeStatReset = function () { bakeStat[1].n = 0; bakeStat[1].ms = 0; bakeStat[2].n = 0; bakeStat[2].ms = 0; };
   function evictChunks() {
@@ -1952,11 +1974,56 @@
     if (!inView(tx, ty, 2)) return null;
     const i = ty * W + tx;
     const el = elevFn(state.tiles, i);
+    const onWall = wallsAny && state.tiles.crest[i] > 0;
+    if (wallsAny && !onWall) wallsInFront(state.tiles, tx, ty, el);   // (pushed BEFORE the mover: callers re-key the entry they get back as the last one pushed)
     const e = push(kind, ax - 0.5, ay - 0.5, el, 2, kind === 'agent' ? drawAgent : drawSprite);
+    if (onWall) { const k = wallKey(tx, ty) + 0.5; if (e.key < k) { e.key = k; keys[count - 1] = k; } }   // on the crown: after its own wall tile, wherever on the tile it stands
     e.ref = getRefE(id, variant, frame); e.id = id; e.variant = variant; e.frame = frame;
     moverScreen(e);
     return e;
   }
+  // ---------------------------------------------------------------------------
+  // campus life pass — draw order at walls. Levees and floodwalls are baked into the ground layer (36 and 72 px tall), and every entity is drawn
+  // after the ground: a student, a tree or a building standing right BEHIND a wall was drawn over it. Now an entity that stands behind a wall tile
+  // whose top rises over its feet on screen pushes that wall tile into the depth-sorted list as well (the tile's own sprite, once a frame): it is
+  // drawn after everything on the diagonals behind it (it hides them as far as it is tall) and before everything in front. Nothing is pushed for a
+  // wall with nobody behind it, and nothing at all on a map without walls (wallsAny, re-read when a crest changes).
+  // ---------------------------------------------------------------------------
+  let wallsAny = false, wallsDirty = true, wallsPushed = 0, wallSeen = null;
+  const WALL_OFF = [1, 0, 0, 1, 1, 1, 2, 1, 1, 2, 2, 2];   // the tiles in front of (tx, ty) whose wall can cover a foot there: a 6-ft levee one diagonal out, a 12-ft floodwall two
+  function wallKey(x, y) { return 100 * (x + y) + 99; }     // the end of the tile's own diagonal: after everything behind and beside it, before the next diagonal
+  function wallsScan(state) { const c = state.tiles.crest; wallsAny = false; for (let i = 0; i < c.length; i++) if (c[i] > 0) { wallsAny = true; break; } wallsDirty = false; if (!wallSeen || wallSeen.length !== c.length) wallSeen = new Uint32Array(c.length); }
+  function pushWall(t, i, x, y, minKey) {
+    if (wallSeen[i] === frameNo) return; wallSeen[i] = frameNo;
+    const cr = t.crest[i], el = fin(t.elev[i], 0);
+    const e = push('wall', x, y, el, 0, drawSprite);
+    e.key = Math.max(wallKey(x, y), fin(minKey, 0)); keys[count - 1] = e.key;
+    e.ref = getRef(cr >= 12 ? 'floodwall' : 'levee', wallVariant(t.crest, t.integrity, i, x, y), 0); tileScreen(e); wallsPushed++;
+    if (t.sandbag && t.sandbag[i] > 0) { const d = push('decal', x, y, el + cr - 2 / PXFT, 0, drawSprite); d.key = e.key + 0.2; keys[count - 1] = d.key; d.ref = getRef('decal:sandbags', 0, 0); d.id = 'decal:sandbags'; tileScreen(d); }
+  }
+  /** the wall tiles in front of tile (tx, ty) that rise over a foot standing there at `feet` ft */
+  function wallsInFront(t, tx, ty, feet) {
+    const crest = t.crest, elev = t.elev;
+    for (let k = 0; k < 12; k += 2) {
+      const x = tx + WALL_OFF[k], y = ty + WALL_OFF[k + 1]; if (x >= W || y >= HGT) continue;
+      const i = y * W + x, cr = crest[i]; if (cr === 0) continue;
+      if ((fin(elev[i], 0) + cr - feet) * PXFT - (WALL_OFF[k] + WALL_OFF[k + 1]) * 16 <= 2) continue;   // its top is not above the foot on screen
+      pushWall(t, i, x, y, 0);
+    }
+  }
+  /** the wall tiles in front of a building's two near faces (within two tiles): each is drawn after the building */
+  function wallsInFrontOf(t, b, bKey) {
+    const crest = t.crest, elev = t.elev, x0 = b.tx | 0, y0 = b.ty | 0, x1 = x0 + (b.w | 0) - 1, y1 = y0 + (b.h | 0) - 1, feet = fin(elev[y1 * W + x1], 0);
+    for (let y = y0; y <= Math.min(HGT - 1, y1 + 2); y++) for (let x = x0; x <= Math.min(W - 1, x1 + 2); x++) {
+      if (x <= x1 && y <= y1) continue;
+      const i = y * W + x, cr = crest[i]; if (cr === 0) continue;
+      const d = Math.max(0, x - x1) + Math.max(0, y - y1);
+      if ((fin(elev[i], 0) + cr - feet) * PXFT - d * 16 <= 2) continue;
+      pushWall(t, i, x, y, bKey + 0.3);
+    }
+  }
+  /** campus life pass (tests / QA): the wall tiles the last frame drew again in the entity pass, and whether the map has any wall */
+  M.wallOrder = function () { return { any: wallsAny, pushed: wallsPushed }; };
   /** ground elevation — or, on a deck over water (bridge pass), the deck's: students and buses walk the deck, not the bed */
   const groundElev = (t, i) => { const d = curves && curves.deck; return (d && d[i] === d[i]) ? d[i] : fin(t.elev[i], 0) + (t.crest[i] > 0 && t.owner[i] < 0 ? t.crest[i] : 0); };   // water pass: on a levee they walk its crown (the berm is drawn at its true height)
   const VEH_ID = { pirogue: 'pirogue', bus: 'bus', fogger: 'fogger', cajunNavy: 'navy', navy: 'navy', crew: 'officer', float: 'float' };
@@ -2159,15 +2226,18 @@
   /** the painted field's footprint rect {x0, y0, x1, y1, fw, fh} (tiles; X along +tx, Y along +ty) exactly as the stadium / practice-field painters draw it */
   M.fieldQuad = function (b) {
     if (!b) return null;
-    const fw = Math.max(1, fin(b.w, 1)), fh = Math.max(1, fin(b.h, 1));
-    if (b.type === 'practice_field') return { x0: 0.6, y0: 0.3, x1: fw - 0.6, y1: fh - 0.3, fw: fw, fh: fh };
-    if (b.type === 'stadium') return { x0: 1, y0: 1, x1: fw - 1, y1: fh - 1, fw: fw, fh: fh };
+    // campus life pass (N8): the quad is in FIELD space (X along the field's length). A rotated venue (its footprint longer in Y: T) is the same field
+    // transposed: fieldToTile and fbScreen swap X and Y, as the painters mirror the sprite. The yard lines, the players and the crowd follow the rotation
+    const T = fin(b.h, 1) > fin(b.w, 1), fw = Math.max(1, fin(T ? b.h : b.w, 1)), fh = Math.max(1, fin(T ? b.w : b.h, 1));
+    if (b.type === 'practice_field') return { x0: 0.6, y0: 0.3, x1: fw - 0.6, y1: fh - 0.3, fw: fw, fh: fh, T: T };
+    if (b.type === 'stadium') return { x0: 1, y0: 1, x1: fw - 1, y1: fh - 1, fw: fw, fh: fh, T: T };
     return null;
   };
   /** field yards → continuous tile coords: u −10…110 along the field (end zones included; BSU's goal line u = 0, the engine's `spot`), v 0…53.3 across (0 = the far sideline = the home bench) */
   M.fieldToTile = function (b, u, v, q) {
     q = q || M.fieldQuad(b); if (!q) return null;
-    return { tx: fin(b.tx, 0) + q.x0 + (fin(u, 0) + 10) / FB_YD_U * (q.x1 - q.x0), ty: fin(b.ty, 0) + q.y0 + fin(v, 0) / FB_YD_V * (q.y1 - q.y0) };
+    const X = q.x0 + (fin(u, 0) + 10) / FB_YD_U * (q.x1 - q.x0), Y = q.y0 + fin(v, 0) / FB_YD_V * (q.y1 - q.y0);
+    return q.T ? { tx: fin(b.tx, 0) + Y, ty: fin(b.ty, 0) + X } : { tx: fin(b.tx, 0) + X, ty: fin(b.ty, 0) + Y };
   };
   /** → world px (zoom 1) of that field point on the venue's ground plane, `up` px above it (the venue's anchor elevation, like the building sprite) */
   M.fieldToWorld = function (b, u, v, up, q) {
@@ -2266,8 +2336,8 @@
   }
   // -- entity helpers -----------------------------------------------------------------------
   const fbScr = { x: 0, y: 0 };
-  function fbScreen(G, X, Y, up) {   // footprint (X, Y) tiles lifted `up` px → canvas px (into fbScr)
-    const tx = G.tx0 + X, ty = G.ty0 + Y;
+  function fbScreen(G, X, Y, up) {   // field-space (X, Y) tiles lifted `up` px → canvas px (into fbScr); a rotated venue (G.T) is transposed
+    const tx = G.tx0 + (G.T ? Y : X), ty = G.ty0 + (G.T ? X : Y);
     const wx = (tx - ty) * 32, wy = (tx + ty - 1) * 16 - G.el * PXFT - (up || 0);
     fbScr.x = (wx - camera.x) * zoomNow + vw / 2; fbScr.y = (wy - camera.y) * zoomNow + vh / 2;
     return fbScr;
@@ -2294,7 +2364,7 @@
   }
   function fbGeom(state, b, q) {
     const ax = clamp((b.tx | 0) + (b.w | 0) - 1, 0, W - 1), ay = clamp((b.ty | 0) + (b.h | 0) - 1, 0, HGT - 1);
-    return { b: b, q: q, ax: ax, ay: ay, el: fin(state.tiles.elev[ay * W + ax], 0), kx: (q.x1 - q.x0) / FB_YD_U, ky: (q.y1 - q.y0) / FB_YD_V, tx0: fin(b.tx, 0), ty0: fin(b.ty, 0), sp: S() };
+    return { b: b, q: q, T: !!q.T, ax: ax, ay: ay, el: fin(state.tiles.elev[ay * W + ax], 0), kx: (q.x1 - q.x0) / FB_YD_U, ky: (q.y1 - q.y0) / FB_YD_V, tx0: fin(b.tx, 0), ty0: fin(b.ty, 0), sp: S() };
   }
   function drawFbLines(e, g) {   // line of scrimmage (blue) and the line to gain (yellow) across the turf, TV style
     const G = e.b; if (!G) return;
@@ -2315,7 +2385,7 @@
   /** stadium scale pass: the painted structure of a stadium (sprites_buildings.stadiumGeom): stands, fan rows, shader clip, rims, masts; null before the painter loads */
   function fbStadiumGeom(b) {
     const sp = mod('sprites'); if (!sp || typeof sp.stadiumGeom !== 'function') return null;
-    try { return sp.stadiumGeom(clamp(fin(b.tier, 0) | 0, 1, 3), Math.max(1, fin(b.w, 6)), Math.max(1, fin(b.h, 5))); } catch (e) { return null; }
+    try { const T = fin(b.h, 5) > fin(b.w, 6); return sp.stadiumGeom(clamp(fin(b.tier, 0) | 0, 1, 3), Math.max(1, fin(T ? b.h : b.w, 6)), Math.max(1, fin(T ? b.w : b.h, 5))); } catch (e) { return null; }   // field space (N8)
   }
   M.stadiumGeom = function (b) { return b ? fbStadiumGeom(b) : null; };
   function fbStandRows(tier) {
@@ -2372,7 +2442,7 @@
         else if (cheer) { pose = 'wave'; fr = ((frameNo >> 3) + k) & 1; }
         else if (up && ((h >> 7) & 3) !== 0) { pose = 'standing'; fr = ((frameNo >> 3) + k) & 1; }
         const id = 'fbfan:' + pose, v = (look & 63) | (((h >> 2) % 6) << 6) | (((h >> 5) & 7) << 9) | (((h >> 9) & 1) << 12);
-        const ref = getRefF(id, v, sp.fbFrame(id, dir, fr)); if (!ref || !ref.canvas) continue;
+        const ref = getRefF(id, v, sp.fbFrame(id, G.T ? (dir ^ 1) : dir, fr)); if (!ref || !ref.canvas) continue;   // (a transposed stand faces the other screen diagonal)
         fbScreen(G, X0 + (X1 - X0) * f, Y0 + (Y1 - Y0) * f, lift);
         const ks = zs / (ref.zoom || 1);   // H4: a master-2 fan cell draws at half its device size
         g.drawImage(ref.canvas, ref.sx, ref.sy, ref.sw, ref.sh, Math.round(fbScr.x + ref.ox * ks), Math.round(fbScr.y + ref.oy * ks), ref.sw * ks, ref.sh * ks); drawCalls++; FB.fans++;
@@ -2433,23 +2503,24 @@
     const victim = endNow ? (type === 'sack' ? qb : holder) : -1;
     let tackler = -1;
     if (downed && victim >= 0) { let bd = 1e9; for (let i = 0; i < n; i++) { const p = P[i]; if ((p.team | 0) === (P[victim].team | 0)) continue; const dx = FB.cx[i] - FB.cx[victim], dy = FB.cy[i] - FB.cy[victim], d = dx * dx + dy * dy; if (d < bd) { bd = d; tackler = i; } } }
-    const faceLos = function (own) { return sp.fbDir((own ? dir : -dir) * G.kx, 0); };
+    const fdir = G.T ? function (a, c) { return sp.fbDir(c, a); } : function (a, c) { return sp.fbDir(a, c); };   // campus life pass (N8): a field-space heading → the sprite's facing (transposed on a rotated field)
+    const faceLos = function (own) { return fdir((own ? dir : -dir) * G.kx, 0); };
     let minX = 1e9, maxX = -1e9, minY = 1e9, maxY = -1e9;
     for (let i = 0; i < n; i++) {
       const p = P[i];
       if (ph === 'halftime') break;
       const x = FB.px[i] + (FB.cx[i] - FB.px[i]) * alphaNow, y = FB.py[i] + (FB.cy[i] - FB.py[i]) * alphaNow;
       const dx = FB.cx[i] - FB.px[i], dy = FB.cy[i] - FB.py[i], moving = dx * dx + dy * dy > 0.0025;
-      if (moving) FB.face[i] = sp.fbDir(dx * G.kx, dy * G.ky);
+      if (moving) FB.face[i] = fdir(dx * G.kx, dy * G.ky);
       const own = (p.team | 0) === poss, st = String(p.state);
       let face = FB.face[i] >= 0 ? FB.face[i] : faceLos(own);
       let pose = 'stance', f = 0, carry = holder === i;
       if (ph === 'final') { const won = lv.score && lv.score[0] > lv.score[1]; pose = won === ((p.team | 0) === 0) ? 'celebrate' : 'huddle'; f = (frameNo >> 3) & 1; }
       else if (ph === 'pregame') pose = 'stance';
-      else if (!liveNow && !endNow) { pose = 'huddle'; face = sp.fbDir((fin(lv.spot, 50) - x) * G.kx, (0 - y) * G.ky); }
+      else if (!liveNow && !endNow) { pose = 'huddle'; face = fdir((fin(lv.spot, 50) - x) * G.kx, (0 - y) * G.ky); }
       else {
         if (FB_RUNNING[st]) pose = (moving || liveNow && t < 0.9) ? 'run' : 'stance';
-        if (st === 'handoff') { pose = t < 0.3 ? 'run' : 'stance'; if (t >= 0.3 && carrier >= 0) face = sp.fbDir((FB.cx[carrier] - x) * G.kx, (FB.cy[carrier] - y) * G.ky); }
+        if (st === 'handoff') { pose = t < 0.3 ? 'run' : 'stance'; if (t >= 0.3 && carrier >= 0) face = fdir((FB.cx[carrier] - x) * G.kx, (FB.cy[carrier] - y) * G.ky); }
         else if (st === 'dropback') { if (t >= 0.35) { pose = 'throw'; f = 0; face = faceLos(true); } }
         else if (st === 'throw') { if (t < 0.6) { pose = 'throw'; f = 1; } else pose = 'stance'; face = faceLos(true); }
         else if (st === 'sacked') { pose = t < 0.7 ? 'run' : 'tackled'; }
@@ -2460,7 +2531,7 @@
         if (endNow) {
           if (res === 'td' || (type === 'fg' || type === 'xp') && res === 'good') { if (own) { pose = 'celebrate'; f = ((frameNo >> 3) + i) & 1; carry = false; } else pose = 'stance'; }
           else if (downed && i === victim) { pose = 'tackled'; f = 0; carry = false; }
-          else if (downed && i === tackler) { pose = 'tackle'; f = liveNow && t < 0.95 ? 0 : 1; face = sp.fbDir((FB.cx[victim] - x) * G.kx, (FB.cy[victim] - y) * G.ky); }
+          else if (downed && i === tackler) { pose = 'tackle'; f = liveNow && t < 0.95 ? 0 : 1; face = fdir((FB.cx[victim] - x) * G.kx, (FB.cy[victim] - y) * G.ky); }
           else if (!liveNow) { pose = 'huddle'; }
           else if (pose === 'run') pose = 'stance';
         }
@@ -2494,7 +2565,7 @@
     FB.refU += (refTarget - FB.refU) * 0.12; FB.refV = FB_YD_V / 2 - 10;
     if (ph !== 'halftime') {
       const sig = frameNo - FB.sigAt < 60;
-      const rf = sp.fbDir((FB.bcx - FB.refU) * G.kx, (FB.bcy + FB_YD_V / 2 - FB.refV) * G.ky);
+      const rf = fdir((FB.bcx - FB.refU) * G.kx, (FB.bcy + FB_YD_V / 2 - FB.refV) * G.ky);
       fbPush(G, 'fbref', 'fbref', 2, sp.fbFrame('fbref', rf, sig ? 1 : 0), FB.refU, FB.refV, 0, drawFbSprite);
     }
     // the chain crew and the down marker on the home sideline (slide to the spot and the line to gain)
@@ -2525,7 +2596,7 @@
       for (let k = 0; k < 24; k++) {
         const th = Math.PI * 2 * k / 24 + frameNo * 0.012;
         const u = 50 + 22 * Math.sin(th), v = FB_YD_V / 2 + 13 * Math.sin(3 * th);
-        const bd = sp.fbDir(22 * Math.cos(th) * G.kx, 39 * Math.cos(3 * th) * G.ky);
+        const bd = fdir(22 * Math.cos(th) * G.kx, 39 * Math.cos(3 * th) * G.ky);
         fbPush(G, 'fbband', 'fbband', (k % 3) | (((k * 5) % 6) << 2) | ((k & 7) << 5), sp.fbFrame('fbband', bd, ((frameNo >> 3) + k) & 1), u, v, 0, drawFbSprite);
       }
     }
@@ -2566,8 +2637,12 @@
     }
     fbPlayers(G, state, lv, dr);
   }
+  let lawnLay = null;
   function entityPass(state, g) {
     count = 0; agentsDrawn = 0; particlesDrawn = 0; teeBakes = 0; hbDraw.length = 0;
+    lawnLay = lawnAny ? lawnLayoutOf(state) : null;
+    if (wallsDirty || !wallSeen) wallsScan(state);
+    wallsPushed = 0;
     const sp = S(), t = state.tiles, elev = t.elev;
     const bl = mod('buildings'), wl = mod('wildlife'), cat = (BSU.data && BSU.data.catalog) || {};
     // buildings
@@ -2575,6 +2650,7 @@
     if (Array.isArray(B)) {
       for (let k = 0; k < B.length; k++) {
         const b = B[k]; if (!b) continue;
+        if (lawnAny && b.type === 'quad' && fin(b.built, 1) >= 1 && !b.ruin) continue;   // campus life pass (N26): a finished Quad Lawn is ground (the chunk layer), its oak a tree (below)
         const ax = (b.tx | 0) + (b.w | 0) - 1, ay = (b.ty | 0) + (b.h | 0) - 1;
         if (ax < 0 || ay < 0 || ax >= W || ay >= HGT) continue;
         if (!inView(ax, ay, b.type === 'stadium' ? 18 : 6)) continue;   // stadium scale pass: the bowl's decks and masts reach ~300 px above the anchor (18 tile rows), so it stays drawn when only its top is on screen
@@ -2584,6 +2660,7 @@
         const v = M.variantOf(b, ci), fr = M.frameOf(b, v, ci);
         const e = push('building', ax, ay, fin(elev[ay * W + ax], 0), 0, drawBuilding);
         e.b = b; e.id = b.rot ? b.type + ':r' : b.type; e.variant = v; e.frame = fr;
+        if (wallsAny) wallsInFrontOf(t, b, e.key);   // (e stays valid: the pool hands out one object per entry)
         if (b.type === 'tiger_habitat' && !(v & (SPR.SCAFFOLD | SPR.RUIN))) { hbDraw.push(b, v, fin(elev[ay * W + ax], 0)); }   // habitat pass: Roux, the foreground layer and the plaza's sort key
         let tr = null;
         if (M.teesEnabled !== false && row && row.pathAdjacency && !(v & (SPR.SCAFFOLD | SPR.RUIN))) { try { tr = teeRef(state, b, row, e.id, v, fr); } catch (err) { rerr('tee:ref', err); tr = null; } }
@@ -2608,8 +2685,20 @@
         const stage = clamp(fin(v.stage, 0) | 0, 0, 2), hv = hash(tx, ty), ti = ty * W + tx;
         const wet = v.type === 'cypress' && (t.type[ti] <= T.MARSH || fin(t.depth[ti], 0) > 0.05);   // art pass B2: a waterline base on marsh / water
         const variant = sp.treeVariant(stage, info.autumn && v.type === 'cypress', info.bloom && v.type === 'azalea', hv & 3, wet, (hv >> 2) & 3);   // bits 4–5: one of four silhouettes per tile; H3: bits 7–8 a layout jitter (hv >> 2), so a stand of one silhouette is not a stamp
+        if (wallsAny && t.crest[ti] === 0) wallsInFront(t, tx, ty, fin(elev[ti], 0));
         const e = push('tree', tx, ty, fin(elev[ti], 0), 1, drawTree);
         e.id = v.type; e.variant = stage; e.a = hv; e.ref = getRef(v.type, variant, 0);
+        tileScreen(e);
+      }
+    }
+    // campus life pass (N26): every Quad Lawn's Live Oak, a tree like any other (students on the lawn sort in front of it or behind it)
+    if (lawnAny && lawnLay) {
+      const oaks = lawnLay.oaks, dayNow = fin(info.day, 0);
+      for (let k = 0; k < oaks.length; k++) {
+        const o = oaks[k], tx = o.tx, ty = o.ty; if (!inView(tx, ty, 4)) continue;
+        const qb = B[o.id], stage = qb && dayNow - fin(qb.builtDay, dayNow) >= 120 ? 2 : 1, hv = hash(tx, ty), ti = ty * W + tx;
+        const e = push('tree', tx, ty, fin(elev[ti], 0), 1, drawTree);
+        e.id = 'oak'; e.variant = stage; e.a = hv; e.ref = getRef('oak', sp.treeVariant(stage, false, false, hv & 3, false, (hv >> 2) & 3), 0);
         tileScreen(e);
       }
     }
@@ -3316,6 +3405,7 @@
     frameDt = clamp(dtMs / 1000, 0.001, 0.1); simSpeed = Math.max(1, fin(state.ui.speed, 1));
     drawCalls = 0;
     try { setupPass(state, dtMs); } catch (e) { rerr('setup', e); }
+    try { lawnSync(state); } catch (e) { rerr('lawn', e); }
     const g = ctx;
     let sx = 0, sy = 0;
     try {
@@ -3404,7 +3494,7 @@
   // init / reset
   // ---------------------------------------------------------------------------
   function bind(state) {
-    root = state;
+    root = state; wallsDirty = true;
     const ui = state.ui || (state.ui = {});
     if (!ui.camera || typeof ui.camera !== 'object') ui.camera = { x: 0, y: 1024, zoom: 1, tx: 0, ty: 0, follow: -1 };
     camera = ui.camera; followVehicle = null;

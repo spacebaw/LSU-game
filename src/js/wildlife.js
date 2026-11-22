@@ -76,7 +76,7 @@
   let roux = null;                       // Tier 2 "Roux Is Loose" transient {tx, ty, state, home, target, tickerDone}
   const priv = new Map();                // gator id → {wait, wanderRoute} (never saved)
 
-  function privOf(g) { let p = priv.get(g.id); if (!p) { p = { wait: 0, wanderRoute: null, wanderFrom: -1 }; priv.set(g.id, p); } return p; }
+  function privOf(g) { let p = priv.get(g.id); if (!p) { p = { wait: 0, wanderRoute: null, wanderFrom: -1, visit: false, entered: false, attract: 0 }; priv.set(g.id, p); } return p; }
 
   // BFS scratch (own router used when BSU.agents is absent or for water-only swims)
   let bfsParent = new Int32Array(N);
@@ -154,6 +154,8 @@
     if (!wl.birds || typeof wl.birds !== 'object') wl.birds = { egrets: 0, spoonbills: false, pelicans: 0 };
     if (!Array.isArray(wl.officers)) wl.officers = [];
     if (!Array.isArray(state.gators)) state.gators = [];
+    if (!isNum(wl.nextVisitDay)) wl.nextVisitDay = -1;   // campus life pass (N27): the first day the next gator may come ashore on campus (a visit is an event: one at a time, visitGap days apart)
+    if (!isNum(wl.visits)) wl.visits = 0;                // campus visits so far (a count for the Almanac and the tests)
     if (!isNum(wl.sightingDay)) wl.sightingDay = -1e9;   // calm alerts + ambient gators pass: the day of the last "spotted" ticker line (≥ sightingGapDays apart)
     // calm alerts + ambient gators pass: the gator mechanic is gone. A save from the gator pass carries call-outs, bad-press restores,
     // incident rows and per-visit bills; they are purged here (once per load) so nothing fires, charges or lists again.
@@ -358,7 +360,7 @@
     if (!isNum(i) || i < 0 || i >= N) { const d = densOf(state); i = d.length ? d[0] : 0; }
     i = Math.floor(i);
     const g = makeGator(state, i, name);
-    if (isLandTile(state, i)) { g.state = 'WANDER'; g.target = i; g.route = []; }
+    if (isLandTile(state, i)) { g.state = 'WANDER'; g.target = i; g.route = []; const p = privOf(g); p.visit = true; p.free = true; }   // N27: put ashore by the storm wave or by hand: outside the visit budget
     state.gators.push(g);
     emit(BSU.EV.GATOR_SPAWN, { id: g.id, name: g.name, den: g.den });
     return g;
@@ -450,21 +452,51 @@
       for (let k = 0; k < list.length; k++) { r -= list[k].w; if (r <= 0) { chosen = list[k].i; break; } }
       target = chosen;
     } else {
-      const bank = bankTiles(state, g.den);
+      const all = bankTiles(state, g.den), off = offCampus(state, all), bank = off.length ? off : all;
       if (bank.length) target = R.pick(bank);
     }
     if (target < 0) return false;
+    const visit = campusOf(state)[target] === 1 && isLandTile(state, target);
+    if (visit && !visitOk(state, today(state))) return false;   // N27: campus is taken, or the last visit was too recent: the gator stays where it is
     startWander(state, g, target);
+    if (visit) { const p = privOf(g); p.visit = true; p.attract = attraction; }
     return true;
   }
   function startWander(state, g, target) {
     g.state = 'WANDER'; g.target = target; g.route = []; g.ri = 0;
-    const p = privOf(g); p.wait = 0; p.wanderRoute = null; p.wanderFrom = -1;
+    const p = privOf(g); p.wait = 0; p.wanderRoute = null; p.wanderFrom = -1; p.visit = false; p.entered = false; p.attract = 0;
   }
   function goSun(state, g, atBank) {
     g.state = 'SUN'; g.target = -1; g.route = []; g.ri = 0; g.lounge = 0;
-    if (atBank) { const bank = bankTiles(state, g.den); if (bank.length) { const b = R.pick(bank); g.tx = ((b % W)) + 0.5; g.ty = (((b / W) | 0)) + 0.5; } }
+    const p = privOf(g); p.visit = false; p.entered = false;
+    // campus life pass (N27): a gator suns on a bank that is NOT campus ground (within campusRadius of a path or a building); with no such bank it stays
+    // in the shallows at its den. Coming ashore on campus is a visit (wanderRoll), never the daily sunning
+    if (atBank) { const bank = offCampus(state, bankTiles(state, g.den)); if (bank.length) { const b = R.pick(bank); g.tx = ((b % W)) + 0.5; g.ty = (((b / W) | 0)) + 0.5; } else if (campusOf(state)[gatorTile(g)] && isLandTile(state, gatorTile(g))) { g.tx = ((g.den % W)) + 0.5; g.ty = (((g.den / W) | 0)) + 0.5; } }
   }
+  function offCampus(state, tiles) { const cm = campusOf(state), out = []; for (let k = 0; k < tiles.length; k++) if (!cm[tiles[k]]) out.push(tiles[k]); return out; }
+  // ---------------------------------------------------------------------------
+  // campus life pass (N27, "keep gators, make them more occasional"): a gator ASHORE on campus ground is a visit, and visits are budgeted.
+  // At most visitMax gators visit at a time, and after one comes ashore the next may not for a gap that shrinks with what draws them:
+  //   gap = clamp(visitGapMax / (1 + attraction / visitGapAttract), visitGapMin, visitGapMax) days, × matingGapMult in the mating months
+  // where attraction is the same sum the wander roll uses (dumpsters, porches, game-day parking, Mardi Gras trash, flooded ground near the den).
+  // So dumpsters, wet weather and spring bring them more often, gator-proof dumpsters less; a fence or the Tiger Habitat's radius still blocks the
+  // walk outright; a Preserve still takes four wanders in five. The scripted first visit and the post-storm wave are outside the budget.
+  // ---------------------------------------------------------------------------
+  function routeTouchesCampus(state, route) { const cm = campusOf(state); for (let k = 0; k < route.length; k++) if (cm[route[k]] && isLandTile(state, route[k])) return true; return false; }
+  function ashoreOnCampus(state, g) { const i = gatorTile(g); return campusOf(state)[i] === 1 && isLandTile(state, i); }
+  function visitors(state) {
+    let n = 0; const gs = state.gators;
+    for (let k = 0; k < gs.length; k++) { const g = gs[k]; if (privOf(g).visit || (g.onCampus && (g.state === 'WANDER' || g.state === 'LOUNGE' || g.state === 'RETREAT'))) n++; }
+    return n;
+  }
+  function visitGap(attraction, month) {
+    const mating = month >= PG.matingMonths[0] && month <= PG.matingMonths[1];
+    const gap = clamp(PG.visitGapMax / (1 + Math.max(0, attraction) / PG.visitGapAttract), PG.visitGapMin, PG.visitGapMax);
+    return gap * (mating ? PG.matingGapMult : 1);
+  }
+  M._visitGap = visitGap;
+  function visitOk(state, day) { return day >= state.wildlife.nextVisitDay && visitors(state) < PG.visitMax; }
+  function attractionOf(state, g) { const list = attractors(state, g); let a = 0; for (let k = 0; k < list.length; k++) a += list[k].w; return a; }
   function startSwim(state, g) {
     const den = g.den, dx = (den % W), dy = ((den / W) | 0), rad = PG.attractRadius;
     const box = { x0: Math.max(0, dx - rad), x1: Math.min(W - 1, dx + rad), y0: Math.max(0, dy - rad), y1: Math.min(H - 1, dy + rad) };
@@ -523,6 +555,8 @@
     return (water ? PG.swimSpeed : PG.walkSpeed) / BSU.params.time.tps;
   }
 
+  /** how long a gator lounges where it stopped: loungeTicks in the swamp, the shorter campusLoungeTicks on campus ground (N27: a visit is over in a day or two) */
+  function loungeFor(state, g) { const L = ashoreOnCampus(state, g) ? PG.campusLoungeTicks : PG.loungeTicks; return Math.floor(R.range(L[0], L[1])); }
   /** One gator, one tick (10 Hz). */
   function stepGator(state, g, retreating, day) {
     g.px = g.tx; g.py = g.ty;
@@ -544,14 +578,17 @@
       case 'WANDER': {
         if (!g.route.length) {
           const from = gatorTile(g);
-          if (g.target === from) { g.state = 'LOUNGE'; g.lounge = Math.floor(R.range(PG.loungeTicks[0], PG.loungeTicks[1])); p.wanderRoute = [from]; break; }
+          if (g.target === from) { g.state = 'LOUNGE'; g.lounge = loungeFor(state, g); p.wanderRoute = [from]; break; }
           const r = routeGator(state, from, g.target, g);
           if (r === undefined) { goSun(state, g, false); break; }          // unreachable: wander cancelled (GDD §6.3)
           if (r === null) { if (++p.wait > ROUTE_GIVEUP_TICKS) goSun(state, g, false); break; }
-          if (!r.length) { g.state = 'LOUNGE'; g.lounge = Math.floor(R.range(PG.loungeTicks[0], PG.loungeTicks[1])); p.wanderRoute = [from]; break; }
+          if (!r.length) { g.state = 'LOUNGE'; g.lounge = loungeFor(state, g); p.wanderRoute = [from]; break; }
+          if (!p.visit && routeTouchesCampus(state, r)) {   // N27: a walk that was not planned as a visit but crosses campus ground needs the budget, or it is called off before it starts
+            if (visitOk(state, day)) { p.visit = true; p.attract = attractionOf(state, g); } else { goSun(state, g, false); break; }
+          }
           g.route = r; g.ri = 0; p.wanderRoute = r; p.wanderFrom = from; p.wait = 0;
         }
-        if (followRoute(state, g, speedAt(state, g))) { g.state = 'LOUNGE'; g.lounge = Math.floor(R.range(PG.loungeTicks[0], PG.loungeTicks[1])); }
+        if (followRoute(state, g, speedAt(state, g))) { g.state = 'LOUNGE'; g.lounge = loungeFor(state, g); }
         break;
       }
       case 'LOUNGE': {
@@ -574,12 +611,18 @@
       default: goSun(state, g, false);
     }
     // campus membership, tag, incident (one per gator per day)
+    // campus life pass (N27): "on campus" = ASHORE on campus ground. A gator swimming past a boardwalk or lying in the water at its den is in the bayou
     const i = gatorTile(g);
-    const on = campusOf(state)[i] === 1;
+    const walking = g.state === 'WANDER' || g.state === 'LOUNGE' || g.state === 'RETREAT';
+    // it comes ashore on a land tile; it stays "on campus" through a ditch or a canal on its walk until it is back in the swamp. A gator that only crosses
+    // a corner of campus ground on its way home from somewhere else (no visit) is not a visit and raises nothing
+    const on = campusOf(state)[i] === 1 && (g.onCampus ? (walking || g.state === 'WRANGLED') : (isLandTile(state, i) && (g.state === 'WANDER' || g.state === 'LOUNGE' || (g.state === 'RETREAT' && p.visit))));
     if (on !== g.onCampus) {
       g.onCampus = on; g.tag = PG.tagTicks;
-      if (on) { g.visitDay = day; g.lastIncidentDay = day; sighting(state, g, i, day); }   // calm pass: a visit is a rare flavour line, nothing else
-      else { g.visitDay = -1; }
+      if (on) {
+        g.visitDay = day; g.lastIncidentDay = day; sighting(state, g, i, day);   // calm pass: a visit is a rare flavour line, nothing else
+        if (p.visit && !p.entered) { p.entered = true; if (!p.free) { state.wildlife.nextVisitDay = day + visitGap(p.attract, BSU.dayParts(day).month); state.wildlife.visits++; } }
+      } else { g.visitDay = -1; p.entered = false; p.free = false; if (g.state !== 'WANDER') p.visit = false; }
       emit(BSU.EV.GATOR_CAMPUS, { id: g.id, name: g.name, i: i, enter: on, target: g.target });
     }
   }
@@ -672,7 +715,7 @@
           const g = gs[k];
           if (g.state === 'WRANGLED') continue;
           const i = gatorTile(g);
-          if (!cm[i]) continue;
+          if (!cm[i] || !isLandTile(state, i)) continue;   // N27: ashore on campus ground (an officer does not wade in after a swimmer)
           const d = BSU.chebyshev(post.tx, post.ty, (i % W), ((i / W) | 0));
           if (d <= PG.officerRadius && d < bestD) { bestD = d; best = g; }
         }
@@ -681,7 +724,7 @@
       }
       case 'WALK': {
         const g = findGator(state, o.target);
-        if (!g || g.state === 'WRANGLED' || !campusOf(state)[gatorTile(g)]) { o.state = 'RETURN'; o.target = -1; o.route = []; o.ri = 0; break; }
+        if (!g || g.state === 'WRANGLED' || !ashoreOnCampus(state, g)) { o.state = 'RETURN'; o.target = -1; o.route = []; o.ri = 0; break; }
         const gi = gatorTile(g), oi = tileOf(o.tx, o.ty);
         if (BSU.chebyshev((oi % W), ((oi / W) | 0), (gi % W), ((gi / W) | 0)) <= 1) {
           o.state = 'WRANGLE'; o.wrangle = PG.wrangleTicks; g.state = 'WRANGLED'; g.route = []; g.ri = 0; break;
@@ -703,15 +746,18 @@
         break;
       }
       case 'RETURN': {
+        // campus life pass (N27): the post's own tile is a footprint (no walk route ends on it), so the officer used to wait in RETURN for ever after its
+        // first escort. It walks to a walkable tile beside the post (home), and is home within one tile of it; a route that never comes is cut straight
         const oi = tileOf(o.tx, o.ty);
-        if (oi === postTile) { o.tx = post.tx + 0.5; o.ty = post.ty + 0.5; o.state = 'IDLE'; o.route = []; o.ri = 0; break; }
-        if (!o.route.length || o.route[o.route.length - 1] !== postTile) {
-          const r = routeWalk(state, oi, postTile);
-          if (r === null) break;
-          if (r === undefined || !r.length) { moveStraight(o, postTile, speed); if (tileOf(o.tx, o.ty) === postTile) { o.state = 'IDLE'; } break; }
-          o.route = r; o.ri = 0;
+        if (BSU.chebyshev((oi % W), ((oi / W) | 0), post.tx, post.ty) <= 1) { o.tx = post.tx + 0.5; o.ty = post.ty + 0.5; o.state = 'IDLE'; o.route = []; o.ri = 0; o.wait = 0; break; }
+        let home = postTile; { const nb = BSU.nbr8(postTile), walk = state.tiles.walk; for (let k = 0; k < nb.length; k++) if (walk[nb[k]] > 0) { home = nb[k]; break; } }
+        if (!o.route.length || o.route[o.route.length - 1] !== home) {
+          const r = routeWalk(state, oi, home);
+          if (r === null && (o.wait = (o.wait | 0) + 1) <= ROUTE_GIVEUP_TICKS) break;
+          if (!r || !r.length) { moveStraight(o, postTile, speed); break; }
+          o.route = r; o.ri = 0; o.wait = 0;
         }
-        if (followRoute(state, o, speed)) { o.state = 'IDLE'; o.route = []; o.ri = 0; }
+        if (followRoute(state, o, speed)) { o.route = []; o.ri = 0; }
         break;
       }
       default: o.state = 'IDLE';
@@ -1300,7 +1346,7 @@
   M.campusMask = safe('campusMask', function (state) { return campusOf(state); }, () => new Uint8Array(N));
   M.onCampus = safe('onCampus', function (state) {
     const cm = campusOf(state), out = [], gs = state.gators || [];
-    for (let k = 0; k < gs.length; k++) if (cm[gatorTile(gs[k])]) out.push(gs[k]);
+    for (let k = 0; k < gs.length; k++) { const i = gatorTile(gs[k]); if (cm[i] && isLandTile(state, i)) out.push(gs[k]); }   // N27: ashore on campus ground
     return out;
   }, () => []);
   M.spawnGator = safe('spawnGator', function (state, i, name) { heal(state); return spawnGator(state, i, name); }, null);
@@ -1331,8 +1377,10 @@
       const d = BSU.chebyshev(tx, ty, (g.den % W), ((g.den / W) | 0));
       if (d < bestD) { bestD = d; best = g; }
     }
-    if (best) startWander(state, best, target);
+    if (best) { startWander(state, best, target); const p = privOf(best); p.visit = true; p.attract = attractionOf(state, best); }   // N27: the scripted first visit ignores the budget and starts the gap
   });
+  /** campus life pass (N27): the visit budget in numbers → {visiting, max, nextDay, visits, gap(attraction, month)} (tests, the Almanac) */
+  M.visitInfo = safe('visitInfo', function (state) { heal(state); ensureKeys(state); return { visiting: visitors(state), max: PG.visitMax, nextDay: state.wildlife.nextVisitDay, visits: state.wildlife.visits }; }, null);
   M.relocate = safe('relocate', function (state, gatorId) { heal(state); ensureKeys(state); relocate(state, gatorId, false); });
   M.sickToday = safe('sickToday', function (state) { const v = state && state.wildlife ? state.wildlife.sick : 0; return isNum(v) ? v : 0; }, 0);
   M.fireflyTarget = safe('fireflyTarget', function (state) { const v = state && state.wildlife ? state.wildlife.fireflies : 0; return isNum(v) ? v : 0; }, 0);

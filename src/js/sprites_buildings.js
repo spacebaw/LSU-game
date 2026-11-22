@@ -2406,7 +2406,11 @@
     frame = Number.isFinite(frame) ? (frame | 0) : 0;
     seed = seed | 0;
     if (!row) { begin(ctx, 1, 1, zoom); return { w: 1, h: 1, ox: 0, oy: 0 }; }
-    const g = M.buildingBox(row, variant, zoom, rot);
+    // campus life pass (N8): a rotated Practice Field / Stadium is its unrotated painting mirrored (see sprites_buildings_hd "fieldMirrored"): the
+    // painters lay the field along X, and a rotated footprint's long axis is Y. The pen writes whole pixels, so the mirror is exact
+    const mirror = !!rot && row.w !== row.h && (specialOf(row) === 'stadium' || specialOf(row) === 'practice_field');
+    const gr = mirror ? M.buildingBox(row, variant, zoom, rot) : null;
+    const g = M.buildingBox(row, variant, zoom, mirror ? 0 : rot);
     g.paint = row.paint || {};
     g.seed = hash(strHash(row.id || 'b'), (seed ^ variant) >>> 0);
     g.tone = (variant & SPR.DAMAGED) ? 0.8 : 1;
@@ -2415,6 +2419,7 @@
     g.features = (row.paint && Array.isArray(row.paint.features)) ? row.paint.features : [];   // art pass B3: per-row features (data.js paint.features)
     g.row = row;
     begin(ctx, g.w, g.h, zoom);
+    if (mirror) { try { ctx.setTransform(-1, 0, 0, 1, g.w * (zoom === 2 ? 2 : 1), 0); } catch (e) { /* stub */ } g.ox = gr.ox; g.oy = gr.oy; }
     const P = tonePen(pen(ctx, g.zoom), g.tone);
     if (variant & SPR.RUIN) { drawGrounds(P, g, row, SPR.SCAFFOLD, g.seed); drawRuinShape(P, g, g.seed); return { w: g.w, h: g.h, ox: g.ox, oy: g.oy }; }
     if (g.special === 'suites') g.stiltBoxes = suiteWings(g);   // P7: stilts go under the wings, not the courtyard

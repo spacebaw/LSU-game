@@ -579,7 +579,7 @@ ok(st && st.ok, 'ui.selfTest ok (includes ui_panels pushed tests) ' + (st && st.
   // Settings: one consolidated list, in order; every row wired to its settings key
   U.openPanel('settings'); const st = U.el['panel-settings']; const rows = findAll(st, (e) => /\bset-row\b/.test(e.className || ''));
   const label = (r) => r.children[0].textContent;
-  ok(rows.map(label).join('|') === 'Display size|Alerts|Audio|Keep the minimap open|Keep overlays visible|Particles|Screen shake|Reduce motion|Colour-blind overlays|Tour|Game', 'Settings rows in order: ' + rows.map(label).join(' | '));
+  ok(rows.map(label).join('|') === 'Display size|Alerts|Night brightness|Audio|Keep the minimap open|Keep overlays visible|Particles|Screen shake|Reduce motion|Colour-blind overlays|Tour|Game', 'Settings rows in order (campus life pass: + Night brightness): ' + rows.map(label).join(' | '));
   ok(rows.every((r) => r.children.length === 2) && !findAll(st, (e) => e.id === 'btn-set-howto' || e.id === 'keys' || (e.className || '').indexOf('legend-table') >= 0).length, 'each row is a label and one control; no sub-panels, no key table or legend (How to play and the Layers popover carry those)');
   const set = U.settings(); const click = (id) => dom.getElementById(id).dispatchEvent({ type: 'click' });
   const sizes = findAll(st, (e) => /seg-btn/.test(e.className || '') && e.dataset && e.dataset.scale !== undefined);

@@ -132,6 +132,9 @@ ok(R.chunkDirty(chunkOf(ex, ey)) && (R.chunkDirty(chunkOf(ex, ey - 1)) || before
     const hb = s.buildings.find((x) => x && x.id === pr.id), H = BSU.sprites.HABITAT;
     ok(hb && hb.built >= 1, 'the habitat finishes building');
     R.panToTile(hb.tx + 2, hb.ty + 2.5, false);
+    // campus life pass: this minute is Roux on his own (frames only: whoever stood at the glass when the sim stopped would hold him at the wall, and who that is
+    // follows the students' day plan). Everybody indoors and one agents tick empties the glass; the viewers part comes after
+    for (const a of s.agents) if (a) { a.inside = true; a.view = -1; } BSU.agents.tick(s, { newDay: false });
     const eb2 = BSU.errors.size; let modes = new Set(), outside = 0, glassSeen = false, swam = false, maxFront = 0, order = true;
     for (let k = 0; k < 4200; k++) {                                                                  // 70 s of frames at 60 fps
       R.frame(s, 0, 16.67);

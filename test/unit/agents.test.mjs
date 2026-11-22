@@ -67,7 +67,7 @@ vm.runInContext(`
     const D = BSU.agents._deps;
     D.buildings = { list(s, t) { return B.filter(b => !t || b.type === t); }, get(s, id) { return B[id] || null; }, footprint(s, id) { const b = B[id]; return b ? BSU.footprintTiles(b.tx, b.ty, b.w, b.h) : []; }, effective() { return 1; }, auras() { return { life, green, shade, heat, dining: new Uint8Array(N) }; }, shelterAssignments() { return {}; }, at() { return null; } };
     D.wildlife = { gators() { return window.__stubs.gators; }, onCampus() { return []; }, mosqAt() { return 0; }, gatorGridPassable() { return true; } };
-    D.weather = { sky(s) { const c = (s.__lock !== undefined ? s.__lock : s.tick) % 300; const b = [25, 155, 175, 200, 300]; let p = 0; while (c >= b[p]) p++; return { phase: p, t: 0, phaseTick: 0, scripted: false }; }, raining() { return false; }, rainAt() { return 0; }, heat() { return { index: 80, advisory: false, wave: false }; }, date(s) { const d = BSU.dayParts(s.calendar.day); return { day: d.day, month: d.month, semester: d.semester }; }, storm() { return null; } };
+    D.weather = { sky(s) { const c = (s.__lock !== undefined ? s.__lock : s.tick) % 300; const b = [25, 155, 175, 200, 300]; let p = 0; while (c >= b[p]) p++; return { phase: p, t: 0, phaseTick: s.__lock !== undefined ? c - (p ? b[p - 1] : 0) : 0, scripted: false }; }, raining() { return false; }, rainAt() { return 0; }, heat() { return { index: 80, advisory: false, wave: false }; }, date(s) { const d = BSU.dayParts(s.calendar.day); return { day: d.day, month: d.month, semester: d.semester }; }, storm() { return null; } };
     D.hydro = { depthAt() { return 0; } };
     D.sports = { season(s) { return s.sports; } };
     D.progress = { timer() { return null; }, timers() { return []; } };
@@ -345,7 +345,7 @@ ok(s.agents.every(a => a.state !== 'GONE'), 'all 60 agents present after 30 days
   const run = (seed) => {
     const q = BSU.newState(seed); q.tiles.walk.fill(2); q.tiles.type.fill(BSU.T.DRY);
     for (const b of [[20, 20], [30, 20], [25, 26]]) for (const i of BSU.footprintTiles(b[0], b[1], 3, 2)) { q.tiles.walk[i] = 0; }
-    q.economy.students = 500; q.plot.founders = { tx: 40, ty: 7 }; q.calendar.day = 10; q.__lock = 30;   // hold the sky at Day so the class → lunch chain keeps running
+    q.economy.students = 500; q.plot.founders = { tx: 40, ty: 7 }; q.calendar.day = 10; q.__lock = 130;   // hold the sky late in the Day (campus life pass: past every student's lunch hour, cycle tick 60–125), so everyone who comes out of class goes to lunch
     BSU.state = q; M.init(q); M.reset(q, true);
     const t0 = process.hrtime.bigint();
     for (let t = 0; t < 600; t++) { M.tick(q, { newDay: false, newMonth: false, newYear: false, day: 10 }); q.tick++; }

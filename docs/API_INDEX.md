@@ -111,6 +111,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - agents.routeSync(state, fromI, toI, grid, gator)
 - agents.invalidateRoutes(state, i)
 - agents.count(state)
+- (campus life pass, N9) the day plan. `homeFor` spreads the agents over every housing building by beds (a stable hash of the id; it was `i % totalBeds`, which put all ≤ 300 agents in the first dorm); `classFor(state, home, agentId)` draws the first class's hall among the halls within `life.classSpan` tiles of the nearest, weighted by seats × nearness. After the first class a student no longer shuttles class → dining: `planNext` (private; called when a dwell, a visit, a class or a meal ends) picks the first class when due, a meal at its hour (`ate` bits: breakfast for the late period, lunch at `lunchAt`, dinner for some), otherwise free time at a place chosen by `params.agents.life.weights` for the time of day and by nearness (a second class, the Library, the Union, the Rec Center, Greek Row, the dorm, a Quad Lawn tile, an oak, a building front, a stroll along the paths, the Tiger Habitat). New goal `'visit'` (a building, a while inside or on its steps, then the plan again). `lateShare` of the students with a short walk have their first class later (assigned at Dawn all the same; `classDue` sends them in time). Golden and Dusk re-plan only who is in class or has nothing to do (70 % turn for home at Dusk); Zydeco Friday, a storm watch, games and set pieces still gather everyone. A Po'boy Shack takes no more morning detours than it serves. Agent fields (never saved): `ate, classDue, classes, late, lunchAt, clique, strolling, hang, braveUntil`. `ctx.cyc` = the sky cycle tick. Agent counts unchanged
 - agents.regenerate(state)
 - agents.habitatViewers(state, id)
 - agents.turnStep(cur, target, maxStep)
@@ -132,7 +133,8 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - agents.classAttendance(state)
 - agents.follow(state)
 - agents.nearest(state, tx, ty, radius)
-- agents.inspect(state, id)
+- agents.inspect(state, id)   // campus life pass: activity also "At the Union" / "In the Library" / "At the Rec Center" / "On Greek Row" / "At lunch" / "Out for a walk"
+- (campus life pass, N27) students flee only a gator that is ashore (not one swimming or lying in the water), and after a flee walk past that same gator for `params.agents.fleeAgainTicks` (150)
 - agents.selfTest()
 
 - BSU.assert(cond, msg)
@@ -233,7 +235,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - buildings.count(state, type)
 - buildings.has(state, type, minTier)
 - buildings.footprint(state, id)
-- buildings.setbackSpot(state, id, tx, ty, opts)
+- buildings.setbackSpot(state, id, tx, ty, opts)   // campus life pass (N26): a Quad Lawn is not set back from another Quad Lawn (they join)
 - buildings.dumpsterTile(state, id)
 - buildings.unlocked(state, id)
 - (unstick pass) canPlace / upgradeQuote / upgrade / retrofitPilings / regrade refuse with progress.receiverRefusal's text ("Receivership: 23 days left", never the bare word); path and boardwalk rows are not refused, nor is a free delivery (opts.ignoreCash + opts.instant: the Coastal Resilience Grant's pump); land.quote refuses the same way. Founders' Hall leaves no undo record (Ctrl+Z used to remove it for good)
@@ -291,6 +293,9 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - buildings.onIntegrityChanged(state, i)
 - buildings.leveeRuns(state)
 - buildings.leveeStatus(state, i, Hft?) → { H, tiles, closed, protects, kept: [i…], gaps: [{tiles, len, cx, cy, name, ends}…], openEnds: […], overtopped, lowTop, holds, gates, pumps, text, missing, rain } | null   // water pass: what the wall (4-connected levee / floodwall tiles) through tile i does at H (the forecast surge while a storm is inbound, else ringDefaultH 5). closed = it keeps `protects` tiles dry that the water reaches without it; else gaps (between two ends of the wall) or openEnds (the tile past a lone free end). text: "Ring closed: holds a 5 ft surge off 12 tiles" | "Ring open: 1 gap" | "Open wall: a 5 ft surge comes round its ends" | "Too low for a 5 ft surge: its crest is at 4.1 ft" | "No water reaches this ground at 5 ft"; missing = what to do ('' when nothing); rain = how rain inside gets out (a floodgate, a pumped canal; '' when it cannot: missing then says so). Cached until a tile or the ring changes
+- buildings.isBlockRow(id) → bool   // campus life pass (N26): a footprint row a drag lays as a block (the Quad Lawn). runQuote(state, 'quad', rectTiles) → also block: true, blocks (lawns), placed (TILES), tiles (every tile to be laid: the block reaches past the cursor to whole lawns), perTile (7,500), skipped (the tiles of refused lawns, "Not enough cash" past what can be paid); placeRun lays them on ONE undo record → blocks
+- buildings.lawnLayout(state) → { look: Uint16Array, gid: Int16Array, groups: [{n, ids, tiles, x0, y0, x1, y1, w, h}], oaks: [{id, i, tx, ty}], ver }   // campus life pass (N26): finished Quad Lawns whose tiles touch edge to edge are one group. look[i] (0 = no lawn) = buildings.LAWN.LAWN 32768 | N 1 · E 2 · S 4 · W 8 (lawn across that edge: no kerb) | NE 16 · SE 32 · SW 64 · NW 128 | walk along X << 8 and along Y << 10 (1 through the tile, 2 / 3 half a walk on its N / S (W / E) edge) | BENCH 4096 | BED 8192 | OAK 16384. The walks are the group's two centre lines; each lawn's oak stands on its own tile farthest from the group's middle (beside the corner bed). Cached until a building is placed, finished, ruined or removed
+- buildings.lawnGroup(state, id) → { lawns, tiles, x0, y0, x1, y1, w, h, ids, value 2, cap 6, radius 6, text } | null   // "Part of a 24-tile quad · 6 lawns"; the happiness rule is the catalog's per lawn (+2 within 6 tiles of each, adding up to +6)
 - buildings.clearsPlants(rowId) → bool / buildings.plantsOn(state, tiles) → n   // water pass (N5): every footprint row and every row that re-shapes its tile (path, road, boardwalk, bridge decks' land tiles, levee, floodwall, canal, Dredge & Fill) clears the state.veg entries on it, restored by undo each at its own index; the plants themselves, the Preserve, Marsh Restoration, the Gator Fence and the Quad Lawn leave them
 - buildings.sandbagRuns(state, Hft)
 - buildings.sandbags(state, Hft, opts)
@@ -687,7 +692,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - render.agentPose(a, state)
 - render.teesOf(state, b, frontLeft)
 - render.teeStats()
-- render.fieldQuad(b)
+- render.fieldQuad(b)   // campus life pass (N8): the quad is in FIELD space (X along the field's length) with T = the venue is rotated (its footprint longer in Y); fieldToTile / fieldToWorld / the football layer transpose for T, stadiumGeom(b) returns the unrotated (long × short) geometry
 - render.fieldToTile(b, u, v, q)
 - render.fieldToWorld(b, u, v, up, q)
 - render.fieldVenue(state, forDrill)
@@ -717,6 +722,10 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - render.crowdStats()
 - render.crowdClear()
 - render.vignetteMB()
+- render.nightFloor(mode) → [r, g, b]   // campus life pass (N29): the factor the full Night multiplies the scene by at 'dim' | 'standard' | 'bright' (0.35 / 0.36 / 0.44 · 0.62 / 0.62 / 0.67 · 0.76 / 0.76 / 0.79)
+- render.nightInfo(state) → { mode, level, floor, night, cursor: {on, x, y, r, a} }   // the night as the next frame draws it; render.cursor = {x, y, on} is the pointer over the map (ui writes it): at night passTint adds one cached halo blob under it (params.render.night.cursor: 110 px at 0.22, 150 px at 0.36 with a tool armed, nothing by day)
+- render.lawnInfo() → { groups, oaks, tiles }   // campus life pass (N26): the Quad Lawns drawn in the ground layer (chunk bake stamps sprites family `lawn`; a finished lawn pushes no building sprite, its oak is a 'tree' entity)
+- render.wallOrder() → { any, pushed }   // campus life pass: the levee / floodwall tiles drawn again in the entity pass last frame (kind 'wall', key 100·(tx + ty) + 99): each tile with a student, a tree or a building right behind it, so it hides them as far as it is tall
 - render.cone(state)
 - render.onPerfMode()
 - render._fxInit()
@@ -929,6 +938,8 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - sprites.noiseAt(x, y, seed)
 - sprites.placeDecal(ctx, g, name, anchor, frame)
 - sprites.stadiumGeom(tier, fw, fh)
+- sprites.fieldMirrored(row, rot) → bool / sprites.fieldLayout(type, tier, w, h) → { T, long, lines, field, posts, ends, bench, stands }   // campus life pass (N8): a rotated Practice Field / Stadium is painted as the mirror of the unrotated one (env.flip swaps the lit and shadow faces); fieldLayout says where the goalposts, end lines, benches and stands are on a w × h footprint as placed
+- sprites family `lawn` (hdTerrainFamilies, 15 with it), sprites.LAWN_UP 12   // campus life pass (N26): one Quad Lawn tile, variant = buildings.lawnLayout's look word; 64 × 44, ox −32, oy −28
 - sprites.habitatWorld(tx, ty, frontLeft, X, Y)
 - sprites.habitatPool(lx, ly)
 - sprites.habitatPoint(frontLeft, X, Y, z)
@@ -1106,6 +1117,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - ui.alertMode()
 - ui.alertModes()
 - ui.setAlertMode(mode)
+- ui.nightMode() / ui.nightModes() / ui.setNightMode('dim' | 'standard' | 'bright')   // campus life pass (N29): Settings → Night brightness (settings.night, default 'standard'; `#btn-night-dim / -standard / -bright`, data-night)
 - ui.muteIssueKind(kind, on)
 - ui.closeAlert()
 - ui.dismissNotifs()
@@ -1194,7 +1206,8 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 - wildlife.ecologyTerms()
 - wildlife.wetlandLost()
 - wildlife.campusMask()
-- wildlife.onCampus()
+- wildlife.onCampus()   // campus life pass (N27): gators ASHORE on campus ground (one swimming past or lying in the water at its den is not on campus); gator.onCampus and gator:campus follow
+- wildlife.visitInfo(state) → { visiting, max, nextDay, visits } / wildlife._visitGap(attraction, month) → days   // the visit budget: one gator on campus at a time, the next not before `nextDay` (state.wildlife.nextVisitDay, lazy); gap = clamp(28 / (1 + attraction / 4), 2, 28), halved in the mating months. No gator suns on campus ground. The officer comes home after an escort
 - wildlife.spawnGator()
 - wildlife.forceFirstGator()
 - wildlife.relocate()
@@ -1224,7 +1237,7 @@ Read this instead of the module sources. Signatures are the real ones. See docs/
 
 - BSU.worldToScreen(tx, ty, elev, cam, vw, vh)
 
-## BSU.params groups (20): time[30], terrain[60], hydro[47], storm[116], wildlife[4], subsidence[17], heat[21], weather[18], econ[64], sports[81], agents[30], build[36], issues[8], render[59], ui[18], art[1], audio[6], palette[34], progress[16], land[8]
+## BSU.params groups (20): time[30], terrain[60], hydro[48], storm[116], wildlife[4], subsidence[17], heat[21], weather[18], econ[64], sports[81], agents[32] (campus life pass: + life, fleeAgainTicks), build[41], issues[8], render[61] (campus life pass: + night), ui[20], art[1], audio[6], palette[34], progress[16], land[8]   // campus life pass: wildlife.gator + visitMax, visitGapMax, visitGapMin, visitGapAttract, matingGapMult, campusLoungeTicks; newState().ui.settings + night: 'standard'; state.wildlife + nextVisitDay, visits (lazy)
 
 ## BSU.newState(seed) tree
 - v:number

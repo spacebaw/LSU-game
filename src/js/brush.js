@@ -309,10 +309,12 @@
   // The primitive set (PLAN_HD_ART §1)
   // ---------------------------------------------------------------------------
   const FACE_T = { top: 0.05, sw: -0.1, se: -0.48, ne: -0.3, nw: 0.0 };
+  const FLIP_FACE = { sw: 'se', se: 'sw', ne: 'nw', nw: 'ne' };
   const ROOF_T = { nw: 0.3, ne: -0.18, sw: 0.08, se: -0.5 };
   /** a shaded quad: o.face top / sw (lit) / se (shadow); o.material stucco | stone | wood | cloth | paint | metal | glass | glow */
   M.fillQuadShaded = function (ctx, pts, color, o, env) {
-    o = o || {}; env = envOf(env); const f = o.face || 'top', m = o.material || 'paint', t = (FACE_T[f] || 0) + (o.t || 0);
+    o = o || {}; env = envOf(env); let f = o.face || 'top'; if (env.flip === true) f = FLIP_FACE[f] || f;   // campus life pass (N8): a painting drawn mirrored (a rotated field) keeps the sun on the left
+    const m = o.material || 'paint', t = (FACE_T[f] || 0) + (o.t || 0);
     if (m === 'glow') { plane(ctx, pts, color, 0.1, { amp: 0.1, rim: 0 }); const c = centroid(pts), bb = bbox(pts); softEllipse(ctx, c[0], c[1], bb.w * 0.45, bb.h * 0.35, '#FFFFFF', 0.45, 0.1); return; }
     if (m === 'glass') {
       plane(ctx, pts, color, t - 0.1, { vert: true, amp: 0.3, rim: 0.4 }); const bb = bbox(pts);

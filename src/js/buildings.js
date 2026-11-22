@@ -143,7 +143,7 @@
     if (!C || C.root !== state) C = newCache(state);
     return C;
   }
-  function dirtyAll(c) { c.tileVer++; c.coverageDirty = true; c.aurasDirty = true; c.ringDirty = true; c.ringEmitPending = true; c.ringCache.clear(); c.gapCache.clear(); c.runCache = null; c.statsCache = null; c.connectedDirty = true; }
+  function dirtyAll(c) { c.tileVer++; c.lawnDirty = true; c.coverageDirty = true; c.aurasDirty = true; c.ringDirty = true; c.ringEmitPending = true; c.ringCache.clear(); c.gapCache.clear(); c.runCache = null; c.statsCache = null; c.connectedDirty = true; }
 
   // ---------------------------------------------------------------------------
   // Terrain / hydro / economy write-throughs (guarded: the module must work with a
@@ -253,16 +253,20 @@
       opts = opts || {};
       const d = dims(row, opts.rot), owner = state.tiles.owner;
       const self = Number.isFinite(opts.target) ? opts.target : -1;
+      // campus life pass (N26, "Quad Lawn should be connectable"): a lawn beside a lawn is not a contact. The setback used to push a second Quad Lawn one
+      // tile away from the first (Shift held it flush), so two lawns never met unless the player knew the modifier
+      const joins = BLOCK_ROWS[id] === 1, blds = state.buildings || [];
+      const hit = function (o) { return o >= 0 && o !== self && !(joins && blds[o] && blds[o].type === id); };
       const contact = function (x, y) {   // the push direction away from touching footprint buildings, or null when free
         if (!BSU.footprintTiles(x, y, d.w, d.h)) return null;
         let px = 0, py = 0, n = 0;
         for (let k = 0; k < d.w; k++) {
-          const a = BSU.inBounds(x + k, y - 1) ? owner[(y - 1) * W + x + k] : -1; if (a >= 0 && a !== self) { py += 1; n++; }
-          const b = BSU.inBounds(x + k, y + d.h) ? owner[(y + d.h) * W + x + k] : -1; if (b >= 0 && b !== self) { py -= 1; n++; }
+          const a = BSU.inBounds(x + k, y - 1) ? owner[(y - 1) * W + x + k] : -1; if (hit(a)) { py += 1; n++; }
+          const b = BSU.inBounds(x + k, y + d.h) ? owner[(y + d.h) * W + x + k] : -1; if (hit(b)) { py -= 1; n++; }
         }
         for (let k = 0; k < d.h; k++) {
-          const a = BSU.inBounds(x - 1, y + k) ? owner[(y + k) * W + x - 1] : -1; if (a >= 0 && a !== self) { px += 1; n++; }
-          const b = BSU.inBounds(x + d.w, y + k) ? owner[(y + k) * W + x + d.w] : -1; if (b >= 0 && b !== self) { px -= 1; n++; }
+          const a = BSU.inBounds(x - 1, y + k) ? owner[(y + k) * W + x - 1] : -1; if (hit(a)) { px += 1; n++; }
+          const b = BSU.inBounds(x + d.w, y + k) ? owner[(y + k) * W + x + d.w] : -1; if (hit(b)) { px -= 1; n++; }
         }
         return n ? { px: px, py: py } : null;
       };
@@ -818,6 +822,140 @@
   }
   /** does placing row `id` clear the plants on its tiles? */
   M.clearsPlants = function (id) { return clearsVeg(rowOf(id)); };
+  // ---------------------------------------------------------------------------
+  // campus life pass (N26): Quad Lawns that join. Lawns whose tiles touch edge to edge are one GROUP (one quad): the ground layer draws the group as one
+  // lawn (render reads lawnLayout), the tool lays a block of them in one drag (blockPlan), the card says "Part of a 12-tile quad".
+  //   look[i] (0 = no lawn): 1 << 15 | N 1 · E 2 · S 4 · W 8 (the neighbour across that edge is lawn too: no kerb there) | NE 16 · SE 32 · SW 64 · NW 128
+  //     | walk along X << 8 (0 none, 1 through the tile's middle, 2 along its N edge, 3 along its S edge) | walk along Y << 10 (… 2 W edge, 3 E edge)
+  //     | 4096 a bench | 8192 a flower bed in the rounded corner | 16384 the tile the lawn's oak stands on
+  // The walks follow the GROUP's shape: one along each centre line of its bounding box (on the seam between two rows of lawns when the box is an even
+  // number of tiles deep, as a single 2 × 2 lawn's cross is). Every lawn keeps its Live Oak (it counts for ecology and shade as before), planted on
+  // the lawn's own tile farthest from the group's middle, so the trees ring the quad and the middle stays open.
+  // ---------------------------------------------------------------------------
+  const BLOCK_ROWS = { quad: 1 };
+  const LAWN = { LAWN: 32768, WALK_X: 8, WALK_Y: 10, BENCH: 4096, BED: 8192, OAK: 16384 };
+  M.LAWN = LAWN;
+  M.isBlockRow = function (id) { return BLOCK_ROWS[id] === 1; };
+  function lawnInfo(state) {
+    const c = cache(state), nb = state.buildings.length;
+    if (c.lawn && c.lawnDirty !== true && c.lawnCount === nb) return c.lawn;   // (dirtyAll marks it: a building placed, finished, ruined or removed; rain touching tiles does not)
+    const look = (c.lawn && c.lawn.look) || new Uint16Array(N), gid = (c.lawn && c.lawn.gid) || new Int16Array(N);
+    look.fill(0); gid.fill(0);
+    const quads = []; for (const b of state.buildings) if (b && b.type === 'quad' && isComplete(b)) quads.push(b);
+    const on = new Uint8Array(N); for (const b of quads) for (const i of BSU.footprintTiles(b.tx, b.ty, b.w, b.h) || []) on[i] = 1;
+    const owner = state.tiles.owner, groups = [], byId = new Map(), oaks = [];
+    const seen = new Set();
+    for (const b0 of quads) {
+      if (seen.has(b0.id)) continue;
+      const g = { n: groups.length + 1, ids: [], tiles: 0, x0: W, y0: H, x1: -1, y1: -1 }, stack = [b0]; seen.add(b0.id);
+      while (stack.length) {
+        const b = stack.pop(); g.ids.push(b.id); byId.set(b.id, g); g.tiles += b.w * b.h;
+        if (b.tx < g.x0) g.x0 = b.tx; if (b.ty < g.y0) g.y0 = b.ty; if (b.tx + b.w - 1 > g.x1) g.x1 = b.tx + b.w - 1; if (b.ty + b.h - 1 > g.y1) g.y1 = b.ty + b.h - 1;
+        for (const e of BSU.edgeTiles(b.tx, b.ty, b.w, b.h) || []) { if (!on[e]) continue; const ex = e % W, ey = (e / W) | 0; if ((ex < b.tx || ex >= b.tx + b.w) && (ey < b.ty || ey >= b.ty + b.h)) continue; const o = owner[e], nbq = o >= 0 ? state.buildings[o] : null; if (nbq && !seen.has(nbq.id)) { seen.add(nbq.id); stack.push(nbq); } }   // edge neighbours only (a corner touch is not a join)
+      }
+      g.ids.sort(function (p, q) { return p - q; }); g.w = g.x1 - g.x0 + 1; g.h = g.y1 - g.y0 + 1;
+      groups.push(g);
+    }
+    const at = function (x, y) { return x >= 0 && y >= 0 && x < W && y < H && on[y * W + x] === 1; };
+    for (const g of groups) {
+      // the walks: the bounding box's two centre lines (in tile coordinates: a whole number = a seam between rows, a half = the middle of a row)
+      const midY2 = g.y0 * 2 + g.h, midX2 = g.x0 * 2 + g.w;   // doubled, so an even value is a seam
+      for (const id of g.ids) {
+        const b = state.buildings[id];
+        for (let y = b.ty; y < b.ty + b.h; y++) for (let x = b.tx; x < b.tx + b.w; x++) {
+          const i = y * W + x; let v = LAWN.LAWN;
+          if (at(x, y - 1)) v |= 1; if (at(x + 1, y)) v |= 2; if (at(x, y + 1)) v |= 4; if (at(x - 1, y)) v |= 8;
+          if (at(x + 1, y - 1)) v |= 16; if (at(x + 1, y + 1)) v |= 32; if (at(x - 1, y + 1)) v |= 64; if (at(x - 1, y - 1)) v |= 128;
+          let wx = 0, wy = 0;
+          if (midY2 % 2 === 1) { if (y * 2 + 1 === midY2) wx = 1; } else { if (y * 2 + 2 === midY2) wx = 3; else if (y * 2 === midY2) wx = 2; }
+          if (midX2 % 2 === 1) { if (x * 2 + 1 === midX2) wy = 1; } else { if (x * 2 + 2 === midX2) wy = 3; else if (x * 2 === midX2) wy = 2; }
+          v |= (wx << LAWN.WALK_X) | (wy << LAWN.WALK_Y);
+          const outer = (v & 15) ^ 15, corner = (outer & 3) === 3 || (outer & 6) === 6 || (outer & 12) === 12 || (outer & 9) === 9;
+          if (corner && !wx && !wy) v |= LAWN.BED;
+          if ((wx > 1) !== (wy > 1) && (BSU.rng.hash(x * 7 + 3, y * 13 + 5) % 3) === 0) v |= LAWN.BENCH;   // a bench beside a walk, here and there (never at a crossing)
+          look[i] = v; gid[i] = g.n;
+        }
+      }
+      // the oaks: each lawn's own, on its tile farthest from the group's middle (a tile no walk runs through the middle of)
+      const gx = g.x0 + g.w / 2, gy = g.y0 + g.h / 2;
+      for (const id of g.ids) {
+        const b = state.buildings[id]; let best = -1, bs = -1e9;
+        for (let y = b.ty; y < b.ty + b.h; y++) for (let x = b.tx; x < b.tx + b.w; x++) {
+          const i = y * W + x, v = look[i], cw = ((v >> LAWN.WALK_X) & 3) === 1 || ((v >> LAWN.WALK_Y) & 3) === 1;
+          const s = Math.abs(x + 0.5 - gx) + Math.abs(y + 0.5 - gy) - (cw ? 100 : 0) - ((v & LAWN.BED) ? 1.2 : 0) - (y - b.ty) * 0.01 - (x - b.tx) * 0.02;   // (the quad's very corner keeps its flower bed: the oak stands beside it) ties: the back (north-west) tile, as the single lawn's oak stands behind its crossing
+          if (s > bs) { bs = s; best = i; }
+        }
+        if (best >= 0) { look[best] = (look[best] | LAWN.OAK) & ~(LAWN.BENCH | LAWN.BED); oaks.push({ id: id, i: best, tx: best % W, ty: (best / W) | 0 }); }
+      }
+    }
+    c.lawn = { look: look, gid: gid, groups: groups, byId: byId, oaks: oaks, ver: (c.lawnSeq = (c.lawnSeq | 0) + 1) };
+    c.lawnDirty = false; c.lawnCount = nb;
+    return c.lawn;
+  }
+  /**
+   * The lawn layout of the whole map (render's ground layer and tests): {look: Uint16Array (see above), gid: Int16Array (group number, 0 = none),
+   * groups: [{n, ids, tiles, x0, y0, x1, y1, w, h}], oaks: [{id, i, tx, ty}], ver}. Cached until a building is placed, finished, ruined or removed.
+   */
+  M.lawnLayout = function (state) { try { return state && state.tiles && Array.isArray(state.buildings) ? lawnInfo(state) : null; } catch (e) { if (BSU.SELFTEST) throw e; BSU.error('buildings', 'lawnLayout', e); return null; } };
+  /**
+   * The quad a finished Quad Lawn belongs to → {lawns, tiles, x0, y0, x1, y1, w, h, ids, value, cap, radius, text} | null. The happiness rule is the
+   * catalog's, per lawn: +value within `radius` tiles of each lawn, adding up where lawns overlap to `cap` at most (three lawns' worth), so a bigger
+   * quad reaches farther and a joined block gives its middle the cap. text = "Part of a 12-tile quad · 3 lawns".
+   */
+  M.lawnGroup = function (state, id) {
+    try {
+      const b = M.get(state, id); if (!b || b.type !== 'quad' || !isComplete(b)) return null;
+      const g = lawnInfo(state).byId.get(b.id); if (!g) return null;
+      const row = rowOf('quad'), hp = (row && row.effects && row.effects.happiness) || { value: LOCAL.quadValue, radius: 6 };
+      const n = g.ids.length;
+      return { lawns: n, tiles: g.tiles, x0: g.x0, y0: g.y0, x1: g.x1, y1: g.y1, w: g.w, h: g.h, ids: g.ids.slice(), value: LOCAL.quadValue, cap: LOCAL.quadStackCap, radius: hp.radius,
+        text: n > 1 ? 'Part of a ' + g.tiles + '-tile quad · ' + n + ' lawns' : 'A ' + g.tiles + '-tile lawn on its own: lawns placed against it join it' };
+    } catch (e) { if (BSU.SELFTEST) throw e; BSU.error('buildings', 'lawnGroup', e); return null; }
+  };
+  /**
+   * A block row (the Quad Lawn) dragged from tile `a` to tile `b`: the footprints that tile the rectangle, counted from the anchor outward (the last
+   * row / column reaches past the cursor when the rectangle is not a whole number of footprints). → {blocks: [{tx, ty, ok, reason, tiles}], w, h}
+   */
+  function blockPlan(state, row, run, opts) {
+    const a = run[0], b = run[run.length - 1], ax = a % W, ay = (a / W) | 0, bx = b % W, by = (b / W) | 0, w = row.w, h = row.h;
+    const sx = bx >= ax ? 1 : -1, sy = by >= ay ? 1 : -1, nx = Math.ceil((Math.abs(bx - ax) + 1) / w), ny = Math.ceil((Math.abs(by - ay) + 1) / h);
+    const blocks = [], taken = new Set();
+    for (let l = 0; l < ny; l++) for (let k = 0; k < nx; k++) {
+      const tx = sx > 0 ? ax + k * w : ax - (k + 1) * w + 1, ty = sy > 0 ? ay + l * h : ay - (l + 1) * h + 1;
+      const tiles = BSU.footprintTiles(tx, ty, w, h);
+      if (!tiles) { blocks.push({ tx: tx, ty: ty, ok: false, reason: 'Off the map', tiles: [] }); continue; }
+      const c = M.canPlace(state, row.id, tx, ty, { rot: 0, ignoreCash: true, noRing: true });
+      blocks.push({ tx: tx, ty: ty, ok: !!(c && c.ok), reason: c && !c.ok ? (c.reason || 'Cannot place here') : '', tiles: tiles, cost: c && c.ok ? fin(c.cost, row.cost) : 0, charter: c && c.charter || null });
+      void taken;
+    }
+    void opts;
+    return { blocks: blocks, w: w, h: h };
+  }
+  /** runQuote for a block row: placed = the TILES that will be laid, cost, the tiles of the refused footprints in skipped, tiles = every tile to be laid */
+  function blockQuote(state, row, run, opts, out) {
+    const plan = blockPlan(state, row, run, opts); let budget = (opts && opts.ignoreCash) ? Infinity : null, spent = 0;
+    out.block = true; out.tiles = []; out.blocks = 0;
+    for (const bl of plan.blocks) {
+      let ok = bl.ok, reason = bl.reason;
+      if (ok && budget === null && !canAfford(state, spent + bl.cost)) { ok = false; reason = 'Not enough cash'; }
+      if (ok) { spent += bl.cost; out.blocks++; out.placed += bl.tiles.length; out.cost += bl.cost; for (const i of bl.tiles) out.tiles.push(i); }
+      else { out.refused++; for (const i of bl.tiles) out.skipped.push({ i: i, reason: reason }); }
+    }
+    out.perTile = row.cost / (row.w * row.h);
+    return out;
+  }
+  function placeBlock(state, row, run, opts, out) {
+    const plan = blockPlan(state, row, run, opts);
+    const undoRec = { tick: fin(state.tick, 0), entries: [], cost: 0 };
+    out.blocks = 0;
+    for (const bl of plan.blocks) {
+      if (!bl.ok) { for (const i of bl.tiles) out.skipped.push({ i: i, reason: bl.reason }); if (!bl.tiles.length) out.skipped.push({ i: run[0], reason: bl.reason }); continue; }
+      const r = placeInner(state, row.id, bl.tx, bl.ty, Object.assign({}, opts, { rot: 0 }), undoRec);
+      if (r.ok) { out.blocks++; out.placed += bl.tiles.length; out.cost += r.cost; } else for (const i of bl.tiles) out.skipped.push({ i: i, reason: r.reason });
+    }
+    if (out.blocks > 0) { pushUndo(state, undoRec, row.id); out.ok = true; dirtyAll(cache(state)); }
+    return out;
+  }
   /** how many plants (state.veg entries) stand on these tiles */
   M.plantsOn = function (state, tiles) { try { return (state && Array.isArray(tiles) && tiles.length) ? vegCount(state, new Set(tiles)) : 0; } catch (e) { return 0; } };
   /** roads pass: what placeRun would do with a drag run, without placing — the same plan (runPlan): {n, skipped: [{i, reason}] (refused tiles, in run
@@ -834,6 +972,7 @@
       opts = opts || {};
       const run = []; for (const i of tiles) if (Number.isInteger(i) && i >= 0 && i < N && run.indexOf(i) < 0) run.push(i);
       out.n = run.length; if (!run.length) return out;
+      if (BLOCK_ROWS[id] === 1) return blockQuote(state, row, run, opts, out);   // campus life pass (N26): a Quad Lawn drag lays a block of lawns
       const access = row.placeRule === PLACE.PATH || row.placeRule === PLACE.ROAD || row.placeRule === PLACE.BOARDWALK;
       const plan = runPlan(state, row, run, opts), laid = new Set();
       for (const a of plan.acts) {
@@ -1686,6 +1825,7 @@
         if (r.ok) { out.ok = true; out.placed = run.length; out.cost = r.cost; } else out.skipped.push({ i: run[0], reason: r.reason });
         return out;
       }
+      if (BLOCK_ROWS[id] === 1) return placeBlock(state, row, run, opts, out);   // campus life pass (N26): every footprint of the dragged block, one undo record
       if (row.kind !== 'drag' && row.kind !== 'paint') {
         // a footprint row dragged: place once at the first tile
         const r = placeInner(state, id, (run[0] % W), ((run[0] / W) | 0), opts, null);

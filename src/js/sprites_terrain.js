@@ -8,7 +8,7 @@
 // depth bit for water) and `cliff` (1–5 px terrace steps are sprites too), both set by render.js only while this file's families are HD.
 // World anchoring: a cached tile variant carries its 8×8-tile block position (brush.posEnv), so noise, grain and decoration sites
 // are sampled in world px with a 256×128 period — neighbours and chunk borders join with no seam and no visible 1-tile repeat.
-// Families: tile, cliff, tuft, patch, shore, tone, reeds, knees, worn, mound, levee, floodwall, canal, water (hdTerrainFamilies()).
+// Families: tile, cliff, tuft, patch, shore, tone, reeds, knees, worn, mound, levee, floodwall, canal, water, lawn (hdTerrainFamilies()).
 // Pen painters kept (not terrain): surf (the gator fence stamp + palette icons), preservePost, decal, light; vegetation is H3.
 // ============================================================================
 (function () {
@@ -24,7 +24,7 @@
   const AO = '#1E1946', SPEC = '#FFFBEA';
   // run directions in screen space (sprites.DIRS): N up-right, E down-right, S down-left, W up-left; bits N1 E2 S4 W8
   const DIRS = M.DIRS || [{ bit: 1, dx: 1, dy: -1 }, { bit: 2, dx: 1, dy: 1 }, { bit: 4, dx: -1, dy: 1 }, { bit: 8, dx: -1, dy: -1 }];
-  const FAMILIES = ['tile', 'cliff', 'tuft', 'patch', 'shore', 'tone', 'reeds', 'knees', 'worn', 'mound', 'levee', 'floodwall', 'canal', 'water'];
+  const FAMILIES = ['tile', 'cliff', 'tuft', 'patch', 'shore', 'tone', 'reeds', 'knees', 'worn', 'mound', 'levee', 'floodwall', 'canal', 'water', 'lawn'];   // campus life pass: + lawn (the Quad Lawns' ground layer)
   M.HD_TERRAIN = Object.freeze(FAMILIES.slice());
   /** the terrain / water families this file registers as HD (in registration order) */
   M.hdTerrainFamilies = function () { return FAMILIES.slice(); };
@@ -403,6 +403,73 @@
       if (closed) Br.stroke(ctx, [[cx - 6, gy + 0.5], [cx + 6, gy + 0.5]], 1.2, PAL.gold, 0.2, 1, { cap: 'butt' });
     }
     return { w: TW, h: TH, ox: -(TW >> 1), oy: -(TH >> 1) };
+  });
+
+  // ---------------------------------------------------------------------------
+  // lawn — campus life pass (N26): one tile of a Quad Lawn in the GROUND layer (render's chunk bake stamps it over the terrain tile of every finished
+  // lawn; the lawn's Live Oak is a tree entity, so students walk and sit on the grass and sort against the tree like any other). The variant is
+  // buildings.lawnLayout's look word: N 1 · E 2 · S 4 · W 8 = lawn across that edge (no kerb there, the mown grass runs through), NE 16 · SE 32 · SW 64 ·
+  // NW 128, walk along X << 8 and along Y << 10 (1 through the middle, 2 / 3 half a walk along the N / S (W / E) edge: the tile across it carries the
+  // other half), 4096 a bench, 8192 a flower bed in the rounded corner, 16384 the oak's mulch ring. Fills are FLAT (no per-tile gradient), and the mow
+  // stripes run half a tile wide along Y, so any number of tiles read as one lawn; where two outer edges meet the corner is rounded (r 0.3 tile) and the
+  // limestone kerb follows it. canvas 64 × 44, ox −32, oy −28 (12 rows above the diamond for a bench back and the azaleas)
+  // ---------------------------------------------------------------------------
+  M.LAWN_UP = 12;
+  M.registerHD('lawn', function (ctx, spec) {
+    const Br = B(); const UP = M.LAWN_UP, g = Br.begin(ctx, TW, TH + UP, spec), env = g.env, lod = env.lod;
+    const v = spec.variant | 0, cx = TW >> 1, cy = (TH >> 1) + UP, out = (v & 15) ^ 15, wx = (v >> 8) & 3, wy = (v >> 10) & 3, seed = hash(0x1a3, v);
+    const GRASS = '#7FBF3C', KERB = '#D9C9A3', MULCH = '#6B4A2E';
+    const P = (u, w) => [cx + (u - w) * 32, cy + (u + w) * 16];
+    const IN = 0.045, R = 0.3;
+    const n = (out & 1) ? -0.5 + IN : -0.5, e = (out & 2) ? 0.5 - IN : 0.5, s = (out & 4) ? 0.5 - IN : 0.5, w = (out & 8) ? -0.5 + IN : -0.5;
+    const C4 = [[w, n], [e, n], [e, s], [w, s]];   // NW, NE, SE, SW; side k (N, E, S, W) runs from corner k to corner k + 1
+    const pts = [], tag = [];                       // the outline in tile units; tag[j] = the segment from pts[j] is an outer edge (it carries the kerb)
+    for (let k = 0; k < 4; k++) {
+      const c = C4[k], p = C4[(k + 3) & 3], q = C4[(k + 1) & 3], before = 1 << ((k + 3) & 3), after = 1 << k;
+      if ((out & before) && (out & after)) {
+        const a = [c[0] + Math.sign(p[0] - c[0]) * R, c[1] + Math.sign(p[1] - c[1]) * R], b = [c[0] + Math.sign(q[0] - c[0]) * R, c[1] + Math.sign(q[1] - c[1]) * R];
+        for (let j = 0; j <= 5; j++) { const f = j / 5, g1 = 1 - f; pts.push([g1 * g1 * a[0] + 2 * g1 * f * c[0] + f * f * b[0], g1 * g1 * a[1] + 2 * g1 * f * c[1] + f * f * b[1]]); tag.push(true); }
+        tag[tag.length - 1] = true;
+      } else { pts.push([c[0], c[1]]); tag.push((out & after) !== 0); }
+    }
+    const poly = pts.map((q) => P(q[0], q[1]));
+    const trace = () => { ctx.beginPath(); ctx.moveTo(poly[0][0], poly[0][1]); for (let k = 1; k < poly.length; k++) ctx.lineTo(poly[k][0], poly[k][1]); ctx.closePath(); };
+    // the grass: flat, two mow stripes a tile (the stripe edges are the tile's own edges and its middle, so they line up across tiles)
+    trace(); ctx.fillStyle = Br.tone(GRASS, 0.02); ctx.fill();
+    ctx.save(); trace(); ctx.clip();
+    { const a = P(0, -0.6), b = P(0.6, -0.6), c = P(0.6, 0.6), d = P(0, 0.6); ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.lineTo(c[0], c[1]); ctx.lineTo(d[0], d[1]); ctx.closePath(); ctx.fillStyle = Br.tone(GRASS, -0.07); ctx.fill(); }
+    if (lod === 0) { const r = Br.rng(seed); ctx.lineCap = 'round'; ctx.lineWidth = 0.7; for (let k = 0; k < 14; k++) { const q = P(r() - 0.5, r() - 0.5); ctx.strokeStyle = Br.tone(GRASS, r() < 0.5 ? 0.22 : -0.25, 0.5); ctx.beginPath(); ctx.moveTo(q[0], q[1]); ctx.lineTo(q[0] + 0.4, q[1] - 1.4); ctx.stroke(); } }
+    // the walks, clipped to the lawn: through the middle, or half of one along an edge (the neighbour draws the other half on the same line)
+    const walk = (a, b) => Br.path(ctx, [P(a[0], a[1]), P(b[0], b[1])], 6, env, { material: 'gravel' });
+    if (wx === 1) walk([-0.56, 0], [0.56, 0]); else if (wx === 2) walk([-0.56, -0.5], [0.56, -0.5]); else if (wx === 3) walk([-0.56, 0.5], [0.56, 0.5]);
+    if (wy === 1) walk([0, -0.56], [0, 0.56]); else if (wy === 2) walk([-0.5, -0.56], [-0.5, 0.56]); else if (wy === 3) walk([0.5, -0.56], [0.5, 0.56]);
+    ctx.restore();
+    // the kerb on the outer edges only (it follows the rounded corners), a soft shadow line inside it
+    ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+    for (let pass = 0; pass < 2; pass++) {
+      ctx.beginPath(); let any = false;
+      for (let k = 0; k < poly.length; k++) { if (!tag[k]) continue; const a = poly[k], b = poly[(k + 1) % poly.length]; ctx.moveTo(a[0], a[1] + (pass ? 0 : 1)); ctx.lineTo(b[0], b[1] + (pass ? 0 : 1)); any = true; }
+      if (any) { ctx.lineWidth = pass ? 1.5 : 2.2; ctx.strokeStyle = pass ? Br.tone(KERB, 0.1) : Br.tone(AO, 0, 0.28); ctx.stroke(); }
+    }
+    if (v & 16384) { Br.softEllipse(ctx, cx, cy + 1, 9, 4.2, MULCH, 0.85, 0.55); Br.softEllipse(ctx, cx, cy + 1, 13, 6, AO, 0.18, 0.2); }   // the oak's mulch ring and its shade
+    if (v & 8192) {   // a flower bed tucked into the rounded corner: mulch, azaleas
+      for (let k = 0; k < 4; k++) {
+        const before = 1 << ((k + 3) & 3), after = 1 << k; if (!((out & before) && (out & after))) continue;
+        const c = C4[k], ux = -Math.sign(c[0]), uy = -Math.sign(c[1]), m = P(c[0] + ux * 0.27, c[1] + uy * 0.27);
+        Br.softEllipse(ctx, m[0], m[1], 7.5, 3.6, MULCH, 0.9, 0.5);
+        const r = Br.rng(seed + k * 7);
+        for (let j = 0; j < (lod === 0 ? 7 : 4); j++) { const x = m[0] + (r() - 0.5) * 11, y = m[1] + (r() - 0.5) * 4.4; Br.orb(ctx, x, y - 1.4, 1.9, 1.5, '#3F7A34', -0.1, { noRim: true }); Br.orb(ctx, x + (r() - 0.5), y - 2.2, 1, 0.9, r() < 0.6 ? '#E86FA8' : '#F4E9F0', 0.1, { noRim: true }); }
+      }
+    }
+    if (v & 4096) {   // a bench on the grass beside the walk, its back to the lawn
+      const edgeN = wx === 2, edgeS = wx === 3, edgeW = wy === 2, edgeE = wy === 3;
+      const at = edgeN ? [0, -0.24] : edgeS ? [0, 0.24] : edgeW ? [-0.24, 0] : edgeE ? [0.24, 0] : [0.2, 0.2], q = P(at[0], at[1]), x = q[0], y = q[1];
+      Br.softEllipse(ctx, x + 1, y + 0.6, 5, 1.6, AO, 0.3, 0.3);
+      ctx.lineCap = 'butt'; ctx.lineWidth = 0.8; ctx.strokeStyle = Br.tone('#3A3A40', 0); for (const dx of [-3, 3]) { ctx.beginPath(); ctx.moveTo(x + dx, y); ctx.lineTo(x + dx, y - 2.2); ctx.stroke(); }
+      ctx.fillStyle = Br.tone(PAL.purple, 0.15); ctx.fillRect(x - 4, y - 3.4, 8, 1.4);
+      ctx.fillStyle = Br.tone(PAL.purple, -0.1); ctx.fillRect(x - 4, y - 5.6, 8, 2.2);
+    }
+    return { w: TW, h: TH + UP, ox: -(TW >> 1), oy: -((TH >> 1) + UP) };
   });
 
   // ---------------------------------------------------------------------------

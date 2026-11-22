@@ -339,7 +339,12 @@
         tagTicks: 30,                        // name tag shown 3 s on campus entry (§6.3)
         // calm alerts + ambient gators pass: gators are wildlife, not a mechanic (no penalties, closures, call-outs, bills or chips);
         // the one flavour line a gator still earns is a ticker sighting at most once per sightingGapDays
-        sightingGapDays: 90
+        sightingGapDays: 90,
+        // campus life pass (N27, "keep gators, make them more occasional"): a gator ashore on campus ground is a VISIT, one at a time, and after one comes
+        // ashore the next waits visitGapMax / (1 + attraction / visitGapAttract) days, never less than visitGapMin (× matingGapMult in the mating months).
+        // Attraction is the wander roll's own sum (a dumpster 2, gator-proof 1, a Greek porch 2, flooded ground 4 a tile…): one Dining Hall → 19 days,
+        // a Dining Hall and a Greek house → 14, gator-proof dumpsters → 22, a flooded campus → 2. On campus a gator lounges campusLoungeTicks (24–72 s at 1×), not loungeTicks
+        visitMax: 1, visitGapMax: 28, visitGapMin: 2, visitGapAttract: 4, matingGapMult: 0.5, campusLoungeTicks: [120, 360]
       },
       mosq: {
         standDays: 2, stand: 0.12, standFlooded: 0.24,   // §6.4
@@ -701,10 +706,38 @@
         strideTiles: 0.55,                   // walk cycle: tiles travelled per full 8-frame gait cycle (frames advance with distance, not time)
         turnSecs: 0.3                        // facing: a 90° turn takes this many real seconds (render eases the heading, 8 facings pass through the diagonals)
       },
+      // campus life pass (N9, "students never scattered, always in same location"). A student's day is a plan, not a shuttle: the first class (counted for
+      // attendance, as before), a meal when its hour comes, and between them blocks of free time spent where the campus offers something, picked by weight
+      // for the time of day and by nearness. Cycle ticks: Dawn 0–25, Day 25–155, Golden 155–175, Dusk 175–200, Night 200–300
+      life: {
+        parts: [70, 115, 155, 200],          // morning < 70 ≤ midday < 115 ≤ afternoon < 155 ≤ evening < 200 ≤ night
+        lateShare: 0.4, lateMaxNeed: 90,     // this share of students has its first class in the later period (only those whose walk home → class is estimated under lateMaxNeed ticks: about 11 tiles)…
+        lateAt: [55, 85],                    // …setting off at a stable point in this window, or earlier when the walk from where they are needs it:
+        classBy: 150, needMult: 1,           // classBy − needMult × the estimated walk (the leave-earlier estimate: 35 % detour allowance at the mean of path and grass pace), so they are at the door before Golden (155) as before
+        wakeSpread: 45,                      // the late period leaves the dorm over this many ticks after Dawn (9 s at 1×)
+        classTicks: [28, 48], inside: [35, 80],   // ticks inside a class; inside the Union / Library / Rec Center / the dorm on a visit
+        classesMax: 2,                       // classes a day (the second one at any hall, weighted by seats and nearness; not counted for attendance)
+        lunch: [60, 125], breakfastShare: 0.5, dinnerShare: 0.45,   // each student's lunch hour is a stable point in the window; the late period may have breakfast, the evening a dinner
+        reach: 5,                            // nearness: a place d tiles away weighs 1 / (1 + (d / reach)²)
+        hangTicks: [100, 260],               // a dwell on a lawn, under an oak or on a building's steps: 20–52 s at 1× (move.dwellTicks stays the wait outside a door)
+        homeEarlyShare: 0.7,                 // at Dusk this share turns for home (so the campus is quiet by midnight); the rest stays out until Night
+        cliquesPerClass: 4,                  // friends: the students of one hall fall in this many groups that pick the same lawn / oak / steps (near their hall) in the same hour
+        classSpan: 6,                        // a student's hall for the day's first class: any hall within this many tiles of the nearest one's distance from home, weighted by seats × nearness
+        slotTicks: 60,                       // …the "hour" (cycle ticks) a group keeps its place
+        stayShare: 0.45,                     // after a dwell outdoors: this share shuffles to a spot nearby and stays, the rest moves on with the plan
+        nightSpread: 30,                     // Night reaches each student over this many ticks (6 s at 1×): the walk home trickles in from wherever they were
+        //         morning midday afternoon evening
+        weights: {
+          class2: [2, 1, 2, 0], library: [1, 1, 2, 1.5], union: [1, 2, 2, 3], rec: [1, 1, 3, 2], greek: [0, 0, 1, 3], dorm: [1.5, 0.5, 1, 2.5],
+          lawn: [3, 4, 5, 5], oak: [2, 2, 3, 3], front: [2, 2, 2, 3], stroll: [1, 1, 1, 1.5]
+        },
+        rainOutdoor: 0.1                     // in rain the outdoor kinds (lawn, oak, front, stroll) weigh this much
+      },
       offscreenRate: 4, offscreenMargin: 4,  // §7
       maxAstarPerTick: 8,                    // §7
       summerShare: 0.35, poboyShare: 0.3, nightOwlShare: 0.15, zydecoEvery: 5,   // §7 schedule
       fleeRadius: 2, legTicks: 50,           // §7
+      fleeAgainTicks: 150,                   // campus life pass (N27): a student who has run from a gator walks past that same gator for this long (30 s at 1×) instead of running again every 6 s
       wearThreshold: 40, wearDecay: 5 * DAY_SCALE,   // §7 desire lines (agents cross at the tick rate, so the per-day decay scales with the day: 5 per 100 ticks)
       energyDrain: 1,                        // fraction of energy drained across one Day phase (§7)
       tubeP: 0.15, slapAt: 0.3, gatorFleeTicks: 30, moodFlee: -5,   // §7 reactions
@@ -775,6 +808,11 @@
       minimapPx: 160, minimapEveryFrames: 6, // §11.1, ARCH §6.3
       buildPopMs: 600, godRayTicks: 100, gateDropMs: 2000,   // §10.1, §6.2, §4.10b
       agentPx: [12, 20], gatorPx: [40, 12], leGrandPx: 56,   // §12.3
+      // campus life pass (N29, "when nighttime it's too dark"): Settings → Night brightness. `levels` scales how hard the night sits on the scene (the
+      // multiply tint, the blue cast and the edge vignette): Dim 1 is the night as it was (the scene at about 35–44 % of its daylight value), Standard 0.55
+      // (60–68 %) the default, Bright 0.34 (73–79 %). Lit windows, lamps and the simulation do not change. `cursor`: the soft light under the pointer at
+      // night, CSS px radius and peak alpha, stronger with a tool armed, nothing by day
+      night: { modes: ['dim', 'standard', 'bright'], levels: { dim: 1, standard: 0.55, bright: 0.34 }, cursor: { r: 110, rArmed: 150, a: 0.22, aArmed: 0.36, color: '#FFE7B4' } },
       autoCamera: false                      // camera pass: the camera moves only when the player moves it (drag, keys, wheel, minimap) or clicks a control that says so (Show me, Locate, Fix, Pan to, Follow); true restores the scripted moves (charter swoop, founding follow, landfall cue, football game camera, title drift). render.autoCamera mirrors it (tests flip that)
     },
     ui: {                                    // GDD §11
@@ -1354,7 +1392,7 @@
         camera: { x: (founders.tx - founders.ty) * 32, y: (founders.tx + founders.ty) * 16, zoom: 1, tx: 0, ty: 0, follow: -1 },
         overlay: BSU.OV.NONE, speed: 1, speedBefore: 1, tool: null, panel: null, paletteTab: 'essentials',
         tabsSeen: {}, newPips: {}, tabsIntroduced: {},
-        settings: { volume: P.audio.defaultVolume, muted: false, particles: 'high', screenShake: false, colorblind: false, autoSimHint: false, coachSeen: false, keepMinimap: false, keepOverlays: false, reduceMotion: null, alerts: 'normal', mutedIssues: {}, tieCardSeen: false },   // paths pass: tieCardSeen = the one-time "Tied in" card has shown. UI refresh U2: keepMinimap / keepOverlays pin the Map / Layers popovers open (the old hudMode / hudCollapsed keys are read once by ui.js on load and dropped). calm alerts pass: alerts normal | quiet | off, mutedIssues {kind: true}
+        settings: { volume: P.audio.defaultVolume, muted: false, particles: 'high', screenShake: false, colorblind: false, autoSimHint: false, coachSeen: false, keepMinimap: false, keepOverlays: false, reduceMotion: null, alerts: 'normal', mutedIssues: {}, tieCardSeen: false, night: 'standard' },   // campus life pass: night = Settings → Night brightness (dim | standard | bright)   // paths pass: tieCardSeen = the one-time "Tied in" card has shown. UI refresh U2: keepMinimap / keepOverlays pin the Map / Layers popovers open (the old hudMode / hudCollapsed keys are read once by ui.js on load and dropped). calm alerts pass: alerts normal | quiet | off, mutedIssues {kind: true}
         issues: { snoozed: {}, dismissed: {} },   // calm alerts pass: the Issues tray's snoozes {id: {until (tick), severity, days}} and dismissals {id: sig}, saved with the game
         perfMode: false
       },

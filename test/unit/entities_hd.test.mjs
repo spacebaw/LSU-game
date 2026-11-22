@@ -35,7 +35,7 @@ const brushSrc = readFileSync(join(root, 'src', 'js', 'brush.js'), 'utf8');
 ok(/M\.capsule = function/.test(brushSrc) && /M\.digits = function/.test(brushSrc), 'brush.js carries the H4 body-kit primitives capsule and digits');
 const renderSrc = readFileSync(join(root, 'src', 'js', 'render.js'), 'utf8');
 ok(/function getRefE\(id, variant, frame\) \{ const sp = S\(\); const r = sp\.get\(id, variant, frame, \(hdOn && sp\.isHD\(id\)\) \? hdMaster :/.test(renderSrc), 'render.getRefE asks an HD character family at hdMaster');
-ok(/function getRefF\(id, variant, frame\)/.test(renderSrc) && /e\.ref = id \? getRefF\(id, variant, frame\) : null/.test(renderSrc) && /const ref = getRefF\(id, v, sp\.fbFrame\(id, dir, fr\)\)/.test(renderSrc), 'render: the football layer (fbPush, the fan rows) fetches through getRefF at the half-scale master');
+ok(/function getRefF\(id, variant, frame\)/.test(renderSrc) && /e\.ref = id \? getRefF\(id, variant, frame\) : null/.test(renderSrc) && /const ref = getRefF\(id, v, sp\.fbFrame\(id, G\.T \? \(dir \^ 1\) : dir, fr\)\)/.test(renderSrc), 'render: the football layer (fbPush, the fan rows) fetches through getRefF at the half-scale master');
 ok(/hdMasterHalf = hdOn \? M\.hdMasterOf\(zoomNow \* FB_SCALE, dpr\) : 1/.test(renderSrc), 'render: hdMasterHalf = hdMasterOf(zoom × FB_SCALE, dpr)');
 
 // --- load the pen first, snapshot its geometry -------------------------------

@@ -172,6 +172,31 @@
     const st = stormDarkness(state); if (st > 0) a = Math.max(a, 0.55 * st);
     return clamp(a, 0, 1);
   }
+  // campus life pass (N29): how hard the night sits on the scene, from Settings → Night brightness (params.render.night.levels: dim 1 = the night as it
+  // was, standard 0.55, bright 0.34). It scales the night multiply, the blue cast and the vignette; the lights pass and the sim never read it
+  const PN = PR.night || { modes: ['dim', 'standard', 'bright'], levels: { dim: 1, standard: 0.55, bright: 0.34 }, cursor: { r: 110, rArmed: 150, a: 0.22, aArmed: 0.36, color: '#FFE7B4' } };
+  function nightMode(state) { const m = state && state.ui && state.ui.settings ? state.ui.settings.night : null; return PN.modes.indexOf(m) >= 0 ? m : 'standard'; }
+  function nightLevel(state) { return fin(PN.levels[nightMode(state)], 0.55); }
+  /** the [r, g, b] factor (0–1) the full Night multiplies the scene by at a brightness mode (pure; tests): the night tint and the deep-blue fill, both scaled by the mode's level */
+  R.nightFloor = function (mode) {
+    const lv = fin(PN.levels[PN.modes.indexOf(mode) >= 0 ? mode : 'standard'], 0.55), T = TINTS[SKY.NIGHT], out = [1, 1, 1];
+    const mul = function (hex, a) { const v = parseInt(hex.slice(1), 16); out[0] *= 1 - a + a * ((v >> 16) & 255) / 255; out[1] *= 1 - a + a * ((v >> 8) & 255) / 255; out[2] *= 1 - a + a * (v & 255) / 255; };
+    mul(T.color, T.alpha * lv); mul(NIGHT_DEEP, 0.18 * lv);
+    return out;
+  };
+  const NIGHT_DEEP = '#1A2050';
+  /** the cursor light this frame → {on, x, y, r, a} (CSS px; a = 0 by day): what passTint draws under the pointer (tests, QA) */
+  const cur = { on: false, x: 0, y: 0, r: 0, a: 0 };
+  function cursorLight(state, nightA) {
+    const c = R.cursor, PC = PN.cursor; cur.on = false; cur.a = 0;
+    if (!c || c.on !== true || !(nightA > 0.02) || !Number.isFinite(c.x) || !Number.isFinite(c.y)) return cur;
+    const armed = !!(state.ui && state.ui.tool);
+    cur.on = true; cur.x = c.x; cur.y = c.y; cur.r = armed ? PC.rArmed : PC.r; cur.a = (armed ? PC.aArmed : PC.a) * nightA;
+    return cur;
+  }
+  R.cursor = R.cursor || { x: 0, y: 0, on: false };   // ui writes the pointer's canvas position here (CSS px); on = the pointer is over the map
+  /** campus life pass (tests / QA): {mode, level, floor: [r, g, b], night (0–1), cursor: {on, x, y, r, a}} for the state as the next frame will draw it */
+  R.nightInfo = function (state) { const s = state || BSU.state, na = nightAmount(s), c = cursorLight(s, na); return { mode: nightMode(s), level: nightLevel(s), floor: R.nightFloor(nightMode(s)), night: na, cursor: { on: c.on, x: c.x, y: c.y, r: c.r, a: c.a } }; };
   /** 0–1 how deep into the landfall set piece we are (0 outside it) */
   function stormDarkness(state) {
     const sp = state && state.setPiece; if (!sp || sp.kind !== 'landfall') return 0;
@@ -925,9 +950,10 @@
     const flushMul = () => { if (!mAny) return; mAny = false; g.globalCompositeOperation = 'multiply'; g.globalAlpha = 1; g.fillStyle = 'rgb(' + Math.round(mr * 255) + ',' + Math.round(mg * 255) + ',' + Math.round(mb * 255) + ')'; g.fillRect(0, 0, vw, vh); };
     tintFor(s.phase, s.t, tintOut);
     const skyScale = 1 - 0.5 * storm;   // the storm swallows most of the sky colour
-    fill(tintOut.c1, tintOut.a1 * skyScale); fill(tintOut.c2, tintOut.a2 * skyScale);
+    const nl = nightLevel(state), nc = TINTS[SKY.NIGHT].color;   // campus life pass (N29): the night's share of the tint is scaled by Settings → Night brightness
+    fill(tintOut.c1, tintOut.a1 * skyScale * (tintOut.c1 === nc ? nl : 1)); fill(tintOut.c2, tintOut.a2 * skyScale * (tintOut.c2 === nc ? nl : 1));
     const kk = s.t < 0.75 ? 0 : (s.t - 0.75) / 0.25, nightW = s.phase === SKY.NIGHT ? 1 - kk : (s.phase === SKY.DUSK ? kk : 0);
-    if (nightW > 0) fill('#1A2050', 0.18 * nightW * skyScale);   // deep blue-purple, not plain black
+    if (nightW > 0) fill(NIGHT_DEEP, 0.18 * nightW * skyScale * nl);   // deep blue-purple, not plain black
     if (storm > 0) {
       if (stormPhase === SPH.EYE) { fill(EYE_TINT.color, EYE_TINT.alpha); fill(STORM_TINT.color, STORM_TINT.alpha * 0.3); }
       else if (stormPhase === SPH.CLEARING) { fill(TINTS[SKY.GOLDEN].color, TINTS[SKY.GOLDEN].alpha); fill(STORM_TINT.color, STORM_TINT.alpha * 0.25); }
@@ -944,7 +970,7 @@
       if (s.phase === SKY.GOLDEN) fill('#FFB060', 0.32 * (1 - kk) + 0.2 * kk);
       else if (s.phase === SKY.DAWN) fill('#FF9A70', 0.26 * (1 - s.t) + 0.08);
       else if (s.phase === SKY.DUSK) fill('#B04A9A', 0.2 * (1 - kk));
-      if (nightW > 0) fill('#2A3AA0', 0.28 * nightW);
+      if (nightW > 0) fill('#2A3AA0', 0.28 * nightW * (0.5 + 0.5 * nl));
     } else fill('#3A4A5A', 0.3 * storm);
     g.globalCompositeOperation = 'screen';
     // horizon glow: 10 bands from the top at dawn / golden hour / dusk
@@ -955,6 +981,9 @@
       for (let b = 0; b < 10; b++) { const f = 1 - b / 10; g.globalAlpha = strength * f * f; g.fillRect(0, b * bandH, vw, bandH); }
     }
     if (goldFlash > 0) { goldFlash--; g.globalCompositeOperation = 'source-over'; g.globalAlpha = 0.15; g.fillStyle = GOLD; g.fillRect(0, 0, vw, vh); }
+    // campus life pass (N29): a soft light under the pointer at night: one cached halo blob added to the tinted scene (nothing by day, more with a tool armed)
+    const cl = cursorLight(state, nightAmount(state));
+    if (cl.on && cl.a > 0.004) { const BR = BSU.brush; if (BR && typeof BR.drawBlob === 'function') { g.globalCompositeOperation = 'lighter'; g.imageSmoothingEnabled = true; BR.drawBlob(g, 'halo', PN.cursor.color, cl.x, cl.y, cl.r, cl.r * 0.62, cl.a, view.dpr || 1, { a: 0.9 }); } }
     g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1;
   }
 
@@ -1040,11 +1069,12 @@
           else if (b.type === 'stadium' && (b.tier | 0) >= 2 && b.built >= 1 && !b.ruin && !b.blackout && game && game.home) {
             // six masts around the bowl, cones rotated toward the field: at the painted mast heads (sprites_buildings.stadiumGeom, stadium scale pass), else the old ellipse
             const rx = (span) * 14 * z, ry = span * 7 * z, fy = cy - 18 * z, Sp = mod('sprites');
-            let SG = null; try { SG = Sp && typeof Sp.stadiumGeom === 'function' ? Sp.stadiumGeom(b.tier | 0, b.w | 0, b.h | 0) : null; } catch (err) { SG = null; }
+            const TR = (b.h | 0) > (b.w | 0);   // campus life pass (N8): a rotated stadium's geometry is the unrotated one transposed
+            let SG = null; try { SG = Sp && typeof Sp.stadiumGeom === 'function' ? Sp.stadiumGeom(b.tier | 0, TR ? b.h | 0 : b.w | 0, TR ? b.w | 0 : b.h | 0) : null; } catch (err) { SG = null; }
             const rim = SG ? fin(SG.farRim, 0) : 0, fw = b.w | 0, fh = b.h | 0;
             for (let m = 0; m < 6 && lightsN < LMAX; m++) {
               let mx, my;
-              if (SG && SG.masts && SG.masts[m]) { const M6 = SG.masts[m]; mx = e.sx + (fh - fw + M6[0] - M6[1]) * 32 * z; my = e.sy + (16 + (M6[0] + M6[1] - fw - fh) * 16 - M6[2] - M6[3]) * z; }
+              if (SG && SG.masts && SG.masts[m]) { const M6 = SG.masts[m], MX = TR ? M6[1] : M6[0], MY = TR ? M6[0] : M6[1]; mx = e.sx + (fh - fw + MX - MY) * 32 * z; my = e.sy + (16 + (MX + MY - fw - fh) * 16 - M6[2] - M6[3]) * z; }
               else { const ang = (m / 6) * Math.PI * 2 + 0.3; mx = cx + Math.cos(ang) * rx; my = fy + Math.sin(ang) * ry - 40 * z; }
               pushLight('mast', mx, my, 1.9, 0.13, Math.atan2(fy - my, cx - mx) - Math.PI / 2);   // qa pass 4: 0.26 × six cones + the glow still whited out midfield (fireworks vanished)   // qa pass 3: 0.42 still whited out midfield at the game camera's 2×, hiding the band and the ball   // B5: six overlapping cones used to white out the bowl; the haze below carries the glow now
             }
@@ -1168,13 +1198,16 @@
   // H5: the night vignette is ONE smooth canvas (brush.blob 'vignette': clear in the middle, dark toward the edges and corners) stretched ONCE to the frame's device
   // size and blitted 1:1 in four slabs around its transparent centre (a scaled bilinear blit of the same image costs ~7× more in software raster). B5's 24 stacked
   // bands stepped visibly; this does not.
-  let vigC = null, vigW = 0, vigH = 0;
+  let vigC = null, vigW = 0, vigH = 0, vigL = 1;
   R.vignetteMB = function () { return vigC ? (vigW * vigH * 4) / 1048576 : 0; };   // H7: counted in render.perf().memMB
-  function drawVignette(g, vw, vh, dpr, a) {
+  // campus life pass (N29): `level` (Settings → Night brightness) is baked into the cached canvas, so the full Night still draws it at alpha 1
+  // (four frame-wide drawImage slabs at a constant alpha below 1 cost 2 ms more a frame in software raster at dpr 2)
+  function drawVignette(g, vw, vh, dpr, a, level) {
     const BR = BSU.brush, w = Math.max(1, Math.round(vw * dpr)), h = Math.max(1, Math.round(vh * dpr));
-    if (!vigC || vigW !== w || vigH !== h) {
+    level = clamp(fin(level, 1), 0, 1);
+    if (!vigC || vigW !== w || vigH !== h || vigL !== level) {
       const vb = BR && typeof BR.blob === 'function' ? BR.blob('vignette', '#05061A', 160, 100) : null; if (!vb) return;
-      try { const SP = mod('sprites'); if (vigC) { vigC.width = 1; vigC.height = 1; } vigC = SP.newCanvas(w, h); vigC.width = w; vigC.height = h; const vg = SP.ctx2d(vigC); vg.imageSmoothingEnabled = true; vg.drawImage(vb.canvas, 0, 0, w, h); vigW = w; vigH = h; } catch (e) { vigC = null; return; }
+      try { const SP = mod('sprites'); if (vigC) { vigC.width = 1; vigC.height = 1; } vigC = SP.newCanvas(w, h); vigC.width = w; vigC.height = h; const vg = SP.ctx2d(vigC); vg.imageSmoothingEnabled = true; vg.globalAlpha = level; vg.drawImage(vb.canvas, 0, 0, w, h); vg.globalAlpha = 1; vigW = w; vigH = h; vigL = level; } catch (e) { vigC = null; return; }
     }
     const tw = Math.round(h * 0.15) * 2, lw = Math.round(w * 0.15) * 2;   // the inscribed centre (≈ 16 % of the frame) is fully clear: skip it (even device px, so every slab lands on whole CSS px at dpr 2)
     g.globalAlpha = a;
@@ -1231,7 +1264,7 @@
     }
     // night vignette: 4 edges × 6 stacked bands, up to .35 at Night
     if (nightA > 0.02) {
-      drawVignette(g, vw, vh, view.dpr || 1, nightA);
+      drawVignette(g, vw, vh, view.dpr || 1, nightA, nightLevel(state));   // campus life pass (N29): the dark corners ease with the night brightness
     }
     g.globalAlpha = 1; g.globalCompositeOperation = 'source-over';
   }

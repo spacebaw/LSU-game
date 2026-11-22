@@ -1176,6 +1176,7 @@
       for (const dx of [-7, 7]) B.column(ctx, sb[0] + dx, sb[1], legH, 0.9, C.steel, env);
       if (bd.kind === 'jumbo') jumbotron(ctx, sb[0] - bd.w / 2, sb[1] - legH - bd.h - 2, bd.w, bd.h, night, frame, env); else scoreboard(ctx, sb[0] - bd.w / 2, sb[1] - legH - bd.h, bd.w, bd.h, night, frame, env);
     }
+    { const f = G.field, my = (f.y0 + f.y1) / 2; goalpost(ctx, fT(g, f.x0 + STADIUM_POST_IN, my, 0), env); goalpost(ctx, fT(g, f.x1 - STADIUM_POST_IN, my, 0), env); }   // campus life pass (N8): the goalposts, on the two end lines (the field had none)
     decks('x0', []); decks('y0', []);
     if (tier >= 2) {   // concrete entry ramps up to the near concourse at both near corners
       const hr = G.nearRim * 0.6;
@@ -1654,11 +1655,51 @@
     const variant = Number.isFinite(spec.variant) ? Math.max(0, spec.variant | 0) : 0, frame = Number.isFinite(spec.frame) ? (spec.frame | 0) : 0;
     const g0 = M.buildingBox(row, variant, 1, spec.rot);
     const G = B.begin(ctx, g0.w, g0.h, spec);
-    const env = Object.assign({}, G.env, { night: !!(variant & SPR.NIGHT) });
-    const g = geometry(row, variant, frame, spec.rot, spec.seed | 0, spec.tees, env);
+    const mirror = M.fieldMirrored(row, spec.rot);
+    const env = Object.assign({}, G.env, { night: !!(variant & SPR.NIGHT), flip: mirror });
+    if (mirror) { ctx.translate(g0.w, 0); ctx.scale(-1, 1); }
+    const g = geometry(row, variant, frame, mirror ? 0 : spec.rot, spec.seed | 0, spec.tees, env);
     composeHD(ctx, g, variant, frame, env);
-    return { w: g.w, h: g.h, ox: g.ox, oy: g.oy };
+    return { w: g0.w, h: g0.h, ox: g0.ox, oy: g0.oy };
   });
+  // ---------------------------------------------------------------------------
+  // campus life pass (N8, "when football field rotated, posts on the wrong ends"). The field and stadium painters lay everything out along the
+  // footprint's X axis: goalposts at X = 0.6 and fw − 0.6, yard lines across Y, the stands along the X edges. Rotated (R: 4 × 3 → 3 × 4, 6 × 5 → 5 × 6)
+  // the footprint's LONG axis is Y, and the same code put the posts on the long sides, ran the yard lines lengthwise and (the stadium) laid the
+  // gold end zones along the sidelines. Swapping X and Y of a footprint point is a left-right mirror of its screen point about the canvas's
+  // middle (x' = w − x: the anchor fw·32 + PAD lands on fh·32 + PAD, the rotated box's own), so a rotated field IS the unrotated painting
+  // mirrored: posts, lines, end zones, benches, stands, masts, board, crown and the light companion all follow in one step. env.flip swaps the lit
+  // (SW) and shadow (SE) face tones (brush.fillQuadShaded), so the sun stays on the left. render maps the game onto the same transposed field.
+  // ---------------------------------------------------------------------------
+  const FIELD_BODIES = { field: 1, stadium: 1 };
+  /** is this row's rotated sprite painted as the mirror of its unrotated one (the Practice Field and the Stadium) */
+  M.fieldMirrored = function (row, rot) { return !!rot && !!row && row.w !== row.h && !!HD_ROWS[row.id] && FIELD_BODIES[HD_ROWS[row.id].body] === 1; };
+  /**
+   * Where a field's parts stand on a building's footprint, in footprint tiles (X along +tx, Y along +ty), for a w × h footprint as placed:
+   * {T (the long axis is Y: a rotated field), long: 'x' | 'y', field: {x0, y0, x1, y1}, posts: [[X, Y], [X, Y]] (the goalposts), lines: 'x' | 'y' (the axis
+   * the yard lines run along: across the field), ends: [[X, Y], [X, Y]] (the middles of the two short edges of the playing field), bench: [[X, Y] …],
+   * stands: [{r: {x0, y0, x1, y1}, inner}] (the stadium's, back to front)}. The painters draw exactly this (tests and render read it).
+   */
+  M.fieldLayout = function (type, tier, w, h) {
+    w = Math.max(1, w | 0); h = Math.max(1, h | 0); tier = Math.max(0, tier | 0);
+    const T = h > w, fw = T ? h : w, fh = T ? w : h;   // field space: X the long axis
+    const tp = (p) => (T ? [p[1], p[0]] : [p[0], p[1]]);
+    const tr = (r) => (T ? { x0: r.y0, y0: r.x0, x1: r.y1, y1: r.x1 } : { x0: r.x0, y0: r.y0, x1: r.x1, y1: r.y1 });
+    const IN = { x0: 'y0', x1: 'y1', y0: 'x0', y1: 'x1' };
+    let F, posts, bench = [], stands = [];
+    if (type === 'stadium') {
+      const G = M.stadiumGeom(Math.max(1, Math.min(3, tier)), fw, fh); F = G.field;
+      posts = [[F.x0 + STADIUM_POST_IN, (F.y0 + F.y1) / 2], [F.x1 - STADIUM_POST_IN, (F.y0 + F.y1) / 2]];
+      stands = G.stands.map((s) => ({ r: tr(s.r), inner: T ? IN[s.inner] : s.inner, deck: s.deck }));
+    } else {
+      F = { x0: 0.6, y0: 0.3, x1: fw - 0.6, y1: fh - 0.3 };
+      posts = [[F.x0, fh / 2], [F.x1, fh / 2]];
+      bench = [[fw * 0.4, fh * 0.55], [fw * 0.6, fh * 0.45]];
+      if (tier >= 1) stands = [{ r: tr({ x0: fw / 2 - 0.75, x1: fw / 2 + 0.75, y0: 0.2, y1: 0.7 }), inner: T ? 'x1' : 'y1', deck: 1 }];
+    }
+    return { T: T, long: T ? 'y' : 'x', lines: T ? 'x' : 'y', field: tr(F), posts: posts.map(tp), ends: [tp([F.x0, (F.y0 + F.y1) / 2]), tp([F.x1, (F.y0 + F.y1) / 2])], bench: bench.map(tp), stands: stands };
+  };
+  const STADIUM_POST_IN = 0.06;   // the stadium's goalposts stand on the end line, this far inside the field rect (tiles)
   /** the lit cells (and door / lamps) of a converted row for a variant / frame, without drawing: what the companion lights */
   M.hdBuildingCells = function (id, variant, frame, rot) {
     const cat = BSU.data && BSU.data.catalog, base = typeof id === 'string' && id.indexOf(':') >= 0 ? id.slice(0, id.indexOf(':')) : id, row = cat && cat[base];
@@ -1697,8 +1738,10 @@
     const variant = (Number.isFinite(spec.variant) ? Math.max(0, spec.variant | 0) : 0) | SPR.NIGHT, frame = Number.isFinite(spec.frame) ? (spec.frame | 0) : 0;
     spec.frames = 4; spec.framesPerVariant = true;
     const g0 = M.buildingBox(row, variant, 1, rot);
-    const G = B.begin(ctx, g0.w, g0.h, spec), env = Object.assign({}, G.env, { night: true });
-    const lc = M.hdBuildingCells(id, variant, frame, rot);
+    const mirror = M.fieldMirrored(row, rot);
+    const G = B.begin(ctx, g0.w, g0.h, spec), env = Object.assign({}, G.env, { night: true, flip: mirror });
+    if (mirror) { ctx.translate(g0.w, 0); ctx.scale(-1, 1); }
+    const lc = M.hdBuildingCells(id, variant, frame, mirror ? 0 : rot);
     if (lc && !(variant & (SPR.SCAFFOLD | SPR.RUIN))) {
       for (const c of lc.cells) if (c.lit) B.light(ctx, { quad: c.quad, color: C.glow, a: 0.9, halo: 5 }, env);
       const g = lc.g, b = mainBox(g);

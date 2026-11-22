@@ -878,7 +878,7 @@
     world.addEventListener('pointermove', pt('move'));
     world.addEventListener('pointerup', pt('up'));
     world.addEventListener('pointercancel', function () { M.pointer('cancel', lastPx, lastPy, 0, M0); });
-    world.addEventListener('pointerleave', function () { hideTooltip(); show(E['ghost-label'], false); if (live.down) M.pointer('cancel', lastPx, lastPy, 0, M0); });   // the ghost label must not linger over HUD panels
+    world.addEventListener('pointerleave', function () { if (BSU.render && BSU.render.cursor) BSU.render.cursor.on = false; hideTooltip(); show(E['ghost-label'], false); if (live.down) M.pointer('cancel', lastPx, lastPy, 0, M0); });   // the ghost label must not linger over HUD panels
     world.addEventListener('contextmenu', function (e) { if (e.preventDefault) e.preventDefault(); });
     world.addEventListener('dblclick', function (e) { if (e.preventDefault) e.preventDefault(); });
     world.addEventListener('wheel', function (e) { try { M.wheel(fin(e.offsetX, 0), fin(e.offsetY, 0), fin(e.deltaX, 0), fin(e.deltaY, 0), !!(e.ctrlKey || e.metaKey)); if (e.preventDefault) e.preventDefault(); } catch (err) { uerr('wheel', err); } }, { passive: false });
@@ -997,7 +997,10 @@
     return out;
   }
   /** a row laid as a run of tiles by a drag: the 'drag' rows (paths, roads, levees…) and the 'paint' rows (Wetland Preserve) */
-  function isRunRow(r) { return !!(r && (r.kind === 'drag' || r.kind === 'paint')); }
+  function isRunRow(r) { return !!(r && (r.kind === 'drag' || r.kind === 'paint' || isBlockRow(r))); }
+  /** campus life pass (N26): a footprint row laid as a BLOCK by a drag (the Quad Lawn: press, drag out a rectangle, release: every lawn of it in one go; a click is one lawn) */
+  function isBlockRow(r) { return !!(r && r.kind === 'footprint' && call('buildings', 'isBlockRow', r.id) === true); }
+  function isAreaRow(r) { return !!(r && (r.kind === 'paint' || isBlockRow(r))); }
   const Z_TRIES = 12;   // cross-leg positions tried per family (nearest the middle first) before the better L is kept with its red tiles
   function quoteOf(mc, run) { const q = mc.cb.quote; return typeof q === 'function' ? (q(run) || null) : null; }
   /** which of two quotes wins: < 0 → x; fewest refused tiles, then the run that touches the network / needs the shorter tie (tieRank), then fewer wet tiles */
@@ -1127,7 +1130,7 @@
   M._machine = function (cb) {
     const defaults = { tool: null, insp: false };
     const c = {
-      getTool: function () { return defaults.tool; }, setTool: function (t) { defaults.tool = t; }, isDrag: function (id) { return isRunRow(rowOf(id)); }, isArea: function (id) { const r = rowOf(id); return !!(r && r.kind === 'paint'); },
+      getTool: function () { return defaults.tool; }, setTool: function (t) { defaults.tool = t; }, isDrag: function (id) { return isRunRow(rowOf(id)); }, isArea: function (id) { return isAreaRow(rowOf(id)); },
       rotatable: function (id) { const r = rowOf(id); return !!(r && r.rotatable); }, locked: function () { return false; }, inspecting: function () { return defaults.insp; },
       tileAt: function (px, py) { const tx = Math.floor(px / 20), ty = Math.floor(py / 11); return BSU.inBounds(tx, ty) ? ty * W + tx : -1; },
       pan: function () {}, hover: function () {}, ghost: function () {}, place: function () { return true; }, placeRun: function () {},
@@ -1166,7 +1169,7 @@
   const live = makeMachine({
     getTool: function () { const s = stateOf(); return s && s.ui ? s.ui.tool : null; },
     setTool: function (t) { if (!t || !ghostPin || ghostPin.id !== t.id) ghostPin = null; const s = stateOf(); if (s && s.ui) { s.ui.tool = t; } markToolDom(s); if (t && bm.open && !bm.keepOpen) M.collapseBuildSheet(); try { emit('ui:tool', { tool: t ? t.id : null }); } catch (e) { uerr('emit:tool', e); } },
-    isDrag: function (id) { return isRunRow(rowOf(id)); }, isArea: function (id) { const r = rowOf(id); return !!(r && r.kind === 'paint'); },
+    isDrag: function (id) { return isRunRow(rowOf(id)); }, isArea: function (id) { return isAreaRow(rowOf(id)); },
     rotatable: function (id) { const r = rowOf(id); return !!(r && r.rotatable); },
     locked: function () { return toolLocked; },
     inspecting: function () { return !!insp; },
@@ -1196,7 +1199,7 @@
       if (titleOn) return;
       if (type === 'down' && (sheet.open || s.ui.panel) && !s.ui.tool && !bm.open) { M.openPanel(null); return; }   // a map click dismisses the open Menu sheet (U3: the list state too)
       if (type === 'down') { if (call('progress', 'tutorialStage', s) === 1) { call('progress', 'skipSwoop', s); return; } if (s.setPiece) call('render', 'captureCameraTouch', s); closePopover(); if (goal.open && coach.step < 0) goalCollapse(); if (bm.open) M.closeBuildMenu(); }   // U2: a map press is an outside click for the popover and the goal card; a press while the menu is up (Build it keeps it open) is the player's answer: close it and place   // the swoop-skipping click must not also open the tile inspector behind the charter card
-      if (type === 'move' || type === 'down') { const i = tileIndexAt(px, py); M.hoverTile = i; if (BSU.render) BSU.render.hoverTile = i; }
+      if (type === 'move' || type === 'down') { const i = tileIndexAt(px, py); M.hoverTile = i; if (BSU.render) { BSU.render.hoverTile = i; const rc = BSU.render.cursor; if (rc) { rc.x = px; rc.y = py; rc.on = true; } } }   // campus life pass (N29): render_fx's night light follows the pointer
       mcStep(live, { type: type, px: px, py: py, button: fin(button, 0) | 0, mods: mods });
     } catch (e) { uerr('pointer:' + type, e); }
   };
@@ -1469,7 +1472,7 @@
     if (tool.id === 'bulldoze') { const i = tileIndexAt(px, py); const b = i >= 0 ? call('buildings', 'at', s, i % W, (i / W) | 0) : null; const row = b ? rowOf(b.type) : null; call('render', 'ghost', i >= 0 ? { tiles: b ? (call('buildings', 'footprint', s, b.id) || [i]) : [i], color: b && row && !row.demolishable ? 'red' : 'red', label: '' } : null); if (dom()) ghostLabel(px, py, b ? 'Demolish ' + (b.name || (row && row.name) || b.type) : 'Demolish', b && row && !row.demolishable ? 'Landmarks stay' : (b ? 'Refund 50%' : 'Click a path, road, levee, canal or fence'), 'red'); return; }
     const row = rowOf(tool.id); if (!row) return;
     const g = ghostTarget(s, tool, px, py); if (!g) return;
-    const dragging = live.state === 'DRAGGING';
+    const dragging = live.state === 'DRAGGING' && !(isBlockRow(row) && live.run.length <= 1);   // (a Quad Lawn pressed but not dragged yet is still the click's ghost)
     const isRing = row.id === 'levee' || row.id === 'floodwall';
     const shrank = dragging && live.run.length < lastRunLen; lastRunLen = dragging ? live.run.length : 0;   // a backtrack changes the ring maths at once: never serve the throttled copy
     // water pass: the ring preview is the machine plan's (buildings.runQuote → ring, one per candidate run on every move), so the 50-ms throttle that
@@ -1506,12 +1509,14 @@
     if (pl && crossRow) color = pl.placed === 0 ? 'red' : 'green';   // crossings pass: the run's colour is the plan's (the cursor may sit off a run whose end snapped onto a path's line)
     if (pl && pl.skipped.length) { color = pl.placed === 0 ? 'red' : 'yellow'; const sk = new Set(pl.skipped.map(function (x) { return x.i; })); tiles = live.run.filter(function (i) { return !sk.has(i); }); }   // the skipped tiles are red only, never under the run's own fill
     if (pl && pl.extra && pl.extra.length) tiles = tiles.concat(pl.extra);   // crossings pass: the landing a bridge that starts / ends on the water steps off onto
+    const blk = (pl && pl.block) ? pl : null;   // campus life pass (N26): a Quad Lawn drag shows every lawn it will lay (the block reaches past the cursor to whole lawns), the refused ones red
+    if (blk) { tiles = blk.tiles; color = blk.placed === 0 ? 'red' : (blk.skipped.length ? 'yellow' : 'green'); }
     const conn = (!dragging && !g.cove && r.connector && Array.isArray(r.connector.tiles) && r.connector.tiles.length) ? r.connector : (dragging && r.tie && r.tie.tiles.length ? r.tie : null);   // paths pass: the tie this placement (or this drag's end) would lay
     const cross = (dragging && r.cross && !heldAlt) ? r.cross : null, xties = cross && cross.ties.length ? cross.ties : null;   // crossings pass: one tie per bank
     const cnl = (pl && pl.canal && pl.placed > 0) ? pl.canal : null;   // water pass: where a canal run drains to, and the tiles it digs on to get there
     if (cnl && !cnl.outlet && color === 'green') color = 'yellow';
     const spec = { tiles: tiles, skipTiles: fq ? fq.skipped.map(function (x) { return x.i; }) : (pl && pl.skipped.length ? pl.skipped.map(function (x) { return x.i; }) : null), color: color, connectorTiles: (cnl && cnl.tie) ? cnl.tie.tiles : null, ringTiles: r.ring && Array.isArray(r.ring.tiles) ? r.ring.tiles : null, label: '', radius: fin(r.radius, 0), radiusCenter: { tx: g.tx, ty: g.ty } };
-    if (row.kind === 'footprint' || row.kind === 'upgrade') spec.sprite = { id: tool.id, variant: r.needsPilings ? SPR.PILINGS : 0, tx: g.tx, ty: g.ty, rot: tool.rot };
+    if ((row.kind === 'footprint' || row.kind === 'upgrade') && !(dragging && isBlockRow(row))) spec.sprite = { id: tool.id, variant: r.needsPilings ? SPR.PILINGS : 0, tx: g.tx, ty: g.ty, rot: tool.rot };
     if (dragging && live.run.length > 1 && row.kind === 'drag' && [PLACE.PATH, PLACE.ROAD, PLACE.BOARDWALK, PLACE.BRIDGE].indexOf(row.placeRule) >= 0) { spec.line = live.run; spec.lineKind = fin(row.effects && row.effects.surfaceId, 0); }   // roads pass: the run as a stroked centreline (its L and elbow)
     call('render', 'ghost', spec);
     const tieSpecOf = function (t) { return { tiles: t.tiles, surfaces: t.surfaces || null, snap: !!t.snap, water: fin(t.water, 0), end: fin(t.end, 1) }; };
@@ -1528,6 +1533,7 @@
       if (xties) l1 += ' + ' + money(cross.cost) + (xties.length > 1 ? ' ties (both banks)' : ((xties[0].snap ? ' snap (' : ' tie (') + bankName(xties[0].end).toLowerCase() + ')'));   // "Bridge 3 tiles · $135k + $6k ties (both banks)"
       else if (conn) l1 += ' + ' + money(conn.cost) + (conn.snap ? ' snap' : ' tie');   // "12 tiles · $24k + $8k tie"
       { const nc = pl ? fin(heldAlt ? pl.clearsRun : pl.clears, 0) : 0; if (nc > 0) l1 += ' · clears ' + nc + (nc === 1 ? ' tree' : ' trees'); }   // rule 8: a surface clears its tile
+      if (blk) { const nl = fin(blk.blocks, 0); l1 = n + (n === 1 ? ' tile' : ' tiles') + ' · ' + money(blk.cost); l2 = nl + (nl === 1 ? ' lawn' : ' lawns') + ' · ' + money(fin(blk.perTile, 0)) + ' a tile' + (nl > 1 ? ' · they join into one quad' : ''); }   // "12 tiles · $90k" / "3 lawns · $7.5k a tile · they join into one quad"
       { const ring = (pl && pl.ring) || r.ring; if (ring && ring.text) l2 = ring.text; }   // water pass: buildings' wall report ("Closes the ring: holds a 5 ft surge off 14 tiles" / "Ring open: 1 gap · …" / "Open wall: …"); the old branch read a field (`closed`) the preview never had
       if (cnl) l2 = cnl.outlet ? ('Drains ' + cnl.drains + (cnl.drains === 1 ? ' tile' : ' tiles') + ' to ' + cnl.outlet + (cnl.tie ? ' · digs on ' + cnl.tie.tiles.length + (cnl.tie.tiles.length === 1 ? ' tile' : ' tiles') + ' to reach it' : '')) : ('No outlet: this canal drains nowhere' + (heldAlt ? ' (Alt held: no outlet tie)' : ' · no water within ' + fin(cnl.reach, 6) + ' tiles of its ends'));
       const st = dragStatus(s, row, r, conn); if (st) l2 = st + (l2 ? ' · ' + l2 : '');
@@ -1538,13 +1544,14 @@
     else if (!r.ok && (row.placeRule === PLACE.BRIDGE || row.id === 'road_bridge') && isRunRow(row) && r.reason === 'Bridges go over water') { color = 'yellow'; l1 = money(row.cost) + ' / tile'; l2 = 'Press on the bank and drag across the water: both ends connect themselves'; }   // crossings pass: the bank is where the drag starts, not a refusal
     else if (!r.ok) { l1 = r.reason || 'Cannot build here'; l2 = r.charter ? 'State land · click to open the Land Office (O)' : (r.reason === tieReason() ? 'Hold N to see the campus network' : (ridgeText(r.ridgeFull) || sinkText(r.sink) || '')); }   // L2: the charter line
     else {
-      l1 = money(r.cost); if (isRunRow(row)) l1 += ' / tile';
+      l1 = money(r.cost); if (isRunRow(row) && !isBlockRow(row)) l1 += ' / tile';
       if (conn) l1 += ' + ' + money(conn.cost) + ' tie';   // "$600k + $8k tie"
       if (r.needsGrading) l1 += ' · Grade the site +' + money(r.gradingCost || 0); else if (r.needsPilings) l1 += ' · Pilings +' + money(r.pilingsCost || 0);
       if (call('buildings', 'clearsPlants', tool.id) === true) { const nc = fin(call('buildings', 'plantsOn', s, (r.tiles || []).concat(conn && conn.tiles ? conn.tiles : [])), 0); if (nc > 0) l1 += ' · clears ' + nc + (nc === 1 ? ' tree' : ' trees'); }   // water pass (N5): a building clears its footprint
       if (ridgeText(r.ridgeFull)) l2 = ridgeText(r.ridgeFull); else if (sinkText(r.sink)) l2 = sinkText(r.sink); else if (r.ring && r.ring.text) l2 = r.ring.text; else if (!r.affordable) l2 = 'Not enough cash';
       else { const uw = utilityWarning(s, row, r); if (uw) l2 = uw; }
       if (!l2 && row.kind === 'paint') l2 = 'Drag to paint an area';   // goal pass
+      if (isBlockRow(row)) l2 = (l2 ? l2 + ' · ' : '') + 'Click for one lawn · drag to lay a block';   // campus life pass (N26)
       if (netRow) { const st = netStatus(r, conn); l2 = st + (l2 ? ' · ' + l2 : ''); }   // paths pass: Connected / Ties in (+$8k, 4 tiles) / Can't reach a path…
       if (g.setback) l2 = (l2 ? l2 + ' · ' : '') + 'Setback · hold Shift to place flush';
       if (tool.rot) l1 += ' · rotated (R)';
@@ -1702,6 +1709,10 @@
   function finishRun(s, run) {
     if (!s || !s.ui.tool || !run || !run.length) return;
     const tool = s.ui.tool;
+    if (run.length === 1 && isBlockRow(rowOf(tool.id))) {   // campus life pass (N26): a press and release on one tile is a CLICK: one lawn where the ghost stood, and one click ends a click-placement (release pass)
+      const ok = clickPlace(s, lastPx, lastPy, { ctrl: false, shift: heldShift, meta: false, alt: heldAlt });
+      return (heldShift || toolLocked || (ok && goalKeepsTool(s))) ? undefined : 'drop';
+    }
     const r = call('buildings', 'placeRun', s, tool.id, run, { noTie: heldAlt });
     if (!r) return;
     const placed = fin(r.placed, 0);
@@ -1896,6 +1907,10 @@
       if (b.ruin) body.appendChild(row('Status', 'Ruin', 'bad')); else if (b.built < 1) body.appendChild(row('Status', 'Under construction ' + Math.round(fin(b.built, 0) * 100) + '%')); else if (b.flooded) body.appendChild(row('Status', 'Flooded', 'bad')); else if (b.blackout) body.appendChild(row('Status', 'Blackout', 'bad')); else if (b.closedUntil >= 0 && b.closedUntil > dayOf(s)) body.appendChild(row('Status', 'Closed · reopens ' + BSU.formatDate(b.closedUntil)));
       const ms = ef.feeds ? call('buildings', 'menuOf', s, b.id) : null;   // P6: a kitchen feeds its menu's throughput
       if (ms && b.built >= 1 && !b.ruin) body.appendChild(menuSection(s, b, ms));   // menu layout pass: first in the body, so the summary and Edit menu never need scrolling to
+      if (b.type === 'quad') {   // campus life pass (N26): the quad this lawn is part of, and how lawns add up
+        const lg = call('buildings', 'lawnGroup', s, b.id);
+        if (lg) { body.appendChild(row('Quad', lg.text)); body.appendChild(row('Happiness', '+' + lg.value + ' within ' + lg.radius + ' tiles of each lawn · adds up to +' + lg.cap + ' where lawns overlap')); inspMeta = lg.lawns > 1 ? lg.tiles + '-tile quad' : inspMeta; }
+      }
       if (ef.beds) body.appendChild(row('Beds', String(ef.beds))); if (ef.seats) body.appendChild(row('Seats', String(ef.seats))); if (ef.feeds) body.appendChild(row('Feeds', ms ? '~' + ms.throughput.toLocaleString('en-US') + ' a day (menu)' : String(ef.feeds)));
       if (ef.quality) body.appendChild(row('Quality', meter(ef.quality, 5, 'star')));
       body.appendChild(row('Ground', (TILE_NAMES[tl.type[i0]] || '') + ' · ' + ft(tl.elev[i0])));
@@ -2875,6 +2890,12 @@
       return mode;
     } catch (e) { uerr('setAlertMode', e); return alertModeOf(); }
   };
+  // campus life pass (N29): Settings → Night brightness (settings.night: dim | standard | bright; render_fx scales the night tint by params.render.night.levels)
+  const NIGHT_MODES = (P.render && P.render.night && Array.isArray(P.render.night.modes)) ? P.render.night.modes.slice() : ['dim', 'standard', 'bright'];
+  M.nightModes = function () { return NIGHT_MODES.slice(); };
+  M.nightMode = function () { const m = M.settings().night; return NIGHT_MODES.indexOf(m) >= 0 ? m : 'standard'; };
+  /** setNightMode('dim' | 'standard' | 'bright'): saved with the settings; the next frame draws it */
+  M.setNightMode = function (mode) { try { if (NIGHT_MODES.indexOf(mode) < 0) return M.nightMode(); const set = M.settings(); if (set.night !== mode) { set.night = mode; M.saveSettings(); } return mode; } catch (e) { uerr('setNightMode', e); return M.nightMode(); } };
   /** mute / unmute one issue kind: its rows sit under Suggestions (no beacon, no toast, not in Clear N); remembered in the settings */
   M.muteIssueKind = function (kind, on) {
     const I = issuesApi(); const s = stateOf(); if (!I || !s) return false;
@@ -3424,7 +3445,7 @@
     call('session', 'newGame', seed === undefined ? {} : { seed: seed });
     void s;
   }
-  M.settings = function () { const s = stateOf(); if (s && s.ui && s.ui.settings) return s.ui.settings; return { volume: 0.5, muted: false, particles: 'high', screenShake: false, colorblind: false, autoSimHint: false, keepMinimap: false, keepOverlays: false, reduceMotion: false, alerts: 'normal', mutedIssues: {}, tieCardSeen: false }; };
+  M.settings = function () { const s = stateOf(); if (s && s.ui && s.ui.settings) return s.ui.settings; return { volume: 0.5, muted: false, particles: 'high', screenShake: false, colorblind: false, autoSimHint: false, keepMinimap: false, keepOverlays: false, reduceMotion: false, alerts: 'normal', mutedIssues: {}, tieCardSeen: false, night: 'standard' }; };
   /** mirror state.ui.settings to localStorage['bsu.settings'] (a failure → one 'saveUnavailable' hint) */
   M.saveSettings = function () { try { window.localStorage.setItem('bsu.settings', JSON.stringify(M.settings())); } catch (e) { const s = stateOf(); if (s) M.hint(s, 'saveUnavailable'); } };
   /** stat popover from economy.breakdown */
@@ -3537,6 +3558,9 @@
     // 2. Alerts: Normal / Quiet / Off (calm alerts pass)
     const as = el('div', 'seg'); host._alerts = as; [['normal', 'Normal', 'Map beacons from severity 2 (at most 6), issue toasts once per kind per week'], ['quiet', 'Quiet', 'Beacons only for severity 3; no toasts except decisions'], ['off', 'Off', 'The Alerts list folds to its count; no beacons, no toasts']].forEach(function (d) { const b = btn('btn-alerts-' + d[0], d[1], 'seg-btn', function () { M.setAlertMode(d[0]); refreshSettingsPanel(stateOf(), host); }); b.dataset.alerts = d[0]; b.title = d[2]; as.appendChild(b); });
     const aw = el('div', 'seg-wrap'); aw.appendChild(as); aw.appendChild(el('div', 'seg-note', 'Quiet keeps beacons to severity 3 and drops the toasts; Off folds the Alerts list to its count. The bell on an alert row mutes that kind.')); rowEl('Alerts', aw, true);
+    // 2b. Night brightness: Dim / Standard / Bright (campus life pass, N29)
+    const ns = el('div', 'seg'); host._night = ns; [['dim', 'Dim', 'The night as it used to be: deep and moody, the map is hard to read'], ['standard', 'Standard', 'A moonlit night: terrain, water, paths and buildings stay readable'], ['bright', 'Bright', 'The lightest night: for a dim screen or a bright room']].forEach(function (d) { const b = btn('btn-night-' + d[0], d[1], 'seg-btn', function () { M.setNightMode(d[0]); refreshSettingsPanel(stateOf(), host); }); b.dataset.night = d[0]; b.title = d[2]; ns.appendChild(b); });
+    const nw = el('div', 'seg-wrap'); nw.appendChild(ns); nw.appendChild(el('div', 'seg-note', 'How dark the map gets at night. Lit windows and lamps glow at every setting, and a soft light follows the pointer after dark.')); rowEl('Night brightness', nw, true);
     // 3. Audio: the volume slider and the mute switch (On = sound on)
     const au = el('div', 'set-audio'); const vol = el('input'); vol.id = 'sl-volume'; vol.type = 'range'; vol.min = '0'; vol.max = '1'; vol.step = '0.05'; vol.value = String(fin(set.volume, 0.5)); vol.setAttribute('aria-label', 'Volume'); vol.addEventListener('input', function () { const v = clamp(parseFloat(vol.value) || 0, 0, 1); M.settings().volume = v; call('audio', 'setVolume', v); M.saveSettings(); }); host._vol = vol;
     host._audio = chk('chk-audio', null, function () { return !M.settings().muted; }, function (v) { M.settings().muted = !v; call('audio', 'mute', !v); refreshMuteButtons(); }); host._audio.title = 'Sound on / muted (M)';
@@ -3560,6 +3584,7 @@
     if (!host) return;
     [host._audio, host._particles, host._shake, host._rm, host._cb, host._keepMap, host._keepOv].forEach(function (b) { if (!b || !b._get) return; const on = !!b._get(); setText(b, on ? 'On' : 'Off'); b.setAttribute('aria-pressed', on ? 'true' : 'false'); });
     if (host._alerts) for (const b of host._alerts.children) { const on = b.dataset.alerts === alertModeOf(); cls(b, 'active', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); }   // calm alerts pass
+    if (host._night) for (const b of host._night.children) { const on = b.dataset.night === M.nightMode(); cls(b, 'active', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); }   // campus life pass (N29)
     if (host._vol) host._vol.value = String(fin(M.settings().volume, 0.5));
     if (host._uiScale) for (const b of host._uiScale.children) { const d = b.dataset.scale; const on = d === 'auto' ? uiMode === 'auto' : uiMode !== 'auto' && Number(d) === appliedScale; cls(b, 'active', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); }
     if (host._uiNote) { const lim = effScale < appliedScale - 0.005; const txt = uiMode === 'auto' ? 'Auto picks ' + Math.round(effScale * 100) + '\u00a0% for this window.' : lim ? 'Limited to ' + Math.round(effScale * 100) + '\u00a0% by this window size.' : ''; show(host._uiNote, !!txt); if (txt) setText(host._uiNote, txt); }

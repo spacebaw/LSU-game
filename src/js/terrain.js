@@ -72,7 +72,7 @@
   ];
   const CHENIER_PLATEAU = 1.5;                             // chenier profile = rim + (crest − rim)·cos(π/2 · r^1.5): a flatter crown, steeper rim (~10 High / ~35 Dry per chenier, §3.4 step 5)
   const BAYOU_SAMPLES_PER_TILE = 4;                        // spline sampling density
-  const CROSSING_TURF = { practice_field: 1, stadium: 1, parking: 1 };   // footprints agents may cross (walk class 2)
+  const CROSSING_TURF = { practice_field: 1, stadium: 1, parking: 1, quad: 1 };   // footprints agents may cross (walk class 2); campus life pass (N26): a Quad Lawn is ground to walk and sit on
 
   // ---------------------------------------------------------------------------
   // Small helpers

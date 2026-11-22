@@ -209,7 +209,8 @@ try {
   const refresh = (n) => { H.tick(n || 1); H.render(); return I.list(s2); };
   const rowOf = (l, kind, pred) => l.find((it) => it.kind === kind && (!pred || pred(it)));
   // gators sunning on dens inside the campus mask are sightings, not issues
-  ok(WL.onCampus(s2).length >= 1 && !I.list(s2).some((it) => it.kind === 'gatorOnCampus'), `seed 42: ${WL.onCampus(s2).length} gator(s) at their dens inside the campus mask → no gator rows`);
+  // campus life pass (N27): "on campus" is ashore on campus ground. The seed-42 gators whose dens lie inside the campus mask are in the water there: none is on campus at the start
+  ok(WL.onCampus(s2).length === 0 && s2.gators.some((g) => WL.campusMask(s2)[Math.floor(g.ty) * W + Math.floor(g.tx)] === 1) && !I.list(s2).some((it) => it.kind === 'gatorOnCampus'), `seed 42: gators at their dens inside the campus mask are in the water, not on campus (${WL.onCampus(s2).length} ashore) → no gator rows`);
   // over capacity: suppressed in the tutorial before housing is introduced / while cap penalties are suspended
   ok(I.list(s2).some((it) => it.kind === 'overCapacity'), 'free play: over-capacity rows show (120 students, 0 beds)');
   const intro = s2.ui.tabsIntroduced; s2.ui.tabsIntroduced = { essentials: true }; s2.progress.tutorialStage = 3; I.invalidate();

@@ -83,7 +83,11 @@
     }
     return out;
   })();
-  const GOAL_TEXT = { class: 'Walking to class', dining: 'Heading to lunch', idle: 'Hanging out', home: 'Heading home', shelter: 'Heading to shelter', event: 'Going to the game', poboy: "Po'boy run", library: 'Studying late', parade: 'Watching the parade', graduation: 'Graduating' };
+  const GOAL_TEXT = { class: 'Walking to class', dining: 'Heading to lunch', idle: 'Hanging out', home: 'Heading home', shelter: 'Heading to shelter', event: 'Going to the game', poboy: "Po'boy run", library: 'Studying late', parade: 'Watching the parade', graduation: 'Graduating', visit: 'Out and about' };
+  const PL = P.life;                                  // campus life pass (params.agents.life)
+  const PHASE_START = (function () { const out = [0]; for (let k = 0; k < 4; k++) out.push(out[k] + BSU.SKY_TICKS[k]); return out; })();   // cycle tick at which each sky phase starts
+  const MEAL = { breakfast: 1, lunch: 2, dinner: 4 };
+  const VISIT_TEXT = { union: 'At the Union', library: 'In the Library', rec_center: 'At the Rec Center', greek_house: 'On Greek Row' };
 
   // ---------------------------------------------------------------------------
   // Injectable dependencies (§10.6): selfTest swaps these for stubs and a recorder
@@ -114,11 +118,11 @@
       // class attendance
       assigned: 0, reached: 0, lastAttendance: 1,
       // P6 dining throughput: agents served per kitchen today (building id → count) and the day's skips; reset at Dawn
-      served: new Map(), skips: 0, turnedAway: 0,
+      served: new Map(), skips: 0, turnedAway: 0, poboyRuns: new Map(),
       // desire lines
       wornToday: new Uint8Array(N), wornList: [], reportedYesterday: new Uint8Array(N), desireLineDay: -1,
       // schedule
-      lastPhase: -1, lastGame: false, lastSetPiece: null, homesDirty: true,
+      lastPhase: -1, lastGame: false, lastSetPiece: null, homesDirty: true, pathsDirty: true, pathTiles: null,
       sheltering: false, evacuating: false, beads: false, cheerUntil: -1, capToss: false,
       pendingArrivals: [], pendingBuses: null, releaseShelter: false,
       // building-derived caches (rebuilt when homesDirty)
@@ -491,14 +495,30 @@
       const nb = BSU.nbr8(BSU.idx(v.tx, v.ty));
       for (let q = 0; q < nb.length; q++) if (state.tiles.walk[nb[q]] > 0) oakTiles.push(nb[q]);
     }
-    X.homes = { list: homes, totalBeds: totalBeds, classes: classes, dining: dining, poboys: poboys, idle: idle, greek: greek, union: union, library: library, rec: rec, venues: venues, oakTiles: oakTiles };
+    // campus life pass: lawn tiles (every Quad Lawn tile a student may stand on), building fronts (the door tile of every place people gather at, and
+    // the two tiles beside it), the path network's tiles (strolls)
+    const lawnTiles = [], fronts = [], pathTiles = [], walk = state.tiles.walk, surf = state.tiles.surface;
+    for (let k = 0; k < all.length; k++) {
+      const b = all[k];
+      if (!b || !isComplete(b)) continue;
+      if (b.type === 'quad') { const fpq = footprint(b); for (let q = 0; q < fpq.length; q++) if (walk[fpq[q]] > 0) lawnTiles.push(fpq[q]); }
+      if (FRONTS[b.type]) { const d = doorTile(state, b); if (d >= 0 && walk[d] > 0) { fronts.push(d); const nb = BSU.nbr4(d); for (let q = 0; q < nb.length; q++) if (walk[nb[q]] > 0 && state.tiles.owner[nb[q]] < 0) fronts.push(nb[q]); } }
+    }
+    if (X.pathsDirty || !X.pathTiles) { X.pathsDirty = false; for (let i = 0; i < N; i++) { const s8 = surf[i]; if ((s8 === BSU.SURF.PATH || s8 === BSU.SURF.BOARDWALK) && walk[i] > 0) pathTiles.push(i); } X.pathTiles = pathTiles; }
+    if (!fronts.length) { const ff = foundersFront(state); if (walk[ff] > 0) fronts.push(ff); }
+    X.homes = { list: homes, totalBeds: totalBeds, classes: classes, dining: dining, poboys: poboys, idle: idle, greek: greek, union: union, library: library, rec: rec, venues: venues, oakTiles: oakTiles, lawnTiles: lawnTiles, fronts: fronts, pathTiles: X.pathTiles };
   }
-  /** weighted round-robin by beds: agent i's home (−1 when there is no housing) */
+  const FRONTS = { founders_hall: 1, lecture_hall: 1, library: 1, engineering: 1, coastal_institute: 1, dorm: 1, res_tower: 1, greek_house: 1, bunkhouse: 1, suites: 1, dining_hall: 1, poboy: 1, union: 1, rec_center: 1, bell_tower: 1, health_center: 1 };
+  /**
+   * agent i's home (−1 when there is no housing): a stable point of the id in the campus's beds, so every housing building holds its share of the
+   * agents. (campus life pass, N9: this was `i % totalBeds` walked down the list — with at most 300 agents against 300 beds in the first dorm,
+   * EVERY agent lived in the first housing building and went to the one hall nearest it.)
+   */
   function homeFor(state, i) {
     refreshBuildingCaches(state);
     const hs = X.homes.list;
     if (!hs.length) return -1;
-    let t = i % X.homes.totalBeds;
+    let t = hashFrac(i, 0x686f) * X.homes.totalBeds;
     for (let k = 0; k < hs.length; k++) { t -= hs[k].beds; if (t < 0) return hs[k].b.id; }
     return hs[hs.length - 1].b.id;
   }
@@ -506,18 +526,28 @@
     const b = getBuilding(state, homeId);
     return b ? doorTile(state, b) : foundersFront(state);
   }
-  /** nearest complete academic building with seats and effective > 0 (Chebyshev from the home tile), −1 if none */
-  function classFor(state, homeId) {
+  /**
+   * the hall of an agent's first class (−1 if none): among the complete academic buildings with seats and effective > 0 that are no more than
+   * classSpan tiles farther from the home than the nearest one (Chebyshev from the home's door), a stable draw of the agent's id weighted by
+   * seats × nearness. (campus life pass, N9: it was the nearest hall alone, so every student of a dorm, and of every dorm near it, stood at one door.)
+   * Without an id (`agentId` undefined) the nearest hall, as before.
+   */
+  function classFor(state, homeId, agentId) {
     refreshBuildingCaches(state);
     const from = anchorTile(state, homeId), tx = (from % W), ty = ((from / W) | 0);
     let best = -1, bd = 1e9;
     const cs = X.homes.classes;
     for (let k = 0; k < cs.length; k++) {
       const b = cs[k];
-      if (effective(state, b) <= 0) continue;
-      const d = nearestBuildingTile(b, tx, ty);
+      if (effective(state, b) <= 0) { pickW[k] = -1; continue; }
+      const d = nearestBuildingTile(b, tx, ty); pickW[k] = d;
       if (d < bd || (d === bd && b.id < best)) { bd = d; best = b.id; }
     }
+    if (best < 0 || agentId === undefined) return best;
+    let sum = 0;
+    for (let k = 0; k < cs.length; k++) { const d = pickW[k]; if (d < 0 || d > bd + PL.classSpan) { pickW[k] = 0; continue; } const w = Math.max(1, effectOf(cs[k].type, 'seats')) * nearW(d); pickW[k] = w; sum += w; }
+    let r = hashFrac(agentId, 0x636c73) * sum;
+    for (let k = 0; k < cs.length; k++) { if (pickW[k] <= 0) continue; r -= pickW[k]; if (r < 0) return cs[k].id; }
     return best;
   }
   /** P6: a kitchen's throughput today in AGENTS (students / day × effectiveness × agents per student; ≥ 1 when it serves anyone). buildings.menuOf → the menu's throughput; missing → the row's feeds */
@@ -578,7 +608,7 @@
     const Sp = dep('sprites');
     const look = (Sp && typeof Sp.agentLook === 'function') ? (fin(Sp.agentLook(r.next()), 0) | 0) : r.int(1 << 9);
     const home = homeFor(state, id);
-    const cls = classFor(state, home);
+    const cls = classFor(state, home, id);
     const tile = walkableSpawn(state, isInt(atTile) ? atTile : anchorTile(state, home));
     const tx = ((tile % W)) + 0.5, ty = (((tile / W) | 0)) + 0.5;
     return {
@@ -590,7 +620,9 @@
       // private (never saved): arrival id, inside a building, timers, bookkeeping
       arrival: 0, aboard: false, inside: false, lastTile: tile, fleeUntil: -1, fleeCooldown: -1, fleeGator: -1, slapUntil: -1, slapCooldown: -1,
       cheerUntil: -1, splashTick: -1, waveUntil: -1, sitUntil: -1, tube: false, wading: false, next: null, assignedCycle: false,
-      routeFails: 0, evacUntil: -1, skipClass: false,
+      routeFails: 0, evacUntil: -1, skipClass: false, braveUntil: -1,
+      // campus life pass (the day plan; rebuilt at Dawn, never saved)
+      ate: 0, classDue: 1e9, classes: 0, late: false, lunchAt: PL.lunch[0] + (PL.lunch[1] - PL.lunch[0]) * hashFrac(id, 0x6c75), clique: 0,
       // movement pass (derived from the id or rebuilt each tick: agents are never saved)
       pace: 1 - PM.paceVar + 2 * PM.paceVar * hashFrac(id, 0x7a63),   // a stable walking pace, 1 ± paceVar of the table speed: a group that sets off together drifts apart
       lat: latOf(id),                      // stable lateral offset across the path width, ± params.agents.move.latMax tiles (relative to the walking direction)
@@ -603,10 +635,8 @@
   }
   /** re-home / re-class an agent whose buildings changed; the agent keeps its position */
   function rehome(state, a) {
-    const hb = getBuilding(state, a.home);
-    if (!hb || !isComplete(hb)) a.home = homeFor(state, a.id);
-    const cb = getBuilding(state, a.cls);
-    if (!cb || effective(state, cb) <= 0) a.cls = classFor(state, a.home);
+    a.home = homeFor(state, a.id);   // campus life pass: the stable point in the beds, so a new dorm gets its share of residents (it used to stay empty)
+    a.cls = classFor(state, a.home, a.id);
   }
 
   /** deterministic from rng.derive('agents', tick): exactly count(state) agents at their homes (or Founders'); vehicles cleared */
@@ -816,16 +846,172 @@
     if (!choices.length) return { goal: 'idle', target: idleSpot(state, a, r, false) };
     return { goal: 'idle', target: pickTile(r, choices, foundersFront(state)) };
   }
+  // ---------------------------------------------------------------------------
+  // campus life pass (N9): the day plan. After its first class a student used to shuttle class → dining → class until Golden, and Golden (20 ticks) and
+  // Dusk (25) were over before anyone had walked to the quad: the whole roster moved as one column between two doors. Now every decision
+  // (planNext, taken when a dwell or a visit ends) picks the next thing for THIS student at THIS hour: the first class when it is due, a meal when its
+  // hour has come, otherwise free time spent at a place chosen by weight (params.agents.life.weights, per time of day) and by nearness.
+  // ---------------------------------------------------------------------------
+  /** the sky cycle tick 0–299 (Dawn 0, Day 25, Golden 155, Dusk 175, Night 200); a scripted sky reports its phase's own clock */
+  function cycleTick(state) {
+    const Wd = dep('weather');
+    let ph = SKY.DAWN, pt = 0;
+    if (Wd && typeof Wd.sky === 'function') { const s = Wd.sky(state); if (s && isInt(s.phase)) { ph = s.phase; pt = fin(s.phaseTick, 0); } }
+    else if (state.sky) { ph = isInt(state.sky.phase) ? state.sky.phase : SKY.DAWN; pt = fin(state.sky.phaseTick, 0); }
+    return PHASE_START[BSU.clamp(ph, 0, 4)] + Math.max(0, Math.min(pt, BSU.SKY_TICKS[BSU.clamp(ph, 0, 4)] - 1));
+  }
+  function dayPart(cyc) { const q = PL.parts; return cyc < q[0] ? 0 : (cyc < q[1] ? 1 : (cyc < q[2] ? 2 : (cyc < q[3] ? 3 : 4))); }
+  /** estimated ticks of walking between two tiles (walkNeed's rule) */
+  function needBetween(from, to) { return (Math.abs((from % W) - (to % W)) + Math.abs(((from / W) | 0) - ((to / W) | 0))) * 1.35 / ((SPEED_BY_CLASS[1] + SPEED_BY_CLASS[2]) * 0.5); }
+  function nearW(d) { const q = d / PL.reach; return 1 / (1 + q * q); }
+  /** a building of `list` by weight × nearness to (tx, ty), drawn with u in [0, 1); needEff = only buildings that work */
+  function pickNear(state, list, tx, ty, u, seatWeighted, needEff) {
+    let sum = 0; const n = list.length;
+    for (let k = 0; k < n; k++) { const b = list[k]; if (needEff && effective(state, b) <= 0) { pickW[k] = 0; continue; } const w = (seatWeighted ? Math.max(1, effectOf(b.type, 'seats')) : 1) * nearW(nearestBuildingTile(b, tx, ty)); pickW[k] = w; sum += w; }
+    if (!(sum > 0)) return null;
+    let r = u * sum;
+    for (let k = 0; k < n; k++) { r -= pickW[k]; if (r < 0) return list[k]; }
+    return list[n - 1];
+  }
+  const pickW = new Float64Array(512);
+  /** a tile of `tiles` by nearness to (tx, ty), drawn with u in [0, 1): at most 48 of them are weighed (a stride through a long list) */
+  function pickTileNear(tiles, tx, ty, u) {
+    const n = tiles.length; if (!n) return -1;
+    const m = Math.min(n, 48), stride = n / m, off = Math.floor(u * 7919) % Math.max(1, Math.floor(stride));
+    let sum = 0;
+    for (let k = 0; k < m; k++) { const i = tiles[Math.min(n - 1, Math.floor(k * stride) + off)]; const w = nearW(Math.abs((i % W) - tx) + Math.abs(((i / W) | 0) - ty)); pickW[k] = w; sum += w; }
+    let r = u * sum;
+    for (let k = 0; k < m; k++) { r -= pickW[k]; if (r < 0) return tiles[Math.min(n - 1, Math.floor(k * stride) + off)]; }
+    return tiles[n - 1];
+  }
+  /** where this student's friends are this hour: a stable draw per (clique, hour, kind), weighed from the door of their hall so every member gets the same answer */
+  function cliqueTile(state, a, tiles, cyc, salt) {
+    const cb = getBuilding(state, a.cls), at = cb ? doorTile(state, cb) : anchorTile(state, a.home), slot = Math.floor(cyc / PL.slotTicks) + calDay(state) * 7;
+    return pickTileNear(tiles, at % W, (at / W) | 0, hashFrac((a.clique * 977 + slot) | 0, salt));
+  }
+  const KIND = { class2: 0, library: 1, union: 2, rec: 3, greek: 4, dorm: 5, lawn: 6, oak: 7, front: 8, stroll: 9, habitat: 10 };
+  const KIND_NAMES = Object.keys(KIND), optK = new Int8Array(16), optW = new Float64Array(16);
+  /** free time: pick a kind of place by the hour's weights among what this campus has, then the place itself; false when the campus offers nothing yet */
+  function leisure(state, a, ctx, part) {
+    const Hc = X.homes, r = BSU.rng.sim, Wt = PL.weights, tx = a.tx | 0, ty = a.ty | 0, out = ctx.rain ? PL.rainOutdoor : 1;
+    let n = 0, sum = 0;
+    const add = function (k, w) { if (w > 0) { optK[n] = k; optW[n] = w; sum += w; n++; } };
+    const before = a.assignedCycle && !a.reachedClass;   // the late period's morning, before its first class: places near where it is (its friends meet after class)
+    if (Hc.classes.length && a.classes < PL.classesMax && a.cls >= 0 && !before) add(KIND.class2, Wt.class2[part]);
+    if (Hc.library.length) add(KIND.library, Wt.library[part]);
+    if (Hc.union.length) add(KIND.union, Wt.union[part]);
+    if (Hc.rec.length) add(KIND.rec, Wt.rec[part]);
+    if (Hc.greek.length) add(KIND.greek, Wt.greek[part]);
+    if (a.home >= 0) add(KIND.dorm, Wt.dorm[part]);
+    if (Hc.lawnTiles.length) add(KIND.lawn, Wt.lawn[part] * out);
+    if (Hc.oakTiles.length) add(KIND.oak, Wt.oak[part] * out);
+    if (Hc.fronts.length) add(KIND.front, Wt.front[part] * out);
+    if (Hc.pathTiles.length) add(KIND.stroll, Wt.stroll[part] * out);
+    let nh = 0; for (let k = 0; k < Hc.idle.length; k++) { const ib = Hc.idle[k]; if (ib.type === 'tiger_habitat' && habOpen(state, ib) && !habFull(ib)) nh++; }
+    if (nh && sum > 0) { const sh = habShare(); add(KIND.habitat, sum * sh / (1 - sh) * out); }   // habitat pass: its share of the strolls, by its happiness effect
+    if (!n) return false;
+    let q = r.float() * sum, kind = optK[n - 1];
+    for (let k = 0; k < n; k++) { q -= optW[k]; if (q < 0) { kind = optK[k]; break; } }
+    let b = null, tile = -1;
+    switch (kind) {
+      case KIND.class2: b = pickNear(state, Hc.classes, tx, ty, r.float(), true, true); if (b) { a.classes++; setGoal(state, a, 'class', b.id, 'plan'); return true; } break;
+      case KIND.library: b = pickNear(state, Hc.library, tx, ty, r.float(), false, false); break;
+      case KIND.union: b = pickNear(state, Hc.union, tx, ty, r.float(), false, false); break;
+      case KIND.rec: b = pickNear(state, Hc.rec, tx, ty, r.float(), false, false); break;
+      case KIND.greek: b = pickNear(state, Hc.greek, tx, ty, r.float(), false, false); break;
+      case KIND.dorm: b = getBuilding(state, a.home); break;
+      case KIND.lawn: tile = before ? pickTileNear(Hc.lawnTiles, tx, ty, r.float()) : cliqueTile(state, a, Hc.lawnTiles, ctx.cyc, 0x6c61); break;
+      case KIND.oak: tile = before ? pickTileNear(Hc.oakTiles, tx, ty, r.float()) : cliqueTile(state, a, Hc.oakTiles, ctx.cyc, 0x6f61); break;
+      case KIND.front: tile = before ? pickTileNear(Hc.fronts, tx, ty, r.float()) : cliqueTile(state, a, Hc.fronts, ctx.cyc, 0x6672); break;
+      case KIND.stroll: tile = pickTileNear(Hc.pathTiles, tx, ty, r.float()); break;
+      case KIND.habitat: { let pick = r.int(nh); for (let k = 0; k < Hc.idle.length; k++) { const ib = Hc.idle[k]; if (ib.type === 'tiger_habitat' && habOpen(state, ib) && !habFull(ib) && pick-- === 0) { tile = habDoor(state, ib); break; } } break; }
+      default: break;
+    }
+    if (b) { setGoal(state, a, 'visit', b.id, 'plan'); return true; }
+    if (tile >= 0) { setGoal(state, a, 'idle', tile, null); a.strolling = kind === KIND.stroll; a.hang = kind === KIND.lawn || kind === KIND.oak || kind === KIND.front; return true; }
+    return false;
+  }
+  /** Night: home, or the Library / Union for the night owls (three times as many in finals week) */
+  function nightGoal(state, a) {
+    const r = BSU.rng.sim, Hc = X.homes;
+    const finals = BSU.dayParts(calDay(state)).month === 12;   // Dec 1–10: agents at the Library (§9.2)
+    if (r.chance(finals ? Math.min(1, P.nightOwlShare * 3) : P.nightOwlShare)) {
+      const spots = Hc.library.concat(Hc.union);
+      if (spots.length) { const b = nearestOf(state, spots, Math.floor(a.tx), Math.floor(a.ty), true); if (b) { setGoal(state, a, 'library', b.id, null); return; } }
+    }
+    homeGoal(state, a);
+  }
+  /** campus life pass: a Po'boy Shack takes no more morning detours than it serves in a day (the whole 30 % used to queue at one shack) */
+  function poboyRoom(state, pb) { const n = X.poboyRuns.get(pb.id) || 0; if (n >= diningCapAgents(state, pb)) return false; X.poboyRuns.set(pb.id, n + 1); return true; }
+  /** the first class of the day is due once the late period's hour has come, or when the walk from here leaves no more room before Golden */
+  function classDueAt(state, a, fromTile) {
+    const cb = getBuilding(state, a.cls); if (!cb) return 0;
+    const lateAt = PL.lateAt[0] + (PL.lateAt[1] - PL.lateAt[0]) * hashFrac(a.id, 0x6c74);
+    return Math.max(0, Math.min(lateAt, PL.classBy - PL.needMult * needBetween(fromTile, doorTile(state, cb))));
+  }
+  /**
+   * The next thing this student does (called when a dwell, a visit, a class or a meal ends, and at Dawn for the late period). Order: Night → home;
+   * a storm watch → the Union huddle; the first class when due; a meal whose hour has come; heat → shade; otherwise free time.
+   */
+  function planNext(state, a, ctx) {
+    if (!ctx || a.state === 'SHELTER' || a.state === 'BUS' || a.goal === 'shelter' || X.sheltering || X.evacuating || state.setPiece || (state.sports && state.sports.game)) return;
+    const r = BSU.rng.sim, cyc = ctx.cyc, part = dayPart(cyc), Hc = X.homes;
+    a.strolling = false; a.hang = false;
+    if (part === 4) { nightGoal(state, a); return; }
+    if (ctx.watch) { const d = duskSpot(state, a, r, true); setGoal(state, a, d.goal, d.target, null); return; }
+    if (a.assignedCycle && !a.reachedClass && !a.skipClass && part < 3) {
+      if (cyc >= a.classDue || !a.late) { a.classDue = 1e9; goClass(state, a); return; }   // (the early period has class first, whatever interrupted the walk)
+    }
+    // meals: breakfast for the late period, lunch at this student's hour, dinner in the evening for some
+    let meal = 0;
+    if (part === 0 && a.late && !(a.ate & MEAL.breakfast) && hashFrac(a.id, 0x6272 + calDay(state)) < PL.breakfastShare) meal = MEAL.breakfast;
+    else if (part <= 2 && !(a.ate & MEAL.lunch) && cyc >= a.lunchAt) meal = MEAL.lunch;
+    else if (part === 3 && !(a.ate & MEAL.dinner) && hashFrac(a.id, 0x6469 + calDay(state)) < PL.dinnerShare) meal = MEAL.dinner;
+    if (meal && Hc.dining.length) {
+      a.ate |= meal;
+      const d = nearestDining(state, Math.floor(a.tx), Math.floor(a.ty), -1, meal === MEAL.lunch ? -1 : C.diningReach);
+      if (d) { setGoal(state, a, 'dining', d.id, 'plan'); lateGuard(state, a, doorTile(state, d)); return; }
+    }
+    if (ctx.advisory) { setGoal(state, a, 'idle', idleSpot(state, a, r, true), null); a.sitUntil = 1e9; lateGuard(state, a, a.target); return; }   // heat: the shade, sitting (as Golden did)
+    a.sitUntil = -1;
+    if (!leisure(state, a, ctx, part)) setGoal(state, a, 'idle', idleSpot(state, a, r, false), null);
+    lateGuard(state, a, goalTile(state, a));
+  }
+  /** a late-period student who has not been to class yet: wherever it is going now, class is due early enough to walk there from that place */
+  function lateGuard(state, a, toTile) {
+    if (!a.assignedCycle || a.reachedClass || a.skipClass || !(a.classDue < 1e9) || toTile < 0) return;
+    a.classDue = Math.min(a.classDue, classDueAt(state, a, toTile));
+  }
+  function goClass(state, a) {
+    const cb = getBuilding(state, a.cls);
+    if (!cb || effective(state, cb) <= 0) a.cls = classFor(state, a.home, a.id);
+    if (a.cls < 0) { setGoal(state, a, 'idle', idleSpot(state, a, BSU.rng.sim, false), null); return; }
+    a.classes = Math.max(1, a.classes);
+    setGoal(state, a, 'class', a.cls, 'plan');
+  }
   function assignClass(state, a) {
     const cb = getBuilding(state, a.cls);
-    if (!cb || effective(state, cb) <= 0) a.cls = classFor(state, a.home);
+    if (!cb || effective(state, cb) <= 0) a.cls = classFor(state, a.home, a.id);
     if (a.cls < 0) { setGoal(state, a, 'idle', idleSpot(state, a, BSU.rng.sim, false), null); return; }
-    setGoal(state, a, 'class', a.cls, 'dining');
+    a.classes = Math.max(1, a.classes); a.classDue = 1e9;
+    setGoal(state, a, 'class', a.cls, 'plan');
     if (!a.assignedCycle) { a.assignedCycle = true; X.assigned++; }
+  }
+  /** does this student have the later period today? A stable draw per (id, day), and only when the walk from home is short (the long walks keep the whole morning) */
+  function isLate(state, a) {
+    if (a.cls < 0 || a.home < 0) return false;
+    const cb = getBuilding(state, a.cls); if (!cb || effective(state, cb) <= 0) return false;
+    if (hashFrac(a.id, 0x51a7 + calDay(state)) >= PL.lateShare) return false;
+    return needBetween(anchorTile(state, a.home), doorTile(state, cb)) <= PL.lateMaxNeed;
   }
   function homeGoal(state, a) {
     if (a.home >= 0 && getBuilding(state, a.home)) setGoal(state, a, 'home', a.home, null);
     else setGoal(state, a, 'idle', foundersFront(state), null);
+  }
+  /** nothing to do and nothing queued: standing idle with no target (or, `home` = true, sitting in the dorm with no visit running) */
+  function unplanned(a, home) {
+    if (a.goal === 'event' || a.goal === 'parade' || a.goal === 'graduation') return a.state !== 'FLEE';   // the game or the set piece is over (schedule sends the crowd while one runs)
+    return a.state === 'IDLE' && !a.next && a.waitTicks <= 0 && a.hold <= 0 && !a.approach && ((a.goal === 'idle' && a.target < 0) || (home && a.goal === 'home'));
   }
   /** the schedule bucket for one agent at a phase transition */
   function schedule(state, a, phase, ctx) {
@@ -839,41 +1025,55 @@
     if (ctx.graduationDay) a.prop = 'cap';   // May 5: caps all day (§9.2)
     switch (phase) {
       case SKY.DAWN: {
-        a.assignedCycle = false; a.reachedClass = false; a.leaveAt = 0;
+        a.assignedCycle = false; a.reachedClass = false; a.leaveAt = 0; a.ate = 0; a.classes = 0; a.classDue = 1e9; a.strolling = false;
+        a.clique = (Math.max(0, a.cls) * 31 + Math.floor(hashFrac(a.id, 0x636c) * PL.cliquesPerClass)) | 0;
         a.skipClass = ctx.sickShare > 0 && ((a.id * 37) % 100) < ctx.sickShare * 100;
-        if (a.skipClass) { a.early = false; homeGoal(state, a); a.state = 'IDLE'; return; }
-        if (a.early && (a.goal === 'class' || a.goal === 'poboy') && a.state === 'WALK') { a.early = false; if (a.goal === 'class') { a.assignedCycle = true; X.assigned++; } return; }   // set off before Dawn (leave-earlier): counted now, route kept
+        if (a.skipClass) { a.early = false; a.lateSet = false; homeGoal(state, a); a.state = 'IDLE'; return; }
+        if (a.early && (a.goal === 'class' || a.goal === 'poboy') && a.state === 'WALK') { a.early = false; a.lateSet = false; a.classes = 1; if (a.goal === 'class') { a.assignedCycle = true; X.assigned++; } return; }   // set off before Dawn (leave-earlier): counted now, route kept
         a.early = false;
+        if (!a.lateSet) a.late = isLate(state, a);
+        a.lateSet = false;
+        if (a.late) {
+          // the later period (campus life pass): assigned to class today like everyone, but the morning is its own. It leaves the dorm over wakeSpread ticks
+          // for breakfast, a lawn, the Rec… and sets off for class when its hour comes (classDue: early enough to walk there from wherever it is)
+          a.assignedCycle = true; X.assigned++;
+          a.classDue = classDueAt(state, a, agentTile(a));
+          const wasIn = a.inside;
+          planNext(state, a, ctx);
+          if (wasIn && a.state === 'WALK') { a.inside = true; a.hold = 1 + Math.floor(hashFrac(a.id, 0x776b) * PL.wakeSpread); a.holdIn = true; }
+          return;
+        }
         if (Hc.poboys.length && r.chance(P.poboyShare)) {
           const pb = nearestOf(state, Hc.poboys, Math.floor(a.tx), Math.floor(a.ty), true);
-          if (pb) { setGoal(state, a, 'poboy', pb.id, 'class'); return; }
+          if (pb && poboyRoom(state, pb)) { setGoal(state, a, 'poboy', pb.id, 'class'); return; }
         }
         assignClass(state, a);
         return;
       }
       case SKY.DAY:
+        // a re-run of Day (the daily reconcile, a game or a storm ending) leaves everyone who is doing something alone; only a student with nothing to do gets a plan
         if (a.skipClass) return;
-        if (a.goal !== 'class' && a.goal !== 'poboy' && a.goal !== 'dining') assignClass(state, a);
+        if (unplanned(a, true)) { if (!a.assignedCycle && a.cls >= 0) assignClass(state, a); else planNext(state, a, ctx); }   // (a game loaded in mid-morning: everyone is still in the dorm)
         return;
       case SKY.GOLDEN: {
+        // classes are out: whoever is in one or walking to one turns to the evening (the staggered react spreads it); everyone else finishes what they are doing
         a.skipClass = false;
-        const spot = idleSpot(state, a, r, ctx.advisory);
-        setGoal(state, a, 'idle', spot, null);
-        a.sitUntil = ctx.advisory ? 1e9 : -1;
+        if (a.goal === 'class' || a.goal === 'poboy' || unplanned(a, true)) planNext(state, a, ctx);
+        else if (ctx.advisory && a.goal === 'idle' && !a.inside) { setGoal(state, a, 'idle', idleSpot(state, a, r, true), null); a.sitUntil = 1e9; }
         return;
       }
       case SKY.DUSK: {
-        const d = duskSpot(state, a, r, ctx.watch);
-        setGoal(state, a, d.goal, d.target, null);
+        // Zydeco Friday and a storm watch still bring everyone to the Union plaza (a festival draws a crowd: that is the point of it); an ordinary Dusk moves nobody at once
+        refreshBuildingCaches(state);
+        if (ctx.watch || (Hc.union.length > 0 && (calDay(state) % P.zydecoEvery) === 0)) { const d = duskSpot(state, a, r, ctx.watch); setGoal(state, a, d.goal, d.target, null); return; }
+        if (a.goal === 'home' || a.goal === 'library') return;
+        if (hashFrac(a.id, 0x6865 + calDay(state)) < PL.homeEarlyShare && !(a.goal === 'dining' && !a.inside)) { homeGoal(state, a); return; }   // the early birds turn for home; the rest stay out until Night
+        if (a.goal === 'class' || unplanned(a, false)) planNext(state, a, ctx);
         return;
       }
       case SKY.NIGHT: {
-        const finals = BSU.dayParts(calDay(state)).month === 12;   // Dec 1–10: agents at the Library (§9.2)
-        if (r.chance(finals ? Math.min(1, P.nightOwlShare * 3) : P.nightOwlShare)) {
-          const spots = Hc.library.concat(Hc.union);
-          if (spots.length) { const b = nearestOf(state, spots, Math.floor(a.tx), Math.floor(a.ty), true); if (b) { setGoal(state, a, 'library', b.id, null); return; } }
-        }
-        homeGoal(state, a);
+        if (a.inside && (a.goal === 'home' || a.goal === 'library')) return;   // already in for the night (a re-run of the phase)
+        nightGoal(state, a);
         return;
       }
       default: return;
@@ -918,9 +1118,9 @@
     a.waveUntil = -1;
     switch (a.goal) {
       case 'class':
-        if (!a.reachedClass) { a.reachedClass = true; if (a.assignedCycle) X.reached++; }   // counted on arrival at the door, before any dwell outside
-        a.next = 'dining';
-        if (!startLinger(state, a, ctx)) { a.inside = true; a.state = 'IDLE'; a.waitTicks = 20 + (a.id % 10); }
+        if (!a.reachedClass && a.target === a.cls) { a.reachedClass = true; a.classDue = 1e9; if (a.assignedCycle) X.reached++; }   // counted on arrival at the door of the day's FIRST class, before any dwell outside
+        a.next = 'plan';
+        if (!startLinger(state, a, ctx)) { a.inside = true; a.state = 'IDLE'; a.waitTicks = insideTicks(a, PL.classTicks); }
         break;
       case 'poboy':
         a.energy = Math.min(1, a.energy + C.energyPoboy);
@@ -940,10 +1140,14 @@
         if (hall) X.served.set(hall.id, (X.served.get(hall.id) || 0) + 1);
         a.hungry = false;
         a.energy = Math.min(1, a.energy + 0.2);
-        a.next = 'class';
-        if (!startLinger(state, a, ctx)) { a.inside = true; a.state = 'IDLE'; a.waitTicks = 20 + (a.id % 10); }
+        a.next = 'plan';
+        if (!startLinger(state, a, ctx)) { a.inside = true; a.state = 'IDLE'; a.waitTicks = insideTicks(a, PL.classTicks); }
         break;
       }
+      case 'visit':   // campus life pass: the Union, the Library, the Rec Center, Greek Row, the dorm room: a while inside (some stand on the steps first), then the plan again
+        a.next = 'plan';
+        if (!startLinger(state, a, ctx)) { a.inside = true; a.state = 'IDLE'; a.waitTicks = insideTicks(a, PL.inside); }
+        break;
       case 'home': case 'library': case 'shelter':
         a.inside = true; a.state = a.goal === 'shelter' ? 'SHELTER' : 'IDLE'; a.next = null;
         break;
@@ -955,7 +1159,7 @@
         a.state = (ctx && ctx.advisory && a.sitUntil > 0) ? 'SIT' : 'IDLE';
         a.next = null;
         settle(state, a, ctx, a.state === 'IDLE');
-        if (a.state === 'IDLE') { a.waitTicks = a.view >= 0 ? habDwell(a) : dwellTicks(a); a.next = 'mingle'; }   // stand a while (8–25 s; 10–30 s at the habitat's glass), then shuffle over or stroll to another spot
+        if (a.state === 'IDLE') { a.waitTicks = a.view >= 0 ? habDwell(a) : (a.strolling ? Math.round(PM.dwellTicks[0] * 0.25) : (a.hang ? hangTicks(a) : dwellTicks(a))); a.next = 'mingle'; }   // stand a while (8–25 s; 10–30 s at the habitat's glass; a stroll only pauses), then shuffle over or move on with the plan
         break;
       default:
         a.state = 'IDLE'; a.next = null;
@@ -963,6 +1167,10 @@
     }
     if (wasArrival && a.goal === 'home' && a.home < 0) { a.inside = false; a.state = 'IDLE'; settle(state, a, ctx, false); }
   }
+  /** a dwell at a hang-out (a lawn, an oak, a building's steps): a stable point of the id in params.agents.life.hangTicks, ±20 % a visit */
+  function hangTicks(a) { const lo = PL.hangTicks[0], hi = PL.hangTicks[1]; return Math.round(BSU.clamp((lo + (hi - lo) * hashFrac(a.id, 0x6867)) * (0.8 + 0.4 * BSU.rng.sim.float()), lo, hi)); }
+  /** ticks inside for a range [lo, hi]: a stable point of the id, ±15 % a visit */
+  function insideTicks(a, range) { return Math.round((range[0] + (range[1] - range[0]) * hashFrac(a.id, 0x696e)) * (0.85 + 0.3 * BSU.rng.sim.float())); }
   /** at a class / dining door: some students stand (or sit) outside for a dwell before going in, rather than vanishing at once. Not in rain, heat, a storm watch or an evacuation */
   function startLinger(state, a, ctx) {
     if (!ctx || ctx.rain || ctx.advisory || ctx.watch || X.evacuating || X.sheltering) return false;
@@ -975,13 +1183,15 @@
   function nextLeg(state, a, ctx) {
     const n = a.next; a.next = null;
     if (!n) return;
-    if (n === 'mingle') {   // an idle dweller whose dwell is up: half shuffle to a free spot nearby, half stroll to another idle place; nothing at night, in heat, a storm, a game or a set piece
-      if (a.state !== 'IDLE' || a.inside || !ctx || ctx.phase === SKY.NIGHT || ctx.advisory || ctx.watch || state.setPiece || (state.sports && state.sports.game) || X.sheltering || X.evacuating) return;
-      if (a.view >= 0) { setGoal(state, a, 'idle', idleSpot(state, a, BSU.rng.sim, false), null); return; }   // habitat pass: off the plaza (it is not walkable ground) to another idle place, maybe back here
-      if (BSU.rng.sim.chance(0.5)) setGoal(state, a, 'idle', agentTile(a), null);
-      else setGoal(state, a, 'idle', idleSpot(state, a, BSU.rng.sim, false), null);
+    if (n === 'mingle') {   // an idle dweller whose dwell is up: some shuffle to a free spot nearby and stay, the rest move on with the day's plan; nothing in heat, a storm, a game or a set piece
+      if (a.state !== 'IDLE' || a.inside || !ctx || ctx.advisory || ctx.watch || state.setPiece || (state.sports && state.sports.game) || X.sheltering || X.evacuating) return;
+      if (ctx.phase === SKY.NIGHT) { nightGoal(state, a); return; }
+      const due = a.assignedCycle && !a.reachedClass && ctx.cyc >= a.classDue;
+      if (a.view < 0 && !a.strolling && !due && BSU.rng.sim.chance(PL.stayShare)) { setGoal(state, a, 'idle', agentTile(a), null); return; }   // (off the habitat's plaza always: it is not walkable ground)
+      planNext(state, a, ctx);
       return;
     }
+    if (n === 'plan') { planNext(state, a, ctx); return; }
     if (n === 'dining') {
       refreshBuildingCaches(state);
       const d = nearestDining(state, Math.floor(a.tx), Math.floor(a.ty), -1, -1);
@@ -991,9 +1201,9 @@
     if (n === 'diningRetry') {   // P6: turned away at the door; another kitchen with room within reach, else skip lunch (−1 on this student's life sample until Dawn)
       refreshBuildingCaches(state);
       const tried = a.target, d = nearestDining(state, Math.floor(a.tx), Math.floor(a.ty), tried, C.diningReach);
-      if (d && diningHasRoom(state, d)) { setGoal(state, a, 'dining', d.id, 'class'); return; }
+      if (d && diningHasRoom(state, d)) { setGoal(state, a, 'dining', d.id, 'plan'); return; }
       a.hungry = true; X.skips++;
-      assignClass(state, a); return;
+      planNext(state, a, ctx); return;
     }
     if (n === 'class') { assignClass(state, a); return; }
     if (n === 'inside') { const v = getBuilding(state, a.target); if (v) setGoal(state, a, 'event', v.id, null); return; }
@@ -1107,7 +1317,7 @@
   }
   function finishApproach(state, a, ctx) {
     a.approach = false;
-    if (a.enter) { a.enter = false; a.inside = true; a.waitTicks = 20 + (a.id % 10); a.spotX = -1; a.spotY = -1; return; }
+    if (a.enter) { a.enter = false; a.inside = true; a.waitTicks = insideTicks(a, a.goal === 'visit' ? PL.inside : PL.classTicks); a.spotX = -1; a.spotY = -1; return; }
     if (a.sitPlan) { a.sitPlan = false; if (a.state === 'IDLE') a.state = 'SIT'; }
   }
   /** ease the speed fraction toward `want`: up over accelTicks, down 1.5× faster */
@@ -1162,17 +1372,20 @@
       a.leaveAt = -1;   // decided: no early start this cycle (until the roll below says otherwise)
       const cb = getBuilding(state, a.cls);
       if (!cb || effective(state, cb) <= 0 || a.skipClass) return;
+      a.late = isLate(state, a); a.lateSet = true;   // campus life pass: the later period sleeps in (its morning starts at Dawn)
+      if (a.late) return;
       refreshBuildingCaches(state);
       let need = walkNeed(state, a, doorTile(state, cb)), pb = null;
       if (X.homes.poboys.length && BSU.rng.sim.chance(P.poboyShare)) {
         pb = nearestOf(state, X.homes.poboys, Math.floor(a.tx), Math.floor(a.ty), true);
+        if (pb && !poboyRoom(state, pb)) pb = null;
         if (pb) { const pd = doorTile(state, pb); need = walkNeed(state, a, pd) + (Math.abs(((pd % W)) - (doorTile(state, cb) % W)) + Math.abs((((pd / W) | 0)) - ((doorTile(state, cb) / W) | 0))) * 1.35 / ((SPEED_BY_CLASS[1] + SPEED_BY_CLASS[2]) * 0.5); }
       }
       a.leavePb = pb ? pb.id : -1;
       a.leaveAt = Math.max(1, Math.min(PM.leadMax, Math.round(hashFrac(a.id, 0x4f31) * PM.departSpread + Math.max(0, need - PM.leadAllow))));
     }
     if (a.leaveAt > 0 && ctx.nightLeft <= a.leaveAt) {
-      if (a.leavePb >= 0) setGoal(state, a, 'poboy', a.leavePb, 'class'); else setGoal(state, a, 'class', a.cls, 'dining');
+      if (a.leavePb >= 0) setGoal(state, a, 'poboy', a.leavePb, 'class'); else setGoal(state, a, 'class', a.cls, 'plan');
       a.early = true; a.leaveAt = -1;
     }
   }
@@ -1269,6 +1482,7 @@
       const ddy = a.ty - ctx.gY[q];
       if (ddy > R || ddy < -R) continue;
       const g = gs[ctx.gI[q]];
+      if (a.braveUntil > ctx.tick && fin(g.id, -1) === a.fleeGator) continue;   // N27: it has just run from this one: it walks past now (no flee loop on a path a gator lies beside)
       {
         // run 3 tiles away, opposite the gator
         const ax = Math.floor(a.tx), ay = Math.floor(a.ty);
@@ -1292,7 +1506,7 @@
   }
   function endFlee(state, a) {
     const pg = a.prevGoal || { goal: 'idle', target: -1, next: null };
-    a.prevGoal = null; a.state = 'IDLE';
+    a.prevGoal = null; a.state = 'IDLE'; a.braveUntil = fin(state.tick, 0) + P.fleeAgainTicks;
     if (pg.goal === 'flee' || pg.goal === 'idle' && pg.target < 0) { a.goal = 'idle'; a.target = -1; a.route = []; return; }
     setGoal(state, a, pg.goal, pg.target, pg.next);
   }
@@ -1375,6 +1589,10 @@
     if (a.cheerUntil > tick && a.state === 'IDLE') a.state = 'CHEER';
     if (a.state === 'CHEER' && a.cheerUntil <= tick) a.state = 'IDLE';
     if (a.react > 0) { a.react -= mult; if (a.react <= 0) { a.react = 0; schedule(state, a, a.reactPhase, ctx); } }
+    if (ctx.cyc >= a.classDue) {   // campus life pass: the late period's hour has come (or the walk from here needs the time): off to class from whatever it was doing
+      a.classDue = 1e9;
+      if (a.assignedCycle && !a.reachedClass && !a.skipClass && a.goal !== 'class' && a.state !== 'FLEE' && a.state !== 'SHELTER' && a.state !== 'BUS' && ctx.phase <= SKY.DAY && !X.sheltering && !X.evacuating && !state.setPiece && !(state.sports && state.sports.game)) { if (a.state === 'SIT') a.state = 'IDLE'; goClass(state, a); }
+    }
     if (ctx.nightLeft > 0 && ctx.nightLeft <= PM.leadMax && a.inside && a.goal === 'home' && a.state === 'IDLE' && a.leaveAt >= 0) earlyDeparture(state, a, ctx);
     let moving = false;
     const bx = a.tx, by = a.ty;
@@ -1391,7 +1609,7 @@
           a.linger = false; a.sitPlan = false; if (a.state === 'SIT') a.state = 'IDLE';
           const door = goalTile(state, a);
           if (door >= 0) { a.spotX = ((door % W)) + 0.5; a.spotY = (((door / W) | 0)) + 0.5; a.approach = true; a.enter = true; }
-          else { a.inside = true; a.waitTicks = 20 + (a.id % 10); }
+          else { a.inside = true; a.waitTicks = insideTicks(a, a.goal === 'visit' ? PL.inside : PL.classTicks); }
         } else if (a.next && a.state !== 'FLEE') nextLeg(state, a, ctx);
         else if (a.goal !== 'idle' && a.target >= 0 && a.state === 'WALK') { /* retry the route */ }
       }
@@ -1435,8 +1653,8 @@
           else arrive(state, a, ctx);
         }
       }
-    } else if (a.state === 'IDLE' && a.goal === 'idle' && !a.inside && a.target < 0 && ctx.phase === SKY.GOLDEN && !state.setPiece && BSU.rng.sim.chance(C.idleWanderP)) {
-      setGoal(state, a, 'idle', idleSpot(state, a, BSU.rng.sim, ctx.advisory), null);
+    } else if (a.state === 'IDLE' && a.goal === 'idle' && !a.inside && a.target < 0 && !a.next && ctx.phase !== SKY.NIGHT && !state.setPiece && BSU.rng.sim.chance(C.idleWanderP)) {
+      planNext(state, a, ctx);   // campus life pass: a student left with nothing to do (a flee that ended, a route that failed) picks the day up again, at any hour (it was Golden only)
     }
     if (a.tx === bx && a.ty === by) { a.step = 0; if (!moving) a.spd = 0; } else { const sx = a.tx - bx, sy = a.ty - by; a.step = Math.sqrt(sx * sx + sy * sy) / mult; }
     updateStats(state, a, ctx, moving);
@@ -1760,7 +1978,7 @@
   M.init = function (state) {
     guard('init', function () {
       BSU.events.clear('agents');
-      on(EV.TILE_CHANGED, function (p) { M.invalidateRoutes(BSU.state || state, p.i); X.homesDirty = true; });
+      on(EV.TILE_CHANGED, function (p) { M.invalidateRoutes(BSU.state || state, p.i); X.homesDirty = true; if (p.what !== 'water' && p.what !== 'decor') X.pathsDirty = true; });
       on(EV.ENROLL_ROUND, function (p) { X.pendingArrivals.push({ count: fin(p.admitted, 0), kind: 'pirogue' }); });
       on(EV.ENROLL_LOCK, function (p) {
         const n = Math.max(0, Math.floor(fin(p.admitted, 0)));
@@ -1769,7 +1987,7 @@
       });
       on(EV.ENROLL_ATTRITION, function () { /* the daily reconcile despawns the excess */ });
       on(EV.ENROLL_GRADUATION, function () { /* idem */ });
-      on(EV.BUILDING_PLACED, function () { X.homesDirty = true; });
+      on(EV.BUILDING_PLACED, function () { X.homesDirty = true; X.pathsDirty = true; });
       on(EV.BUILDING_REMOVED, function () { X.homesDirty = true; X.rehomeAll = true; });
       on(EV.BUILDING_COMPLETE, function () { X.homesDirty = true; X.rehomeAll = true; });
       on(EV.STORM_PASSED, function () { X.releaseShelter = true; });
@@ -1846,9 +2064,11 @@
         watch: stormPhase(state) === STORM.WATCH, gators: gators(state), auras: auras,
         summerSession: timerActive(state, 'summerSession'),
         sickShare: fin(state.economy.students, 0) > 0 ? BSU.clamp(fin(state.wildlife && state.wildlife.sick, 0) / Math.max(1, fin(state.economy.students, 0)), 0, 1) : 0,
-        graduationDay: dp.date === BSU.params.econ.graduationDate, nightLeft: 0, gn: 0, gX: X.gX, gY: X.gY, gI: X.gI
+        graduationDay: dp.date === BSU.params.econ.graduationDate, nightLeft: 0, gn: 0, gX: X.gX, gY: X.gY, gI: X.gI,
+        cyc: cycleTick(state)
       };
-      for (let k = 0; k < ctx.gators.length && ctx.gn < 64; k++) { const g = ctx.gators[k]; if (!g || g.state === 'WRANGLED') continue; X.gX[ctx.gn] = fin(g.tx, -99) + 0.5; X.gY[ctx.gn] = fin(g.ty, -99) + 0.5; X.gI[ctx.gn] = k; ctx.gn++; }
+      // campus life pass (N27): students run from a gator that is ASHORE; one swimming under a boardwalk or lying in the water at its den scares nobody
+      for (let k = 0; k < ctx.gators.length && ctx.gn < 64; k++) { const g = ctx.gators[k]; if (!g || g.state === 'WRANGLED' || g.state === 'SWIM') continue; const gx = fin(g.tx, -99), gy = fin(g.ty, -99); if (gx >= 0 && gy >= 0 && gx < W && gy < H) { const gt = state.tiles.type[(gy | 0) * W + (gx | 0)]; if (gt === T.OPEN_WATER || gt === T.BAYOU || gt === T.POND) continue; } X.gX[ctx.gn] = gx + 0.5; X.gY[ctx.gn] = gy + 0.5; X.gI[ctx.gn] = k; ctx.gn++; }
       if (ctx.phase === SKY.NIGHT && state.sky && !state.sky.scripted) ctx.nightLeft = Math.max(0, BSU.SKY_TICKS[SKY.NIGHT] - fin(state.sky.phaseTick, 0));
       X.visible = visibleRect();
       const vis = X.visible;
@@ -1861,6 +2081,7 @@
       if (phaseChanged) {
         if (ctx.phase === SKY.DAWN && X.lastPhase !== SKY.DAWN) { X.assigned = 0; X.reached = 0; X.served.clear(); X.skips = 0; X.turnedAway = 0; for (let k = 0; k < A.length; k++) if (A[k]) A[k].hungry = false; }   // P6: every kitchen's count and every skipped lunch start over at Dawn
         if (ctx.phase === SKY.DUSK && X.lastPhase !== SKY.DUSK && X.lastPhase !== -1) X.lastAttendance = X.assigned ? X.reached / X.assigned : 1;
+        if (ctx.phase === SKY.DUSK && X.lastPhase !== SKY.DUSK) X.poboyRuns.clear();   // the morning's Po'boy runs are counted from the leave-earlier window before Dawn
         if (game && !X.lastGame) spawnBuses(state, true, 'game');
         if (!game && X.lastGame) spawnBuses(state, false, 'game');
         X.lastPhase = ctx.phase; X.lastGame = game; X.lastSetPiece = sp;
@@ -1869,7 +2090,7 @@
         for (let k = 0; k < A.length; k++) {
           const a = A[k];
           if (!present(a)) continue;
-          if (stagger) { a.react = 1 + Math.floor(hashFrac(a.id, 0x7e11 + ctx.phase) * PM.reactTicks); a.reactPhase = ctx.phase; }
+          if (stagger) { a.react = 1 + Math.floor(hashFrac(a.id, 0x7e11 + ctx.phase) * (ctx.phase === SKY.NIGHT ? PL.nightSpread : PM.reactTicks)); a.reactPhase = ctx.phase; }
           else { a.react = 0; schedule(state, a, ctx.phase, ctx); }
         }
       }
@@ -1937,7 +2158,8 @@
       else if (a.state === 'BUS') activity = 'Evacuating';
       else if (a.state === 'CHEER') activity = 'Cheering';
       else if (a.state === 'SIT') activity = 'Wilting in the shade';
-      else if (a.inside) activity = a.goal === 'class' ? 'In class' : (a.goal === 'home' ? 'In the dorm' : 'Inside');
+      else if (a.inside) { const vb = a.goal === 'visit' ? getBuilding(state, a.target) : null; activity = a.goal === 'class' ? 'In class' : (a.goal === 'home' ? 'In the dorm' : (a.goal === 'dining' ? 'At lunch' : (vb ? (vb.id === a.home ? 'In the dorm' : (VISIT_TEXT[vb.type] || 'Inside')) : 'Inside'))); }
+      else if (a.goal === 'idle' && a.strolling) activity = 'Out for a walk';
       else activity = GOAL_TEXT[a.goal] || 'Idle';
       const D = dep('data');
       const quotes = (D && D.students && Array.isArray(D.students.quotes) && D.students.quotes.length) ? D.students.quotes : ['Geaux.'];
@@ -1989,7 +2211,7 @@
         },
         wildlife: { gators: function () { return gatorList; }, onCampus: function () { return []; }, mosqAt: function () { return 0; }, gatorGridPassable: function () { return true; } },
         weather: {
-          sky: function (s) { return { phase: fixedPhase >= 0 ? fixedPhase : phaseOf(s.tick), t: 0, phaseTick: 0, scripted: false }; },
+          sky: function (s) { const ph = fixedPhase >= 0 ? fixedPhase : phaseOf(s.tick); return { phase: ph, t: 0, phaseTick: fixedPhase >= 0 ? 0 : ((((s.tick % 300) + 300) % 300) - PHASE_START[ph]), scripted: false }; },   // campus life pass: the phase's own clock runs (the day plan reads the cycle tick)
           raining: function () { return false; }, rainAt: function () { return 0; },
           heat: function () { return { index: advisory ? 100 : 80, advisory: advisory, wave: false }; },
           date: function (s) { const d = BSU.dayParts(s.calendar.day); return { day: d.day, year: d.year, month: d.month, dom: d.dom, str: '', season: d.season, semester: d.semester }; },
